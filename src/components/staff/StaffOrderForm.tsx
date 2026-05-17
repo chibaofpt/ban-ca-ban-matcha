@@ -32,14 +32,19 @@ function buildOrderItems(cart: CartItem[]): CreateStaffOrderPayload["items"] {
   return cart.map((c) => ({
     menu_item_id: c.menuItemId,
     quantity: c.quantity,
-    ...(c.size ? { size: c.size } : {}),
+    size: c.size,
     sweetness: c.sweetness,
+    ice_option: c.iceOption,
+    coldwhisk: c.coldwhisk,
     ...(c.note ? { note: c.note } : {}),
     addon_option_ids: [
       ...c.selectedOptionIds.map((id) => ({ option_id: id, quantity: 1 })),
       ...c.quantityAddonOptions,
     ],
     ...(c.productVoucherId ? { product_voucher_id: c.productVoucherId } : {}),
+    ...(c.selectedPowderId ? { selected_powder_id: c.selectedPowderId } : {}),
+    ...(c.selectedMilkTypeId ? { selected_milk_type_id: c.selectedMilkTypeId } : {}),
+    client_price_vnd: c.clientPriceVnd,
   }));
 }
 

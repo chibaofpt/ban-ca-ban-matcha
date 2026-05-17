@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     const newAccessToken = await signJwt({ id: userId, role: session.user.role, phone_number: session.user.phone_number });
 
     // Set new cookies
-    await setAuthCookies(newAccessToken, newRefreshToken);
+    await setAuthCookies(newAccessToken, newRefreshToken, session.user.role);
 
     return NextResponse.json({ data: { success: true } }, { status: 200 });
 

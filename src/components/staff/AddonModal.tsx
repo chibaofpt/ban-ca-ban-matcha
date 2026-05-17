@@ -184,6 +184,68 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
         return qty > 0 && g.options[0] ? [{ option_id: g.options[0].id, quantity: qty }] : [];
       });
 
+    // ── Build human-readable detail lines for cart display ──────────────────
+    const details: string[] = [];
+
+    // Size
+    details.push(`Size: ${SIZE_LABELS[selectedSize]}`);
+
+    // Powder (fusion) or Milk (latte) — only show if non-default
+    if (isLatte) {
+      const milk = item.milk_types?.find((m) => m.id === selectedMilkId);
+      if (milk && !milk.is_default) details.push(`Sữa: ${milk.name}`);
+    } else {
+      const pwd = powders.find((p) => p.id === selectedPowderId);
+      const isDefaultPwd = selectedPowderId === item.resolved_default_powder_id;
+      if (pwd && !isDefaultPwd) details.push(`Bột: ${pwd.name}`);
+    }
+
+    // Sweetness — only show if not default (QUARTER)
+    if (sweetness !== "QUARTER") {
+      const sweetnessLabel = SWEETNESS_OPTIONS.find((o) => o.value === sweetness)?.label;
+      if (sweetnessLabel) details.push(`Độ ngọt: ${sweetnessLabel}`);
+    }
+
+    // Ice — only show if not default (NORMAL)
+    if (iceOption !== "NORMAL") {
+      const iceLabel = ICE_OPTIONS.find((o) => o.value === iceOption)?.label;
+      if (iceLabel) details.push(iceLabel);
+    }
+
+    // Coldwhisk
+    if (coldwhisk) details.push("Coldwhisk ✓");
+
+    // SELECTOR + TOGGLE addons — show label of selected non-default options
+    for (const g of item.addon_groups) {
+      if (g.type === "SELECTOR" || g.type === "TOGGLE") {
+        for (const opt of g.options) {
+          if (selectedOptionIds.includes(opt.id) && !opt.is_default) {
+            const price =
+              opt.gram_value != null
+                ? ceilTo1000(opt.gram_value * activePowderPricePerGram)
+                : opt.price_vnd;
+            const priceSuffix = price > 0 ? ` (+${price / 1000}k)` : "";
+            details.push(`${opt.label}${priceSuffix}`);
+          }
+        }
+      }
+    }
+
+    // QUANTITY addons
+    for (const g of item.addon_groups) {
+      if (g.type === "QUANTITY") {
+        const qty = quantityMap[g.id] ?? 0;
+        if (qty > 0 && g.options[0]) {
+          const opt = g.options[0];
+          const rawCost =
+            qty * (opt.gram_value != null ? opt.gram_value * activePowderPricePerGram : opt.price_vnd);
+          const cost = ceilTo1000(rawCost);
+          const priceSuffix = cost > 0 ? ` (+${cost / 1000}k)` : "";
+          details.push(`${g.name}: ${qty}g${priceSuffix}`);
+        }
+      }
+    }
+
     onConfirm({
       cartId: crypto.randomUUID(),
       menuItemId: item.id,
@@ -204,9 +266,11 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
       selectedPowderId: isLatte ? undefined : selectedPowderId,
       selectedMilkTypeId: isLatte ? selectedMilkId : undefined,
       clientPriceVnd: finalUnitPrice,
+      details,
       ...(freeVoucherId ? { productVoucherId: freeVoucherId } : {}),
     });
   };
+
 
   const sweetnessIdx = SWEETNESS_OPTIONS.findIndex((o) => o.value === sweetness);
   const SectionLabel = ({ text }: { text: string }) => (

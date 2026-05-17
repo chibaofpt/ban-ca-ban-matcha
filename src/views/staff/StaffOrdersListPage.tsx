@@ -1,27 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, ChevronUp, Phone, Clock } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ChevronDown, ChevronUp, Phone, Clock, RefreshCw } from "lucide-react";
 import { cn } from "@/src/utils/cn";
-
-// TODO: Replace with real data fetched via adminOrderService.listOrders()
-// GET /api/admin/orders — returns orders sorted newest first
-
-interface OrderItem {
-  name: string;
-  quantity: number;
-}
-
-interface Order {
-  id: string;
-  customerName: string;
-  customerPhone: string;
-  createdAt: string;
-  status: "COMPLETED" | "CANCELLED";
-  items: OrderItem[];
-  /** Total in VND (integer). Display as total_vnd / 1000 cá. */
-  total_vnd: number;
-}
+import { fetchOrdersList, type OrderRes } from "@/src/services/staffOrdersListService";
 
 const formatDateTime = (iso: string): string => {
   const d = new Date(iso);
@@ -29,35 +11,49 @@ const formatDateTime = (iso: string): string => {
   return `${pad(d.getHours())}:${pad(d.getMinutes())} • ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 };
 
-// TODO: Replace hardcoded placeholder role with real session — role determines
-// whether the "Huỷ đơn" button appears. ADMIN can cancel; STAFF cannot.
-const IS_ADMIN_PLACEHOLDER = true;
+const StatusBadge = ({ status }: { status: OrderRes["status"] }) => {
+  const map: Record<OrderRes["status"], { label: string; color: string }> = {
+    PENDING: { label: "CHỜ NHẬN", color: "bg-yellow-100 text-yellow-800" },
+    CONFIRMED: { label: "ĐÃ NHẬN", color: "bg-blue-100 text-blue-800" },
+    READY: { label: "XONG", color: "bg-green-100 text-green-800" },
+    COMPLETED: { label: "ĐÃ GIAO", color: "bg-gray-100 text-gray-800" },
+    CANCELLED: { label: "ĐÃ HUỶ", color: "bg-red-100 text-red-800" },
+  };
+  const config = map[status] || map.PENDING;
+  return (
+    <span className={cn("shrink-0 text-[11px] px-2 py-0.5 rounded-full font-semibold", config.color)}>
+      {config.label}
+    </span>
+  );
+};
 
-/** StaffOrdersListPage — lists all orders, newest first. ADMIN can cancel. */
 export default function StaffOrdersListPage() {
-  // TODO: replace with useEffect → adminOrderService.listOrders()
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading] = useState(false);
+  const [orders, setOrders] = useState<OrderRes[]>([]);
+  const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
 
-  const toggle = (id: string) =>
-    setExpanded((s) => ({ ...s, [id]: !s[id] }));
-
-  const confirmCancel = () => {
-    if (!cancelTarget) return;
-    // TODO: wire PATCH /api/admin/orders/[id]/status → { status: "CANCELLED" }
-    // via adminOrderService.updateStatus(cancelTarget.id, "CANCELLED")
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === cancelTarget.id ? { ...o, status: "CANCELLED" } : o,
-      ),
-    );
-    console.warn("TODO: wire toast — Đã huỷ đơn", cancelTarget.id);
-    setCancelTarget(null);
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const data = await fetchOrdersList();
+      setOrders(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (loading) {
+  useEffect(() => {
+    loadData();
+    // Setup simple polling every 10 seconds for new orders
+    const interval = setInterval(loadData, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const toggle = (id: string) => setExpanded((s) => ({ ...s, [id]: !s[id] }));
+
+  if (loading && orders.length === 0) {
     return (
       <div className="px-4 py-4">
         <div className="h-6 w-32 bg-secondary/40 rounded-lg animate-pulse mb-4" />
@@ -69,10 +65,15 @@ export default function StaffOrdersListPage() {
   }
 
   return (
-    <div className="px-4 py-4 space-y-3">
+    <div className="px-4 py-4 space-y-3 pb-24">
       <div className="flex items-baseline justify-between">
         <h1 className="font-serif text-xl font-semibold text-foreground">Đơn hàng</h1>
-        <span className="text-xs text-muted-foreground">{orders.length} đơn</span>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span>{orders.length} đơn</span>
+          <button onClick={loadData} className="p-1.5 bg-secondary/50 rounded-full hover:bg-secondary/80">
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+          </button>
+        </div>
       </div>
 
       {orders.length === 0 && (
@@ -81,120 +82,81 @@ export default function StaffOrdersListPage() {
 
       {orders.map((order) => {
         const isOpen = !!expanded[order.id];
-        const cancelled = order.status === "CANCELLED";
+        const isPending = order.status === "PENDING";
+        
         return (
           <div
             key={order.id}
             className={cn(
               "rounded-2xl border bg-card shadow-sm overflow-hidden",
-              cancelled && "opacity-80",
+              isPending && "border-yellow-400 border-2 shadow-yellow-100", // Highlight pending orders
+              order.status === "CANCELLED" && "opacity-60"
             )}
           >
             <div className="p-4 space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-foreground truncate">
-                      {order.customerName}
+                    <span className="font-semibold text-foreground truncate text-sm">
+                      {order.user.name}
                     </span>
-                    <span className="text-[11px] text-muted-foreground font-mono">
-                      #{order.id}
+                    <span className="text-[10px] text-muted-foreground font-mono bg-secondary/50 px-1.5 py-0.5 rounded">
+                      #{order.id.slice(0, 8)}
                     </span>
                   </div>
-                  <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
-                    <span className="inline-flex items-center gap-1">
+                  <div className="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1 font-medium text-foreground/80">
                       <Phone size={12} />
-                      {order.customerPhone}
+                      {order.user.phone_number}
                     </span>
                     <span className="inline-flex items-center gap-1">
                       <Clock size={12} />
-                      {formatDateTime(order.createdAt)}
+                      {formatDateTime(order.created_at)}
                     </span>
                   </div>
                 </div>
-                <span
-                  className={cn(
-                    "shrink-0 text-[11px] px-2 py-0.5 rounded-full font-medium",
-                    cancelled
-                      ? "bg-destructive/10 text-destructive"
-                      : "bg-primary/10 text-primary",
-                  )}
-                >
-                  {cancelled ? "CANCELLED" : "COMPLETED"}
-                </span>
+                <StatusBadge status={order.status} />
               </div>
 
               <button
                 onClick={() => toggle(order.id)}
-                className="w-full flex items-center justify-between text-sm text-foreground/80 hover:text-foreground"
+                className="w-full flex items-center justify-between text-sm text-foreground/80 hover:text-foreground bg-secondary/20 p-2 rounded-xl"
               >
-                <span>
+                <span className="font-medium">
                   {order.items.reduce((s, i) => s + i.quantity, 0)} món
                 </span>
                 {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </button>
 
               {isOpen && (
-                <ul className="space-y-1 text-sm text-foreground/90 border-t border-border pt-2">
+                <ul className="space-y-3 text-sm text-foreground/90 pt-1">
                   {order.items.map((it, idx) => (
                     <li key={idx} className="flex justify-between gap-3">
-                      <span className="truncate">{it.name}</span>
-                      <span className="text-muted-foreground shrink-0">×{it.quantity}</span>
+                      <div className="flex flex-col">
+                        <span className="font-semibold">{it.menuItem.name} <span className="font-normal text-muted-foreground">({it.size})</span></span>
+                        {it.addons.length > 0 && (
+                          <span className="text-[11px] text-muted-foreground mt-0.5">
+                            {it.addons.map(a => `${a.addonOption.label} x${a.quantity}`).join(", ")}
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-medium text-foreground shrink-0 mt-0.5">×{it.quantity}</span>
                     </li>
                   ))}
                 </ul>
               )}
 
               <div className="flex items-center justify-between border-t border-border pt-3">
-                <span className="text-xs text-muted-foreground">Tổng tiền</span>
-                <span className="font-semibold text-foreground">
-                  🐟 {order.total_vnd / 1000} cá
+                <span className="text-xs text-muted-foreground">Tổng thu</span>
+                <span className="font-bold text-primary text-base">
+                  {(order.total_vnd / 1000).toLocaleString("vi-VN")}K
                 </span>
               </div>
-
-              {IS_ADMIN_PLACEHOLDER && !cancelled && (
-                <button
-                  onClick={() => setCancelTarget(order)}
-                  className="w-full border border-destructive/40 text-destructive hover:bg-destructive/10 rounded-xl py-2 text-sm font-medium transition"
-                >
-                  Huỷ đơn
-                </button>
-              )}
             </div>
           </div>
         );
       })}
-
-      {/* Cancel confirmation dialog */}
-      {cancelTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setCancelTarget(null)}
-          />
-          <div className="relative bg-card rounded-2xl p-6 w-full max-w-sm mx-4 shadow-xl">
-            <h2 className="font-serif text-lg font-semibold mb-2">Xác nhận huỷ đơn này?</h2>
-            <p className="text-sm text-muted-foreground mb-5">
-              Đơn <span className="font-mono">#{cancelTarget.id}</span> của khách{" "}
-              <strong>{cancelTarget.customerName}</strong> sẽ được đánh dấu huỷ.
-            </p>
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => setCancelTarget(null)}
-                className="px-4 py-2 rounded-xl border border-border text-sm hover:bg-secondary/40 transition"
-              >
-                Đóng
-              </button>
-              <button
-                onClick={confirmCancel}
-                className="px-4 py-2 rounded-xl bg-destructive text-destructive-foreground text-sm hover:bg-destructive/90 transition"
-              >
-                Huỷ đơn
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
+
