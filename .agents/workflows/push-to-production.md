@@ -1,5 +1,7 @@
 # Push to Production Workflow
 
+**Trigger Phrase:** "Đẩy lên production đi bạn"
+
 This workflow automates the process of validating code, committing changes to the `dev` branch, merging them into the `main` (production) branch, pushing to origin to trigger production deployment, and switching back to `dev` for continued development.
 
 ---
