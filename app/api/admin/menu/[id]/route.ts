@@ -278,7 +278,7 @@ export async function PUT(
         }
 
         return tx.menuItem.findUniqueOrThrow({ where: { id }, include: INCLUDE });
-      }),
+      }, { maxWait: 10000, timeout: 15000 }),
       prisma.defaultSizeConfig.findMany(),
     ]);
 
