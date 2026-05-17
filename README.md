@@ -57,8 +57,8 @@ Mở [http://localhost:3000](http://localhost:3000) để xem kết quả.
 | Phase | Nội dung | Trạng thái |
 |---|---|---|
 | 0 | Landing page + menu tĩnh + cart Zustand | ✅ Done |
-| 1 | Auth (register/login/logout/refresh) + Prisma schema | ⏳ |
-| 2 | Menu API + admin CRUD + image upload | ⏳ |
-| 3 | Orders + points | ⏳ |
+| 1 | Auth (register/login/logout/refresh) + Prisma schema | ✅ Done |
+| 2 | Menu API + admin CRUD + image upload | ✅ Done |
+| 3 | Orders + points | 🚧 In Progress |
 | 4 | Vouchers + QR scanner | ⏳ |
 | 5 | Promotions + OTP + Redis | ⏳ |

@@ -9,11 +9,9 @@ const JWT_SECRET = new TextEncoder().encode(secretStr);
 /**
  * Middleware for protecting routes based on roles and JWT session.
  */
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // We rely on the matcher to restrict calls to this middleware, 
-  // but we optionally double-check here just in case.
   const isProtectedPath =
     pathname.startsWith('/profile') ||
     pathname.startsWith('/api/orders') ||
@@ -41,11 +39,11 @@ export async function proxy(request: NextRequest) {
 
     // Role Guards
     if ((pathname.startsWith('/api/staff') || pathname.startsWith('/staff')) && !['STAFF', 'ADMIN'].includes(userRole)) {
-      return redirectOrUnauthorized(request, 'Không có quyền truy cập', 'FORBIDDEN', 403);
+      return redirectOrUnauthorized(request, 'Không có quyền truy cập', 'FORBIDDEN', 403, userRole);
     }
     
     if ((pathname.startsWith('/api/admin') || pathname.startsWith('/admin')) && userRole !== 'ADMIN') {
-      return redirectOrUnauthorized(request, 'Chỉ dành cho quản trị viên', 'FORBIDDEN', 403);
+      return redirectOrUnauthorized(request, 'Chỉ dành cho quản trị viên', 'FORBIDDEN', 403, userRole);
     }
 
     // Inject user context
@@ -67,7 +65,13 @@ export async function proxy(request: NextRequest) {
 /**
  * Sends a redirect response for regular pages or a JSON error response for API routes.
  */
-function redirectOrUnauthorized(request: NextRequest, error: string, code: string, status: number) {
+function redirectOrUnauthorized(
+  request: NextRequest,
+  error: string,
+  code: string,
+  status: number,
+  userRole?: string
+) {
   const { pathname } = request.nextUrl;
   
   // JSON Response for API routes
@@ -75,16 +79,30 @@ function redirectOrUnauthorized(request: NextRequest, error: string, code: strin
     return NextResponse.json({ error, code }, { status });
   }
 
-  // Handle FORBIDDEN pages: Redirect to appropriate login
+  const url = request.nextUrl.clone();
+
+  // Handle FORBIDDEN pages (status === 403)
   if (status === 403) {
-    const url = request.nextUrl.clone();
+    // If STAFF tries to access /admin routes, redirect to /staff/orders
+    if (userRole === 'STAFF' && pathname.startsWith('/admin')) {
+      url.pathname = '/staff/orders';
+      return NextResponse.redirect(url);
+    }
+
+    // Default 403 redirect for customers or others
     url.pathname = '/';
     return NextResponse.redirect(url);
   }
 
-  // Redirect admin routes to /admin/login; all others to /
-  const url = request.nextUrl.clone();
-  url.pathname = pathname.startsWith('/admin') ? '/admin/login' : '/';
+  // Handle UNAUTHORIZED pages (status === 401)
+  // If attempting to access admin or staff pages, redirect to /admin/login
+  if (pathname.startsWith('/admin') || pathname.startsWith('/staff')) {
+    url.pathname = '/admin/login';
+    return NextResponse.redirect(url);
+  }
+
+  // Default 401 redirect for all other pages (e.g. /profile -> /)
+  url.pathname = '/';
   return NextResponse.redirect(url);
 }
 

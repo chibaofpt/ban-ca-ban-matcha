@@ -88,31 +88,29 @@ export function StaffCartDrawer({
                 <div className="flex items-start justify-between gap-2">
                   <h4 className="font-medium text-sm leading-tight">
                     {c.name}
-                    {c.size ? ` (${c.size})` : ""}
                   </h4>
                   <span className="text-primary font-semibold text-sm whitespace-nowrap">
                     🐟 {(c.unitPrice * c.quantity) / 1000} cá
                   </span>
                 </div>
 
-                {/* Sweetness */}
-                <p className="text-[11px] text-muted-foreground">
-                  {SWEETNESS_LABEL[c.sweetness]}
-                </p>
-
-                {/* Selected options summary */}
-                {c.selectedOptionIds.length > 0 && (
+                {/* Customization detail pills */}
+                {c.details && c.details.length > 0 ? (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {c.details.map((d, i) => (
+                      <span
+                        key={i}
+                        className="inline-block text-[10px] bg-secondary/50 text-muted-foreground rounded-full px-2 py-0.5 leading-tight"
+                      >
+                        {d}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  // Fallback for items added before this change
                   <p className="text-[11px] text-muted-foreground">
-                    {c.selectedOptionIds.length} addon đã chọn
-                  </p>
-                )}
-
-                {/* QUANTITY addons */}
-                {c.quantityAddonOptions.length > 0 && (
-                  <p className="text-[11px] text-muted-foreground">
-                    {c.quantityAddonOptions
-                      .map((a) => `+${a.quantity}g`)
-                      .join(", ")}
+                    {SWEETNESS_LABEL[c.sweetness]}
+                    {c.selectedOptionIds.length > 0 && ` • ${c.selectedOptionIds.length} addon`}
                   </p>
                 )}
 

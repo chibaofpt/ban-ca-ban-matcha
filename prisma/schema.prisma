@@ -19,7 +19,8 @@ model User {
   otp_enabled      Boolean     @default(false)
   created_at       DateTime    @default(now()) @db.Timestamptz(6)
   updated_at       DateTime    @default(now()) @updatedAt @db.Timestamptz(6)
-  orders           Order[]
+  orders           Order[]     @relation("CustomerOrders")
+  handledOrders    Order[]     @relation("HandledOrders")
   performedLogs    PointsLog[] @relation("StaffPerformed")
   pointsLogs       PointsLog[] @relation("UserPoints")
   sessions         Session[]
@@ -222,7 +223,9 @@ model Order {
   note          String?
   created_at    DateTime    @default(now()) @db.Timestamptz(6)
   items         OrderItem[]
-  user          User        @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user          User        @relation("CustomerOrders", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  handled_by    String?     @db.Uuid
+  handler       User?       @relation("HandledOrders", fields: [handled_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   voucher       Voucher?    @relation(fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   pointsLogs    PointsLog[]
 

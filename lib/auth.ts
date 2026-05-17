@@ -17,13 +17,15 @@ export function normalizePhone(phone: string): string {
 }
 
 /**
- * Signs a JWT token with HS256 for a 15-minute expiry.
+ * Signs a JWT token with HS256. 7 days for STAFF/ADMIN, 15 minutes for CUSTOMER.
  */
 export async function signJwt(payload: { id: string; role: string; phone_number: string }): Promise<string> {
+  const isStaffOrAdmin = payload.role === "STAFF" || payload.role === "ADMIN";
+  const expiresIn = isStaffOrAdmin ? "7d" : "15m";
   return await new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("15m")
+    .setExpirationTime(expiresIn)
     .sign(JWT_SECRET);
 }
 
@@ -56,14 +58,16 @@ export async function createSession(userId: string): Promise<string> {
 /**
  * Sets access_token and refresh_token in httpOnly cookies.
  */
-export async function setAuthCookies(accessToken: string, refreshToken: string) {
+export async function setAuthCookies(accessToken: string, refreshToken: string, role: string = "CUSTOMER") {
   const cookieStore = await cookies();
-  
+  const isStaffOrAdmin = role === "STAFF" || role === "ADMIN";
+  const accessMaxAge = isStaffOrAdmin ? 7 * 24 * 60 * 60 : 15 * 60; // 7 days for staff/admin, 15 mins for others
+
   cookieStore.set("access_token", accessToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    maxAge: 15 * 60, // 15 minutes
+    maxAge: accessMaxAge,
     path: "/",
   });
 

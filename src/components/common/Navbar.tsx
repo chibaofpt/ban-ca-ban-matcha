@@ -13,7 +13,7 @@ import {
   UtensilsCrossed,
 } from "lucide-react";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { NavLink } from "@/src/components/common/NavLink";
 import { useCartStore, useCartTotalItems } from "@/src/lib/store/cartStore";
 import { useAuthStore } from "@/src/lib/store/authStore";
@@ -26,6 +26,7 @@ import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 const Navbar = () => {
   const [open, setOpen] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
 
   // Auth
   const isLoggedIn = useAuthStore((s) => s.user !== null);
@@ -35,6 +36,10 @@ const Navbar = () => {
   // Cart
   const setCartOpen = useCartStore((s) => s.setCartOpen);
   const count = useCartTotalItems();
+
+  if (pathname.startsWith("/admin") || pathname.startsWith("/staff")) {
+    return null;
+  }
 
   const handleLogout = () => {
     logout();

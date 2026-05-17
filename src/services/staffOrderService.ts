@@ -10,11 +10,24 @@ export interface CreateStaffOrderPayload {
   items: {
     menu_item_id: string;
     quantity: number;
-    size?: "M" | "L" | "XL";
+    /** Required — all items have M/L/XL. */
+    size: "M" | "L" | "XL";
     sweetness: SweetnessLevel;
+    /** Defaults to NORMAL on server if omitted; explicit here for correctness. */
+    ice_option: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
+    coldwhisk: boolean;
     note?: string;
     addon_option_ids: { option_id: string; quantity: number }[];
     product_voucher_id?: string;
+    /** Fusion only — server validates against item's allowed powder list. */
+    selected_powder_id?: string;
+    /** Latte only — server defaults to is_default milk if omitted. */
+    selected_milk_type_id?: string;
+    /**
+     * Client-computed final unit price. Required.
+     * Server recomputes and rejects with PRICE_CHANGED on mismatch.
+     */
+    client_price_vnd: number;
   }[];
   voucher_id?: string;
 }

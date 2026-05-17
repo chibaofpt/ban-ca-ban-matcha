@@ -235,6 +235,7 @@ Soft delete only — set `is_active = false`, never hard delete.
 ### orders
 - `id` uuid PK
 - `user_id` uuid FK → users
+- `handled_by` uuid FK nullable → users — Staff who created or accepted this order. NULL if created by customer and not yet accepted.
 - `voucher_id` uuid FK nullable → vouchers — DISCOUNT only, max 1 per order
 - `status` OrderStatus — customer default `PENDING`; staff = `COMPLETED` immediately
 - `subtotal_vnd` int

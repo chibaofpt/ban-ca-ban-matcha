@@ -71,7 +71,10 @@ describe("createStaffOrder", () => {
           quantity: 2,
           size: "L" as const,
           sweetness: "QUARTER" as const,
+          ice_option: "NORMAL" as const,
+          coldwhisk: false,
           addon_option_ids: [],
+          client_price_vnd: 69000,
         },
       ],
     };
@@ -81,7 +84,7 @@ describe("createStaffOrder", () => {
     expect(apiClient.post).toHaveBeenCalledWith("/api/staff/orders", payload);
   });
 
-  it("daily item payload phải có size field", async () => {
+  it("payload item phải có size, ice_option, coldwhisk, client_price_vnd", async () => {
     vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: {} } });
 
     const payload = {
@@ -92,15 +95,49 @@ describe("createStaffOrder", () => {
           quantity: 1,
           size: "M" as const,
           sweetness: "NONE" as const,
+          ice_option: "LESS_ICE" as const,
+          coldwhisk: true,
           addon_option_ids: [],
+          client_price_vnd: 45000,
         },
       ],
     };
 
     await createStaffOrder(payload);
 
-    const calledPayload = vi.mocked(apiClient.post).mock.calls[0][1] as typeof payload;
-    expect(calledPayload.items[0].size).toBe("M");
+    const sent = vi.mocked(apiClient.post).mock.calls[0][1] as typeof payload;
+    expect(sent.items[0].size).toBe("M");
+    expect(sent.items[0].ice_option).toBe("LESS_ICE");
+    expect(sent.items[0].coldwhisk).toBe(true);
+    expect(sent.items[0].client_price_vnd).toBe(45000);
+  });
+
+  it("selected_powder_id và selected_milk_type_id được forward khi cung cấp", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: {} } });
+
+    const payload = {
+      phone_number: "+84912345678",
+      items: [
+        {
+          menu_item_id: "item-fusion",
+          quantity: 1,
+          size: "L" as const,
+          sweetness: "QUARTER" as const,
+          ice_option: "NORMAL" as const,
+          coldwhisk: false,
+          addon_option_ids: [],
+          client_price_vnd: 75000,
+          selected_powder_id: "powder-abc",
+          selected_milk_type_id: "milk-xyz",
+        },
+      ],
+    };
+
+    await createStaffOrder(payload);
+
+    const sent = vi.mocked(apiClient.post).mock.calls[0][1] as typeof payload;
+    expect(sent.items[0].selected_powder_id).toBe("powder-abc");
+    expect(sent.items[0].selected_milk_type_id).toBe("milk-xyz");
   });
 });
 
