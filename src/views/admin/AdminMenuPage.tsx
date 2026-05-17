@@ -130,6 +130,7 @@ export default function AdminMenuPage() {
       };
     });
     showToast(`Đã thêm món "${newItem.name}"`);
+    loadData(); // Re-fetch to sync fully with DB
   };
 
   const handleEditSuccess = (updatedItem: AdminMenuItem) => {
@@ -144,6 +145,7 @@ export default function AdminMenuPage() {
       };
     });
     showToast(`Đã cập nhật món "${updatedItem.name}"`);
+    loadData(); // Re-fetch to sync fully with DB
   };
 
   const handleModalSuccess = (item: AdminMenuItem) => {
@@ -166,6 +168,7 @@ export default function AdminMenuPage() {
     });
     try {
       await toggleMenuItemAvailability(id, next);
+      await loadData(); // Re-fetch to sync fully with DB
     } catch {
       setMenuData(rollback);
       showToast("Không thể thay đổi trạng thái. Vui lòng thử lại.", "error");
