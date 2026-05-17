@@ -7,8 +7,7 @@
 ## Current State
 
 - [x] Phase 1 — Supabase, Prisma tables, auth routes, middleware, Login/Register pages
-- [x] Phase 2 (partial) — GET /api/menu done, frontend mounted
-- [ ] Phase 2 (in progress) — Admin menu CRUD (edit + delete)
+- [x] Phase 2 — Admin menu CRUD (edit + delete)
 - [ ] Phase 3 — Orders + Points
 - [ ] Phase 4 — Vouchers + QR
 - [ ] Phase 5 — Promotions + OTP + Redis
