@@ -9,7 +9,7 @@ const JWT_SECRET = new TextEncoder().encode(secretStr);
 /**
  * Middleware for protecting routes based on roles and JWT session.
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isProtectedPath =
