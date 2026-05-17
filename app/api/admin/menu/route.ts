@@ -247,7 +247,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           where: { id: item.id },
           include: INCLUDE,
         });
-      }),
+      }, { maxWait: 10000, timeout: 15000 }),
       prisma.defaultSizeConfig.findMany(),
     ]);
 
