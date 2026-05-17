@@ -80,7 +80,7 @@ export async function POST(req: Request) {
     const accessToken = await signJwt({ id: user.id, role: user.role, phone_number: user.phone_number });
 
     // Set cookies
-    await setAuthCookies(accessToken, refreshToken, role);
+    await setAuthCookies(accessToken, refreshToken, user.role);
 
     return NextResponse.json(
       {
