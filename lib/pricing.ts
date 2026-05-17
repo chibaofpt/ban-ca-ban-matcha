@@ -47,13 +47,10 @@ export interface PricingContext {
  * Call once before looping over order items — avoids N+1 queries.
  */
 export async function buildPricingContext(client: PrismaTransactionClient = prisma): Promise<PricingContext> {
-  const [defaultSizeConfigs, allPowderConfigs, allPowders, allMilkTypes] =
-    await Promise.all([
-      client.defaultSizeConfig.findMany(),
-      client.powderSizeConfig.findMany(),
-      client.matchaPowder.findMany({ where: { is_available: true } }),
-      client.milkType.findMany({ where: { is_active: true } }),
-    ]);
+  const defaultSizeConfigs = await client.defaultSizeConfig.findMany();
+  const allPowderConfigs = await client.powderSizeConfig.findMany();
+  const allPowders = await client.matchaPowder.findMany({ where: { is_available: true } });
+  const allMilkTypes = await client.milkType.findMany({ where: { is_active: true } });
 
   const powderSizeConfigMap: Record<string, PowderSizeConfigEntry[]> = {};
   for (const c of allPowderConfigs) {
@@ -156,35 +153,31 @@ export async function resolveOrderItemPremiumLatte(
   size: Size,
   client: PrismaTransactionClient = prisma
 ): Promise<number> {
-  const [selectedPowder, defaultPowder] = await Promise.all([
-    client.matchaPowder.findUnique({
-      where: { id: selectedPowderId },
-      select: { reference_latte_item_id: true },
-    }),
-    client.matchaPowder.findUnique({
-      where: { id: defaultPowderId },
-      select: { reference_latte_item_id: true },
-    }),
-  ]);
+  const selectedPowder = await client.matchaPowder.findUnique({
+    where: { id: selectedPowderId },
+    select: { reference_latte_item_id: true },
+  });
+  const defaultPowder = await client.matchaPowder.findUnique({
+    where: { id: defaultPowderId },
+    select: { reference_latte_item_id: true },
+  });
 
   if (!selectedPowder?.reference_latte_item_id || !defaultPowder?.reference_latte_item_id) {
     return 0;
   }
 
-  const [selectedSize, defaultSize] = await Promise.all([
-    client.menuItemSize.findFirst({
-      where: {
-        menu_item_id: selectedPowder.reference_latte_item_id,
-        size,
-      },
-    }),
-    client.menuItemSize.findFirst({
-      where: {
-        menu_item_id: defaultPowder.reference_latte_item_id,
-        size,
-      },
-    }),
-  ]);
+  const selectedSize = await client.menuItemSize.findFirst({
+    where: {
+      menu_item_id: selectedPowder.reference_latte_item_id,
+      size,
+    },
+  });
+  const defaultSize = await client.menuItemSize.findFirst({
+    where: {
+      menu_item_id: defaultPowder.reference_latte_item_id,
+      size,
+    },
+  });
 
   return (selectedSize?.base_price_vnd ?? 0) - (defaultSize?.base_price_vnd ?? 0);
 }

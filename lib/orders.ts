@@ -109,9 +109,11 @@ export async function processOrderItems(
 
   const priceConflicts: PriceConflict[] = [];
 
-  const resolved = await Promise.all(
-    items.map((item) => resolveOneItem(item, tx, pricingCtx, priceConflicts))
-  );
+  const resolved: ProcessedOrderItem[] = [];
+  for (const item of items) {
+    const res = await resolveOneItem(item, tx, pricingCtx, priceConflicts);
+    resolved.push(res);
+  }
 
   if (priceConflicts.length > 0) {
     throw new PriceChangedError(priceConflicts);
