@@ -138,6 +138,16 @@ src/                              # Frontend — never import lib/ from here
     adminMilkTypeService.ts       # CRUD /api/admin/milk-types
     adminSizeConfigService.ts     # GET/PUT /api/admin/default-size-config
     adminVoucherService.ts
+    staffOrderService.ts
+  __tests__/                      # Vitest unit & integration tests (Front-end + Backend Logic)
+    services/
+      staffOrderService.test.ts
+    utils/
+      pricing.test.ts
+    components/
+      staff/StaffOrderForm.test.tsx
+scratch/                          # Ignored by Git. Scratchpad for quick server scripts & local automation
+  test-order.ts
     adminPointsService.ts
     adminOrderService.ts
     staffOrderService.ts
