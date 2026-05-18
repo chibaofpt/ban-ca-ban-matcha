@@ -194,7 +194,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.error("[POST /api/orders]", err);
+    const errMsg = err instanceof Error ? err.message : String(err);
+    const errStack = err instanceof Error ? err.stack : undefined;
+    const errName = err instanceof Error ? err.name : typeof err;
+    console.error("[POST /api/orders] UNHANDLED ERROR:", { name: errName, message: errMsg, stack: errStack });
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },
       { status: 500 }
