@@ -26,156 +26,154 @@ export async function POST(req: NextRequest) {
   // 3. Session check
   const session = await getSession();
   if (!session) {
-    return NextResponse.json(
-      { error: "Unauthorized", code: "UNAUTHORIZED" },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   }
 
   // 4. Role check
   if (!["STAFF", "ADMIN"].includes(session.role)) {
-    return NextResponse.json(
-      { error: "Forbidden", code: "FORBIDDEN" },
-      { status: 403 }
-    );
+    return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
   }
 
-  // 5. Business logic — everything inside a single transaction
   try {
     const data = parsed.data;
 
-    const order = await prisma.$transaction(async (tx) => {
-      // ── Step 1: Normalize phone + resolve/create user ──────────────────────
-      const normalizedPhone = normalizePhone(data.phone_number);
+    // ── Phase 1: READS (outside transaction — avoids P2028 pgBouncer timeout) ──
 
-      let user = await tx.user.findUnique({
-        where: { phone_number: normalizedPhone },
-      });
-
-      if (!user) {
-        if (!data.customer_name) {
-          throw new OrderValidationError(
-            "VALIDATION_ERROR",
-            "customer_name required for new phone number"
-          );
-        }
-        user = await tx.user.create({
-          data: {
-            phone_number: normalizedPhone,
-            name: data.customer_name,
-            password_hash: "GHOST_USER_NO_PASSWORD",
-            role: "CUSTOMER",
-            qr_token: crypto.randomUUID(),
-          },
-        });
-      }
-
-      // ── Step 2: Process items — validate, price-check, resolve addons ──────
-      const resolvedItems = await processOrderItems(data.items, tx);
-
-      // ── Step 3: Calculate totals ───────────────────────────────────────────
-      const subtotal_vnd = resolvedItems.reduce((sum, item) => sum + item.line_total, 0);
-      let discount_vnd = 0;
-      let voucher_id: string | null = null;
-
-      if (data.voucher_id) {
-        const voucher = await tx.voucher.findUnique({
-          where: { id: data.voucher_id },
-        });
-
-        if (
-          voucher &&
-          voucher.status === "ACTIVE" &&
-          voucher.voucher_type === "DISCOUNT" &&
-          (voucher.expires_at === null || voucher.expires_at > new Date())
-        ) {
-          voucher_id = voucher.id;
-          if (voucher.discount_type === "PERCENT" && voucher.discount_value !== null) {
-            discount_vnd = Math.floor((subtotal_vnd * voucher.discount_value) / 100);
-          } else if (voucher.discount_type === "FIXED" && voucher.discount_value !== null) {
-            discount_vnd = voucher.discount_value;
-          }
-        }
-      }
-
-      const total_vnd = Math.max(0, subtotal_vnd - discount_vnd);
-      const points_earned = Math.floor(total_vnd / 10000);
-
-      // ── Step 4: Insert order + items + addons ──────────────────────────────
-      const createdOrder = await tx.order.create({
-        data: {
-          user_id: user.id,
-          handled_by: session.id, // Counter order -> Handled by the staff who created it
-          voucher_id,
-          status: "COMPLETED", // staff counter order → COMPLETED immediately
-          subtotal_vnd,
-          discount_vnd,
-          total_vnd,
-          points_earned,
-          pickup_time: null,
-          note: null,
-          items: {
-            create: resolvedItems.map((item) => ({
-              menu_item_id: item.menu_item_id,
-              quantity: item.quantity,
-              size: item.size,
-              unit_price_vnd: item.unit_price_vnd,
-              addons_price_vnd: item.addons_price_vnd,
-              sweetness: item.sweetness as SweetnessLevel,
-              ice_option: item.ice_option as IceOption,
-              coldwhisk: item.coldwhisk,
-              note: item.note,
-              product_voucher_id: item.product_voucher_id,
-              selected_powder_id: item.selected_powder_id,
-              selected_milk_type_id: item.selected_milk_type_id,
-              addons: {
-                create: item.resolvedAddons.map((a) => ({
-                  addon_option_id: a.addon_option_id,
-                  quantity: a.quantity,
-                  unit_price_vnd: a.unit_price_vnd,
-                })),
-              },
-            })),
-          },
-        },
-      });
-
-      // ── Step 5: Mark voucher as redeemed ──────────────────────────────────
-      if (voucher_id) {
-        await tx.voucher.update({
-          where: { id: voucher_id },
-          data: {
-            status: "REDEEMED",
-            used_channel: "ONLINE",
-            redeemed_at: new Date(),
-            redeemed_by: session.id,
-          },
-        });
-      }
-
-      // ── Step 6: Award points ───────────────────────────────────────────────
-      await tx.user.update({
-        where: { id: user.id },
-        data: { points_balance: { increment: points_earned } },
-      });
-
-      if (points_earned > 0) {
-        await tx.pointsLog.create({
-          data: {
-            user_id: user.id,
-            delta: points_earned,
-            reason: "order_complete",
-            order_id: createdOrder.id,
-            performed_by: null,
-            voucher_id: null,
-          },
-        });
-      }
-
-      return createdOrder;
+    // Step 1: Resolve user (read-only)
+    const normalizedPhone = normalizePhone(data.phone_number);
+    const existingUser = await prisma.user.findUnique({
+      where: { phone_number: normalizedPhone },
     });
 
-    // 6. Return success — do NOT expose users.id
+    if (!existingUser && !data.customer_name) {
+      return NextResponse.json(
+        { error: "customer_name required for new phone number", code: "VALIDATION_ERROR" },
+        { status: 400 }
+      );
+    }
+
+    // Step 2: Validate + price-check all items (reads from DB, no writes)
+    const resolvedItems = await processOrderItems(data.items, prisma);
+
+    // Step 3: Calculate totals
+    const subtotal_vnd = resolvedItems.reduce((sum, item) => sum + item.line_total, 0);
+    let discount_vnd = 0;
+    let voucher_id: string | null = null;
+
+    if (data.voucher_id) {
+      const voucher = await prisma.voucher.findUnique({ where: { id: data.voucher_id } });
+      if (
+        voucher &&
+        voucher.status === "ACTIVE" &&
+        voucher.voucher_type === "DISCOUNT" &&
+        (voucher.expires_at === null || voucher.expires_at > new Date())
+      ) {
+        voucher_id = voucher.id;
+        if (voucher.discount_type === "PERCENT" && voucher.discount_value !== null) {
+          discount_vnd = Math.floor((subtotal_vnd * voucher.discount_value) / 100);
+        } else if (voucher.discount_type === "FIXED" && voucher.discount_value !== null) {
+          discount_vnd = voucher.discount_value;
+        }
+      }
+    }
+
+    const total_vnd = Math.max(0, subtotal_vnd - discount_vnd);
+    const points_earned = Math.floor(total_vnd / 10000);
+
+    // ── Phase 2: WRITES only (short transaction — pgBouncer compatible) ──────
+    const order = await prisma.$transaction(
+      async (tx) => {
+        // Create ghost user if phone is new
+        let userId = existingUser?.id;
+        if (!userId) {
+          const newUser = await tx.user.create({
+            data: {
+              phone_number: normalizedPhone,
+              name: data.customer_name!,
+              password_hash: "GHOST_USER_NO_PASSWORD",
+              role: "CUSTOMER",
+              qr_token: crypto.randomUUID(),
+            },
+          });
+          userId = newUser.id;
+        }
+
+        // Insert order + items + addons
+        const createdOrder = await tx.order.create({
+          data: {
+            user_id: userId,
+            handled_by: session.id,
+            voucher_id,
+            status: "COMPLETED",
+            subtotal_vnd,
+            discount_vnd,
+            total_vnd,
+            points_earned,
+            pickup_time: null,
+            note: null,
+            items: {
+              create: resolvedItems.map((item) => ({
+                menu_item_id: item.menu_item_id,
+                quantity: item.quantity,
+                size: item.size,
+                unit_price_vnd: item.unit_price_vnd,
+                addons_price_vnd: item.addons_price_vnd,
+                sweetness: item.sweetness as SweetnessLevel,
+                ice_option: item.ice_option as IceOption,
+                coldwhisk: item.coldwhisk,
+                note: item.note,
+                product_voucher_id: item.product_voucher_id,
+                selected_powder_id: item.selected_powder_id,
+                selected_milk_type_id: item.selected_milk_type_id,
+                addons: {
+                  create: item.resolvedAddons.map((a) => ({
+                    addon_option_id: a.addon_option_id,
+                    quantity: a.quantity,
+                    unit_price_vnd: a.unit_price_vnd,
+                  })),
+                },
+              })),
+            },
+          },
+        });
+
+        // Mark voucher as redeemed
+        if (voucher_id) {
+          await tx.voucher.update({
+            where: { id: voucher_id },
+            data: {
+              status: "REDEEMED",
+              used_channel: "ONLINE",
+              redeemed_at: new Date(),
+              redeemed_by: session.id,
+            },
+          });
+        }
+
+        // Award points
+        await tx.user.update({
+          where: { id: userId },
+          data: { points_balance: { increment: points_earned } },
+        });
+
+        if (points_earned > 0) {
+          await tx.pointsLog.create({
+            data: {
+              user_id: userId,
+              delta: points_earned,
+              reason: "order_complete",
+              order_id: createdOrder.id,
+              performed_by: null,
+              voucher_id: null,
+            },
+          });
+        }
+
+        return createdOrder;
+      },
+      { maxWait: 5000, timeout: 10000 }
+    );
+
     return NextResponse.json(
       {
         data: {
@@ -265,4 +263,3 @@ export async function GET(req: NextRequest) {
     );
   }
 }
-

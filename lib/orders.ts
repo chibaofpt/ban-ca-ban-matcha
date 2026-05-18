@@ -15,8 +15,19 @@ import type { Size, SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
 import { prisma } from "@/lib/prisma";
 
-/** Prisma transaction client type — compatible with prisma.$transaction callback argument. */
-type PrismaTxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+import type { PrismaClient } from "@prisma/client";
+
+/** Structural type satisfied by both PrismaClient and the Prisma transaction client. */
+type DbClient = Pick<
+  PrismaClient,
+  | "menuItem"
+  | "addonOption"
+  | "defaultSizeConfig"
+  | "powderSizeConfig"
+  | "matchaPowder"
+  | "milkType"
+  | "menuItemSize"
+>;
 
 
 
@@ -102,16 +113,16 @@ export class PriceChangedError extends Error {
  */
 export async function processOrderItems(
   items: OrderItemInput[],
-  tx: PrismaTxClient
+  client: DbClient
 ): Promise<ProcessedOrderItem[]> {
   // Build pricing context once — avoids N+1 across the item loop
-  const pricingCtx = await buildPricingContext(tx);
+  const pricingCtx = await buildPricingContext(client as Parameters<typeof buildPricingContext>[0]);
 
   const priceConflicts: PriceConflict[] = [];
 
   const resolved: ProcessedOrderItem[] = [];
   for (const item of items) {
-    const res = await resolveOneItem(item, tx, pricingCtx, priceConflicts);
+    const res = await resolveOneItem(item, client, pricingCtx, priceConflicts);
     resolved.push(res);
   }
 
@@ -127,12 +138,12 @@ export async function processOrderItems(
 /** Resolves a single order item: fetches menu data, validates, computes price, resolves addons. */
 async function resolveOneItem(
   item: OrderItemInput,
-  tx: PrismaTxClient,
+  client: DbClient,
   pricingCtx: PricingContext,
   priceConflicts: PriceConflict[]
 ): Promise<ProcessedOrderItem> {
   // 1. Fetch menu item — must be available
-  const menuItem = await tx.menuItem.findUnique({
+  const menuItem = await (client as PrismaClient).menuItem.findUnique({
     where: { id: item.menu_item_id },
     include: { sizes: true, fusionAllowedPowders: true },
   });
@@ -190,7 +201,7 @@ async function resolveOneItem(
         powder_id,
         resolvedDefault,
         item.size,
-        tx
+        client as Parameters<typeof resolveOrderItemPremiumLatte>[3]
       );
     }
   }
@@ -217,7 +228,7 @@ async function resolveOneItem(
   const resolvedAddons: ProcessedAddon[] = [];
 
   for (const addon of item.addon_option_ids) {
-    const option = await tx.addonOption.findUnique({
+    const option = await (client as PrismaClient).addonOption.findUnique({
       where: { id: addon.option_id },
     });
     if (!option) {
