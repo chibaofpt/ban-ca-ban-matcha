@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { QrCode, ShoppingBag } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/src/utils/cn";
 import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
@@ -120,6 +121,7 @@ export default function StaffOrdersPage() {
     setInitialPhone("");
     setCheckoutOpen(false);
     setCartOpen(false);
+    toast.success("Đã tạo đơn hàng thành công!");
   };
 
   // ── QR scan handlers ──────────────────────────────────────────────────

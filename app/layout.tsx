@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
 import Navbar from "@/src/components/common/Navbar";
 import AuthModal from "@/src/components/common/AuthModal";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const inter = Inter({
@@ -49,6 +50,7 @@ export default function RootLayout({
         <main className="flex-1">
           {children}
         </main>
+        <Toaster richColors position="top-center" />
       </body>
     </html>
   );
