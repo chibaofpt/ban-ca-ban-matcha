@@ -6,6 +6,7 @@ import { staffOrderSchema } from "@/lib/validations/order";
 import { processOrderItems, OrderValidationError, PriceChangedError } from "@/lib/orders";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
+import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -36,20 +37,40 @@ export async function POST(req: NextRequest) {
 
   try {
     const data = parsed.data;
+    const isAnonymous = !data.phone_number;
+
+    // 5. Guard: anonymous orders may not carry vouchers
+    if (isAnonymous && data.voucher_id) {
+      return NextResponse.json(
+        { error: "Voucher cannot be applied to anonymous orders", code: "VALIDATION_ERROR" },
+        { status: 400 }
+      );
+    }
+    if (isAnonymous && data.items.some((i) => i.product_voucher_id)) {
+      return NextResponse.json(
+        { error: "Product voucher cannot be used for anonymous orders", code: "VALIDATION_ERROR" },
+        { status: 400 }
+      );
+    }
 
     // ── Phase 1: READS (outside transaction — avoids P2028 pgBouncer timeout) ──
 
-    // Step 1: Resolve user (read-only)
-    const normalizedPhone = normalizePhone(data.phone_number);
-    const existingUser = await prisma.user.findUnique({
-      where: { phone_number: normalizedPhone },
-    });
+    // Step 1: Resolve user (read-only) — skip entirely for anonymous
+    let existingUser: { id: string } | null = null;
 
-    if (!existingUser && !data.customer_name) {
-      return NextResponse.json(
-        { error: "customer_name required for new phone number", code: "VALIDATION_ERROR" },
-        { status: 400 }
-      );
+    if (!isAnonymous) {
+      const normalizedPhone = normalizePhone(data.phone_number!);
+      existingUser = await prisma.user.findUnique({
+        where: { phone_number: normalizedPhone },
+        select: { id: true },
+      });
+
+      if (!existingUser && !data.customer_name) {
+        return NextResponse.json(
+          { error: "customer_name required for new phone number", code: "VALIDATION_ERROR" },
+          { status: 400 }
+        );
+      }
     }
 
     // Step 2: Validate + price-check all items (reads from DB, no writes)
@@ -78,14 +99,17 @@ export async function POST(req: NextRequest) {
     }
 
     const total_vnd = Math.max(0, subtotal_vnd - discount_vnd);
-    const points_earned = Math.floor(total_vnd / 10000);
+    // Anonymous orders never earn points
+    const points_earned = isAnonymous ? 0 : Math.floor(total_vnd / 10000);
 
     // ── Phase 2: WRITES only (short transaction — pgBouncer compatible) ──────
     const order = await prisma.$transaction(
       async (tx) => {
-        // Create ghost user if phone is new
-        let userId = existingUser?.id;
-        if (!userId) {
+        // Resolve or create user only for non-anonymous orders
+        let userId: string | null = existingUser?.id ?? null;
+
+        if (!isAnonymous && !userId) {
+          const normalizedPhone = normalizePhone(data.phone_number!);
           const newUser = await tx.user.create({
             data: {
               phone_number: normalizedPhone,
@@ -101,7 +125,7 @@ export async function POST(req: NextRequest) {
         // Insert order + items + addons
         const createdOrder = await tx.order.create({
           data: {
-            user_id: userId,
+            user_id: userId,       // null for anonymous orders
             handled_by: session.id,
             voucher_id,
             status: "COMPLETED",
@@ -150,13 +174,13 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        // Award points
-        await tx.user.update({
-          where: { id: userId },
-          data: { points_balance: { increment: points_earned } },
-        });
+        // Award points only for orders with a known user
+        if (userId && points_earned > 0) {
+          await tx.user.update({
+            where: { id: userId },
+            data: { points_balance: { increment: points_earned } },
+          });
 
-        if (points_earned > 0) {
           await tx.pointsLog.create({
             data: {
               user_id: userId,
@@ -240,13 +264,23 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { created_at: "desc" },
       include: {
+        // user is nullable — consumers must handle null
         user: { select: { name: true, phone_number: true } },
         items: {
           include: {
-            menuItem: { select: { name: true } },
+            menuItem: { select: { name: true, category: true } },
+            selectedPowder: { select: { name: true, price_per_gram: true } },
+            milkType: { select: { name: true, is_default: true } },
             addons: {
               include: {
-                addonOption: { select: { label: true } },
+                addonOption: { 
+                  select: { 
+                    label: true,
+                    gram_value: true,
+                    price_vnd: true,
+                    group: { select: { name: true } }
+                  } 
+                },
               },
             },
           },

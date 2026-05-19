@@ -165,6 +165,12 @@
 - Points = `floor(total_vnd / 10000)`, integers only, earned when status → COMPLETED
 - Price snapshot: computed final price → `order_items.unit_price_vnd` at order creation. Never join back to current prices.
 
+### Anonymous Orders
+- `orders.user_id` is nullable — `NULL` = anonymous walk-in, no loyalty tracking
+- Anonymous orders: `points_earned = 0`, no voucher allowed, no product voucher allowed
+- Search customers: `GET /api/staff/users?q=xxx` — suffix match on phone (digits) or ILIKE on name (letters)
+- Min 2 chars to search, max 10 results, sorted by created_at DESC
+
 ### Vouchers & Points
 - Voucher expiry: lazy check at scan/apply time — no background cron
 - One order can carry both a PRODUCT voucher (line level) and a DISCOUNT voucher (order level)

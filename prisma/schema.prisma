@@ -212,7 +212,8 @@ model MenuItemSize {
 
 model Order {
   id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id       String      @db.Uuid
+  /// NULL = anonymous walk-in order (no loyalty tracking). Non-null = registered or ghost customer.
+  user_id       String?     @db.Uuid
   voucher_id    String?     @db.Uuid
   status        OrderStatus @default(PENDING)
   subtotal_vnd  Int
@@ -223,7 +224,7 @@ model Order {
   note          String?
   created_at    DateTime    @default(now()) @db.Timestamptz(6)
   items         OrderItem[]
-  user          User        @relation("CustomerOrders", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user          User?       @relation("CustomerOrders", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   handled_by    String?     @db.Uuid
   handler       User?       @relation("HandledOrders", fields: [handled_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   voucher       Voucher?    @relation(fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)

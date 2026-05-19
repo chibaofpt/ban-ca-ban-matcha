@@ -10,49 +10,41 @@ vi.mock("@/src/lib/api/client", () => ({
 
 import { apiClient } from "@/src/lib/api/client";
 import {
-  lookupPhone,
+  searchCustomers,
   createStaffOrder,
   scanQrToken,
 } from "@/src/services/staffOrderService";
 
-describe("lookupPhone", () => {
+describe("searchCustomers", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("trả { found: true, name, phone_number } khi tìm thấy", async () => {
+  it("trả về danh sách khách hàng", async () => {
     vi.mocked(apiClient.get).mockResolvedValueOnce({
       data: {
-        data: { found: true, name: "Nguyễn Văn A", phone_number: "+84912345678" },
+        data: {
+          items: [
+            { id: "1", name: "Nguyễn Văn A", phone_number: "+84912345678", points_balance: 100 }
+          ]
+        },
       },
     });
 
-    const result = await lookupPhone("0912345678");
+    const result = await searchCustomers("1234");
 
-    expect(result.found).toBe(true);
-    if (result.found) {
-      expect(result.name).toBe("Nguyễn Văn A");
-    }
+    expect(result.length).toBe(1);
+    expect(result[0].name).toBe("Nguyễn Văn A");
   });
 
-  it("trả { found: false } khi không tìm thấy", async () => {
+  it("gọi đúng endpoint với tham số q", async () => {
     vi.mocked(apiClient.get).mockResolvedValueOnce({
-      data: { data: { found: false } },
+      data: { data: { items: [] } },
     });
 
-    const result = await lookupPhone("0999999999");
-
-    expect(result.found).toBe(false);
-  });
-
-  it("gọi đúng endpoint với phone param", async () => {
-    vi.mocked(apiClient.get).mockResolvedValueOnce({
-      data: { data: { found: false } },
-    });
-
-    await lookupPhone("0912345678");
+    await searchCustomers("Linh");
 
     expect(apiClient.get).toHaveBeenCalledWith(
       "/api/staff/users",
-      expect.objectContaining({ params: expect.objectContaining({ phone: "0912345678" }) })
+      expect.objectContaining({ params: { q: "Linh" } })
     );
   });
 });

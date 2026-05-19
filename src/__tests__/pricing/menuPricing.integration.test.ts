@@ -154,7 +154,7 @@ describe("Menu Pricing Integration", () => {
       });
 
       // Addon: nửa viên kem
-      const kemPrice = findAddonPrice(item.addon_groups, "kem", "½");
+      const kemPrice = findAddonPrice(item.addon_groups, "kem", "nửa");
 
       const total = basePrice + kemPrice;
       expect(total).toBe(80_000);

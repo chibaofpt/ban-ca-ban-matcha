@@ -176,6 +176,14 @@ export function StaffCartDrawer({
             </div>
           )}
 
+          {/* Points preview */}
+          <div className="flex justify-between text-sm text-muted-foreground">
+            <span>Tích điểm (dự kiến)</span>
+            <span className="text-amber-600 dark:text-amber-400 font-medium">
+              +{Math.floor(total / 10000)} điểm
+            </span>
+          </div>
+
           {/* Total */}
           <div className="flex justify-between font-semibold text-lg text-primary">
             <span>Tổng cộng</span>

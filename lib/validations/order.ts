@@ -34,9 +34,14 @@ export const orderItemSchema = z.object({
   client_price_vnd: z.number().int().min(0),
 });
 
-/** Schema for the full staff counter order payload. */
+/**
+ * Schema for the full staff counter order payload.
+ * phone_number is optional — omit entirely for anonymous (walk-in, no loyalty) orders.
+ * Cross-field rule: if phone_number is present and the user does not exist in DB,
+ * customer_name is required (enforced in the route handler, not here).
+ */
 export const staffOrderSchema = z.object({
-  phone_number: z.string().regex(/^(0|\+84)\d{9}$/),
+  phone_number: z.string().regex(/^(0|\+84)\d{9}$/).optional(),
   customer_name: z.string().min(1).max(100).optional(),
   items: z.array(orderItemSchema).min(1),
   voucher_id: z.string().uuid().optional(),

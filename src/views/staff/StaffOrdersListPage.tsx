@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { ChevronDown, ChevronUp, Phone, Clock, RefreshCw } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import { fetchOrdersList, type OrderRes } from "@/src/services/staffOrdersListService";
+import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
 
 const formatDateTime = (iso: string): string => {
   const d = new Date(iso);
@@ -98,17 +99,21 @@ export default function StaffOrdersListPage() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold text-foreground truncate text-sm">
-                      {order.user.name}
+                      {order.user?.name ?? "Khách vãng lai"}
                     </span>
                     <span className="text-[10px] text-muted-foreground font-mono bg-secondary/50 px-1.5 py-0.5 rounded">
                       #{order.id.slice(0, 8)}
                     </span>
                   </div>
                   <div className="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground">
-                    <span className="inline-flex items-center gap-1 font-medium text-foreground/80">
-                      <Phone size={12} />
-                      {order.user.phone_number}
-                    </span>
+                    {order.user?.phone_number ? (
+                      <span className="inline-flex items-center gap-1 font-medium text-foreground/80">
+                        <Phone size={12} />
+                        {order.user.phone_number}
+                      </span>
+                    ) : (
+                      <span className="italic">Không có SĐT</span>
+                    )}
                     <span className="inline-flex items-center gap-1">
                       <Clock size={12} />
                       {formatDateTime(order.created_at)}
@@ -134,11 +139,7 @@ export default function StaffOrdersListPage() {
                     <li key={idx} className="flex justify-between gap-3">
                       <div className="flex flex-col">
                         <span className="font-semibold">{it.menuItem.name} <span className="font-normal text-muted-foreground">({it.size})</span></span>
-                        {it.addons.length > 0 && (
-                          <span className="text-[11px] text-muted-foreground mt-0.5">
-                            {it.addons.map(a => `${a.addonOption.label} x${a.quantity}`).join(", ")}
-                          </span>
-                        )}
+                        <OrderItemDetails item={it} />
                       </div>
                       <span className="font-medium text-foreground shrink-0 mt-0.5">×{it.quantity}</span>
                     </li>

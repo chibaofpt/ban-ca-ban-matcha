@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { ChevronDown, ChevronUp, Phone, Clock, Search, FilterX, Filter } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import { fetchAdminOrders, type AdminOrderRes } from "@/src/services/adminOrderService";
+import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
 
 const formatDateTime = (iso: string): string => {
   const d = new Date(iso);
@@ -160,14 +161,14 @@ export default function AdminOrdersPage() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-foreground text-sm">
-                          {order.user.name}
+                          {order.user?.name ?? "Khách vãng lai"}
                         </span>
                         <StatusBadge status={order.status} />
                       </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         <span className="inline-flex items-center gap-1">
                           <Phone size={12} />
-                          {order.user.phone_number}
+                          {order.user?.phone_number ?? "—"}
                         </span>
                         <span className="font-mono bg-secondary/50 px-1.5 rounded">
                           #{order.id.slice(0, 8)}
@@ -201,11 +202,7 @@ export default function AdminOrdersPage() {
                         <li key={idx} className="flex justify-between gap-3">
                           <div className="flex flex-col">
                             <span className="font-semibold">{it.menuItem.name} <span className="font-normal text-muted-foreground">({it.size})</span></span>
-                            {it.addons.length > 0 && (
-                              <span className="text-[11px] text-muted-foreground mt-0.5">
-                                {it.addons.map(a => `${a.addonOption.label} x${a.quantity}`).join(", ")}
-                              </span>
-                            )}
+                            <OrderItemDetails item={it} />
                           </div>
                           <span className="font-medium text-foreground shrink-0 mt-0.5">×{it.quantity}</span>
                         </li>
