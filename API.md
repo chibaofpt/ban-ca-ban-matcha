@@ -121,9 +121,11 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 | Route | Method | Purpose |
 |---|---|---|
 | `/api/staff/orders` | POST | Create order at counter (COMPLETED immediately) |
+| `/api/staff/orders` | GET | List orders for current staff member |
+| `/api/staff/orders/[id]` | PATCH | Update order status (auto-award points on COMPLETED) |
 | `/api/staff/scan` | GET | Resolve QR token → user or voucher |
 | `/api/staff/vouchers/[id]/redeem` | PATCH | Mark voucher REDEEMED offline |
-| `/api/staff/users` | GET | Lookup customer by phone number |
+| `/api/staff/users` | GET | Search customers by name or last digits of phone |
 
 ### Admin — ADMIN only
 
@@ -405,10 +407,15 @@ Same shape as `GET /api/menu` but:
 { package_id: string }
 ```
 
-### `GET /api/staff/users?phone=xxx`
+### `GET /api/staff/users?q=xxxx`
 ```ts
-{ data: { found: true, name: string, phone_number: string } }
-{ data: { found: false } }
+// Fuzzy search: all-digits → phone suffix match; has-letters → ILIKE on name
+// Min 2 chars, max 10 results, sorted by created_at DESC, CUSTOMER role only
+{ data: { items: { id: string, name: string, phone_number: string, points_balance: number }[] } }
+
+// Legacy exact match (backward compat)
+// GET /api/staff/users?phone=0987654321
+{ data: { items: { id: string, name: string, phone_number: string, points_balance: number }[] } }
 ```
 
 ### `GET /api/staff/scan?token=xxx`
@@ -451,6 +458,11 @@ Same shape as `GET /api/menu` but:
 - If `selected_milk_type_id` not sent for Latte → server uses `milk_type WHERE is_default = true` (sữa bò).
 - DISCOUNT voucher: if `discount_vnd > subtotal` → `total_vnd = 0`, no error.
 - Staff counter order: status = COMPLETED immediately, points awarded at creation.
+- **Anonymous orders** (`phone_number` omitted):
+  - `orders.user_id = NULL`
+  - `points_earned = 0` — no points awarded, no `points_log` entry
+  - `voucher_id` and `product_voucher_id` are rejected with `VALIDATION_ERROR`
+  - Display as "Khách vãng lai" in all order list views
 
 ### Vouchers
 - PRODUCT online: `order_item` with `unit_price_vnd = 0`. Addons still charged.

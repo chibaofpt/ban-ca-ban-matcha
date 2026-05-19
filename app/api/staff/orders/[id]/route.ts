@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import type { OrderStatus } from "@prisma/client";
+import type { OrderStatus, Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +37,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
 
       // 2. Prepare update data
-      const dataToUpdate: any = { status: status as OrderStatus };
+      const dataToUpdate: Prisma.OrderUncheckedUpdateInput = { status: status as OrderStatus };
       
       // Auto-assign to current staff if not yet assigned
       if (order.handled_by === null && session.role === "STAFF") {
@@ -46,24 +46,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       // 3. Award points if status transitions to COMPLETED and points haven't been awarded yet
       if (status === "COMPLETED" && order.status !== "COMPLETED" && order.points_earned === null) {
-        const points_earned = Math.floor(order.total_vnd / 10000);
-        dataToUpdate.points_earned = points_earned;
+        if (order.user_id) {
+          // Non-anonymous order — award points normally
+          const points_earned = Math.floor(order.total_vnd / 10000);
+          dataToUpdate.points_earned = points_earned;
 
-        if (points_earned > 0) {
-          await tx.user.update({
-            where: { id: order.user_id },
-            data: { points_balance: { increment: points_earned } },
-          });
+          if (points_earned > 0) {
+            await tx.user.update({
+              where: { id: order.user_id },
+              data: { points_balance: { increment: points_earned } },
+            });
 
-          await tx.pointsLog.create({
-            data: {
-              user_id: order.user_id,
-              delta: points_earned,
-              reason: "order_complete",
-              order_id: order.id,
-              performed_by: session.id, // The staff completing the order
-            },
-          });
+            await tx.pointsLog.create({
+              data: {
+                user_id: order.user_id,
+                delta: points_earned,
+                reason: "order_complete",
+                order_id: order.id,
+                performed_by: session.id,
+              },
+            });
+          }
+        } else {
+          // Anonymous order — mark as complete with zero points, no user to update
+          dataToUpdate.points_earned = 0;
         }
       }
 

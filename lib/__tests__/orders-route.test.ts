@@ -111,21 +111,36 @@ const createdOrder = {
   pickup_time: null,
 };
 
-/** Wire up prisma.$transaction mock to execute callback with a fake tx. */
 function setupTx(overrides: {
   voucher?: object | null;
   menuItem?: object | null;
   orderResult?: object;
   addonOption?: object | null;
 } = {}) {
+  // Mock global prisma for reads outside transaction
+  const mockMenuItemFind = vi.fn().mockResolvedValue(overrides.menuItem !== undefined ? overrides.menuItem : latteMenuItem);
+  const mockAddonOptionFind = vi.fn().mockResolvedValue(overrides.addonOption !== undefined ? overrides.addonOption : null);
+  
+  (prisma.menuItem.findUnique as any) = mockMenuItemFind;
+  (prisma.addonOption.findUnique as any) = mockAddonOptionFind;
+  
+  mockVoucherFindUnique.mockResolvedValue(overrides.voucher !== undefined ? overrides.voucher : null);
+  mockVoucherUpdate.mockResolvedValue({});
+  mockOrderCreate.mockResolvedValue(overrides.orderResult ?? createdOrder);
+
+  (prisma.voucher as any) = {
+    findUnique: mockVoucherFindUnique,
+    update: mockVoucherUpdate,
+  };
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (prisma.$transaction as any).mockImplementation(async (fn: (tx: unknown) => unknown) => {
     const tx = {
       menuItem: {
-        findUnique: vi.fn().mockResolvedValue(overrides.menuItem ?? latteMenuItem),
+        findUnique: mockMenuItemFind,
       },
       addonOption: {
-        findUnique: vi.fn().mockResolvedValue(overrides.addonOption ?? null),
+        findUnique: mockAddonOptionFind,
       },
       voucher: {
         findUnique: mockVoucherFindUnique,
@@ -135,7 +150,7 @@ function setupTx(overrides: {
         create: mockOrderCreate,
       },
     };
-    mockVoucherFindUnique.mockResolvedValue(overrides.voucher ?? undefined);
+    mockVoucherFindUnique.mockResolvedValue(overrides.voucher !== undefined ? overrides.voucher : undefined);
     mockVoucherUpdate.mockResolvedValue({});
     mockOrderCreate.mockResolvedValue(overrides.orderResult ?? createdOrder);
     return fn(tx);

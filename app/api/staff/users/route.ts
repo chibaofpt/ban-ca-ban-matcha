@@ -1,28 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { getSession, normalizePhone } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 
-const staffUsersQuerySchema = z.object({
-  phone: z.string().min(1),
-});
+const staffUsersQuerySchema = z
+  .object({
+    q: z.string().min(2).max(20).optional(),
+    phone: z.string().min(1).optional(),
+  })
+  .refine((d) => d.q !== undefined || d.phone !== undefined, {
+    message: "Either q or phone param is required",
+  });
 
-/** GET /api/staff/users?phone=xxx — lookup customer by phone, STAFF or ADMIN only */
+export const dynamic = "force-dynamic";
+
+/**
+ * GET /api/staff/users — search customers by name or last digits of phone, STAFF or ADMIN only.
+ * Params:
+ *   ?q=xxxx  — fuzzy: all-digits → suffix match on phone; letters → ILIKE on name. min 2 chars.
+ *   ?phone=xx — legacy exact match (backward compat). Returns same array shape.
+ */
 export async function GET(req: NextRequest) {
-  // 1. Parse input
-  const { searchParams } = new URL(req.url);
-  const rawPhone = searchParams.get("phone") ?? "";
-
-  // 2. Zod validate
-  const parsed = staffUsersQuerySchema.safeParse({ phone: rawPhone });
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Invalid phone param", code: "VALIDATION_ERROR" },
-      { status: 400 }
-    );
-  }
-
-  // 3. Session check
+  // 1. Session check
   const session = await getSession();
   if (!session) {
     return NextResponse.json(
@@ -31,7 +30,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // 4. Role check
+  // 2. Role check
   if (!["STAFF", "ADMIN"].includes(session.role)) {
     return NextResponse.json(
       { error: "Forbidden", code: "FORBIDDEN" },
@@ -39,23 +38,52 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // 5. Business logic
+  // 3. Parse + validate query params
+  const { searchParams } = new URL(req.url);
+  const rawQ = searchParams.get("q") ?? undefined;
+  const rawPhone = searchParams.get("phone") ?? undefined;
+
+  const parsed = staffUsersQuerySchema.safeParse({ q: rawQ, phone: rawPhone });
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "Validation failed", code: "VALIDATION_ERROR" },
+      { status: 400 }
+    );
+  }
+
+  // 4. Business logic
   try {
-    const normalizedPhone = normalizePhone(parsed.data.phone);
+    const { q, phone } = parsed.data;
 
-    const user = await prisma.user.findUnique({
-      where: { phone_number: normalizedPhone },
-      select: { name: true, phone_number: true },
-    });
-
-    if (!user) {
-      return NextResponse.json({ data: { found: false } }, { status: 200 });
+    if (phone !== undefined) {
+      // Legacy exact-match path — kept for backward compat
+      const { normalizePhone } = await import("@/lib/auth");
+      const normalized = normalizePhone(phone);
+      const user = await prisma.user.findUnique({
+        where: { phone_number: normalized },
+        select: { id: true, name: true, phone_number: true, points_balance: true },
+      });
+      return NextResponse.json(
+        { data: { items: user ? [user] : [] } },
+        { status: 200 }
+      );
     }
 
-    return NextResponse.json(
-      { data: { found: true, name: user.name, phone_number: user.phone_number } },
-      { status: 200 }
-    );
+    // Fuzzy search path
+    const isDigitsOnly = /^\d+$/.test(q!);
+    const users = await prisma.user.findMany({
+      where: {
+        role: "CUSTOMER",
+        ...(isDigitsOnly
+          ? { phone_number: { endsWith: q } }
+          : { name: { contains: q, mode: "insensitive" } }),
+      },
+      select: { id: true, name: true, phone_number: true, points_balance: true },
+      orderBy: { created_at: "desc" },
+      take: 10,
+    });
+
+    return NextResponse.json({ data: { items: users } }, { status: 200 });
   } catch (error) {
     console.error("[GET /api/staff/users]", error);
     return NextResponse.json(

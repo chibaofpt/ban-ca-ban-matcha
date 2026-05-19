@@ -48,16 +48,18 @@ Calls `GET /api/staff/scan?token=xxx`:
 
 ### Confirm Order
 1. Tap cart → `StaffCartDrawer`
-2. Enter customer phone (`StaffOrderForm`)
-3. Phone exists → attach `user_id`
-4. Phone not found → enter nickname → create ghost user → attach `user_id`
-5. Tap **Tạo đơn** → `POST /api/staff/orders` → clear cart state
+2. Open `StaffOrderForm`
+3. Option A: Toggle "Khách vãng lai" → Submit as anonymous order (no points, no user)
+4. Option B: Search customer by name or last 4 digits of phone
+5. Option C: Create new customer (Ghost User) if not found
+6. Tap **Tạo đơn** → `POST /api/staff/orders` → clear cart state
 
 ### Staff Order Rules
 - `pickup_time`: not collected — counter orders are immediate
 - `note` on order_item: optional — staff may enter custom instructions
-- Status = `COMPLETED` immediately on creation, points awarded at that moment
-- To cancel → admin sets `CANCELLED` manually + reverses points if needed
+- Status = `COMPLETED` immediately on creation, points awarded at that moment (except for anonymous orders)
+- **Anonymous Orders**: `user_id = null`, `points_earned = 0`, vouchers not allowed.
+- To cancel → admin sets `CANCELLED` manually + reverses points if needed (if points were awarded)
 
 ---
 

@@ -1,0 +1,2199 @@
+﻿{
+    "data":  {
+                 "updated_at":  "2026-05-18T12:45:38.290Z",
+                 "latte":  [
+                               {
+                                   "id":  "b4144df8-849f-447c-b024-2979056baecb",
+                                   "name":  "Latte Meyumi",
+                                   "description":  null,
+                                   "category":  "latte",
+                                   "is_seasonal":  false,
+                                   "image_url":  "https://mnklsbzkefuefpqvghrr.supabase.co/storage/v1/object/public/menu-images/1779108337988-c6b482ea-23dd-4aad-ab08-c35fc663b95d.png",
+                                   "sort_order":  1,
+                                   "base_liquid_note":  null,
+                                   "custom_powder_grams":  null,
+                                   "powder":  {
+                                                  "id":  "53b83580-62e3-45eb-9306-eb788e5ae862",
+                                                  "name":  "Meyumi",
+                                                  "type":  "RECOMMEND"
+                                              },
+                                   "resolved_default_powder_id":  null,
+                                   "allowed_powder_ids":  [
+
+                                                          ],
+                                   "milk_types":  [
+                                                      {
+                                                          "id":  "14cbe88a-4b3d-44dd-be86-6b44d5713848",
+                                                          "name":  "Sá»¯a bÃ²",
+                                                          "price_per_ml":  40,
+                                                          "is_default":  true,
+                                                          "display_order":  0
+                                                      },
+                                                      {
+                                                          "id":  "12f78821-7561-484b-86f3-c3fc213c5d2a",
+                                                          "name":  "Oatside",
+                                                          "price_per_ml":  40,
+                                                          "is_default":  false,
+                                                          "display_order":  1
+                                                      },
+                                                      {
+                                                          "id":  "d3c0742e-3b8a-402a-bcff-0be5bb283253",
+                                                          "name":  "Boring Oat",
+                                                          "price_per_ml":  80,
+                                                          "is_default":  false,
+                                                          "display_order":  2
+                                                      }
+                                                  ],
+                                   "sizes":  [
+                                                 {
+                                                     "size":  "M",
+                                                     "base_price_vnd":  17000,
+                                                     "milk_ml":  130
+                                                 },
+                                                 {
+                                                     "size":  "L",
+                                                     "base_price_vnd":  17000,
+                                                     "milk_ml":  200
+                                                 },
+                                                 {
+                                                     "size":  "XL",
+                                                     "base_price_vnd":  28000,
+                                                     "milk_ml":  300
+                                                 }
+                                             ],
+                                   "addon_groups":  [
+                                                        {
+                                                            "id":  "cb0493a1-2b18-4bc1-890e-d2d131229d34",
+                                                            "name":  "Kem",
+                                                            "type":  "SELECTOR",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "82c1ca5c-10b2-4594-b355-f9b40c8746a9",
+                                                                                "label":  "KhÃ´ng kem",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  true,
+                                                                                "sort_order":  0
+                                                                            },
+                                                                            {
+                                                                                "id":  "8217ed68-a76f-431c-b82a-ff30b4700546",
+                                                                                "label":  "Ná»­a viÃªn kem",
+                                                                                "price_vnd":  20000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  1
+                                                                            },
+                                                                            {
+                                                                                "id":  "03ab239e-bdb5-47cd-bd32-ea2a03ce7388",
+                                                                                "label":  "1 viÃªn kem",
+                                                                                "price_vnd":  40000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  2
+                                                                            }
+                                                                        ]
+                                                        },
+                                                        {
+                                                            "id":  "0199d001-6203-4352-b4ca-5ef50d03f769",
+                                                            "name":  "ÄÃ¡ dá»«a",
+                                                            "type":  "TOGGLE",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "72950a69-aad8-417e-973f-d79c22253613",
+                                                                                "label":  "ÄÃ¡ dá»«a",
+                                                                                "price_vnd":  5000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  0
+                                                                            }
+                                                                        ]
+                                                        },
+                                                        {
+                                                            "id":  "3d7104ef-febb-49e3-b986-f776b334c6eb",
+                                                            "name":  "Extra Matcha",
+                                                            "type":  "SELECTOR",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "44625f8e-7b06-4b4b-96b4-1bb5c2840d21",
+                                                                                "label":  "0g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  0,
+                                                                                "is_default":  true,
+                                                                                "sort_order":  0
+                                                                            },
+                                                                            {
+                                                                                "id":  "dcdd74e1-7014-44c1-96c9-703adae6ba09",
+                                                                                "label":  "1g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  1,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  1
+                                                                            },
+                                                                            {
+                                                                                "id":  "23989b50-53a0-454f-a3ce-100331554174",
+                                                                                "label":  "2g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  2,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  2
+                                                                            },
+                                                                            {
+                                                                                "id":  "ec8afe73-138d-468c-b0ba-5002b3f08917",
+                                                                                "label":  "3g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  3,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  3
+                                                                            },
+                                                                            {
+                                                                                "id":  "d089ee17-703b-4700-ab77-6f0a3ac15e73",
+                                                                                "label":  "4g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  4,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  4
+                                                                            }
+                                                                        ]
+                                                        }
+                                                    ]
+                               },
+                               {
+                                   "id":  "847532b9-8688-47b0-95bd-80cdcd6bbd48",
+                                   "name":  "Latte Hana",
+                                   "description":  null,
+                                   "category":  "latte",
+                                   "is_seasonal":  false,
+                                   "image_url":  null,
+                                   "sort_order":  2,
+                                   "base_liquid_note":  null,
+                                   "custom_powder_grams":  null,
+                                   "powder":  {
+                                                  "id":  "6ce133c8-bf04-48ed-8573-d95746ff060e",
+                                                  "name":  "Hana",
+                                                  "type":  "RECOMMEND"
+                                              },
+                                   "resolved_default_powder_id":  null,
+                                   "allowed_powder_ids":  [
+
+                                                          ],
+                                   "milk_types":  [
+                                                      {
+                                                          "id":  "14cbe88a-4b3d-44dd-be86-6b44d5713848",
+                                                          "name":  "Sá»¯a bÃ²",
+                                                          "price_per_ml":  40,
+                                                          "is_default":  true,
+                                                          "display_order":  0
+                                                      },
+                                                      {
+                                                          "id":  "12f78821-7561-484b-86f3-c3fc213c5d2a",
+                                                          "name":  "Oatside",
+                                                          "price_per_ml":  40,
+                                                          "is_default":  false,
+                                                          "display_order":  1
+                                                      },
+                                                      {
+                                                          "id":  "d3c0742e-3b8a-402a-bcff-0be5bb283253",
+                                                          "name":  "Boring Oat",
+                                                          "price_per_ml":  80,
+                                                          "is_default":  false,
+                                                          "display_order":  2
+                                                      }
+                                                  ],
+                                   "sizes":  [
+                                                 {
+                                                     "size":  "M",
+                                                     "base_price_vnd":  17000,
+                                                     "milk_ml":  130
+                                                 },
+                                                 {
+                                                     "size":  "L",
+                                                     "base_price_vnd":  17000,
+                                                     "milk_ml":  200
+                                                 },
+                                                 {
+                                                     "size":  "XL",
+                                                     "base_price_vnd":  28000,
+                                                     "milk_ml":  300
+                                                 }
+                                             ],
+                                   "addon_groups":  [
+                                                        {
+                                                            "id":  "cb0493a1-2b18-4bc1-890e-d2d131229d34",
+                                                            "name":  "Kem",
+                                                            "type":  "SELECTOR",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "82c1ca5c-10b2-4594-b355-f9b40c8746a9",
+                                                                                "label":  "KhÃ´ng kem",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  true,
+                                                                                "sort_order":  0
+                                                                            },
+                                                                            {
+                                                                                "id":  "8217ed68-a76f-431c-b82a-ff30b4700546",
+                                                                                "label":  "Ná»­a viÃªn kem",
+                                                                                "price_vnd":  20000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  1
+                                                                            },
+                                                                            {
+                                                                                "id":  "03ab239e-bdb5-47cd-bd32-ea2a03ce7388",
+                                                                                "label":  "1 viÃªn kem",
+                                                                                "price_vnd":  40000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  2
+                                                                            }
+                                                                        ]
+                                                        },
+                                                        {
+                                                            "id":  "0199d001-6203-4352-b4ca-5ef50d03f769",
+                                                            "name":  "ÄÃ¡ dá»«a",
+                                                            "type":  "TOGGLE",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "72950a69-aad8-417e-973f-d79c22253613",
+                                                                                "label":  "ÄÃ¡ dá»«a",
+                                                                                "price_vnd":  5000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  0
+                                                                            }
+                                                                        ]
+                                                        },
+                                                        {
+                                                            "id":  "3d7104ef-febb-49e3-b986-f776b334c6eb",
+                                                            "name":  "Extra Matcha",
+                                                            "type":  "SELECTOR",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "44625f8e-7b06-4b4b-96b4-1bb5c2840d21",
+                                                                                "label":  "0g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  0,
+                                                                                "is_default":  true,
+                                                                                "sort_order":  0
+                                                                            },
+                                                                            {
+                                                                                "id":  "dcdd74e1-7014-44c1-96c9-703adae6ba09",
+                                                                                "label":  "1g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  1,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  1
+                                                                            },
+                                                                            {
+                                                                                "id":  "23989b50-53a0-454f-a3ce-100331554174",
+                                                                                "label":  "2g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  2,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  2
+                                                                            },
+                                                                            {
+                                                                                "id":  "ec8afe73-138d-468c-b0ba-5002b3f08917",
+                                                                                "label":  "3g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  3,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  3
+                                                                            },
+                                                                            {
+                                                                                "id":  "d089ee17-703b-4700-ab77-6f0a3ac15e73",
+                                                                                "label":  "4g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  4,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  4
+                                                                            }
+                                                                        ]
+                                                        }
+                                                    ]
+                               },
+                               {
+                                   "id":  "2382a2e7-e922-439a-8658-2fa14e703195",
+                                   "name":  "Latte MH-3",
+                                   "description":  null,
+                                   "category":  "latte",
+                                   "is_seasonal":  false,
+                                   "image_url":  null,
+                                   "sort_order":  3,
+                                   "base_liquid_note":  null,
+                                   "custom_powder_grams":  null,
+                                   "powder":  {
+                                                  "id":  "66584ee8-b30e-49f4-8fa6-d8357acf95f4",
+                                                  "name":  "MH-3",
+                                                  "type":  "RECOMMEND"
+                                              },
+                                   "resolved_default_powder_id":  null,
+                                   "allowed_powder_ids":  [
+
+                                                          ],
+                                   "milk_types":  [
+                                                      {
+                                                          "id":  "14cbe88a-4b3d-44dd-be86-6b44d5713848",
+                                                          "name":  "Sá»¯a bÃ²",
+                                                          "price_per_ml":  40,
+                                                          "is_default":  true,
+                                                          "display_order":  0
+                                                      },
+                                                      {
+                                                          "id":  "12f78821-7561-484b-86f3-c3fc213c5d2a",
+                                                          "name":  "Oatside",
+                                                          "price_per_ml":  40,
+                                                          "is_default":  false,
+                                                          "display_order":  1
+                                                      },
+                                                      {
+                                                          "id":  "d3c0742e-3b8a-402a-bcff-0be5bb283253",
+                                                          "name":  "Boring Oat",
+                                                          "price_per_ml":  80,
+                                                          "is_default":  false,
+                                                          "display_order":  2
+                                                      }
+                                                  ],
+                                   "sizes":  [
+                                                 {
+                                                     "size":  "M",
+                                                     "base_price_vnd":  23000,
+                                                     "milk_ml":  130
+                                                 },
+                                                 {
+                                                     "size":  "L",
+                                                     "base_price_vnd":  20000,
+                                                     "milk_ml":  200
+                                                 },
+                                                 {
+                                                     "size":  "XL",
+                                                     "base_price_vnd":  30000,
+                                                     "milk_ml":  300
+                                                 }
+                                             ],
+                                   "addon_groups":  [
+                                                        {
+                                                            "id":  "cb0493a1-2b18-4bc1-890e-d2d131229d34",
+                                                            "name":  "Kem",
+                                                            "type":  "SELECTOR",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "82c1ca5c-10b2-4594-b355-f9b40c8746a9",
+                                                                                "label":  "KhÃ´ng kem",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  true,
+                                                                                "sort_order":  0
+                                                                            },
+                                                                            {
+                                                                                "id":  "8217ed68-a76f-431c-b82a-ff30b4700546",
+                                                                                "label":  "Ná»­a viÃªn kem",
+                                                                                "price_vnd":  20000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  1
+                                                                            },
+                                                                            {
+                                                                                "id":  "03ab239e-bdb5-47cd-bd32-ea2a03ce7388",
+                                                                                "label":  "1 viÃªn kem",
+                                                                                "price_vnd":  40000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  2
+                                                                            }
+                                                                        ]
+                                                        },
+                                                        {
+                                                            "id":  "0199d001-6203-4352-b4ca-5ef50d03f769",
+                                                            "name":  "ÄÃ¡ dá»«a",
+                                                            "type":  "TOGGLE",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "72950a69-aad8-417e-973f-d79c22253613",
+                                                                                "label":  "ÄÃ¡ dá»«a",
+                                                                                "price_vnd":  5000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  0
+                                                                            }
+                                                                        ]
+                                                        },
+                                                        {
+                                                            "id":  "3d7104ef-febb-49e3-b986-f776b334c6eb",
+                                                            "name":  "Extra Matcha",
+                                                            "type":  "SELECTOR",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "44625f8e-7b06-4b4b-96b4-1bb5c2840d21",
+                                                                                "label":  "0g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  0,
+                                                                                "is_default":  true,
+                                                                                "sort_order":  0
+                                                                            },
+                                                                            {
+                                                                                "id":  "dcdd74e1-7014-44c1-96c9-703adae6ba09",
+                                                                                "label":  "1g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  1,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  1
+                                                                            },
+                                                                            {
+                                                                                "id":  "23989b50-53a0-454f-a3ce-100331554174",
+                                                                                "label":  "2g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  2,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  2
+                                                                            },
+                                                                            {
+                                                                                "id":  "ec8afe73-138d-468c-b0ba-5002b3f08917",
+                                                                                "label":  "3g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  3,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  3
+                                                                            },
+                                                                            {
+                                                                                "id":  "d089ee17-703b-4700-ab77-6f0a3ac15e73",
+                                                                                "label":  "4g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  4,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  4
+                                                                            }
+                                                                        ]
+                                                        }
+                                                    ]
+                               },
+                               {
+                                   "id":  "b22ca439-789b-4488-8320-3c5f94446a54",
+                                   "name":  "Latte Shiro",
+                                   "description":  null,
+                                   "category":  "latte",
+                                   "is_seasonal":  true,
+                                   "image_url":  null,
+                                   "sort_order":  4,
+                                   "base_liquid_note":  null,
+                                   "custom_powder_grams":  null,
+                                   "powder":  {
+                                                  "id":  "9d05db6f-d298-46bc-9a06-da738c2b4b24",
+                                                  "name":  "Shiro",
+                                                  "type":  "NONE"
+                                              },
+                                   "resolved_default_powder_id":  null,
+                                   "allowed_powder_ids":  [
+
+                                                          ],
+                                   "milk_types":  [
+                                                      {
+                                                          "id":  "14cbe88a-4b3d-44dd-be86-6b44d5713848",
+                                                          "name":  "Sá»¯a bÃ²",
+                                                          "price_per_ml":  40,
+                                                          "is_default":  true,
+                                                          "display_order":  0
+                                                      },
+                                                      {
+                                                          "id":  "12f78821-7561-484b-86f3-c3fc213c5d2a",
+                                                          "name":  "Oatside",
+                                                          "price_per_ml":  40,
+                                                          "is_default":  false,
+                                                          "display_order":  1
+                                                      },
+                                                      {
+                                                          "id":  "d3c0742e-3b8a-402a-bcff-0be5bb283253",
+                                                          "name":  "Boring Oat",
+                                                          "price_per_ml":  80,
+                                                          "is_default":  false,
+                                                          "display_order":  2
+                                                      }
+                                                  ],
+                                   "sizes":  [
+                                                 {
+                                                     "size":  "M",
+                                                     "base_price_vnd":  23000,
+                                                     "milk_ml":  130
+                                                 },
+                                                 {
+                                                     "size":  "L",
+                                                     "base_price_vnd":  20000,
+                                                     "milk_ml":  200
+                                                 },
+                                                 {
+                                                     "size":  "XL",
+                                                     "base_price_vnd":  30000,
+                                                     "milk_ml":  300
+                                                 }
+                                             ],
+                                   "addon_groups":  [
+                                                        {
+                                                            "id":  "cb0493a1-2b18-4bc1-890e-d2d131229d34",
+                                                            "name":  "Kem",
+                                                            "type":  "SELECTOR",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "82c1ca5c-10b2-4594-b355-f9b40c8746a9",
+                                                                                "label":  "KhÃ´ng kem",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  true,
+                                                                                "sort_order":  0
+                                                                            },
+                                                                            {
+                                                                                "id":  "8217ed68-a76f-431c-b82a-ff30b4700546",
+                                                                                "label":  "Ná»­a viÃªn kem",
+                                                                                "price_vnd":  20000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  1
+                                                                            },
+                                                                            {
+                                                                                "id":  "03ab239e-bdb5-47cd-bd32-ea2a03ce7388",
+                                                                                "label":  "1 viÃªn kem",
+                                                                                "price_vnd":  40000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  2
+                                                                            }
+                                                                        ]
+                                                        },
+                                                        {
+                                                            "id":  "0199d001-6203-4352-b4ca-5ef50d03f769",
+                                                            "name":  "ÄÃ¡ dá»«a",
+                                                            "type":  "TOGGLE",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "72950a69-aad8-417e-973f-d79c22253613",
+                                                                                "label":  "ÄÃ¡ dá»«a",
+                                                                                "price_vnd":  5000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  0
+                                                                            }
+                                                                        ]
+                                                        },
+                                                        {
+                                                            "id":  "3d7104ef-febb-49e3-b986-f776b334c6eb",
+                                                            "name":  "Extra Matcha",
+                                                            "type":  "SELECTOR",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "44625f8e-7b06-4b4b-96b4-1bb5c2840d21",
+                                                                                "label":  "0g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  0,
+                                                                                "is_default":  true,
+                                                                                "sort_order":  0
+                                                                            },
+                                                                            {
+                                                                                "id":  "dcdd74e1-7014-44c1-96c9-703adae6ba09",
+                                                                                "label":  "1g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  1,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  1
+                                                                            },
+                                                                            {
+                                                                                "id":  "23989b50-53a0-454f-a3ce-100331554174",
+                                                                                "label":  "2g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  2,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  2
+                                                                            },
+                                                                            {
+                                                                                "id":  "ec8afe73-138d-468c-b0ba-5002b3f08917",
+                                                                                "label":  "3g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  3,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  3
+                                                                            },
+                                                                            {
+                                                                                "id":  "d089ee17-703b-4700-ab77-6f0a3ac15e73",
+                                                                                "label":  "4g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  4,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  4
+                                                                            }
+                                                                        ]
+                                                        }
+                                                    ]
+                               },
+                               {
+                                   "id":  "2ba885f1-acb1-4ee5-a499-d950c3541936",
+                                   "name":  "Latte Kasuga",
+                                   "description":  null,
+                                   "category":  "latte",
+                                   "is_seasonal":  false,
+                                   "image_url":  null,
+                                   "sort_order":  5,
+                                   "base_liquid_note":  null,
+                                   "custom_powder_grams":  null,
+                                   "powder":  {
+                                                  "id":  "b1705aa8-2b1a-469d-859d-c998c2f08a01",
+                                                  "name":  "Kasuga",
+                                                  "type":  "NONE"
+                                              },
+                                   "resolved_default_powder_id":  null,
+                                   "allowed_powder_ids":  [
+
+                                                          ],
+                                   "milk_types":  [
+                                                      {
+                                                          "id":  "14cbe88a-4b3d-44dd-be86-6b44d5713848",
+                                                          "name":  "Sá»¯a bÃ²",
+                                                          "price_per_ml":  40,
+                                                          "is_default":  true,
+                                                          "display_order":  0
+                                                      },
+                                                      {
+                                                          "id":  "12f78821-7561-484b-86f3-c3fc213c5d2a",
+                                                          "name":  "Oatside",
+                                                          "price_per_ml":  40,
+                                                          "is_default":  false,
+                                                          "display_order":  1
+                                                      },
+                                                      {
+                                                          "id":  "d3c0742e-3b8a-402a-bcff-0be5bb283253",
+                                                          "name":  "Boring Oat",
+                                                          "price_per_ml":  80,
+                                                          "is_default":  false,
+                                                          "display_order":  2
+                                                      }
+                                                  ],
+                                   "sizes":  [
+                                                 {
+                                                     "size":  "M",
+                                                     "base_price_vnd":  23000,
+                                                     "milk_ml":  130
+                                                 },
+                                                 {
+                                                     "size":  "L",
+                                                     "base_price_vnd":  22000,
+                                                     "milk_ml":  200
+                                                 },
+                                                 {
+                                                     "size":  "XL",
+                                                     "base_price_vnd":  31000,
+                                                     "milk_ml":  300
+                                                 }
+                                             ],
+                                   "addon_groups":  [
+                                                        {
+                                                            "id":  "cb0493a1-2b18-4bc1-890e-d2d131229d34",
+                                                            "name":  "Kem",
+                                                            "type":  "SELECTOR",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "82c1ca5c-10b2-4594-b355-f9b40c8746a9",
+                                                                                "label":  "KhÃ´ng kem",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  true,
+                                                                                "sort_order":  0
+                                                                            },
+                                                                            {
+                                                                                "id":  "8217ed68-a76f-431c-b82a-ff30b4700546",
+                                                                                "label":  "Ná»­a viÃªn kem",
+                                                                                "price_vnd":  20000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  1
+                                                                            },
+                                                                            {
+                                                                                "id":  "03ab239e-bdb5-47cd-bd32-ea2a03ce7388",
+                                                                                "label":  "1 viÃªn kem",
+                                                                                "price_vnd":  40000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  2
+                                                                            }
+                                                                        ]
+                                                        },
+                                                        {
+                                                            "id":  "0199d001-6203-4352-b4ca-5ef50d03f769",
+                                                            "name":  "ÄÃ¡ dá»«a",
+                                                            "type":  "TOGGLE",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "72950a69-aad8-417e-973f-d79c22253613",
+                                                                                "label":  "ÄÃ¡ dá»«a",
+                                                                                "price_vnd":  5000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  0
+                                                                            }
+                                                                        ]
+                                                        },
+                                                        {
+                                                            "id":  "3d7104ef-febb-49e3-b986-f776b334c6eb",
+                                                            "name":  "Extra Matcha",
+                                                            "type":  "SELECTOR",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "44625f8e-7b06-4b4b-96b4-1bb5c2840d21",
+                                                                                "label":  "0g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  0,
+                                                                                "is_default":  true,
+                                                                                "sort_order":  0
+                                                                            },
+                                                                            {
+                                                                                "id":  "dcdd74e1-7014-44c1-96c9-703adae6ba09",
+                                                                                "label":  "1g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  1,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  1
+                                                                            },
+                                                                            {
+                                                                                "id":  "23989b50-53a0-454f-a3ce-100331554174",
+                                                                                "label":  "2g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  2,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  2
+                                                                            },
+                                                                            {
+                                                                                "id":  "ec8afe73-138d-468c-b0ba-5002b3f08917",
+                                                                                "label":  "3g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  3,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  3
+                                                                            },
+                                                                            {
+                                                                                "id":  "d089ee17-703b-4700-ab77-6f0a3ac15e73",
+                                                                                "label":  "4g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  4,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  4
+                                                                            }
+                                                                        ]
+                                                        }
+                                                    ]
+                               },
+                               {
+                                   "id":  "4423e626-5de7-4804-8bec-9b55f14f4b88",
+                                   "name":  "Latte Honai",
+                                   "description":  null,
+                                   "category":  "latte",
+                                   "is_seasonal":  true,
+                                   "image_url":  null,
+                                   "sort_order":  6,
+                                   "base_liquid_note":  null,
+                                   "custom_powder_grams":  null,
+                                   "powder":  {
+                                                  "id":  "367b763a-1999-4bda-a3f1-06707a537a19",
+                                                  "name":  "Honai",
+                                                  "type":  "SEASONAL"
+                                              },
+                                   "resolved_default_powder_id":  null,
+                                   "allowed_powder_ids":  [
+
+                                                          ],
+                                   "milk_types":  [
+                                                      {
+                                                          "id":  "14cbe88a-4b3d-44dd-be86-6b44d5713848",
+                                                          "name":  "Sá»¯a bÃ²",
+                                                          "price_per_ml":  40,
+                                                          "is_default":  true,
+                                                          "display_order":  0
+                                                      },
+                                                      {
+                                                          "id":  "12f78821-7561-484b-86f3-c3fc213c5d2a",
+                                                          "name":  "Oatside",
+                                                          "price_per_ml":  40,
+                                                          "is_default":  false,
+                                                          "display_order":  1
+                                                      },
+                                                      {
+                                                          "id":  "d3c0742e-3b8a-402a-bcff-0be5bb283253",
+                                                          "name":  "Boring Oat",
+                                                          "price_per_ml":  80,
+                                                          "is_default":  false,
+                                                          "display_order":  2
+                                                      }
+                                                  ],
+                                   "sizes":  [
+                                                 {
+                                                     "size":  "M",
+                                                     "base_price_vnd":  45000,
+                                                     "milk_ml":  130
+                                                 },
+                                                 {
+                                                     "size":  "L",
+                                                     "base_price_vnd":  43000,
+                                                     "milk_ml":  200
+                                                 },
+                                                 {
+                                                     "size":  "XL",
+                                                     "base_price_vnd":  44000,
+                                                     "milk_ml":  300
+                                                 }
+                                             ],
+                                   "addon_groups":  [
+                                                        {
+                                                            "id":  "cb0493a1-2b18-4bc1-890e-d2d131229d34",
+                                                            "name":  "Kem",
+                                                            "type":  "SELECTOR",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "82c1ca5c-10b2-4594-b355-f9b40c8746a9",
+                                                                                "label":  "KhÃ´ng kem",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  true,
+                                                                                "sort_order":  0
+                                                                            },
+                                                                            {
+                                                                                "id":  "8217ed68-a76f-431c-b82a-ff30b4700546",
+                                                                                "label":  "Ná»­a viÃªn kem",
+                                                                                "price_vnd":  20000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  1
+                                                                            },
+                                                                            {
+                                                                                "id":  "03ab239e-bdb5-47cd-bd32-ea2a03ce7388",
+                                                                                "label":  "1 viÃªn kem",
+                                                                                "price_vnd":  40000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  2
+                                                                            }
+                                                                        ]
+                                                        },
+                                                        {
+                                                            "id":  "0199d001-6203-4352-b4ca-5ef50d03f769",
+                                                            "name":  "ÄÃ¡ dá»«a",
+                                                            "type":  "TOGGLE",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "72950a69-aad8-417e-973f-d79c22253613",
+                                                                                "label":  "ÄÃ¡ dá»«a",
+                                                                                "price_vnd":  5000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  0
+                                                                            }
+                                                                        ]
+                                                        },
+                                                        {
+                                                            "id":  "3d7104ef-febb-49e3-b986-f776b334c6eb",
+                                                            "name":  "Extra Matcha",
+                                                            "type":  "SELECTOR",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "44625f8e-7b06-4b4b-96b4-1bb5c2840d21",
+                                                                                "label":  "0g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  0,
+                                                                                "is_default":  true,
+                                                                                "sort_order":  0
+                                                                            },
+                                                                            {
+                                                                                "id":  "dcdd74e1-7014-44c1-96c9-703adae6ba09",
+                                                                                "label":  "1g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  1,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  1
+                                                                            },
+                                                                            {
+                                                                                "id":  "23989b50-53a0-454f-a3ce-100331554174",
+                                                                                "label":  "2g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  2,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  2
+                                                                            },
+                                                                            {
+                                                                                "id":  "ec8afe73-138d-468c-b0ba-5002b3f08917",
+                                                                                "label":  "3g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  3,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  3
+                                                                            },
+                                                                            {
+                                                                                "id":  "d089ee17-703b-4700-ab77-6f0a3ac15e73",
+                                                                                "label":  "4g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  4,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  4
+                                                                            }
+                                                                        ]
+                                                        }
+                                                    ]
+                               },
+                               {
+                                   "id":  "e69dfd66-2a34-48a8-b57b-14bc3029b02b",
+                                   "name":  "Latte Houjicha",
+                                   "description":  null,
+                                   "category":  "latte",
+                                   "is_seasonal":  false,
+                                   "image_url":  null,
+                                   "sort_order":  7,
+                                   "base_liquid_note":  null,
+                                   "custom_powder_grams":  null,
+                                   "powder":  {
+                                                  "id":  "a3c05911-29cd-45d6-b625-861022de6af8",
+                                                  "name":  "Houjicha",
+                                                  "type":  "NONE"
+                                              },
+                                   "resolved_default_powder_id":  null,
+                                   "allowed_powder_ids":  [
+
+                                                          ],
+                                   "milk_types":  [
+                                                      {
+                                                          "id":  "14cbe88a-4b3d-44dd-be86-6b44d5713848",
+                                                          "name":  "Sá»¯a bÃ²",
+                                                          "price_per_ml":  40,
+                                                          "is_default":  true,
+                                                          "display_order":  0
+                                                      },
+                                                      {
+                                                          "id":  "12f78821-7561-484b-86f3-c3fc213c5d2a",
+                                                          "name":  "Oatside",
+                                                          "price_per_ml":  40,
+                                                          "is_default":  false,
+                                                          "display_order":  1
+                                                      },
+                                                      {
+                                                          "id":  "d3c0742e-3b8a-402a-bcff-0be5bb283253",
+                                                          "name":  "Boring Oat",
+                                                          "price_per_ml":  80,
+                                                          "is_default":  false,
+                                                          "display_order":  2
+                                                      }
+                                                  ],
+                                   "sizes":  [
+                                                 {
+                                                     "size":  "M",
+                                                     "base_price_vnd":  22000,
+                                                     "milk_ml":  130
+                                                 },
+                                                 {
+                                                     "size":  "L",
+                                                     "base_price_vnd":  21000,
+                                                     "milk_ml":  200
+                                                 },
+                                                 {
+                                                     "size":  "XL",
+                                                     "base_price_vnd":  32000,
+                                                     "milk_ml":  300
+                                                 }
+                                             ],
+                                   "addon_groups":  [
+                                                        {
+                                                            "id":  "cb0493a1-2b18-4bc1-890e-d2d131229d34",
+                                                            "name":  "Kem",
+                                                            "type":  "SELECTOR",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "82c1ca5c-10b2-4594-b355-f9b40c8746a9",
+                                                                                "label":  "KhÃ´ng kem",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  true,
+                                                                                "sort_order":  0
+                                                                            },
+                                                                            {
+                                                                                "id":  "8217ed68-a76f-431c-b82a-ff30b4700546",
+                                                                                "label":  "Ná»­a viÃªn kem",
+                                                                                "price_vnd":  20000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  1
+                                                                            },
+                                                                            {
+                                                                                "id":  "03ab239e-bdb5-47cd-bd32-ea2a03ce7388",
+                                                                                "label":  "1 viÃªn kem",
+                                                                                "price_vnd":  40000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  2
+                                                                            }
+                                                                        ]
+                                                        },
+                                                        {
+                                                            "id":  "0199d001-6203-4352-b4ca-5ef50d03f769",
+                                                            "name":  "ÄÃ¡ dá»«a",
+                                                            "type":  "TOGGLE",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "72950a69-aad8-417e-973f-d79c22253613",
+                                                                                "label":  "ÄÃ¡ dá»«a",
+                                                                                "price_vnd":  5000,
+                                                                                "gram_value":  null,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  0
+                                                                            }
+                                                                        ]
+                                                        },
+                                                        {
+                                                            "id":  "3d7104ef-febb-49e3-b986-f776b334c6eb",
+                                                            "name":  "Extra Matcha",
+                                                            "type":  "SELECTOR",
+                                                            "is_required":  true,
+                                                            "min_quantity":  null,
+                                                            "max_quantity":  null,
+                                                            "options":  [
+                                                                            {
+                                                                                "id":  "44625f8e-7b06-4b4b-96b4-1bb5c2840d21",
+                                                                                "label":  "0g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  0,
+                                                                                "is_default":  true,
+                                                                                "sort_order":  0
+                                                                            },
+                                                                            {
+                                                                                "id":  "dcdd74e1-7014-44c1-96c9-703adae6ba09",
+                                                                                "label":  "1g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  1,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  1
+                                                                            },
+                                                                            {
+                                                                                "id":  "23989b50-53a0-454f-a3ce-100331554174",
+                                                                                "label":  "2g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  2,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  2
+                                                                            },
+                                                                            {
+                                                                                "id":  "ec8afe73-138d-468c-b0ba-5002b3f08917",
+                                                                                "label":  "3g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  3,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  3
+                                                                            },
+                                                                            {
+                                                                                "id":  "d089ee17-703b-4700-ab77-6f0a3ac15e73",
+                                                                                "label":  "4g",
+                                                                                "price_vnd":  0,
+                                                                                "gram_value":  4,
+                                                                                "is_default":  false,
+                                                                                "sort_order":  4
+                                                                            }
+                                                                        ]
+                                                        }
+                                                    ]
+                               }
+                           ],
+                 "fusion":  [
+                                {
+                                    "id":  "d67a6791-3e60-4456-a177-07cf3641a6d8",
+                                    "name":  "Matcha Yuzu Latte",
+                                    "description":  null,
+                                    "category":  "fusion",
+                                    "is_seasonal":  false,
+                                    "image_url":  "https://mnklsbzkefuefpqvghrr.supabase.co/storage/v1/object/public/menu-images/1778988816641-9b6eb111-1ed2-4b53-95b5-3ce34e896ed8.webp",
+                                    "sort_order":  8,
+                                    "base_liquid_note":  null,
+                                    "custom_powder_grams":  null,
+                                    "powder":  null,
+                                    "resolved_default_powder_id":  "53b83580-62e3-45eb-9306-eb788e5ae862",
+                                    "allowed_powder_ids":  [
+                                                               "6ce133c8-bf04-48ed-8573-d95746ff060e",
+                                                               "367b763a-1999-4bda-a3f1-06707a537a19",
+                                                               "b1705aa8-2b1a-469d-859d-c998c2f08a01",
+                                                               "66584ee8-b30e-49f4-8fa6-d8357acf95f4",
+                                                               "9d05db6f-d298-46bc-9a06-da738c2b4b24"
+                                                           ],
+                                    "milk_types":  [
+
+                                                   ],
+                                    "sizes":  [
+                                                  {
+                                                      "size":  "M",
+                                                      "base_price_vnd":  28000,
+                                                      "milk_ml":  130
+                                                  },
+                                                  {
+                                                      "size":  "L",
+                                                      "base_price_vnd":  30000,
+                                                      "milk_ml":  200
+                                                  },
+                                                  {
+                                                      "size":  "XL",
+                                                      "base_price_vnd":  48000,
+                                                      "milk_ml":  300
+                                                  }
+                                              ],
+                                    "addon_groups":  [
+                                                         {
+                                                             "id":  "cb0493a1-2b18-4bc1-890e-d2d131229d34",
+                                                             "name":  "Kem",
+                                                             "type":  "SELECTOR",
+                                                             "is_required":  true,
+                                                             "min_quantity":  null,
+                                                             "max_quantity":  null,
+                                                             "options":  [
+                                                                             {
+                                                                                 "id":  "82c1ca5c-10b2-4594-b355-f9b40c8746a9",
+                                                                                 "label":  "KhÃ´ng kem",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  null,
+                                                                                 "is_default":  true,
+                                                                                 "sort_order":  0
+                                                                             },
+                                                                             {
+                                                                                 "id":  "8217ed68-a76f-431c-b82a-ff30b4700546",
+                                                                                 "label":  "Ná»­a viÃªn kem",
+                                                                                 "price_vnd":  20000,
+                                                                                 "gram_value":  null,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  1
+                                                                             },
+                                                                             {
+                                                                                 "id":  "03ab239e-bdb5-47cd-bd32-ea2a03ce7388",
+                                                                                 "label":  "1 viÃªn kem",
+                                                                                 "price_vnd":  40000,
+                                                                                 "gram_value":  null,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  2
+                                                                             }
+                                                                         ]
+                                                         },
+                                                         {
+                                                             "id":  "0199d001-6203-4352-b4ca-5ef50d03f769",
+                                                             "name":  "ÄÃ¡ dá»«a",
+                                                             "type":  "TOGGLE",
+                                                             "is_required":  true,
+                                                             "min_quantity":  null,
+                                                             "max_quantity":  null,
+                                                             "options":  [
+                                                                             {
+                                                                                 "id":  "72950a69-aad8-417e-973f-d79c22253613",
+                                                                                 "label":  "ÄÃ¡ dá»«a",
+                                                                                 "price_vnd":  5000,
+                                                                                 "gram_value":  null,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  0
+                                                                             }
+                                                                         ]
+                                                         },
+                                                         {
+                                                             "id":  "3d7104ef-febb-49e3-b986-f776b334c6eb",
+                                                             "name":  "Extra Matcha",
+                                                             "type":  "SELECTOR",
+                                                             "is_required":  true,
+                                                             "min_quantity":  null,
+                                                             "max_quantity":  null,
+                                                             "options":  [
+                                                                             {
+                                                                                 "id":  "44625f8e-7b06-4b4b-96b4-1bb5c2840d21",
+                                                                                 "label":  "0g",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  0,
+                                                                                 "is_default":  true,
+                                                                                 "sort_order":  0
+                                                                             },
+                                                                             {
+                                                                                 "id":  "dcdd74e1-7014-44c1-96c9-703adae6ba09",
+                                                                                 "label":  "1g",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  1,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  1
+                                                                             },
+                                                                             {
+                                                                                 "id":  "23989b50-53a0-454f-a3ce-100331554174",
+                                                                                 "label":  "2g",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  2,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  2
+                                                                             },
+                                                                             {
+                                                                                 "id":  "ec8afe73-138d-468c-b0ba-5002b3f08917",
+                                                                                 "label":  "3g",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  3,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  3
+                                                                             },
+                                                                             {
+                                                                                 "id":  "d089ee17-703b-4700-ab77-6f0a3ac15e73",
+                                                                                 "label":  "4g",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  4,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  4
+                                                                             }
+                                                                         ]
+                                                         }
+                                                     ]
+                                },
+                                {
+                                    "id":  "b114204c-daee-4ef2-aa21-bb207b97a048",
+                                    "name":  "Coconut",
+                                    "description":  null,
+                                    "category":  "fusion",
+                                    "is_seasonal":  true,
+                                    "image_url":  "https://mnklsbzkefuefpqvghrr.supabase.co/storage/v1/object/public/menu-images/1779004709521-041c538e-9fe1-4004-82c0-57b7f7a86090.png",
+                                    "sort_order":  9,
+                                    "base_liquid_note":  null,
+                                    "custom_powder_grams":  null,
+                                    "powder":  null,
+                                    "resolved_default_powder_id":  "53b83580-62e3-45eb-9306-eb788e5ae862",
+                                    "allowed_powder_ids":  [
+                                                               "6ce133c8-bf04-48ed-8573-d95746ff060e",
+                                                               "b1705aa8-2b1a-469d-859d-c998c2f08a01",
+                                                               "66584ee8-b30e-49f4-8fa6-d8357acf95f4",
+                                                               "9d05db6f-d298-46bc-9a06-da738c2b4b24",
+                                                               "367b763a-1999-4bda-a3f1-06707a537a19"
+                                                           ],
+                                    "milk_types":  [
+
+                                                   ],
+                                    "sizes":  [
+                                                  {
+                                                      "size":  "M",
+                                                      "base_price_vnd":  28000,
+                                                      "milk_ml":  130
+                                                  },
+                                                  {
+                                                      "size":  "L",
+                                                      "base_price_vnd":  30000,
+                                                      "milk_ml":  200
+                                                  },
+                                                  {
+                                                      "size":  "XL",
+                                                      "base_price_vnd":  48000,
+                                                      "milk_ml":  300
+                                                  }
+                                              ],
+                                    "addon_groups":  [
+                                                         {
+                                                             "id":  "cb0493a1-2b18-4bc1-890e-d2d131229d34",
+                                                             "name":  "Kem",
+                                                             "type":  "SELECTOR",
+                                                             "is_required":  true,
+                                                             "min_quantity":  null,
+                                                             "max_quantity":  null,
+                                                             "options":  [
+                                                                             {
+                                                                                 "id":  "82c1ca5c-10b2-4594-b355-f9b40c8746a9",
+                                                                                 "label":  "KhÃ´ng kem",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  null,
+                                                                                 "is_default":  true,
+                                                                                 "sort_order":  0
+                                                                             },
+                                                                             {
+                                                                                 "id":  "8217ed68-a76f-431c-b82a-ff30b4700546",
+                                                                                 "label":  "Ná»­a viÃªn kem",
+                                                                                 "price_vnd":  20000,
+                                                                                 "gram_value":  null,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  1
+                                                                             },
+                                                                             {
+                                                                                 "id":  "03ab239e-bdb5-47cd-bd32-ea2a03ce7388",
+                                                                                 "label":  "1 viÃªn kem",
+                                                                                 "price_vnd":  40000,
+                                                                                 "gram_value":  null,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  2
+                                                                             }
+                                                                         ]
+                                                         },
+                                                         {
+                                                             "id":  "0199d001-6203-4352-b4ca-5ef50d03f769",
+                                                             "name":  "ÄÃ¡ dá»«a",
+                                                             "type":  "TOGGLE",
+                                                             "is_required":  true,
+                                                             "min_quantity":  null,
+                                                             "max_quantity":  null,
+                                                             "options":  [
+                                                                             {
+                                                                                 "id":  "72950a69-aad8-417e-973f-d79c22253613",
+                                                                                 "label":  "ÄÃ¡ dá»«a",
+                                                                                 "price_vnd":  5000,
+                                                                                 "gram_value":  null,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  0
+                                                                             }
+                                                                         ]
+                                                         },
+                                                         {
+                                                             "id":  "3d7104ef-febb-49e3-b986-f776b334c6eb",
+                                                             "name":  "Extra Matcha",
+                                                             "type":  "SELECTOR",
+                                                             "is_required":  true,
+                                                             "min_quantity":  null,
+                                                             "max_quantity":  null,
+                                                             "options":  [
+                                                                             {
+                                                                                 "id":  "44625f8e-7b06-4b4b-96b4-1bb5c2840d21",
+                                                                                 "label":  "0g",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  0,
+                                                                                 "is_default":  true,
+                                                                                 "sort_order":  0
+                                                                             },
+                                                                             {
+                                                                                 "id":  "dcdd74e1-7014-44c1-96c9-703adae6ba09",
+                                                                                 "label":  "1g",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  1,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  1
+                                                                             },
+                                                                             {
+                                                                                 "id":  "23989b50-53a0-454f-a3ce-100331554174",
+                                                                                 "label":  "2g",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  2,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  2
+                                                                             },
+                                                                             {
+                                                                                 "id":  "ec8afe73-138d-468c-b0ba-5002b3f08917",
+                                                                                 "label":  "3g",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  3,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  3
+                                                                             },
+                                                                             {
+                                                                                 "id":  "d089ee17-703b-4700-ab77-6f0a3ac15e73",
+                                                                                 "label":  "4g",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  4,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  4
+                                                                             }
+                                                                         ]
+                                                         }
+                                                     ]
+                                },
+                                {
+                                    "id":  "3adb05fe-508b-4c4a-a6a2-020c7512d651",
+                                    "name":  "Usucha",
+                                    "description":  null,
+                                    "category":  "fusion",
+                                    "is_seasonal":  true,
+                                    "image_url":  "https://mnklsbzkefuefpqvghrr.supabase.co/storage/v1/object/public/menu-images/1778986700965-Usucha.webp",
+                                    "sort_order":  10,
+                                    "base_liquid_note":  null,
+                                    "custom_powder_grams":  {
+                                                                "L":  8,
+                                                                "M":  4.5
+                                                            },
+                                    "powder":  null,
+                                    "resolved_default_powder_id":  "66584ee8-b30e-49f4-8fa6-d8357acf95f4",
+                                    "allowed_powder_ids":  [
+                                                               "b1705aa8-2b1a-469d-859d-c998c2f08a01",
+                                                               "9d05db6f-d298-46bc-9a06-da738c2b4b24",
+                                                               "367b763a-1999-4bda-a3f1-06707a537a19"
+                                                           ],
+                                    "milk_types":  [
+
+                                                   ],
+                                    "sizes":  [
+                                                  {
+                                                      "size":  "M",
+                                                      "base_price_vnd":  23000,
+                                                      "milk_ml":  130
+                                                  },
+                                                  {
+                                                      "size":  "L",
+                                                      "base_price_vnd":  32000,
+                                                      "milk_ml":  200
+                                                  }
+                                              ],
+                                    "addon_groups":  [
+                                                         {
+                                                             "id":  "cb0493a1-2b18-4bc1-890e-d2d131229d34",
+                                                             "name":  "Kem",
+                                                             "type":  "SELECTOR",
+                                                             "is_required":  true,
+                                                             "min_quantity":  null,
+                                                             "max_quantity":  null,
+                                                             "options":  [
+                                                                             {
+                                                                                 "id":  "82c1ca5c-10b2-4594-b355-f9b40c8746a9",
+                                                                                 "label":  "KhÃ´ng kem",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  null,
+                                                                                 "is_default":  true,
+                                                                                 "sort_order":  0
+                                                                             },
+                                                                             {
+                                                                                 "id":  "8217ed68-a76f-431c-b82a-ff30b4700546",
+                                                                                 "label":  "Ná»­a viÃªn kem",
+                                                                                 "price_vnd":  20000,
+                                                                                 "gram_value":  null,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  1
+                                                                             },
+                                                                             {
+                                                                                 "id":  "03ab239e-bdb5-47cd-bd32-ea2a03ce7388",
+                                                                                 "label":  "1 viÃªn kem",
+                                                                                 "price_vnd":  40000,
+                                                                                 "gram_value":  null,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  2
+                                                                             }
+                                                                         ]
+                                                         },
+                                                         {
+                                                             "id":  "0199d001-6203-4352-b4ca-5ef50d03f769",
+                                                             "name":  "ÄÃ¡ dá»«a",
+                                                             "type":  "TOGGLE",
+                                                             "is_required":  true,
+                                                             "min_quantity":  null,
+                                                             "max_quantity":  null,
+                                                             "options":  [
+                                                                             {
+                                                                                 "id":  "72950a69-aad8-417e-973f-d79c22253613",
+                                                                                 "label":  "ÄÃ¡ dá»«a",
+                                                                                 "price_vnd":  5000,
+                                                                                 "gram_value":  null,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  0
+                                                                             }
+                                                                         ]
+                                                         },
+                                                         {
+                                                             "id":  "3d7104ef-febb-49e3-b986-f776b334c6eb",
+                                                             "name":  "Extra Matcha",
+                                                             "type":  "SELECTOR",
+                                                             "is_required":  true,
+                                                             "min_quantity":  null,
+                                                             "max_quantity":  null,
+                                                             "options":  [
+                                                                             {
+                                                                                 "id":  "44625f8e-7b06-4b4b-96b4-1bb5c2840d21",
+                                                                                 "label":  "0g",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  0,
+                                                                                 "is_default":  true,
+                                                                                 "sort_order":  0
+                                                                             },
+                                                                             {
+                                                                                 "id":  "dcdd74e1-7014-44c1-96c9-703adae6ba09",
+                                                                                 "label":  "1g",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  1,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  1
+                                                                             },
+                                                                             {
+                                                                                 "id":  "23989b50-53a0-454f-a3ce-100331554174",
+                                                                                 "label":  "2g",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  2,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  2
+                                                                             },
+                                                                             {
+                                                                                 "id":  "ec8afe73-138d-468c-b0ba-5002b3f08917",
+                                                                                 "label":  "3g",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  3,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  3
+                                                                             },
+                                                                             {
+                                                                                 "id":  "d089ee17-703b-4700-ab77-6f0a3ac15e73",
+                                                                                 "label":  "4g",
+                                                                                 "price_vnd":  0,
+                                                                                 "gram_value":  4,
+                                                                                 "is_default":  false,
+                                                                                 "sort_order":  4
+                                                                             }
+                                                                         ]
+                                                         }
+                                                     ]
+                                }
+                            ],
+                 "seasonal":  [
+                                  {
+                                      "id":  "b22ca439-789b-4488-8320-3c5f94446a54",
+                                      "name":  "Latte Shiro",
+                                      "description":  null,
+                                      "category":  "latte",
+                                      "is_seasonal":  true,
+                                      "image_url":  null,
+                                      "sort_order":  4,
+                                      "base_liquid_note":  null,
+                                      "custom_powder_grams":  null,
+                                      "powder":  {
+                                                     "id":  "9d05db6f-d298-46bc-9a06-da738c2b4b24",
+                                                     "name":  "Shiro",
+                                                     "type":  "NONE"
+                                                 },
+                                      "resolved_default_powder_id":  null,
+                                      "allowed_powder_ids":  [
+
+                                                             ],
+                                      "milk_types":  [
+                                                         {
+                                                             "id":  "14cbe88a-4b3d-44dd-be86-6b44d5713848",
+                                                             "name":  "Sá»¯a bÃ²",
+                                                             "price_per_ml":  40,
+                                                             "is_default":  true,
+                                                             "display_order":  0
+                                                         },
+                                                         {
+                                                             "id":  "12f78821-7561-484b-86f3-c3fc213c5d2a",
+                                                             "name":  "Oatside",
+                                                             "price_per_ml":  40,
+                                                             "is_default":  false,
+                                                             "display_order":  1
+                                                         },
+                                                         {
+                                                             "id":  "d3c0742e-3b8a-402a-bcff-0be5bb283253",
+                                                             "name":  "Boring Oat",
+                                                             "price_per_ml":  80,
+                                                             "is_default":  false,
+                                                             "display_order":  2
+                                                         }
+                                                     ],
+                                      "sizes":  [
+                                                    {
+                                                        "size":  "M",
+                                                        "base_price_vnd":  23000,
+                                                        "milk_ml":  130
+                                                    },
+                                                    {
+                                                        "size":  "L",
+                                                        "base_price_vnd":  20000,
+                                                        "milk_ml":  200
+                                                    },
+                                                    {
+                                                        "size":  "XL",
+                                                        "base_price_vnd":  30000,
+                                                        "milk_ml":  300
+                                                    }
+                                                ],
+                                      "addon_groups":  [
+                                                           {
+                                                               "id":  "cb0493a1-2b18-4bc1-890e-d2d131229d34",
+                                                               "name":  "Kem",
+                                                               "type":  "SELECTOR",
+                                                               "is_required":  true,
+                                                               "min_quantity":  null,
+                                                               "max_quantity":  null,
+                                                               "options":  [
+                                                                               {
+                                                                                   "id":  "82c1ca5c-10b2-4594-b355-f9b40c8746a9",
+                                                                                   "label":  "KhÃ´ng kem",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  null,
+                                                                                   "is_default":  true,
+                                                                                   "sort_order":  0
+                                                                               },
+                                                                               {
+                                                                                   "id":  "8217ed68-a76f-431c-b82a-ff30b4700546",
+                                                                                   "label":  "Ná»­a viÃªn kem",
+                                                                                   "price_vnd":  20000,
+                                                                                   "gram_value":  null,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  1
+                                                                               },
+                                                                               {
+                                                                                   "id":  "03ab239e-bdb5-47cd-bd32-ea2a03ce7388",
+                                                                                   "label":  "1 viÃªn kem",
+                                                                                   "price_vnd":  40000,
+                                                                                   "gram_value":  null,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  2
+                                                                               }
+                                                                           ]
+                                                           },
+                                                           {
+                                                               "id":  "0199d001-6203-4352-b4ca-5ef50d03f769",
+                                                               "name":  "ÄÃ¡ dá»«a",
+                                                               "type":  "TOGGLE",
+                                                               "is_required":  true,
+                                                               "min_quantity":  null,
+                                                               "max_quantity":  null,
+                                                               "options":  [
+                                                                               {
+                                                                                   "id":  "72950a69-aad8-417e-973f-d79c22253613",
+                                                                                   "label":  "ÄÃ¡ dá»«a",
+                                                                                   "price_vnd":  5000,
+                                                                                   "gram_value":  null,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  0
+                                                                               }
+                                                                           ]
+                                                           },
+                                                           {
+                                                               "id":  "3d7104ef-febb-49e3-b986-f776b334c6eb",
+                                                               "name":  "Extra Matcha",
+                                                               "type":  "SELECTOR",
+                                                               "is_required":  true,
+                                                               "min_quantity":  null,
+                                                               "max_quantity":  null,
+                                                               "options":  [
+                                                                               {
+                                                                                   "id":  "44625f8e-7b06-4b4b-96b4-1bb5c2840d21",
+                                                                                   "label":  "0g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  0,
+                                                                                   "is_default":  true,
+                                                                                   "sort_order":  0
+                                                                               },
+                                                                               {
+                                                                                   "id":  "dcdd74e1-7014-44c1-96c9-703adae6ba09",
+                                                                                   "label":  "1g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  1,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  1
+                                                                               },
+                                                                               {
+                                                                                   "id":  "23989b50-53a0-454f-a3ce-100331554174",
+                                                                                   "label":  "2g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  2,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  2
+                                                                               },
+                                                                               {
+                                                                                   "id":  "ec8afe73-138d-468c-b0ba-5002b3f08917",
+                                                                                   "label":  "3g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  3,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  3
+                                                                               },
+                                                                               {
+                                                                                   "id":  "d089ee17-703b-4700-ab77-6f0a3ac15e73",
+                                                                                   "label":  "4g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  4,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  4
+                                                                               }
+                                                                           ]
+                                                           }
+                                                       ]
+                                  },
+                                  {
+                                      "id":  "4423e626-5de7-4804-8bec-9b55f14f4b88",
+                                      "name":  "Latte Honai",
+                                      "description":  null,
+                                      "category":  "latte",
+                                      "is_seasonal":  true,
+                                      "image_url":  null,
+                                      "sort_order":  6,
+                                      "base_liquid_note":  null,
+                                      "custom_powder_grams":  null,
+                                      "powder":  {
+                                                     "id":  "367b763a-1999-4bda-a3f1-06707a537a19",
+                                                     "name":  "Honai",
+                                                     "type":  "SEASONAL"
+                                                 },
+                                      "resolved_default_powder_id":  null,
+                                      "allowed_powder_ids":  [
+
+                                                             ],
+                                      "milk_types":  [
+                                                         {
+                                                             "id":  "14cbe88a-4b3d-44dd-be86-6b44d5713848",
+                                                             "name":  "Sá»¯a bÃ²",
+                                                             "price_per_ml":  40,
+                                                             "is_default":  true,
+                                                             "display_order":  0
+                                                         },
+                                                         {
+                                                             "id":  "12f78821-7561-484b-86f3-c3fc213c5d2a",
+                                                             "name":  "Oatside",
+                                                             "price_per_ml":  40,
+                                                             "is_default":  false,
+                                                             "display_order":  1
+                                                         },
+                                                         {
+                                                             "id":  "d3c0742e-3b8a-402a-bcff-0be5bb283253",
+                                                             "name":  "Boring Oat",
+                                                             "price_per_ml":  80,
+                                                             "is_default":  false,
+                                                             "display_order":  2
+                                                         }
+                                                     ],
+                                      "sizes":  [
+                                                    {
+                                                        "size":  "M",
+                                                        "base_price_vnd":  45000,
+                                                        "milk_ml":  130
+                                                    },
+                                                    {
+                                                        "size":  "L",
+                                                        "base_price_vnd":  43000,
+                                                        "milk_ml":  200
+                                                    },
+                                                    {
+                                                        "size":  "XL",
+                                                        "base_price_vnd":  44000,
+                                                        "milk_ml":  300
+                                                    }
+                                                ],
+                                      "addon_groups":  [
+                                                           {
+                                                               "id":  "cb0493a1-2b18-4bc1-890e-d2d131229d34",
+                                                               "name":  "Kem",
+                                                               "type":  "SELECTOR",
+                                                               "is_required":  true,
+                                                               "min_quantity":  null,
+                                                               "max_quantity":  null,
+                                                               "options":  [
+                                                                               {
+                                                                                   "id":  "82c1ca5c-10b2-4594-b355-f9b40c8746a9",
+                                                                                   "label":  "KhÃ´ng kem",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  null,
+                                                                                   "is_default":  true,
+                                                                                   "sort_order":  0
+                                                                               },
+                                                                               {
+                                                                                   "id":  "8217ed68-a76f-431c-b82a-ff30b4700546",
+                                                                                   "label":  "Ná»­a viÃªn kem",
+                                                                                   "price_vnd":  20000,
+                                                                                   "gram_value":  null,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  1
+                                                                               },
+                                                                               {
+                                                                                   "id":  "03ab239e-bdb5-47cd-bd32-ea2a03ce7388",
+                                                                                   "label":  "1 viÃªn kem",
+                                                                                   "price_vnd":  40000,
+                                                                                   "gram_value":  null,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  2
+                                                                               }
+                                                                           ]
+                                                           },
+                                                           {
+                                                               "id":  "0199d001-6203-4352-b4ca-5ef50d03f769",
+                                                               "name":  "ÄÃ¡ dá»«a",
+                                                               "type":  "TOGGLE",
+                                                               "is_required":  true,
+                                                               "min_quantity":  null,
+                                                               "max_quantity":  null,
+                                                               "options":  [
+                                                                               {
+                                                                                   "id":  "72950a69-aad8-417e-973f-d79c22253613",
+                                                                                   "label":  "ÄÃ¡ dá»«a",
+                                                                                   "price_vnd":  5000,
+                                                                                   "gram_value":  null,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  0
+                                                                               }
+                                                                           ]
+                                                           },
+                                                           {
+                                                               "id":  "3d7104ef-febb-49e3-b986-f776b334c6eb",
+                                                               "name":  "Extra Matcha",
+                                                               "type":  "SELECTOR",
+                                                               "is_required":  true,
+                                                               "min_quantity":  null,
+                                                               "max_quantity":  null,
+                                                               "options":  [
+                                                                               {
+                                                                                   "id":  "44625f8e-7b06-4b4b-96b4-1bb5c2840d21",
+                                                                                   "label":  "0g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  0,
+                                                                                   "is_default":  true,
+                                                                                   "sort_order":  0
+                                                                               },
+                                                                               {
+                                                                                   "id":  "dcdd74e1-7014-44c1-96c9-703adae6ba09",
+                                                                                   "label":  "1g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  1,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  1
+                                                                               },
+                                                                               {
+                                                                                   "id":  "23989b50-53a0-454f-a3ce-100331554174",
+                                                                                   "label":  "2g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  2,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  2
+                                                                               },
+                                                                               {
+                                                                                   "id":  "ec8afe73-138d-468c-b0ba-5002b3f08917",
+                                                                                   "label":  "3g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  3,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  3
+                                                                               },
+                                                                               {
+                                                                                   "id":  "d089ee17-703b-4700-ab77-6f0a3ac15e73",
+                                                                                   "label":  "4g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  4,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  4
+                                                                               }
+                                                                           ]
+                                                           }
+                                                       ]
+                                  },
+                                  {
+                                      "id":  "b114204c-daee-4ef2-aa21-bb207b97a048",
+                                      "name":  "Coconut",
+                                      "description":  null,
+                                      "category":  "fusion",
+                                      "is_seasonal":  true,
+                                      "image_url":  "https://mnklsbzkefuefpqvghrr.supabase.co/storage/v1/object/public/menu-images/1779004709521-041c538e-9fe1-4004-82c0-57b7f7a86090.png",
+                                      "sort_order":  9,
+                                      "base_liquid_note":  null,
+                                      "custom_powder_grams":  null,
+                                      "powder":  null,
+                                      "resolved_default_powder_id":  "53b83580-62e3-45eb-9306-eb788e5ae862",
+                                      "allowed_powder_ids":  [
+                                                                 "6ce133c8-bf04-48ed-8573-d95746ff060e",
+                                                                 "b1705aa8-2b1a-469d-859d-c998c2f08a01",
+                                                                 "66584ee8-b30e-49f4-8fa6-d8357acf95f4",
+                                                                 "9d05db6f-d298-46bc-9a06-da738c2b4b24",
+                                                                 "367b763a-1999-4bda-a3f1-06707a537a19"
+                                                             ],
+                                      "milk_types":  [
+
+                                                     ],
+                                      "sizes":  [
+                                                    {
+                                                        "size":  "M",
+                                                        "base_price_vnd":  28000,
+                                                        "milk_ml":  130
+                                                    },
+                                                    {
+                                                        "size":  "L",
+                                                        "base_price_vnd":  30000,
+                                                        "milk_ml":  200
+                                                    },
+                                                    {
+                                                        "size":  "XL",
+                                                        "base_price_vnd":  48000,
+                                                        "milk_ml":  300
+                                                    }
+                                                ],
+                                      "addon_groups":  [
+                                                           {
+                                                               "id":  "cb0493a1-2b18-4bc1-890e-d2d131229d34",
+                                                               "name":  "Kem",
+                                                               "type":  "SELECTOR",
+                                                               "is_required":  true,
+                                                               "min_quantity":  null,
+                                                               "max_quantity":  null,
+                                                               "options":  [
+                                                                               {
+                                                                                   "id":  "82c1ca5c-10b2-4594-b355-f9b40c8746a9",
+                                                                                   "label":  "KhÃ´ng kem",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  null,
+                                                                                   "is_default":  true,
+                                                                                   "sort_order":  0
+                                                                               },
+                                                                               {
+                                                                                   "id":  "8217ed68-a76f-431c-b82a-ff30b4700546",
+                                                                                   "label":  "Ná»­a viÃªn kem",
+                                                                                   "price_vnd":  20000,
+                                                                                   "gram_value":  null,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  1
+                                                                               },
+                                                                               {
+                                                                                   "id":  "03ab239e-bdb5-47cd-bd32-ea2a03ce7388",
+                                                                                   "label":  "1 viÃªn kem",
+                                                                                   "price_vnd":  40000,
+                                                                                   "gram_value":  null,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  2
+                                                                               }
+                                                                           ]
+                                                           },
+                                                           {
+                                                               "id":  "0199d001-6203-4352-b4ca-5ef50d03f769",
+                                                               "name":  "ÄÃ¡ dá»«a",
+                                                               "type":  "TOGGLE",
+                                                               "is_required":  true,
+                                                               "min_quantity":  null,
+                                                               "max_quantity":  null,
+                                                               "options":  [
+                                                                               {
+                                                                                   "id":  "72950a69-aad8-417e-973f-d79c22253613",
+                                                                                   "label":  "ÄÃ¡ dá»«a",
+                                                                                   "price_vnd":  5000,
+                                                                                   "gram_value":  null,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  0
+                                                                               }
+                                                                           ]
+                                                           },
+                                                           {
+                                                               "id":  "3d7104ef-febb-49e3-b986-f776b334c6eb",
+                                                               "name":  "Extra Matcha",
+                                                               "type":  "SELECTOR",
+                                                               "is_required":  true,
+                                                               "min_quantity":  null,
+                                                               "max_quantity":  null,
+                                                               "options":  [
+                                                                               {
+                                                                                   "id":  "44625f8e-7b06-4b4b-96b4-1bb5c2840d21",
+                                                                                   "label":  "0g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  0,
+                                                                                   "is_default":  true,
+                                                                                   "sort_order":  0
+                                                                               },
+                                                                               {
+                                                                                   "id":  "dcdd74e1-7014-44c1-96c9-703adae6ba09",
+                                                                                   "label":  "1g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  1,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  1
+                                                                               },
+                                                                               {
+                                                                                   "id":  "23989b50-53a0-454f-a3ce-100331554174",
+                                                                                   "label":  "2g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  2,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  2
+                                                                               },
+                                                                               {
+                                                                                   "id":  "ec8afe73-138d-468c-b0ba-5002b3f08917",
+                                                                                   "label":  "3g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  3,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  3
+                                                                               },
+                                                                               {
+                                                                                   "id":  "d089ee17-703b-4700-ab77-6f0a3ac15e73",
+                                                                                   "label":  "4g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  4,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  4
+                                                                               }
+                                                                           ]
+                                                           }
+                                                       ]
+                                  },
+                                  {
+                                      "id":  "3adb05fe-508b-4c4a-a6a2-020c7512d651",
+                                      "name":  "Usucha",
+                                      "description":  null,
+                                      "category":  "fusion",
+                                      "is_seasonal":  true,
+                                      "image_url":  "https://mnklsbzkefuefpqvghrr.supabase.co/storage/v1/object/public/menu-images/1778986700965-Usucha.webp",
+                                      "sort_order":  10,
+                                      "base_liquid_note":  null,
+                                      "custom_powder_grams":  {
+                                                                  "L":  8,
+                                                                  "M":  4.5
+                                                              },
+                                      "powder":  null,
+                                      "resolved_default_powder_id":  "66584ee8-b30e-49f4-8fa6-d8357acf95f4",
+                                      "allowed_powder_ids":  [
+                                                                 "b1705aa8-2b1a-469d-859d-c998c2f08a01",
+                                                                 "9d05db6f-d298-46bc-9a06-da738c2b4b24",
+                                                                 "367b763a-1999-4bda-a3f1-06707a537a19"
+                                                             ],
+                                      "milk_types":  [
+
+                                                     ],
+                                      "sizes":  [
+                                                    {
+                                                        "size":  "M",
+                                                        "base_price_vnd":  23000,
+                                                        "milk_ml":  130
+                                                    },
+                                                    {
+                                                        "size":  "L",
+                                                        "base_price_vnd":  32000,
+                                                        "milk_ml":  200
+                                                    }
+                                                ],
+                                      "addon_groups":  [
+                                                           {
+                                                               "id":  "cb0493a1-2b18-4bc1-890e-d2d131229d34",
+                                                               "name":  "Kem",
+                                                               "type":  "SELECTOR",
+                                                               "is_required":  true,
+                                                               "min_quantity":  null,
+                                                               "max_quantity":  null,
+                                                               "options":  [
+                                                                               {
+                                                                                   "id":  "82c1ca5c-10b2-4594-b355-f9b40c8746a9",
+                                                                                   "label":  "KhÃ´ng kem",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  null,
+                                                                                   "is_default":  true,
+                                                                                   "sort_order":  0
+                                                                               },
+                                                                               {
+                                                                                   "id":  "8217ed68-a76f-431c-b82a-ff30b4700546",
+                                                                                   "label":  "Ná»­a viÃªn kem",
+                                                                                   "price_vnd":  20000,
+                                                                                   "gram_value":  null,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  1
+                                                                               },
+                                                                               {
+                                                                                   "id":  "03ab239e-bdb5-47cd-bd32-ea2a03ce7388",
+                                                                                   "label":  "1 viÃªn kem",
+                                                                                   "price_vnd":  40000,
+                                                                                   "gram_value":  null,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  2
+                                                                               }
+                                                                           ]
+                                                           },
+                                                           {
+                                                               "id":  "0199d001-6203-4352-b4ca-5ef50d03f769",
+                                                               "name":  "ÄÃ¡ dá»«a",
+                                                               "type":  "TOGGLE",
+                                                               "is_required":  true,
+                                                               "min_quantity":  null,
+                                                               "max_quantity":  null,
+                                                               "options":  [
+                                                                               {
+                                                                                   "id":  "72950a69-aad8-417e-973f-d79c22253613",
+                                                                                   "label":  "ÄÃ¡ dá»«a",
+                                                                                   "price_vnd":  5000,
+                                                                                   "gram_value":  null,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  0
+                                                                               }
+                                                                           ]
+                                                           },
+                                                           {
+                                                               "id":  "3d7104ef-febb-49e3-b986-f776b334c6eb",
+                                                               "name":  "Extra Matcha",
+                                                               "type":  "SELECTOR",
+                                                               "is_required":  true,
+                                                               "min_quantity":  null,
+                                                               "max_quantity":  null,
+                                                               "options":  [
+                                                                               {
+                                                                                   "id":  "44625f8e-7b06-4b4b-96b4-1bb5c2840d21",
+                                                                                   "label":  "0g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  0,
+                                                                                   "is_default":  true,
+                                                                                   "sort_order":  0
+                                                                               },
+                                                                               {
+                                                                                   "id":  "dcdd74e1-7014-44c1-96c9-703adae6ba09",
+                                                                                   "label":  "1g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  1,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  1
+                                                                               },
+                                                                               {
+                                                                                   "id":  "23989b50-53a0-454f-a3ce-100331554174",
+                                                                                   "label":  "2g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  2,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  2
+                                                                               },
+                                                                               {
+                                                                                   "id":  "ec8afe73-138d-468c-b0ba-5002b3f08917",
+                                                                                   "label":  "3g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  3,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  3
+                                                                               },
+                                                                               {
+                                                                                   "id":  "d089ee17-703b-4700-ab77-6f0a3ac15e73",
+                                                                                   "label":  "4g",
+                                                                                   "price_vnd":  0,
+                                                                                   "gram_value":  4,
+                                                                                   "is_default":  false,
+                                                                                   "sort_order":  4
+                                                                               }
+                                                                           ]
+                                                           }
+                                                       ]
+                                  }
+                              ]
+             }
+}

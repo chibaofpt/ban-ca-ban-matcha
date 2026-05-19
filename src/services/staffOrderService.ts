@@ -5,7 +5,8 @@ import type { SweetnessLevel } from "@/src/lib/types/menu";
 // ── Types ───────────────────────────────────────────────────────────────────
 
 export interface CreateStaffOrderPayload {
-  phone_number: string;
+  /** Optional — omit entirely for anonymous (walk-in, no loyalty) orders. */
+  phone_number?: string;
   customer_name?: string;
   items: {
     menu_item_id: string;
@@ -32,6 +33,14 @@ export interface CreateStaffOrderPayload {
   voucher_id?: string;
 }
 
+/** A single customer result returned by the search endpoint. */
+export interface CustomerSearchResult {
+  id: string;
+  name: string;
+  phone_number: string;
+  points_balance: number;
+}
+
 export type QrScanResult =
   | {
       type: "user";
@@ -55,10 +64,6 @@ export type QrScanResult =
       };
     };
 
-type PhoneLookupResult =
-  | { found: true; name: string; phone_number: string }
-  | { found: false };
-
 // ── Service ─────────────────────────────────────────────────────────────────
 
 const URLS = {
@@ -69,21 +74,21 @@ const URLS = {
 } as const;
 
 /**
- * Lookup customer by phone number — returns found status and name if found.
+ * Search customers by name or last digits of phone number.
+ * Requires at least 2 characters. Returns up to 10 matches.
  */
-export async function lookupPhone(phone: string): Promise<PhoneLookupResult> {
-  const res = await apiClient.get<ApiResponse<PhoneLookupResult>>(URLS.users, {
-    params: { phone },
+export async function searchCustomers(query: string): Promise<CustomerSearchResult[]> {
+  const res = await apiClient.get<ApiResponse<{ items: CustomerSearchResult[] }>>(URLS.users, {
+    params: { q: query },
   });
-  return res.data.data;
+  return res.data.data.items;
 }
 
 /**
  * Create a counter order. Ghost user creation is handled server-side.
+ * Omit phone_number for anonymous (walk-in) orders.
  */
-export async function createStaffOrder(
-  payload: CreateStaffOrderPayload
-): Promise<void> {
+export async function createStaffOrder(payload: CreateStaffOrderPayload): Promise<void> {
   await apiClient.post(URLS.orders, payload);
 }
 

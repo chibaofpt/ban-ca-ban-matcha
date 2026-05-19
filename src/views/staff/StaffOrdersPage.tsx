@@ -337,6 +337,14 @@ export default function StaffOrdersPage() {
           cart={cart}
           total={total}
           discountVoucherId={discountVoucher?.id ?? null}
+          discountVoucher={
+            discountVoucher
+              ? {
+                  discount_type: discountVoucher.discount_type,
+                  discount_value: discountVoucher.discount_value,
+                }
+              : null
+          }
           initialPhone={initialPhone}
           onClose={() => setCheckoutOpen(false)}
           onSuccess={handleSuccess}
