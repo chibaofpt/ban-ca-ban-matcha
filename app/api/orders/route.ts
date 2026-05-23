@@ -3,12 +3,17 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { customerOrderSchema } from "@/lib/validations/order";
 import { processOrderItems, OrderValidationError, PriceChangedError } from "@/lib/orders";
+import { generateOrderCode } from "@/lib/orderCode";
+import { buildVietQRUrl } from "@/lib/vietqr";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
 
 export const dynamic = "force-dynamic";
 
-/** POST /api/orders — customer places an order from cart (status = PENDING) */
+/** Deadline in minutes before a PENDING PICKUP/DELIVERY order is auto-cancelled. */
+const AUTO_CANCEL_MINUTES = 20;
+
+/** POST /api/orders — Customer places a PICKUP/DELIVERY order. Returns payment QR. */
 export async function POST(req: NextRequest) {
   // 1. Parse body
   const body = await req.json().catch(() => null);
@@ -62,6 +67,12 @@ export async function POST(req: NextRequest) {
           { status: 422 }
         );
       }
+      if (voucher.status === "RESERVED") {
+        return NextResponse.json(
+          { error: "Voucher is already reserved for another pending order", code: "VOUCHER_RESERVED" },
+          { status: 422 }
+        );
+      }
       if (voucher.expires_at !== null && voucher.expires_at <= new Date()) {
         return NextResponse.json(
           { error: "Voucher has expired", code: "VOUCHER_EXPIRED" },
@@ -85,6 +96,12 @@ export async function POST(req: NextRequest) {
 
     const total_vnd = Math.max(0, subtotal_vnd - discount_vnd);
 
+    // Step 4: Generate unique order code (read — collision check)
+    const order_code = await generateOrderCode(prisma);
+
+    // Step 5: Compute auto-cancel deadline
+    const auto_cancel_at = new Date(Date.now() + AUTO_CANCEL_MINUTES * 60 * 1000);
+
     // ── Phase 2: WRITES only (short transaction — pgBouncer compatible) ──────
     const order = await prisma.$transaction(
       async (tx) => {
@@ -94,12 +111,16 @@ export async function POST(req: NextRequest) {
             user_id: session.id,
             voucher_id,
             status: "PENDING",
+            order_type: data.order_type,
+            order_code,
             subtotal_vnd,
             discount_vnd,
             total_vnd,
             points_earned: null,
             pickup_time: data.pickup_time ? new Date(data.pickup_time) : null,
             note: data.note ?? null,
+            auto_cancel_at,
+            delivery_address: data.delivery_address ?? null,
             items: {
               create: resolvedItems.map((item) => ({
                 menu_item_id: item.menu_item_id,
@@ -126,16 +147,11 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        // Mark discount voucher as redeemed
+        // Reserve voucher — will become REDEEMED only after admin confirms payment
         if (voucher_id) {
           await tx.voucher.update({
             where: { id: voucher_id },
-            data: {
-              status: "REDEEMED",
-              used_channel: "ONLINE",
-              redeemed_at: new Date(),
-              redeemed_by: session.id,
-            },
+            data: { status: "RESERVED" },
           });
         }
 
@@ -144,13 +160,22 @@ export async function POST(req: NextRequest) {
       { maxWait: 5000, timeout: 10000 }
     );
 
+    // Step 6: Build VietQR payment URL (outside transaction — no DB needed)
+    const payment_qr_url = buildVietQRUrl({ amount: total_vnd, orderCode: order_code });
+
     return NextResponse.json(
       {
         data: {
           id: order.id,
+          order_code: order.order_code,
           status: order.status,
+          order_type: order.order_type,
+          subtotal_vnd: order.subtotal_vnd,
+          discount_vnd: order.discount_vnd,
           total_vnd: order.total_vnd,
           pickup_time: order.pickup_time,
+          auto_cancel_at: order.auto_cancel_at,
+          payment_qr_url,
         },
       },
       { status: 201 }
@@ -183,6 +208,43 @@ export async function POST(req: NextRequest) {
     const errStack = err instanceof Error ? err.stack : undefined;
     const errName = err instanceof Error ? err.name : typeof err;
     console.error("[POST /api/orders] UNHANDLED ERROR:", { name: errName, message: errMsg, stack: errStack });
+    return NextResponse.json(
+      { error: "Internal server error", code: "INTERNAL_ERROR" },
+      { status: 500 }
+    );
+  }
+}
+
+/** GET /api/orders — Customer gets their order history */
+export async function GET(req: NextRequest) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
+  }
+
+  try {
+    const orders = await prisma.order.findMany({
+      where: { user_id: session.id },
+      orderBy: { created_at: "desc" },
+      include: {
+        items: {
+          include: {
+            menuItem: { select: { name: true } },
+            selectedPowder: { select: { name: true } },
+            milkType: { select: { name: true } },
+            addons: {
+              include: {
+                addonOption: { select: { label: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return NextResponse.json({ data: orders });
+  } catch (err) {
+    console.error("[GET /api/orders]", err);
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },
       { status: 500 }

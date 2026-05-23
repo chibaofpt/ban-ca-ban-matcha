@@ -9,13 +9,13 @@ import { createOrder, PriceChangedError, type PriceConflict } from "@/src/servic
 import { useIsLoggedIn } from "@/src/lib/store/authStore";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { cn } from "@/src/utils/cn";
+import { useRouter } from "next/navigation";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type CheckoutState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "success"; orderId: string; totalVnd: number }
   | { status: "price_changed"; conflicts: PriceConflict[] }
   | { status: "error"; message: string };
 
@@ -26,6 +26,7 @@ const CartDrawer = () => {
   const totalPrice = useCartTotalPrice();
   const isLoggedIn = useIsLoggedIn();
   const openLogin = useAuthModalStore((s) => s.openLogin);
+  const router = useRouter();
   const [checkout, setCheckout] = useState<CheckoutState>({ status: "idle" });
 
   const resetCheckout = useCallback(() => setCheckout({ status: "idle" }), []);
@@ -44,7 +45,9 @@ const CartDrawer = () => {
     try {
       const result = await createOrder(items);
       clearCart();
-      setCheckout({ status: "success", orderId: result.id, totalVnd: result.total_vnd });
+      setCartOpen(false);
+      resetCheckout();
+      router.push(`/orders/${result.id}`);
     } catch (err) {
       if (err instanceof PriceChangedError) {
         setCheckout({ status: "price_changed", conflicts: err.conflicts });
@@ -53,15 +56,9 @@ const CartDrawer = () => {
         setCheckout({ status: "error", message });
       }
     }
-  }, [items, clearCart, isLoggedIn, openLogin]);
+  }, [items, clearCart, isLoggedIn, openLogin, router, setCartOpen, resetCheckout]);
 
   const handleClose = useCallback(() => {
-    setCartOpen(false);
-    // Reset non-success states when closing (keep success so user can see it)
-    if (checkout.status !== "success") resetCheckout();
-  }, [setCartOpen, checkout.status, resetCheckout]);
-
-  const handleSuccessClose = useCallback(() => {
     setCartOpen(false);
     resetCheckout();
   }, [setCartOpen, resetCheckout]);
@@ -109,36 +106,6 @@ const CartDrawer = () => {
             {/* ── Content ─────────────────────────────────────────────────── */}
             <div className="flex-1 overflow-y-auto px-5 py-2 min-h-0">
               <AnimatePresence mode="wait">
-                {/* SUCCESS */}
-                {checkout.status === "success" && (
-                  <motion.div
-                    key="success"
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="flex flex-col items-center justify-center h-full text-center py-16 gap-5"
-                  >
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      transition={{ type: "spring", delay: 0.1 }}
-                    >
-                      <CheckCircle2 className="w-20 h-20 text-green-500" strokeWidth={1.5} />
-                    </motion.div>
-                    <div>
-                      <p className="font-serif text-2xl font-bold text-primary">Đặt hàng thành công!</p>
-                      <p className="text-sm text-primary/50 mt-2">
-                        Tổng cộng <span className="font-bold text-primary">{checkout.totalVnd / 1000}k 🐟</span>
-                      </p>
-                      <p className="text-xs text-primary/40 mt-1">Nhân viên sẽ xác nhận đơn của bạn</p>
-                    </div>
-                    <button
-                      onClick={handleSuccessClose}
-                      className="mt-2 bg-primary text-white px-8 py-3 rounded-2xl font-bold text-sm shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all"
-                    >
-                      Xong 🎉
-                    </button>
-                  </motion.div>
-                )}
 
                 {/* PRICE_CHANGED */}
                 {checkout.status === "price_changed" && (
@@ -302,7 +269,7 @@ const CartDrawer = () => {
             </div>
 
             {/* ── Footer — only shown when items exist and not in success/error ── */}
-            {items.length > 0 && checkout.status !== "success" && (
+            {items.length > 0 && (
               <div className="border-t border-border/40 bg-white px-6 py-5 space-y-4 shrink-0">
                 {/* Total */}
                 <div className="flex items-center justify-between">

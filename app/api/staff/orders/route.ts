@@ -244,27 +244,60 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** GET /api/staff/orders — List orders for this staff member */
+/**
+ * GET /api/staff/orders — List orders for the staff/admin orders page.
+ *
+ * Query params:
+ *   order_type: Comma-separated values: "COUNTER", "PICKUP", "DELIVERY"
+ *               Omit to return all types.
+ *   status:     Single status filter: "PENDING" (ADMIN only — for "Chờ CK" tab).
+ *               Omit to return all non-PENDING statuses for PICKUP/DELIVERY,
+ *               or all statuses for COUNTER.
+ */
 export async function GET(req: NextRequest) {
   const session = await getSession();
-  if (!session || !["STAFF", "ADMIN"].includes(session.role)) {
+  if (!session || !['STAFF', 'ADMIN'].includes(session.role)) {
     return NextResponse.json(
-      { error: "Unauthorized", code: "UNAUTHORIZED" },
+      { error: 'Unauthorized', code: 'UNAUTHORIZED' },
       { status: 401 }
     );
   }
 
+  const { searchParams } = new URL(req.url);
+  const orderTypeParam = searchParams.get('order_type'); // e.g. "COUNTER" or "PICKUP,DELIVERY"
+  const statusParam = searchParams.get('status');        // e.g. "PENDING"
+
+  // Only ADMIN can access the "Chờ CK" tab (PENDING customer orders)
+  if (statusParam === 'PENDING' && session.role === 'STAFF') {
+    return NextResponse.json(
+      { error: 'Forbidden — only ADMIN can view pending payment orders', code: 'FORBIDDEN' },
+      { status: 403 }
+    );
+  }
+
   try {
+    // Build dynamic where clause
+    const where: Record<string, unknown> = {};
+
+    // Filter by order_type
+    if (orderTypeParam) {
+      const types = orderTypeParam.split(',').map((t) => t.trim()) as ('COUNTER' | 'PICKUP' | 'DELIVERY')[];
+      where.order_type = { in: types };
+    }
+
+    if (statusParam === 'PENDING') {
+      // "Chờ CK" tab: admin-only, show all PENDING customer orders
+      where.status = 'PENDING';
+    } else if (orderTypeParam && !orderTypeParam.includes('COUNTER')) {
+      // "Khách đặt" tab: show PICKUP/DELIVERY orders that have passed PENDING
+      where.status = { in: ['ADMIN_CONFIRMED', 'STAFF_DONE', 'COMPLETED', 'CANCELLED'] };
+    }
+    // No status filter for COUNTER (show all — COMPLETED, CANCELLED)
+
     const orders = await prisma.order.findMany({
-      where: {
-        OR: [
-          { handled_by: session.id },
-          { status: "PENDING", handled_by: null },
-        ],
-      },
-      orderBy: { created_at: "desc" },
+      where,
+      orderBy: { created_at: 'desc' },
       include: {
-        // user is nullable — consumers must handle null
         user: { select: { name: true, phone_number: true } },
         items: {
           include: {
@@ -273,13 +306,13 @@ export async function GET(req: NextRequest) {
             milkType: { select: { name: true, is_default: true } },
             addons: {
               include: {
-                addonOption: { 
-                  select: { 
+                addonOption: {
+                  select: {
                     label: true,
                     gram_value: true,
                     price_vnd: true,
-                    group: { select: { name: true } }
-                  } 
+                    group: { select: { name: true } },
+                  },
                 },
               },
             },
@@ -288,11 +321,44 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    // Lazy auto-cancel: expire any PENDING orders that have passed their deadline.
+    // Only relevant when fetching PENDING orders ("Chờ CK" tab).
+    if (statusParam === 'PENDING') {
+      const now = new Date();
+      const expiredIds = orders
+        .filter((o) => o.status === 'PENDING' && o.auto_cancel_at && o.auto_cancel_at <= now)
+        .map((o) => o.id);
+
+      if (expiredIds.length > 0) {
+        // Batch-cancel expired orders (individual transactions for atomicity with vouchers)
+        await Promise.all(
+          expiredIds.map(async (orderId) => {
+            const expired = orders.find((o) => o.id === orderId);
+            if (!expired) return;
+            await prisma.$transaction(
+              async (tx) => {
+                await tx.order.update({ where: { id: orderId }, data: { status: 'CANCELLED' } });
+                if (expired.voucher_id) {
+                  await tx.voucher.update({
+                    where: { id: expired.voucher_id },
+                    data: { status: 'ACTIVE' },
+                  });
+                }
+              },
+              { maxWait: 5000, timeout: 10000 }
+            );
+            // Update in-memory for response
+            expired.status = 'CANCELLED';
+          })
+        );
+      }
+    }
+
     return NextResponse.json({ data: orders });
   } catch (err) {
-    console.error("[GET /api/staff/orders]", err);
+    console.error('[GET /api/staff/orders]', err);
     return NextResponse.json(
-      { error: "Internal server error", code: "INTERNAL_ERROR" },
+      { error: 'Internal server error', code: 'INTERNAL_ERROR' },
       { status: 500 }
     );
   }

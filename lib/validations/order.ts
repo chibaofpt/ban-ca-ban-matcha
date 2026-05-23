@@ -47,14 +47,19 @@ export const staffOrderSchema = z.object({
   voucher_id: z.string().uuid().optional(),
 });
 
-/** Schema for a customer-initiated order. */
+/** Schema for a customer-initiated order (PICKUP or DELIVERY). */
 export const customerOrderSchema = z.object({
+  /** Order fulfilment type. Defaults to PICKUP. DELIVERY is reserved for Phase 5+. */
+  order_type: z.enum(["PICKUP", "DELIVERY"]).default("PICKUP"),
   items: z.array(orderItemSchema).min(1),
   voucher_id: z.string().uuid().optional(),
   pickup_time: z.string().datetime().optional(),
   note: z.string().max(500).optional(),
+  /** Delivery address — required when order_type = DELIVERY (enforced in route handler). Phase 5+. */
+  delivery_address: z.string().max(500).optional(),
 });
 
 export type OrderItem = z.infer<typeof orderItemSchema>;
 export type StaffOrderInput = z.infer<typeof staffOrderSchema>;
 export type CustomerOrderInput = z.infer<typeof customerOrderSchema>;
+

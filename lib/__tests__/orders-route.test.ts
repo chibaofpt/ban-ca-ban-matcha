@@ -40,11 +40,12 @@ vi.mock("@/lib/prisma", () => ({
     $transaction: vi.fn(),
     menuItem: { findUnique: vi.fn() },
     addonOption: { findUnique: vi.fn() },
+    order: { findUnique: vi.fn() },
   },
 }));
 
 // Import AFTER mocks
-import { POST } from "@/app/api/orders/route";
+import { POST, GET } from "@/app/api/orders/route";
 import { prisma } from "@/lib/prisma";
 import {
   resolveOrderItemPrice,
@@ -78,6 +79,7 @@ const V_PROD    = "550e8400-e29b-41d4-a716-446655440018";
 const OTHER_USER = "550e8400-e29b-41d4-a716-446655440099";
 
 const validPayload = {
+  order_type: "PICKUP",
   items: [
     {
       menu_item_id: ITEM_ID,
@@ -106,9 +108,12 @@ const customerSession = { id: USER_ID, role: "CUSTOMER" };
 
 const createdOrder = {
   id: "order-111",
+  order_code: "BCBM-123456",
+  order_type: "PICKUP",
   status: "PENDING",
   total_vnd: 69000,
   pickup_time: null,
+  auto_cancel_at: new Date(),
 };
 
 function setupTx(overrides: {
@@ -131,6 +136,10 @@ function setupTx(overrides: {
   (prisma.voucher as any) = {
     findUnique: mockVoucherFindUnique,
     update: mockVoucherUpdate,
+  };
+  (prisma.order as any) = {
+    findUnique: vi.fn().mockResolvedValue(null),
+    create: mockOrderCreate,
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -162,6 +171,12 @@ function setupTx(overrides: {
 describe("POST /api/orders", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    
+    // Mock env vars for VietQR
+    process.env.BANK_ID = "tcb";
+    process.env.BANK_ACCOUNT = "13020283869";
+    process.env.BANK_ACCOUNT_NAME = "HO MY TU UYEN";
+
     mockGetSession.mockResolvedValue(customerSession);
     // Restore pricing mocks cleared by clearAllMocks
     vi.mocked(buildPricingContext).mockResolvedValue({
@@ -329,7 +344,7 @@ describe("POST /api/orders", () => {
     );
   });
 
-  it("marks voucher REDEEMED with ONLINE channel after order", async () => {
+  it("marks voucher RESERVED after order", async () => {
     const voucher = {
       id: V_MARK,
       user_id: USER_ID,
@@ -346,9 +361,7 @@ describe("POST /api/orders", () => {
       expect.objectContaining({
         where: { id: V_MARK },
         data: expect.objectContaining({
-          status: "REDEEMED",
-          used_channel: "ONLINE",
-          redeemed_by: USER_ID,
+          status: "RESERVED",
         }),
       })
     );
@@ -448,6 +461,53 @@ describe("POST /api/orders", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (prisma.$transaction as any).mockRejectedValue(new Error("connection timeout"));
     const res = await POST(makeReq(validPayload));
+    expect(res.status).toBe(500);
+    expect((await res.json()).code).toBe("INTERNAL_ERROR");
+  });
+});
+
+describe("GET /api/orders", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetSession.mockResolvedValue(customerSession);
+  });
+
+  function makeGetReq(): NextRequest {
+    return new NextRequest("http://localhost/api/orders", {
+      method: "GET",
+    });
+  }
+
+  it("returns 401 when no session", async () => {
+    mockGetSession.mockResolvedValue(null);
+    const res = await GET(makeGetReq());
+    expect(res.status).toBe(401);
+    expect((await res.json()).code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns customer orders ordered by created_at desc", async () => {
+    const mockOrders = [
+      { id: "o1", user_id: USER_ID, created_at: "2026-05-01" },
+      { id: "o2", user_id: USER_ID, created_at: "2026-05-02" },
+    ];
+    (prisma.order.findMany as any) = vi.fn().mockResolvedValue(mockOrders);
+
+    const res = await GET(makeGetReq());
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.data).toEqual(mockOrders);
+
+    expect(prisma.order.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { user_id: USER_ID },
+        orderBy: { created_at: "desc" },
+      })
+    );
+  });
+
+  it("returns 500 on database error", async () => {
+    (prisma.order.findMany as any) = vi.fn().mockRejectedValue(new Error("DB timeout"));
+    const res = await GET(makeGetReq());
     expect(res.status).toBe(500);
     expect((await res.json()).code).toBe("INTERNAL_ERROR");
   });

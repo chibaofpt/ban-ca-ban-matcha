@@ -73,6 +73,7 @@
 - Server always re-fetches prices from DB — never trust client-sent prices
 - `points_log` rows are immutable — reversal = insert new negative-delta row
 - `"use client"` only when hooks or browser events are needed
+- No `window.confirm`. Always use a custom React modal (`ConfirmModal`) for user confirmations.
 - No hardcoded secrets — always `process.env`, add new vars to `.env.local.example`
 - Every exported function needs a one-line JSDoc
 - Every page must export `metadata`. Dynamic pages use `generateMetadata`
@@ -158,11 +159,14 @@
 - On price mismatch at order submit: reject entire order with `PRICE_CHANGED` error. Response: `{ error: string, code: "PRICE_CHANGED", details: { conflicts: [...] } }`.
 
 ### Orders
+- `OrderType`: `COUNTER`, `PICKUP`, `DELIVERY`.
+- Customer orders (`PICKUP`/`DELIVERY`): Created as `PENDING`. Generates an `order_code` (e.g. BCBM-A3X7K2) and VietQR payment URL.
+- Auto-cancel: `PENDING` customer orders have an `auto_cancel_at` deadline (+20 mins). Checked lazily on read and actively via Vercel Cron.
+- Workflow: `PENDING` → `ADMIN_CONFIRMED` (Admin confirms payment) → `STAFF_DONE` (Staff prepares) → `COMPLETED` (Customer receives).
+- Staff counter orders (`COUNTER`): Created as `COMPLETED` immediately. No `order_code` or `auto_cancel_at`.
 - All order creation: validate + re-fetch all prices from DB inside `prisma.$transaction()`
 - For all items: `size` is required — server validates `base_price_vnd IS NOT NULL` for that size
-- Customer order → default `PENDING`; staff counter order → `COMPLETED` immediately
-- Points earned in same transaction as status → `COMPLETED`
-- Points = `floor(total_vnd / 10000)`, integers only, earned when status → COMPLETED
+- Points earned in same transaction as status → `COMPLETED`. Points = `floor(total_vnd / 10000)`, integers only.
 - Price snapshot: computed final price → `order_items.unit_price_vnd` at order creation. Never join back to current prices.
 
 ### Anonymous Orders
@@ -172,8 +176,13 @@
 - Min 2 chars to search, max 10 results, sorted by created_at DESC
 
 ### Vouchers & Points
+- 3 Voucher Types: `DISCOUNT` (order level), `PRODUCT` (item level config), `ADDON` (addon level).
+- Stacking: One order can carry ALL 3 types (PRODUCT + ADDON + DISCOUNT) simultaneously. Order of application: PRODUCT -> ADDON -> DISCOUNT.
+- Pending flow: Applied vouchers are marked as `RESERVED` when a customer order is `PENDING`. They move to `REDEEMED` when `ADMIN_CONFIRMED`, or revert to `ACTIVE` if the order is `CANCELLED`.
+- PRODUCT Vouchers: Snapshot exact config (item, size, powder, addons). `covered_price_vnd` is fixed. If actual price < covered, surplus is refunded as points: `floor(surplus / 10000)`.
+- ADDON Vouchers: Apply to the first item containing the target `addon_option_id`. Does NOT apply to Extra Matcha (dynamic price).
+- Voucher Refund: Automatically refunds 100% points if the target item is soft-deleted (`is_available = false`). Users cannot refund manually. Status becomes `REFUNDED`.
 - Voucher expiry: lazy check at scan/apply time — no background cron
-- One order can carry both a PRODUCT voucher (line level) and a DISCOUNT voucher (order level)
 - Voucher fields copied from package at creation — package edits never affect issued vouchers
 - Manual points: ADMIN only, max 100/action, `performed_by` = admin user id
 - Reversal: insert new row — negative delta, `reason = "reversed_by_admin"`, `reversed_log_id` = original row id

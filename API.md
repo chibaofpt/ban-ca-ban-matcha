@@ -114,7 +114,8 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 | `/api/profile` | GET | Own profile info |
 | `/api/profile/points` | GET | Balance + last 20 log entries |
 | `/api/profile/vouchers` | GET | Own ACTIVE vouchers |
-| `/api/profile/vouchers/redeem` | POST | Spend points on a voucher package |
+| `/api/profile/vouchers/exchange` | POST | Spend points on a voucher package to receive a Voucher |
+| `/api/profile/vouchers/refund` | POST | Auto-refund points if the voucher's target item is no longer available |
 
 ### Staff — STAFF or ADMIN
 
@@ -133,6 +134,7 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 |---|---|---|
 | `/api/admin/points/add` | POST | Manually add points (max 100) |
 | `/api/admin/orders/[id]/status` | PATCH | Update order status |
+| `/api/admin/orders/[id]/confirm-payment` | PATCH | Confirm VietQR payment for PENDING order |
 | `/api/admin/menu` | GET | All items including unavailable |
 | `/api/admin/menu` | POST | Create menu item |
 | `/api/admin/menu/[id]` | PUT | Update menu item |
@@ -321,6 +323,7 @@ Same shape as `GET /api/menu` but:
 ### `POST /api/orders` — Customer
 ```ts
 {
+  order_type: "PICKUP" | "DELIVERY"
   items: {
     menu_item_id: string
     quantity: number
@@ -338,6 +341,23 @@ Same shape as `GET /api/menu` but:
   voucher_id?: string
   pickup_time?: string
   note?: string
+  delivery_address?: string
+}
+
+// Response
+{
+  data: {
+    id: string
+    order_code: string
+    status: "PENDING"
+    order_type: "PICKUP" | "DELIVERY"
+    subtotal_vnd: number
+    discount_vnd: number
+    total_vnd: number
+    pickup_time: string | null
+    auto_cancel_at: string
+    payment_qr_url: string
+  }
 }
 ```
 
@@ -360,7 +380,8 @@ Same shape as `GET /api/menu` but:
     selected_milk_type_id?: string
     client_price_vnd: number          // REQUIRED
   }[]
-  voucher_id?: string
+  discount_voucher_id?: string
+  addon_voucher_id?: string
 }
 ```
 
@@ -429,7 +450,7 @@ Same shape as `GET /api/menu` but:
 
 ### `PATCH /api/admin/orders/[id]/status`
 ```ts
-{ status: "PENDING" | "CONFIRMED" | "READY" | "COMPLETED" | "CANCELLED" }
+{ status: "PENDING" | "ADMIN_CONFIRMED" | "STAFF_DONE" | "COMPLETED" | "CANCELLED" }
 ```
 
 ---
@@ -465,8 +486,11 @@ Same shape as `GET /api/menu` but:
   - Display as "Khách vãng lai" in all order list views
 
 ### Vouchers
-- PRODUCT online: `order_item` with `unit_price_vnd = 0`. Addons still charged.
-- PRODUCT/DISCOUNT offline: mark REDEEMED + `used_channel = OFFLINE`. No order created.
+- Stacking: Orders can use 1 PRODUCT (line item), 1 ADDON (order level), and 1 DISCOUNT (order level) voucher simultaneously. Order of application: PRODUCT -> ADDON -> DISCOUNT.
+- PRODUCT: Snapshot exact config. Server subtracts up to `covered_price_vnd`. If actual price < covered, surplus is refunded as points: `floor(surplus / 10000)`.
+- ADDON: Applies to the first item containing the target `addon_option_id`. Does NOT apply to Extra Matcha.
+- DISCOUNT: Applies % or fixed to the remaining subtotal.
+- Offline: mark REDEEMED + `used_channel = OFFLINE`. No order created.
 
 ### Points
 - Earn: `floor(total_vnd / 10000)` on COMPLETED.

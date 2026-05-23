@@ -5,6 +5,51 @@ import type { OrderStatus, Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Validates a status transition given the caller's role.
+ * Returns an error string if invalid, null if allowed.
+ */
+function validateTransition(
+  currentStatus: OrderStatus,
+  newStatus: OrderStatus,
+  role: "STAFF" | "ADMIN"
+): string | null {
+  // Terminal states: no transitions allowed
+  if (currentStatus === "COMPLETED" || currentStatus === "CANCELLED") {
+    return `Order is already ${currentStatus} — no further transitions allowed`;
+  }
+
+  switch (newStatus) {
+    case "ADMIN_CONFIRMED":
+      // Only admin can confirm payment, and only from PENDING
+      if (role !== "ADMIN") return "Only ADMIN can confirm payment";
+      if (currentStatus !== "PENDING") return "Can only confirm payment for PENDING orders";
+      return null;
+
+    case "STAFF_DONE":
+      // Staff or admin can mark done, but only from ADMIN_CONFIRMED
+      if (currentStatus !== "ADMIN_CONFIRMED") {
+        return "Order must be ADMIN_CONFIRMED before marking as STAFF_DONE";
+      }
+      return null;
+
+    case "COMPLETED":
+      // Staff or admin can complete, but only from STAFF_DONE
+      if (currentStatus !== "STAFF_DONE") {
+        return "Order must be STAFF_DONE before completing — cannot skip steps";
+      }
+      return null;
+
+    case "CANCELLED":
+      // Only admin can cancel
+      if (role !== "ADMIN") return "Only ADMIN can cancel orders";
+      return null;
+
+    default:
+      return `Invalid target status: ${newStatus}`;
+  }
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session || !["STAFF", "ADMIN"].includes(session.role)) {
@@ -14,7 +59,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const body = await req.json();
-    const { status } = body;
+    const { status } = body as { status: OrderStatus };
 
     if (!status) {
       return NextResponse.json({ error: "Status is required", code: "VALIDATION_ERROR" }, { status: 400 });
@@ -22,32 +67,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     // Wrap the entire update logic in a transaction
     const updatedOrder = await prisma.$transaction(async (tx) => {
-      const order = await tx.order.findUnique({ where: { id } });
-      if (!order) {
-        throw new Error("NOT_FOUND");
-      }
+      const order = await tx.order.findUnique({
+        where: { id },
+        include: { voucher: { select: { id: true, status: true } } },
+      });
+      if (!order) throw new Error("NOT_FOUND");
 
-      // 1. Ownership check: Staff can only modify their own orders OR unhandled pending orders
-      if (
-        session.role === "STAFF" &&
-        order.handled_by !== null &&
-        order.handled_by !== session.id
-      ) {
-        throw new Error("FORBIDDEN");
-      }
+      // Validate transition rules
+      const transitionError = validateTransition(order.status, status, session.role as "STAFF" | "ADMIN");
+      if (transitionError) throw Object.assign(new Error(transitionError), { code: "INVALID_TRANSITION" });
 
-      // 2. Prepare update data
-      const dataToUpdate: Prisma.OrderUncheckedUpdateInput = { status: status as OrderStatus };
-      
-      // Auto-assign to current staff if not yet assigned
+      // Prepare update data
+      const dataToUpdate: Prisma.OrderUncheckedUpdateInput = { status };
+
+      // Auto-assign to current staff if not yet assigned (counter orders)
       if (order.handled_by === null && session.role === "STAFF") {
         dataToUpdate.handled_by = session.id;
       }
 
-      // 3. Award points if status transitions to COMPLETED and points haven't been awarded yet
-      if (status === "COMPLETED" && order.status !== "COMPLETED" && order.points_earned === null) {
+      // Award points when → COMPLETED
+      if (status === "COMPLETED" && order.points_earned === null) {
         if (order.user_id) {
-          // Non-anonymous order — award points normally
           const points_earned = Math.floor(order.total_vnd / 10000);
           dataToUpdate.points_earned = points_earned;
 
@@ -56,7 +96,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               where: { id: order.user_id },
               data: { points_balance: { increment: points_earned } },
             });
-
             await tx.pointsLog.create({
               data: {
                 user_id: order.user_id,
@@ -68,34 +107,50 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             });
           }
         } else {
-          // Anonymous order — mark as complete with zero points, no user to update
+          // Anonymous order — zero points
           dataToUpdate.points_earned = 0;
         }
       }
 
-      // 4. Update the order
+      // When cancelling: restore voucher to ACTIVE if it was RESERVED or REDEEMED
+      if (status === "CANCELLED" && order.voucher) {
+        if (order.voucher.status === "RESERVED" || order.voucher.status === "REDEEMED") {
+          await tx.voucher.update({
+            where: { id: order.voucher.id },
+            data: {
+              status: "ACTIVE",
+              redeemed_at: null,
+              redeemed_by: null,
+              used_channel: null,
+            },
+          });
+        }
+      }
+
       const result = await tx.order.update({
         where: { id },
         data: dataToUpdate,
         include: {
           user: { select: { name: true, phone_number: true } },
           handler: { select: { name: true } },
-        }
+        },
       });
 
       return result;
-    });
+    }, { maxWait: 5000, timeout: 10000 });
 
     return NextResponse.json({ data: updatedOrder });
 
-  } catch (err: any) {
-    if (err.message === "NOT_FOUND") {
-      return NextResponse.json({ error: "Order not found", code: "NOT_FOUND" }, { status: 404 });
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      if (err.message === "NOT_FOUND") {
+        return NextResponse.json({ error: "Order not found", code: "NOT_FOUND" }, { status: 404 });
+      }
+      const code = (err as Error & { code?: string }).code;
+      if (code === "INVALID_TRANSITION") {
+        return NextResponse.json({ error: err.message, code: "INVALID_TRANSITION" }, { status: 400 });
+      }
     }
-    if (err.message === "FORBIDDEN") {
-      return NextResponse.json({ error: "Order is being handled by someone else", code: "FORBIDDEN" }, { status: 403 });
-    }
-
     console.error("[PATCH /api/staff/orders/[id]]", err);
     return NextResponse.json({ error: "Internal server error", code: "INTERNAL_ERROR" }, { status: 500 });
   }

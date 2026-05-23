@@ -1,7 +1,12 @@
 import { apiClient } from "@/src/lib/api/client";
 import type { CartItem } from "@/src/lib/types/cart";
+import type { CustomerOrderDetail, CreateOrderResult } from "@/src/lib/types/order";
+
+// Re-export for consumers
+export type { CreateOrderResult } from "@/src/lib/types/order";
 
 export interface CreateOrderPayload {
+  order_type: "PICKUP" | "DELIVERY";
   items: {
     menu_item_id: string;
     quantity: number;
@@ -19,13 +24,7 @@ export interface CreateOrderPayload {
   voucher_id?: string;
   pickup_time?: string;
   note?: string;
-}
-
-export interface CreateOrderResult {
-  id: string;
-  status: string;
-  total_vnd: number;
-  pickup_time: string | null;
+  delivery_address?: string;
 }
 
 export interface PriceConflict {
@@ -65,26 +64,33 @@ function buildPayloadItems(cart: CartItem[]): CreateOrderPayload["items"] {
 }
 
 /**
- * Submits the customer's cart as a new order to POST /api/orders.
+ * Submits the customer's cart as a new PICKUP order to POST /api/orders.
  * Throws PriceChangedError on 409 PRICE_CHANGED.
  * Throws Error with message on other failures.
  */
 export async function createOrder(
   cart: CartItem[],
-  options?: { voucherId?: string; pickupTime?: string; note?: string }
+  options?: {
+    orderType?: "PICKUP" | "DELIVERY";
+    voucherId?: string;
+    pickupTime?: string;
+    note?: string;
+    deliveryAddress?: string;
+  }
 ): Promise<CreateOrderResult> {
   const payload: CreateOrderPayload = {
+    order_type: options?.orderType ?? "PICKUP",
     items: buildPayloadItems(cart),
     ...(options?.voucherId ? { voucher_id: options.voucherId } : {}),
     ...(options?.pickupTime ? { pickup_time: options.pickupTime } : {}),
     ...(options?.note ? { note: options.note } : {}),
+    ...(options?.deliveryAddress ? { delivery_address: options.deliveryAddress } : {}),
   };
 
   try {
     const res = await apiClient.post<{ data: CreateOrderResult }>("/api/orders", payload);
     return res.data.data;
   } catch (err: unknown) {
-    // Check for axios error with response
     if (
       err &&
       typeof err === "object" &&
@@ -97,9 +103,17 @@ export async function createOrder(
       if (response.status === 409 && response.data.code === "PRICE_CHANGED") {
         throw new PriceChangedError(response.data.details?.conflicts ?? []);
       }
-      // Other API errors — re-throw with server message
       throw new Error(response.data.error ?? "Đặt hàng thất bại");
     }
     throw new Error("Không thể kết nối đến máy chủ. Vui lòng thử lại.");
   }
+}
+
+/**
+ * Fetches the current status of a customer order for real-time tracking.
+ * Calls GET /api/orders/[id].
+ */
+export async function fetchOrderDetail(id: string): Promise<CustomerOrderDetail> {
+  const res = await apiClient.get<{ data: CustomerOrderDetail }>(`/api/orders/${id}`);
+  return res.data.data;
 }

@@ -19,13 +19,14 @@ model User {
   otp_enabled      Boolean     @default(false)
   created_at       DateTime    @default(now()) @db.Timestamptz(6)
   updated_at       DateTime    @default(now()) @updatedAt @db.Timestamptz(6)
-  orders           Order[]     @relation("CustomerOrders")
-  handledOrders    Order[]     @relation("HandledOrders")
-  performedLogs    PointsLog[] @relation("StaffPerformed")
-  pointsLogs       PointsLog[] @relation("UserPoints")
-  sessions         Session[]
-  redeemedVouchers Voucher[]   @relation("StaffRedeemed")
-  vouchers         Voucher[]   @relation("UserVouchers")
+  orders             Order[]     @relation("CustomerOrders")
+  handledOrders      Order[]     @relation("HandledOrders")
+  confirmedPayments  Order[]     @relation("PaymentConfirmer")
+  performedLogs      PointsLog[] @relation("StaffPerformed")
+  pointsLogs         PointsLog[] @relation("UserPoints")
+  sessions           Session[]
+  redeemedVouchers   Voucher[]   @relation("StaffRedeemed")
+  vouchers           Voucher[]   @relation("UserVouchers")
 
   @@map("users")
 }
@@ -57,45 +58,63 @@ model OtpAttempt {
 }
 
 model VoucherPackage {
-  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name               String
-  description        String?
-  voucher_type       VoucherType
-  points_cost        Int
-  discount_type      DiscountType?
-  discount_value     Int?
-  menu_item_id       String?       @db.Uuid
-  is_active          Boolean       @default(true)
-  expires_after_days Int?
-  created_at         DateTime      @default(now()) @db.Timestamptz(6)
-  menuItem           MenuItem?     @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  vouchers           Voucher[]
+  id                         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                       String
+  description                String?
+  voucher_type               VoucherType
+  points_cost                Int
+  discount_type              DiscountType?
+  discount_value             Int?
+  menu_item_id               String?       @db.Uuid
+  size                       Size?
+  matcha_powder_id           String?       @db.Uuid
+  milk_type_id               String?       @db.Uuid
+  included_addon_option_ids String[]
+  addon_option_id            String?       @db.Uuid
+  covered_price_vnd          Int?
+  is_active                  Boolean       @default(true)
+  expires_after_days         Int?
+  created_at                 DateTime      @default(now()) @db.Timestamptz(6)
+  menuItem                   MenuItem?     @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  matchaPowder               MatchaPowder? @relation(fields: [matcha_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  milkType                   MilkType?     @relation(fields: [milk_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  addonOption                AddonOption?  @relation(fields: [addon_option_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vouchers                   Voucher[]
 
   @@map("voucher_packages")
 }
 
 model Voucher {
-  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id        String         @db.Uuid
-  package_id     String         @db.Uuid
-  qr_token       String         @unique @default(dbgenerated("(gen_random_uuid())::text"))
-  voucher_type   VoucherType
-  discount_type  DiscountType?
-  discount_value Int?
-  menu_item_id   String?        @db.Uuid
-  status         VoucherStatus  @default(ACTIVE)
-  used_channel   UsedChannel?
-  expires_at     DateTime?      @db.Timestamptz(6)
-  redeemed_at    DateTime?      @db.Timestamptz(6)
-  redeemed_by    String?        @db.Uuid
-  created_at     DateTime       @default(now()) @db.Timestamptz(6)
-  orderItems     OrderItem[]
-  orders         Order[]
-  pointsLogs     PointsLog[]
-  menuItem       MenuItem?      @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  package        VoucherPackage @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  staff          User?          @relation("StaffRedeemed", fields: [redeemed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  user           User           @relation("UserVouchers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                    String         @db.Uuid
+  package_id                 String         @db.Uuid
+  qr_token                   String         @unique @default(dbgenerated("(gen_random_uuid())::text"))
+  voucher_type               VoucherType
+  discount_type              DiscountType?
+  discount_value             Int?
+  menu_item_id               String?        @db.Uuid
+  size                       Size?
+  matcha_powder_id           String?        @db.Uuid
+  milk_type_id               String?        @db.Uuid
+  included_addon_option_ids String[]
+  addon_option_id            String?        @db.Uuid
+  covered_price_vnd          Int?
+  status                     VoucherStatus  @default(ACTIVE)
+  used_channel               UsedChannel?
+  expires_at                 DateTime?      @db.Timestamptz(6)
+  redeemed_at                DateTime?      @db.Timestamptz(6)
+  redeemed_by                String?        @db.Uuid
+  created_at                 DateTime       @default(now()) @db.Timestamptz(6)
+  orderItems                 OrderItem[]
+  orders                     Order[]
+  pointsLogs                 PointsLog[]
+  menuItem                   MenuItem?      @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  matchaPowder               MatchaPowder?  @relation(fields: [matcha_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  milkType                   MilkType?      @relation(fields: [milk_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  addonOption                AddonOption?   @relation(fields: [addon_option_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  package                    VoucherPackage @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff                      User?          @relation("StaffRedeemed", fields: [redeemed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user                       User           @relation("UserVouchers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([qr_token], map: "idx_vouchers_qr_token")
   @@index([status], map: "idx_vouchers_status")
@@ -193,6 +212,8 @@ model AddonOption {
   gram_value      Decimal?         @db.Decimal
   group           AddonGroup       @relation(fields: [addon_group_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   orderItemAddons OrderItemAddon[]
+  voucherPackages VoucherPackage[]
+  vouchers        Voucher[]
 
   @@map("addon_options")
 }
@@ -211,28 +232,45 @@ model MenuItemSize {
 }
 
 model Order {
-  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// NULL = anonymous walk-in order (no loyalty tracking). Non-null = registered or ghost customer.
-  user_id       String?     @db.Uuid
-  voucher_id    String?     @db.Uuid
-  status        OrderStatus @default(PENDING)
-  subtotal_vnd  Int
-  discount_vnd  Int         @default(0)
-  total_vnd     Int
-  points_earned Int?
-  pickup_time   DateTime?   @db.Timestamptz(6)
-  note          String?
-  created_at    DateTime    @default(now()) @db.Timestamptz(6)
-  items         OrderItem[]
-  user          User?       @relation("CustomerOrders", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  handled_by    String?     @db.Uuid
-  handler       User?       @relation("HandledOrders", fields: [handled_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  voucher       Voucher?    @relation(fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  pointsLogs    PointsLog[]
+  user_id              String?     @db.Uuid
+  voucher_id           String?     @db.Uuid
+  status               OrderStatus @default(PENDING)
+  /// COUNTER = staff-created at register; PICKUP = customer self-order pick-up; DELIVERY = future phase
+  order_type           OrderType   @default(COUNTER)
+  /// Human-readable order code for bank transfer reference. Format: BCBM-XXXXXX. NULL for COUNTER orders.
+  order_code           String?     @unique
+  subtotal_vnd         Int
+  discount_vnd         Int         @default(0)
+  total_vnd            Int
+  points_earned        Int?
+  pickup_time          DateTime?   @db.Timestamptz(6)
+  note                 String?
+  /// Timestamp when admin confirmed customer bank transfer. NULL until confirmed.
+  payment_confirmed_at DateTime?   @db.Timestamptz(6)
+  /// Admin user who confirmed the payment.
+  payment_confirmed_by String?     @db.Uuid
+  /// Auto-cancel deadline for PENDING PICKUP/DELIVERY orders. NULL for COUNTER orders.
+  auto_cancel_at       DateTime?   @db.Timestamptz(6)
+  /// Delivery address — Phase 5+. NULL for PICKUP orders.
+  delivery_address     String?
+  /// Delivery shipping fee in VND — Phase 5+. Always 0 for PICKUP/COUNTER.
+  shipping_fee_vnd     Int         @default(0)
+  created_at           DateTime    @default(now()) @db.Timestamptz(6)
+  items                OrderItem[]
+  user                 User?       @relation("CustomerOrders", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  handled_by           String?     @db.Uuid
+  handler              User?       @relation("HandledOrders", fields: [handled_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  paymentConfirmer     User?       @relation("PaymentConfirmer", fields: [payment_confirmed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  voucher              Voucher?    @relation(fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pointsLogs           PointsLog[]
 
   @@index([created_at(sort: Desc)], map: "idx_orders_created_at")
   @@index([status], map: "idx_orders_status")
   @@index([user_id], map: "idx_orders_user_id")
+  @@index([order_type], map: "idx_orders_order_type")
+  @@index([auto_cancel_at], map: "idx_orders_auto_cancel_at")
   @@map("orders")
 }
 
@@ -296,6 +334,8 @@ model MatchaPowder {
   matchaPowderItems       MenuItem[]            @relation("MenuItem_matchaPowder")
   orderItems              OrderItem[]
   powderSizeConfigs       PowderSizeConfig[]
+  voucherPackages         VoucherPackage[]
+  vouchers                Voucher[]
 
   @@map("matcha_powder")
 }
@@ -309,6 +349,8 @@ model MilkType {
   display_order Int         @default(0)
   created_at    DateTime    @default(now()) @db.Timestamptz(6)
   orderItems    OrderItem[]
+  voucherPackages VoucherPackage[]
+  vouchers        Voucher[]
 
   @@map("milk_type")
 }
@@ -353,6 +395,7 @@ enum Role {
 enum VoucherType {
   DISCOUNT
   PRODUCT
+  ADDON
 }
 
 enum DiscountType {
@@ -362,8 +405,11 @@ enum DiscountType {
 
 enum VoucherStatus {
   ACTIVE
+  /// Held for a pending PICKUP/DELIVERY order. Becomes REDEEMED on admin payment confirm, or ACTIVE on cancel/timeout.
+  RESERVED
   REDEEMED
   EXPIRED
+  REFUNDED
 }
 
 enum UsedChannel {
@@ -372,11 +418,25 @@ enum UsedChannel {
 }
 
 enum OrderStatus {
+  /// Customer submitted order; awaiting admin payment confirmation. PICKUP/DELIVERY only.
   PENDING
-  CONFIRMED
-  READY
+  /// Admin confirmed bank transfer; order passed to staff queue.
+  ADMIN_CONFIRMED
+  /// Staff finished preparing the order; waiting for customer pick-up.
+  STAFF_DONE
+  /// Order fully completed and handed to customer. Points awarded at this transition.
   COMPLETED
+  /// Order cancelled (timeout, admin action, or customer request). Voucher restored if RESERVED.
   CANCELLED
+}
+
+enum OrderType {
+  /// Staff-created order at the register. Completes immediately.
+  COUNTER
+  /// Customer self-order for in-store pick-up.
+  PICKUP
+  /// Customer self-order for delivery — Phase 5+.
+  DELIVERY
 }
 
 enum AddonType {

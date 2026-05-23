@@ -22,6 +22,7 @@
 | **Ice option pricing** | Deferred | Ice options are free columns on `order_items`. If any option ever needs a charge, it must move to the addon system. Confirm with business before implementing. |
 | **`default_size_config` audit log** | Deferred | No audit trail when admin edits M/L/XL config. If needed: add `updated_at` + `updated_by` columns. Changes apply globally and immediately — admin is responsible. |
 | **`PRICE_CHANGED` mid-session edge case** | Not a concern | Admin updates prices at night when shop is closed. No real-time mitigation needed beyond reject + conflict response. |
+| **Voucher Gacha / Gamification** | Phase 5+ | Current `VoucherPackage` (template) + `Voucher` (instance) schema fully supports this. Do NOT modify order/voucher logic. Add `GachaPool` table + `POST /api/gacha/play` route to randomly pick a package and mint a voucher. Order logic remains 100% unaffected. |
 
 ---
 

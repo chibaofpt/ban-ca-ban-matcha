@@ -25,11 +25,12 @@
 | Enum | Values |
 |---|---|
 | `Role` | `CUSTOMER`, `STAFF`, `ADMIN` |
-| `VoucherType` | `DISCOUNT`, `PRODUCT` |
+| `VoucherType` | `DISCOUNT`, `PRODUCT`, `ADDON` |
 | `DiscountType` | `PERCENT`, `FIXED` |
-| `VoucherStatus` | `ACTIVE`, `REDEEMED`, `EXPIRED` |
+| `VoucherStatus` | `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, `REFUNDED` |
 | `UsedChannel` | `ONLINE`, `OFFLINE` |
-| `OrderStatus` | `PENDING`, `CONFIRMED`, `READY`, `COMPLETED`, `CANCELLED` |
+| `OrderStatus` | `PENDING`, `ADMIN_CONFIRMED`, `STAFF_DONE`, `COMPLETED`, `CANCELLED` |
+| `OrderType` | `COUNTER`, `PICKUP`, `DELIVERY` |
 | `AddonType` | `SELECTOR`, `TOGGLE`, `QUANTITY` |
 | `SweetnessLevel` | `NONE`, `QUARTER`, `HALF`, `THREE_QUARTER`, `FULL` |
 | `Size` | `M`, `L`, `XL` |
@@ -238,11 +239,17 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `handled_by` uuid FK nullable → users — Staff who created or accepted this order. NULL if created by customer and not yet accepted.
 - `voucher_id` uuid FK nullable → vouchers — DISCOUNT only, max 1 per order
 - `status` OrderStatus — customer default `PENDING`; staff = `COMPLETED` immediately
+- `order_type` OrderType — default `PICKUP`
+- `order_code` string UK nullable — e.g. "BCBM-A3X7K2". Null for COUNTER orders.
 - `subtotal_vnd` int
 - `discount_vnd` int — default 0. If > subtotal → total_vnd = 0, no error.
 - `total_vnd` int — subtotal_vnd − discount_vnd (min 0)
-- `points_earned` int — `floor(total_vnd / 10000)`, set when status → COMPLETED
-- `pickup_time` datetime nullable — customer orders only
+- `points_earned` int nullable — `floor(total_vnd / 10000)`, set when status → COMPLETED
+- `pickup_time` timestamp nullable — customer orders only
+- `auto_cancel_at` timestamp nullable — customer orders only (+20 mins from creation)
+- `payment_confirmed_at` timestamp nullable
+- `payment_confirmed_by` uuid FK nullable → users
+- `delivery_address` string nullable
 - `note` string nullable
 - `created_at` timestamp
 
@@ -289,6 +296,12 @@ Extra matcha: `unit_price_vnd` = `gram_value × selected_powder.price_per_gram` 
 - `discount_type` DiscountType nullable
 - `discount_value` int nullable
 - `menu_item_id` uuid FK nullable → menu_items — PRODUCT type only
+- `size` Size nullable — PRODUCT type only
+- `matcha_powder_id` uuid FK nullable → matcha_powder — PRODUCT type only
+- `milk_type_id` uuid FK nullable → milk_type — PRODUCT type only
+- `included_addon_option_ids` string[] — array of uuid (or jsonb) for PRODUCT type only
+- `addon_option_id` uuid FK nullable → addon_options — ADDON type only
+- `covered_price_vnd` int nullable — snapshot price for PRODUCT and ADDON
 - `is_active` bool — default true
 - `expires_after_days` int nullable
 - `created_at` timestamp
@@ -304,6 +317,12 @@ Extra matcha: `unit_price_vnd` = `gram_value × selected_powder.price_per_gram` 
 - `discount_type` DiscountType nullable — copied from package
 - `discount_value` int nullable — copied from package
 - `menu_item_id` uuid FK nullable → menu_items — copied from package
+- `size` Size nullable — copied from package
+- `matcha_powder_id` uuid FK nullable → matcha_powder — copied from package
+- `milk_type_id` uuid FK nullable → milk_type — copied from package
+- `included_addon_option_ids` string[] — copied from package
+- `addon_option_id` uuid FK nullable → addon_options — copied from package
+- `covered_price_vnd` int nullable — copied from package
 - `status` VoucherStatus — default `ACTIVE`
 - `used_channel` UsedChannel nullable
 - `expires_at` timestamp nullable
@@ -333,7 +352,9 @@ Immutable. Reversal = insert new negative-delta row.
 |---|---|
 | `order_complete` | Order status → COMPLETED |
 | `manual_admin_adjustment` | Admin manually adds/deducts points |
-| `voucher_redemption` | Customer spends points on voucher package |
+| `voucher_purchase` | Customer spends points to buy a voucher package |
+| `voucher_surplus` | Customer gets points back because actual item price was lower than covered_price_vnd |
+| `voucher_refund` | Customer gets full points back because item was soft-deleted |
 | `reversed_by_admin` | Admin reverses a manual adjustment |
 
 ---
