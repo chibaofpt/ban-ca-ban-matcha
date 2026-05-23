@@ -16,6 +16,14 @@ const formatDateTime = (iso: string): string => {
   return `${pad(d.getHours())}:${pad(d.getMinutes())} • ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 };
 
+/** Chuyển order_type sang nhãn tiếng Việt thân thiện cho UI. */
+const formatOrderType = (type: string): string => {
+  if (type === "COUNTER") return "Tại quán";
+  if (type === "PICKUP") return "Đặt trước";
+  if (type === "DELIVERY") return "Giao hàng";
+  return type;
+};
+
 export default function StaffOrdersListPage() {
   const [activeTab, setActiveTab] = useState<OrderTabKey>("counter");
   const [orders, setOrders] = useState<OrderRes[]>([]);
@@ -129,7 +137,30 @@ export default function StaffOrdersListPage() {
       {loading && orders.length === 0 ? (
         <div className="space-y-3 mt-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-32 bg-secondary/40 rounded-2xl animate-pulse" />
+            <div key={i} className="rounded-2xl border bg-card shadow-sm overflow-hidden p-4 space-y-3 animate-pulse">
+              <div className="flex justify-between items-start">
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <div className="h-4 w-28 bg-secondary/60 rounded" />
+                    <div className="h-4 w-16 bg-secondary/40 rounded-full" />
+                    <div className="h-4 w-14 bg-secondary/40 rounded-full" />
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="h-3 w-24 bg-secondary/40 rounded" />
+                    <div className="h-3 w-20 bg-secondary/40 rounded" />
+                  </div>
+                </div>
+                <div className="space-y-2 items-end flex flex-col">
+                  <div className="h-3 w-28 bg-secondary/40 rounded" />
+                  <div className="h-8 w-20 bg-primary/10 rounded-lg" />
+                </div>
+              </div>
+              <div className="h-9 bg-secondary/30 rounded-xl" />
+              <div className="flex justify-between border-t border-border pt-3">
+                <div className="h-3 w-16 bg-secondary/40 rounded" />
+                <div className="h-5 w-20 bg-primary/10 rounded" />
+              </div>
+            </div>
           ))}
         </div>
       ) : orders.length === 0 ? (
@@ -153,11 +184,20 @@ export default function StaffOrdersListPage() {
                   <div className="flex justify-between items-start">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-foreground text-sm">
-                          {order.user?.name ?? "Khách vãng lai"}
-                        </span>
-                        <StatusBadge status={order.status} />
-                      </div>
+                          <span className="font-semibold text-foreground text-sm">
+                            {order.user?.name ?? "Khách vãng lai"}
+                          </span>
+                          <StatusBadge status={order.status} />
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                            order.order_type === "COUNTER"
+                              ? "bg-blue-100 text-blue-700"
+                              : order.order_type === "DELIVERY"
+                              ? "bg-purple-100 text-purple-700"
+                              : "bg-amber-100 text-amber-700"
+                          }`}>
+                            {formatOrderType(order.order_type)}
+                          </span>
+                        </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         <span className="inline-flex items-center gap-1">
                           <Phone size={12} />
