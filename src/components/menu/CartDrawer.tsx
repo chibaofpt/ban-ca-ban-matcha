@@ -47,7 +47,7 @@ const CartDrawer = () => {
       clearCart();
       setCartOpen(false);
       resetCheckout();
-      router.push(`/orders/${result.id}`);
+      router.push("/history");
     } catch (err) {
       if (err instanceof PriceChangedError) {
         setCheckout({ status: "price_changed", conflicts: err.conflicts });

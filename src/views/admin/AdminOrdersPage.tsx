@@ -7,10 +7,10 @@ import { fetchAdminOrders, confirmPayment, adminCancelOrder, type AdminOrderRes 
 import { apiClient } from "@/src/lib/api/client";
 import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
 import { OrderTabs, type OrderTabKey } from "@/src/components/staff/OrderTabs";
-import { StatusBadge } from "@/src/components/staff/StatusBadge";
 import { toast } from "sonner";
 import { CountdownTimer } from "@/src/components/customer/CountdownTimer";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
+import { OrderProgressBar } from "@/src/components/shared/OrderProgressBar";
 
 const formatDateTime = (iso: string): string => {
   const d = new Date(iso);
@@ -324,7 +324,8 @@ export default function AdminOrdersPage() {
         <div className="space-y-3 mt-4">
           {orders.map((order) => {
             const isOpen = !!expanded[order.id];
-            
+            const isTerminal = order.status === "COMPLETED" || order.status === "CANCELLED";
+
             return (
               <div
                 key={order.id}
@@ -335,62 +336,50 @@ export default function AdminOrdersPage() {
                 )}
               >
                 <div className="p-4 space-y-3">
+                  {/* Row 1: Mã đơn + thời gian */}
                   <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-foreground text-sm">
-                          {order.user?.name ?? "Khách vãng lai"}
-                        </span>
-                        <StatusBadge status={order.status} />
-                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                          order.order_type === "COUNTER"
-                            ? "bg-blue-100 text-blue-700"
-                            : order.order_type === "DELIVERY"
-                            ? "bg-purple-100 text-purple-700"
-                            : "bg-amber-100 text-amber-700"
-                        }`}>
-                          {formatOrderType(order.order_type)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1">
-                          <Phone size={12} />
-                          {order.user?.phone_number ?? "—"}
-                        </span>
-                        {order.order_code ? (
-                          <span className="font-mono bg-secondary/50 px-1.5 rounded font-bold">
-                            {order.order_code}
-                          </span>
-                        ) : (
-                          <span className="font-mono bg-secondary/50 px-1.5 rounded">
-                            #{order.id.slice(0, 8)}
-                          </span>
-                        )}
-                      </div>
+                    <div className="font-mono font-bold text-sm text-foreground">
+                      {order.order_code ?? `#${order.id.slice(0, 8)}`}
                     </div>
-                    <div className="text-right flex flex-col items-end">
-                      <div className="text-xs text-muted-foreground mb-1">
-                        <Clock size={12} className="inline mr-1" />
-                        {formatDateTime(order.created_at)}
-                      </div>
-                      {order.status === "PENDING" && order.auto_cancel_at ? (
-                        <div className="mt-1 flex items-center gap-1 text-[11px] bg-secondary/50 px-2 py-1 rounded-lg">
-                          <span className="text-muted-foreground">Huỷ sau:</span>
-                          <CountdownTimer targetTime={order.auto_cancel_at} className="text-[11px]" />
-                        </div>
-                      ) : (
-                        <div className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary inline-block">
-                          Staff: {order.handler?.name || "Chưa nhận"}
-                        </div>
-                      )}
+                    <div className="text-xs text-muted-foreground">
+                      <Clock size={12} className="inline mr-1" />
+                      {formatDateTime(order.created_at)}
                     </div>
                   </div>
 
+                  {/* Row 2: Tên khách + SĐT + Countdown */}
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="text-sm font-medium text-foreground">
+                        {order.user?.name ?? "Khách vãng lai"}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Phone size={11} />
+                        {order.user?.phone_number ?? "—"}
+                      </span>
+                    </div>
+                    {order.status === "PENDING" && order.auto_cancel_at && (
+                      <div className="flex items-center gap-1 text-[11px] bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded-lg text-yellow-700">
+                        <Clock size={11} />
+                        <CountdownTimer targetTime={order.auto_cancel_at} className="text-[11px]" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Progress Bar — chỉ hiện cho non-terminal states */}
+                  {!isTerminal && (
+                    <div className="pt-1">
+                      <OrderProgressBar status={order.status} />
+                    </div>
+                  )}
+
+                  {/* Action buttons (Confirm Payment for PENDING) */}
                   {renderActionButtons(order)}
 
+                  {/* Expand toggle */}
                   <button
                     onClick={() => toggle(order.id)}
-                    className="w-full flex items-center justify-between text-sm text-foreground/80 hover:text-foreground bg-secondary/20 p-2 rounded-xl mt-2"
+                    className="w-full flex items-center justify-between text-sm text-foreground/80 hover:text-foreground bg-secondary/20 p-2 rounded-xl"
                   >
                     <span className="font-medium">
                       {order.items.reduce((s, i) => s + i.quantity, 0)} món
@@ -398,12 +387,16 @@ export default function AdminOrdersPage() {
                     {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
 
+                  {/* Expanded item list */}
                   {isOpen && (
                     <ul className="space-y-3 text-sm text-foreground/90 pt-1">
                       {order.items.map((it, idx) => (
                         <li key={idx} className="flex justify-between gap-3">
                           <div className="flex flex-col">
-                            <span className="font-semibold">{it.menuItem.name} <span className="font-normal text-muted-foreground">({it.size})</span></span>
+                            <span className="font-semibold">
+                              {it.menuItem.name}{" "}
+                              <span className="font-normal text-muted-foreground">({it.size})</span>
+                            </span>
                             <OrderItemDetails item={it} />
                           </div>
                           <span className="font-medium text-foreground shrink-0 mt-0.5">×{it.quantity}</span>
@@ -412,11 +405,36 @@ export default function AdminOrdersPage() {
                     </ul>
                   )}
 
-                  <div className="flex items-center justify-between border-t border-border pt-3">
-                    <span className="text-xs text-muted-foreground">Tổng tiền</span>
-                    <span className="font-bold text-primary text-base">
-                      {(order.total_vnd / 1000).toLocaleString("vi-VN")}K
-                    </span>
+                  {/* Footer — total */}
+                  <div className="border-t border-border pt-3">
+                    <div className="flex justify-end">
+                      <span className="font-bold text-primary text-base">
+                        {(order.total_vnd / 1000).toLocaleString("vi-VN")}K
+                      </span>
+                    </div>
+                    {/* Footer row: cancel (left) + staff name (right) OR status text */}
+                    <div className="flex items-center justify-between mt-1.5">
+                      {isTerminal ? (
+                        <span className={cn(
+                          "text-xs font-semibold",
+                          order.status === "COMPLETED" ? "text-green-600" : "text-red-500"
+                        )}>
+                          {order.status === "COMPLETED" ? "✅ Đã hoàn thành" : "❌ Đã huỷ"}
+                        </span>
+                      ) : (
+                        order.status !== "PENDING" && (
+                          <button
+                            onClick={(e) => handleCancelOrder(e, order.id)}
+                            className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline transition-colors"
+                          >
+                            Huỷ đơn
+                          </button>
+                        )
+                      )}
+                      <span className="text-[11px] text-muted-foreground ml-auto">
+                        Staff: {order.handler?.name ?? "Chưa nhận"}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>

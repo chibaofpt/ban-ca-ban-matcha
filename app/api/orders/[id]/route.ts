@@ -155,3 +155,74 @@ export async function GET(
     );
   }
 }
+
+/**
+ * PATCH /api/orders/[id] — Customer self-cancels a PENDING order.
+ * Body: { status: "CANCELLED" }
+ * Only the order owner (CUSTOMER role) can cancel, and only while PENDING.
+ */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
+  }
+  if (session.role !== "CUSTOMER") {
+    return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+  }
+
+  const body = await req.json().catch(() => null);
+  if (!body || body.status !== "CANCELLED") {
+    return NextResponse.json(
+      { error: "Only status CANCELLED is accepted", code: "VALIDATION_ERROR" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const { id } = await params;
+
+    const order = await prisma.order.findUnique({
+      where: { id },
+      select: { id: true, status: true, user_id: true, voucher_id: true },
+    });
+
+    if (!order || order.user_id !== session.id) {
+      return NextResponse.json({ error: "Order not found", code: "NOT_FOUND" }, { status: 404 });
+    }
+
+    if (order.status !== "PENDING") {
+      return NextResponse.json(
+        { error: "Only PENDING orders can be cancelled by the customer", code: "INVALID_STATUS" },
+        { status: 422 }
+      );
+    }
+
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.order.update({
+          where: { id: order.id },
+          data: { status: "CANCELLED" },
+        });
+
+        if (order.voucher_id) {
+          await tx.voucher.update({
+            where: { id: order.voucher_id },
+            data: { status: "ACTIVE" },
+          });
+        }
+      },
+      { maxWait: 5000, timeout: 10000 }
+    );
+
+    return NextResponse.json({ data: { id: order.id, status: "CANCELLED" } });
+  } catch (err) {
+    console.error("[PATCH /api/orders/[id]]", err);
+    return NextResponse.json(
+      { error: "Internal server error", code: "INTERNAL_ERROR" },
+      { status: 500 }
+    );
+  }
+}

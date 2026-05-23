@@ -229,12 +229,19 @@ export async function GET(req: NextRequest) {
       include: {
         items: {
           include: {
-            menuItem: { select: { name: true } },
-            selectedPowder: { select: { name: true } },
-            milkType: { select: { name: true } },
+            menuItem: { select: { name: true, category: true } },
+            selectedPowder: { select: { name: true, price_per_gram: true } },
+            milkType: { select: { name: true, is_default: true } },
             addons: {
               include: {
-                addonOption: { select: { label: true } },
+                addonOption: {
+                  select: {
+                    label: true,
+                    gram_value: true,
+                    price_vnd: true,
+                    group: { select: { name: true } },
+                  },
+                },
               },
             },
           },
@@ -242,7 +249,20 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ data: orders });
+    // Build payment_qr_url for each PENDING order
+    const data = orders.map((order) => {
+      let payment_qr_url: string | null = null;
+      if (order.status === "PENDING" && order.order_code && order.order_type !== "COUNTER") {
+        try {
+          payment_qr_url = buildVietQRUrl({ amount: order.total_vnd, orderCode: order.order_code });
+        } catch {
+          payment_qr_url = null;
+        }
+      }
+      return { ...order, payment_qr_url };
+    });
+
+    return NextResponse.json({ data });
   } catch (err) {
     console.error("[GET /api/orders]", err);
     return NextResponse.json(

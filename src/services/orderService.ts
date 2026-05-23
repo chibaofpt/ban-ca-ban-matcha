@@ -117,3 +117,11 @@ export async function fetchOrderDetail(id: string): Promise<CustomerOrderDetail>
   const res = await apiClient.get<{ data: CustomerOrderDetail }>(`/api/orders/${id}`);
   return res.data.data;
 }
+
+/**
+ * Customer tự huỷ đơn hàng đang PENDING.
+ * Chỉ áp dụng cho đơn PENDING — server sẽ trả 422 nếu đơn đã qua trạng thái này.
+ */
+export async function cancelOrder(orderId: string): Promise<void> {
+  await apiClient.patch(`/api/orders/${orderId}`, { status: "CANCELLED" });
+}
