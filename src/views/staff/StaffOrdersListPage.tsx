@@ -134,7 +134,7 @@ export default function StaffOrdersListPage() {
         isAdmin={false}
       />
 
-      {loading && orders.length === 0 ? (
+      {loading ? (
         <div className="space-y-3 mt-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="rounded-2xl border bg-card shadow-sm overflow-hidden p-4 space-y-3 animate-pulse">
