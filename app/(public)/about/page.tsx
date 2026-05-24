@@ -7,6 +7,10 @@ import Footer from '@/src/components/common/Footer';
 export const metadata: Metadata = {
   title: 'Về Chúng Tôi — Bạn Cá Bán Matcha',
   description: 'Câu chuyện về Bạn Cá Bán Matcha - Tiên phong mang văn hóa matcha chuẩn Nhật đầu tiên về Thủ Dầu Một, Bình Dương.',
+  openGraph: {
+    title: 'Về Chúng Tôi — Bạn Cá Bán Matcha',
+    description: 'Câu chuyện về Bạn Cá Bán Matcha - Tiên phong mang văn hóa matcha chuẩn Nhật đầu tiên về Thủ Dầu Một, Bình Dương.',
+  },
 };
 
 const jsonLd = {

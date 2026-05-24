@@ -3,6 +3,10 @@ import HomePage from '@/src/views/HomePage';
 export const metadata = {
   title: 'Bạn Cá Bán Matcha — Tiên phong văn hóa Matcha tại Bình Dương',
   description: 'Thưởng thức vị matcha chuẩn Nhật đầu tiên tại Thủ Dầu Một, Bình Dương. Trải nghiệm matcha ceremonial grade được pha chế thủ công.',
+  openGraph: {
+    title: 'Bạn Cá Bán Matcha — Tiên phong văn hóa Matcha tại Bình Dương',
+    description: 'Thưởng thức vị matcha chuẩn Nhật đầu tiên tại Thủ Dầu Một, Bình Dương. Trải nghiệm matcha ceremonial grade được pha chế thủ công.',
+  },
 };
 
 /**
