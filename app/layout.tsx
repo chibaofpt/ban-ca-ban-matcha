@@ -25,7 +25,10 @@ const description =
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://ban-ca-ban-matcha.vercel.app"),
-  title,
+  title: {
+    default: title,
+    template: "%s | Bạn Cá Bán Matcha",
+  },
   description,
   keywords:
     "matcha ngon, matcha Thủ Dầu Một, matcha ceremonial grade, matcha Bình Dương, matcha local bình dương, Bạn Cá Bán Matcha",
@@ -34,11 +37,19 @@ export const metadata: Metadata = {
     description,
     type: "website",
     locale: "vi_VN",
+    images: [
+      {
+        url: "/logo.png",
+        width: 800,
+        height: 600,
+        alt: "Bạn Cá Bán Matcha Logo",
+      },
+    ],
   },
   icons: {
-    icon: "/logo.jpg",
-    shortcut: "/logo.jpg",
-    apple: "/logo.jpg",
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
   },
 };
 
