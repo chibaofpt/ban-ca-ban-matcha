@@ -1,4 +1,5 @@
 import { apiClient } from '@/src/lib/api/client';
+import type { OrderStatus, OrderType } from '@/src/lib/types/order';
 
 export interface OrderItemRes {
   menuItem: { name: string; category: string };
@@ -14,9 +15,9 @@ export interface OrderItemRes {
   milkType: { name: string; is_default: boolean } | null;
   addons: {
     unit_price_vnd: number;
-    addonOption: { 
+    addonOption: {
       label: string;
-      gram_value: string | null; // typically decimal or null in prisma, string representation
+      gram_value: string | null;
       price_vnd: number;
       group: { name: string };
     };
@@ -26,17 +27,49 @@ export interface OrderItemRes {
 
 export interface OrderRes {
   id: string;
-  status: "PENDING" | "CONFIRMED" | "READY" | "COMPLETED" | "CANCELLED";
+  status: OrderStatus;
+  order_type: OrderType;
+  /** Human-readable code for bank transfer. Null for COUNTER orders. */
+  order_code: string | null;
+  /** Auto-cancel deadline (ISO string). Null for COUNTER orders. */
+  auto_cancel_at: string | null;
+  subtotal_vnd: number;
+  discount_vnd: number;
   total_vnd: number;
   created_at: string;
-  /** null for anonymous (walk-in) orders that have no linked customer. */
+  /** Null for anonymous (walk-in) orders that have no linked customer. */
   user: { name: string; phone_number: string } | null;
   handled_by: string | null;
+  voucher_id: string | null;
   items: OrderItemRes[];
 }
 
-/** Fetch danh sách tất cả order, newest first. */
-export async function fetchOrdersList(): Promise<OrderRes[]> {
-  const res = await apiClient.get('/api/staff/orders');
-  return res.data.data;
+export interface FetchOrdersListParams {
+  /** Comma-separated: "COUNTER", "PICKUP", "DELIVERY" */
+  order_type?: string;
+  /** Single status: "PENDING" — admin only, for "Chờ CK" tab */
+  status?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedOrdersListRes {
+  data: OrderRes[];
+  meta: {
+    total: number;
+    page: number;
+    totalPages: number;
+  };
+}
+
+/** Fetch danh sách orders cho trang quản lý của staff/admin. */
+export async function fetchOrdersList(params: FetchOrdersListParams = {}): Promise<PaginatedOrdersListRes> {
+  const query = new URLSearchParams();
+  if (params.order_type) query.append('order_type', params.order_type);
+  if (params.status) query.append('status', params.status);
+  if (params.page) query.append('page', params.page.toString());
+  if (params.limit) query.append('limit', params.limit.toString());
+  const qs = query.toString();
+  const res = await apiClient.get(`/api/staff/orders${qs ? `?${qs}` : ''}`);
+  return res.data;
 }

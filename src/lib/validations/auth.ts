@@ -14,7 +14,7 @@ export const loginFormSchema = z.object({
 export const registerFormSchema = z.object({
   name: z.string().min(1, "Họ và tên không được để trống").max(50, "Họ và tên không được vượt quá 50 ký tự"),
   phone_number: phoneSchema,
-  password: z.string().min(6, "Mật khẩu phải có ít nhất 6 ký tự").max(128, "Mật khẩu quá dài"),
+  password: z.string().min(6, "Mật khẩu phải có ít nhất 6 ký tự").max(72, "Mật khẩu quá dài"),
 });
 
 export type LoginFormValues = z.infer<typeof loginFormSchema>;

@@ -11,6 +11,7 @@ import {
   Star,
   Home,
   UtensilsCrossed,
+  ClipboardList,
 } from "lucide-react";
 import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -95,6 +96,15 @@ const Navbar = () => {
 
           {isLoggedIn ? (
             <>
+              <NavLink
+                href="/history"
+                className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-1.5"
+                activeClassName="text-primary"
+              >
+                <ClipboardList className="w-3.5 h-3.5" />
+                Đơn hàng &amp; Điểm
+              </NavLink>
+
               <NavLink
                 href="/profile/vouchers"
                 className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-1.5"
@@ -216,6 +226,16 @@ const Navbar = () => {
 
               {isLoggedIn ? (
                 <>
+                  <NavLink
+                    href="/history"
+                    onClick={close}
+                    className="text-sm font-medium py-2.5 flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors"
+                    activeClassName="text-primary"
+                  >
+                    <ClipboardList className="w-4 h-4" />
+                    Đơn hàng &amp; Điểm
+                  </NavLink>
+
                   <NavLink
                     href="/profile/vouchers"
                     onClick={close}

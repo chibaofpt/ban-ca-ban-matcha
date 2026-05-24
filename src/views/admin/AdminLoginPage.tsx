@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import * as authService from "@/src/services/authService";
+import { Eye, EyeOff } from "lucide-react";
 
 /** AdminLoginPage — trang đăng nhập cho admin/staff nội bộ. */
 export default function AdminLoginPage() {
@@ -11,6 +12,7 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -64,15 +66,28 @@ export default function AdminLoginPage() {
             <label htmlFor="password" className="text-sm font-medium text-foreground">
               Mật khẩu
             </label>
-            <input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40"
-            />
+            <div className="relative">
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="rounded-xl border border-border bg-background pl-3 pr-10 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none"
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </div>
           </div>
 
           {error && (

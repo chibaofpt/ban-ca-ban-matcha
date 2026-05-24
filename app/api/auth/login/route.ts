@@ -31,6 +31,13 @@ export async function POST(req: Request) {
       where: { phone_number: normalizedPhone },
     });
 
+    if (user && user.locked_until && user.locked_until > new Date()) {
+      return NextResponse.json(
+        { error: "Tài khoản bị khoá tạm thời. Vui lòng thử lại sau 15 phút.", code: "ACCOUNT_LOCKED" },
+        { status: 429 }
+      );
+    }
+
     // Timing-safe password compare
     const isValidPassword = await bcrypt.compare(
       password,
@@ -38,11 +45,35 @@ export async function POST(req: Request) {
     );
 
     if (!user || !isValidPassword) {
+      if (user) {
+        const newAttempts = user.failed_login_attempts + 1;
+        let lockedUntil = null;
+        if (newAttempts >= 5) {
+          lockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
+        }
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            failed_login_attempts: newAttempts,
+            locked_until: lockedUntil,
+          },
+        });
+      }
       return NextResponse.json({ error: "Số điện thoại hoặc mật khẩu không chính xác", code: "INVALID_CREDENTIALS" }, { status: 401 });
     }
 
+    if (user.failed_login_attempts > 0 || user.locked_until !== null) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failed_login_attempts: 0,
+          locked_until: null,
+        },
+      });
+    }
+
     // Create session
-    const refreshToken = await createSession(user.id);
+    const refreshToken = await createSession(user.id, user.role);
     const accessToken = await signJwt({ id: user.id, role: user.role, phone_number: user.phone_number });
 
     // Set cookies
@@ -51,7 +82,6 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         data: {
-          id: user.id,
           name: user.name,
           phone_number: user.phone_number,
           role: user.role,

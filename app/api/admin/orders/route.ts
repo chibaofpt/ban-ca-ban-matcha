@@ -19,11 +19,17 @@ export async function GET(req: NextRequest) {
   const startDateStr = searchParams.get("startDate");
   const endDateStr = searchParams.get("endDate");
   const search = searchParams.get("search");
-    const staffId = searchParams.get("staffId");
-    const staffName = searchParams.get("staffName");
+  const staffId = searchParams.get("staffId");
+  const staffName = searchParams.get("staffName");
+  const status = searchParams.get("status");
+  const orderType = searchParams.get("order_type");
+  
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+  const limit = Math.max(1, Math.min(100, parseInt(searchParams.get("limit") || "10", 10)));
+  const skip = (page - 1) * limit;
 
-    try {
-      const where: Prisma.OrderWhereInput = {};
+  try {
+    const where: Prisma.OrderWhereInput = {};
 
       // 1. Date range filter
       if (startDateStr || endDateStr) {
@@ -61,35 +67,56 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const orders = await prisma.order.findMany({
-      where,
-      orderBy: { created_at: "desc" },
-      include: {
-        user: { select: { name: true, phone_number: true } },
-        handler: { select: { name: true } }, // Get the name of the staff who handled it
-        items: {
-          include: {
-            menuItem: { select: { name: true, category: true } },
-            selectedPowder: { select: { name: true, price_per_gram: true } },
-            milkType: { select: { name: true, is_default: true } },
-            addons: {
-              include: {
-                addonOption: { 
-                  select: { 
-                    label: true,
-                    gram_value: true,
-                    price_vnd: true,
-                    group: { select: { name: true } }
-                  } 
+    // 4. Status filter
+    if (status) {
+      where.status = status as Prisma.EnumOrderStatusFilter["equals"];
+    }
+
+    // 5. Order Type filter (supports comma-separated values like PICKUP,DELIVERY)
+    if (orderType) {
+      const types = orderType.split(",").map((t) => t.trim());
+      where.order_type = { in: types as any[] };
+    }
+
+    const [total, orders] = await prisma.$transaction([
+      prisma.order.count({ where }),
+      prisma.order.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { created_at: "desc" },
+        include: {
+          user: { select: { name: true, phone_number: true } },
+          handler: { select: { name: true } }, // Get the name of the staff who handled it
+          items: {
+            include: {
+              menuItem: { select: { name: true, category: true } },
+              selectedPowder: { select: { name: true, price_per_gram: true } },
+              milkType: { select: { name: true, is_default: true } },
+              addons: {
+                include: {
+                  addonOption: { 
+                    select: { 
+                      label: true,
+                      gram_value: true,
+                      price_vnd: true,
+                      group: { select: { name: true } }
+                    } 
+                  },
                 },
               },
             },
           },
         },
-      },
-    });
+      }),
+    ]);
 
-    return NextResponse.json({ data: orders });
+    const totalPages = Math.ceil(total / limit);
+
+    return NextResponse.json({ 
+      data: orders, 
+      meta: { total, page, totalPages } 
+    });
   } catch (err) {
     console.error("[GET /api/admin/orders]", err);
     return NextResponse.json(

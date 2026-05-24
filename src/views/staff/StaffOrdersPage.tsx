@@ -7,6 +7,7 @@ import { cn } from "@/src/utils/cn";
 import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
 import { usePowderStore } from "@/src/lib/store/powderStore";
+import { calcLattePrice, calcFusionPrice, resolveGram } from "@/src/utils/pricing";
 import { AddonModal } from "@/src/components/staff/AddonModal";
 import { StaffCartDrawer } from "@/src/components/staff/StaffCartDrawer";
 import { StaffOrderForm } from "@/src/components/staff/StaffOrderForm";
@@ -17,6 +18,12 @@ import type { CartItem } from "@/src/lib/types/cart";
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type LoadStatus = "loading" | "error" | "success";
+
+const SIZE_CARD_LABELS: Record<string, string> = {
+  M: "Cá Con",
+  L: "Cá Vừa",
+  XL: "Cá Lớn",
+};
 
 interface DiscountVoucher {
   id: string;
@@ -34,6 +41,37 @@ export default function StaffOrdersPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [status, setStatus] = useState<LoadStatus>("loading");
   const setPowderData = usePowderStore((s) => s.setPowderData);
+  const powders = usePowderStore((s) => s.data);
+  const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
+
+  const getDisplayPrice = (item: MenuItem, sizeObj: MenuItem["sizes"][0]) => {
+    const isLatte = item.category === "latte";
+    const defaultPowderId = isLatte ? item.powder?.id : item.resolved_default_powder_id;
+    const defaultMilk = item.milk_types?.find(m => m.is_default) ?? item.milk_types?.[0];
+
+    const s = sizeObj.size;
+    const base = sizeObj.base_price_vnd ?? 0;
+    const pwd = powders.find(p => p.id === defaultPowderId);
+    const pwdPrice = pwd?.price_per_gram ?? 0;
+    const gram = resolveGram(s, item.custom_powder_grams, pwd?.size_config ?? [], defaultPowderGrams);
+
+    if (isLatte) {
+      return calcLattePrice({
+        base_price_vnd: base,
+        gram,
+        powder_price_per_gram: pwdPrice,
+        milk_ml: sizeObj.milk_ml ?? 0,
+        milk_price_per_ml: defaultMilk?.price_per_ml ?? 40
+      });
+    } else {
+      return calcFusionPrice({
+        base_price_vnd: base,
+        gram,
+        powder_price_per_gram: pwdPrice,
+        premium_latte: 0
+      });
+    }
+  };
 
   // ── Modal control — only one open at a time ────────────────────────────
 
@@ -232,17 +270,12 @@ export default function StaffOrdersPage() {
         {status === "success" && (
           <div className="grid grid-cols-2 gap-3">
             {visibleItems.map((item) => {
-              // Latte items always have sizes — show L base price as reference
-              // Fusion items also use sizes — same logic applies
-              const lSize = item.sizes.find((s) => s.size === "L");
-              const displayPrice = lSize?.base_price_vnd ?? item.sizes[0]?.base_price_vnd ?? 0;
-
               return (
                 <button
                   key={item.id}
                   id={`menu-item-${item.id}`}
                   onClick={() => setSelectedItem(item)}
-                  className="bg-card rounded-2xl border border-border p-3 flex flex-col text-left shadow-sm hover:shadow-md transition active:scale-[0.98]"
+                  className="bg-card rounded-2xl border border-border p-3 flex flex-col text-left shadow-sm hover:shadow-md transition active:scale-[0.98] w-full"
                 >
                   {/* Image */}
                   <div className="aspect-square w-full rounded-xl bg-secondary/40 flex items-center justify-center text-5xl mb-2 overflow-hidden">
@@ -260,14 +293,24 @@ export default function StaffOrdersPage() {
                   <h3 className="font-medium text-sm leading-tight line-clamp-1">
                     {item.name}
                   </h3>
-                  <p className="text-[11px] text-muted-foreground line-clamp-1 capitalize">
+                  <p className="text-[11px] text-muted-foreground line-clamp-1 capitalize mb-2">
                     {item.category}
                   </p>
-                  <div className="text-primary font-semibold text-sm mt-1">
-                    🐟 {displayPrice / 1000}+ cá
-                    <span className="text-[10px] font-normal text-muted-foreground ml-1">
-                      (L)
-                    </span>
+                  
+                  {/* Size prices row */}
+                  <div className="mt-auto pt-2 border-t border-border/50 w-full">
+                    <div className="flex items-end justify-between gap-1">
+                      {item.sizes.filter((s) => s.base_price_vnd != null).map((s) => (
+                        <div key={s.size} className="flex flex-col items-center gap-0.5 flex-1">
+                          <span className="text-[8px] font-bold text-primary/50 uppercase tracking-wide whitespace-nowrap">
+                            {SIZE_CARD_LABELS[s.size] ?? s.size}
+                          </span>
+                          <span className="text-[11px] font-bold text-primary">
+                            {getDisplayPrice(item, s) / 1000}k
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </button>
               );

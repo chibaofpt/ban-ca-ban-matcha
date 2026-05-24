@@ -1,10 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { ChevronDown, ChevronUp, Phone, Clock, Search, FilterX, Filter } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { ChevronDown, ChevronUp, Phone, Clock, Search, FilterX, Filter, CheckCircle2, XCircle } from "lucide-react";
 import { cn } from "@/src/utils/cn";
-import { fetchAdminOrders, type AdminOrderRes } from "@/src/services/adminOrderService";
+import { fetchAdminOrders, confirmPayment, adminCancelOrder, type AdminOrderRes } from "@/src/services/adminOrderService";
+import { apiClient } from "@/src/lib/api/client";
+import { usePolling } from "@/src/hooks/usePolling";
 import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
+import { OrderTabs, type OrderTabKey } from "@/src/components/staff/OrderTabs";
+import { toast } from "sonner";
+import { CountdownTimer } from "@/src/components/customer/CountdownTimer";
+import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
+import { OrderProgressBar } from "@/src/components/shared/OrderProgressBar";
 
 const formatDateTime = (iso: string): string => {
   const d = new Date(iso);
@@ -12,28 +19,26 @@ const formatDateTime = (iso: string): string => {
   return `${pad(d.getHours())}:${pad(d.getMinutes())} • ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 };
 
-const StatusBadge = ({ status }: { status: AdminOrderRes["status"] }) => {
-  const map: Record<AdminOrderRes["status"], { label: string; color: string }> = {
-    PENDING: { label: "PENDING", color: "bg-yellow-100 text-yellow-800" },
-    CONFIRMED: { label: "CONFIRMED", color: "bg-blue-100 text-blue-800" },
-    READY: { label: "READY", color: "bg-green-100 text-green-800" },
-    COMPLETED: { label: "COMPLETED", color: "bg-gray-100 text-gray-800" },
-    CANCELLED: { label: "CANCELLED", color: "bg-red-100 text-red-800" },
-  };
-  const config = map[status] || map.PENDING;
-  return (
-    <span className={cn("shrink-0 text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase", config.color)}>
-      {config.label}
-    </span>
-  );
+/** Chuyển order_type sang nhãn tiếng Việt thân thiện cho UI. */
+const formatOrderType = (type: string): string => {
+  if (type === "COUNTER") return "Tại quán";
+  if (type === "PICKUP") return "Đặt trước";
+  if (type === "DELIVERY") return "Giao hàng";
+  return type;
 };
 
 export default function AdminOrdersPage() {
-  const [orders, setOrders] = useState<AdminOrderRes[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<OrderTabKey>("counter");
+  const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    isDestructive?: boolean;
+    onConfirm: () => void;
+  }>({ isOpen: false, title: "", message: "", onConfirm: () => {} });
 
-  // Helper to get today's date as YYYY-MM-DD in local timezone
   const getTodayStr = () => {
     const d = new Date();
     const year = d.getFullYear();
@@ -42,46 +47,70 @@ export default function AdminOrdersPage() {
     return `${year}-${month}-${day}`;
   };
 
-  // Modal State
   const [showFilterModal, setShowFilterModal] = useState(false);
-
-  // Active filters (applied to API)
   const [activeFilters, setActiveFilters] = useState({
     search: "",
     staffName: "",
-    startDate: getTodayStr(), // Default to today
-    endDate: "", // Until now
+    startDate: getTodayStr(),
+    endDate: "",
   });
-
-  // Draft filters (while in modal)
   const [draftFilters, setDraftFilters] = useState(activeFilters);
 
-  const loadData = async (filters = activeFilters) => {
-    setLoading(true);
-    try {
-      // Correctly parse YYYY-MM-DD into local time 00:00:00 for start, and 23:59:59 for end
-      const startIso = filters.startDate ? new Date(`${filters.startDate}T00:00:00`).toISOString() : undefined;
-      const endIso = filters.endDate ? new Date(`${filters.endDate}T23:59:59.999`).toISOString() : undefined;
-
-      const data = await fetchAdminOrders({
-        search: filters.search || undefined,
-        staffName: filters.staffName || undefined,
-        startDate: startIso,
-        endDate: endIso,
-      });
-      setOrders(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Initial load
+  // Reset page to 1 when changing tabs or filters
   useEffect(() => {
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setPage(1);
+  }, [activeTab, activeFilters]);
+
+  const fetchOrdersFn = useCallback(async () => {
+    const startIso = activeFilters.startDate ? new Date(`${activeFilters.startDate}T00:00:00`).toISOString() : undefined;
+    const endIso = activeFilters.endDate ? new Date(`${activeFilters.endDate}T23:59:59.999`).toISOString() : undefined;
+
+    let orderTypeParam = "";
+    let statusParam = "";
+
+    if (activeTab === "counter") {
+      orderTypeParam = "COUNTER";
+    } else if (activeTab === "customer") {
+      orderTypeParam = "PICKUP,DELIVERY";
+    } else if (activeTab === "pending") {
+      statusParam = "PENDING";
+    } else if (activeTab === "cancelled") {
+      statusParam = "CANCELLED";
+    }
+
+    return await fetchAdminOrders({
+      search: activeFilters.search || undefined,
+      staffName: activeFilters.staffName || undefined,
+      startDate: activeTab !== "pending" ? startIso : undefined,
+      endDate: activeTab !== "pending" ? endIso : undefined,
+      order_type: orderTypeParam || undefined,
+      status: statusParam || undefined,
+      page,
+      limit: 10,
+    });
+  }, [activeTab, activeFilters, page]);
+
+  const { data, isInitialLoading, refetch } = usePolling({
+    fetcher: fetchOrdersFn,
+    interval: activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000,
+    dependencies: [activeTab, activeFilters, page],
+  });
+
+  const orders = data?.data || [];
+  const totalPages = data?.meta.totalPages || 1;
+
+  // Background polling cho pendingCount
+  const fetchPendingCountAPI = useCallback(async () => {
+    const res = await fetchAdminOrders({ status: "PENDING", limit: 1 });
+    return res;
   }, []);
+
+  const { data: pendingData } = usePolling({
+    fetcher: fetchPendingCountAPI,
+    interval: 20000,
+  });
+
+  const pendingCount = pendingData?.meta.total || 0;
 
   const toggle = (id: string) => setExpanded((s) => ({ ...s, [id]: !s[id] }));
 
@@ -93,26 +122,86 @@ export default function AdminOrdersPage() {
   const applyFilters = () => {
     setActiveFilters(draftFilters);
     setShowFilterModal(false);
-    loadData(draftFilters);
   };
 
   const clearFilters = () => {
-    const empty = { search: "", staffName: "", startDate: "", endDate: "" };
-    setDraftFilters(empty);
-    setActiveFilters(empty);
+    const defaultFilters = { search: "", staffName: "", startDate: getTodayStr(), endDate: "" };
+    setDraftFilters(defaultFilters);
+    setActiveFilters(defaultFilters);
     setShowFilterModal(false);
-    loadData(empty);
   };
 
-  // Check if any filter is active for the badge
-  const activeFilterCount = Object.values(activeFilters).filter((v) => v).length;
+  const activeFilterCount = 
+    (activeFilters.search ? 1 : 0) +
+    (activeFilters.staffName ? 1 : 0) +
+    (activeFilters.startDate && activeFilters.startDate !== getTodayStr() ? 1 : 0) +
+    (activeFilters.endDate ? 1 : 0);
+
+  const handleConfirmPayment = (e: React.MouseEvent, orderId: string) => {
+    e.stopPropagation();
+    setConfirmModal({
+      isOpen: true,
+      title: "Xác nhận thanh toán",
+      message: "Bạn có chắc chắn đã nhận được tiền chuyển khoản cho đơn này?",
+      isDestructive: false,
+      onConfirm: async () => {
+        setConfirmModal((s) => ({ ...s, isOpen: false }));
+        try {
+          await confirmPayment(orderId);
+          toast.success("Xác nhận thanh toán thành công");
+          refetch();
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : "Xác nhận thất bại";
+          toast.error(msg);
+        }
+      },
+    });
+  };
+
+  const handleCancelOrder = (e: React.MouseEvent, orderId: string) => {
+    e.stopPropagation();
+    setConfirmModal({
+      isOpen: true,
+      title: "Huỷ đơn hàng",
+      message: "Bạn có chắc chắn muốn huỷ đơn hàng này?",
+      isDestructive: true,
+      onConfirm: async () => {
+        setConfirmModal((s) => ({ ...s, isOpen: false }));
+        try {
+          await adminCancelOrder(orderId);
+          toast.success("Đã huỷ đơn hàng");
+          refetch();
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : "Huỷ thất bại";
+          toast.error(msg);
+        }
+      },
+    });
+  };
+
+  const renderActionButtons = (order: AdminOrderRes) => {
+    if (order.status === "PENDING") {
+      return (
+        <div className="flex flex-col items-end gap-2 mt-2">
+          <button
+            onClick={(e) => handleConfirmPayment(e, order.id)}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 w-full rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+          >
+            <CheckCircle2 size={14} />
+            Đã nhận CK
+          </button>
+        </div>
+      );
+    }
+    
+    return null;
+  };
 
   return (
     <div className="px-4 py-4 space-y-4 pb-24 max-w-3xl mx-auto">
       <div className="flex items-baseline justify-between">
         <h1 className="font-serif text-2xl font-semibold text-foreground">Quản lý Đơn hàng</h1>
         <div className="flex gap-3 items-center">
-          <span className="text-sm text-muted-foreground">{orders.length} kết quả</span>
           <button
             onClick={openFilterModal}
             className="relative flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border bg-card hover:bg-secondary/40 transition text-sm font-medium shadow-sm"
@@ -128,16 +217,46 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
-      {loading && orders.length === 0 ? (
+      <OrderTabs
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        pendingCount={pendingCount}
+        isAdmin={true}
+      />
+
+      {isInitialLoading ? (
         <div className="space-y-3 mt-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-32 bg-secondary/40 rounded-2xl animate-pulse" />
+            <div key={i} className="rounded-2xl border bg-card shadow-sm overflow-hidden p-4 space-y-3 animate-pulse">
+              <div className="flex justify-between items-start">
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <div className="h-4 w-28 bg-secondary/60 rounded" />
+                    <div className="h-4 w-16 bg-secondary/40 rounded-full" />
+                    <div className="h-4 w-14 bg-secondary/40 rounded-full" />
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="h-3 w-24 bg-secondary/40 rounded" />
+                    <div className="h-3 w-20 bg-secondary/40 rounded" />
+                  </div>
+                </div>
+                <div className="space-y-2 items-end flex flex-col">
+                  <div className="h-3 w-28 bg-secondary/40 rounded" />
+                  <div className="h-6 w-20 bg-secondary/30 rounded-lg" />
+                </div>
+              </div>
+              <div className="h-9 bg-secondary/30 rounded-xl" />
+              <div className="flex justify-between border-t border-border pt-3">
+                <div className="h-3 w-16 bg-secondary/40 rounded" />
+                <div className="h-5 w-20 bg-primary/10 rounded" />
+              </div>
+            </div>
           ))}
         </div>
       ) : orders.length === 0 ? (
         <div className="text-center py-12 space-y-3">
           <p className="text-sm text-muted-foreground">Không tìm thấy đơn hàng nào phù hợp.</p>
-          {activeFilterCount > 0 && (
+          {activeFilterCount > 0 && activeTab !== "pending" && (
             <button onClick={clearFilters} className="text-sm font-medium text-primary hover:underline">
               Xoá bộ lọc
             </button>
@@ -147,45 +266,59 @@ export default function AdminOrdersPage() {
         <div className="space-y-3 mt-4">
           {orders.map((order) => {
             const isOpen = !!expanded[order.id];
-            
+            const isTerminal = order.status === "COMPLETED" || order.status === "CANCELLED";
+
             return (
               <div
                 key={order.id}
                 className={cn(
                   "rounded-2xl border bg-card shadow-sm overflow-hidden transition",
+                  order.status === "PENDING" && "border-yellow-400 border-2 shadow-yellow-100",
                   order.status === "CANCELLED" && "opacity-60"
                 )}
               >
                 <div className="p-4 space-y-3">
+                  {/* Row 1: Mã đơn + thời gian */}
                   <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-foreground text-sm">
-                          {order.user?.name ?? "Khách vãng lai"}
-                        </span>
-                        <StatusBadge status={order.status} />
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                        <span className="inline-flex items-center gap-1">
-                          <Phone size={12} />
-                          {order.user?.phone_number ?? "—"}
-                        </span>
-                        <span className="font-mono bg-secondary/50 px-1.5 rounded">
-                          #{order.id.slice(0, 8)}
-                        </span>
-                      </div>
+                    <div className="font-mono font-bold text-sm text-foreground">
+                      {order.order_code ?? `#${order.id.slice(0, 8)}`}
                     </div>
-                    <div className="text-right">
-                      <div className="text-xs text-muted-foreground mb-1">
-                        <Clock size={12} className="inline mr-1" />
-                        {formatDateTime(order.created_at)}
-                      </div>
-                      <div className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary inline-block">
-                        Staff: {order.handler?.name || "Chưa nhận"}
-                      </div>
+                    <div className="text-xs text-muted-foreground">
+                      <Clock size={12} className="inline mr-1" />
+                      {formatDateTime(order.created_at)}
                     </div>
                   </div>
 
+                  {/* Row 2: Tên khách + SĐT + Countdown */}
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="text-sm font-medium text-foreground">
+                        {order.user?.name ?? "Khách vãng lai"}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Phone size={11} />
+                        {order.user?.phone_number ?? "—"}
+                      </span>
+                    </div>
+                    {order.status === "PENDING" && order.auto_cancel_at && (
+                      <div className="flex items-center gap-1 text-[11px] bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded-lg text-yellow-700">
+                        <Clock size={11} />
+                        <CountdownTimer targetTime={order.auto_cancel_at} className="text-[11px]" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Progress Bar — chỉ hiện cho non-terminal states */}
+                  {!isTerminal && (
+                    <div className="pt-1">
+                      <OrderProgressBar status={order.status} />
+                    </div>
+                  )}
+
+                  {/* Action buttons (Confirm Payment for PENDING) */}
+                  {renderActionButtons(order)}
+
+                  {/* Expand toggle */}
                   <button
                     onClick={() => toggle(order.id)}
                     className="w-full flex items-center justify-between text-sm text-foreground/80 hover:text-foreground bg-secondary/20 p-2 rounded-xl"
@@ -196,12 +329,16 @@ export default function AdminOrdersPage() {
                     {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
 
+                  {/* Expanded item list */}
                   {isOpen && (
                     <ul className="space-y-3 text-sm text-foreground/90 pt-1">
                       {order.items.map((it, idx) => (
                         <li key={idx} className="flex justify-between gap-3">
                           <div className="flex flex-col">
-                            <span className="font-semibold">{it.menuItem.name} <span className="font-normal text-muted-foreground">({it.size})</span></span>
+                            <span className="font-semibold">
+                              {it.menuItem.name}{" "}
+                              <span className="font-normal text-muted-foreground">({it.size})</span>
+                            </span>
                             <OrderItemDetails item={it} />
                           </div>
                           <span className="font-medium text-foreground shrink-0 mt-0.5">×{it.quantity}</span>
@@ -210,44 +347,89 @@ export default function AdminOrdersPage() {
                     </ul>
                   )}
 
-                  <div className="flex items-center justify-between border-t border-border pt-3">
-                    <span className="text-xs text-muted-foreground">Tổng tiền</span>
-                    <span className="font-bold text-primary text-base">
-                      {(order.total_vnd / 1000).toLocaleString("vi-VN")}K
-                    </span>
+                  {/* Footer — total */}
+                  <div className="border-t border-border pt-3">
+                    <div className="flex justify-end items-center gap-2">
+                      <span className="text-sm font-medium">Tổng tiền:</span>
+                      <span className="font-bold text-primary text-base">
+                        {(order.total_vnd / 1000).toLocaleString("vi-VN")}K
+                      </span>
+                    </div>
+                    {/* Footer row: cancel (left) + staff name (right) OR status text */}
+                    <div className="flex items-center justify-between mt-1.5">
+                      {isTerminal ? (
+                        <span className={cn(
+                          "text-xs font-semibold flex items-center gap-1",
+                          order.status === "COMPLETED" ? "text-primary" : "text-red-500"
+                        )}>
+                          {order.status === "COMPLETED" ? (
+                            <>
+                              <CheckCircle2 size={13} className="text-primary" />
+                              <span>Đã hoàn thành</span>
+                            </>
+                          ) : (
+                            <>
+                              <XCircle size={13} className="text-red-500" />
+                              <span>Đã huỷ</span>
+                            </>
+                          )}
+                        </span>
+                      ) : (
+                        <button
+                          onClick={(e) => handleCancelOrder(e, order.id)}
+                          className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline transition-colors"
+                        >
+                          Huỷ đơn
+                        </button>
+                      )}
+                      <span className="text-[11px] text-muted-foreground ml-auto">
+                        Staff: {order.handler?.name ?? "Chưa nhận"}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
             );
           })}
+          
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex justify-center items-center gap-2 pt-6">
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="px-3 py-1.5 rounded-lg border bg-card text-sm font-medium hover:bg-secondary/40 disabled:opacity-50 transition"
+              >
+                Trang trước
+              </button>
+              <span className="text-sm font-medium text-muted-foreground px-2">
+                {page} / {totalPages}
+              </span>
+              <button
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="px-3 py-1.5 rounded-lg border bg-card text-sm font-medium hover:bg-secondary/40 disabled:opacity-50 transition"
+              >
+                Trang sau
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {/* Filter Modal */}
       {showFilterModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => setShowFilterModal(false)}
-          />
-          
-          {/* Modal Content */}
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowFilterModal(false)} />
           <div className="relative bg-card w-full sm:w-[400px] rounded-t-2xl sm:rounded-2xl p-5 shadow-2xl animate-in slide-in-from-bottom-full sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-200 space-y-5">
             <div className="flex items-center justify-between">
               <h2 className="font-serif text-xl font-semibold">Bộ lọc đơn hàng</h2>
-              <button
-                onClick={() => setShowFilterModal(false)}
-                className="p-1 rounded-md hover:bg-secondary/40 text-muted-foreground"
-              >
-                ✕
-              </button>
+              <button onClick={() => setShowFilterModal(false)} className="p-1 rounded-md hover:bg-secondary/40 text-muted-foreground">✕</button>
             </div>
 
             <div className="space-y-4">
-              {/* Customer Search */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground">Tên Khách / Số điện thoại</label>
+                <label className="text-xs font-medium text-foreground">Tên Khách / SĐT</label>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <input
@@ -255,61 +437,61 @@ export default function AdminOrdersPage() {
                     placeholder="Nhập tên hoặc SĐT..."
                     value={draftFilters.search}
                     onChange={(e) => setDraftFilters({ ...draftFilters, search: e.target.value })}
-                    className="w-full h-11 pl-9 pr-4 rounded-xl border bg-background text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
+                    className="w-full h-11 pl-9 pr-4 rounded-xl border bg-background text-sm focus:ring-2 focus:ring-primary outline-none"
                   />
                 </div>
               </div>
 
-              {/* Staff Search */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground">Tên Nhân viên (Staff)</label>
+                <label className="text-xs font-medium text-foreground">Staff xử lý</label>
                 <input
                   type="text"
-                  placeholder="Nhập tên nhân viên xử lý..."
+                  placeholder="Tên nhân viên..."
                   value={draftFilters.staffName}
                   onChange={(e) => setDraftFilters({ ...draftFilters, staffName: e.target.value })}
-                  className="w-full h-11 px-4 rounded-xl border bg-background text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
+                  className="w-full h-11 px-4 rounded-xl border bg-background text-sm focus:ring-2 focus:ring-primary outline-none"
                 />
               </div>
 
-              {/* Date Range */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground">Khoảng thời gian (Ngày đặt)</label>
+                <label className="text-xs font-medium text-foreground">Thời gian (Ngày đặt)</label>
                 <div className="grid grid-cols-2 gap-3">
                   <input
                     type="date"
                     value={draftFilters.startDate}
                     onChange={(e) => setDraftFilters({ ...draftFilters, startDate: e.target.value })}
-                    className="w-full h-11 px-3 rounded-xl border bg-background text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
+                    className="w-full h-11 px-3 rounded-xl border bg-background text-sm focus:ring-2 focus:ring-primary outline-none"
                   />
                   <input
                     type="date"
                     value={draftFilters.endDate}
                     onChange={(e) => setDraftFilters({ ...draftFilters, endDate: e.target.value })}
-                    className="w-full h-11 px-3 rounded-xl border bg-background text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
+                    className="w-full h-11 px-3 rounded-xl border bg-background text-sm focus:ring-2 focus:ring-primary outline-none"
                   />
                 </div>
               </div>
             </div>
 
             <div className="flex gap-3 pt-2">
-              <button
-                onClick={clearFilters}
-                className="flex-1 h-11 rounded-xl border font-medium text-sm hover:bg-secondary/40 transition flex items-center justify-center gap-2"
-              >
-                <FilterX size={16} />
-                Xoá lọc
+              <button onClick={clearFilters} className="flex-1 h-11 rounded-xl border font-medium text-sm hover:bg-secondary/40 flex items-center justify-center gap-2">
+                <FilterX size={16} /> Xoá lọc
               </button>
-              <button
-                onClick={applyFilters}
-                className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition"
-              >
+              <button onClick={applyFilters} className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90">
                 Áp dụng
               </button>
             </div>
           </div>
         </div>
       )}
+      {/* Confirm Modal */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        isDestructive={confirmModal.isDestructive}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal((s) => ({ ...s, isOpen: false }))}
+      />
     </div>
   );
 }

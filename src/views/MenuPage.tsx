@@ -60,7 +60,7 @@ export default function MenuPage() {
   }, [data, activeTab]);
 
   return (
-    <main className="min-h-screen bg-[#fdfcf7] text-foreground font-sans pt-18 pb-32 px-6">
+    <main className="min-h-screen bg-[#fdfcf7] text-foreground font-sans pt-8 pb-32 px-6">
       <div className="max-w-2xl mx-auto">
 
         {/* Back Button */}

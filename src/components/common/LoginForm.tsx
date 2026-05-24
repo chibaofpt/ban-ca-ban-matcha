@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Phone, Lock, Loader2, AlertCircle } from "lucide-react";
+import { Phone, Lock, Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuthStore } from "@/src/lib/store/authStore";
@@ -14,6 +14,7 @@ import { login as loginRequest, type LoginPayload } from "@/src/services/authSer
 const LoginForm = () => {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const {
     register,
@@ -122,14 +123,26 @@ const LoginForm = () => {
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
               id="login-password"
-              type="password"
+              type={showPassword ? "text" : "password"}
               placeholder="••••••••"
               {...register("password")}
               disabled={isSubmitting}
-              className={`w-full h-11 pl-9 pr-4 rounded-xl border bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 ${
+              className={`w-full h-11 pl-9 pr-10 rounded-xl border bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 ${
                 errors.password ? "border-red-500 focus:ring-red-500" : "border-input"
               }`}
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none"
+              disabled={isSubmitting}
+            >
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+            </button>
           </div>
           {errors.password && (
             <p className="text-xs text-red-500">{errors.password.message}</p>
