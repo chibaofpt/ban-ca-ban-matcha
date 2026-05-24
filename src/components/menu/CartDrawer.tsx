@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Trash2, ShoppingBag, CheckCircle2, AlertTriangle, RefreshCcw, Minus, Plus } from "lucide-react";
 import { useCartStore, useCartTotalPrice } from "@/src/lib/store/cartStore";
@@ -8,6 +8,7 @@ import Image from "next/image";
 import { createOrder, PriceChangedError, type PriceConflict } from "@/src/services/orderService";
 import { useIsLoggedIn } from "@/src/lib/store/authStore";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
+import { useStoreStatusStore } from "@/src/lib/store/storeStore";
 import { cn } from "@/src/utils/cn";
 import { useRouter } from "next/navigation";
 
@@ -27,7 +28,31 @@ const CartDrawer = () => {
   const isLoggedIn = useIsLoggedIn();
   const openLogin = useAuthModalStore((s) => s.openLogin);
   const router = useRouter();
+  const { is_open: isStoreOpen, isLoaded: isStoreStatusLoaded, closure_note } = useStoreStatusStore();
+  const isStoreClosed = isStoreStatusLoaded && !isStoreOpen;
   const [checkout, setCheckout] = useState<CheckoutState>({ status: "idle" });
+  const [pickupTime, setPickupTime] = useState<string>("");
+  const [minTimeStr, setMinTimeStr] = useState<string>("");
+  const [isTimeCustom, setIsTimeCustom] = useState<boolean>(false);
+
+  useEffect(() => {
+    const updateTimes = () => {
+      const minD = new Date(Date.now() + 10 * 60000);
+      const defD = new Date(Date.now() + 11 * 60000);
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      
+      const newMinStr = `${pad(minD.getHours())}:${pad(minD.getMinutes())}`;
+      const newDefStr = `${pad(defD.getHours())}:${pad(defD.getMinutes())}`;
+      
+      setMinTimeStr(newMinStr);
+      if (!isTimeCustom) {
+        setPickupTime(newDefStr);
+      }
+    };
+    updateTimes();
+    const interval = setInterval(updateTimes, 60000); // Cập nhật mỗi phút
+    return () => clearInterval(interval);
+  }, [isTimeCustom]);
 
   const resetCheckout = useCallback(() => setCheckout({ status: "idle" }), []);
 
@@ -43,10 +68,33 @@ const CartDrawer = () => {
     setCheckout({ status: "loading" });
 
     try {
-      const result = await createOrder(items);
+      let finalPickupTime: string | undefined = undefined;
+      const minAllowedTime = Date.now() + 10 * 60 * 1000;
+
+      if (pickupTime) {
+        const [hours, minutes] = pickupTime.split(':');
+        const selectedDate = new Date();
+        selectedDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+        
+        // Add 1 min buffer for slow submissions
+        if (selectedDate.getTime() < minAllowedTime - 60000) {
+          setCheckout({ status: "error", message: "Thời gian nhận món phải cách hiện tại ít nhất 10 phút." });
+          return;
+        }
+        finalPickupTime = selectedDate.toISOString();
+      } else {
+        // If not selected, send now + 10m
+        finalPickupTime = new Date(minAllowedTime).toISOString();
+      }
+
+      const result = await createOrder(items, {
+        pickupTime: finalPickupTime,
+      });
       clearCart();
       setCartOpen(false);
       resetCheckout();
+      setPickupTime("");
+      setIsTimeCustom(false);
       router.push("/history");
     } catch (err) {
       if (err instanceof PriceChangedError) {
@@ -56,7 +104,7 @@ const CartDrawer = () => {
         setCheckout({ status: "error", message });
       }
     }
-  }, [items, clearCart, isLoggedIn, openLogin, router, setCartOpen, resetCheckout]);
+  }, [items, clearCart, isLoggedIn, openLogin, router, setCartOpen, resetCheckout, pickupTime]);
 
   const handleClose = useCallback(() => {
     setCartOpen(false);
@@ -271,22 +319,72 @@ const CartDrawer = () => {
             {/* ── Footer — only shown when items exist and not in success/error ── */}
             {items.length > 0 && (
               <div className="border-t border-border/40 bg-white px-6 py-5 space-y-4 shrink-0">
+                {/* Pickup Time Picker */}
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-primary/80 text-sm">Thời gian nhận món</span>
+                      <span className="text-[11px] text-primary/50">Thời gian đặt trước tối thiểu là 10 phút</span>
+                    </div>
+                    <input
+                      type="time"
+                      min={minTimeStr}
+                      value={pickupTime}
+                      onClick={(e) => {
+                        // Trick to make the native picker start at minTimeStr instead of current time
+                        if (!pickupTime) {
+                          setPickupTime(minTimeStr);
+                          setIsTimeCustom(true);
+                        }
+                      }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPickupTime(val);
+                        setIsTimeCustom(true);
+                      }}
+                      className={cn(
+                        "border rounded-xl px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2",
+                        pickupTime && pickupTime < minTimeStr 
+                          ? "border-red-500 text-red-500 focus:ring-red-500/20" 
+                          : "border-border text-primary focus:ring-primary/20"
+                      )}
+                    />
+                  </div>
+                  {pickupTime && pickupTime < minTimeStr && (
+                    <span className="text-xs text-red-500 font-medium text-right mt-1">
+                      Thời gian nhận tối thiểu là {minTimeStr}
+                    </span>
+                  )}
+                </div>
+
                 {/* Total */}
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between pt-2 border-t border-border/40">
                   <span className="font-bold text-primary/60 text-sm tracking-widest uppercase">Tổng cộng</span>
                   <span className="font-serif text-2xl font-bold text-primary">
                     <span className="text-3xl">🐟</span> {totalPrice / 1000}k
                   </span>
                 </div>
 
+                {/* Store closed notice — shown above submit when store is closed */}
+                {isStoreClosed && (
+                  <div className="flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
+                    <span className="text-base leading-none">🔴</span>
+                    <span className="text-xs font-medium text-amber-800 leading-snug">
+                      {closure_note
+                        ? `Cửa hàng tạm đóng: ${closure_note}`
+                        : "Cửa hàng hiện đang đóng cửa, chưa thể đặt hàng"}
+                    </span>
+                  </div>
+                )}
+
                 {/* Checkout CTA */}
                 <button
                   id="btn-checkout"
                   onClick={handleCheckout}
-                  disabled={checkout.status === "loading" || items.length === 0}
+                  disabled={checkout.status === "loading" || items.length === 0 || (!!pickupTime && pickupTime < minTimeStr) || isStoreClosed}
                   className={cn(
                     "w-full py-4 rounded-2xl font-bold text-sm shadow-xl transition-all flex items-center justify-center gap-2",
-                    checkout.status === "loading"
+                    checkout.status === "loading" || (!!pickupTime && pickupTime < minTimeStr) || isStoreClosed
                       ? "bg-primary/60 text-white cursor-not-allowed"
                       : "bg-primary text-white hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98]"
                   )}

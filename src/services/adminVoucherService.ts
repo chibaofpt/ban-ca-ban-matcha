@@ -70,9 +70,12 @@ export type CreateVoucherPackageInput =
 
 export type UpdateVoucherPackageInput = {
   name?: string;
+  description?: string | null;
   points_cost?: number;
   is_active?: boolean;
   expires_after_days?: number | null;
+  quantity?: number | null;
+  max_per_user?: number | null;
 };
 
 const URL = {

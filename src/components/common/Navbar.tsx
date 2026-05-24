@@ -10,6 +10,7 @@ import {
   Gift,
   Star,
   Home,
+  Info,
   UtensilsCrossed,
   ClipboardList,
 } from "lucide-react";
@@ -62,7 +63,7 @@ const Navbar = () => {
           href="/"
           className="font-playfair text-2xl font-bold text-primary tracking-tight"
         >
-          Bánh Cá Bốn Mùa
+          Bạn Cá Bán Matcha
         </NavLink>
 
         {/* ── Desktop links ── */}
@@ -74,6 +75,15 @@ const Navbar = () => {
           >
             <Home className="w-3.5 h-3.5" />
             Trang chủ
+          </NavLink>
+
+          <NavLink
+            href="/about"
+            className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-1.5"
+            activeClassName="text-primary"
+          >
+            <Info className="w-3.5 h-3.5" />
+            Câu Chuyện
           </NavLink>
 
           <NavLink
@@ -202,6 +212,16 @@ const Navbar = () => {
               >
                 <Home className="w-4 h-4" />
                 Trang chủ
+              </NavLink>
+
+              <NavLink
+                href="/about"
+                onClick={close}
+                className="text-sm font-medium py-2.5 flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors"
+                activeClassName="text-primary"
+              >
+                <Info className="w-4 h-4" />
+                Câu Chuyện
               </NavLink>
 
               <NavLink

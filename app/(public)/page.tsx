@@ -1,8 +1,8 @@
 import HomePage from '@/src/views/HomePage';
 
 export const metadata = {
-  title: 'Bánh Cá Bốn Mùa — Matcha & Bánh Cá Thủ Công',
-  description: 'Thưởng thức vị matcha chuẩn Nhật giữa lòng Bình Dương. Bánh cá và matcha ceremonial grade đa dạng theo mùa.',
+  title: 'Bạn Cá Bán Matcha — Tiên phong văn hóa Matcha tại Bình Dương',
+  description: 'Thưởng thức vị matcha chuẩn Nhật đầu tiên tại Thủ Dầu Một, Bình Dương. Trải nghiệm matcha ceremonial grade được pha chế thủ công.',
 };
 
 /**

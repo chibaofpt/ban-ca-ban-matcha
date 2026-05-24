@@ -1,7 +1,7 @@
 ---
 name: api-layer
 description: >
-  Standardizes the full API layer for Bánh Cá Bốn Mùa — Next.js 16 App Router.
+  Standardizes the full API layer for Bạn Cá Bán Matcha — Next.js 16 App Router.
   Use this skill whenever creating a new API route, frontend service, route handler,
   or reorganizing how API calls are made in views/components.
   Trigger on: "write api", "create route", "call api", "fetch data", "service layer",

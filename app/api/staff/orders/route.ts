@@ -16,6 +16,7 @@ import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
 import type { Prisma } from "@prisma/client";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
+import { checkStoreOpen } from "@/lib/storeSchedule";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,24 @@ export async function POST(req: NextRequest) {
         { error: "Product voucher cannot be used for anonymous orders", code: "VALIDATION_ERROR" },
         { status: 400 }
       );
+    }
+
+    // 5a. Store open check — only applies to non-COUNTER order types.
+    // COUNTER = staff at the physical counter, always allowed regardless of hours.
+    const orderType = (data as { order_type?: string }).order_type;
+    if (orderType && orderType !== "COUNTER") {
+      const storeStatus = await checkStoreOpen();
+      if (!storeStatus.is_open) {
+        return NextResponse.json(
+          {
+            error: storeStatus.closure_note
+              ? `Cửa hàng tạm đóng cửa: ${storeStatus.closure_note}`
+              : "Cửa hàng hiện đang đóng cửa",
+            code: "STORE_CLOSED",
+          },
+          { status: 503 }
+        );
+      }
     }
 
     // ── Phase 1: READS (outside transaction — avoids P2028 pgBouncer timeout) ──

@@ -67,7 +67,7 @@ const IntroSection: React.FC = () => {
       <div className="max-w-[680px] mx-auto text-center space-y-12">
         <header className="space-y-4">
           <h2 className="text-xs font-bold tracking-[0.3em] text-primary uppercase">
-            Bánh Cá Bốn Mùa
+            Bạn Cá Bán Matcha
           </h2>
           <h1 className="font-serif text-4xl md:text-5xl text-foreground font-bold leading-tight">
             Matcha chuẩn vị – <span className="text-primary italic">Giá không chuẩn</span>
@@ -76,14 +76,14 @@ const IntroSection: React.FC = () => {
 
         <div className="space-y-6 text-foreground/80 leading-relaxed text-lg">
           <p>
-            Chúng tôi chọn matcha ceremonial grade nguyên chất từ những vùng trà nổi tiếng
-            của Nhật Bản — vị đắng thanh, màu xanh sâu, không pha tạp. Mỗi ly được pha
-            thủ công, rót trực tiếp từ katakuchi trên nền sữa tươi và đá lạnh.
+            Tự hào là <strong>quán matcha chuẩn Nhật đầu tiên tại Thủ Dầu Một</strong>, Bạn Cá Bán Matcha mang đến trải nghiệm 
+            matcha ceremonial grade nguyên chất từ những vùng trà nổi tiếng của Nhật Bản — vị đắng thanh, màu xanh sâu, không pha tạp. 
+            Mỗi ly đều được pha thủ công ngay tại quầy, rót trực tiếp từ chén chawan truyền thống.
           </p>
           <p>
             Menu thay đổi theo mùa để giữ nguyên độ tươi của nguyên liệu. Dù là
             matcha latte đá, matcha sữa nóng hay matcha thuần — bạn luôn có lựa chọn
-            đúng mùa, đúng vị, đúng giá.
+            chất lượng nhất giữa lòng <strong>Bình Dương</strong> (matcha local Bình Dương).
           </p>
         </div>
 

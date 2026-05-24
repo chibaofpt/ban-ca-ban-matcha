@@ -2,7 +2,7 @@ import StaffScanPage from '@/src/views/staff/StaffScanPage';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Quét QR — Bánh Cá Bốn Mùa',
+  title: 'Quét QR — Bạn Cá Bán Matcha',
   description: 'Quét mã QR voucher hoặc thông tin khách hàng.',
 };
 

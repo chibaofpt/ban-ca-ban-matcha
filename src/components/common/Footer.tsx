@@ -14,14 +14,14 @@ const Footer: React.FC = () => {
            className="text-center"
         >
           <p className="font-serif text-3xl md:text-5xl font-bold text-primary mb-6">
-            Bánh Cá Bốn Mùa
+            Bạn Cá Bán Matcha
           </p>
           <div className="h-1 w-12 bg-accent rounded-full mx-auto mb-8" />
           <p className="text-primary/60 text-sm md:text-base mb-2">
             Matcha & Bánh cá thủ công theo mùa
           </p>
           <p className="text-primary/40 text-xs mt-12 tracking-widest uppercase">
-            © 2026 Bánh Cá Bốn Mùa. All rights reserved.
+            © 2026 Bạn Cá Bán Matcha. All rights reserved.
           </p>
         </motion.div>
       </div>

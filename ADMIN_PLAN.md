@@ -1,4 +1,4 @@
-# Bánh Cá Bốn Mùa — Admin & Staff Panel
+# Bạn Cá Bán Matcha — Admin & Staff Panel
 
 > Read this file when working on any admin or staff feature.
 > Source of truth for schema and coding rules: `AGENTS.md`.

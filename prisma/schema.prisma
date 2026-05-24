@@ -483,3 +483,35 @@ enum PowderType {
   SEASONAL
   NONE
 }
+
+/// Store opening hours schedule. Dynamic rows — no row for a day = that day is closed.
+/// Max 14 rows (7 days × 2 slots), min 0 rows.
+model StoreSchedule {
+  id          String @id @default(uuid())
+  /// 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  day_of_week Int
+  /// 1 = morning slot, 2 = afternoon/evening slot
+  slot        Int
+  /// Opening time in "HH:mm" format (Asia/Ho_Chi_Minh). Required — row existence implies open.
+  open_time   String
+  /// Closing time in "HH:mm" format (Asia/Ho_Chi_Minh). Required.
+  close_time  String
+
+  @@unique([day_of_week, slot])
+  @@map("store_schedule")
+}
+
+/// Temporary store closure. At most 1 active row at any time.
+model StoreTemporaryClosure {
+  id        String    @id @default(uuid())
+  /// true = store is currently temporarily closed
+  is_active Boolean   @default(true)
+  /// Optional note displayed to customers on the homepage
+  note      String?
+  closed_at DateTime  @default(now())
+  /// Set when admin reopens the store
+  opened_at DateTime?
+
+  @@map("store_temporary_closure")
+}
+

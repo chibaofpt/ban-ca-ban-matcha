@@ -1,4 +1,4 @@
-# Bánh Cá Bốn Mùa — API Routes
+# Bạn Cá Bán Matcha — API Routes
 
 > Read this file when implementing or modifying any API route.
 
@@ -25,6 +25,7 @@
 | `INSUFFICIENT_POINTS` | Not enough points for voucher redemption |
 | `VOUCHER_EXPIRED` | Voucher past expiry date |
 | `VOUCHER_REDEEMED` | Voucher already used |
+| `STORE_CLOSED` | Store is outside opening hours or temporarily closed — rejects PICKUP/DELIVERY orders (HTTP 503) |
 | `INTERNAL_ERROR` | Unexpected server error |
 
 ---
@@ -103,6 +104,7 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 | `/api/auth/refresh` | POST | Swap refresh token → new access token |
 | `/api/menu` | GET | All available items with computed prices |
 | `/api/powders` | GET | Full powder catalogue with pricing and size config |
+| `/api/store-status` | GET | Current store open/closed status, today + weekly schedule |
 
 ### Customer — CUSTOMER role
 
@@ -161,6 +163,9 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 | `/api/admin/default-size-config` | PUT | Update M/L/XL config (affects all prices immediately) |
 | `/api/admin/fusion-powders` | POST | Attach powder to Fusion item's allowed list |
 | `/api/admin/fusion-powders` | DELETE | Detach powder from Fusion item's allowed list |
+| `/api/admin/store-schedule` | GET | Get weekly opening hours (0–14 rows grouped by day) |
+| `/api/admin/store-schedule` | PUT | Replace entire schedule (deleteMany + createMany in transaction) |
+| `/api/admin/store-closure` | POST | Temporarily close (`action=close`) or reopen (`action=open`) the store |
 | `/api/admin/promotions` | POST/PUT/DELETE | Phase 5 only |
 
 ---

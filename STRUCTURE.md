@@ -1,4 +1,4 @@
-# Bánh Cá Bốn Mùa — Project Structure
+# Bạn Cá Bán Matcha — Project Structure
 
 > Read this file before creating or moving any file or directory.
 
@@ -71,7 +71,10 @@ app/                              # Next.js App Router — entry points only, ze
     admin/milk-types/[id]/route.ts
     admin/default-size-config/route.ts
     admin/fusion-powders/route.ts
-    admin/promotions/route.ts     # Phase 5 only
+    admin/store-schedule/route.ts     # GET + PUT weekly schedule
+    admin/store-closure/route.ts      # POST close/open
+    store-status/route.ts             # Public — current open/closed state
+    admin/promotions/route.ts         # Phase 5 only
 
 src/                              # Frontend — never import lib/ from here
   views/
@@ -119,6 +122,7 @@ src/                              # Frontend — never import lib/ from here
       PowderForm.tsx
       MilkTypeForm.tsx
       SizeConfigForm.tsx
+      StoreSettingsModal.tsx          # Admin modal: weekly schedule + temporary closure
     staff/
       StaffMenuCard.tsx
       StaffCartDrawer.tsx
@@ -138,6 +142,8 @@ src/                              # Frontend — never import lib/ from here
     adminMilkTypeService.ts       # CRUD /api/admin/milk-types
     adminSizeConfigService.ts     # GET/PUT /api/admin/default-size-config
     adminVoucherService.ts
+    adminStoreService.ts          # GET/PUT schedule, POST closure toggle
+    storeStatusService.ts         # GET /api/store-status (public)
     staffOrderService.ts
   __tests__/                      # Vitest unit & integration tests (Front-end + Backend Logic)
     services/
@@ -159,6 +165,7 @@ scratch/                          # Ignored by Git. Scratchpad for quick server 
     store/
       cartStore.ts                # Zustand cart — localStorage persisted
       powderStore.ts              # Zustand — powder catalogue cached from /api/powders
+      storeStore.ts               # Zustand — store open/closed status (hydrated on HomePage, read in CartDrawer)
     hooks/
       useScrollProgress.ts
       useBodyScrollLock.ts
@@ -200,6 +207,7 @@ lib/                              # Backend only — server-side, NEVER import i
     voucher.ts
     points.ts
     powder.ts                     # Zod schemas for matcha_powder, milk_type, default_size_config
+    storeSchedule.ts              # Zod schemas for store schedule + closure toggle
 
 middleware.ts
 prisma/schema.prisma

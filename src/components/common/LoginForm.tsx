@@ -74,7 +74,7 @@ const LoginForm = () => {
           Đăng nhập
         </h2>
         <p className="text-muted-foreground text-sm">
-          Chào mừng bạn trở lại Bánh Cá Bốn Mùa
+          Chào mừng bạn trở lại Bạn Cá Bán Matcha
         </p>
       </div>
 

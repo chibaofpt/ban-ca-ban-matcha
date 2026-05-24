@@ -33,6 +33,7 @@ export interface OrderRes {
   order_code: string | null;
   /** Auto-cancel deadline (ISO string). Null for COUNTER orders. */
   auto_cancel_at: string | null;
+  pickup_time: string | null;
   subtotal_vnd: number;
   discount_vnd: number;
   total_vnd: number;

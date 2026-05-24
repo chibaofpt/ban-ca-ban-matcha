@@ -13,6 +13,7 @@ import {
 } from "@/lib/vouchers";
 import { generateOrderCode } from "@/lib/orderCode";
 import { buildVietQRUrl } from "@/lib/vietqr";
+import { checkStoreOpen, validatePickupTime } from "@/lib/storeSchedule";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
 
@@ -48,6 +49,36 @@ export async function POST(req: NextRequest) {
 
   try {
     const data = parsed.data;
+
+    // 5. Store open check — reject PICKUP/DELIVERY when store is closed
+    // COUNTER orders are only created by staff, not customers, but guard anyway.
+    const storeStatus = await checkStoreOpen();
+    if (!storeStatus.is_open) {
+      return NextResponse.json(
+        {
+          error: storeStatus.closure_note
+            ? `Cửa hàng tạm đóng cửa: ${storeStatus.closure_note}`
+            : "Cửa hàng hiện đang đóng cửa, vui lòng đặt hàng trong giờ mở cửa",
+          code: "STORE_CLOSED",
+        },
+        { status: 503 }
+      );
+    }
+
+    // 5.1. Pickup time validation
+    if (data.order_type === "PICKUP" || data.order_type === "DELIVERY") {
+      const resolvedPickupTime = data.pickup_time
+        ? new Date(data.pickup_time)
+        : new Date(Date.now() + 10 * 60 * 1000);
+
+      const pickupValidation = await validatePickupTime(resolvedPickupTime);
+      if (!pickupValidation.isValid) {
+        return NextResponse.json(
+          { error: pickupValidation.error, code: "INVALID_PICKUP_TIME" },
+          { status: 400 }
+        );
+      }
+    }
 
     // ── Phase 1: READS (outside transaction — avoids P2028 pgBouncer timeout) ──
 
@@ -202,7 +233,9 @@ export async function POST(req: NextRequest) {
             discount_vnd: addon_discount_vnd + discount_vnd,
             total_vnd,
             points_earned: null,
-            pickup_time: data.pickup_time ? new Date(data.pickup_time) : null,
+            pickup_time: data.order_type === "PICKUP" 
+              ? (data.pickup_time ? new Date(data.pickup_time) : new Date(Date.now() + 10 * 60 * 1000))
+              : (data.pickup_time ? new Date(data.pickup_time) : null),
             note: data.note ?? null,
             auto_cancel_at,
             delivery_address: data.delivery_address ?? null,
