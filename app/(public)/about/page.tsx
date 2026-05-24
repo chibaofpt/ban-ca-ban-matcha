@@ -13,7 +13,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'LocalBusiness',
   name: 'Bạn Cá Bán Matcha',
-  image: '/logo.jpg',
+  image: '/logo.png',
   description: 'Quán trà matcha chuẩn Nhật đầu tiên tại Thủ Dầu Một, Bình Dương. Chuyên phục vụ matcha ceremonial grade pha thủ công bằng chổi chasen.',
   address: {
     '@type': 'PostalAddress',
@@ -90,13 +90,21 @@ export default function AboutPage() {
           <p className="text-foreground/80 max-w-xl mx-auto">
             Hãy ghé thăm Bạn Cá Bán Matcha để tự mình cảm nhận hương vị matcha đích thực giữa lòng Bình Dương.
           </p>
-          <div className="pt-4">
+          <div className="pt-4 flex flex-col md:flex-row justify-center items-center gap-4">
             <Link 
               href="/menu"
               className="inline-block bg-primary text-primary-foreground px-8 py-4 rounded-full font-bold transition-transform hover:scale-105 shadow-md"
             >
               Khám Phá Menu
             </Link>
+            <a 
+              href="https://share.google/lzDys7rVh5d6W41O8"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block bg-background text-primary border-2 border-primary px-8 py-4 rounded-full font-bold transition-transform hover:scale-105 shadow-md"
+            >
+              Chỉ Đường Tới Quán 📍
+            </a>
           </div>
         </section>
 
