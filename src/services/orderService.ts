@@ -110,6 +110,20 @@ export async function createOrder(
 }
 
 /**
+ * Fetches the paginated list of orders for the current customer.
+ * Calls GET /api/orders.
+ */
+export async function fetchCustomerOrders(params?: { page?: number; limit?: number }) {
+  const query = new URLSearchParams();
+  if (params?.page) query.append('page', params.page.toString());
+  if (params?.limit) query.append('limit', params.limit.toString());
+  
+  const qs = query.toString();
+  const res = await apiClient.get(`/api/orders${qs ? `?${qs}` : ''}`);
+  return res.data; // { data: [...], meta: { total, page, totalPages } }
+}
+
+/**
  * Fetches the current status of a customer order for real-time tracking.
  * Calls GET /api/orders/[id].
  */

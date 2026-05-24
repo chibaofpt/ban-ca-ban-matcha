@@ -16,8 +16,10 @@ model User {
   role             Role        @default(CUSTOMER)
   points_balance   Int         @default(0)
   qr_token         String      @unique @default(dbgenerated("(gen_random_uuid())::text"))
-  otp_enabled      Boolean     @default(false)
-  created_at       DateTime    @default(now()) @db.Timestamptz(6)
+  otp_enabled           Boolean     @default(false)
+  failed_login_attempts Int         @default(0)
+  locked_until          DateTime?   @db.Timestamptz(6)
+  created_at            DateTime    @default(now()) @db.Timestamptz(6)
   updated_at       DateTime    @default(now()) @updatedAt @db.Timestamptz(6)
   orders             Order[]     @relation("CustomerOrders")
   handledOrders      Order[]     @relation("HandledOrders")
@@ -74,6 +76,10 @@ model VoucherPackage {
   covered_price_vnd          Int?
   is_active                  Boolean       @default(true)
   expires_after_days         Int?
+  /// NULL = unlimited. Total number of vouchers that can be issued from this package.
+  quantity                   Int?
+  /// Maximum number of vouchers a single user can redeem from this package.
+  max_per_user               Int           @default(1)
   created_at                 DateTime      @default(now()) @db.Timestamptz(6)
   menuItem                   MenuItem?     @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   matchaPowder               MatchaPowder? @relation(fields: [matcha_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -106,7 +112,8 @@ model Voucher {
   redeemed_by                String?        @db.Uuid
   created_at                 DateTime       @default(now()) @db.Timestamptz(6)
   orderItems                 OrderItem[]
-  orders                     Order[]
+  discountOrders             Order[]        @relation("OrderDiscountVoucher")
+  addonOrders                Order[]        @relation("OrderAddonVoucher")
   pointsLogs                 PointsLog[]
   menuItem                   MenuItem?      @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   matchaPowder               MatchaPowder?  @relation(fields: [matcha_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -236,6 +243,8 @@ model Order {
   /// NULL = anonymous walk-in order (no loyalty tracking). Non-null = registered or ghost customer.
   user_id              String?     @db.Uuid
   voucher_id           String?     @db.Uuid
+  /// ADDON voucher applied to this order. Stored so cancel flows can restore it to ACTIVE.
+  addon_voucher_id     String?     @db.Uuid
   status               OrderStatus @default(PENDING)
   /// COUNTER = staff-created at register; PICKUP = customer self-order pick-up; DELIVERY = future phase
   order_type           OrderType   @default(COUNTER)
@@ -258,12 +267,14 @@ model Order {
   /// Delivery shipping fee in VND — Phase 5+. Always 0 for PICKUP/COUNTER.
   shipping_fee_vnd     Int         @default(0)
   created_at           DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime    @default(now()) @updatedAt @db.Timestamptz(6)
   items                OrderItem[]
   user                 User?       @relation("CustomerOrders", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   handled_by           String?     @db.Uuid
   handler              User?       @relation("HandledOrders", fields: [handled_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   paymentConfirmer     User?       @relation("PaymentConfirmer", fields: [payment_confirmed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  voucher              Voucher?    @relation(fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  voucher              Voucher?    @relation("OrderDiscountVoucher", fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  addonVoucher         Voucher?    @relation("OrderAddonVoucher", fields: [addon_voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   pointsLogs           PointsLog[]
 
   @@index([created_at(sort: Desc)], map: "idx_orders_created_at")

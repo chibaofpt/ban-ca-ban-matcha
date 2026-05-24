@@ -44,7 +44,10 @@ export const staffOrderSchema = z.object({
   phone_number: z.string().regex(/^(0|\+84)\d{9}$/).optional(),
   customer_name: z.string().min(1).max(100).optional(),
   items: z.array(orderItemSchema).min(1),
+  /** DISCOUNT voucher only — at most one per order */
   voucher_id: z.string().uuid().optional(),
+  /** ADDON voucher — applies to the first item containing the target addon_option_id */
+  addon_voucher_id: z.string().uuid().optional(),
 });
 
 /** Schema for a customer-initiated order (PICKUP or DELIVERY). */
@@ -52,7 +55,10 @@ export const customerOrderSchema = z.object({
   /** Order fulfilment type. Defaults to PICKUP. DELIVERY is reserved for Phase 5+. */
   order_type: z.enum(["PICKUP", "DELIVERY"]).default("PICKUP"),
   items: z.array(orderItemSchema).min(1),
+  /** DISCOUNT voucher only — at most one per order */
   voucher_id: z.string().uuid().optional(),
+  /** ADDON voucher — applies to the first item containing the target addon_option_id */
+  addon_voucher_id: z.string().uuid().optional(),
   pickup_time: z.string().datetime().optional(),
   note: z.string().max(500).optional(),
   /** Delivery address — required when order_type = DELIVERY (enforced in route handler). Phase 5+. */

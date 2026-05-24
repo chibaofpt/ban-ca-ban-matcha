@@ -70,6 +70,8 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -78,6 +80,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.0",
     "happy-dom": "^20.9.0",
+    "jsdom": "^29.1.1",
     "prisma": "^5.22.0",
     "tailwindcss": "^4",
     "typescript": "^5",

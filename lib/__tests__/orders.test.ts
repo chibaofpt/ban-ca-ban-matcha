@@ -294,7 +294,7 @@ describe("processOrderItems", () => {
     expect(result[0].addons_price_vnd).toBe(0);
   });
 
-  it("PRODUCT voucher → unit_price_vnd = 0, addons still charged", async () => {
+  it("PRODUCT voucher → drink discount applied, customer pays diff, addons still charged", async () => {
     mockResolveOrderItemPrice.mockReturnValue(69000);
     const tx = makeTx({
       menuItemResult: latteMenuItem,
@@ -302,6 +302,11 @@ describe("processOrderItems", () => {
         [ADDON_KEM_ID]: { id: ADDON_KEM_ID, price_vnd: 8000, gram_value: null },
       },
     });
+
+    // covered_price_vnd = 69000 (exactly the drink price)
+    const productVoucherMap = new Map([
+      ["voucher-xyz", { menu_item_id: MENU_ITEM_ID, covered_price_vnd: 69000 }],
+    ]);
 
     const result = await processOrderItems(
       [
@@ -312,16 +317,52 @@ describe("processOrderItems", () => {
           sweetness: "QUARTER",
           addon_option_ids: [{ option_id: ADDON_KEM_ID, quantity: 1 }],
           product_voucher_id: "voucher-xyz",
-          client_price_vnd: 8000, // 0 (free drink) + 8000 (addon)
+          client_price_vnd: 8000, // 0 (drink fully covered) + 8000 (addon)
         },
       ],
-      tx as never
+      tx as never,
+      productVoucherMap
     );
 
-    expect(result[0].unit_price_vnd).toBe(0);
+    expect(result[0].unit_price_vnd).toBe(0); // drink fully covered
     expect(result[0].addons_price_vnd).toBe(8000); // addons still charged
+    expect(result[0].original_unit_price_vnd).toBe(69000); // original drink price
     expect(result[0].line_total).toBe(8000);
   });
+
+  it("PRODUCT voucher → partial coverage: customer pays size upgrade diff", async () => {
+    mockResolveOrderItemPrice.mockReturnValue(90000); // XL more expensive
+    const tx = makeTx({
+      menuItemResult: latteMenuItem,
+      addonResults: {},
+    });
+
+    // covered_price_vnd = 69000 (L size price)
+    const productVoucherMap = new Map([
+      ["voucher-xyz", { menu_item_id: MENU_ITEM_ID, covered_price_vnd: 69000 }],
+    ]);
+
+    const result = await processOrderItems(
+      [
+        {
+          menu_item_id: MENU_ITEM_ID,
+          quantity: 1,
+          size: "XL",
+          sweetness: "QUARTER",
+          addon_option_ids: [],
+          product_voucher_id: "voucher-xyz",
+          client_price_vnd: 21000, // 90000 - 69000 = 21000 customer pays
+        },
+      ],
+      tx as never,
+      productVoucherMap
+    );
+
+    expect(result[0].unit_price_vnd).toBe(21000); // 90000 - 69000
+    expect(result[0].original_unit_price_vnd).toBe(90000);
+    expect(result[0].line_total).toBe(21000);
+  });
+
 
   // ── Fusion powder validation ───────────────────────────────────────────────
 

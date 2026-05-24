@@ -30,7 +30,7 @@ export async function POST(req: Request) {
 
     // Delete old session and create a new one (Token rotation)
     await prisma.session.delete({ where: { id: session.id } });
-    const newRefreshToken = await createSession(userId);
+    const newRefreshToken = await createSession(userId, session.user.role);
 
     // Issue new access token
     const newAccessToken = await signJwt({ id: userId, role: session.user.role, phone_number: session.user.phone_number });

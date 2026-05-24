@@ -29,6 +29,14 @@ type DbClient = Pick<
   | "menuItemSize"
 >;
 
+/** Validated PRODUCT voucher data for a single order item — pre-fetched outside the transaction. */
+export interface ProductVoucherInfo {
+  /** The menu_item_id the voucher is locked to. Server rejects if item doesn't match. */
+  menu_item_id: string;
+  /** The total covered amount (drink + configured addons). Acts as a credit against the item total. */
+  covered_price_vnd: number;
+}
+
 
 
 // ── Input/Output types ────────────────────────────────────────────────────────
@@ -66,10 +74,12 @@ export interface ProcessedOrderItem {
   product_voucher_id: string | null;
   selected_powder_id: string;
   selected_milk_type_id: string | null;
-  /** Snapshot unit price at order time. 0 if product_voucher_id is set. */
+  /** Amount customer actually pays for the drink (after voucher credit). 0 if fully covered. */
   unit_price_vnd: number;
-  /** Total addon cost for this line item. */
+  /** Total addon cost for this line item (not affected by voucher credit). */
   addons_price_vnd: number;
+  /** Server-computed drink price BEFORE any voucher credit. Used for surplus calculation. */
+  original_unit_price_vnd: number;
   /** line_total = (unit_price_vnd + addons_price_vnd) × quantity */
   line_total: number;
   resolvedAddons: ProcessedAddon[];
@@ -108,12 +118,18 @@ export class PriceChangedError extends Error {
  * Validates all order items, re-fetches prices from DB, compares against client prices,
  * and resolves addon costs. Call inside prisma.$transaction().
  *
+ * @param productVoucherMap - Pre-validated PRODUCT voucher data keyed by voucher ID.
+ *   Must be fetched and validated (ownership, status, expiry) BEFORE calling this function.
+ *   If provided, items with matching product_voucher_id will have their unit_price_vnd
+ *   reduced by the covered amount (customer pays the surplus, if any).
+ *
  * Throws OrderValidationError for invalid items/sizes/powders.
  * Throws PriceChangedError if any client_price_vnd does not match server price.
  */
 export async function processOrderItems(
   items: OrderItemInput[],
-  client: DbClient
+  client: DbClient,
+  productVoucherMap?: Map<string, ProductVoucherInfo>
 ): Promise<ProcessedOrderItem[]> {
   // Build pricing context once — avoids N+1 across the item loop
   const pricingCtx = await buildPricingContext(client as Parameters<typeof buildPricingContext>[0]);
@@ -122,7 +138,7 @@ export async function processOrderItems(
 
   const resolved: ProcessedOrderItem[] = [];
   for (const item of items) {
-    const res = await resolveOneItem(item, client, pricingCtx, priceConflicts);
+    const res = await resolveOneItem(item, client, pricingCtx, priceConflicts, productVoucherMap);
     resolved.push(res);
   }
 
@@ -140,7 +156,8 @@ async function resolveOneItem(
   item: OrderItemInput,
   client: DbClient,
   pricingCtx: PricingContext,
-  priceConflicts: PriceConflict[]
+  priceConflicts: PriceConflict[],
+  productVoucherMap?: Map<string, ProductVoucherInfo>
 ): Promise<ProcessedOrderItem> {
   // 1. Fetch menu item — must be available
   const menuItem = await (client as PrismaClient).menuItem.findUnique({
@@ -206,7 +223,7 @@ async function resolveOneItem(
     }
   }
 
-  // 4. Compute server-authoritative unit price
+  // 4. Compute server-authoritative drink price
   const server_unit_price = resolveOrderItemPrice(
     {
       category: menuItem.category as "latte" | "fusion",
@@ -220,8 +237,28 @@ async function resolveOneItem(
     pricingCtx
   );
 
-  // PRODUCT voucher → unit_price_vnd = 0 (addons still charged at full price)
-  const final_unit_price = item.product_voucher_id ? 0 : server_unit_price;
+  // Apply PRODUCT voucher credit: covered_price_vnd acts as a credit against (drink + addons).
+  // We first subtract from the drink price; any remaining credit reduces the addons paid.
+  // The final unit_price_vnd is what the customer actually pays for the drink portion.
+  // Surplus (when covered > actual total) is computed after addons are resolved below.
+  let voucher_credit = 0;
+  if (item.product_voucher_id && productVoucherMap) {
+    const pvInfo = productVoucherMap.get(item.product_voucher_id);
+    if (pvInfo) {
+      if (pvInfo.menu_item_id !== item.menu_item_id) {
+        throw new OrderValidationError(
+          "VALIDATION_ERROR",
+          `Product voucher is not valid for this menu item`
+        );
+      }
+      voucher_credit = pvInfo.covered_price_vnd;
+    }
+  }
+
+  // Drink portion after credit (never below 0)
+  const drink_after_credit = Math.max(0, server_unit_price - voucher_credit);
+  // Remaining credit that can spill over to addons
+  const remaining_credit = Math.max(0, voucher_credit - server_unit_price);
 
   // 5. Resolve addon prices — snapshot at order time
   let addons_price_vnd = 0;
@@ -258,8 +295,14 @@ async function resolveOneItem(
     });
   }
 
+  // Apply any remaining voucher credit to addons
+  const addons_after_credit = Math.max(0, addons_price_vnd - remaining_credit);
+  const final_unit_price = drink_after_credit;
+  const final_addons_price = addons_after_credit;
+
   // 6. PRICE_CHANGED check
-  const full_server_unit_price = final_unit_price + addons_price_vnd;
+  // Client sends total per item = what they expect to pay (after voucher).
+  const full_server_unit_price = final_unit_price + final_addons_price;
   if (item.client_price_vnd !== full_server_unit_price) {
     priceConflicts.push({
       menu_item_id: item.menu_item_id,
@@ -284,7 +327,8 @@ async function resolveOneItem(
     selected_powder_id: powder_id,
     selected_milk_type_id: item.selected_milk_type_id ?? null,
     unit_price_vnd: final_unit_price,
-    addons_price_vnd,
+    addons_price_vnd: final_addons_price,
+    original_unit_price_vnd: server_unit_price,
     line_total,
     resolvedAddons,
   };

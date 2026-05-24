@@ -28,52 +28,64 @@ export async function POST(req: Request) {
       where: { phone_number: normalizedPhone },
     });
 
-    const DUMMY_HASH = "$2b$12$invalidhashfortimingsafetyxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+    // Valid bcrypt hash for timing safety
+    const DUMMY_HASH = "$2a$12$R9h/cIPz0gi.URNNX3rub2A9WEH71/x7LpZ9zL1Pz.x0bI/tXh9eW";
 
     if (existingUser) {
-      // Timing-safe: always run bcrypt even when returning early
-      await bcrypt.compare("dummy", DUMMY_HASH);
-      return NextResponse.json({ error: "Số điện thoại đã được đăng ký", code: "CONFLICT" }, { status: 409 });
+      if (existingUser.password_hash !== "GHOST_USER_NO_PASSWORD") {
+        // Timing-safe: always run bcrypt even when returning early
+        await bcrypt.compare("dummy", DUMMY_HASH);
+        return NextResponse.json({ error: "Số điện thoại đã được đăng ký", code: "CONFLICT" }, { status: 409 });
+      }
     }
 
     // Hash password with cost 12
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // Create user, award welcome points, and open a session in one atomic transaction
+    // Create or update user, award welcome points, and open a session in one atomic transaction
     const { user, refreshToken } = await prisma.$transaction(async (tx) => {
-      const createdUser = await tx.user.create({
-        data: {
-          name,
-          phone_number: normalizedPhone,
-          password_hash: passwordHash,
-          // role and qr_token have defaults in schema
-        },
-      });
+      let finalUser;
 
-      // Award 5 welcome bonus points (system action — performed_by is null)
-      await tx.user.update({
-        where: { id: createdUser.id },
-        data: { points_balance: { increment: 5 } },
-      });
+      if (existingUser && existingUser.password_hash === "GHOST_USER_NO_PASSWORD") {
+        // Convert ghost user to real user
+        finalUser = await tx.user.update({
+          where: { id: existingUser.id },
+          data: {
+            name,
+            password_hash: passwordHash,
+            points_balance: { increment: 5 }, // Award welcome bonus
+          },
+        });
+      } else {
+        // Create brand new user
+        finalUser = await tx.user.create({
+          data: {
+            name,
+            phone_number: normalizedPhone,
+            password_hash: passwordHash,
+            points_balance: 5, // Award welcome bonus
+          },
+        });
+      }
 
       await tx.pointsLog.create({
         data: {
-          user_id: createdUser.id,
+          user_id: finalUser.id,
           delta: 5,
           reason: "welcome_bonus",
           performed_by: null,
         },
       });
 
-      const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
       const session = await tx.session.create({
         data: {
-          user_id: createdUser.id,
+          user_id: finalUser.id,
           expires_at: expiresAt,
         },
       });
 
-      return { user: createdUser, refreshToken: session.refresh_token };
+      return { user: finalUser, refreshToken: session.refresh_token };
     });
 
     // Create access token
@@ -85,7 +97,6 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         data: {
-          id: user.id,
           name: user.name,
           phone_number: user.phone_number,
           role: user.role,

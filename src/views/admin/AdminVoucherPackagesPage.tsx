@@ -1,95 +1,307 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Coins, Gift, Plus, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/src/utils/cn";
+import { toast } from "sonner";
+import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
+import {
+  listVoucherPackages,
+  createVoucherPackage,
+  updateVoucherPackage,
+  deleteVoucherPackage,
+  type VoucherPackage,
+  type CreateVoucherPackageInput
+} from "@/src/services/adminVoucherService";
+import { fetchMenuItems } from "@/src/services/menuService";
+import { fetchPowders } from "@/src/services/powderService";
+import type { MenuItem } from "@/src/lib/types/menu";
+import type { Powder } from "@/src/lib/types/powder";
 
-// TODO: replace stats with real data from adminVoucherService / adminPointsService
-
-interface VoucherPackage {
-  id: string;
+interface VoucherPackageForm {
   name: string;
-  voucher_type: "DISCOUNT" | "PRODUCT";
+  description: string;
+  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON";
   points_cost: number;
-  is_active: boolean;
-  discount_type: "PERCENT" | "FIXED" | null;
-  /** VND integer for FIXED, percentage value for PERCENT. Null for PRODUCT type. */
-  discount_value: number | null;
+  expires_after_days: number | "";
+  // DISCOUNT fields
+  discount_type: "PERCENT" | "FIXED";
+  discount_value: number | "";
+  // PRODUCT fields
+  menu_item_id: string;
+  size: "M" | "L" | "XL";
+  matcha_powder_id: string;
+  milk_type_id: string;
+  // ADDON fields
+  addon_option_id: string;
+  // LIMITS
+  quantity: number | "";
+  max_per_user: number | "";
 }
-
-type VoucherPackageForm = Omit<VoucherPackage, "id">;
 
 const emptyForm: VoucherPackageForm = {
   name: "",
+  description: "",
   voucher_type: "DISCOUNT",
-  points_cost: 0,
-  is_active: true,
+  points_cost: 10,
+  expires_after_days: 30,
   discount_type: "PERCENT",
-  discount_value: null,
+  discount_value: "",
+  menu_item_id: "",
+  size: "M",
+  matcha_powder_id: "",
+  milk_type_id: "",
+  addon_option_id: "",
+  quantity: "",
+  max_per_user: 1,
 };
 
-/** AdminVoucherPackagesPage — manage voucher packages and view summary stats. */
 export default function AdminVoucherPackagesPage() {
-  // TODO: replace with useEffect → adminVoucherService / adminPointsService
-  const [totalPointsIssued, setTotalPointsIssued] = useState<number | null>(null);
-  const [activeVoucherCount, setActiveVoucherCount] = useState<number | null>(null);
   const [voucherPackages, setVoucherPackages] = useState<VoucherPackage[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [powders, setPowders] = useState<Powder[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<VoucherPackageForm>(emptyForm);
 
-  // Suppress unused-variable lint until wired
-  void setTotalPointsIssued;
-  void setActiveVoucherCount;
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    isDestructive: boolean;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    isDestructive: false,
+    onConfirm: () => {},
+  });
+
+  // Extract unique non-matcha addon options from all menu items
+  const uniqueAddonOptions = Array.from(
+    new Map(
+      menuItems
+        .flatMap((item) => item.addon_groups || [])
+        .flatMap((group) => group.options || [])
+        .filter((opt) => opt.gram_value === null || opt.gram_value <= 0)
+        .map((opt) => [opt.id, opt])
+    ).values()
+  );
+
+  // Extract unique milk types from all menu items
+  const uniqueMilkTypes = Array.from(
+    new Map(
+      menuItems
+        .flatMap((item) => item.milk_types || [])
+        .map((opt) => [opt.id, opt])
+    ).values()
+  );
+
+  // Load data on mount
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        const [pkgs, items, powdersRes] = await Promise.all([
+          listVoucherPackages(),
+          fetchMenuItems(),
+          fetchPowders()
+        ]);
+        setVoucherPackages(pkgs);
+        setMenuItems(items);
+        setPowders(powdersRes.data);
+
+        // Prepopulate select defaults if items are loaded
+        if (items.length > 0) {
+          setForm(prev => ({
+            ...prev,
+            menu_item_id: prev.menu_item_id || items[0].id
+          }));
+        }
+
+      } catch (err: any) {
+        toast.error(err.response?.data?.error || "Không thể tải dữ liệu.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
+
+  // Sync menu_item_id and addon_option_id when dialog opens
+  useEffect(() => {
+    if (open) {
+      if (menuItems.length > 0 && !form.menu_item_id) {
+        setForm(prev => ({ ...prev, menu_item_id: menuItems[0].id }));
+      }
+      if (uniqueAddonOptions.length > 0 && !form.addon_option_id) {
+        setForm(prev => ({ ...prev, addon_option_id: uniqueAddonOptions[0].id }));
+      }
+    }
+  }, [open, menuItems, uniqueAddonOptions]);
 
   const openAdd = () => {
     setEditingId(null);
-    setForm(emptyForm);
+    setForm({
+      ...emptyForm,
+      menu_item_id: menuItems[0]?.id || "",
+      addon_option_id: uniqueAddonOptions[0]?.id || ""
+    });
     setOpen(true);
   };
 
   const openEdit = (pkg: VoucherPackage) => {
     setEditingId(pkg.id);
-    const { id: _id, ...rest } = pkg;
-    setForm(rest);
+    setForm({
+      name: pkg.name,
+      description: pkg.description || "",
+      voucher_type: pkg.voucher_type,
+      points_cost: pkg.points_cost,
+      expires_after_days: pkg.expires_after_days ?? "",
+      discount_type: pkg.discount_type || "PERCENT",
+      discount_value: pkg.discount_value ?? "",
+      menu_item_id: pkg.menu_item_id || menuItems[0]?.id || "",
+      size: pkg.size || "M",
+      matcha_powder_id: pkg.matcha_powder_id || "",
+      milk_type_id: pkg.milk_type_id || "",
+      addon_option_id: pkg.addon_option_id || uniqueAddonOptions[0]?.id || "",
+      quantity: pkg.quantity ?? "",
+      max_per_user: pkg.max_per_user ?? 1,
+    });
     setOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name.trim()) {
-      console.warn("TODO: wire toast — Vui lòng nhập tên gói");
+      toast.error("Vui lòng nhập tên gói voucher");
       return;
     }
-    if (editingId) {
-      // TODO: wire adminVoucherService.updatePackage(editingId, form) — PUT /api/admin/voucher-packages/[id]
-      setVoucherPackages((prev) =>
-        prev.map((p) => (p.id === editingId ? { ...form, id: editingId } : p)),
-      );
-      console.warn("TODO: wire toast — Đã cập nhật gói voucher");
-    } else {
-      // TODO: wire adminVoucherService.createPackage(form) — POST /api/admin/voucher-packages
-      setVoucherPackages((prev) => [
-        ...prev,
-        { ...form, id: `vp${Date.now()}` },
-      ]);
-      console.warn("TODO: wire toast — Đã thêm gói voucher mới");
+    if (form.points_cost < 0) {
+      toast.error("Chi phí điểm không được âm");
+      return;
     }
-    setOpen(false);
+
+    try {
+      const expiresDays = form.expires_after_days === "" ? null : Number(form.expires_after_days);
+
+      if (editingId) {
+        // Edit mode (API only allows updating name, points_cost, expires_after_days, is_active)
+        const updated = await updateVoucherPackage(editingId, {
+          name: form.name,
+          points_cost: form.points_cost,
+          expires_after_days: expiresDays,
+        });
+        setVoucherPackages((prev) =>
+          prev.map((p) => (p.id === editingId ? { ...p, ...updated } : p))
+        );
+        toast.success("Đã cập nhật gói voucher");
+      } else {
+        // Create mode
+        let createInput: CreateVoucherPackageInput;
+
+        if (form.voucher_type === "DISCOUNT") {
+          if (form.discount_value === "" || Number(form.discount_value) <= 0) {
+            toast.error("Vui lòng nhập giá trị giảm giá hợp lệ");
+            return;
+          }
+          createInput = {
+            voucher_type: "DISCOUNT",
+            name: form.name,
+            description: form.description || undefined,
+            points_cost: form.points_cost,
+            discount_type: form.discount_type,
+            discount_value: Number(form.discount_value),
+            expires_after_days: expiresDays,
+          };
+        } else if (form.voucher_type === "PRODUCT") {
+          if (!form.menu_item_id) {
+            toast.error("Vui lòng chọn một sản phẩm");
+            return;
+          }
+          createInput = {
+            voucher_type: "PRODUCT",
+            name: form.name,
+            description: form.description || undefined,
+            points_cost: form.points_cost,
+            menu_item_id: form.menu_item_id,
+            size: form.size,
+            matcha_powder_id: form.matcha_powder_id || undefined,
+            milk_type_id: form.milk_type_id || undefined,
+            expires_after_days: expiresDays,
+            quantity: form.quantity === "" ? null : Number(form.quantity),
+            max_per_user: form.max_per_user === "" ? null : Number(form.max_per_user),
+          };
+
+        } else {
+          // ADDON
+          if (!form.addon_option_id) {
+            toast.error("Vui lòng chọn một addon");
+            return;
+          }
+          createInput = {
+            voucher_type: "ADDON",
+            name: form.name,
+            description: form.description || undefined,
+            points_cost: form.points_cost,
+            addon_option_id: form.addon_option_id,
+            expires_after_days: expiresDays,
+            quantity: form.quantity === "" ? null : Number(form.quantity),
+            max_per_user: form.max_per_user === "" ? null : Number(form.max_per_user),
+          };
+        }
+
+        // Apply shared fields for DISCOUNT
+        if (createInput.voucher_type === "DISCOUNT") {
+          createInput.quantity = form.quantity === "" ? null : Number(form.quantity);
+          createInput.max_per_user = form.max_per_user === "" ? null : Number(form.max_per_user);
+        }
+
+        const newPkg = await createVoucherPackage(createInput);
+        setVoucherPackages((prev) => [newPkg, ...prev]);
+        toast.success("Đã thêm gói voucher mới");
+      }
+      setOpen(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Thao tác thất bại.");
+    }
   };
 
   const handleDelete = (id: string) => {
-    // TODO: wire adminVoucherService.deletePackage(id) — DELETE /api/admin/voucher-packages/[id]
-    setVoucherPackages((prev) => prev.filter((p) => p.id !== id));
-    console.warn("TODO: wire toast — Đã xoá gói voucher");
+    setConfirmModal({
+      isOpen: true,
+      title: "Xóa gói voucher",
+      message: "Bạn có chắc chắn muốn ngưng hoạt động (xóa) gói voucher này? Hành động này không thể hoàn tác.",
+      isDestructive: true,
+      onConfirm: async () => {
+        setConfirmModal((s) => ({ ...s, isOpen: false }));
+        try {
+          await deleteVoucherPackage(id);
+          setVoucherPackages((prev) => prev.filter((p) => p.id !== id));
+          toast.success("Đã ngưng hoạt động gói voucher");
+        } catch (err: any) {
+          toast.error(err.response?.data?.error || "Xóa thất bại");
+        }
+      },
+    });
   };
 
-  const toggleActive = (id: string) => {
-    setVoucherPackages((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, is_active: !p.is_active } : p)),
-    );
-    // TODO: wire adminVoucherService.updatePackage(id, { is_active }) — PUT /api/admin/voucher-packages/[id]
+  const toggleActive = async (pkg: VoucherPackage) => {
+    try {
+      const nextActive = !pkg.is_active;
+      const updated = await updateVoucherPackage(pkg.id, { is_active: nextActive });
+      setVoucherPackages((prev) =>
+        prev.map((p) => (p.id === pkg.id ? { ...p, is_active: updated.is_active } : p))
+      );
+      toast.success(nextActive ? "Đã kích hoạt gói" : "Đã hủy kích hoạt gói");
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Cập nhật thất bại");
+    }
   };
+
+  const activeVoucherCount = voucherPackages.filter((p) => p.is_active).length;
 
   return (
     <div className="px-4 py-4 space-y-4">
@@ -99,17 +311,13 @@ export default function AdminVoucherPackagesPage() {
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-card border border-border rounded-2xl p-4">
           <Coins className="text-primary mb-2" size={24} />
-          <div className="text-2xl font-semibold">
-            {totalPointsIssued !== null ? totalPointsIssued.toLocaleString() : "—"}
-          </div>
+          <div className="text-2xl font-semibold">—</div>
           <div className="text-xs text-muted-foreground">Tổng điểm đã phát</div>
         </div>
         <div className="bg-card border border-border rounded-2xl p-4">
           <Gift className="text-accent mb-2" size={24} />
-          <div className="text-2xl font-semibold">
-            {activeVoucherCount !== null ? activeVoucherCount : "—"}
-          </div>
-          <div className="text-xs text-muted-foreground">Voucher đang hoạt động</div>
+          <div className="text-2xl font-semibold">{activeVoucherCount}</div>
+          <div className="text-xs text-muted-foreground">Gói đang hoạt động</div>
         </div>
       </div>
 
@@ -126,68 +334,92 @@ export default function AdminVoucherPackagesPage() {
           </button>
         </div>
 
-        {voucherPackages.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-6">
-            Chưa có gói voucher nào.
-          </p>
-        )}
+        {loading ? (
+          <p className="text-sm text-muted-foreground text-center py-6">Đang tải danh sách...</p>
+        ) : voucherPackages.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">Chưa có gói voucher nào.</p>
+        ) : (
+          <div className="space-y-2">
+            {voucherPackages.map((pkg) => (
+              <div
+                key={pkg.id}
+                className="flex items-center justify-between p-3 rounded-xl bg-secondary/30"
+              >
+                <div className="min-w-0 pr-2">
+                  <div className="font-medium text-sm truncate">{pkg.name}</div>
+                  <div className="text-[11px] text-muted-foreground space-y-0.5 mt-0.5">
+                    <div>
+                      {pkg.voucher_type === "DISCOUNT" && (
+                        <span>
+                          Giảm giá: {pkg.discount_value}
+                          {pkg.discount_type === "PERCENT" ? "%" : "đ"}
+                        </span>
+                      )}
+                      {pkg.voucher_type === "PRODUCT" && (
+                        <span>
+                          Sản phẩm: {pkg.menuItem?.name || "N/A"} ({pkg.size})
+                          {pkg.covered_price_vnd ? ` (Tối đa ${pkg.covered_price_vnd.toLocaleString()}đ)` : ""}
+                        </span>
+                      )}
+                      {pkg.voucher_type === "ADDON" && (
+                        <span>
+                          Addon: {pkg.addonOption?.label || "N/A"}
+                          {pkg.covered_price_vnd ? ` (Tối đa ${pkg.covered_price_vnd.toLocaleString()}đ)` : ""}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      Giá đổi: <span className="font-semibold text-primary">{pkg.points_cost} điểm</span>
+                      {pkg.expires_after_days && ` • Hạn dùng: ${pkg.expires_after_days} ngày`}
+                      {pkg.quantity !== null && ` • Còn lại: ${pkg.quantity} gói`}
+                    </div>
+                  </div>
+                </div>
 
-        <div className="space-y-2">
-          {voucherPackages.map((pkg) => (
-            <div
-              key={pkg.id}
-              className="flex items-center justify-between p-3 rounded-xl bg-secondary/30"
-            >
-              <div className="min-w-0">
-                <div className="font-medium text-sm truncate">{pkg.name}</div>
-                <div className="text-[11px] text-muted-foreground">
-                  {pkg.voucher_type === "DISCOUNT" ? "Giảm giá" : "Sản phẩm"} •{" "}
-                  {pkg.points_cost} điểm
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Active toggle */}
+                  <button
+                    role="switch"
+                    aria-checked={pkg.is_active}
+                    onClick={() => toggleActive(pkg)}
+                    className={cn(
+                      "relative inline-flex h-5 w-9 rounded-full transition",
+                      pkg.is_active ? "bg-primary" : "bg-border"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "block h-4 w-4 rounded-full bg-white shadow transition-transform m-0.5",
+                        pkg.is_active ? "translate-x-4" : "translate-x-0"
+                      )}
+                    />
+                  </button>
+                  <button
+                    onClick={() => openEdit(pkg)}
+                    className="p-1.5 rounded-lg hover:bg-secondary/40 text-muted-foreground"
+                    aria-label="Sửa"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(pkg.id)}
+                    className="p-1.5 rounded-lg hover:bg-destructive/10 text-destructive"
+                    aria-label="Xoá"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {/* Active toggle */}
-                <button
-                  role="switch"
-                  aria-checked={pkg.is_active}
-                  onClick={() => toggleActive(pkg.id)}
-                  className={cn(
-                    "relative inline-flex h-5 w-9 rounded-full transition",
-                    pkg.is_active ? "bg-primary" : "bg-border",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "block h-4 w-4 rounded-full bg-white shadow transition-transform m-0.5",
-                      pkg.is_active ? "translate-x-4" : "translate-x-0",
-                    )}
-                  />
-                </button>
-                <button
-                  onClick={() => openEdit(pkg)}
-                  className="p-1.5 rounded-lg hover:bg-secondary/40 text-muted-foreground"
-                  aria-label="Sửa"
-                >
-                  <Pencil size={14} />
-                </button>
-                <button
-                  onClick={() => handleDelete(pkg.id)}
-                  className="p-1.5 rounded-lg hover:bg-destructive/10 text-destructive"
-                  aria-label="Xoá"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Add/edit dialog */}
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
-          <div className="relative bg-card rounded-2xl p-6 w-full max-w-sm mx-4 shadow-xl space-y-3">
+          <div className="relative bg-card rounded-2xl p-6 w-full max-w-sm mx-4 shadow-xl space-y-3 max-h-[90vh] overflow-y-auto">
             <h2 className="font-serif text-lg font-semibold">
               {editingId ? "Sửa gói voucher" : "Thêm gói voucher"}
             </h2>
@@ -202,10 +434,50 @@ export default function AdminVoucherPackagesPage() {
               />
             </div>
 
+            <div>
+              <label className="text-sm font-medium text-foreground">Mô tả gói (Không bắt buộc)</label>
+              <textarea
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Ví dụ: Áp dụng khi ăn tại quán..."
+                className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1 h-16 resize-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-foreground">Tổng số lượng (để trống = Vô hạn)</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={form.quantity}
+                  onChange={(e) =>
+                    setForm({ ...form, quantity: e.target.value === "" ? "" : Number(e.target.value) })
+                  }
+                  placeholder="Ví dụ: 100"
+                  className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground">Tối đa mỗi khách</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={form.max_per_user}
+                  onChange={(e) =>
+                    setForm({ ...form, max_per_user: e.target.value === "" ? "" : Number(e.target.value) })
+                  }
+                  placeholder="Mặc định: 1"
+                  className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1"
+                />
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium text-foreground">Loại voucher</label>
                 <select
+                  disabled={!!editingId}
                   value={form.voucher_type}
                   onChange={(e) =>
                     setForm({
@@ -213,10 +485,11 @@ export default function AdminVoucherPackagesPage() {
                       voucher_type: e.target.value as VoucherPackage["voucher_type"],
                     })
                   }
-                  className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full mt-1"
+                  className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full mt-1 disabled:opacity-50"
                 >
                   <option value="DISCOUNT">Giảm giá</option>
                   <option value="PRODUCT">Sản phẩm</option>
+                  <option value="ADDON">Topping Addon</option>
                 </select>
               </div>
               <div>
@@ -233,16 +506,34 @@ export default function AdminVoucherPackagesPage() {
               </div>
             </div>
 
+            <div>
+              <label className="text-sm font-medium text-foreground">Hạn dùng (số ngày, để trống = vô thời hạn)</label>
+              <input
+                type="number"
+                min={1}
+                value={form.expires_after_days}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    expires_after_days: e.target.value === "" ? "" : Number(e.target.value),
+                  })
+                }
+                placeholder="Ví dụ: 30"
+                className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1"
+              />
+            </div>
+
             {form.voucher_type === "DISCOUNT" && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-sm font-medium text-foreground">Kiểu giảm</label>
                   <select
-                    value={form.discount_type ?? "PERCENT"}
+                    disabled={!!editingId}
+                    value={form.discount_type}
                     onChange={(e) =>
                       setForm({
                         ...form,
-                        discount_type: e.target.value as VoucherPackage["discount_type"],
+                        discount_type: e.target.value as "PERCENT" | "FIXED",
                       })
                     }
                     className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full mt-1"
@@ -252,13 +543,17 @@ export default function AdminVoucherPackagesPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground">Giá trị</label>
+                  <label className="text-sm font-medium text-foreground">Giá trị giảm</label>
                   <input
+                    disabled={!!editingId}
                     type="number"
                     min={0}
-                    value={form.discount_value ?? ""}
+                    value={form.discount_value}
                     onChange={(e) =>
-                      setForm({ ...form, discount_value: Number(e.target.value) })
+                      setForm({
+                        ...form,
+                        discount_value: e.target.value === "" ? "" : Number(e.target.value),
+                      })
                     }
                     className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1"
                   />
@@ -266,25 +561,96 @@ export default function AdminVoucherPackagesPage() {
               </div>
             )}
 
-            <div className="flex items-center justify-between bg-secondary/30 rounded-xl px-3 py-2">
-              <label className="text-sm font-medium text-foreground">Đang hoạt động</label>
-              <button
-                role="switch"
-                aria-checked={form.is_active}
-                onClick={() => setForm({ ...form, is_active: !form.is_active })}
-                className={cn(
-                  "relative inline-flex h-5 w-9 rounded-full transition",
-                  form.is_active ? "bg-primary" : "bg-border",
+            {form.voucher_type === "PRODUCT" && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-foreground">Chọn sản phẩm</label>
+                    <select
+                      disabled={!!editingId}
+                      value={form.menu_item_id}
+                      onChange={(e) => setForm({ ...form, menu_item_id: e.target.value })}
+                      className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full mt-1"
+                    >
+                      {menuItems.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-foreground">Chọn Size</label>
+                    <select
+                      disabled={!!editingId}
+                      value={form.size}
+                      onChange={(e) => setForm({ ...form, size: e.target.value as "M" | "L" | "XL" })}
+                      className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full mt-1"
+                    >
+                      <option value="M">Size M</option>
+                      <option value="L">Size L</option>
+                      <option value="XL">Size XL</option>
+                    </select>
+                  </div>
+                </div>
+                {menuItems.find(i => i.id === form.menu_item_id)?.category === "fusion" && (
+                  <div>
+                    <label className="text-sm font-medium text-foreground">Đổi Bột Matcha (Tùy chọn)</label>
+                    <select
+                      disabled={!!editingId}
+                      value={form.matcha_powder_id}
+                      onChange={(e) => setForm({ ...form, matcha_powder_id: e.target.value })}
+                      className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full mt-1"
+                    >
+                      <option value="">-- Mặc định của sản phẩm --</option>
+                      {powders.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 )}
-              >
-                <span
-                  className={cn(
-                    "block h-4 w-4 rounded-full bg-white shadow transition-transform m-0.5",
-                    form.is_active ? "translate-x-4" : "translate-x-0",
-                  )}
-                />
-              </button>
-            </div>
+                {menuItems.find(i => i.id === form.menu_item_id)?.category === "latte" && (
+                  <div>
+                    <label className="text-sm font-medium text-foreground">Đổi Sữa (Tùy chọn)</label>
+                    <select
+                      disabled={!!editingId}
+                      value={form.milk_type_id}
+                      onChange={(e) => setForm({ ...form, milk_type_id: e.target.value })}
+                      className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full mt-1"
+                    >
+                      <option value="">-- Mặc định (Sữa bò) --</option>
+                      {uniqueMilkTypes.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {form.voucher_type === "ADDON" && (
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-foreground">Chọn Topping Addon</label>
+                  <select
+                    disabled={!!editingId}
+                    value={form.addon_option_id}
+                    onChange={(e) => setForm({ ...form, addon_option_id: e.target.value })}
+                    className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full mt-1"
+                  >
+                    {uniqueAddonOptions.map((addon) => (
+                      <option key={addon.id} value={addon.id}>
+                        {addon.label} ({addon.price_vnd.toLocaleString()}đ)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-2 justify-end pt-1">
               <button
@@ -303,6 +669,16 @@ export default function AdminVoucherPackagesPage() {
           </div>
         </div>
       )}
+
+      {/* Confirmation Modal */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        isDestructive={confirmModal.isDestructive}
+        onCancel={() => setConfirmModal((s) => ({ ...s, isOpen: false }))}
+        onConfirm={confirmModal.onConfirm}
+      />
     </div>
   );
 }

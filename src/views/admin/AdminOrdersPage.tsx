@@ -5,6 +5,7 @@ import { ChevronDown, ChevronUp, Phone, Clock, Search, FilterX, Filter, CheckCir
 import { cn } from "@/src/utils/cn";
 import { fetchAdminOrders, confirmPayment, adminCancelOrder, type AdminOrderRes } from "@/src/services/adminOrderService";
 import { apiClient } from "@/src/lib/api/client";
+import { usePolling } from "@/src/hooks/usePolling";
 import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
 import { OrderTabs, type OrderTabKey } from "@/src/components/staff/OrderTabs";
 import { toast } from "sonner";
@@ -28,10 +29,8 @@ const formatOrderType = (type: string): string => {
 
 export default function AdminOrdersPage() {
   const [activeTab, setActiveTab] = useState<OrderTabKey>("counter");
-  const [orders, setOrders] = useState<AdminOrderRes[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [pendingCount, setPendingCount] = useState(0);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -57,102 +56,61 @@ export default function AdminOrdersPage() {
   });
   const [draftFilters, setDraftFilters] = useState(activeFilters);
 
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pendingCountIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Reset page to 1 when changing tabs or filters
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, activeFilters]);
 
-  const loadData = useCallback(async (tab: OrderTabKey, filters = activeFilters) => {
-    setLoading(true);
-    try {
-      const startIso = filters.startDate ? new Date(`${filters.startDate}T00:00:00`).toISOString() : undefined;
-      const endIso = filters.endDate ? new Date(`${filters.endDate}T23:59:59.999`).toISOString() : undefined;
+  const fetchOrdersFn = useCallback(async () => {
+    const startIso = activeFilters.startDate ? new Date(`${activeFilters.startDate}T00:00:00`).toISOString() : undefined;
+    const endIso = activeFilters.endDate ? new Date(`${activeFilters.endDate}T23:59:59.999`).toISOString() : undefined;
 
-      let orderTypeParam = "";
-      let statusParam = "";
+    let orderTypeParam = "";
+    let statusParam = "";
 
-      if (tab === "counter") {
-        orderTypeParam = "COUNTER";
-      } else if (tab === "customer") {
-        orderTypeParam = "PICKUP,DELIVERY";
-      } else if (tab === "pending") {
-        statusParam = "PENDING";
-        // Ignore date filters for pending tab as they are real-time
-      }
-
-      const data = await fetchAdminOrders({
-        search: filters.search || undefined,
-        staffName: filters.staffName || undefined,
-        startDate: tab !== "pending" ? startIso : undefined,
-        endDate: tab !== "pending" ? endIso : undefined,
-        order_type: orderTypeParam || undefined,
-      });
-
-      // Inject status filter manually for the mock/admin API if not fully supported by fetchAdminOrders
-      // Our fetchAdminOrders passes these along. However, we only added 'order_type' to AdminOrderFilters in service.
-      // Let's rely on the service fetching correctly.
-      let filteredData = data;
-      if (statusParam === "PENDING") {
-        filteredData = data.filter((o) => o.status === "PENDING");
-      } else if (tab === "customer") {
-        filteredData = data.filter((o) => o.order_type !== "COUNTER" && o.status !== "PENDING");
-      } else if (tab === "counter") {
-        filteredData = data.filter((o) => o.order_type === "COUNTER");
-      }
-      
-      setOrders(filteredData);
-      
-      if (tab === "pending") {
-        setPendingCount(filteredData.length);
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error("Không thể tải đơn hàng");
-    } finally {
-      setLoading(false);
+    if (activeTab === "counter") {
+      orderTypeParam = "COUNTER";
+    } else if (activeTab === "customer") {
+      orderTypeParam = "PICKUP,DELIVERY";
+    } else if (activeTab === "pending") {
+      statusParam = "PENDING";
+    } else if (activeTab === "cancelled") {
+      statusParam = "CANCELLED";
     }
-  }, [activeFilters]);
 
-  // Background polling for pending count
-  const fetchPendingCount = useCallback(async () => {
-    try {
-      // Just fetch pending tab to get count
-      const res = await apiClient.get('/api/admin/orders?status=PENDING');
-      const data: AdminOrderRes[] = res.data.data;
-      const count = data.filter(o => o.status === "PENDING").length;
-      setPendingCount(count);
-    } catch (e) {
-      // Ignore background errors
-    }
+    return await fetchAdminOrders({
+      search: activeFilters.search || undefined,
+      staffName: activeFilters.staffName || undefined,
+      startDate: activeTab !== "pending" ? startIso : undefined,
+      endDate: activeTab !== "pending" ? endIso : undefined,
+      order_type: orderTypeParam || undefined,
+      status: statusParam || undefined,
+      page,
+      limit: 10,
+    });
+  }, [activeTab, activeFilters, page]);
+
+  const { data, isInitialLoading, refetch } = usePolling({
+    fetcher: fetchOrdersFn,
+    interval: activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000,
+    dependencies: [activeTab, activeFilters, page],
+  });
+
+  const orders = data?.data || [];
+  const totalPages = data?.meta.totalPages || 1;
+
+  // Background polling cho pendingCount
+  const fetchPendingCountAPI = useCallback(async () => {
+    const res = await fetchAdminOrders({ status: "PENDING", limit: 1 });
+    return res;
   }, []);
 
-  useEffect(() => {
-    loadData(activeTab, activeFilters);
+  const { data: pendingData } = usePolling({
+    fetcher: fetchPendingCountAPI,
+    interval: 20000,
+  });
 
-    if (intervalRef.current) clearInterval(intervalRef.current);
-
-    if (activeTab === "customer") {
-      intervalRef.current = setInterval(() => loadData("customer", activeFilters), 15000);
-    } else if (activeTab === "pending") {
-      intervalRef.current = setInterval(() => loadData("pending", activeFilters), 10000);
-    }
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [activeTab, activeFilters, loadData]);
-
-  useEffect(() => {
-    // Global poll for pending count every 20s if not on pending tab
-    if (activeTab !== "pending") {
-      fetchPendingCount();
-      pendingCountIntervalRef.current = setInterval(fetchPendingCount, 20000);
-    } else {
-      if (pendingCountIntervalRef.current) clearInterval(pendingCountIntervalRef.current);
-    }
-    return () => {
-      if (pendingCountIntervalRef.current) clearInterval(pendingCountIntervalRef.current);
-    };
-  }, [activeTab, fetchPendingCount]);
-
+  const pendingCount = pendingData?.meta.total || 0;
 
   const toggle = (id: string) => setExpanded((s) => ({ ...s, [id]: !s[id] }));
 
@@ -167,13 +125,17 @@ export default function AdminOrdersPage() {
   };
 
   const clearFilters = () => {
-    const empty = { search: "", staffName: "", startDate: "", endDate: "" };
-    setDraftFilters(empty);
-    setActiveFilters(empty);
+    const defaultFilters = { search: "", staffName: "", startDate: getTodayStr(), endDate: "" };
+    setDraftFilters(defaultFilters);
+    setActiveFilters(defaultFilters);
     setShowFilterModal(false);
   };
 
-  const activeFilterCount = Object.values(activeFilters).filter((v) => v).length;
+  const activeFilterCount = 
+    (activeFilters.search ? 1 : 0) +
+    (activeFilters.staffName ? 1 : 0) +
+    (activeFilters.startDate && activeFilters.startDate !== getTodayStr() ? 1 : 0) +
+    (activeFilters.endDate ? 1 : 0);
 
   const handleConfirmPayment = (e: React.MouseEvent, orderId: string) => {
     e.stopPropagation();
@@ -187,8 +149,7 @@ export default function AdminOrdersPage() {
         try {
           await confirmPayment(orderId);
           toast.success("Xác nhận thanh toán thành công");
-          loadData(activeTab, activeFilters);
-          if (activeTab === "pending") setPendingCount((prev) => Math.max(0, prev - 1));
+          refetch();
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : "Xác nhận thất bại";
           toast.error(msg);
@@ -209,8 +170,7 @@ export default function AdminOrdersPage() {
         try {
           await adminCancelOrder(orderId);
           toast.success("Đã huỷ đơn hàng");
-          loadData(activeTab, activeFilters);
-          if (activeTab === "pending") setPendingCount((prev) => Math.max(0, prev - 1));
+          refetch();
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : "Huỷ thất bại";
           toast.error(msg);
@@ -230,28 +190,10 @@ export default function AdminOrdersPage() {
             <CheckCircle2 size={14} />
             Đã nhận CK
           </button>
-          <button
-            onClick={(e) => handleCancelOrder(e, order.id)}
-            className="flex items-center justify-center gap-1.5 px-3 py-2 w-full rounded-lg text-xs font-semibold bg-secondary text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors border border-border/50"
-          >
-            <XCircle size={14} />
-            Huỷ đơn
-          </button>
         </div>
       );
     }
     
-    // Admin can also cancel active orders
-    if (!["COMPLETED", "CANCELLED"].includes(order.status)) {
-      return (
-        <button
-          onClick={(e) => handleCancelOrder(e, order.id)}
-          className="mt-2 text-[10px] font-semibold text-red-500 hover:text-red-700 hover:underline transition-colors"
-        >
-          Huỷ đơn hàng
-        </button>
-      );
-    }
     return null;
   };
 
@@ -282,7 +224,7 @@ export default function AdminOrdersPage() {
         isAdmin={true}
       />
 
-      {loading ? (
+      {isInitialLoading ? (
         <div className="space-y-3 mt-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="rounded-2xl border bg-card shadow-sm overflow-hidden p-4 space-y-3 animate-pulse">
@@ -407,7 +349,8 @@ export default function AdminOrdersPage() {
 
                   {/* Footer — total */}
                   <div className="border-t border-border pt-3">
-                    <div className="flex justify-end">
+                    <div className="flex justify-end items-center gap-2">
+                      <span className="text-sm font-medium">Tổng tiền:</span>
                       <span className="font-bold text-primary text-base">
                         {(order.total_vnd / 1000).toLocaleString("vi-VN")}K
                       </span>
@@ -416,20 +359,28 @@ export default function AdminOrdersPage() {
                     <div className="flex items-center justify-between mt-1.5">
                       {isTerminal ? (
                         <span className={cn(
-                          "text-xs font-semibold",
-                          order.status === "COMPLETED" ? "text-green-600" : "text-red-500"
+                          "text-xs font-semibold flex items-center gap-1",
+                          order.status === "COMPLETED" ? "text-primary" : "text-red-500"
                         )}>
-                          {order.status === "COMPLETED" ? "✅ Đã hoàn thành" : "❌ Đã huỷ"}
+                          {order.status === "COMPLETED" ? (
+                            <>
+                              <CheckCircle2 size={13} className="text-primary" />
+                              <span>Đã hoàn thành</span>
+                            </>
+                          ) : (
+                            <>
+                              <XCircle size={13} className="text-red-500" />
+                              <span>Đã huỷ</span>
+                            </>
+                          )}
                         </span>
                       ) : (
-                        order.status !== "PENDING" && (
-                          <button
-                            onClick={(e) => handleCancelOrder(e, order.id)}
-                            className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline transition-colors"
-                          >
-                            Huỷ đơn
-                          </button>
-                        )
+                        <button
+                          onClick={(e) => handleCancelOrder(e, order.id)}
+                          className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline transition-colors"
+                        >
+                          Huỷ đơn
+                        </button>
                       )}
                       <span className="text-[11px] text-muted-foreground ml-auto">
                         Staff: {order.handler?.name ?? "Chưa nhận"}
@@ -440,6 +391,29 @@ export default function AdminOrdersPage() {
               </div>
             );
           })}
+          
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex justify-center items-center gap-2 pt-6">
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="px-3 py-1.5 rounded-lg border bg-card text-sm font-medium hover:bg-secondary/40 disabled:opacity-50 transition"
+              >
+                Trang trước
+              </button>
+              <span className="text-sm font-medium text-muted-foreground px-2">
+                {page} / {totalPages}
+              </span>
+              <button
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="px-3 py-1.5 rounded-lg border bg-card text-sm font-medium hover:bg-secondary/40 disabled:opacity-50 transition"
+              >
+                Trang sau
+              </button>
+            </div>
+          )}
         </div>
       )}
 

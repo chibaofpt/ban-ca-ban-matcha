@@ -49,14 +49,27 @@ export interface FetchOrdersListParams {
   order_type?: string;
   /** Single status: "PENDING" — admin only, for "Chờ CK" tab */
   status?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedOrdersListRes {
+  data: OrderRes[];
+  meta: {
+    total: number;
+    page: number;
+    totalPages: number;
+  };
 }
 
 /** Fetch danh sách orders cho trang quản lý của staff/admin. */
-export async function fetchOrdersList(params: FetchOrdersListParams = {}): Promise<OrderRes[]> {
+export async function fetchOrdersList(params: FetchOrdersListParams = {}): Promise<PaginatedOrdersListRes> {
   const query = new URLSearchParams();
   if (params.order_type) query.append('order_type', params.order_type);
   if (params.status) query.append('status', params.status);
+  if (params.page) query.append('page', params.page.toString());
+  if (params.limit) query.append('limit', params.limit.toString());
   const qs = query.toString();
   const res = await apiClient.get(`/api/staff/orders${qs ? `?${qs}` : ''}`);
-  return res.data.data;
+  return res.data;
 }

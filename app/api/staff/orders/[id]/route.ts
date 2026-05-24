@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import type { OrderStatus, Prisma } from "@prisma/client";
+import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 
 export const dynamic = "force-dynamic";
 
@@ -69,9 +70,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const updatedOrder = await prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({
         where: { id },
-        include: { voucher: { select: { id: true, status: true } } },
+        include: {
+          voucher: { select: { id: true, status: true } },
+          items: { select: { product_voucher_id: true } },
+        },
       });
       if (!order) throw new Error("NOT_FOUND");
+
+      // Also read addon_voucher_id
+      const orderWithAddon = await tx.order.findUnique({
+        where: { id },
+        select: { addon_voucher_id: true },
+      });
+      const addon_voucher_id = orderWithAddon?.addon_voucher_id ?? null;
 
       // Validate transition rules
       const transitionError = validateTransition(order.status, status, session.role as "STAFF" | "ADMIN");
@@ -112,18 +123,36 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       }
 
-      // When cancelling: restore voucher to ACTIVE if it was RESERVED or REDEEMED
-      if (status === "CANCELLED" && order.voucher) {
-        if (order.voucher.status === "RESERVED" || order.voucher.status === "REDEEMED") {
-          await tx.voucher.update({
-            where: { id: order.voucher.id },
-            data: {
-              status: "ACTIVE",
-              redeemed_at: null,
-              redeemed_by: null,
-              used_channel: null,
-            },
+      // When cancelling: restore ALL vouchers to ACTIVE
+      if (status === "CANCELLED") {
+        await restoreVouchersOnCancel(
+          tx,
+          id,
+          order.voucher_id,
+          addon_voucher_id
+        );
+      }
+
+      // When → COMPLETED: mark all PRODUCT vouchers as REDEEMED
+      if (status === "COMPLETED") {
+        const pvItems = order.items.filter((i) => i.product_voucher_id !== null);
+        const uniquePvIds = [...new Set(pvItems.map((i) => i.product_voucher_id as string))];
+        for (const pvId of uniquePvIds) {
+          const pv = await tx.voucher.findUnique({
+            where: { id: pvId },
+            select: { status: true },
           });
+          if (pv && pv.status === "RESERVED") {
+            await tx.voucher.update({
+              where: { id: pvId },
+              data: {
+                status: "REDEEMED",
+                used_channel: "ONLINE",
+                redeemed_at: new Date(),
+                redeemed_by: session.id,
+              },
+            });
+          }
         }
       }
 

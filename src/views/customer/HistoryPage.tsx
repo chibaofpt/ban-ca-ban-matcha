@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { apiClient } from "@/src/lib/api/client";
-import { cancelOrder } from "@/src/services/orderService";
+import { cancelOrder, fetchCustomerOrders } from "@/src/services/orderService";
+import { usePolling } from "@/src/hooks/usePolling";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, Clock, Copy, CheckCircle2, Ticket, Fish } from "lucide-react";
+import { ChevronDown, ChevronUp, Clock, Copy, CheckCircle2, XCircle, Ticket, Fish } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import { CountdownTimer } from "@/src/components/customer/CountdownTimer";
 import { OrderProgressBar } from "@/src/components/shared/OrderProgressBar";
@@ -58,43 +58,36 @@ const formatDate = (iso: string) => {
 /** Page lịch sử đơn hàng và voucher của khách hàng. */
 export default function HistoryPage() {
   const [activeTab, setActiveTab] = useState<"orders" | "vouchers">("orders");
-  const [orders, setOrders] = useState<CustomerHistoryOrder[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [cancelModal, setCancelModal] = useState<{
     isOpen: boolean;
     orderId: string;
   }>({ isOpen: false, orderId: "" });
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchOrders = useCallback(async () => {
-    try {
-      const res = await apiClient.get("/api/orders");
-      setOrders(res.data.data);
-    } catch {
-      toast.error("Không thể tải lịch sử đơn hàng");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Reset page when changing tabs (though vouchers tab currently has no pagination)
   useEffect(() => {
-    if (activeTab !== "orders") return;
-    fetchOrders();
-  }, [activeTab, fetchOrders]);
+    setPage(1);
+  }, [activeTab]);
 
-  // Poll every 15s if there are PENDING orders
-  useEffect(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    const hasPending = orders.some((o) => o.status === "PENDING");
-    if (hasPending) {
-      intervalRef.current = setInterval(fetchOrders, 15000);
-    }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [orders, fetchOrders]);
+  const fetchOrdersFn = useCallback(async () => {
+    return await fetchCustomerOrders({ page, limit: 10 });
+  }, [page]);
+
+  const { data, isInitialLoading, refetch } = usePolling({
+    fetcher: fetchOrdersFn,
+    interval: 15000,
+    dependencies: [page],
+    enabled: activeTab === "orders",
+  });
+
+  const rawOrders: CustomerHistoryOrder[] = data?.data || [];
+  const totalPages = data?.meta?.totalPages || 1;
+
+  // We only poll fast if there's any PENDING order, otherwise usePolling handles it?
+  // Since usePolling doesn't natively support dynamic interval based on data yet,
+  // we can just stick to 15000 interval which is fine for the customer view.
 
   const toggle = (id: string) => setExpanded((s) => ({ ...s, [id]: !s[id] }));
 
@@ -110,7 +103,7 @@ export default function HistoryPage() {
     try {
       await cancelOrder(orderId);
       toast.success("Đã huỷ đơn hàng");
-      await fetchOrders();
+      refetch();
     } catch {
       toast.error("Không thể huỷ đơn hàng. Vui lòng thử lại.");
     }
@@ -151,7 +144,7 @@ export default function HistoryPage() {
         >
           {activeTab === "orders" ? (
             <div className="space-y-4">
-              {loading ? (
+              {isInitialLoading ? (
                 [1, 2, 3].map((i) => (
                   <div key={i} className="rounded-2xl border bg-card p-4 space-y-3 animate-pulse">
                     <div className="flex justify-between">
@@ -166,15 +159,16 @@ export default function HistoryPage() {
                     </div>
                   </div>
                 ))
-              ) : orders.length === 0 ? (
+              ) : rawOrders.length === 0 ? (
                 <div className="text-center py-20 bg-secondary/20 rounded-3xl border border-border/50">
                   <div className="text-5xl mb-4">🛒</div>
                   <p className="font-bold text-primary">Bạn chưa có đơn hàng nào</p>
                   <p className="text-sm text-primary/60 mt-1">Hãy đặt thử một ly matcha nhé!</p>
                 </div>
               ) : (
-                orders.map((order) => {
-                  const isOpen = !!expanded[order.id];
+                <>
+                  {rawOrders.map((order) => {
+                    const isOpen = !!expanded[order.id];
                   const isPending = order.status === "PENDING";
                   const isCompleted = order.status === "COMPLETED";
                   const isCancelled = order.status === "CANCELLED";
@@ -315,10 +309,20 @@ export default function HistoryPage() {
                               </button>
                             ) : isTerminal ? (
                               <span className={cn(
-                                "text-xs font-semibold",
-                                isCompleted ? "text-green-600" : "text-red-500"
+                                "text-xs font-semibold flex items-center gap-1",
+                                isCompleted ? "text-primary" : "text-red-500"
                               )}>
-                                {isCompleted ? "✅ Đã hoàn thành" : "❌ Đã huỷ"}
+                                {isCompleted ? (
+                                  <>
+                                    <CheckCircle2 size={13} className="text-primary" />
+                                    <span>Đã hoàn thành</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <XCircle size={13} className="text-red-500" />
+                                    <span>Đã huỷ</span>
+                                  </>
+                                )}
                               </span>
                             ) : (
                               <span />
@@ -328,7 +332,31 @@ export default function HistoryPage() {
                       </div>
                     </div>
                   );
-                })
+                  })}
+                  
+                  {/* Pagination Controls */}
+                  {totalPages > 1 && (
+                    <div className="flex justify-center items-center gap-2 pt-6">
+                      <button
+                        disabled={page <= 1}
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        className="px-3 py-1.5 rounded-lg border bg-card text-sm font-medium hover:bg-secondary/40 disabled:opacity-50 transition"
+                      >
+                        Trang trước
+                      </button>
+                      <span className="text-sm font-medium text-muted-foreground px-2">
+                        {page} / {totalPages}
+                      </span>
+                      <button
+                        disabled={page >= totalPages}
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        className="px-3 py-1.5 rounded-lg border bg-card text-sm font-medium hover:bg-secondary/40 disabled:opacity-50 transition"
+                      >
+                        Trang sau
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ) : (

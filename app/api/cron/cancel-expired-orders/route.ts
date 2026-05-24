@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,7 @@ export async function GET(req: NextRequest) {
       select: {
         id: true,
         voucher_id: true,
+        addon_voucher_id: true,
       },
     });
 
@@ -49,12 +51,7 @@ export async function GET(req: NextRequest) {
                 where: { id: order.id },
                 data: { status: "CANCELLED" },
               });
-              if (order.voucher_id) {
-                await tx.voucher.update({
-                  where: { id: order.voucher_id },
-                  data: { status: "ACTIVE" },
-                });
-              }
+              await restoreVouchersOnCancel(tx, order.id, order.voucher_id, order.addon_voucher_id);
             },
             { maxWait: 5000, timeout: 10000 }
           );

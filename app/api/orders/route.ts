@@ -3,6 +3,14 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { customerOrderSchema } from "@/lib/validations/order";
 import { processOrderItems, OrderValidationError, PriceChangedError } from "@/lib/orders";
+import type { ProductVoucherInfo } from "@/lib/orders";
+import {
+  assertVoucherUsable,
+  calcDiscountVoucher,
+  calcProductVoucherSurplusPoints,
+  findAddonVoucherDiscount,
+  VoucherError,
+} from "@/lib/vouchers";
 import { generateOrderCode } from "@/lib/orderCode";
 import { buildVietQRUrl } from "@/lib/vietqr";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
@@ -43,58 +51,135 @@ export async function POST(req: NextRequest) {
 
     // ── Phase 1: READS (outside transaction — avoids P2028 pgBouncer timeout) ──
 
-    // Step 1: Process items — validate, price-check, resolve addons (reads only)
-    const resolvedItems = await processOrderItems(data.items, prisma);
-
-    // Step 2: Calculate subtotal
-    const subtotal_vnd = resolvedItems.reduce((sum, item) => sum + item.line_total, 0);
-    let discount_vnd = 0;
-    let voucher_id: string | null = null;
-
-    // Step 3: Validate voucher (read-only)
-    if (data.voucher_id) {
-      const voucher = await prisma.voucher.findUnique({ where: { id: data.voucher_id } });
-
-      if (!voucher || voucher.user_id !== session.id) {
-        return NextResponse.json(
-          { error: "Voucher not found or does not belong to you", code: "NOT_FOUND" },
-          { status: 404 }
-        );
-      }
-      if (voucher.status === "REDEEMED") {
-        return NextResponse.json(
-          { error: "Voucher has already been used", code: "VOUCHER_REDEEMED" },
-          { status: 422 }
-        );
-      }
-      if (voucher.status === "RESERVED") {
-        return NextResponse.json(
-          { error: "Voucher is already reserved for another pending order", code: "VOUCHER_RESERVED" },
-          { status: 422 }
-        );
-      }
-      if (voucher.expires_at !== null && voucher.expires_at <= new Date()) {
-        return NextResponse.json(
-          { error: "Voucher has expired", code: "VOUCHER_EXPIRED" },
-          { status: 422 }
-        );
-      }
-      if (voucher.voucher_type !== "DISCOUNT") {
-        return NextResponse.json(
-          { error: "Voucher is not a discount voucher", code: "VALIDATION_ERROR" },
-          { status: 400 }
-        );
-      }
-
-      voucher_id = voucher.id;
-      if (voucher.discount_type === "PERCENT" && voucher.discount_value !== null) {
-        discount_vnd = Math.floor((subtotal_vnd * voucher.discount_value) / 100);
-      } else if (voucher.discount_type === "FIXED" && voucher.discount_value !== null) {
-        discount_vnd = Math.min(voucher.discount_value, subtotal_vnd);
+    // Step 1: Validate all PRODUCT vouchers BEFORE processOrderItems.
+    // Checks: exists, belongs to user, status=ACTIVE, not expired, correct type, correct menu_item.
+    const productVoucherMap = new Map<string, ProductVoucherInfo>();
+    for (const item of data.items) {
+      if (item.product_voucher_id) {
+        if (productVoucherMap.has(item.product_voucher_id)) {
+          // Same voucher on multiple items — reject (would allow double-use)
+          return NextResponse.json(
+            { error: "The same product voucher cannot be applied to multiple items", code: "VALIDATION_ERROR" },
+            { status: 400 }
+          );
+        }
+        const pv = await prisma.voucher.findUnique({ where: { id: item.product_voucher_id } });
+        try {
+          assertVoucherUsable(pv, session.id, "PRODUCT");
+        } catch (e) {
+          if (e instanceof VoucherError) {
+            const statusMap: Record<string, number> = {
+              NOT_FOUND: 404, VOUCHER_REDEEMED: 422, VOUCHER_EXPIRED: 422, CONFLICT: 422,
+              VALIDATION_ERROR: 400,
+            };
+            return NextResponse.json(
+              { error: e.message, code: e.code },
+              { status: statusMap[e.code] ?? 400 }
+            );
+          }
+          throw e;
+        }
+        if (!pv!.covered_price_vnd || !pv!.menu_item_id) {
+          return NextResponse.json(
+            { error: "Product voucher is not properly configured", code: "VALIDATION_ERROR" },
+            { status: 400 }
+          );
+        }
+        productVoucherMap.set(pv!.id, {
+          menu_item_id: pv!.menu_item_id,
+          covered_price_vnd: pv!.covered_price_vnd,
+        });
       }
     }
 
-    const total_vnd = Math.max(0, subtotal_vnd - discount_vnd);
+    // Step 2: Process items — validate, price-check, resolve addons (reads only)
+    const resolvedItems = await processOrderItems(data.items, prisma, productVoucherMap);
+
+    // Step 2: Calculate base subtotal (before any voucher)
+    const subtotal_vnd = resolvedItems.reduce((sum, item) => sum + item.line_total, 0);
+
+    // ── Voucher validation (read-only) ─────────────────────────────────────────
+    // Application order: PRODUCT (per-item, already in resolvedItems) → ADDON → DISCOUNT
+
+    // Step 3a: Validate ADDON voucher
+    let addon_voucher_id: string | null = null;
+    let addon_discount_vnd = 0;
+
+    if (data.addon_voucher_id) {
+      const addonVoucher = await prisma.voucher.findUnique({
+        where: { id: data.addon_voucher_id },
+      });
+
+      try {
+        assertVoucherUsable(addonVoucher, session.id, "ADDON");
+      } catch (e) {
+        if (e instanceof VoucherError) {
+          const statusMap: Record<string, number> = {
+            NOT_FOUND: 404, VOUCHER_REDEEMED: 422, VOUCHER_EXPIRED: 422, CONFLICT: 422,
+            VALIDATION_ERROR: 400,
+          };
+          return NextResponse.json(
+            { error: e.message, code: e.code },
+            { status: statusMap[e.code] ?? 400 }
+          );
+        }
+        throw e;
+      }
+
+      if (addonVoucher!.addon_option_id) {
+        addon_discount_vnd = findAddonVoucherDiscount(resolvedItems, addonVoucher!.addon_option_id);
+      }
+      addon_voucher_id = addonVoucher!.id;
+    }
+
+    // Subtotal after ADDON discount (applied before DISCOUNT voucher)
+    const subtotal_after_addon = Math.max(0, subtotal_vnd - addon_discount_vnd);
+
+    // Step 3b: Validate DISCOUNT voucher (applied last)
+    let discount_voucher_id: string | null = null;
+    let discount_vnd = 0;
+
+    if (data.voucher_id) {
+      const discountVoucher = await prisma.voucher.findUnique({ where: { id: data.voucher_id } });
+
+      try {
+        assertVoucherUsable(discountVoucher, session.id, "DISCOUNT");
+      } catch (e) {
+        if (e instanceof VoucherError) {
+          const statusMap: Record<string, number> = {
+            NOT_FOUND: 404, VOUCHER_REDEEMED: 422, VOUCHER_EXPIRED: 422, CONFLICT: 422,
+            VALIDATION_ERROR: 400,
+          };
+          return NextResponse.json(
+            { error: e.message, code: e.code },
+            { status: statusMap[e.code] ?? 400 }
+          );
+        }
+        throw e;
+      }
+
+      discount_vnd = calcDiscountVoucher(discountVoucher!, subtotal_after_addon);
+      discount_voucher_id = discountVoucher!.id;
+    }
+
+    const total_vnd = Math.max(0, subtotal_after_addon - discount_vnd);
+
+    // Step 3c: Compute PRODUCT voucher surplus points (per item)
+    // Surplus = floor((covered_price_vnd - actual_total) / 10000), min 0.
+    // actual_total = original drink price + addons price (BEFORE voucher discount).
+    const productVoucherSurplusMap: Map<string, number> = new Map();
+    for (const item of resolvedItems) {
+      if (item.product_voucher_id) {
+        const pvInfo = productVoucherMap.get(item.product_voucher_id);
+        if (pvInfo) {
+          const actual_total = item.original_unit_price_vnd + item.addons_price_vnd;
+          const surplus = calcProductVoucherSurplusPoints(pvInfo.covered_price_vnd, actual_total);
+          if (surplus > 0) {
+            productVoucherSurplusMap.set(item.product_voucher_id, surplus);
+          }
+        }
+      }
+    }
 
     // Step 4: Generate unique order code (read — collision check)
     const order_code = await generateOrderCode(prisma);
@@ -105,16 +190,16 @@ export async function POST(req: NextRequest) {
     // ── Phase 2: WRITES only (short transaction — pgBouncer compatible) ──────
     const order = await prisma.$transaction(
       async (tx) => {
-        // Insert order + items + addons
         const createdOrder = await tx.order.create({
           data: {
             user_id: session.id,
-            voucher_id,
+            voucher_id: discount_voucher_id,
+            addon_voucher_id: addon_voucher_id,
             status: "PENDING",
             order_type: data.order_type,
             order_code,
             subtotal_vnd,
-            discount_vnd,
+            discount_vnd: addon_discount_vnd + discount_vnd,
             total_vnd,
             points_earned: null,
             pickup_time: data.pickup_time ? new Date(data.pickup_time) : null,
@@ -147,11 +232,45 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        // Reserve voucher — will become REDEEMED only after admin confirms payment
-        if (voucher_id) {
+        // Reserve DISCOUNT voucher — becomes REDEEMED after admin confirms payment
+        if (discount_voucher_id) {
           await tx.voucher.update({
-            where: { id: voucher_id },
+            where: { id: discount_voucher_id },
             data: { status: "RESERVED" },
+          });
+        }
+
+        // Reserve ADDON voucher — same PENDING→RESERVED flow
+        if (addon_voucher_id) {
+          await tx.voucher.update({
+            where: { id: addon_voucher_id },
+            data: { status: "RESERVED" },
+          });
+        }
+
+        // Reserve ALL PRODUCT vouchers — prevents double-use across concurrent orders
+        for (const pvId of productVoucherMap.keys()) {
+          await tx.voucher.update({
+            where: { id: pvId },
+            data: { status: "RESERVED" },
+          });
+        }
+
+        // Award PRODUCT voucher surplus points immediately
+        for (const [pvId, surplusPoints] of productVoucherSurplusMap) {
+          await tx.user.update({
+            where: { id: session.id },
+            data: { points_balance: { increment: surplusPoints } },
+          });
+          await tx.pointsLog.create({
+            data: {
+              user_id: session.id,
+              delta: surplusPoints,
+              reason: "voucher_surplus",
+              voucher_id: pvId,
+              performed_by: null,
+              order_id: createdOrder.id,
+            },
           });
         }
 
@@ -160,7 +279,6 @@ export async function POST(req: NextRequest) {
       { maxWait: 5000, timeout: 10000 }
     );
 
-    // Step 6: Build VietQR payment URL (outside transaction — no DB needed)
     const payment_qr_url = buildVietQRUrl({ amount: total_vnd, orderCode: order_code });
 
     return NextResponse.json(
@@ -222,9 +340,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   }
 
+  const { searchParams } = new URL(req.url);
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+  const limit = Math.max(1, Math.min(100, parseInt(searchParams.get("limit") || "10", 10)));
+  const skip = (page - 1) * limit;
+
   try {
-    const orders = await prisma.order.findMany({
-      where: { user_id: session.id },
+    const [total, orders] = await prisma.$transaction([
+      prisma.order.count({ where: { user_id: session.id } }),
+      prisma.order.findMany({
+        where: { user_id: session.id },
+        skip,
+        take: limit,
       orderBy: { created_at: "desc" },
       include: {
         items: {
@@ -247,7 +374,9 @@ export async function GET(req: NextRequest) {
           },
         },
       },
-    });
+    })]);
+
+    const totalPages = Math.ceil(total / limit);
 
     // Build payment_qr_url for each PENDING order
     const data = orders.map((order) => {
@@ -262,7 +391,10 @@ export async function GET(req: NextRequest) {
       return { ...order, payment_qr_url };
     });
 
-    return NextResponse.json({ data });
+    return NextResponse.json({ 
+      data,
+      meta: { total, page, totalPages }
+    });
   } catch (err) {
     console.error("[GET /api/orders]", err);
     return NextResponse.json(

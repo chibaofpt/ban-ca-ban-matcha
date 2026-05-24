@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { buildVietQRUrl } from "@/lib/vietqr";
+import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Runs a lazy auto-cancel check for a PENDING order.
- * If auto_cancel_at has passed, cancels the order and restores any RESERVED voucher.
+ * If auto_cancel_at has passed, cancels the order and restores ALL vouchers.
  * Returns true if the order was cancelled.
  */
 async function tryLazyCancel(orderId: string, auto_cancel_at: Date | null): Promise<boolean> {
@@ -17,7 +18,7 @@ async function tryLazyCancel(orderId: string, auto_cancel_at: Date | null): Prom
     async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: orderId },
-        select: { id: true, status: true, voucher_id: true },
+        select: { id: true, status: true, voucher_id: true, addon_voucher_id: true },
       });
       // Only cancel if still PENDING (prevent double-cancel race)
       if (!order || order.status !== "PENDING") return;
@@ -27,12 +28,7 @@ async function tryLazyCancel(orderId: string, auto_cancel_at: Date | null): Prom
         data: { status: "CANCELLED" },
       });
 
-      if (order.voucher_id) {
-        await tx.voucher.update({
-          where: { id: order.voucher_id },
-          data: { status: "ACTIVE" },
-        });
-      }
+      await restoreVouchersOnCancel(tx, orderId, order.voucher_id, order.addon_voucher_id);
     },
     { maxWait: 5000, timeout: 10000 }
   );
@@ -186,7 +182,7 @@ export async function PATCH(
 
     const order = await prisma.order.findUnique({
       where: { id },
-      select: { id: true, status: true, user_id: true, voucher_id: true },
+      select: { id: true, status: true, user_id: true, voucher_id: true, addon_voucher_id: true },
     });
 
     if (!order || order.user_id !== session.id) {
@@ -207,12 +203,7 @@ export async function PATCH(
           data: { status: "CANCELLED" },
         });
 
-        if (order.voucher_id) {
-          await tx.voucher.update({
-            where: { id: order.voucher_id },
-            data: { status: "ACTIVE" },
-          });
-        }
+        await restoreVouchersOnCancel(tx, order.id, order.voucher_id, order.addon_voucher_id);
       },
       { maxWait: 5000, timeout: 10000 }
     );

@@ -4,9 +4,18 @@ import { prisma } from "@/lib/prisma";
 import { getSession, normalizePhone } from "@/lib/auth";
 import { staffOrderSchema } from "@/lib/validations/order";
 import { processOrderItems, OrderValidationError, PriceChangedError } from "@/lib/orders";
+import type { ProductVoucherInfo } from "@/lib/orders";
+import {
+  assertVoucherUsable,
+  calcDiscountVoucher,
+  calcProductVoucherSurplusPoints,
+  findAddonVoucherDiscount,
+  VoucherError,
+} from "@/lib/vouchers";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
 import type { Prisma } from "@prisma/client";
+import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +55,12 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    if (isAnonymous && data.addon_voucher_id) {
+      return NextResponse.json(
+        { error: "Addon voucher cannot be applied to anonymous orders", code: "VALIDATION_ERROR" },
+        { status: 400 }
+      );
+    }
     if (isAnonymous && data.items.some((i) => i.product_voucher_id)) {
       return NextResponse.json(
         { error: "Product voucher cannot be used for anonymous orders", code: "VALIDATION_ERROR" },
@@ -73,34 +88,134 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Step 2: Validate + price-check all items (reads from DB, no writes)
-    const resolvedItems = await processOrderItems(data.items, prisma);
-
-    // Step 3: Calculate totals
-    const subtotal_vnd = resolvedItems.reduce((sum, item) => sum + item.line_total, 0);
-    let discount_vnd = 0;
-    let voucher_id: string | null = null;
-
-    if (data.voucher_id) {
-      const voucher = await prisma.voucher.findUnique({ where: { id: data.voucher_id } });
-      if (
-        voucher &&
-        voucher.status === "ACTIVE" &&
-        voucher.voucher_type === "DISCOUNT" &&
-        (voucher.expires_at === null || voucher.expires_at > new Date())
-      ) {
-        voucher_id = voucher.id;
-        if (voucher.discount_type === "PERCENT" && voucher.discount_value !== null) {
-          discount_vnd = Math.floor((subtotal_vnd * voucher.discount_value) / 100);
-        } else if (voucher.discount_type === "FIXED" && voucher.discount_value !== null) {
-          discount_vnd = voucher.discount_value;
+    // Step 2: Validate all PRODUCT vouchers BEFORE processOrderItems.
+    let existingUserForVoucher: { id: string } | null = existingUser;
+    const productVoucherMap = new Map<string, ProductVoucherInfo>();
+    if (existingUserForVoucher) {
+      for (const item of data.items) {
+        if (item.product_voucher_id) {
+          if (productVoucherMap.has(item.product_voucher_id)) {
+            return NextResponse.json(
+              { error: "The same product voucher cannot be applied to multiple items", code: "VALIDATION_ERROR" },
+              { status: 400 }
+            );
+          }
+          const pv = await prisma.voucher.findUnique({ where: { id: item.product_voucher_id } });
+          try {
+            assertVoucherUsable(pv, existingUserForVoucher.id, "PRODUCT");
+          } catch (e) {
+            if (e instanceof VoucherError) {
+              const statusMap: Record<string, number> = {
+                NOT_FOUND: 404, VOUCHER_REDEEMED: 422, VOUCHER_EXPIRED: 422,
+                CONFLICT: 422, VALIDATION_ERROR: 400,
+              };
+              return NextResponse.json(
+                { error: e.message, code: e.code },
+                { status: statusMap[e.code] ?? 400 }
+              );
+            }
+            throw e;
+          }
+          if (!pv!.covered_price_vnd || !pv!.menu_item_id) {
+            return NextResponse.json(
+              { error: "Product voucher is not properly configured", code: "VALIDATION_ERROR" },
+              { status: 400 }
+            );
+          }
+          productVoucherMap.set(pv!.id, {
+            menu_item_id: pv!.menu_item_id,
+            covered_price_vnd: pv!.covered_price_vnd,
+          });
         }
       }
     }
 
-    const total_vnd = Math.max(0, subtotal_vnd - discount_vnd);
+    // Step 3: Validate + price-check all items (reads from DB, no writes)
+    const resolvedItems = await processOrderItems(data.items, prisma, productVoucherMap);
+
+    // Step 3: Calculate base subtotal
+    const subtotal_vnd = resolvedItems.reduce((sum, item) => sum + item.line_total, 0);
+
+    // ── Voucher validation — ADDON → DISCOUNT order ───────────────────────────
+
+    // ADDON voucher
+    let addon_voucher_id: string | null = null;
+    let addon_discount_vnd = 0;
+
+    if (data.addon_voucher_id && existingUser) {
+      const addonVoucher = await prisma.voucher.findUnique({ where: { id: data.addon_voucher_id } });
+
+      try {
+        assertVoucherUsable(addonVoucher, existingUser.id, "ADDON");
+      } catch (e) {
+        if (e instanceof VoucherError) {
+          const statusMap: Record<string, number> = {
+            NOT_FOUND: 404, VOUCHER_REDEEMED: 422, VOUCHER_EXPIRED: 422,
+            CONFLICT: 422, VALIDATION_ERROR: 400,
+          };
+          return NextResponse.json(
+            { error: e.message, code: e.code },
+            { status: statusMap[e.code] ?? 400 }
+          );
+        }
+        throw e;
+      }
+
+      if (addonVoucher!.addon_option_id) {
+        addon_discount_vnd = findAddonVoucherDiscount(resolvedItems, addonVoucher!.addon_option_id);
+      }
+      addon_voucher_id = addonVoucher!.id;
+    }
+
+    const subtotal_after_addon = Math.max(0, subtotal_vnd - addon_discount_vnd);
+
+    // DISCOUNT voucher
+    let discount_voucher_id: string | null = null;
+    let discount_vnd = 0;
+
+    if (data.voucher_id && existingUser) {
+      const discountVoucher = await prisma.voucher.findUnique({ where: { id: data.voucher_id } });
+
+      try {
+        assertVoucherUsable(discountVoucher, existingUser.id, "DISCOUNT");
+      } catch (e) {
+        if (e instanceof VoucherError) {
+          const statusMap: Record<string, number> = {
+            NOT_FOUND: 404, VOUCHER_REDEEMED: 422, VOUCHER_EXPIRED: 422,
+            CONFLICT: 422, VALIDATION_ERROR: 400,
+          };
+          return NextResponse.json(
+            { error: e.message, code: e.code },
+            { status: statusMap[e.code] ?? 400 }
+          );
+        }
+        throw e;
+      }
+
+      discount_vnd = calcDiscountVoucher(discountVoucher!, subtotal_after_addon);
+      discount_voucher_id = discountVoucher!.id;
+    }
+
+    const total_vnd = Math.max(0, subtotal_after_addon - discount_vnd);
     // Anonymous orders never earn points
     const points_earned = isAnonymous ? 0 : Math.floor(total_vnd / 10000);
+
+    // PRODUCT voucher surplus points (for linked user only)
+    const productVoucherSurplusMap: Map<string, number> = new Map();
+    if (existingUser) {
+      for (const item of resolvedItems) {
+        if (item.product_voucher_id) {
+          const pvInfo = productVoucherMap.get(item.product_voucher_id);
+          if (pvInfo) {
+            const actual_total = item.original_unit_price_vnd + item.addons_price_vnd;
+            const surplus = calcProductVoucherSurplusPoints(pvInfo.covered_price_vnd, actual_total);
+            if (surplus > 0) {
+              productVoucherSurplusMap.set(item.product_voucher_id, surplus);
+            }
+          }
+        }
+      }
+    }
 
     // ── Phase 2: WRITES only (short transaction — pgBouncer compatible) ──────
     const order = await prisma.$transaction(
@@ -127,10 +242,11 @@ export async function POST(req: NextRequest) {
           data: {
             user_id: userId,       // null for anonymous orders
             handled_by: session.id,
-            voucher_id,
+            voucher_id: discount_voucher_id,
+            addon_voucher_id: addon_voucher_id,
             status: "COMPLETED",
             subtotal_vnd,
-            discount_vnd,
+            discount_vnd: addon_discount_vnd + discount_vnd,
             total_vnd,
             points_earned,
             pickup_time: null,
@@ -161,20 +277,46 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        // Mark voucher as redeemed
-        if (voucher_id) {
+        // Mark DISCOUNT voucher as redeemed (OFFLINE for staff counter)
+        if (discount_voucher_id) {
           await tx.voucher.update({
-            where: { id: voucher_id },
+            where: { id: discount_voucher_id },
             data: {
               status: "REDEEMED",
-              used_channel: "ONLINE",
+              used_channel: "OFFLINE",
               redeemed_at: new Date(),
               redeemed_by: session.id,
             },
           });
         }
 
-        // Award points only for orders with a known user
+        // Mark ADDON voucher as redeemed (OFFLINE)
+        if (addon_voucher_id) {
+          await tx.voucher.update({
+            where: { id: addon_voucher_id },
+            data: {
+              status: "REDEEMED",
+              used_channel: "OFFLINE",
+              redeemed_at: new Date(),
+              redeemed_by: session.id,
+            },
+          });
+        }
+
+        // Mark ALL PRODUCT vouchers as REDEEMED immediately (counter = COMPLETED)
+        for (const pvId of productVoucherMap.keys()) {
+          await tx.voucher.update({
+            where: { id: pvId },
+            data: {
+              status: "REDEEMED",
+              used_channel: "OFFLINE",
+              redeemed_at: new Date(),
+              redeemed_by: session.id,
+            },
+          });
+        }
+
+        // Award order_complete points only for orders with a known user
         if (userId && points_earned > 0) {
           await tx.user.update({
             where: { id: userId },
@@ -191,6 +333,26 @@ export async function POST(req: NextRequest) {
               voucher_id: null,
             },
           });
+        }
+
+        // Award PRODUCT voucher surplus points immediately
+        if (userId) {
+          for (const [pvId, surplusPoints] of productVoucherSurplusMap) {
+            await tx.user.update({
+              where: { id: userId },
+              data: { points_balance: { increment: surplusPoints } },
+            });
+            await tx.pointsLog.create({
+              data: {
+                user_id: userId,
+                delta: surplusPoints,
+                reason: "voucher_surplus",
+                voucher_id: pvId,
+                performed_by: null,
+                order_id: createdOrder.id,
+              },
+            });
+          }
         }
 
         return createdOrder;
@@ -266,6 +428,10 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const orderTypeParam = searchParams.get('order_type'); // e.g. "COUNTER" or "PICKUP,DELIVERY"
   const statusParam = searchParams.get('status');        // e.g. "PENDING"
+  
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+  const limit = Math.max(1, Math.min(100, parseInt(searchParams.get("limit") || "10", 10)));
+  const skip = (page - 1) * limit;
 
   // Only ADMIN can access the "Chờ CK" tab (PENDING customer orders)
   if (statusParam === 'PENDING' && session.role === 'STAFF') {
@@ -294,32 +460,39 @@ export async function GET(req: NextRequest) {
     }
     // No status filter for COUNTER (show all — COMPLETED, CANCELLED)
 
-    const orders = await prisma.order.findMany({
-      where,
-      orderBy: { created_at: 'desc' },
-      include: {
-        user: { select: { name: true, phone_number: true } },
-        items: {
-          include: {
-            menuItem: { select: { name: true, category: true } },
-            selectedPowder: { select: { name: true, price_per_gram: true } },
-            milkType: { select: { name: true, is_default: true } },
-            addons: {
-              include: {
-                addonOption: {
-                  select: {
-                    label: true,
-                    gram_value: true,
-                    price_vnd: true,
-                    group: { select: { name: true } },
+    const [total, orders] = await prisma.$transaction([
+      prisma.order.count({ where }),
+      prisma.order.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { created_at: 'desc' },
+        include: {
+          user: { select: { name: true, phone_number: true } },
+          items: {
+            include: {
+              menuItem: { select: { name: true, category: true } },
+              selectedPowder: { select: { name: true, price_per_gram: true } },
+              milkType: { select: { name: true, is_default: true } },
+              addons: {
+                include: {
+                  addonOption: {
+                    select: {
+                      label: true,
+                      gram_value: true,
+                      price_vnd: true,
+                      group: { select: { name: true } },
+                    },
                   },
                 },
               },
             },
           },
         },
-      },
-    });
+      })
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
 
     // Lazy auto-cancel: expire any PENDING orders that have passed their deadline.
     // Only relevant when fetching PENDING orders ("Chờ CK" tab).
@@ -338,12 +511,12 @@ export async function GET(req: NextRequest) {
             await prisma.$transaction(
               async (tx) => {
                 await tx.order.update({ where: { id: orderId }, data: { status: 'CANCELLED' } });
-                if (expired.voucher_id) {
-                  await tx.voucher.update({
-                    where: { id: expired.voucher_id },
-                    data: { status: 'ACTIVE' },
-                  });
-                }
+                await restoreVouchersOnCancel(
+                  tx,
+                  orderId,
+                  expired.voucher_id,
+                  (expired as typeof expired & { addon_voucher_id?: string | null }).addon_voucher_id ?? null
+                );
               },
               { maxWait: 5000, timeout: 10000 }
             );
@@ -354,7 +527,10 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ data: orders });
+    return NextResponse.json({ 
+      data: orders, 
+      meta: { total, page, totalPages } 
+    });
   } catch (err) {
     console.error('[GET /api/staff/orders]', err);
     return NextResponse.json(

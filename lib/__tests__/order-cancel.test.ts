@@ -11,7 +11,11 @@ import { NextRequest } from "next/server";
 const mockGetSession = vi.fn();
 const mockOrderFindUnique = vi.fn();
 const mockOrderUpdate = vi.fn();
+const mockVoucherFindUnique = vi.fn();
 const mockVoucherUpdate = vi.fn();
+const mockOrderItemFindMany = vi.fn();
+const mockPointsLogFindMany = vi.fn();
+const mockUserUpdate = vi.fn();
 const mockTransaction = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
@@ -48,12 +52,18 @@ const CUSTOMER_SESSION = { id: "user-abc", role: "CUSTOMER", phone_number: "+849
 describe("PATCH /api/orders/[id] — customer self-cancel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default: transaction calls the callback with a mock tx
+    // Default: transaction calls the callback with a mock tx that includes all needed tables
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        order: { update: mockOrderUpdate },
-        voucher: { update: mockVoucherUpdate },
+        order: { update: mockOrderUpdate, findUnique: mockOrderFindUnique },
+        voucher: { findUnique: mockVoucherFindUnique, update: mockVoucherUpdate },
+        orderItem: { findMany: mockOrderItemFindMany },
+        pointsLog: { findMany: mockPointsLogFindMany, create: vi.fn() },
+        user: { update: mockUserUpdate },
       };
+      // Default: no product vouchers, no surplus logs
+      mockOrderItemFindMany.mockResolvedValue([]);
+      mockPointsLogFindMany.mockResolvedValue([]);
       return fn(tx);
     });
   });
@@ -110,6 +120,7 @@ describe("PATCH /api/orders/[id] — customer self-cancel", () => {
       status: "PENDING",
       user_id: "different-user", // NOT the session user
       voucher_id: null,
+      addon_voucher_id: null,
     });
     const { PATCH } = await import("@/app/api/orders/[id]/route");
     const res = await PATCH(makeReq({ status: "CANCELLED" }), {
@@ -125,6 +136,7 @@ describe("PATCH /api/orders/[id] — customer self-cancel", () => {
       status: "ADMIN_CONFIRMED", // Cannot cancel non-PENDING
       user_id: "user-abc",
       voucher_id: null,
+      addon_voucher_id: null,
     });
     const { PATCH } = await import("@/app/api/orders/[id]/route");
     const res = await PATCH(makeReq({ status: "CANCELLED" }), {
@@ -142,6 +154,7 @@ describe("PATCH /api/orders/[id] — customer self-cancel", () => {
       status: "PENDING",
       user_id: "user-abc",
       voucher_id: null,
+      addon_voucher_id: null,
     });
     mockOrderUpdate.mockResolvedValue({ id: "order-123", status: "CANCELLED" });
 
@@ -167,8 +180,11 @@ describe("PATCH /api/orders/[id] — customer self-cancel", () => {
       status: "PENDING",
       user_id: "user-abc",
       voucher_id: "voucher-xyz",
+      addon_voucher_id: null,
     });
     mockOrderUpdate.mockResolvedValue({ id: "order-123", status: "CANCELLED" });
+    // restoreVouchersOnCancel calls findUnique to check current status
+    mockVoucherFindUnique.mockResolvedValue({ status: "RESERVED" });
     mockVoucherUpdate.mockResolvedValue({ id: "voucher-xyz", status: "ACTIVE" });
 
     const { PATCH } = await import("@/app/api/orders/[id]/route");
@@ -178,7 +194,7 @@ describe("PATCH /api/orders/[id] — customer self-cancel", () => {
     expect(res.status).toBe(200);
     expect(mockVoucherUpdate).toHaveBeenCalledWith({
       where: { id: "voucher-xyz" },
-      data: { status: "ACTIVE" },
+      data: { status: "ACTIVE", redeemed_at: null, redeemed_by: null, used_channel: null },
     });
   });
 });

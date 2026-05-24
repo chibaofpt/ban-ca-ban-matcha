@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,7 @@ export async function PATCH(
         order_type: true,
         auto_cancel_at: true,
         voucher_id: true,
+        addon_voucher_id: true,
       },
     });
 
@@ -54,9 +56,7 @@ export async function PATCH(
       await prisma.$transaction(
         async (tx) => {
           await tx.order.update({ where: { id }, data: { status: "CANCELLED" } });
-          if (order.voucher_id) {
-            await tx.voucher.update({ where: { id: order.voucher_id }, data: { status: "ACTIVE" } });
-          }
+          await restoreVouchersOnCancel(tx, id, order.voucher_id, order.addon_voucher_id);
         },
         { maxWait: 5000, timeout: 10000 }
       );
@@ -81,10 +81,47 @@ export async function PATCH(
           },
         });
 
-        // Voucher was RESERVED — now fully REDEEMED
+        // DISCOUNT voucher was RESERVED — now fully REDEEMED
         if (order.voucher_id) {
           await tx.voucher.update({
             where: { id: order.voucher_id },
+            data: {
+              status: "REDEEMED",
+              used_channel: "ONLINE",
+              redeemed_at: new Date(),
+              redeemed_by: session.id,
+            },
+          });
+        }
+
+        // ADDON voucher was RESERVED — now fully REDEEMED
+        if (order.addon_voucher_id) {
+          await tx.voucher.update({
+            where: { id: order.addon_voucher_id },
+            data: {
+              status: "REDEEMED",
+              used_channel: "ONLINE",
+              redeemed_at: new Date(),
+              redeemed_by: session.id,
+            },
+          });
+        }
+
+        // PRODUCT vouchers were RESERVED — transition to REDEEMED
+        const productVoucherItems = await tx.orderItem.findMany({
+          where: { order_id: id, product_voucher_id: { not: null } },
+          select: { product_voucher_id: true },
+        });
+        const uniquePvIds = [
+          ...new Set(
+            productVoucherItems
+              .map((i) => i.product_voucher_id)
+              .filter((pvId): pvId is string => pvId !== null)
+          ),
+        ];
+        for (const pvId of uniquePvIds) {
+          await tx.voucher.update({
+            where: { id: pvId },
             data: {
               status: "REDEEMED",
               used_channel: "ONLINE",

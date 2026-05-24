@@ -86,11 +86,11 @@ export function OrderProgressBar({ status }: OrderProgressBarProps) {
                   isCompleted
                     ? "bg-primary border-primary text-white"
                     : isActive
-                    ? "bg-primary border-primary text-white animate-pulse"
+                    ? "bg-primary border-primary text-white"
                     : "bg-background border-border text-muted-foreground"
                 )}
               >
-                {isCompleted ? <Check size={14} /> : step.icon}
+                {step.icon}
               </div>
             </div>
           );
@@ -99,29 +99,34 @@ export function OrderProgressBar({ status }: OrderProgressBarProps) {
 
       {/* Active step title + subtitle — shown below the active node */}
       {STEPS[activeIndex] && (
-        <div
-          className="mt-3 text-center px-1"
-          style={{
-            // Align text under the active dot using percentage positioning
-            marginLeft: `calc(${activeIndex} * (100% / 3) - ${activeIndex} * 1rem)`,
-            width: "auto",
-          }}
-        >
-          {(() => {
-            const positions = ["text-left", "text-left pl-[22%]", "text-center", "text-right"];
-            return (
-              <div className={cn("w-full", positions[activeIndex] ?? "text-left")}>
-                <p className="text-xs font-bold text-foreground leading-tight">
-                  {STEPS[activeIndex].title}
-                </p>
-                {STEPS[activeIndex].subtitle && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    {STEPS[activeIndex].subtitle}
-                  </p>
-                )}
-              </div>
-            );
-          })()}
+        <div className="mt-3 w-full">
+          <div
+            className={cn(
+              "relative inline-block px-1",
+              activeIndex === 0 && "text-left",
+              (activeIndex === 1 || activeIndex === 2) && "text-center",
+              activeIndex === 3 && "text-right"
+            )}
+            style={{
+              left: activeIndex === 2
+                ? `calc(${(activeIndex / 3) * 100}% - 5%)`
+                : `${(activeIndex / 3) * 100}%`,
+              transform: activeIndex === 0 
+                ? "none" 
+                : activeIndex === 3 
+                ? "translateX(-100%)" 
+                : "translateX(-50%)",
+            }}
+          >
+            <p className="text-xs font-bold text-foreground leading-tight">
+              {STEPS[activeIndex].title}
+            </p>
+            {STEPS[activeIndex].subtitle && (
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {STEPS[activeIndex].subtitle}
+              </p>
+            )}
+          </div>
         </div>
       )}
     </div>

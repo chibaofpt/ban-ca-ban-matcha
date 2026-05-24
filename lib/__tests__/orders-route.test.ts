@@ -14,6 +14,8 @@ const mockGetSession = vi.fn();
 const mockVoucherFindUnique = vi.fn();
 const mockOrderCreate = vi.fn();
 const mockVoucherUpdate = vi.fn();
+const mockUserUpdate = vi.fn();
+const mockPointsLogCreate = vi.fn();
 
 // Mock lib/auth
 vi.mock("@/lib/auth", () => ({
@@ -41,6 +43,9 @@ vi.mock("@/lib/prisma", () => ({
     menuItem: { findUnique: vi.fn() },
     addonOption: { findUnique: vi.fn() },
     order: { findUnique: vi.fn() },
+    voucher: { findUnique: vi.fn(), update: vi.fn() },
+    user: { update: vi.fn() },
+    pointsLog: { create: vi.fn() },
   },
 }));
 
@@ -121,47 +126,62 @@ function setupTx(overrides: {
   menuItem?: object | null;
   orderResult?: object;
   addonOption?: object | null;
+  addonVoucher?: object | null;
+  productVoucher?: object | null;
 } = {}) {
   // Mock global prisma for reads outside transaction
   const mockMenuItemFind = vi.fn().mockResolvedValue(overrides.menuItem !== undefined ? overrides.menuItem : latteMenuItem);
   const mockAddonOptionFind = vi.fn().mockResolvedValue(overrides.addonOption !== undefined ? overrides.addonOption : null);
   
-  (prisma.menuItem.findUnique as any) = mockMenuItemFind;
-  (prisma.addonOption.findUnique as any) = mockAddonOptionFind;
+  (prisma.menuItem.findUnique as ReturnType<typeof vi.fn>) = mockMenuItemFind;
+  (prisma.addonOption.findUnique as ReturnType<typeof vi.fn>) = mockAddonOptionFind;
   
-  mockVoucherFindUnique.mockResolvedValue(overrides.voucher !== undefined ? overrides.voucher : null);
+  // Route now calls prisma.voucher.findUnique for ADDON, DISCOUNT, and PRODUCT vouchers.
+  // Default is null (voucher not found). Tests that need specific values use
+  // mockResolvedValueOnce() AFTER calling setupTx() to prepend to the call queue.
+  if (overrides.voucher !== undefined) {
+    mockVoucherFindUnique.mockResolvedValue(overrides.voucher);
+  } else {
+    mockVoucherFindUnique.mockResolvedValue(null);
+  }
   mockVoucherUpdate.mockResolvedValue({});
   mockOrderCreate.mockResolvedValue(overrides.orderResult ?? createdOrder);
 
-  (prisma.voucher as any) = {
+  const mockPrisma = prisma as unknown as {
+    voucher: { findUnique: unknown; update: unknown };
+    user: { update: unknown };
+    pointsLog: { create: unknown };
+    order: { findUnique: unknown; create: unknown };
+  };
+
+  mockPrisma.voucher = {
     findUnique: mockVoucherFindUnique,
     update: mockVoucherUpdate,
   };
-  (prisma.order as any) = {
+  mockPrisma.user = {
+    update: mockUserUpdate,
+  };
+  mockPrisma.pointsLog = {
+    create: mockPointsLogCreate,
+  };
+  mockPrisma.order = {
     findUnique: vi.fn().mockResolvedValue(null),
     create: mockOrderCreate,
   };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (prisma.$transaction as any).mockImplementation(async (fn: (tx: unknown) => unknown) => {
+  (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(async (fn: (tx: unknown) => unknown) => {
     const tx = {
-      menuItem: {
-        findUnique: mockMenuItemFind,
-      },
-      addonOption: {
-        findUnique: mockAddonOptionFind,
-      },
+      menuItem: { findUnique: mockMenuItemFind },
+      addonOption: { findUnique: mockAddonOptionFind },
       voucher: {
         findUnique: mockVoucherFindUnique,
         update: mockVoucherUpdate,
       },
-      order: {
-        create: mockOrderCreate,
-      },
+      user: { update: mockUserUpdate },
+      pointsLog: { create: mockPointsLogCreate },
+      order: { create: mockOrderCreate },
     };
-    mockVoucherFindUnique.mockResolvedValue(overrides.voucher !== undefined ? overrides.voucher : undefined);
-    mockVoucherUpdate.mockResolvedValue({});
-    mockOrderCreate.mockResolvedValue(overrides.orderResult ?? createdOrder);
     return fn(tx);
   });
 }
@@ -178,6 +198,8 @@ describe("POST /api/orders", () => {
     process.env.BANK_ACCOUNT_NAME = "HO MY TU UYEN";
 
     mockGetSession.mockResolvedValue(customerSession);
+    mockUserUpdate.mockResolvedValue({});
+    mockPointsLogCreate.mockResolvedValue({});
     // Restore pricing mocks cleared by clearAllMocks
     vi.mocked(buildPricingContext).mockResolvedValue({
       defaultSizeConfigs: [
@@ -459,17 +481,159 @@ describe("POST /api/orders", () => {
 
   it("returns 500 on unexpected DB error", async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (prisma.$transaction as any).mockRejectedValue(new Error("connection timeout"));
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("connection timeout"));
     const res = await POST(makeReq(validPayload));
     expect(res.status).toBe(500);
     expect((await res.json()).code).toBe("INTERNAL_ERROR");
   });
+
+  // ── ADDON voucher ──────────────────────────────────────────────────────────
+
+  const ADDON_VOUCHER_ID = "550e8400-e29b-41d4-a716-446655440020";
+  const ADDON_OPTION_ID  = "550e8400-e29b-41d4-a716-446655440021";
+
+  it("applies ADDON voucher: reserves it and applies addon discount", async () => {
+    const kemOption = {
+      id: ADDON_OPTION_ID,
+      label: "Kem",
+      price_vnd: 8000,
+      gram_value: null,
+    };
+    setupTx({ addonOption: kemOption });
+
+    const addonVoucher = {
+      id: ADDON_VOUCHER_ID,
+      user_id: USER_ID,
+      status: "ACTIVE",
+      voucher_type: "ADDON",
+      addon_option_id: ADDON_OPTION_ID,
+      expires_at: null,
+    };
+    // resolveOrderItemPrice returns 69000, addon = 8000 -> server total = 77000
+    vi.mocked(resolveOrderItemPrice).mockReturnValue(69000);
+    mockVoucherFindUnique
+      .mockResolvedValueOnce(addonVoucher)
+      .mockResolvedValue(null);
+
+    const payload = {
+      ...validPayload,
+      addon_voucher_id: ADDON_VOUCHER_ID,
+      items: [
+        {
+          menu_item_id: ITEM_ID,
+          quantity: 1,
+          size: "L",
+          sweetness: "QUARTER",
+          addon_option_ids: [{ option_id: ADDON_OPTION_ID, quantity: 1 }],
+          client_price_vnd: 77000,
+        },
+      ],
+    };
+
+    const res = await POST(makeReq(payload));
+    expect(res.status).toBe(201);
+  });
+
+  it("reserves ADDON voucher in transaction", async () => {
+    setupTx();
+
+    const addonVoucher2 = {
+      id: ADDON_VOUCHER_ID,
+      user_id: USER_ID,
+      status: "ACTIVE",
+      voucher_type: "ADDON",
+      addon_option_id: ADDON_OPTION_ID,
+      expires_at: null,
+    };
+    mockVoucherFindUnique
+      .mockResolvedValueOnce(addonVoucher2)
+      .mockResolvedValue(null);
+
+    await POST(makeReq({ ...validPayload, addon_voucher_id: ADDON_VOUCHER_ID }));
+
+    expect(mockVoucherUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: ADDON_VOUCHER_ID },
+        data: expect.objectContaining({ status: "RESERVED" }),
+      })
+    );
+  });
+
+  it("returns 422 when ADDON voucher is already REDEEMED", async () => {
+    setupTx();
+    mockVoucherFindUnique.mockResolvedValueOnce({
+      id: ADDON_VOUCHER_ID,
+      user_id: USER_ID,
+      status: "REDEEMED",
+      voucher_type: "ADDON",
+      addon_option_id: ADDON_OPTION_ID,
+      expires_at: null,
+    });
+
+    const res = await POST(makeReq({ ...validPayload, addon_voucher_id: ADDON_VOUCHER_ID }));
+    expect(res.status).toBe(422);
+    expect((await res.json()).code).toBe("VOUCHER_REDEEMED");
+  });
+
+  it("can stack ADDON + DISCOUNT vouchers in same order", async () => {
+    setupTx();
+
+    const addonVoucher3 = {
+      id: ADDON_VOUCHER_ID,
+      user_id: USER_ID,
+      status: "ACTIVE",
+      voucher_type: "ADDON",
+      addon_option_id: ADDON_OPTION_ID,
+      expires_at: null,
+    };
+    const discountVoucher2 = {
+      id: V_PCT,
+      user_id: USER_ID,
+      status: "ACTIVE",
+      voucher_type: "DISCOUNT",
+      discount_type: "PERCENT",
+      discount_value: 20,
+      expires_at: null,
+    };
+    // Sequence of calls: ADDON lookup → DISCOUNT lookup → PRODUCT lookup (none)
+    mockVoucherFindUnique
+      .mockResolvedValueOnce(addonVoucher3)
+      .mockResolvedValueOnce(discountVoucher2)
+      .mockResolvedValue(null);
+
+    const res = await POST(
+      makeReq({ ...validPayload, addon_voucher_id: ADDON_VOUCHER_ID, voucher_id: V_PCT })
+    );
+    expect(res.status).toBe(201);
+    expect(mockVoucherUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: ADDON_VOUCHER_ID } })
+    );
+    expect(mockVoucherUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: V_PCT } })
+    );
+  });
 });
+
 
 describe("GET /api/orders", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSession.mockResolvedValue(customerSession);
+
+    // Mock $transaction to resolve array of promises for GET route
+    (prisma.$transaction as any).mockImplementation(async (arg: unknown) => {
+      if (Array.isArray(arg)) {
+        return Promise.all(arg);
+      }
+      return arg;
+    });
+
+    (prisma.order as any) = {
+      findUnique: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
+      count: vi.fn().mockResolvedValue(0),
+      create: vi.fn(),
+    };
   });
 
   function makeGetReq(): NextRequest {
@@ -495,7 +659,9 @@ describe("GET /api/orders", () => {
     const res = await GET(makeGetReq());
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.data).toEqual(mockOrders);
+    expect(json.data).toEqual(
+      mockOrders.map((o) => ({ ...o, payment_qr_url: null }))
+    );
 
     expect(prisma.order.findMany).toHaveBeenCalledWith(
       expect.objectContaining({

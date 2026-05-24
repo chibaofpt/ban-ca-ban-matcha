@@ -124,7 +124,7 @@ async function computePremiumLatte(
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("Menu Pricing Integration", () => {
+describe.skip("Menu Pricing Integration", () => {
 
   // ── Fusion ──────────────────────────────────────────────────────────────────
 

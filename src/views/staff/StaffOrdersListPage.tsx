@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { ChevronDown, ChevronUp, Phone, Clock, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronUp, Phone, Clock, RefreshCw, CheckCircle2, XCircle } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import { fetchOrdersList, type OrderRes } from "@/src/services/staffOrdersListService";
 import { apiClient } from "@/src/lib/api/client";
+import { usePolling } from "@/src/hooks/usePolling";
 import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
 import { OrderTabs, type OrderTabKey } from "@/src/components/staff/OrderTabs";
 import { OrderProgressBar } from "@/src/components/shared/OrderProgressBar";
@@ -18,45 +19,61 @@ const formatDateTime = (iso: string): string => {
 
 export default function StaffOrdersListPage() {
   const [activeTab, setActiveTab] = useState<OrderTabKey>("counter");
-  const [orders, setOrders] = useState<OrderRes[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Reset page when changing tabs
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab]);
 
-  const loadData = useCallback(async (tab: OrderTabKey) => {
-    setLoading(true);
+  const fetchOrdersFn = useCallback(async () => {
+    let orderTypeParam = "";
+    let statusParam = "";
+
+    if (activeTab === "counter") {
+      orderTypeParam = "COUNTER";
+    } else if (activeTab === "customer") {
+      orderTypeParam = "PICKUP,DELIVERY";
+    } else if (activeTab === "pending") {
+      statusParam = "PENDING";
+    } else if (activeTab === "cancelled") {
+      statusParam = "CANCELLED";
+    }
+
+    return await fetchOrdersList({
+      order_type: orderTypeParam || undefined,
+      status: statusParam || undefined,
+      page,
+      limit: 10,
+    });
+  }, [activeTab, page]);
+
+  const { data, isInitialLoading, isRefreshing, refetch } = usePolling({
+    fetcher: fetchOrdersFn,
+    interval: activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000,
+    dependencies: [activeTab, page],
+  });
+
+  const orders = data?.data || [];
+  const totalPages = data?.meta.totalPages || 1;
+
+  // Background polling cho pendingCount
+  const fetchPendingCountAPI = useCallback(async () => {
     try {
-      let data: OrderRes[] = [];
-      if (tab === "counter") {
-        data = await fetchOrdersList({ order_type: "COUNTER" });
-      } else if (tab === "customer") {
-        data = await fetchOrdersList({ order_type: "PICKUP,DELIVERY" });
-      }
-      setOrders(data);
-    } catch (err) {
-      console.error(err);
-      toast.error("Không thể tải đơn hàng");
-    } finally {
-      setLoading(false);
+      const res = await fetchOrdersList({ status: "PENDING", limit: 1 });
+      return res;
+    } catch {
+      return null;
     }
   }, []);
 
-  useEffect(() => {
-    loadData(activeTab);
+  const { data: pendingData } = usePolling({
+    fetcher: fetchPendingCountAPI,
+    interval: 20000,
+  });
 
-    if (intervalRef.current) clearInterval(intervalRef.current);
-
-    if (activeTab === "customer") {
-      intervalRef.current = setInterval(() => {
-        loadData("customer");
-      }, 15000);
-    }
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [activeTab, loadData]);
+  const pendingCount = pendingData?.meta?.total || 0;
 
   const toggle = (id: string) => setExpanded((s) => ({ ...s, [id]: !s[id] }));
 
@@ -64,7 +81,7 @@ export default function StaffOrdersListPage() {
     try {
       await apiClient.patch(`/api/staff/orders/${orderId}`, { status: newStatus });
       toast.success("Cập nhật trạng thái thành công");
-      loadData(activeTab);
+      refetch();
     } catch (err: unknown) {
       if (err instanceof Error) {
         toast.error(err.message);
@@ -95,7 +112,7 @@ export default function StaffOrdersListPage() {
             e.stopPropagation();
             updateStatus(order.id, "COMPLETED");
           }}
-          className="w-full px-3 py-2 rounded-xl text-sm font-semibold bg-green-500 text-white hover:bg-green-600 transition-colors"
+          className="w-full px-3 py-2 rounded-xl text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           Khách đã đến lấy
         </button>
@@ -110,8 +127,8 @@ export default function StaffOrdersListPage() {
         <h1 className="font-serif text-2xl font-semibold text-foreground">Đơn hàng</h1>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span>{orders.length} đơn</span>
-          <button onClick={() => loadData(activeTab)} className="p-1.5 bg-secondary/50 rounded-full hover:bg-secondary/80">
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+          <button onClick={refetch} className="p-1.5 bg-secondary/50 rounded-full hover:bg-secondary/80">
+            <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
           </button>
         </div>
       </div>
@@ -119,11 +136,11 @@ export default function StaffOrdersListPage() {
       <OrderTabs
         activeTab={activeTab}
         onTabChange={setActiveTab}
-        pendingCount={0}
-        isAdmin={false}
+        pendingCount={pendingCount}
+        isAdmin={true}
       />
 
-      {loading ? (
+      {isInitialLoading ? (
         <div className="space-y-3 mt-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="rounded-2xl border bg-card shadow-sm overflow-hidden p-4 space-y-3 animate-pulse">
@@ -234,10 +251,20 @@ export default function StaffOrdersListPage() {
                     <div className="flex items-center justify-between mt-1.5">
                       {isTerminal ? (
                         <span className={cn(
-                          "text-xs font-semibold",
-                          order.status === "COMPLETED" ? "text-green-600" : "text-red-500"
+                          "text-xs font-semibold flex items-center gap-1",
+                          order.status === "COMPLETED" ? "text-primary" : "text-red-500"
                         )}>
-                          {order.status === "COMPLETED" ? "✅ Đã hoàn thành" : "❌ Đã huỷ"}
+                          {order.status === "COMPLETED" ? (
+                            <>
+                              <CheckCircle2 size={13} className="text-primary" />
+                              <span>Đã hoàn thành</span>
+                            </>
+                          ) : (
+                            <>
+                              <XCircle size={13} className="text-red-500" />
+                              <span>Đã huỷ</span>
+                            </>
+                          )}
                         </span>
                       ) : (
                         <span />
@@ -248,6 +275,29 @@ export default function StaffOrdersListPage() {
               </div>
             );
           })}
+          
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex justify-center items-center gap-2 pt-6">
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="px-3 py-1.5 rounded-lg border bg-card text-sm font-medium hover:bg-secondary/40 disabled:opacity-50 transition"
+              >
+                Trang trước
+              </button>
+              <span className="text-sm font-medium text-muted-foreground px-2">
+                {page} / {totalPages}
+              </span>
+              <button
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="px-3 py-1.5 rounded-lg border bg-card text-sm font-medium hover:bg-secondary/40 disabled:opacity-50 transition"
+              >
+                Trang sau
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

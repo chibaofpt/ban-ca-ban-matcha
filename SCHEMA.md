@@ -83,7 +83,7 @@
 ### sessions
 - `id` uuid PK
 - `user_id` uuid FK → users (cascade delete)
-- `refresh_token` string UK — UUID, 30-day expiry
+- `refresh_token` string UK — UUID, 7-day expiry
 - `expires_at` timestamp
 - `created_at` timestamp
 

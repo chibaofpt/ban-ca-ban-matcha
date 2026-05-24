@@ -34,7 +34,7 @@
 | Cookie | Value | Expiry |
 |---|---|---|
 | `access_token` | JWT signed with `JWT_SECRET` | 15 min |
-| `refresh_token` | UUID stored in `sessions` table | 30 days |
+| `refresh_token` | UUID stored in `sessions` table | 7 days |
 
 Both set as `httpOnly`, `secure`, `sameSite=strict`.
 

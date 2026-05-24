@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
 import Navbar from "@/src/components/common/Navbar";
 import AuthModal from "@/src/components/common/AuthModal";
+import AuthGuardProvider from "@/src/components/common/AuthGuardProvider";
 import { Toaster } from "sonner";
 import "./globals.css";
+
 
 const inter = Inter({
   variable: "--font-inter",
@@ -31,8 +33,14 @@ export const metadata: Metadata = {
     type: "website",
     locale: "vi_VN",
   },
+  icons: {
+    icon: "/logo.jpg",
+    shortcut: "/logo.jpg",
+    apple: "/logo.jpg",
+  },
 };
 
+/** Root layout component wrapping all pages with common providers. */
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -45,12 +53,14 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-background text-foreground font-sans overflow-x-hidden border-border transition-colors duration-300">
-        <Navbar />
-        <AuthModal />
-        <main className="flex-1 pt-16">
-          {children}
-        </main>
-        <Toaster richColors position="top-center" />
+        <AuthGuardProvider>
+          <Navbar />
+          <AuthModal />
+          <main className="flex-1 pt-16">
+            {children}
+          </main>
+          <Toaster richColors position="top-center" />
+        </AuthGuardProvider>
       </body>
     </html>
   );

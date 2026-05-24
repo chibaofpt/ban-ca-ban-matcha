@@ -9,7 +9,7 @@
 - [x] Phase 1 — Supabase, Prisma tables, auth routes, middleware, Login/Register pages
 - [x] Phase 2 — Admin menu CRUD (edit + delete)
 - [x] Phase 3 — Orders + Points
-- [ ] Phase 4 — Vouchers + QR
+- [x] Phase 4 — Vouchers + QR
 - [ ] Phase 5 — Promotions + OTP + Redis
 
 > When a task is done: change `[ ]` → `[x]`. Read this section first every session.
