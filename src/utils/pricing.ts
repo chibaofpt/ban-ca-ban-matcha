@@ -1,5 +1,5 @@
 /**
- * Pure pricing functions for Bánh Cá Bốn Mùa.
+ * Pure pricing functions for Bạn Cá Bán Matcha.
  * NO imports from lib/, src/services/, or src/lib/ — receives plain data objects only.
  * Used by: frontend real-time estimates AND lib/pricing.ts (server order-time validation).
  */

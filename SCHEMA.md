@@ -1,4 +1,4 @@
-# Bánh Cá Bốn Mùa — Database Schema
+# Bạn Cá Bán Matcha — Database Schema
 
 > Read this file for any Prisma schema, migration, or DB-level task.
 > All schema design decisions are in the Decision Log in `AGENTS.md` — do not re-litigate here.
@@ -389,3 +389,37 @@ Immutable. Reversal = insert new negative-delta row.
 | Set `reference_latte_item_id` | After Latte items created — manual step |
 
 > ⚠️ Migrating `seasonal` items to `latte`/`fusion` requires manual review — cannot be automated.
+
+---
+
+### store_schedule
+Weekly opening hours. **Dynamic rows** — absence of rows for a day means that day is closed.
+Max 14 rows (7 days × 2 slots), min 0 rows. Admin manages via `PUT /api/admin/store-schedule`.
+
+- `id` uuid PK
+- `day_of_week` int — 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+- `slot` int — 1 = morning slot, 2 = afternoon/evening slot
+- `open_time` string — `"HH:mm"` format, Asia/Ho_Chi_Minh (UTC+7). Required — row existence implies open.
+- `close_time` string — `"HH:mm"` format. Required.
+- Composite unique: (`day_of_week`, `slot`)
+
+> No row for day X = that day is closed (no `is_closed` column needed).
+> `open_time` / `close_time` are NOT nullable — a row always has valid times.
+> Admin sends full weekly schedule; server does `deleteMany + createMany` in one transaction.
+> Seed: 7 rows (all days, slot=1, 06:00–22:00). Admin customizes via modal.
+
+---
+
+### store_temporary_closure
+Tracks admin-initiated temporary closures. At most 1 active row at any time.
+
+- `id` uuid PK
+- `is_active` bool — default true. `false` = store has been reopened.
+- `note` string nullable — Optional message displayed to customers on homepage.
+- `closed_at` timestamp — when admin closed the store (default `now()`)
+- `opened_at` timestamp nullable — set when admin reopens. `null` = still closed.
+
+> Query: `WHERE is_active = true` — 0 or 1 row at most.
+> Close: INSERT new row `is_active = true`. Open: UPDATE `is_active = false, opened_at = now()`.
+> Temporary closure takes precedence over weekly schedule.
+

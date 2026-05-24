@@ -3,6 +3,7 @@ import { Inter, Playfair_Display } from "next/font/google";
 import Navbar from "@/src/components/common/Navbar";
 import AuthModal from "@/src/components/common/AuthModal";
 import AuthGuardProvider from "@/src/components/common/AuthGuardProvider";
+import StoreStatusBanner from "@/src/components/common/StoreStatusBanner";
 import { Toaster } from "sonner";
 import "./globals.css";
 
@@ -18,15 +19,16 @@ const playfair = Playfair_Display({
   weight: ["400", "500", "600", "700"],
 });
 
-const title = "Bánh Cá Bốn Mùa – Matcha & Bánh Cá Thủ Công";
+const title = "Bạn Cá Bán Matcha – Tiên phong văn hóa Matcha tại Bình Dương";
 const description =
-  "Bánh cá và matcha ngon tại Thủ Dầu Một. Matcha ceremonial grade, đa dạng theo mùa. Thưởng thức vị matcha chuẩn Nhật giữa lòng Bình Dương.";
+  "Thưởng thức vị matcha chuẩn Nhật đầu tiên tại Thủ Dầu Một, Bình Dương. Trải nghiệm matcha ceremonial grade được pha chế thủ công từ Bạn Cá Bán Matcha.";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://ban-ca-ban-matcha.vercel.app"),
   title,
   description,
   keywords:
-    "matcha ngon, matcha Thủ Dầu Một, matcha ceremonial grade, matcha Bình Dương, bánh cá matcha",
+    "matcha ngon, matcha Thủ Dầu Một, matcha ceremonial grade, matcha Bình Dương, matcha local bình dương, Bạn Cá Bán Matcha",
   openGraph: {
     title,
     description,
@@ -57,6 +59,7 @@ export default function RootLayout({
           <Navbar />
           <AuthModal />
           <main className="flex-1 pt-16">
+            <StoreStatusBanner />
             {children}
           </main>
           <Toaster richColors position="top-center" />

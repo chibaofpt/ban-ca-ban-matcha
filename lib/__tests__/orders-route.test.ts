@@ -16,11 +16,19 @@ const mockOrderCreate = vi.fn();
 const mockVoucherUpdate = vi.fn();
 const mockUserUpdate = vi.fn();
 const mockPointsLogCreate = vi.fn();
+const mockCheckStoreOpen = vi.fn();
+const mockValidatePickupTime = vi.fn();
 
 // Mock lib/auth
 vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
   normalizePhone: (p: string) => p,
+}));
+
+// Mock lib/storeSchedule
+vi.mock("@/lib/storeSchedule", () => ({
+  checkStoreOpen: () => mockCheckStoreOpen(),
+  validatePickupTime: (pt: Date, now?: Date) => mockValidatePickupTime(pt, now),
 }));
 
 // Mock lib/pricing (needed transitively by lib/orders)
@@ -214,6 +222,9 @@ describe("POST /api/orders", () => {
     });
     vi.mocked(resolveOrderItemPrice).mockReturnValue(69000);
     vi.mocked(resolveOrderItemPremiumLatte).mockResolvedValue(0);
+
+    mockCheckStoreOpen.mockResolvedValue({ is_open: true, reason: "OPEN", closure_note: null });
+    mockValidatePickupTime.mockResolvedValue({ isValid: true });
   });
 
   // ── Auth & Role ────────────────────────────────────────────────────────────
@@ -312,6 +323,32 @@ describe("POST /api/orders", () => {
         }),
       })
     );
+  });
+
+  it("defaults pickup_time to 10 minutes from now if PICKUP order and pickup_time missing", async () => {
+    setupTx();
+    vi.useFakeTimers();
+    const now = new Date("2026-05-24T10:00:00.000Z");
+    vi.setSystemTime(now);
+
+    const payload = {
+      ...validPayload,
+      pickup_time: undefined, // Explicitly missing
+    };
+
+    await POST(makeReq(payload));
+
+    const expectedPickupTime = new Date(now.getTime() + 10 * 60 * 1000);
+
+    expect(mockOrderCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          pickup_time: expectedPickupTime,
+        }),
+      })
+    );
+
+    vi.useRealTimers();
   });
 
   // ── Voucher happy paths ────────────────────────────────────────────────────
@@ -612,7 +649,35 @@ describe("POST /api/orders", () => {
       expect.objectContaining({ where: { id: V_PCT } })
     );
   });
-});
+
+  // ── Pickup Time & Store Closed ──────────────────────────────────────────────
+
+  it("returns 503 when store is closed", async () => {
+    setupTx();
+    mockCheckStoreOpen.mockResolvedValue({ is_open: false, reason: "OUTSIDE_HOURS", closure_note: null });
+
+    const res = await POST(makeReq(validPayload));
+    expect(res.status).toBe(503);
+    const json = await res.json();
+    expect(json.code).toBe("STORE_CLOSED");
+    expect(json.error).toContain("đang đóng cửa");
+  });
+
+  it("returns 400 when pickup_time is invalid", async () => {
+    setupTx();
+    mockValidatePickupTime.mockResolvedValue({ isValid: false, error: "Thời gian nhận tối thiểu phải cách hiện tại 10 phút" });
+
+    const res = await POST(
+      makeReq({
+        ...validPayload,
+        pickup_time: new Date(Date.now() + 2 * 60 * 1000).toISOString(),
+      })
+    );
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.code).toBe("INVALID_PICKUP_TIME");
+    expect(json.error).toBe("Thời gian nhận tối thiểu phải cách hiện tại 10 phút");
+  });});
 
 
 describe("GET /api/orders", () => {

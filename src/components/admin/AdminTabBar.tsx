@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ClipboardList, QrCode, Package, Gift, Receipt, Leaf } from "lucide-react";
+import { ClipboardList, QrCode, Package, Gift, Receipt, Leaf, Settings } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { Role } from "@/src/lib/types/user";
 import * as authService from "@/src/services/authService";
+import { useState } from "react";
+import StoreSettingsModal from "@/src/components/admin/StoreSettingsModal";
 
 interface Tab {
   to: string;
@@ -35,6 +37,7 @@ interface AdminTabBarProps {
 export default function AdminTabBar({ userName, userRole }: AdminTabBarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const tabs = TABS.filter((t) => t.roles.includes(userRole));
 
@@ -60,6 +63,16 @@ export default function AdminTabBar({ userName, userRole }: AdminTabBarProps) {
               <div className="font-medium">{userName}</div>
               <div className="opacity-80">{userRole === "ADMIN" ? "Quản lý" : "Nhân viên"}</div>
             </div>
+            {userRole === "ADMIN" && (
+              <button
+                id="btn-store-settings"
+                onClick={() => setSettingsOpen(true)}
+                className="p-2 rounded-full hover:bg-white/10 transition"
+                aria-label="Cài đặt cửa hàng"
+              >
+                <Settings size={18} />
+              </button>
+            )}
             <button
               onClick={handleLogout}
               className="p-2 rounded-full hover:bg-white/10 transition"
@@ -116,6 +129,14 @@ export default function AdminTabBar({ userName, userRole }: AdminTabBarProps) {
           })}
         </div>
       </nav>
+
+      {/* Store Settings Modal — ADMIN only */}
+      {userRole === "ADMIN" && (
+        <StoreSettingsModal
+          isOpen={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </>
   );
 }

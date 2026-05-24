@@ -19,6 +19,12 @@ const formatDateTime = (iso: string): string => {
   return `${pad(d.getHours())}:${pad(d.getMinutes())} • ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 };
 
+const formatTimeOnly = (iso: string): string => {
+  const d = new Date(iso);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 /** Chuyển order_type sang nhãn tiếng Việt thân thiện cho UI. */
 const formatOrderType = (type: string): string => {
   if (type === "COUNTER") return "Tại quán";
@@ -280,10 +286,18 @@ export default function AdminOrdersPage() {
                 <div className="p-4 space-y-3">
                   {/* Row 1: Mã đơn + thời gian */}
                   <div className="flex justify-between items-start">
-                    <div className="font-mono font-bold text-sm text-foreground">
-                      {order.order_code ?? `#${order.id.slice(0, 8)}`}
+                    <div className="flex flex-col gap-1">
+                      <div className="font-mono font-bold text-sm text-foreground">
+                        {order.order_code ?? `#${order.id.slice(0, 8)}`}
+                      </div>
+                      {order.pickup_time && (
+                        <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-md w-fit">
+                          <Clock size={10} />
+                          Nhận lúc: {formatTimeOnly(order.pickup_time)}
+                        </span>
+                      )}
                     </div>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="text-xs text-muted-foreground whitespace-nowrap">
                       <Clock size={12} className="inline mr-1" />
                       {formatDateTime(order.created_at)}
                     </div>

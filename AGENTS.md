@@ -1,4 +1,4 @@
-# Bánh Cá Bốn Mùa — Agent Entry Point
+# Bạn Cá Bán Matcha — Agent Entry Point
 
 > Load this file **first, every session**. No silent workarounds — if something conflicts, stop and ask.
 
@@ -186,6 +186,18 @@
 - Voucher fields copied from package at creation — package edits never affect issued vouchers
 - Manual points: ADMIN only, max 100/action, `performed_by` = admin user id
 - Reversal: insert new row — negative delta, `reason = "reversed_by_admin"`, `reversed_log_id` = original row id
+
+### Store Hours & Temporary Closure
+- `store_schedule`: **dynamic rows** — no row for a day = that day is closed. Max 14 rows (7 days × 2 slots).
+- `open_time` / `close_time` stored as `"HH:mm"` strings, interpreted in Asia/Ho_Chi_Minh (UTC+7).
+- Temporary closure (`store_temporary_closure`): at most 1 active row. Takes precedence over weekly schedule.
+- `GET /api/store-status` — public, no auth. Cached by frontend on app load.
+- `checkStoreOpen()` in `lib/storeSchedule.ts` — server utility. Called in `POST /api/orders` and `POST /api/staff/orders`.
+- COUNTER orders bypass the store-closed check — staff at counter always allowed.
+- PICKUP/DELIVERY orders rejected with `STORE_CLOSED` (HTTP 503) when store is closed.
+- Schedule edits: `PUT /api/admin/store-schedule` sends full week, server does `deleteMany + createMany` in one transaction.
+- Admin modal: icon ⚙️ in top bar (ADMIN only) → `StoreSettingsModal` — 2 sections: weekly schedule + temporary closure with optional customer note.
+- Customer banner on homepage: amber banner, dismissible, shown when `is_open = false`.
 
 ### Other
 - No cascade delete on `voucher_packages.menu_item_id` — ask architect first

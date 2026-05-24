@@ -13,11 +13,25 @@ description: >
 
 ## 1. Git & Deployment Workflow
 
-The project uses a standard Git flow connected to Vercel auto-deployments. When the user asks to deploy to production, always follow this sequence:
+The project uses a standard Git flow connected to Vercel auto-deployments. When the user asks to deploy to production, the agent MUST explicitly execute the git commands to push the code to GitHub if the Pre-Deployment Execution Checklist passes without issues.
 
-1. **Commit and Push to `dev` branch**: All feature work and bug fixes must first be committed and pushed to the `dev` branch.
-2. **Merge `dev` into `main`**: Once `dev` is stable and the Pre-Deployment Execution Checklist (below) is fully verified, merge the `dev` branch into `main` (either via Pull Request or direct merge).
-3. **Vercel Auto-Deployment**: Vercel is configured to watch the `main` branch. Pushing or merging to `main` will automatically trigger the production build and deployment.
+Follow this exact terminal execution sequence:
+
+1. **Commit and Push to `dev`**:
+   ```powershell
+   git add .
+   git commit -m "chore: prepare production deployment"
+   git push origin dev
+   ```
+2. **Verify Pre-Deployment Checklist**: Run the steps in Section 2 below. Proceed to step 3 **ONLY** if zero errors occur.
+3. **Merge `dev` into `main` and Push**:
+   ```powershell
+   git checkout main
+   git merge dev
+   git push origin main
+   git checkout dev
+   ```
+4. **Vercel Auto-Deployment**: Pushing to `main` will automatically trigger the production build on Vercel. Notify the user that the code has been successfully merged and deployed.
 
 ---
 

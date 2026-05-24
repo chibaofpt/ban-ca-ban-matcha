@@ -15,6 +15,8 @@ const updatePackageSchema = z.object({
   description: z.string().max(500).nullable().optional(),
   points_cost: z.number().int().min(1).optional(),
   expires_after_days: z.number().int().min(1).nullable().optional(),
+  quantity: z.number().int().min(1).nullable().optional(),
+  max_per_user: z.number().int().min(1).optional(),
   is_active: z.boolean().optional(),
 });
 
@@ -51,11 +53,13 @@ export async function PUT(
     const updated = await prisma.voucherPackage.update({
       where: { id },
       data: {
-        name: parsed.data.name,
-        description: parsed.data.description,
-        points_cost: parsed.data.points_cost,
-        expires_after_days: parsed.data.expires_after_days,
-        is_active: parsed.data.is_active,
+        ...(parsed.data.name !== undefined && { name: parsed.data.name }),
+        ...(parsed.data.description !== undefined && { description: parsed.data.description }),
+        ...(parsed.data.points_cost !== undefined && { points_cost: parsed.data.points_cost }),
+        ...(parsed.data.expires_after_days !== undefined && { expires_after_days: parsed.data.expires_after_days }),
+        ...(parsed.data.quantity !== undefined && { quantity: parsed.data.quantity }),
+        ...(parsed.data.max_per_user !== undefined && { max_per_user: parsed.data.max_per_user }),
+        ...(parsed.data.is_active !== undefined && { is_active: parsed.data.is_active }),
       },
     });
 

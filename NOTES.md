@@ -1,4 +1,4 @@
-# Bánh Cá Bốn Mùa — Deferred, Notes & Env Vars
+# Bạn Cá Bán Matcha — Deferred, Notes & Env Vars
 
 > Read this file when encountering edge cases, unresolved decisions, or setting up env.
 > Do not implement anything in this file without explicit architect sign-off.
