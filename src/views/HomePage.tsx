@@ -10,6 +10,7 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-background">
+      <h1 className="sr-only">Bạn Cá Bán Matcha — Quán Matcha Chuẩn Nhật Đầu Tiên Tại Thủ Dầu Một, Bình Dương</h1>
       <VideoHero />
       <BrandStorySummary />
       <FeaturedProducts />

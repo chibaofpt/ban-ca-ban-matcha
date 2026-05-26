@@ -105,6 +105,7 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 | `/api/menu` | GET | All available items with computed prices |
 | `/api/powders` | GET | Full powder catalogue with pricing and size config |
 | `/api/store-status` | GET | Current store open/closed status, today + weekly schedule |
+| `/api/voucher-packages` | GET | Active voucher packages available for redemption |
 
 ### Customer — CUSTOMER role
 

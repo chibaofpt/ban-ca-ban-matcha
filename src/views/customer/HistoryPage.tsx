@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cancelOrder, fetchCustomerOrders } from "@/src/services/orderService";
+import { listMyVouchers, type MyVoucher } from "@/src/services/customerVoucherService";
 import { usePolling } from "@/src/hooks/usePolling";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, Clock, Copy, CheckCircle2, XCircle, Ticket, Fish } from "lucide-react";
+import { ChevronDown, ChevronUp, Clock, Copy, CheckCircle2, XCircle, Ticket, Fish, ArrowRightLeft, User, ShieldCheck } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import { CountdownTimer } from "@/src/components/customer/CountdownTimer";
 import { OrderProgressBar } from "@/src/components/shared/OrderProgressBar";
@@ -55,6 +56,102 @@ const formatDate = (iso: string) => {
   return `${pad(d.getHours())}:${pad(d.getMinutes())} • ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 };
 
+function formatBenefit(v: MyVoucher): string {
+  if (v.voucher_type === "DISCOUNT") {
+    if (v.discount_type === "PERCENT") return `Giảm ${v.discount_value}% toàn đơn`;
+    if (v.discount_type === "FIXED") return `Giảm ${(v.discount_value ?? 0).toLocaleString("vi-VN")}đ`;
+  }
+  if (v.voucher_type === "PRODUCT" && v.menuItem) {
+    return `${v.menuItem.name} Size ${v.size} miễn phí`;
+  }
+  if (v.voucher_type === "ADDON" && v.addonOption) {
+    return `Topping ${v.addonOption.label} miễn phí`;
+  }
+  return v.package.name;
+}
+
+const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
+  ACTIVE:   { label: "Đang có hiệu lực", cls: "bg-green-100 text-green-700" },
+  RESERVED: { label: "Đang được đặt giữ", cls: "bg-yellow-100 text-yellow-700" },
+  REDEEMED: { label: "Đã sử dụng", cls: "bg-gray-100 text-gray-600" },
+  EXPIRED:  { label: "Hết hạn", cls: "bg-red-100 text-red-600" },
+  REFUNDED: { label: "Đã hoàn lại", cls: "bg-blue-100 text-blue-700" },
+};
+
+/** Một card lịch sử voucher, hiển thị 2 dòng timeline: đổi + sử dụng (nếu có). */
+function VoucherHistoryCard({ voucher: v }: { voucher: MyVoucher }) {
+  const statusCfg = STATUS_CONFIG[v.status] ?? STATUS_CONFIG.ACTIVE;
+  const isRedeemed = v.status === "REDEEMED" || v.status === "REFUNDED";
+
+  // Who redeemed it?
+  const redeemedByLabel = (() => {
+    if (!v.redeemed_at) return null;
+    if (v.redeemed_by && v.staff) {
+      const role = v.staff.role === "ADMIN" ? "Admin" : "Nhân viên";
+      return `${role} ${v.staff.name} đã sử dụng`;
+    }
+    // Redeemed by user themselves
+    return v.used_channel === "OFFLINE" ? "Bạn đã sử dụng tại quầy" : "Bạn đã sử dụng online";
+  })();
+
+  return (
+    <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
+      <div className="p-4 space-y-3">
+        {/* Header: tên + status badge */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="font-bold text-sm text-foreground leading-tight">{v.package.name}</p>
+            <p className="text-xs text-primary font-medium mt-0.5">{formatBenefit(v)}</p>
+          </div>
+          <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold shrink-0", statusCfg.cls)}>
+            {statusCfg.label}
+          </span>
+        </div>
+
+        {/* Timeline */}
+        <div className="space-y-2 pl-1">
+          {/* Event 1: Đổi điểm */}
+          <div className="flex items-start gap-2.5">
+            <div className="mt-0.5 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <ArrowRightLeft size={12} className="text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-foreground">
+                Bạn đã đổi{" "}
+                <span className="text-primary">{v.package.points_cost} điểm 🐟</span>
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1">
+                <Clock size={10} />
+                {formatDate(v.created_at)}
+              </p>
+            </div>
+          </div>
+
+          {/* Event 2: Sử dụng (nếu có) */}
+          {isRedeemed && v.redeemed_at && (
+            <div className="flex items-start gap-2.5">
+              <div className="mt-0.5 w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+                {v.redeemed_by && v.staff ? (
+                  <ShieldCheck size={12} className="text-gray-500" />
+                ) : (
+                  <User size={12} className="text-gray-500" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-foreground">{redeemedByLabel}</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1">
+                  <Clock size={10} />
+                  {formatDate(v.redeemed_at)}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Page lịch sử đơn hàng và voucher của khách hàng. */
 export default function HistoryPage() {
   const [activeTab, setActiveTab] = useState<"orders" | "vouchers">("orders");
@@ -66,9 +163,23 @@ export default function HistoryPage() {
     orderId: string;
   }>({ isOpen: false, orderId: "" });
 
+  // Voucher history state
+  const [vouchers, setVouchers] = useState<MyVoucher[]>([]);
+  const [vouchersLoading, setVouchersLoading] = useState(false);
+
   // Reset page when changing tabs (though vouchers tab currently has no pagination)
   useEffect(() => {
     setPage(1);
+  }, [activeTab]);
+
+  // Fetch vouchers when tab is active
+  useEffect(() => {
+    if (activeTab !== "vouchers") return;
+    setVouchersLoading(true);
+    listMyVouchers()
+      .then(setVouchers)
+      .catch(() => toast.error("Không tải được lịch sử voucher"))
+      .finally(() => setVouchersLoading(false));
   }, [activeTab]);
 
   const fetchOrdersFn = useCallback(async () => {
@@ -360,12 +471,30 @@ export default function HistoryPage() {
               )}
             </div>
           ) : (
-            <div className="text-center py-24 bg-secondary/20 rounded-3xl border border-border/50 flex flex-col items-center justify-center">
-              <Ticket className="w-12 h-12 text-primary/30 mb-4" />
-              <p className="font-bold text-primary text-lg">Tính năng đang phát triển</p>
-              <p className="text-sm text-primary/60 mt-1 max-w-[250px]">
-                Tính năng theo dõi voucher đã đổi sẽ sớm ra mắt trong Phase 4!
-              </p>
+            // ── VOUCHER HISTORY TAB ──
+            <div className="space-y-3">
+              {vouchersLoading ? (
+                [1, 2, 3].map((i) => (
+                  <div key={i} className="rounded-2xl border bg-card p-4 space-y-2 animate-pulse">
+                    <div className="flex gap-3">
+                      <div className="w-9 h-9 rounded-full bg-secondary/60 shrink-0" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-3 w-24 bg-secondary/50 rounded" />
+                        <div className="h-4 w-48 bg-secondary/40 rounded" />
+                        <div className="h-3 w-32 bg-secondary/30 rounded" />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : vouchers.length === 0 ? (
+                <div className="text-center py-20 bg-secondary/20 rounded-3xl border border-border/50">
+                  <Ticket className="w-12 h-12 text-primary/30 mx-auto mb-4" />
+                  <p className="font-bold text-primary">Chưa có hoạt động voucher nào</p>
+                  <p className="text-sm text-primary/60 mt-1">Những lần đổi và sử dụng voucher sẽ hiện ở đây.</p>
+                </div>
+              ) : (
+                vouchers.map((v) => <VoucherHistoryCard key={v.id} voucher={v} />)
+              )}
             </div>
           )}
         </motion.div>

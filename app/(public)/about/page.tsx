@@ -17,14 +17,17 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'LocalBusiness',
   name: 'Bạn Cá Bán Matcha',
-  image: '/logo.png',
+  image: 'https://ban-ca-ban-matcha.vercel.app/logo.png',
   description: 'Quán trà matcha chuẩn Nhật đầu tiên tại Thủ Dầu Một, Bình Dương. Chuyên phục vụ matcha ceremonial grade pha thủ công bằng chổi chasen.',
   address: {
     '@type': 'PostalAddress',
+    streetAddress: 'Khu dân cư Chánh Nghĩa',
     addressLocality: 'Thủ Dầu Một',
     addressRegion: 'Bình Dương',
     addressCountry: 'VN'
   },
+  telephone: '0901234567',
+  openingHours: 'Mo-Su 08:00-22:00',
   url: 'https://ban-ca-ban-matcha.vercel.app/about', 
   servesCuisine: 'Matcha, Trà Nhật Bản, Bánh Cá',
   priceRange: '25,000VND - 100,000VND'

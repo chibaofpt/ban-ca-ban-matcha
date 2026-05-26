@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Trash2, ShoppingBag, CheckCircle2, AlertTriangle, RefreshCcw, Minus, Plus } from "lucide-react";
+import { X, Trash2, ShoppingBag, CheckCircle2, AlertTriangle, RefreshCcw, Minus, Plus, Ticket, ChevronDown, ChevronUp } from "lucide-react";
 import { useCartStore, useCartTotalPrice } from "@/src/lib/store/cartStore";
 import Image from "next/image";
 import { createOrder, PriceChangedError, type PriceConflict } from "@/src/services/orderService";
@@ -11,6 +11,7 @@ import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { useStoreStatusStore } from "@/src/lib/store/storeStore";
 import { cn } from "@/src/utils/cn";
 import { useRouter } from "next/navigation";
+import { listMyVouchers, type MyVoucher } from "@/src/services/customerVoucherService";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -35,6 +36,11 @@ const CartDrawer = () => {
   const [minTimeStr, setMinTimeStr] = useState<string>("");
   const [isTimeCustom, setIsTimeCustom] = useState<boolean>(false);
 
+  // ── Voucher state ──
+  const [discountVouchers, setDiscountVouchers] = useState<MyVoucher[]>([]);
+  const [selectedVoucherId, setSelectedVoucherId] = useState<string | null>(null);
+  const [voucherPickerOpen, setVoucherPickerOpen] = useState(false);
+
   useEffect(() => {
     const updateTimes = () => {
       const minD = new Date(Date.now() + 10 * 60000);
@@ -55,6 +61,27 @@ const CartDrawer = () => {
   }, [isTimeCustom]);
 
   const resetCheckout = useCallback(() => setCheckout({ status: "idle" }), []);
+
+  // Fetch DISCOUNT vouchers when cart opens + user logged in
+  useEffect(() => {
+    if (!isCartOpen || !isLoggedIn) {
+      setDiscountVouchers([]);
+      setSelectedVoucherId(null);
+      return;
+    }
+    listMyVouchers()
+      .then((all) => {
+        const now = new Date();
+        const eligible = all.filter(
+          (v) =>
+            v.voucher_type === "DISCOUNT" &&
+            v.status === "ACTIVE" &&
+            (v.expires_at === null || new Date(v.expires_at) > now)
+        );
+        setDiscountVouchers(eligible);
+      })
+      .catch(() => {}); // silently fail — non-critical
+  }, [isCartOpen, isLoggedIn]);
 
   const handleCheckout = useCallback(async () => {
     if (items.length === 0) return;
@@ -89,12 +116,14 @@ const CartDrawer = () => {
 
       const result = await createOrder(items, {
         pickupTime: finalPickupTime,
+        voucherId: selectedVoucherId ?? undefined,
       });
       clearCart();
       setCartOpen(false);
       resetCheckout();
       setPickupTime("");
       setIsTimeCustom(false);
+      setSelectedVoucherId(null);
       router.push("/history");
     } catch (err) {
       if (err instanceof PriceChangedError) {
@@ -104,11 +133,13 @@ const CartDrawer = () => {
         setCheckout({ status: "error", message });
       }
     }
-  }, [items, clearCart, isLoggedIn, openLogin, router, setCartOpen, resetCheckout, pickupTime]);
+  }, [items, clearCart, isLoggedIn, openLogin, router, setCartOpen, resetCheckout, pickupTime, selectedVoucherId]);
 
   const handleClose = useCallback(() => {
     setCartOpen(false);
     resetCheckout();
+    setSelectedVoucherId(null);
+    setVoucherPickerOpen(false);
   }, [setCartOpen, resetCheckout]);
 
   return (
@@ -356,6 +387,82 @@ const CartDrawer = () => {
                     </span>
                   )}
                 </div>
+
+                {/* ── Voucher Picker (chỉ hiện khi đã đăng nhập + có voucher) ── */}
+                {isLoggedIn && discountVouchers.length > 0 && (
+                  <div className="border border-border/60 rounded-xl overflow-hidden">
+                    <button
+                      onClick={() => setVoucherPickerOpen((o) => !o)}
+                      className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-secondary/20 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Ticket className="w-4 h-4 text-primary/60" />
+                        <span className="text-sm font-medium text-primary/80">
+                          {selectedVoucherId
+                            ? (() => {
+                                const v = discountVouchers.find((x) => x.id === selectedVoucherId);
+                                if (!v) return "Mã ưu đãi";
+                                return v.discount_type === "PERCENT"
+                                  ? `Giảm ${v.discount_value}%`
+                                  : `Giảm ${(v.discount_value ?? 0).toLocaleString("vi-VN")}đ`;
+                              })()
+                            : "Chọn mã ưu đãi"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {selectedVoucherId && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setSelectedVoucherId(null); }}
+                            className="text-[10px] font-bold text-red-400 hover:text-red-600 bg-red-50 px-2 py-0.5 rounded-full"
+                          >
+                            Bỏ
+                          </button>
+                        )}
+                        {voucherPickerOpen ? <ChevronUp className="w-4 h-4 text-primary/50" /> : <ChevronDown className="w-4 h-4 text-primary/50" />}
+                      </div>
+                    </button>
+
+                    <AnimatePresence>
+                      {voucherPickerOpen && (
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: "auto" }}
+                          exit={{ height: 0 }}
+                          className="overflow-hidden border-t border-border/40"
+                        >
+                          <div className="max-h-40 overflow-y-auto divide-y divide-border/30">
+                            {discountVouchers.map((v) => {
+                              const label =
+                                v.discount_type === "PERCENT"
+                                  ? `Giảm ${v.discount_value}% toàn đơn`
+                                  : `Giảm ${(v.discount_value ?? 0).toLocaleString("vi-VN")}đ toàn đơn`;
+                              const isSelected = selectedVoucherId === v.id;
+                              return (
+                                <button
+                                  key={v.id}
+                                  onClick={() => {
+                                    setSelectedVoucherId(isSelected ? null : v.id);
+                                    setVoucherPickerOpen(false);
+                                  }}
+                                  className={cn(
+                                    "w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-secondary/20 transition-colors",
+                                    isSelected && "bg-primary/5"
+                                  )}
+                                >
+                                  <div>
+                                    <p className="text-sm font-bold text-primary">{v.package.name}</p>
+                                    <p className="text-xs text-primary/60">{label}</p>
+                                  </div>
+                                  {isSelected && <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
 
                 {/* Total */}
                 <div className="flex items-center justify-between pt-2 border-t border-border/40">

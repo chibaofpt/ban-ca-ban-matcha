@@ -9,10 +9,36 @@ export const metadata = {
   },
 };
 
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Organization',
+  name: 'Bạn Cá Bán Matcha',
+  url: 'https://ban-ca-ban-matcha.vercel.app',
+  logo: 'https://ban-ca-ban-matcha.vercel.app/logo.png',
+  description: 'Quán matcha chuẩn Nhật đầu tiên tại Thủ Dầu Một, Bình Dương',
+  address: {
+    '@type': 'PostalAddress',
+    addressLocality: 'Thủ Dầu Một',
+    addressRegion: 'Bình Dương',
+    addressCountry: 'VN'
+  },
+  sameAs: [
+    'https://www.facebook.com/bancabanmatcha'
+  ]
+};
+
 /**
  * app/(public)/page.tsx – Entry-only wrapper for the Home route.
  * Following the Pattern Rule: logic and styling are delegated to src/views/HomePage.
  */
 export default function Page() {
-  return <HomePage />;
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <HomePage />
+    </>
+  );
 }
