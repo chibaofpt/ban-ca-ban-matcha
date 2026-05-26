@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import Vouchers from "@/src/views/Vouchers";
+import MyVouchersPage from "@/src/views/customer/MyVouchersPage";
 
 export const metadata: Metadata = {
-  title: "Ví Voucher – Bạn Cá Bán Matcha",
-  description: "Xem và sử dụng voucher của bạn tại Bạn Cá Bán Matcha.",
+  title: "Túi Voucher – Bạn Cá Bán Matcha",
+  description: "Xem voucher đã đổi và hiển thị mã QR để sử dụng tại Bạn Cá Bán Matcha.",
 };
 
-/** Voucher wallet page — renders the Vouchers view component. */
 export default function VouchersPage() {
-  return <Vouchers />;
+  return <MyVouchersPage />;
 }

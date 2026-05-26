@@ -1,5 +1,7 @@
 /**
- * GET /api/profile/vouchers — List own ACTIVE vouchers
+ * GET /api/profile/vouchers — List all vouchers belonging to the current user.
+ * Returns all statuses (ACTIVE, RESERVED, REDEEMED, EXPIRED, REFUNDED)
+ * ordered by created_at desc, newest first.
  */
 
 import { NextResponse } from "next/server";
@@ -8,7 +10,7 @@ import { getSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/profile/vouchers — Returns all ACTIVE vouchers belonging to the current user. */
+/** GET /api/profile/vouchers — Returns all vouchers belonging to the current user. */
 export async function GET() {
   const session = await getSession();
   if (!session) {
@@ -17,12 +19,14 @@ export async function GET() {
 
   try {
     const vouchers = await prisma.voucher.findMany({
-      where: { user_id: session.id, status: "ACTIVE" },
+      where: { user_id: session.id },
       orderBy: { created_at: "desc" },
       include: {
         package: { select: { name: true, description: true, points_cost: true } },
         menuItem: { select: { name: true, is_available: true } },
         addonOption: { select: { label: true } },
+        // Staff who redeemed it offline (null = redeemed by the user themselves online)
+        staff: { select: { name: true, role: true } },
       },
     });
 

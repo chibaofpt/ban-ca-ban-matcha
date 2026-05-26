@@ -46,6 +46,15 @@ export const metadata: Metadata = {
       },
     ],
   },
+  twitter: {
+    card: "summary_large_image",
+    title,
+    description,
+    images: ["/logo.png"],
+  },
+  alternates: {
+    canonical: "https://ban-ca-ban-matcha.vercel.app",
+  },
   icons: {
     icon: "/logo.png",
     shortcut: "/logo.png",
