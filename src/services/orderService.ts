@@ -22,6 +22,8 @@ export interface CreateOrderPayload {
     client_price_vnd: number;
   }[];
   voucher_id?: string;
+  /** ADDON voucher applied order-level — applies to first item containing the target addon_option_id. */
+  addon_voucher_id?: string;
   pickup_time?: string;
   note?: string;
   delivery_address?: string;
@@ -73,6 +75,7 @@ export async function createOrder(
   options?: {
     orderType?: "PICKUP" | "DELIVERY";
     voucherId?: string;
+    addonVoucherId?: string;
     pickupTime?: string;
     note?: string;
     deliveryAddress?: string;
@@ -82,6 +85,7 @@ export async function createOrder(
     order_type: options?.orderType ?? "PICKUP",
     items: buildPayloadItems(cart),
     ...(options?.voucherId ? { voucher_id: options.voucherId } : {}),
+    ...(options?.addonVoucherId ? { addon_voucher_id: options.addonVoucherId } : {}),
     ...(options?.pickupTime ? { pickup_time: options.pickupTime } : {}),
     ...(options?.note ? { note: options.note } : {}),
     ...(options?.deliveryAddress ? { delivery_address: options.deliveryAddress } : {}),

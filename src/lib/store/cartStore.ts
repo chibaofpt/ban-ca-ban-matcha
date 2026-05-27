@@ -12,6 +12,16 @@ interface CartState {
   removeItem: (cartId: string) => void;
   updateQuantity: (cartId: string, quantity: number) => void;
   clearCart: () => void;
+  /**
+   * Applies a PRODUCT voucher credit to a cart item.
+   * Reduces clientPriceVnd by up to coveredPriceVnd (floor at 0).
+   * Stores the original price so it can be restored on voucher removal.
+   */
+  applyProductVoucher: (cartId: string, voucherId: string, coveredPriceVnd: number) => void;
+  /**
+   * Removes a PRODUCT voucher from a cart item and restores the original price.
+   */
+  removeProductVoucher: (cartId: string) => void;
 }
 
 /**
@@ -27,8 +37,7 @@ export const useCartStore = create<CartState>()(
 
       addItem: (newItem) => {
         const { items } = get();
-        // In Phase 2, we don't deduplicate by id+size+sweetness anymore.
-        // Each addition is a unique row with its own cartId.
+        // Each addition is a unique row with its own cartId — no deduplication.
         const cartId = crypto.randomUUID();
         set({ items: [...items, { ...newItem, cartId }] });
       },
@@ -48,6 +57,35 @@ export const useCartStore = create<CartState>()(
       },
 
       clearCart: () => set({ items: [] }),
+
+      applyProductVoucher: (cartId, voucherId, coveredPriceVnd) => {
+        set({
+          items: get().items.map((i) => {
+            if (i.cartId !== cartId) return i;
+            // Always compute from originalClientPriceVnd so swapping vouchers is idempotent.
+            const original = i.originalClientPriceVnd;
+            const discounted = Math.max(0, original - coveredPriceVnd);
+            return {
+              ...i,
+              productVoucherId: voucherId,
+              clientPriceVnd: discounted,
+            };
+          }),
+        });
+      },
+
+      removeProductVoucher: (cartId) => {
+        set({
+          items: get().items.map((i) => {
+            if (i.cartId !== cartId) return i;
+            return {
+              ...i,
+              productVoucherId: undefined,
+              clientPriceVnd: i.originalClientPriceVnd,
+            };
+          }),
+        });
+      },
     }),
     { name: "bcbm-cart" }
   )

@@ -74,6 +74,8 @@ model VoucherPackage {
   included_addon_option_ids String[]
   addon_option_id            String?       @db.Uuid
   covered_price_vnd          Int?
+  /// Max shipping fee covered for FREESHIP vouchers (VND). NULL for all other types.
+  covered_delivery_fee_vnd   Int?
   is_active                  Boolean       @default(true)
   expires_after_days         Int?
   /// NULL = unlimited. Total number of vouchers that can be issued from this package.
@@ -105,6 +107,8 @@ model Voucher {
   included_addon_option_ids String[]
   addon_option_id            String?        @db.Uuid
   covered_price_vnd          Int?
+  /// Max shipping fee covered — snapshot from package at exchange time. FREESHIP only.
+  covered_delivery_fee_vnd   Int?
   status                     VoucherStatus  @default(ACTIVE)
   used_channel               UsedChannel?
   expires_at                 DateTime?      @db.Timestamptz(6)
@@ -407,6 +411,8 @@ enum VoucherType {
   DISCOUNT
   PRODUCT
   ADDON
+  /// Covers delivery shipping fee up to covered_delivery_fee_vnd. DELIVERY orders only. Phase 5+ for actual deduction.
+  FREESHIP
 }
 
 enum DiscountType {

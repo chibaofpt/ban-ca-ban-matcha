@@ -25,7 +25,7 @@
 | Enum | Values |
 |---|---|
 | `Role` | `CUSTOMER`, `STAFF`, `ADMIN` |
-| `VoucherType` | `DISCOUNT`, `PRODUCT`, `ADDON` |
+| `VoucherType` | `DISCOUNT`, `PRODUCT`, `ADDON`, `FREESHIP` |
 | `DiscountType` | `PERCENT`, `FIXED` |
 | `VoucherStatus` | `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, `REFUNDED` |
 | `UsedChannel` | `ONLINE`, `OFFLINE` |
@@ -302,6 +302,7 @@ Extra matcha: `unit_price_vnd` = `gram_value × selected_powder.price_per_gram` 
 - `included_addon_option_ids` string[] — array of uuid (or jsonb) for PRODUCT type only
 - `addon_option_id` uuid FK nullable → addon_options — ADDON type only
 - `covered_price_vnd` int nullable — snapshot price for PRODUCT and ADDON
+- `covered_delivery_fee_vnd` int nullable — snapshot max delivery fee for FREESHIP
 - `is_active` bool — default true
 - `expires_after_days` int nullable
 - `created_at` timestamp
@@ -323,6 +324,7 @@ Extra matcha: `unit_price_vnd` = `gram_value × selected_powder.price_per_gram` 
 - `included_addon_option_ids` string[] — copied from package
 - `addon_option_id` uuid FK nullable → addon_options — copied from package
 - `covered_price_vnd` int nullable — copied from package
+- `covered_delivery_fee_vnd` int nullable — copied from package
 - `status` VoucherStatus — default `ACTIVE`
 - `used_channel` UsedChannel nullable
 - `expires_at` timestamp nullable

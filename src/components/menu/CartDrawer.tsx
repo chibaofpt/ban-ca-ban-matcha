@@ -12,6 +12,7 @@ import { useStoreStatusStore } from "@/src/lib/store/storeStore";
 import { cn } from "@/src/utils/cn";
 import { useRouter } from "next/navigation";
 import { listMyVouchers, type MyVoucher } from "@/src/services/customerVoucherService";
+import { filterUsableVouchers, matchAddonVouchers } from "@/src/utils/voucherMatchUtils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,9 +38,15 @@ const CartDrawer = () => {
   const [isTimeCustom, setIsTimeCustom] = useState<boolean>(false);
 
   // ── Voucher state ──
-  const [discountVouchers, setDiscountVouchers] = useState<MyVoucher[]>([]);
+  const [allVouchers, setAllVouchers] = useState<MyVoucher[]>([]);
   const [selectedVoucherId, setSelectedVoucherId] = useState<string | null>(null);
+  const [selectedAddonVoucherId, setSelectedAddonVoucherId] = useState<string | null>(null);
   const [voucherPickerOpen, setVoucherPickerOpen] = useState(false);
+  const [addonVoucherPickerOpen, setAddonVoucherPickerOpen] = useState(false);
+
+  // Derived voucher lists
+  const discountVouchers = filterUsableVouchers(allVouchers, "DISCOUNT");
+  const applicableAddonVouchers = matchAddonVouchers(allVouchers, items);
 
   useEffect(() => {
     const updateTimes = () => {
@@ -62,24 +69,16 @@ const CartDrawer = () => {
 
   const resetCheckout = useCallback(() => setCheckout({ status: "idle" }), []);
 
-  // Fetch DISCOUNT vouchers when cart opens + user logged in
+  // Fetch all vouchers when cart opens + user logged in
   useEffect(() => {
     if (!isCartOpen || !isLoggedIn) {
-      setDiscountVouchers([]);
+      setAllVouchers([]);
       setSelectedVoucherId(null);
+      setSelectedAddonVoucherId(null);
       return;
     }
     listMyVouchers()
-      .then((all) => {
-        const now = new Date();
-        const eligible = all.filter(
-          (v) =>
-            v.voucher_type === "DISCOUNT" &&
-            v.status === "ACTIVE" &&
-            (v.expires_at === null || new Date(v.expires_at) > now)
-        );
-        setDiscountVouchers(eligible);
-      })
+      .then(setAllVouchers)
       .catch(() => {}); // silently fail — non-critical
   }, [isCartOpen, isLoggedIn]);
 
@@ -117,6 +116,7 @@ const CartDrawer = () => {
       const result = await createOrder(items, {
         pickupTime: finalPickupTime,
         voucherId: selectedVoucherId ?? undefined,
+        addonVoucherId: selectedAddonVoucherId ?? undefined,
       });
       clearCart();
       setCartOpen(false);
@@ -124,6 +124,7 @@ const CartDrawer = () => {
       setPickupTime("");
       setIsTimeCustom(false);
       setSelectedVoucherId(null);
+      setSelectedAddonVoucherId(null);
       router.push("/history");
     } catch (err) {
       if (err instanceof PriceChangedError) {
@@ -133,13 +134,15 @@ const CartDrawer = () => {
         setCheckout({ status: "error", message });
       }
     }
-  }, [items, clearCart, isLoggedIn, openLogin, router, setCartOpen, resetCheckout, pickupTime, selectedVoucherId]);
+  }, [items, clearCart, isLoggedIn, openLogin, router, setCartOpen, resetCheckout, pickupTime, selectedVoucherId, selectedAddonVoucherId]);
 
   const handleClose = useCallback(() => {
     setCartOpen(false);
     resetCheckout();
     setSelectedVoucherId(null);
+    setSelectedAddonVoucherId(null);
     setVoucherPickerOpen(false);
+    setAddonVoucherPickerOpen(false);
   }, [setCartOpen, resetCheckout]);
 
   return (
@@ -334,9 +337,16 @@ const CartDrawer = () => {
                                   <Plus className="w-3.5 h-3.5" />
                                 </button>
                               </div>
-                              <span className="text-sm font-bold text-primary bg-primary/5 px-2.5 py-1 rounded-lg">
-                                {(item.clientPriceVnd * item.quantity) / 1000}k
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                {item.productVoucherId && (
+                                  <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                                    <Ticket className="w-2.5 h-2.5" /> Voucher
+                                  </span>
+                                )}
+                                <span className="text-sm font-bold text-primary bg-primary/5 px-2.5 py-1 rounded-lg">
+                                  {(item.clientPriceVnd * item.quantity) / 1000}k
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -388,7 +398,7 @@ const CartDrawer = () => {
                   )}
                 </div>
 
-                {/* ── Voucher Picker (chỉ hiện khi đã đăng nhập + có voucher) ── */}
+                {/* ── DISCOUNT Voucher Picker ── */}
                 {isLoggedIn && discountVouchers.length > 0 && (
                   <div className="border border-border/60 rounded-xl overflow-hidden">
                     <button
@@ -406,7 +416,7 @@ const CartDrawer = () => {
                                   ? `Giảm ${v.discount_value}%`
                                   : `Giảm ${(v.discount_value ?? 0).toLocaleString("vi-VN")}đ`;
                               })()
-                            : "Chọn mã ưu đãi"}
+                            : "Chọn mã giảm giá"}
                         </span>
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -454,6 +464,75 @@ const CartDrawer = () => {
                                     <p className="text-xs text-primary/60">{label}</p>
                                   </div>
                                   {isSelected && <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+
+                {/* ── ADDON Voucher Picker ── */}
+                {isLoggedIn && applicableAddonVouchers.length > 0 && (
+                  <div className="border border-border/60 rounded-xl overflow-hidden">
+                    <button
+                      onClick={() => setAddonVoucherPickerOpen((o) => !o)}
+                      className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-secondary/20 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Ticket className="w-4 h-4 text-green-600" />
+                        <span className="text-sm font-medium text-primary/80">
+                          {selectedAddonVoucherId
+                            ? (() => {
+                                const v = applicableAddonVouchers.find((x) => x.id === selectedAddonVoucherId);
+                                return v ? `Miễn phí: ${v.addonOption?.label ?? "Addon"}` : "Voucher topping";
+                              })()
+                            : "Chọn voucher topping"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {selectedAddonVoucherId && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setSelectedAddonVoucherId(null); }}
+                            className="text-[10px] font-bold text-red-400 hover:text-red-600 bg-red-50 px-2 py-0.5 rounded-full"
+                          >
+                            Bỏ
+                          </button>
+                        )}
+                        {addonVoucherPickerOpen ? <ChevronUp className="w-4 h-4 text-primary/50" /> : <ChevronDown className="w-4 h-4 text-primary/50" />}
+                      </div>
+                    </button>
+
+                    <AnimatePresence>
+                      {addonVoucherPickerOpen && (
+                        <motion.div
+                          initial={{ height: 0 }}
+                          animate={{ height: "auto" }}
+                          exit={{ height: 0 }}
+                          className="overflow-hidden border-t border-border/40"
+                        >
+                          <div className="max-h-40 overflow-y-auto divide-y divide-border/30">
+                            {applicableAddonVouchers.map((v) => {
+                              const isSelected = selectedAddonVoucherId === v.id;
+                              return (
+                                <button
+                                  key={v.id}
+                                  onClick={() => {
+                                    setSelectedAddonVoucherId(isSelected ? null : v.id);
+                                    setAddonVoucherPickerOpen(false);
+                                  }}
+                                  className={cn(
+                                    "w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-secondary/20 transition-colors",
+                                    isSelected && "bg-primary/5"
+                                  )}
+                                >
+                                  <div>
+                                    <p className="text-sm font-bold text-primary">{v.package.name}</p>
+                                    <p className="text-xs text-primary/60">Miễn phí {v.addonOption?.label ?? "addon"}</p>
+                                  </div>
+                                  {isSelected && <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />}
                                 </button>
                               );
                             })}

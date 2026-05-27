@@ -4,9 +4,10 @@ import { useState, useEffect } from "react";
 import { listMyVouchers, type MyVoucher } from "@/src/services/customerVoucherService";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { Gift, QrCode, Clock, CheckCircle2, XCircle, Ticket, ChevronDown, ChevronUp, Star } from "lucide-react";
+import { Gift, QrCode, Clock, CheckCircle2, XCircle, Ticket, ChevronDown, ChevronUp, Star, ShoppingBag } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import Link from "next/link";
+import { useAddVoucherToCart } from "@/src/hooks/useAddVoucherToCart";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,9 @@ function formatBenefit(v: MyVoucher): string {
   }
   if (v.voucher_type === "ADDON") {
     return `Topping ${v.addonOption?.label ?? "Addon"} miễn phí`;
+  }
+  if (v.voucher_type === "FREESHIP") {
+    return `Freeship tối đa ${v.covered_delivery_fee_vnd?.toLocaleString("vi-VN") ?? "?đ"}`;
   }
   return v.package.name;
 }
@@ -40,10 +44,11 @@ function formatExpiry(expiresAt: string | null): string {
 
 type TabType = "active" | "used";
 
-const VOUCHER_TYPE_CONFIG = {
+const VOUCHER_TYPE_CONFIG: Record<MyVoucher["voucher_type"], { label: string; color: string }> = {
   DISCOUNT: { label: "Giảm giá", color: "bg-blue-100 text-blue-800" },
   PRODUCT: { label: "Sản phẩm", color: "bg-green-100 text-green-800" },
   ADDON: { label: "Topping", color: "bg-purple-100 text-purple-800" },
+  FREESHIP: { label: "Freeship", color: "bg-orange-100 text-orange-800" },
 };
 
 // ── QR Modal ──────────────────────────────────────────────────────────────────
@@ -107,10 +112,24 @@ function VoucherCard({
   onShowQr: (v: MyVoucher) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const { addToCart, loading: addingToCart } = useAddVoucherToCart();
   const typeConfig = VOUCHER_TYPE_CONFIG[voucher.voucher_type];
   const isActive = voucher.status === "ACTIVE";
   const isRedeemed = voucher.status === "REDEEMED";
   const isExpired = voucher.status === "EXPIRED";
+
+  const handleDungNgay = async () => {
+    const result = await addToCart(voucher);
+    if (result.ok) {
+      toast.success("Đã thêm vào giỏ hàng!");
+    } else if (result.reason === "item_unavailable") {
+      toast.error("Sản phẩm hiện không còn. Voucher có thể được hoàn điểm bởi admin.");
+    } else if (result.reason === "size_unavailable") {
+      toast.error("Size trong voucher hiện không còn bán.");
+    } else {
+      toast.error("Đặt hàng thất bại. Vui lòng thử lại.");
+    }
+  };
 
   return (
     <motion.div
@@ -145,13 +164,25 @@ function VoucherCard({
             <p className="text-xs text-primary font-medium">{formatBenefit(voucher)}</p>
           </div>
           {isActive && (
-            <button
-              onClick={() => onShowQr(voucher)}
-              className="shrink-0 flex flex-col items-center gap-1 p-2 rounded-xl bg-primary/5 hover:bg-primary/10 transition"
-            >
-              <QrCode size={20} className="text-primary" />
-              <span className="text-[9px] font-bold text-primary">QR</span>
-            </button>
+            <div className="flex flex-col items-center gap-1.5">
+              <button
+                onClick={() => onShowQr(voucher)}
+                className="shrink-0 flex flex-col items-center gap-1 p-2 rounded-xl bg-primary/5 hover:bg-primary/10 transition"
+              >
+                <QrCode size={20} className="text-primary" />
+                <span className="text-[9px] font-bold text-primary">QR</span>
+              </button>
+              {voucher.voucher_type === "PRODUCT" && voucher.menuItem?.is_available && (
+                <button
+                  onClick={handleDungNgay}
+                  disabled={addingToCart}
+                  className="shrink-0 flex flex-col items-center gap-1 p-2 rounded-xl bg-green-50 hover:bg-green-100 transition disabled:opacity-50"
+                >
+                  <ShoppingBag size={20} className="text-green-700" />
+                  <span className="text-[9px] font-bold text-green-700">{addingToCart ? "..." : "Dùng"}</span>
+                </button>
+              )}
+            </div>
           )}
         </div>
 

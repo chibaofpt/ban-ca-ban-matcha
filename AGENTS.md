@@ -176,8 +176,8 @@
 - Min 2 chars to search, max 10 results, sorted by created_at DESC
 
 ### Vouchers & Points
-- 3 Voucher Types: `DISCOUNT` (order level), `PRODUCT` (item level config), `ADDON` (addon level).
-- Stacking: One order can carry ALL 3 types (PRODUCT + ADDON + DISCOUNT) simultaneously. Order of application: PRODUCT -> ADDON -> DISCOUNT.
+- 4 Voucher Types: `DISCOUNT` (order level), `PRODUCT` (item level config), `ADDON` (addon level), `FREESHIP` (delivery fee).
+- Stacking: One order can carry ALL 4 types (PRODUCT + ADDON + DISCOUNT + FREESHIP) simultaneously. Order of application: PRODUCT -> ADDON -> DISCOUNT -> FREESHIP.
 - Pending flow: Applied vouchers are marked as `RESERVED` when a customer order is `PENDING`. They move to `REDEEMED` when `ADMIN_CONFIRMED`, or revert to `ACTIVE` if the order is `CANCELLED`.
 - PRODUCT Vouchers: Snapshot exact config (item, size, powder, addons). `covered_price_vnd` is fixed. If actual price < covered, surplus is refunded as points: `floor(surplus / 10000)`.
 - ADDON Vouchers: Apply to the first item containing the target `addon_option_id`. Does NOT apply to Extra Matcha (dynamic price).

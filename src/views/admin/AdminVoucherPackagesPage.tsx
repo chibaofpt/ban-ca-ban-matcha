@@ -21,7 +21,7 @@ import type { Powder } from "@/src/lib/types/powder";
 interface VoucherPackageForm {
   name: string;
   description: string;
-  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON";
+  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP";
   points_cost: number;
   expires_after_days: number | "";
   // DISCOUNT fields
@@ -34,6 +34,8 @@ interface VoucherPackageForm {
   milk_type_id: string;
   // ADDON fields
   addon_option_id: string;
+  // FREESHIP fields
+  covered_delivery_fee_vnd: number | "";
   // LIMITS
   quantity: number | "";
   max_per_user: number | "";
@@ -52,17 +54,18 @@ const emptyForm: VoucherPackageForm = {
   matcha_powder_id: "",
   milk_type_id: "",
   addon_option_id: "",
+  covered_delivery_fee_vnd: "",
   quantity: "",
   max_per_user: 1,
 };
 
-import type { VoucherType } from "@prisma/client";
 
-function VoucherTypeBadge({ type }: { type: VoucherType }) {
-  const map: Record<VoucherType, { label: string; color: string }> = {
+function VoucherTypeBadge({ type }: { type: VoucherPackage["voucher_type"] }) {
+  const map: Record<VoucherPackage["voucher_type"], { label: string; color: string }> = {
     DISCOUNT: { label: "GIẢM GIÁ", color: "bg-blue-100 text-blue-800" },
     PRODUCT: { label: "SẢN PHẨM", color: "bg-orange-100 text-orange-800" },
     ADDON: { label: "ADDON", color: "bg-green-100 text-green-800" },
+    FREESHIP: { label: "FREESHIP", color: "bg-purple-100 text-purple-800" },
   };
 
   const config = map[type];
@@ -192,6 +195,7 @@ export default function AdminVoucherPackagesPage() {
       matcha_powder_id: pkg.matcha_powder_id || "",
       milk_type_id: pkg.milk_type_id || "",
       addon_option_id: pkg.addon_option_id || uniqueAddonOptions[0]?.id || "",
+      covered_delivery_fee_vnd: pkg.covered_delivery_fee_vnd ?? "",
       quantity: pkg.quantity ?? "",
       max_per_user: pkg.max_per_user ?? 1,
     });
@@ -263,6 +267,21 @@ export default function AdminVoucherPackagesPage() {
             max_per_user: form.max_per_user === "" ? null : Number(form.max_per_user),
           };
 
+        } else if (form.voucher_type === "FREESHIP") {
+          if (form.covered_delivery_fee_vnd === "" || Number(form.covered_delivery_fee_vnd) < 1000) {
+            toast.error("Vui lòng nhập phí giao hàng tối thiểu 1.000đ");
+            return;
+          }
+          createInput = {
+            voucher_type: "FREESHIP",
+            name: form.name,
+            description: form.description || undefined,
+            points_cost: form.points_cost,
+            covered_delivery_fee_vnd: Number(form.covered_delivery_fee_vnd),
+            expires_after_days: expiresDays,
+            quantity: form.quantity === "" ? null : Number(form.quantity),
+            max_per_user: form.max_per_user === "" ? null : Number(form.max_per_user),
+          };
         } else {
           // ADDON
           if (!form.addon_option_id) {
@@ -424,6 +443,11 @@ export default function AdminVoucherPackagesPage() {
                           {pkg.covered_price_vnd ? ` (Tối đa ${pkg.covered_price_vnd.toLocaleString()}đ)` : ""}
                         </span>
                       )}
+                      {pkg.voucher_type === "FREESHIP" && (
+                        <span>
+                          Freeship tối đa {pkg.covered_delivery_fee_vnd?.toLocaleString() ?? "?"}đ
+                        </span>
+                      )}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
@@ -563,7 +587,7 @@ export default function AdminVoucherPackagesPage() {
             {editingId ? (
               <div className="bg-secondary/20 p-3 rounded-xl text-sm space-y-1 mb-2">
                 <div className="font-medium text-foreground pb-1 border-b border-border/50 mb-2">Chi tiết quyền lợi (Không thể sửa)</div>
-                <div><span className="text-muted-foreground">Loại Voucher:</span> {form.voucher_type === "DISCOUNT" ? "Giảm giá" : form.voucher_type === "PRODUCT" ? "Sản phẩm" : "Topping Addon"}</div>
+                <div><span className="text-muted-foreground">Loại Voucher:</span> {form.voucher_type === "DISCOUNT" ? "Giảm giá" : form.voucher_type === "PRODUCT" ? "Sản phẩm" : form.voucher_type === "ADDON" ? "Topping Addon" : "Freeship"}</div>
                 
                 {form.voucher_type === "DISCOUNT" && (
                   <div><span className="text-muted-foreground">Mức giảm:</span> {form.discount_value}{form.discount_type === "PERCENT" ? "%" : "đ"}</div>
@@ -590,7 +614,7 @@ export default function AdminVoucherPackagesPage() {
                     onChange={(e) =>
                       setForm({
                         ...form,
-                        voucher_type: e.target.value as VoucherPackage["voucher_type"],
+                        voucher_type: e.target.value as VoucherPackageForm["voucher_type"],
                       })
                     }
                     className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full mt-1"
@@ -598,6 +622,7 @@ export default function AdminVoucherPackagesPage() {
                     <option value="DISCOUNT">Giảm giá</option>
                     <option value="PRODUCT">Sản phẩm</option>
                     <option value="ADDON">Topping Addon</option>
+                    <option value="FREESHIP">Freeship (Phase 5)</option>
                   </select>
                 </div>
 
@@ -720,6 +745,26 @@ export default function AdminVoucherPackagesPage() {
                         ))}
                       </select>
                     </div>
+                  </div>
+                )}
+                {form.voucher_type === "FREESHIP" && (
+                  <div>
+                    <label className="text-sm font-medium text-foreground">Phí giao hàng được bao (VND)</label>
+                    <input
+                      type="number"
+                      min={1000}
+                      step={1000}
+                      value={form.covered_delivery_fee_vnd}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          covered_delivery_fee_vnd: e.target.value === "" ? "" : Number(e.target.value),
+                        })
+                      }
+                      placeholder="Ví dụ: 30000"
+                      className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">⚠️ Logic áp dụng chưa được implement (Phase 5+)</p>
                   </div>
                 )}
               </>

@@ -266,6 +266,7 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
       selectedPowderId: isLatte ? undefined : selectedPowderId,
       selectedMilkTypeId: isLatte ? selectedMilkId : undefined,
       clientPriceVnd: finalUnitPrice,
+      originalClientPriceVnd: finalUnitPrice,
       details,
       ...(freeVoucherId ? { productVoucherId: freeVoucherId } : {}),
     });

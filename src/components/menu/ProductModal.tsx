@@ -239,6 +239,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
       selectedPowderId: isLatte ? undefined : selectedPowderId,
       selectedMilkTypeId: isLatte ? selectedMilkId : undefined,
       clientPriceVnd: currentPriceContext.unitPrice,
+      originalClientPriceVnd: currentPriceContext.unitPrice,
       details,
     });
     onClose();

@@ -63,6 +63,16 @@ const createPackageSchema = z.discriminatedUnion("voucher_type", [
     addon_option_id: z.string().uuid(),
     ...quantityFields,
   }),
+  // FREESHIP package — covers delivery shipping fee up to covered_delivery_fee_vnd. DELIVERY only.
+  z.object({
+    voucher_type: z.literal("FREESHIP"),
+    name: z.string().min(1).max(200),
+    description: z.string().max(500).optional(),
+    points_cost: z.number().int().min(1),
+    /** Maximum delivery fee this voucher will cover in VND. Minimum 1,000. */
+    covered_delivery_fee_vnd: z.number().int().min(1000),
+    ...quantityFields,
+  }),
 ]);
 
 // ── GET ───────────────────────────────────────────────────────────────────────
@@ -291,6 +301,25 @@ export async function POST(req: NextRequest) {
           milk_type_id: resolved_milk_type_id,
           included_addon_option_ids: data.included_addon_option_ids,
           covered_price_vnd,
+        },
+      });
+
+      return NextResponse.json({ data: pkg }, { status: 201 });
+    }
+
+    // FREESHIP package — placeholder for delivery fee discount (Phase 5+)
+    if (data.voucher_type === "FREESHIP") {
+      const pkg = await prisma.voucherPackage.create({
+        data: {
+          name: data.name,
+          description: data.description ?? null,
+          voucher_type: "FREESHIP",
+          points_cost: data.points_cost,
+          is_active: true,
+          expires_after_days: data.expires_after_days ?? null,
+          quantity: data.quantity ?? null,
+          max_per_user: data.max_per_user ?? 1,
+          covered_delivery_fee_vnd: data.covered_delivery_fee_vnd,
         },
       });
 

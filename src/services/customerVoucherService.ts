@@ -16,7 +16,7 @@ export interface VoucherPackage {
   id: string;
   name: string;
   description: string | null;
-  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON";
+  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP";
   points_cost: number;
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
@@ -27,6 +27,8 @@ export interface VoucherPackage {
   included_addon_option_ids: string[];
   addon_option_id: string | null;
   covered_price_vnd: number | null;
+  /** Max shipping fee covered. FREESHIP vouchers only. */
+  covered_delivery_fee_vnd: number | null;
   is_active: boolean;
   expires_after_days: number | null;
   quantity: number | null;
@@ -39,13 +41,21 @@ export interface VoucherPackage {
 export interface MyVoucher {
   id: string;
   qr_token: string;
-  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON";
+  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP";
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
   menu_item_id: string | null;
   size: "M" | "L" | "XL" | null;
+  /** For PRODUCT vouchers — the powder used in the snapshot config. */
+  matcha_powder_id: string | null;
+  /** For PRODUCT vouchers — the milk type used in the snapshot config. */
+  milk_type_id: string | null;
+  /** For PRODUCT vouchers — addon option ids included in the snapshot config. */
+  included_addon_option_ids: string[];
   addon_option_id: string | null;
   covered_price_vnd: number | null;
+  /** Max shipping fee covered. FREESHIP vouchers only. */
+  covered_delivery_fee_vnd: number | null;
   status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED";
   used_channel: "ONLINE" | "OFFLINE" | null;
   expires_at: string | null;
@@ -62,7 +72,7 @@ export interface MyVoucher {
 export interface ExchangedVoucher {
   id: string;
   qr_token: string;
-  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON";
+  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP";
   status: "ACTIVE";
   expires_at: string | null;
 }
