@@ -353,11 +353,11 @@ export default function AdminVoucherPackagesPage() {
   const activeVoucherCount = voucherPackages.filter((p) => p.is_active).length;
 
   return (
-    <div className="px-4 py-4 space-y-4">
+    <div className="px-4 md:px-0 py-4 space-y-4 max-w-7xl mx-auto">
       <h1 className="font-serif text-2xl font-semibold">Điểm &amp; Voucher</h1>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 md:gap-6">
         <div className="bg-card border border-border rounded-2xl p-4">
           <Coins className="text-primary mb-2" size={24} />
           <div className="text-2xl font-semibold">—</div>
@@ -388,7 +388,7 @@ export default function AdminVoucherPackagesPage() {
         ) : voucherPackages.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">Chưa có gói voucher nào.</p>
         ) : (
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {voucherPackages.map((pkg) => (
               <div
                 key={pkg.id}
@@ -499,7 +499,7 @@ export default function AdminVoucherPackagesPage() {
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
-          <div className="relative bg-card rounded-2xl p-6 w-full max-w-sm mx-4 shadow-xl space-y-3 max-h-[90vh] overflow-y-auto">
+          <div className="relative bg-card rounded-2xl p-6 w-full max-w-sm md:max-w-md mx-4 shadow-xl space-y-3 max-h-[90vh] overflow-y-auto">
             <h2 className="font-serif text-lg font-semibold">
               {editingId ? "Sửa gói voucher" : "Thêm gói voucher"}
             </h2>

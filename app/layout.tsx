@@ -74,7 +74,7 @@ export default function RootLayout({
       className={`${inter.variable} ${playfair.variable} h-full antialiased scroll-smooth`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground font-sans overflow-x-hidden border-border transition-colors duration-300">
+      <body className="min-h-full flex flex-col bg-paper text-foreground font-sans overflow-x-hidden border-border transition-colors duration-300 text-ink">
         <AuthGuardProvider>
           <Navbar />
           <AuthModal />

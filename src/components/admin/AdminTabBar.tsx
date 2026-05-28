@@ -53,11 +53,34 @@ export default function AdminTabBar({ userName, userRole }: AdminTabBarProps) {
     <>
       {/* Top bar */}
       <header className="sticky top-0 z-40 bg-primary text-primary-foreground shadow-md">
-        <div className="flex items-center justify-between px-4 h-14">
+        <div className="flex items-center justify-between px-4 md:px-8 h-14 max-w-7xl mx-auto w-full">
           <div className="flex items-center gap-2">
             <span className="text-2xl">🐟</span>
             <span className="font-serif text-lg font-semibold">Bánh Cá Admin</span>
           </div>
+
+          {/* Desktop Navigation Links */}
+          <div className="hidden md:flex items-center gap-1 h-full mx-6">
+            {tabs.map(({ to, label, icon: Icon }) => {
+              const isActive = pathname === to || pathname.startsWith(to + "/");
+              return (
+                <Link
+                  key={to}
+                  href={to}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors",
+                    isActive
+                      ? "bg-white/15 text-white font-medium shadow-sm"
+                      : "text-white/80 hover:text-white hover:bg-white/5"
+                  )}
+                >
+                  <Icon size={16} />
+                  <span>{label}</span>
+                </Link>
+              );
+            })}
+          </div>
+
           <div className="flex items-center gap-3">
             <div className="text-right text-xs leading-tight">
               <div className="font-medium">{userName}</div>
@@ -100,7 +123,7 @@ export default function AdminTabBar({ userName, userRole }: AdminTabBarProps) {
       </header>
 
       {/* Bottom tab bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
         <div
           className={cn(
             "grid",

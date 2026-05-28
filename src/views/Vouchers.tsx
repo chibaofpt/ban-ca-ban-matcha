@@ -88,7 +88,7 @@ const Vouchers = () => {
       </div>
 
       {/* Voucher List */}
-      <div className="container py-5 space-y-4">
+      <div className="container py-5 space-y-4 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6">
         {mockVouchers.map((v, i) => (
           <motion.div
             key={v.qr_token}
@@ -161,7 +161,7 @@ const Vouchers = () => {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 28, stiffness: 300 }}
-              className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl p-6 pb-10 max-h-[80vh]"
+              className="fixed bottom-0 left-0 right-0 md:bottom-10 md:left-1/2 md:-translate-x-1/2 md:max-w-md md:rounded-3xl z-50 bg-card rounded-t-3xl p-6 pb-10 max-h-[80vh]"
             >
               <div className="flex items-center justify-between mb-6">
                 <h2 className="font-serif text-lg font-bold text-foreground">Mã QR tại quán</h2>

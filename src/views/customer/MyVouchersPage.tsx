@@ -251,7 +251,7 @@ export default function MyVouchersPage() {
   const displayed = activeTab === "active" ? activeVouchers : usedVouchers;
 
   return (
-    <div className="px-4 py-6 max-w-2xl mx-auto space-y-5 pb-24">
+    <div className="px-4 py-6 max-w-2xl md:max-w-4xl lg:max-w-6xl mx-auto space-y-5 pb-24">
       <div className="flex items-center justify-between">
         <h1 className="font-serif text-3xl font-bold text-primary">Túi Voucher 🎁</h1>
         <Link
@@ -291,10 +291,10 @@ export default function MyVouchersPage() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
-          className="space-y-3"
+          className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6"
         >
           {loading ? (
-            [1, 2, 3].map((i) => (
+            [1, 2, 3, 4, 5, 6].map((i) => (
               <div key={i} className="rounded-2xl border bg-card p-4 space-y-3 animate-pulse">
                 <div className="flex justify-between">
                   <div className="space-y-2">
@@ -307,7 +307,7 @@ export default function MyVouchersPage() {
               </div>
             ))
           ) : displayed.length === 0 ? (
-            <div className="text-center py-20 bg-secondary/20 rounded-3xl border border-border/50 flex flex-col items-center gap-4">
+            <div className="text-center py-20 bg-secondary/20 rounded-3xl border border-border/50 flex flex-col items-center gap-4 md:col-span-2 lg:col-span-3">
               {activeTab === "active" ? (
                 <>
                   <Ticket className="w-12 h-12 text-primary/30" />

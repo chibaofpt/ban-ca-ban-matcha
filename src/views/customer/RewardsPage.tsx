@@ -155,7 +155,7 @@ export default function RewardsPage() {
   };
 
   return (
-    <div className="px-4 py-6 max-w-2xl mx-auto space-y-6 pb-28">
+    <div className="px-4 py-6 max-w-2xl md:max-w-4xl lg:max-w-6xl mx-auto space-y-6 pb-28">
       {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="font-serif text-3xl font-bold text-primary">
@@ -186,9 +186,9 @@ export default function RewardsPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="space-y-4"
+            className="space-y-4 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6"
           >
-            {[1, 2, 3].map((i) => (
+            {[1, 2, 3, 4, 5, 6].map((i) => (
               <div
                 key={i}
                 className="rounded-2xl border bg-card p-4 space-y-3 animate-pulse"
@@ -229,7 +229,7 @@ export default function RewardsPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="space-y-4"
+            className="space-y-4 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6"
           >
             {packages.map((pkg, i) => {
               const meta = TYPE_META[pkg.voucher_type];

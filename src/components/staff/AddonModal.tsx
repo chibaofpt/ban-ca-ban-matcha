@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Minus, Plus } from "lucide-react";
 import type { MenuItem, SweetnessLevel, Size } from "@/src/lib/types/menu";
@@ -55,6 +55,16 @@ function OptionCard({
 export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm }: AddonModalProps) {
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
+
+  // ── Desktop / Responsive Detection ──
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 768px)");
+    setIsDesktop(media.matches);
+    const listener = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    media.addEventListener("change", listener);
+    return () => media.removeEventListener("change", listener);
+  }, []);
 
   // ── State ───────────────────────────────────────────────────────────────
   const [selectedSize, setSelectedSize] = useState<Size>(() => {
@@ -288,18 +298,45 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
       />
       <motion.div
         key="addon-content"
-        initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+        initial={isDesktop ? { opacity: 0, scale: 0.9, x: "-50%", y: "-50%" } : { y: "100%" }}
+        animate={isDesktop ? { opacity: 1, scale: 1, x: "-50%", y: "-50%" } : { y: 0 }}
+        exit={isDesktop ? { opacity: 0, scale: 0.9, x: "-50%", y: "-50%" } : { y: "100%" }}
         transition={{ type: "spring", damping: 30, stiffness: 300 }}
-        className="fixed inset-x-0 bottom-0 z-[61] max-h-[92vh] overflow-y-auto rounded-t-[2.5rem] bg-[#fdfcf7] shadow-2xl"
+        className="fixed inset-x-0 bottom-0 z-[61] max-h-[92vh] overflow-y-auto md:overflow-hidden rounded-t-[2.5rem] bg-[#fdfcf7] shadow-2xl md:bottom-auto md:top-1/2 md:left-1/2 md:w-[90vw] md:max-w-4xl md:h-[80vh] md:max-h-[85vh] md:rounded-[2.5rem] md:grid md:grid-cols-2 md:pb-0"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Left Column (Desktop only) */}
+        <div className="hidden md:flex flex-col bg-[#d9e4d4]/30 border-r border-border/40 p-8 justify-between relative h-full">
+          {item.image_url ? (
+            <div className="w-full aspect-square rounded-3xl overflow-hidden shadow-md bg-white flex items-center justify-center mb-6">
+              <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+            </div>
+          ) : (
+            <div className="w-full aspect-square rounded-3xl bg-primary/5 flex items-center justify-center mb-6">
+              <span className="text-8xl">🍵</span>
+            </div>
+          )}
+          <div className="space-y-3 mt-auto">
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-primary/60 bg-primary/5 px-2.5 py-1 rounded-full w-fit border border-primary/10">
+              {item.category === "latte" ? "🍵 Latte Premium" : "✨ Fusion Special"}
+            </span>
+            <h2 className="font-serif text-3xl font-bold text-primary leading-tight">{item.name}</h2>
+            {item.description && <p className="text-sm text-primary/60 leading-relaxed font-medium">{item.description}</p>}
+            {freeVoucherId && (
+              <span className="inline-block mt-2 text-xs bg-green-500/20 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                🎁 Miễn phí
+              </span>
+            )}
+          </div>
+        </div>
+
         <button onClick={onClose} className="absolute top-5 right-5 w-9 h-9 rounded-full bg-primary/8 flex items-center justify-center hover:rotate-90 transition-transform z-10">
           <X className="w-5 h-5 text-primary" />
         </button>
 
-        <div className="px-5 pb-36">
+        <div className="flex flex-col h-full overflow-y-auto px-5 md:px-8 pt-7 pb-36 md:pb-32 md:pt-0">
           {/* Header */}
-          <div className="pt-7 pb-5 border-b border-border/40">
+          <div className="pt-7 pb-5 border-b border-border/40 md:hidden">
             <h2 className="font-serif text-2xl font-bold text-primary">{item.name}</h2>
             {item.description && <p className="text-sm text-primary/55 mt-1.5 leading-relaxed">{item.description}</p>}
             {freeVoucherId && (
@@ -590,7 +627,7 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
         </div>
 
         {/* BOTTOM CTA */}
-        <div className="fixed bottom-0 inset-x-0 z-[110] bg-[#fdfcf7]/95 backdrop-blur-md border-t border-border/60 px-5 py-4 pb-8">
+        <div className="fixed md:absolute bottom-0 left-0 md:left-auto right-0 z-[110] w-full md:w-1/2 bg-[#fdfcf7]/95 backdrop-blur-md border-t border-border/60 px-5 py-4 pb-8 md:pb-6 md:rounded-br-[2.5rem]">
           <button
             onClick={handleConfirm}
             disabled={isConfirmDisabled()}

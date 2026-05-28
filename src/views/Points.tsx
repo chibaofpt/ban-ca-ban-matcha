@@ -57,7 +57,7 @@ const Points = () => {
       {/* Discount Vouchers */}
       <div className="container pt-4">
         <h2 className="text-sm font-bold text-foreground mb-2.5 font-serif">Ưu đãi giảm giá</h2>
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col md:grid md:grid-cols-2 lg:grid-cols-3 gap-2.5 md:gap-6">
           {mockPackages.filter(p => p.voucher_type === "DISCOUNT").map((pkg, i) => {
             const canAfford = USER_POINTS >= pkg.points_cost;
             return (
@@ -90,7 +90,7 @@ const Points = () => {
       {/* Product Vouchers */}
       <div className="container pt-5">
         <h2 className="text-sm font-bold text-foreground mb-2.5 font-serif">Đổi sản phẩm</h2>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-6">
           {mockPackages.filter(p => p.voucher_type === "PRODUCT").map((pkg, i) => {
             const canAfford = USER_POINTS >= pkg.points_cost;
             return (

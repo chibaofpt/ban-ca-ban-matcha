@@ -204,7 +204,7 @@ export default function AdminOrdersPage() {
   };
 
   return (
-    <div className="px-4 py-4 space-y-4 pb-24 max-w-3xl mx-auto">
+    <div className="px-4 md:px-0 py-4 space-y-4 pb-24 md:pb-8 max-w-7xl mx-auto">
       <div className="flex items-baseline justify-between">
         <h1 className="font-serif text-2xl font-semibold text-foreground">Quản lý Đơn hàng</h1>
         <div className="flex gap-3 items-center">
@@ -231,7 +231,7 @@ export default function AdminOrdersPage() {
       />
 
       {isInitialLoading ? (
-        <div className="space-y-3 mt-4">
+        <div className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6 mt-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="rounded-2xl border bg-card shadow-sm overflow-hidden p-4 space-y-3 animate-pulse">
               <div className="flex justify-between items-start">
@@ -269,7 +269,7 @@ export default function AdminOrdersPage() {
           )}
         </div>
       ) : (
-        <div className="space-y-3 mt-4">
+        <div className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6 mt-4">
           {orders.map((order) => {
             const isOpen = !!expanded[order.id];
             const isTerminal = order.status === "COMPLETED" || order.status === "CANCELLED";
@@ -408,7 +408,7 @@ export default function AdminOrdersPage() {
           
           {/* Pagination Controls */}
           {totalPages > 1 && (
-            <div className="flex justify-center items-center gap-2 pt-6">
+            <div className="col-span-full flex justify-center items-center gap-2 pt-6">
               <button
                 disabled={page <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
