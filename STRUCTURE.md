@@ -102,7 +102,7 @@ src/                              # Frontend — never import lib/ from here
       Modal.tsx
       Drawer.tsx
     home/
-      VideoHero.tsx
+      Hero.tsx
       IntroSection.tsx
       FeatureCard.tsx
     menu/
@@ -190,7 +190,6 @@ scratch/                          # Ignored by Git. Scratchpad for quick server 
 public/
   data/
     menu.json                     # Static — replaced by /api/menu in Phase 2
-  demo.mp4
 
 lib/                              # Backend only — server-side, NEVER import in src/
   prisma.ts

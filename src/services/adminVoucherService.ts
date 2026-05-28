@@ -5,7 +5,7 @@ export interface VoucherPackage {
   id: string;
   name: string;
   description: string | null;
-  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON";
+  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP";
   points_cost: number;
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
@@ -16,6 +16,8 @@ export interface VoucherPackage {
   included_addon_option_ids: string[];
   addon_option_id: string | null;
   covered_price_vnd: number | null;
+  /** Max shipping fee covered. FREESHIP vouchers only. */
+  covered_delivery_fee_vnd: number | null;
   is_active: boolean;
   expires_after_days: number | null;
   quantity: number | null;
@@ -62,6 +64,16 @@ export type CreateVoucherPackageInput =
       description?: string;
       points_cost: number;
       addon_option_id: string;
+      expires_after_days?: number | null;
+      quantity?: number | null;
+      max_per_user?: number | null;
+    }
+  | {
+      voucher_type: "FREESHIP";
+      name: string;
+      description?: string;
+      points_cost: number;
+      covered_delivery_fee_vnd: number;
       expires_after_days?: number | null;
       quantity?: number | null;
       max_per_user?: number | null;

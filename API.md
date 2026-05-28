@@ -451,7 +451,7 @@ Same shape as `GET /api/menu` but:
 { data: { type: "user", data: { id: string, name: string, phone_number: string, points_balance: number } } }
 
 // voucher
-{ data: { type: "voucher", data: { id: string, voucher_type: "DISCOUNT" | "PRODUCT", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, status: "ACTIVE" | "REDEEMED" | "EXPIRED", expires_at: string | null } } }
+{ data: { type: "voucher", data: { id: string, voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, status: "ACTIVE" | "REDEEMED" | "EXPIRED", expires_at: string | null } } }
 ```
 
 ### `PATCH /api/admin/orders/[id]/status`

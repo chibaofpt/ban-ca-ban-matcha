@@ -66,7 +66,7 @@ const posts = [
 
 const EmojiFeed: React.FC = () => {
   return (
-    <section className="py-24 px-6 bg-[#fdfcf7] border-t border-border/20">
+    <section className="py-24 px-6 bg-transparent border-t border-primary/10 relative">
       <div className="max-w-6xl mx-auto">
         <motion.div
           initial="hidden"
@@ -75,15 +75,15 @@ const EmojiFeed: React.FC = () => {
           variants={fadeUp}
           className="text-center mb-16"
         >
-          <h2 className="font-serif text-3xl md:text-5xl font-bold text-primary mb-4">
-            #BánhCáBốnMùa
+          <h2 className="font-serif text-3xl md:text-5xl font-bold text-primary mb-4 text-ink">
+            #BạnCáBánMatcha
           </h2>
-          <p className="text-primary/60 text-xs md:text-sm uppercase tracking-[0.3em] font-medium">
+          <p className="text-primary/60 text-xs md:text-sm uppercase tracking-[0.3em] font-medium text-ink">
             Theo dõi chúng tôi trên Instagram
           </p>
         </motion.div>
 
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-3 md:gap-4">
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-4 md:gap-5">
           {posts.map((post, i) => (
             <motion.a
               key={`${post.id}-${i}`}
@@ -95,19 +95,25 @@ const EmojiFeed: React.FC = () => {
               viewport={{ once: true }}
               variants={fadeUp}
               custom={i}
-              className="relative aspect-square rounded-4xl bg-[#d9e4d4] border border-primary/10 flex items-center justify-center overflow-hidden cursor-pointer group"
+              whileHover={{ rotate: 0, scale: 1.05, zIndex: 10 }}
+              className={`relative aspect-square p-2 bg-white shadow-paper card-handmade flex items-center justify-center overflow-hidden cursor-pointer group transition-all duration-300 ${
+                i % 2 === 0 ? "rotate-1" : "-rotate-1"
+              }`}
             >
-              <Image
-                src={post.image}
-                alt="#BánhCáBốnMùa"
-                fill
-                className="object-cover transition-transform duration-500 group-hover:scale-110"
-                sizes="(max-width: 768px) 33vw, 16vw"
-              />
+              {/* Image Container with inner shadow */}
+              <div className="relative w-full h-full rounded-xl overflow-hidden bg-muted border border-primary/5">
+                <Image
+                  src={post.image}
+                  alt="#BạnCáBánMatcha"
+                  fill
+                  className="object-cover transition-transform duration-500 group-hover:scale-110"
+                  sizes="(max-width: 768px) 33vw, 16vw"
+                />
 
-              {/* Instagram Overlay */}
-              <div className="absolute inset-0 bg-primary/20 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                <InstagramIcon className="w-8 h-8 text-white drop-shadow-lg" />
+                {/* Instagram Overlay */}
+                <div className="absolute inset-0 bg-primary/20 backdrop-blur-xs opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                  <InstagramIcon className="w-6 h-6 text-white drop-shadow-lg" />
+                </div>
               </div>
             </motion.a>
           ))}

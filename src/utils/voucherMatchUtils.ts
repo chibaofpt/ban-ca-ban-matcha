@@ -1,0 +1,132 @@
+/**
+ * voucherMatchUtils — Pure client-side voucher-to-cart matching helpers.
+ *
+ * All functions are pure (no DB, no API calls). Input comes from cached
+ * listMyVouchers() and the Zustand cart store.
+ */
+
+import type { MyVoucher } from "@/src/services/customerVoucherService";
+import type { CartItem } from "@/src/lib/types/cart";
+
+// ── Eligibility filters ───────────────────────────────────────────────────────
+
+/** Returns true if a voucher is ACTIVE and not expired at the given timestamp. */
+export function isVoucherUsable(voucher: MyVoucher, now: Date = new Date()): boolean {
+  if (voucher.status !== "ACTIVE") return false;
+  if (voucher.expires_at !== null && new Date(voucher.expires_at) <= now) return false;
+  return true;
+}
+
+/** Filters to only ACTIVE + non-expired vouchers of the given type. */
+export function filterUsableVouchers(
+  vouchers: MyVoucher[],
+  type: MyVoucher["voucher_type"]
+): MyVoucher[] {
+  const now = new Date();
+  return vouchers.filter((v) => v.voucher_type === type && isVoucherUsable(v, now));
+}
+
+// ── PRODUCT voucher matching ──────────────────────────────────────────────────
+
+/**
+ * Returns usable PRODUCT vouchers whose menu_item_id matches the given cart item's
+ * menuItemId (soft match — size difference is intentional: customer pays surplus).
+ *
+ * Excludes vouchers already applied to another cart item (via usedVoucherIds).
+ */
+export function matchProductVouchers(
+  vouchers: MyVoucher[],
+  menuItemId: string,
+  usedVoucherIds: Set<string> = new Set()
+): MyVoucher[] {
+  return filterUsableVouchers(vouchers, "PRODUCT").filter(
+    (v) => v.menu_item_id === menuItemId && !usedVoucherIds.has(v.id)
+  );
+}
+
+/**
+ * Builds a map of menuItemId → applicable PRODUCT vouchers for all cart items.
+ * Each voucher appears only once (first cart item match wins for deduplication display,
+ * but the user can still manually assign any voucher to any matching item).
+ */
+export function buildProductVoucherMap(
+  vouchers: MyVoucher[],
+  cartItems: CartItem[]
+): Map<string, MyVoucher[]> {
+  const usable = filterUsableVouchers(vouchers, "PRODUCT");
+  const result = new Map<string, MyVoucher[]>();
+  for (const item of cartItems) {
+    const matches = usable.filter((v) => v.menu_item_id === item.menuItemId);
+    if (matches.length > 0) {
+      result.set(item.menuItemId, matches);
+    }
+  }
+  return result;
+}
+
+// ── ADDON voucher matching ────────────────────────────────────────────────────
+
+/**
+ * Returns usable ADDON vouchers whose addon_option_id appears in any cart item's
+ * selectedOptionIds. Excludes already-used vouchers.
+ */
+export function matchAddonVouchers(
+  vouchers: MyVoucher[],
+  cartItems: CartItem[],
+  usedVoucherIds: Set<string> = new Set()
+): MyVoucher[] {
+  const allOptionIds = new Set(cartItems.flatMap((c) => c.selectedOptionIds));
+  return filterUsableVouchers(vouchers, "ADDON").filter(
+    (v) => v.addon_option_id !== null && allOptionIds.has(v.addon_option_id) && !usedVoucherIds.has(v.id)
+  );
+}
+
+// ── Price preview helpers ─────────────────────────────────────────────────────
+
+/**
+ * Estimates how much a PRODUCT voucher saves on a given cart item.
+ * The voucher covers up to covered_price_vnd; the customer pays any surplus.
+ * Returns the discount amount (never negative, never exceeds item price).
+ */
+export function estimateProductSavings(
+  voucher: MyVoucher,
+  cartItemClientPrice: number
+): number {
+  const covered = voucher.covered_price_vnd ?? 0;
+  return Math.min(covered, cartItemClientPrice);
+}
+
+/**
+ * Estimates the DISCOUNT voucher saving on a given subtotal.
+ * PERCENT: floor(subtotal × value / 100). FIXED: min(value, subtotal).
+ */
+export function estimateDiscountSavings(voucher: MyVoucher, subtotal: number): number {
+  if (voucher.discount_type === "PERCENT") {
+    return Math.floor((subtotal * (voucher.discount_value ?? 0)) / 100);
+  }
+  if (voucher.discount_type === "FIXED") {
+    return Math.min(voucher.discount_value ?? 0, subtotal);
+  }
+  return 0;
+}
+
+/**
+ * Estimates the ADDON voucher saving: the addon option's price for the first
+ * cart item that contains the matching addon_option_id.
+ * Returns 0 if no matching item is found.
+ */
+export function estimateAddonSavings(
+  voucher: MyVoucher,
+  cartItems: CartItem[]
+): number {
+  if (!voucher.addon_option_id) return 0;
+  for (const item of cartItems) {
+    if (item.selectedOptionIds.includes(voucher.addon_option_id)) {
+      // We don't have individual addon prices in CartItem — the server will compute.
+      // Return a non-zero signal (1) so the UI can show "Voucher topping áp dụng".
+      // Actual deduction is confirmed server-side.
+      return 1;
+    }
+  }
+  return 0;
+}

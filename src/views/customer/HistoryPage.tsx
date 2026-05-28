@@ -221,7 +221,7 @@ export default function HistoryPage() {
   };
 
   return (
-    <div className="px-4 py-6 max-w-2xl mx-auto space-y-5 pb-24">
+    <div className="px-4 py-6 max-w-2xl md:max-w-4xl lg:max-w-6xl mx-auto space-y-5 pb-24">
       <h1 className="font-serif text-3xl font-bold text-primary">Lịch sử của tôi</h1>
 
       {/* Tabs */}
@@ -254,9 +254,9 @@ export default function HistoryPage() {
           transition={{ duration: 0.2 }}
         >
           {activeTab === "orders" ? (
-            <div className="space-y-4">
+            <div className="space-y-4 md:space-y-0 md:grid md:grid-cols-2 md:gap-6">
               {isInitialLoading ? (
-                [1, 2, 3].map((i) => (
+                [1, 2, 3, 4].map((i) => (
                   <div key={i} className="rounded-2xl border bg-card p-4 space-y-3 animate-pulse">
                     <div className="flex justify-between">
                       <div className="h-4 w-32 bg-secondary/60 rounded" />
@@ -271,7 +271,7 @@ export default function HistoryPage() {
                   </div>
                 ))
               ) : rawOrders.length === 0 ? (
-                <div className="text-center py-20 bg-secondary/20 rounded-3xl border border-border/50">
+                <div className="text-center py-20 bg-secondary/20 rounded-3xl border border-border/50 md:col-span-2">
                   <div className="text-5xl mb-4">🛒</div>
                   <p className="font-bold text-primary">Bạn chưa có đơn hàng nào</p>
                   <p className="text-sm text-primary/60 mt-1">Hãy đặt thử một ly matcha nhé!</p>
@@ -447,7 +447,7 @@ export default function HistoryPage() {
                   
                   {/* Pagination Controls */}
                   {totalPages > 1 && (
-                    <div className="flex justify-center items-center gap-2 pt-6">
+                    <div className="flex justify-center items-center gap-2 pt-6 md:col-span-2">
                       <button
                         disabled={page <= 1}
                         onClick={() => setPage((p) => Math.max(1, p - 1))}
@@ -472,9 +472,9 @@ export default function HistoryPage() {
             </div>
           ) : (
             // ── VOUCHER HISTORY TAB ──
-            <div className="space-y-3">
+            <div className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 md:gap-6">
               {vouchersLoading ? (
-                [1, 2, 3].map((i) => (
+                [1, 2, 3, 4].map((i) => (
                   <div key={i} className="rounded-2xl border bg-card p-4 space-y-2 animate-pulse">
                     <div className="flex gap-3">
                       <div className="w-9 h-9 rounded-full bg-secondary/60 shrink-0" />
@@ -487,7 +487,7 @@ export default function HistoryPage() {
                   </div>
                 ))
               ) : vouchers.length === 0 ? (
-                <div className="text-center py-20 bg-secondary/20 rounded-3xl border border-border/50">
+                <div className="text-center py-20 bg-secondary/20 rounded-3xl border border-border/50 md:col-span-2">
                   <Ticket className="w-12 h-12 text-primary/30 mx-auto mb-4" />
                   <p className="font-bold text-primary">Chưa có hoạt động voucher nào</p>
                   <p className="text-sm text-primary/60 mt-1">Những lần đổi và sử dụng voucher sẽ hiện ở đây.</p>

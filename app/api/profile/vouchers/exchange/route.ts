@@ -126,6 +126,7 @@ export async function POST(req: NextRequest) {
             included_addon_option_ids: pkg.included_addon_option_ids,
             addon_option_id: pkg.addon_option_id,
             covered_price_vnd: pkg.covered_price_vnd,
+            covered_delivery_fee_vnd: pkg.covered_delivery_fee_vnd,
             status: "ACTIVE",
             expires_at,
           },

@@ -197,7 +197,7 @@ export default function StaffOrdersPage() {
 
   return (
     <>
-      <div className="px-4 py-4 space-y-4">
+      <div className="px-4 md:px-0 py-4 space-y-4">
         {/* QR scan button */}
         <button
           id="btn-scan-qr"
@@ -228,7 +228,7 @@ export default function StaffOrdersPage() {
         )}
 
         {/* Category tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 md:mx-0 px-4 md:px-0 no-scrollbar">
           {categories.map((c) => (
             <button
               key={c}
@@ -268,7 +268,7 @@ export default function StaffOrdersPage() {
 
         {/* Menu grid */}
         {status === "success" && (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
             {visibleItems.map((item) => {
               return (
                 <button
@@ -317,7 +317,7 @@ export default function StaffOrdersPage() {
             })}
 
             {visibleItems.length === 0 && (
-              <p className="col-span-2 text-sm text-muted-foreground text-center py-8">
+              <p className="col-span-full text-sm text-muted-foreground text-center py-8">
                 Không có món nào trong danh mục này.
               </p>
             )}
@@ -330,7 +330,7 @@ export default function StaffOrdersPage() {
         <button
           id="btn-open-cart"
           onClick={() => setCartOpen(true)}
-          className="fixed bottom-20 right-4 z-40 bg-accent text-accent-foreground rounded-full shadow-xl px-5 py-3 flex items-center gap-2 hover:scale-105 transition"
+          className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-40 bg-accent text-accent-foreground rounded-full shadow-xl px-5 py-3 flex items-center gap-2 hover:scale-105 transition"
         >
           <ShoppingBag size={18} />
           <span className="font-medium text-sm">

@@ -36,7 +36,13 @@ export interface CartItem {
    * Server recomputes and rejects entire order on mismatch (PRICE_CHANGED).
    */
   clientPriceVnd: number;
-  /** Set when this item was added via a PRODUCT voucher scan (unit price = 0). */
+  /**
+   * Original price before any PRODUCT voucher credit was applied.
+   * Stored so the cart can restore the correct price if the voucher is removed or swapped.
+   * Equals clientPriceVnd when no voucher is applied.
+   */
+  originalClientPriceVnd: number;
+  /** Set when this item was added via a PRODUCT voucher (unit price reduced by voucher credit). */
   productVoucherId?: string;
   /** Explicit list of human-readable customization details to display in the cart. */
   details?: string[];

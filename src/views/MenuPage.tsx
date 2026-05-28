@@ -61,7 +61,7 @@ export default function MenuPage() {
 
   return (
     <main className="min-h-screen bg-[#fdfcf7] text-foreground font-sans pt-8 pb-32 px-6">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto">
 
         {/* Back Button */}
         <div className="">
@@ -90,8 +90,8 @@ export default function MenuPage() {
         <div className="mt-4">
           <AnimatePresence mode="wait">
             {loading ? (
-              <div key="loading" className="grid grid-cols-2 gap-4">
-                {[1, 2, 3, 4].map(i => (
+              <div key="loading" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
                   <div key={i} className="aspect-4/3 rounded-4xl bg-secondary/20 animate-pulse" />
                 ))}
               </div>
@@ -111,7 +111,7 @@ export default function MenuPage() {
                 key={activeTab}
                 initial="hidden"
                 animate="visible"
-                className="grid grid-cols-2 gap-4 md:gap-6"
+                className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6"
               >
                 {filteredItems.map((item, idx) => (
                   <motion.div key={item.id} variants={fadeUp} custom={idx}>
