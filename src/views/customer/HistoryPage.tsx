@@ -6,13 +6,17 @@ import { listMyVouchers, type MyVoucher } from "@/src/services/customerVoucherSe
 import { usePolling } from "@/src/hooks/usePolling";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, Clock, Copy, CheckCircle2, XCircle, Ticket, Fish, ArrowRightLeft, User, ShieldCheck } from "lucide-react";
+import { ChevronDown, ChevronUp, Clock, Copy, CheckCircle2, XCircle, Ticket, Fish, ArrowRightLeft, User, ShieldCheck, Gift } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import { CountdownTimer } from "@/src/components/customer/CountdownTimer";
 import { OrderProgressBar } from "@/src/components/shared/OrderProgressBar";
 import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import type { OrderStatus } from "@/src/lib/types/order";
+import VoucherModal from "@/src/components/shared/VoucherModal";
+import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
+import { usePointsStore } from "@/src/lib/store/pointsStore";
+import { useIsLoggedIn } from "@/src/lib/store/authStore";
 
 interface CustomerHistoryOrder {
   id: string;
@@ -154,6 +158,11 @@ function VoucherHistoryCard({ voucher: v }: { voucher: MyVoucher }) {
 
 /** Page lịch sử đơn hàng và voucher của khách hàng. */
 export default function HistoryPage() {
+  const openVoucherModal = useVoucherModalStore((s) => s.openModal);
+  const isLoggedIn = useIsLoggedIn();
+  const points = usePointsStore((s) => s.points);
+  const fetchPoints = usePointsStore((s) => s.fetchPoints);
+  
   const [activeTab, setActiveTab] = useState<"orders" | "vouchers">("orders");
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -175,12 +184,14 @@ export default function HistoryPage() {
   // Fetch vouchers when tab is active
   useEffect(() => {
     if (activeTab !== "vouchers") return;
+    if (isLoggedIn) fetchPoints();
+
     setVouchersLoading(true);
     listMyVouchers()
       .then(setVouchers)
       .catch(() => toast.error("Không tải được lịch sử voucher"))
       .finally(() => setVouchersLoading(false));
-  }, [activeTab]);
+  }, [activeTab, isLoggedIn, fetchPoints]);
 
   const fetchOrdersFn = useCallback(async () => {
     return await fetchCustomerOrders({ page, limit: 10 });
@@ -222,7 +233,18 @@ export default function HistoryPage() {
 
   return (
     <div className="px-4 py-6 max-w-2xl md:max-w-4xl lg:max-w-6xl mx-auto space-y-5 pb-24">
-      <h1 className="font-serif text-3xl font-bold text-primary">Lịch sử của tôi</h1>
+      {/* Header: title + voucher button */}
+      <div className="flex items-center justify-between">
+        <h1 className="font-serif text-3xl font-bold text-primary">Lịch sử của tôi</h1>
+        <button
+          id="voucher-modal-trigger-history"
+          onClick={openVoucherModal}
+          className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-amber-500 to-orange-500 shadow-sm shadow-orange-500/20 px-3.5 py-2.5 rounded-xl hover:scale-105 transition-transform"
+        >
+          <Gift size={14} />
+          <span>Đổi quà {points !== null && `(${points} 🐟)`}</span>
+        </button>
+      </div>
 
       {/* Tabs */}
       <div className="flex bg-secondary/30 p-1 rounded-2xl">
@@ -240,7 +262,7 @@ export default function HistoryPage() {
             activeTab === "vouchers" ? "bg-white shadow-sm text-primary" : "text-primary/60 hover:text-primary"
           }`}
         >
-          Voucher
+          Lịch sử voucher
         </button>
       </div>
 
@@ -509,6 +531,8 @@ export default function HistoryPage() {
         onConfirm={handleCancelConfirm}
         onCancel={() => setCancelModal({ isOpen: false, orderId: "" })}
       />
+
+      <VoucherModal />
     </div>
   );
 }

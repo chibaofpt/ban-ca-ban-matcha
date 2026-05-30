@@ -116,8 +116,8 @@ model Voucher {
   redeemed_by                String?        @db.Uuid
   created_at                 DateTime       @default(now()) @db.Timestamptz(6)
   orderItems                 OrderItem[]
-  discountOrders             Order[]        @relation("OrderDiscountVoucher")
-  addonOrders                Order[]        @relation("OrderAddonVoucher")
+  discountOrderLinks         OrderDiscountVoucher[] @relation("UsedAsDiscount")
+  addonOrderItems            OrderItem[]            @relation("OrderItemAddonVoucher")
   pointsLogs                 PointsLog[]
   menuItem                   MenuItem?      @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   matchaPowder               MatchaPowder?  @relation(fields: [matcha_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -246,9 +246,7 @@ model Order {
   id                   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// NULL = anonymous walk-in order (no loyalty tracking). Non-null = registered or ghost customer.
   user_id              String?     @db.Uuid
-  voucher_id           String?     @db.Uuid
-  /// ADDON voucher applied to this order. Stored so cancel flows can restore it to ACTIVE.
-  addon_voucher_id     String?     @db.Uuid
+
   status               OrderStatus @default(PENDING)
   /// COUNTER = staff-created at register; PICKUP = customer self-order pick-up; DELIVERY = future phase
   order_type           OrderType   @default(COUNTER)
@@ -277,8 +275,7 @@ model Order {
   handled_by           String?     @db.Uuid
   handler              User?       @relation("HandledOrders", fields: [handled_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   paymentConfirmer     User?       @relation("PaymentConfirmer", fields: [payment_confirmed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  voucher              Voucher?    @relation("OrderDiscountVoucher", fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  addonVoucher         Voucher?    @relation("OrderAddonVoucher", fields: [addon_voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  discountVouchers     OrderDiscountVoucher[]
   pointsLogs           PointsLog[]
 
   @@index([created_at(sort: Desc)], map: "idx_orders_created_at")
@@ -297,6 +294,7 @@ model OrderItem {
   unit_price_vnd        Int
   addons_price_vnd      Int              @default(0)
   product_voucher_id    String?          @db.Uuid
+  addon_voucher_id      String?          @db.Uuid
   note                  String?
   sweetness             SweetnessLevel   @default(QUARTER)
   size                  Size
@@ -308,6 +306,7 @@ model OrderItem {
   menuItem              MenuItem         @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   order                 Order            @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   productVoucher        Voucher?         @relation(fields: [product_voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  addonVoucher          Voucher?         @relation("OrderItemAddonVoucher", fields: [addon_voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   milkType              MilkType?        @relation(fields: [selected_milk_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   selectedPowder        MatchaPowder?    @relation(fields: [selected_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -325,6 +324,16 @@ model OrderItemAddon {
   orderItem       OrderItem   @relation(fields: [order_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("order_item_addons")
+}
+
+model OrderDiscountVoucher {
+  order_id   String  @db.Uuid
+  voucher_id String  @db.Uuid
+  order      Order   @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  voucher    Voucher @relation("UsedAsDiscount", fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([order_id, voucher_id])
+  @@map("order_discount_vouchers")
 }
 
 model MatchaPowder {
@@ -519,5 +528,18 @@ model StoreTemporaryClosure {
   opened_at DateTime?
 
   @@map("store_temporary_closure")
+}
+
+model SystemLog {
+  id         String   @id @default(uuid())
+  level      String   @default("error")
+  source     String
+  message    String
+  stack      String?
+  context    Json?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([created_at(sort: Desc)], map: "idx_system_logs_created_at")
+  @@map("system_logs")
 }
 

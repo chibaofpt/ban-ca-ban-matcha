@@ -93,6 +93,7 @@ const OTHER_USER = "550e8400-e29b-41d4-a716-446655440099";
 
 const validPayload = {
   order_type: "PICKUP",
+  discount_voucher_ids: [],
   items: [
     {
       menu_item_id: ITEM_ID,
@@ -137,6 +138,8 @@ function setupTx(overrides: {
   addonVoucher?: object | null;
   productVoucher?: object | null;
 } = {}) {
+  mockVoucherFindUnique.mockReset();
+  
   // Mock global prisma for reads outside transaction
   const mockMenuItemFind = vi.fn().mockResolvedValue(overrides.menuItem !== undefined ? overrides.menuItem : latteMenuItem);
   const mockAddonOptionFind = vi.fn().mockResolvedValue(overrides.addonOption !== undefined ? overrides.addonOption : null);
@@ -189,6 +192,7 @@ function setupTx(overrides: {
       user: { update: mockUserUpdate },
       pointsLog: { create: mockPointsLogCreate },
       order: { create: mockOrderCreate },
+      orderDiscountVoucher: { create: vi.fn() },
     };
     return fn(tx);
   });
@@ -365,7 +369,7 @@ describe("POST /api/orders", () => {
     };
     setupTx({ voucher });
 
-    const res = await POST(makeReq({ ...validPayload, voucher_id: V_PCT }));
+    const res = await POST(makeReq({ ...validPayload, discount_voucher_ids: [V_PCT] }));
     expect(res.status).toBe(201);
 
     expect(mockOrderCreate).toHaveBeenCalledWith(
@@ -391,7 +395,7 @@ describe("POST /api/orders", () => {
     };
     setupTx({ voucher });
 
-    await POST(makeReq({ ...validPayload, voucher_id: V_FIX }));
+    await POST(makeReq({ ...validPayload, discount_voucher_ids: [V_FIX] }));
 
     expect(mockOrderCreate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -414,7 +418,7 @@ describe("POST /api/orders", () => {
       expires_at: null,
     };
     setupTx({ voucher });
-    await POST(makeReq({ ...validPayload, voucher_id: V_MARK }));
+    await POST(makeReq({ ...validPayload, discount_voucher_ids: [V_MARK] }));
 
     expect(mockVoucherUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -435,14 +439,14 @@ describe("POST /api/orders", () => {
         voucher_type: "DISCOUNT", discount_type: "FIXED", discount_value: 5000, expires_at: null,
       },
     });
-    const res = await POST(makeReq({ ...validPayload, voucher_id: V_OTHER }));
+    const res = await POST(makeReq({ ...validPayload, discount_voucher_ids: [V_OTHER] }));
     expect(res.status).toBe(404);
     expect((await res.json()).code).toBe("NOT_FOUND");
   });
 
   it("returns 404 when voucher not found", async () => {
     setupTx({ voucher: null });
-    const res = await POST(makeReq({ ...validPayload, voucher_id: V_NONE }));
+    const res = await POST(makeReq({ ...validPayload, discount_voucher_ids: [V_NONE] }));
     expect(res.status).toBe(404);
     expect((await res.json()).code).toBe("NOT_FOUND");
   });
@@ -454,7 +458,7 @@ describe("POST /api/orders", () => {
         voucher_type: "DISCOUNT", discount_type: "FIXED", discount_value: 5000, expires_at: null,
       },
     });
-    const res = await POST(makeReq({ ...validPayload, voucher_id: V_USED }));
+    const res = await POST(makeReq({ ...validPayload, discount_voucher_ids: [V_USED] }));
     expect(res.status).toBe(422);
     expect((await res.json()).code).toBe("VOUCHER_REDEEMED");
   });
@@ -467,7 +471,7 @@ describe("POST /api/orders", () => {
         discount_value: 5000, expires_at: new Date("2020-01-01"),
       },
     });
-    const res = await POST(makeReq({ ...validPayload, voucher_id: V_EXP }));
+    const res = await POST(makeReq({ ...validPayload, discount_voucher_ids: [V_EXP] }));
     expect(res.status).toBe(422);
     expect((await res.json()).code).toBe("VOUCHER_EXPIRED");
   });
@@ -479,7 +483,7 @@ describe("POST /api/orders", () => {
         voucher_type: "PRODUCT", discount_type: null, discount_value: null, expires_at: null,
       },
     });
-    const res = await POST(makeReq({ ...validPayload, voucher_id: V_PROD }));
+    const res = await POST(makeReq({ ...validPayload, discount_voucher_ids: [V_PROD] }));
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe("VALIDATION_ERROR");
   });
@@ -554,7 +558,6 @@ describe("POST /api/orders", () => {
 
     const payload = {
       ...validPayload,
-      addon_voucher_id: ADDON_VOUCHER_ID,
       items: [
         {
           menu_item_id: ITEM_ID,
@@ -586,7 +589,7 @@ describe("POST /api/orders", () => {
       .mockResolvedValueOnce(addonVoucher2)
       .mockResolvedValue(null);
 
-    await POST(makeReq({ ...validPayload, addon_voucher_id: ADDON_VOUCHER_ID }));
+    await POST(makeReq({ ...validPayload, items: [{ ...validPayload.items[0], addon_voucher_id: ADDON_VOUCHER_ID }] }));
 
     expect(mockVoucherUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -607,7 +610,7 @@ describe("POST /api/orders", () => {
       expires_at: null,
     });
 
-    const res = await POST(makeReq({ ...validPayload, addon_voucher_id: ADDON_VOUCHER_ID }));
+    const res = await POST(makeReq({ ...validPayload, items: [{ ...validPayload.items[0], addon_voucher_id: ADDON_VOUCHER_ID }] }));
     expect(res.status).toBe(422);
     expect((await res.json()).code).toBe("VOUCHER_REDEEMED");
   });
@@ -639,7 +642,11 @@ describe("POST /api/orders", () => {
       .mockResolvedValue(null);
 
     const res = await POST(
-      makeReq({ ...validPayload, addon_voucher_id: ADDON_VOUCHER_ID, voucher_id: V_PCT })
+      makeReq({
+        ...validPayload,
+        items: [{ ...validPayload.items[0], addon_voucher_id: ADDON_VOUCHER_ID }],
+        discount_voucher_ids: [V_PCT],
+      })
     );
     expect(res.status).toBe(201);
     expect(mockVoucherUpdate).toHaveBeenCalledWith(

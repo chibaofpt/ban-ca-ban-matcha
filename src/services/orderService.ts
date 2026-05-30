@@ -17,13 +17,12 @@ export interface CreateOrderPayload {
     note?: string;
     addon_option_ids: { option_id: string; quantity: number }[];
     product_voucher_id?: string;
+    addon_voucher_id?: string;
     selected_powder_id?: string;
     selected_milk_type_id?: string;
     client_price_vnd: number;
   }[];
-  voucher_id?: string;
-  /** ADDON voucher applied order-level — applies to first item containing the target addon_option_id. */
-  addon_voucher_id?: string;
+  discount_voucher_ids: string[];
   pickup_time?: string;
   note?: string;
   delivery_address?: string;
@@ -59,6 +58,7 @@ function buildPayloadItems(cart: CartItem[]): CreateOrderPayload["items"] {
       ...c.quantityAddonOptions,
     ],
     ...(c.productVoucherId ? { product_voucher_id: c.productVoucherId } : {}),
+    ...(c.addonVoucherId ? { addon_voucher_id: c.addonVoucherId } : {}),
     ...(c.selectedPowderId ? { selected_powder_id: c.selectedPowderId } : {}),
     ...(c.selectedMilkTypeId ? { selected_milk_type_id: c.selectedMilkTypeId } : {}),
     client_price_vnd: c.clientPriceVnd,
@@ -74,8 +74,7 @@ export async function createOrder(
   cart: CartItem[],
   options?: {
     orderType?: "PICKUP" | "DELIVERY";
-    voucherId?: string;
-    addonVoucherId?: string;
+    discountVoucherIds?: string[];
     pickupTime?: string;
     note?: string;
     deliveryAddress?: string;
@@ -84,8 +83,7 @@ export async function createOrder(
   const payload: CreateOrderPayload = {
     order_type: options?.orderType ?? "PICKUP",
     items: buildPayloadItems(cart),
-    ...(options?.voucherId ? { voucher_id: options.voucherId } : {}),
-    ...(options?.addonVoucherId ? { addon_voucher_id: options.addonVoucherId } : {}),
+    discount_voucher_ids: options?.discountVoucherIds ?? [],
     ...(options?.pickupTime ? { pickup_time: options.pickupTime } : {}),
     ...(options?.note ? { note: options.note } : {}),
     ...(options?.deliveryAddress ? { delivery_address: options.deliveryAddress } : {}),

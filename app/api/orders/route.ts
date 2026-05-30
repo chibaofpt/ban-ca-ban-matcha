@@ -6,9 +6,8 @@ import { processOrderItems, OrderValidationError, PriceChangedError } from "@/li
 import type { ProductVoucherInfo } from "@/lib/orders";
 import {
   assertVoucherUsable,
-  calcDiscountVoucher,
+  calcMultiDiscountVouchers,
   calcProductVoucherSurplusPoints,
-  findAddonVoucherDiscount,
   VoucherError,
 } from "@/lib/vouchers";
 import { generateOrderCode } from "@/lib/orderCode";
@@ -16,6 +15,7 @@ import { buildVietQRUrl } from "@/lib/vietqr";
 import { checkStoreOpen, validatePickupTime } from "@/lib/storeSchedule";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
+import { logSystemEvent } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -123,77 +123,76 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Step 2: Process items — validate, price-check, resolve addons (reads only)
-    const resolvedItems = await processOrderItems(data.items, prisma, productVoucherMap);
+    // Step 2: Validate per-item ADDON vouchers
+    const addonVoucherMap = new Map<string, string>(); // voucherId → addon_option_id
+    const addonVoucherIds = new Set<string>();
+    for (const item of data.items) {
+      console.log("ITEM ADDON VOUCHER ID:", item.addon_voucher_id);
+      if (item.addon_voucher_id) {
+        if (addonVoucherIds.has(item.addon_voucher_id)) {
+          return NextResponse.json(
+            { error: "The same addon voucher cannot be applied to multiple items", code: "VALIDATION_ERROR" },
+            { status: 400 }
+          );
+        }
+        const av = await prisma.voucher.findUnique({ where: { id: item.addon_voucher_id } });
+        try {
+          assertVoucherUsable(av, session.id, "ADDON");
+        } catch (e) {
+          if (e instanceof VoucherError) {
+            const status = e.code === "NOT_FOUND" ? 404 : e.code === "VALIDATION_ERROR" ? 400 : 422;
+            return NextResponse.json({ error: e.message, code: e.code }, { status });
+          }
+          throw e;
+        }
+        if (!av!.addon_option_id) {
+          return NextResponse.json(
+            { error: "Addon voucher has no addon_option_id configured", code: "VALIDATION_ERROR" },
+            { status: 400 }
+          );
+        }
+        addonVoucherMap.set(av!.id, av!.addon_option_id);
+        addonVoucherIds.add(av!.id);
+      }
+    }
 
-    // Step 2: Calculate base subtotal (before any voucher)
+    // Step 3: Process items — validate, price-check, resolve addons (reads only)
+    const resolvedItems = await processOrderItems(data.items, prisma, productVoucherMap, addonVoucherMap);
     const subtotal_vnd = resolvedItems.reduce((sum, item) => sum + item.line_total, 0);
 
-    // ── Voucher validation (read-only) ─────────────────────────────────────────
-    // Application order: PRODUCT (per-item, already in resolvedItems) → ADDON → DISCOUNT
+    // Step 4: Validate DISCOUNT vouchers (multi)
+    const validatedDiscountVouchers: { id: string; discount_type: import("@prisma/client").DiscountType | null; discount_value: number | null }[] = [];
+    let percentVoucherCount = 0;
 
-    // Step 3a: Validate ADDON voucher
-    let addon_voucher_id: string | null = null;
-    let addon_discount_vnd = 0;
-
-    if (data.addon_voucher_id) {
-      const addonVoucher = await prisma.voucher.findUnique({
-        where: { id: data.addon_voucher_id },
+    for (const dvId of data.discount_voucher_ids) {
+      const dv = await prisma.voucher.findUnique({ where: { id: dvId } });
+      try {
+        assertVoucherUsable(dv, session.id, "DISCOUNT");
+      } catch (e) {
+        if (e instanceof VoucherError) {
+          const status = e.code === "NOT_FOUND" ? 404 : e.code === "VALIDATION_ERROR" ? 400 : 422;
+          return NextResponse.json({ error: e.message, code: e.code }, { status });
+        }
+        throw e;
+      }
+      if (dv!.discount_type === "PERCENT") {
+        percentVoucherCount++;
+        if (percentVoucherCount > 1) {
+          return NextResponse.json(
+            { error: "Chỉ được áp tối đa 1 voucher giảm phần trăm cho một đơn hàng", code: "VALIDATION_ERROR" },
+            { status: 400 }
+          );
+        }
+      }
+      validatedDiscountVouchers.push({
+        id: dv!.id,
+        discount_type: dv!.discount_type,
+        discount_value: dv!.discount_value,
       });
-
-      try {
-        assertVoucherUsable(addonVoucher, session.id, "ADDON");
-      } catch (e) {
-        if (e instanceof VoucherError) {
-          const statusMap: Record<string, number> = {
-            NOT_FOUND: 404, VOUCHER_REDEEMED: 422, VOUCHER_EXPIRED: 422, CONFLICT: 422,
-            VALIDATION_ERROR: 400,
-          };
-          return NextResponse.json(
-            { error: e.message, code: e.code },
-            { status: statusMap[e.code] ?? 400 }
-          );
-        }
-        throw e;
-      }
-
-      if (addonVoucher!.addon_option_id) {
-        addon_discount_vnd = findAddonVoucherDiscount(resolvedItems, addonVoucher!.addon_option_id);
-      }
-      addon_voucher_id = addonVoucher!.id;
     }
 
-    // Subtotal after ADDON discount (applied before DISCOUNT voucher)
-    const subtotal_after_addon = Math.max(0, subtotal_vnd - addon_discount_vnd);
-
-    // Step 3b: Validate DISCOUNT voucher (applied last)
-    let discount_voucher_id: string | null = null;
-    let discount_vnd = 0;
-
-    if (data.voucher_id) {
-      const discountVoucher = await prisma.voucher.findUnique({ where: { id: data.voucher_id } });
-
-      try {
-        assertVoucherUsable(discountVoucher, session.id, "DISCOUNT");
-      } catch (e) {
-        if (e instanceof VoucherError) {
-          const statusMap: Record<string, number> = {
-            NOT_FOUND: 404, VOUCHER_REDEEMED: 422, VOUCHER_EXPIRED: 422, CONFLICT: 422,
-            VALIDATION_ERROR: 400,
-          };
-          return NextResponse.json(
-            { error: e.message, code: e.code },
-            { status: statusMap[e.code] ?? 400 }
-          );
-        }
-        throw e;
-      }
-
-      discount_vnd = calcDiscountVoucher(discountVoucher!, subtotal_after_addon);
-      discount_voucher_id = discountVoucher!.id;
-    }
-
-    const total_vnd = Math.max(0, subtotal_after_addon - discount_vnd);
+    const discount_vnd = calcMultiDiscountVouchers(validatedDiscountVouchers, subtotal_vnd);
+    const total_vnd = Math.max(0, subtotal_vnd - discount_vnd);
 
     // Step 3c: Compute PRODUCT voucher surplus points (per item)
     // Surplus = floor((covered_price_vnd - actual_total) / 10000), min 0.
@@ -224,13 +223,11 @@ export async function POST(req: NextRequest) {
         const createdOrder = await tx.order.create({
           data: {
             user_id: session.id,
-            voucher_id: discount_voucher_id,
-            addon_voucher_id: addon_voucher_id,
             status: "PENDING",
             order_type: data.order_type,
             order_code,
             subtotal_vnd,
-            discount_vnd: addon_discount_vnd + discount_vnd,
+            discount_vnd,
             total_vnd,
             points_earned: null,
             pickup_time: data.order_type === "PICKUP" 
@@ -251,6 +248,7 @@ export async function POST(req: NextRequest) {
                 coldwhisk: item.coldwhisk,
                 note: item.note,
                 product_voucher_id: item.product_voucher_id,
+                addon_voucher_id: item.addon_voucher_id,
                 selected_powder_id: item.selected_powder_id,
                 selected_milk_type_id: item.selected_milk_type_id,
                 addons: {
@@ -265,18 +263,21 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        // Reserve DISCOUNT voucher — becomes REDEEMED after admin confirms payment
-        if (discount_voucher_id) {
+        // Reserve DISCOUNT vouchers + link to order
+        for (const dv of validatedDiscountVouchers) {
           await tx.voucher.update({
-            where: { id: discount_voucher_id },
+            where: { id: dv.id },
             data: { status: "RESERVED" },
+          });
+          await tx.orderDiscountVoucher.create({
+            data: { order_id: createdOrder.id, voucher_id: dv.id },
           });
         }
 
-        // Reserve ADDON voucher — same PENDING→RESERVED flow
-        if (addon_voucher_id) {
+        // Reserve ADDON vouchers (per-item)
+        for (const avId of addonVoucherIds) {
           await tx.voucher.update({
-            where: { id: addon_voucher_id },
+            where: { id: avId },
             data: { status: "RESERVED" },
           });
         }
@@ -359,6 +360,15 @@ export async function POST(req: NextRequest) {
     const errStack = err instanceof Error ? err.stack : undefined;
     const errName = err instanceof Error ? err.name : typeof err;
     console.error("[POST /api/orders] UNHANDLED ERROR:", { name: errName, message: errMsg, stack: errStack });
+    
+    await logSystemEvent({
+      level: "error",
+      source: "POST /api/orders",
+      message: errMsg,
+      error: err,
+      context: { body },
+    });
+
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },
       { status: 500 }

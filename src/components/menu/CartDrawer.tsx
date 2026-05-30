@@ -12,7 +12,7 @@ import { useStoreStatusStore } from "@/src/lib/store/storeStore";
 import { cn } from "@/src/utils/cn";
 import { useRouter } from "next/navigation";
 import { listMyVouchers, type MyVoucher } from "@/src/services/customerVoucherService";
-import { filterUsableVouchers, matchAddonVouchers } from "@/src/utils/voucherMatchUtils";
+import { filterUsableVouchers, buildAddonVoucherMap, buildProductVoucherMap, estimateProductSavings, estimateDiscountSavings } from "@/src/utils/voucherMatchUtils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -25,8 +25,8 @@ type CheckoutState =
 // ── CartDrawer ─────────────────────────────────────────────────────────────────
 
 const CartDrawer = () => {
-  const { items, removeItem, updateQuantity, clearCart, isCartOpen, setCartOpen } = useCartStore();
-  const totalPrice = useCartTotalPrice();
+  const { items, removeItem, updateQuantity, clearCart, isCartOpen, setCartOpen, applyProductVoucher, removeProductVoucher, applyAddonVoucher, removeAddonVoucher } = useCartStore();
+  const subtotalPrice = useCartTotalPrice();
   const isLoggedIn = useIsLoggedIn();
   const openLogin = useAuthModalStore((s) => s.openLogin);
   const router = useRouter();
@@ -40,13 +40,17 @@ const CartDrawer = () => {
   // ── Voucher state ──
   const [allVouchers, setAllVouchers] = useState<MyVoucher[]>([]);
   const [selectedVoucherId, setSelectedVoucherId] = useState<string | null>(null);
-  const [selectedAddonVoucherId, setSelectedAddonVoucherId] = useState<string | null>(null);
   const [voucherPickerOpen, setVoucherPickerOpen] = useState(false);
-  const [addonVoucherPickerOpen, setAddonVoucherPickerOpen] = useState(false);
 
   // Derived voucher lists
   const discountVouchers = filterUsableVouchers(allVouchers, "DISCOUNT");
-  const applicableAddonVouchers = matchAddonVouchers(allVouchers, items);
+  const applicableAddonVouchersMap = buildAddonVoucherMap(allVouchers, items);
+  const applicableProductVouchers = buildProductVoucherMap(allVouchers, items);
+
+  // Calculate final display price
+  const selectedDiscountVoucher = discountVouchers.find(v => v.id === selectedVoucherId);
+  const discountAmount = selectedDiscountVoucher ? estimateDiscountSavings(selectedDiscountVoucher, subtotalPrice) : 0;
+  const finalPrice = Math.max(0, subtotalPrice - discountAmount);
 
   useEffect(() => {
     const updateTimes = () => {
@@ -74,7 +78,6 @@ const CartDrawer = () => {
     if (!isCartOpen || !isLoggedIn) {
       setAllVouchers([]);
       setSelectedVoucherId(null);
-      setSelectedAddonVoucherId(null);
       return;
     }
     listMyVouchers()
@@ -113,10 +116,11 @@ const CartDrawer = () => {
         finalPickupTime = new Date(minAllowedTime).toISOString();
       }
 
-      const result = await createOrder(items, {
+      let payloadItems = [...items];
+
+      const result = await createOrder(payloadItems, {
         pickupTime: finalPickupTime,
-        voucherId: selectedVoucherId ?? undefined,
-        addonVoucherId: selectedAddonVoucherId ?? undefined,
+        discountVoucherIds: selectedVoucherId ? [selectedVoucherId] : [],
       });
       clearCart();
       setCartOpen(false);
@@ -124,7 +128,6 @@ const CartDrawer = () => {
       setPickupTime("");
       setIsTimeCustom(false);
       setSelectedVoucherId(null);
-      setSelectedAddonVoucherId(null);
       router.push("/history");
     } catch (err) {
       if (err instanceof PriceChangedError) {
@@ -134,15 +137,13 @@ const CartDrawer = () => {
         setCheckout({ status: "error", message });
       }
     }
-  }, [items, clearCart, isLoggedIn, openLogin, router, setCartOpen, resetCheckout, pickupTime, selectedVoucherId, selectedAddonVoucherId]);
+  }, [items, clearCart, isLoggedIn, openLogin, router, setCartOpen, resetCheckout, pickupTime, selectedVoucherId]);
 
   const handleClose = useCallback(() => {
     setCartOpen(false);
     resetCheckout();
     setSelectedVoucherId(null);
-    setSelectedAddonVoucherId(null);
     setVoucherPickerOpen(false);
-    setAddonVoucherPickerOpen(false);
   }, [setCartOpen, resetCheckout]);
 
   return (
@@ -331,8 +332,14 @@ const CartDrawer = () => {
                                 </span>
                                 <button
                                   onClick={() => updateQuantity(item.cartId, item.quantity + 1)}
+                                  disabled={!!item.productVoucherId || !!item.addonVoucherId}
                                   aria-label="Tăng số lượng"
-                                  className="w-6 h-6 rounded-full flex items-center justify-center text-primary hover:bg-primary/10 transition-colors"
+                                  className={cn(
+                                    "w-6 h-6 rounded-full flex items-center justify-center transition-colors",
+                                    (item.productVoucherId || item.addonVoucherId)
+                                      ? "text-primary/30 cursor-not-allowed"
+                                      : "text-primary hover:bg-primary/10"
+                                  )}
                                 >
                                   <Plus className="w-3.5 h-3.5" />
                                 </button>
@@ -340,7 +347,12 @@ const CartDrawer = () => {
                               <div className="flex items-center gap-1.5">
                                 {item.productVoucherId && (
                                   <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full flex items-center gap-1">
-                                    <Ticket className="w-2.5 h-2.5" /> Voucher
+                                    <Ticket className="w-2.5 h-2.5" /> Miễn phí món
+                                  </span>
+                                )}
+                                {item.addonVoucherId && (
+                                  <span className="text-[10px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                                    <Ticket className="w-2.5 h-2.5" /> Miễn phí topping
                                   </span>
                                 )}
                                 <span className="text-sm font-bold text-primary bg-primary/5 px-2.5 py-1 rounded-lg">
@@ -348,6 +360,114 @@ const CartDrawer = () => {
                                 </span>
                               </div>
                             </div>
+                            
+                            {/* Product Voucher Application */}
+                            {(() => {
+                              const productVouchersForItem = applicableProductVouchers.get(item.menuItemId) || [];
+                              if (productVouchersForItem.length === 0 && !item.productVoucherId) return null;
+                              
+                              if (item.productVoucherId) {
+                                return (
+                                  <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between">
+                                    <div className="flex items-center gap-1 text-[11px] text-orange-600 font-bold bg-orange-50 px-2 py-1 rounded-md">
+                                      <Ticket size={12} />
+                                      Đã áp dụng voucher sản phẩm
+                                    </div>
+                                    <button 
+                                      onClick={() => removeProductVoucher(item.cartId)}
+                                      className="text-[10px] font-bold text-red-400 hover:text-red-600 bg-red-50 px-2 py-1 rounded-md"
+                                    >
+                                      Bỏ
+                                    </button>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div className="mt-3 pt-3 border-t border-border/50">
+                                  <div className="flex flex-col gap-2">
+                                    <span className="text-[11px] text-primary/60 font-medium">
+                                      Bạn có {productVouchersForItem.length} voucher cho sản phẩm này:
+                                    </span>
+                                    <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
+                                      {productVouchersForItem.map(v => {
+                                        const savings = estimateProductSavings(v, item.originalClientPriceVnd);
+                                        return (
+                                          <button
+                                            key={v.id}
+                                            onClick={() => applyProductVoucher(item.cartId, v.id, v.covered_price_vnd ?? 0)}
+                                            className="shrink-0 flex items-center gap-1.5 border border-orange-200 bg-orange-50 hover:bg-orange-100 px-2 py-1.5 rounded-lg transition-colors"
+                                          >
+                                            <Ticket className="w-3 h-3 text-orange-600" />
+                                            <div className="flex flex-col items-start text-left">
+                                              <span className="text-[10px] font-bold text-orange-700 leading-none">Dùng voucher</span>
+                                              {savings > 0 && (
+                                                <span className="text-[9px] text-orange-600/80 mt-0.5 leading-none">
+                                                  Giảm {(savings / 1000).toLocaleString('vi-VN')}k
+                                                </span>
+                                              )}
+                                            </div>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Addon Voucher Application */}
+                            {(() => {
+                              const addonVouchersForItem = applicableAddonVouchersMap.get(item.cartId) || [];
+                              if (addonVouchersForItem.length === 0 && !item.addonVoucherId) return null;
+                              
+                              if (item.addonVoucherId) {
+                                return (
+                                  <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between">
+                                    <div className="flex items-center gap-1 text-[11px] text-green-600 font-bold bg-green-50 px-2 py-1 rounded-md">
+                                      <Ticket size={12} />
+                                      Đã áp dụng voucher topping
+                                    </div>
+                                    <button 
+                                      onClick={() => removeAddonVoucher(item.cartId)}
+                                      className="text-[10px] font-bold text-red-400 hover:text-red-600 bg-red-50 px-2 py-1 rounded-md"
+                                    >
+                                      Bỏ
+                                    </button>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div className="mt-3 pt-3 border-t border-border/50">
+                                  <div className="flex flex-col gap-2">
+                                    <span className="text-[11px] text-primary/60 font-medium">
+                                      Bạn có {addonVouchersForItem.length} voucher topping cho món này:
+                                    </span>
+                                    <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
+                                      {addonVouchersForItem.map(v => {
+                                        return (
+                                          <button
+                                            key={v.id}
+                                            onClick={() => applyAddonVoucher(item.cartId, v.id, v.addon_option_id!)}
+                                            className="shrink-0 flex items-center gap-1.5 border border-green-200 bg-green-50 hover:bg-green-100 px-2 py-1.5 rounded-lg transition-colors"
+                                          >
+                                            <Ticket className="w-3 h-3 text-green-600" />
+                                            <div className="flex flex-col items-start text-left">
+                                              <span className="text-[10px] font-bold text-green-700 leading-none">Miễn phí topping</span>
+                                              <span className="text-[9px] text-green-600/80 mt-0.5 leading-none">
+                                                {v.addonOption?.label || "Topping"}
+                                              </span>
+                                            </div>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
                           </div>
                         </div>
                       ))
@@ -401,9 +521,17 @@ const CartDrawer = () => {
                 {/* ── DISCOUNT Voucher Picker ── */}
                 {isLoggedIn && discountVouchers.length > 0 && (
                   <div className="border border-border/60 rounded-xl overflow-hidden">
-                    <button
+                    <div
+                      role="button"
+                      tabIndex={0}
                       onClick={() => setVoucherPickerOpen((o) => !o)}
-                      className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-secondary/20 transition-colors"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setVoucherPickerOpen((o) => !o);
+                        }
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-secondary/20 transition-colors cursor-pointer"
                     >
                       <div className="flex items-center gap-2">
                         <Ticket className="w-4 h-4 text-primary/60" />
@@ -430,7 +558,7 @@ const CartDrawer = () => {
                         )}
                         {voucherPickerOpen ? <ChevronUp className="w-4 h-4 text-primary/50" /> : <ChevronDown className="w-4 h-4 text-primary/50" />}
                       </div>
-                    </button>
+                    </div>
 
                     <AnimatePresence>
                       {voucherPickerOpen && (
@@ -474,81 +602,27 @@ const CartDrawer = () => {
                   </div>
                 )}
 
-                {/* ── ADDON Voucher Picker ── */}
-                {isLoggedIn && applicableAddonVouchers.length > 0 && (
-                  <div className="border border-border/60 rounded-xl overflow-hidden">
-                    <button
-                      onClick={() => setAddonVoucherPickerOpen((o) => !o)}
-                      className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-secondary/20 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Ticket className="w-4 h-4 text-green-600" />
-                        <span className="text-sm font-medium text-primary/80">
-                          {selectedAddonVoucherId
-                            ? (() => {
-                                const v = applicableAddonVouchers.find((x) => x.id === selectedAddonVoucherId);
-                                return v ? `Miễn phí: ${v.addonOption?.label ?? "Addon"}` : "Voucher topping";
-                              })()
-                            : "Chọn voucher topping"}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        {selectedAddonVoucherId && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setSelectedAddonVoucherId(null); }}
-                            className="text-[10px] font-bold text-red-400 hover:text-red-600 bg-red-50 px-2 py-0.5 rounded-full"
-                          >
-                            Bỏ
-                          </button>
-                        )}
-                        {addonVoucherPickerOpen ? <ChevronUp className="w-4 h-4 text-primary/50" /> : <ChevronDown className="w-4 h-4 text-primary/50" />}
-                      </div>
-                    </button>
-
-                    <AnimatePresence>
-                      {addonVoucherPickerOpen && (
-                        <motion.div
-                          initial={{ height: 0 }}
-                          animate={{ height: "auto" }}
-                          exit={{ height: 0 }}
-                          className="overflow-hidden border-t border-border/40"
-                        >
-                          <div className="max-h-40 overflow-y-auto divide-y divide-border/30">
-                            {applicableAddonVouchers.map((v) => {
-                              const isSelected = selectedAddonVoucherId === v.id;
-                              return (
-                                <button
-                                  key={v.id}
-                                  onClick={() => {
-                                    setSelectedAddonVoucherId(isSelected ? null : v.id);
-                                    setAddonVoucherPickerOpen(false);
-                                  }}
-                                  className={cn(
-                                    "w-full flex items-center justify-between px-3 py-2.5 text-left hover:bg-secondary/20 transition-colors",
-                                    isSelected && "bg-primary/5"
-                                  )}
-                                >
-                                  <div>
-                                    <p className="text-sm font-bold text-primary">{v.package.name}</p>
-                                    <p className="text-xs text-primary/60">Miễn phí {v.addonOption?.label ?? "addon"}</p>
-                                  </div>
-                                  {isSelected && <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                )}
-
                 {/* Total */}
-                <div className="flex items-center justify-between pt-2 border-t border-border/40">
-                  <span className="font-bold text-primary/60 text-sm tracking-widest uppercase">Tổng cộng</span>
-                  <span className="font-serif text-2xl font-bold text-primary">
-                    <span className="text-3xl">🐟</span> {totalPrice / 1000}k
-                  </span>
+                <div className="flex flex-col gap-1.5 pt-3 border-t border-border/40">
+                  {discountAmount > 0 && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-bold text-primary/60">Tạm tính</span>
+                      <span className="font-bold text-primary/60">{subtotalPrice / 1000}k</span>
+                    </div>
+                  )}
+                  {discountAmount > 0 && (
+                    <div className="flex items-center justify-between text-sm text-orange-600">
+                      <span className="font-bold">Giảm giá</span>
+                      <span className="font-bold">-{(discountAmount / 1000).toLocaleString('vi-VN')}k</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="font-bold text-primary/60 text-sm tracking-widest uppercase">Tổng cộng</span>
+                    <span className="font-serif text-2xl font-bold text-primary">
+                      <span className="text-3xl">🐟</span> {finalPrice / 1000}k
+                    </span>
+                  </div>
                 </div>
 
                 {/* Store closed notice — shown above submit when store is closed */}

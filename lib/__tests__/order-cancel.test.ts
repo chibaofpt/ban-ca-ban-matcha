@@ -16,6 +16,7 @@ const mockVoucherUpdate = vi.fn();
 const mockOrderItemFindMany = vi.fn();
 const mockPointsLogFindMany = vi.fn();
 const mockUserUpdate = vi.fn();
+const mockOrderDiscountVoucherFindMany = vi.fn();
 const mockTransaction = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
@@ -52,6 +53,10 @@ const CUSTOMER_SESSION = { id: "user-abc", role: "CUSTOMER", phone_number: "+849
 describe("PATCH /api/orders/[id] — customer self-cancel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockOrderItemFindMany.mockResolvedValue([]);
+    mockPointsLogFindMany.mockResolvedValue([]);
+    mockOrderDiscountVoucherFindMany.mockResolvedValue([]);
+
     // Default: transaction calls the callback with a mock tx that includes all needed tables
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
@@ -60,10 +65,8 @@ describe("PATCH /api/orders/[id] — customer self-cancel", () => {
         orderItem: { findMany: mockOrderItemFindMany },
         pointsLog: { findMany: mockPointsLogFindMany, create: vi.fn() },
         user: { update: mockUserUpdate },
+        orderDiscountVoucher: { findMany: mockOrderDiscountVoucherFindMany },
       };
-      // Default: no product vouchers, no surplus logs
-      mockOrderItemFindMany.mockResolvedValue([]);
-      mockPointsLogFindMany.mockResolvedValue([]);
       return fn(tx);
     });
   });
@@ -183,6 +186,7 @@ describe("PATCH /api/orders/[id] — customer self-cancel", () => {
       addon_voucher_id: null,
     });
     mockOrderUpdate.mockResolvedValue({ id: "order-123", status: "CANCELLED" });
+    mockOrderDiscountVoucherFindMany.mockResolvedValue([{ voucher_id: "voucher-xyz" }]);
     // restoreVouchersOnCancel calls findUnique to check current status
     mockVoucherFindUnique.mockResolvedValue({ status: "RESERVED" });
     mockVoucherUpdate.mockResolvedValue({ id: "voucher-xyz", status: "ACTIVE" });

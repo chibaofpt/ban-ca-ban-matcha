@@ -68,17 +68,46 @@ export function buildProductVoucherMap(
 
 /**
  * Returns usable ADDON vouchers whose addon_option_id appears in any cart item's
- * selectedOptionIds. Excludes already-used vouchers.
+ * selectedOptionIds or quantityAddonOptions. Excludes already-used vouchers.
  */
 export function matchAddonVouchers(
   vouchers: MyVoucher[],
   cartItems: CartItem[],
   usedVoucherIds: Set<string> = new Set()
 ): MyVoucher[] {
-  const allOptionIds = new Set(cartItems.flatMap((c) => c.selectedOptionIds));
+  const allOptionIds = new Set(
+    cartItems.flatMap((c) => [
+      ...c.selectedOptionIds,
+      ...c.quantityAddonOptions.map((q) => q.option_id),
+    ])
+  );
   return filterUsableVouchers(vouchers, "ADDON").filter(
     (v) => v.addon_option_id !== null && allOptionIds.has(v.addon_option_id) && !usedVoucherIds.has(v.id)
   );
+}
+
+/**
+ * Builds a map of cartId → applicable ADDON vouchers for all cart items.
+ */
+export function buildAddonVoucherMap(
+  vouchers: MyVoucher[],
+  cartItems: CartItem[]
+): Map<string, MyVoucher[]> {
+  const usable = filterUsableVouchers(vouchers, "ADDON");
+  const result = new Map<string, MyVoucher[]>();
+  for (const item of cartItems) {
+    const itemOptionIds = new Set([
+      ...item.selectedOptionIds,
+      ...item.quantityAddonOptions.map((q) => q.option_id),
+    ]);
+    const matches = usable.filter(
+      (v) => v.addon_option_id !== null && itemOptionIds.has(v.addon_option_id)
+    );
+    if (matches.length > 0) {
+      result.set(item.cartId, matches);
+    }
+  }
+  return result;
 }
 
 // ── Price preview helpers ─────────────────────────────────────────────────────

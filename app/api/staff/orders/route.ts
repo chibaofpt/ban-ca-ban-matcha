@@ -7,9 +7,8 @@ import { processOrderItems, OrderValidationError, PriceChangedError } from "@/li
 import type { ProductVoucherInfo } from "@/lib/orders";
 import {
   assertVoucherUsable,
-  calcDiscountVoucher,
+  calcMultiDiscountVouchers,
   calcProductVoucherSurplusPoints,
-  findAddonVoucherDiscount,
   VoucherError,
 } from "@/lib/vouchers";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
@@ -17,6 +16,7 @@ import type { IceOption } from "@/src/lib/types/cart";
 import type { Prisma } from "@prisma/client";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 import { checkStoreOpen } from "@/lib/storeSchedule";
+import { logSystemEvent } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -50,13 +50,13 @@ export async function POST(req: NextRequest) {
     const isAnonymous = !data.phone_number;
 
     // 5. Guard: anonymous orders may not carry vouchers
-    if (isAnonymous && data.voucher_id) {
+    if (isAnonymous && data.discount_voucher_ids.length > 0) {
       return NextResponse.json(
         { error: "Voucher cannot be applied to anonymous orders", code: "VALIDATION_ERROR" },
         { status: 400 }
       );
     }
-    if (isAnonymous && data.addon_voucher_id) {
+    if (isAnonymous && data.items.some(i => i.addon_voucher_id)) {
       return NextResponse.json(
         { error: "Addon voucher cannot be applied to anonymous orders", code: "VALIDATION_ERROR" },
         { status: 400 }
@@ -149,73 +149,83 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── Validate per-item ADDON vouchers ──────────────────────────────────
+    // addonVoucherMap: voucherId → addon_option_id
+    const addonVoucherMap = new Map<string, string>();
+    const addonVoucherIds = new Set<string>();
+    
+    if (existingUser) {
+      for (const item of data.items) {
+        if (item.addon_voucher_id) {
+          if (addonVoucherIds.has(item.addon_voucher_id)) {
+            return NextResponse.json(
+              { error: "The same addon voucher cannot be applied to multiple items", code: "VALIDATION_ERROR" },
+              { status: 400 }
+            );
+          }
+          const av = await prisma.voucher.findUnique({ where: { id: item.addon_voucher_id } });
+          try {
+            assertVoucherUsable(av, existingUser.id, "ADDON");
+          } catch (e) {
+            if (e instanceof VoucherError) {
+              const status = e.code === "NOT_FOUND" ? 404 : e.code === "VALIDATION_ERROR" ? 400 : 422;
+              return NextResponse.json({ error: e.message, code: e.code }, { status });
+            }
+            throw e;
+          }
+          if (!av!.addon_option_id) {
+            return NextResponse.json(
+              { error: "Addon voucher has no addon_option_id configured", code: "VALIDATION_ERROR" },
+              { status: 400 }
+            );
+          }
+          addonVoucherMap.set(av!.id, av!.addon_option_id);
+          addonVoucherIds.add(av!.id);
+        }
+      }
+    }
+
     // Step 3: Validate + price-check all items (reads from DB, no writes)
-    const resolvedItems = await processOrderItems(data.items, prisma, productVoucherMap);
+    const resolvedItems = await processOrderItems(data.items, prisma, productVoucherMap, addonVoucherMap);
 
     // Step 3: Calculate base subtotal
     const subtotal_vnd = resolvedItems.reduce((sum, item) => sum + item.line_total, 0);
 
-    // ── Voucher validation — ADDON → DISCOUNT order ───────────────────────────
+    // ── Validate DISCOUNT vouchers (multi) ──────────────────────────────
+    const validatedDiscountVouchers: { id: string; discount_type: import("@prisma/client").DiscountType | null; discount_value: number | null }[] = [];
+    let percentVoucherCount = 0;
 
-    // ADDON voucher
-    let addon_voucher_id: string | null = null;
-    let addon_discount_vnd = 0;
-
-    if (data.addon_voucher_id && existingUser) {
-      const addonVoucher = await prisma.voucher.findUnique({ where: { id: data.addon_voucher_id } });
-
-      try {
-        assertVoucherUsable(addonVoucher, existingUser.id, "ADDON");
-      } catch (e) {
-        if (e instanceof VoucherError) {
-          const statusMap: Record<string, number> = {
-            NOT_FOUND: 404, VOUCHER_REDEEMED: 422, VOUCHER_EXPIRED: 422,
-            CONFLICT: 422, VALIDATION_ERROR: 400,
-          };
-          return NextResponse.json(
-            { error: e.message, code: e.code },
-            { status: statusMap[e.code] ?? 400 }
-          );
+    if (existingUser && data.discount_voucher_ids.length > 0) {
+      for (const dvId of data.discount_voucher_ids) {
+        const dv = await prisma.voucher.findUnique({ where: { id: dvId } });
+        try {
+          assertVoucherUsable(dv, existingUser.id, "DISCOUNT");
+        } catch (e) {
+          if (e instanceof VoucherError) {
+            const status = e.code === "NOT_FOUND" ? 404 : e.code === "VALIDATION_ERROR" ? 400 : 422;
+            return NextResponse.json({ error: e.message, code: e.code }, { status });
+          }
+          throw e;
         }
-        throw e;
+        if (dv!.discount_type === "PERCENT") {
+          percentVoucherCount++;
+          if (percentVoucherCount > 1) {
+            return NextResponse.json(
+              { error: "Chỉ được áp tối đa 1 voucher giảm phần trăm cho một đơn hàng", code: "VALIDATION_ERROR" },
+              { status: 400 }
+            );
+          }
+        }
+        validatedDiscountVouchers.push({
+          id: dv!.id,
+          discount_type: dv!.discount_type,
+          discount_value: dv!.discount_value,
+        });
       }
-
-      if (addonVoucher!.addon_option_id) {
-        addon_discount_vnd = findAddonVoucherDiscount(resolvedItems, addonVoucher!.addon_option_id);
-      }
-      addon_voucher_id = addonVoucher!.id;
     }
 
-    const subtotal_after_addon = Math.max(0, subtotal_vnd - addon_discount_vnd);
-
-    // DISCOUNT voucher
-    let discount_voucher_id: string | null = null;
-    let discount_vnd = 0;
-
-    if (data.voucher_id && existingUser) {
-      const discountVoucher = await prisma.voucher.findUnique({ where: { id: data.voucher_id } });
-
-      try {
-        assertVoucherUsable(discountVoucher, existingUser.id, "DISCOUNT");
-      } catch (e) {
-        if (e instanceof VoucherError) {
-          const statusMap: Record<string, number> = {
-            NOT_FOUND: 404, VOUCHER_REDEEMED: 422, VOUCHER_EXPIRED: 422,
-            CONFLICT: 422, VALIDATION_ERROR: 400,
-          };
-          return NextResponse.json(
-            { error: e.message, code: e.code },
-            { status: statusMap[e.code] ?? 400 }
-          );
-        }
-        throw e;
-      }
-
-      discount_vnd = calcDiscountVoucher(discountVoucher!, subtotal_after_addon);
-      discount_voucher_id = discountVoucher!.id;
-    }
-
-    const total_vnd = Math.max(0, subtotal_after_addon - discount_vnd);
+    const discount_vnd = calcMultiDiscountVouchers(validatedDiscountVouchers, subtotal_vnd);
+    const total_vnd = Math.max(0, subtotal_vnd - discount_vnd);
     // Anonymous orders never earn points
     const points_earned = isAnonymous ? 0 : Math.floor(total_vnd / 10000);
 
@@ -261,11 +271,9 @@ export async function POST(req: NextRequest) {
           data: {
             user_id: userId,       // null for anonymous orders
             handled_by: session.id,
-            voucher_id: discount_voucher_id,
-            addon_voucher_id: addon_voucher_id,
             status: "COMPLETED",
             subtotal_vnd,
-            discount_vnd: addon_discount_vnd + discount_vnd,
+            discount_vnd,
             total_vnd,
             points_earned,
             pickup_time: null,
@@ -296,10 +304,10 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        // Mark DISCOUNT voucher as redeemed (OFFLINE for staff counter)
-        if (discount_voucher_id) {
+        // Mark DISCOUNT vouchers as redeemed (OFFLINE for staff counter)
+        for (const dv of validatedDiscountVouchers) {
           await tx.voucher.update({
-            where: { id: discount_voucher_id },
+            where: { id: dv.id },
             data: {
               status: "REDEEMED",
               used_channel: "OFFLINE",
@@ -307,12 +315,15 @@ export async function POST(req: NextRequest) {
               redeemed_by: session.id,
             },
           });
+          await tx.orderDiscountVoucher.create({
+            data: { order_id: createdOrder.id, voucher_id: dv.id },
+          });
         }
 
-        // Mark ADDON voucher as redeemed (OFFLINE)
-        if (addon_voucher_id) {
+        // Mark ADDON vouchers as redeemed (OFFLINE)
+        for (const avId of addonVoucherIds) {
           await tx.voucher.update({
-            where: { id: addon_voucher_id },
+            where: { id: avId },
             data: {
               status: "REDEEMED",
               used_channel: "OFFLINE",
@@ -417,7 +428,17 @@ export async function POST(req: NextRequest) {
     const errMsg = err instanceof Error ? err.message : String(err);
     const errStack = err instanceof Error ? err.stack : undefined;
     const errName = err instanceof Error ? err.name : typeof err;
+    
+    // Fallback to console + save to SystemLog
     console.error("[POST /api/staff/orders] UNHANDLED ERROR:", { name: errName, message: errMsg, stack: errStack });
+    await logSystemEvent({
+      level: "error",
+      source: "POST /api/staff/orders",
+      message: errMsg,
+      error: err,
+      context: { body },
+    });
+
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },
       { status: 500 }
@@ -530,12 +551,7 @@ export async function GET(req: NextRequest) {
             await prisma.$transaction(
               async (tx) => {
                 await tx.order.update({ where: { id: orderId }, data: { status: 'CANCELLED' } });
-                await restoreVouchersOnCancel(
-                  tx,
-                  orderId,
-                  expired.voucher_id,
-                  (expired as typeof expired & { addon_voucher_id?: string | null }).addon_voucher_id ?? null
-                );
+                await restoreVouchersOnCancel(tx, orderId);
               },
               { maxWait: 5000, timeout: 10000 }
             );

@@ -4,6 +4,21 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { CartItem } from "@/src/lib/types/cart";
 
+function computeFinalClientPrice(item: CartItem): number {
+  const baseDrinkPrice = item.unitPrice - item.addonsPrice;
+  const voucherCredit = item.productVoucherDiscountVnd ?? 0;
+  
+  const drinkAfterCredit = Math.max(0, baseDrinkPrice - voucherCredit);
+  const remainingCredit = Math.max(0, voucherCredit - baseDrinkPrice);
+  
+  const addonsAfterCredit = Math.max(0, item.addonsPrice - remainingCredit);
+  const addonDiscount = item.addonVoucherDiscountVnd ?? 0;
+  
+  const finalAddonsPrice = Math.max(0, addonsAfterCredit - addonDiscount);
+  
+  return drinkAfterCredit + finalAddonsPrice;
+}
+
 interface CartState {
   items: CartItem[];
   isCartOpen: boolean;
@@ -22,6 +37,8 @@ interface CartState {
    * Removes a PRODUCT voucher from a cart item and restores the original price.
    */
   removeProductVoucher: (cartId: string) => void;
+  applyAddonVoucher: (cartId: string, voucherId: string, addonOptionId: string) => void;
+  removeAddonVoucher: (cartId: string) => void;
 }
 
 /**
@@ -50,39 +67,112 @@ export const useCartStore = create<CartState>()(
 
       updateQuantity: (cartId, quantity) => {
         set({
-          items: get().items.map((i) =>
-            i.cartId === cartId ? { ...i, quantity: Math.max(1, quantity) } : i
-          ),
+          items: get().items.map((i) => {
+            if (i.cartId !== cartId) return i;
+            // Prevent increasing quantity for items with vouchers
+            if ((i.productVoucherId || i.addonVoucherId) && quantity > 1) {
+              return i;
+            }
+            return { ...i, quantity: Math.max(1, quantity) };
+          }),
         });
       },
 
       clearCart: () => set({ items: [] }),
 
       applyProductVoucher: (cartId, voucherId, coveredPriceVnd) => {
-        set({
-          items: get().items.map((i) => {
-            if (i.cartId !== cartId) return i;
-            // Always compute from originalClientPriceVnd so swapping vouchers is idempotent.
-            const original = i.originalClientPriceVnd;
-            const discounted = Math.max(0, original - coveredPriceVnd);
-            return {
-              ...i,
-              productVoucherId: voucherId,
-              clientPriceVnd: discounted,
-            };
-          }),
+        let currentItems = get().items.map((i) => {
+          if (i.productVoucherId === voucherId) {
+            const nextI = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined };
+            nextI.clientPriceVnd = computeFinalClientPrice(nextI);
+            return nextI;
+          }
+          return i;
         });
+
+        const itemIndex = currentItems.findIndex((i) => i.cartId === cartId);
+        if (itemIndex === -1) return;
+
+        const item = currentItems[itemIndex];
+        const nextItem = { ...item, productVoucherId: voucherId, productVoucherDiscountVnd: coveredPriceVnd };
+        const discounted = computeFinalClientPrice(nextItem);
+        nextItem.clientPriceVnd = discounted;
+
+        if (item.quantity === 1) {
+          currentItems[itemIndex] = nextItem;
+          set({ items: currentItems });
+          return;
+        }
+
+        // Split the item if quantity > 1
+        const newItem = {
+          ...nextItem,
+          cartId: crypto.randomUUID(),
+          quantity: 1,
+        };
+
+        currentItems[itemIndex] = { ...item, quantity: item.quantity - 1 };
+        currentItems.splice(itemIndex + 1, 0, newItem);
+
+        set({ items: currentItems });
       },
 
       removeProductVoucher: (cartId) => {
         set({
           items: get().items.map((i) => {
             if (i.cartId !== cartId) return i;
-            return {
-              ...i,
-              productVoucherId: undefined,
-              clientPriceVnd: i.originalClientPriceVnd,
-            };
+            const nextItem = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined };
+            nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
+            return nextItem;
+          }),
+        });
+      },
+
+      applyAddonVoucher: (cartId, voucherId, addonOptionId) => {
+        let currentItems = get().items.map((i) => {
+          if (i.addonVoucherId === voucherId) {
+            const nextI = { ...i, addonVoucherId: undefined, addonVoucherDiscountVnd: undefined };
+            nextI.clientPriceVnd = computeFinalClientPrice(nextI);
+            return nextI;
+          }
+          return i;
+        });
+
+        const itemIndex = currentItems.findIndex((i) => i.cartId === cartId);
+        if (itemIndex === -1) return;
+
+        const item = currentItems[itemIndex];
+        const toppingPrice = item.addonPrices?.[addonOptionId] ?? 0;
+        const nextItem = { ...item, addonVoucherId: voucherId, addonVoucherDiscountVnd: toppingPrice };
+        const discounted = computeFinalClientPrice(nextItem);
+        nextItem.clientPriceVnd = discounted;
+
+        if (item.quantity === 1) {
+          currentItems[itemIndex] = nextItem;
+          set({ items: currentItems });
+          return;
+        }
+
+        // Split the item if quantity > 1
+        const newItem = {
+          ...nextItem,
+          cartId: crypto.randomUUID(),
+          quantity: 1,
+        };
+
+        currentItems[itemIndex] = { ...item, quantity: item.quantity - 1 };
+        currentItems.splice(itemIndex + 1, 0, newItem);
+
+        set({ items: currentItems });
+      },
+
+      removeAddonVoucher: (cartId) => {
+        set({
+          items: get().items.map((i) => {
+            if (i.cartId !== cartId) return i;
+            const nextItem = { ...i, addonVoucherId: undefined, addonVoucherDiscountVnd: undefined };
+            nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
+            return nextItem;
           }),
         });
       },
