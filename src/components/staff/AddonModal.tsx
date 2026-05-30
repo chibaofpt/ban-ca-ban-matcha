@@ -132,24 +132,30 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
     }
 
     let addonsCost = 0;
+    const addonPricesMap: Record<string, number> = {};
+
     for (const g of item.addon_groups) {
       if (g.type === "QUANTITY") {
         const qty = quantityMap[g.id] ?? 0;
         const opt = g.options[0];
         if (qty > 0 && opt) {
           const rawCost = qty * (opt.gram_value != null ? opt.gram_value * pwd_price_per_gram : opt.price_vnd);
-          addonsCost += ceilTo1000(rawCost);
+          const lineCost = ceilTo1000(rawCost);
+          addonsCost += lineCost;
+          addonPricesMap[opt.id] = ceilTo1000(opt.gram_value != null ? opt.gram_value * pwd_price_per_gram : opt.price_vnd);
         }
       } else {
         for (const opt of g.options) {
           if (selectedOptionIds.includes(opt.id)) {
             const rawCost = opt.gram_value != null ? opt.gram_value * pwd_price_per_gram : opt.price_vnd;
-            addonsCost += ceilTo1000(rawCost);
+            const lineCost = ceilTo1000(rawCost);
+            addonsCost += lineCost;
+            addonPricesMap[opt.id] = lineCost;
           }
         }
       }
     }
-    return { baseDrinkPrice, addonsCost, unitPrice: baseDrinkPrice + addonsCost };
+    return { baseDrinkPrice, addonsCost, unitPrice: baseDrinkPrice + addonsCost, addonPricesMap };
   };
 
   const currentPriceContext = getPriceForContext(selectedSize, activePowderId);
@@ -272,6 +278,7 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
       selectedOptionIds,
       quantityMap,
       addonsPrice: finalAddonsCost,
+      addonPrices: freeVoucherId ? {} : currentPriceContext.addonPricesMap,
       quantityAddonOptions,
       selectedPowderId: isLatte ? undefined : selectedPowderId,
       selectedMilkTypeId: isLatte ? selectedMilkId : undefined,

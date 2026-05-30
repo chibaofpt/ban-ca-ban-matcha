@@ -167,3 +167,51 @@ export function findAddonVoucherDiscount(
 export function calcPointsEarned(total_vnd: number): number {
   return Math.floor(total_vnd / 10000);
 }
+
+// ── Multi DISCOUNT voucher calculation ───────────────────────────────────────
+
+/**
+ * Calculates total discount from multiple DISCOUNT vouchers.
+ * Rule: nhiều FIXED + tối đa 1 PERCENT.
+ * Order: all FIXED first (trừ lần lượt), then 1 PERCENT on remaining amount.
+ * Result capped so subtotal never goes below 0.
+ * @returns total discount amount (NOT the remaining subtotal)
+ */
+export function calcMultiDiscountVouchers(
+  vouchers: Pick<Voucher, "discount_type" | "discount_value">[],
+  subtotal_vnd: number
+): number {
+  let remaining = subtotal_vnd;
+
+  // 1. Apply all FIXED first
+  for (const v of vouchers) {
+    if (v.discount_type === "FIXED" && v.discount_value !== null) {
+      remaining = Math.max(0, remaining - v.discount_value);
+    }
+  }
+
+  // 2. Apply the single PERCENT voucher (if any)
+  const percentVoucher = vouchers.find(
+    (v) => v.discount_type === "PERCENT" && v.discount_value !== null
+  );
+  if (percentVoucher && percentVoucher.discount_value !== null) {
+    const pct = Math.min(percentVoucher.discount_value, 100);
+    remaining = Math.max(0, remaining - Math.floor((remaining * pct) / 100));
+  }
+
+  return subtotal_vnd - remaining;
+}
+
+/**
+ * Finds the addon discount for a specific order item with an ADDON voucher.
+ * Returns the unit_price_vnd of the matching addon on that specific item, or 0 if not found.
+ */
+export function findItemAddonVoucherDiscount(
+  item: ResolvedOrderItem,
+  target_addon_option_id: string
+): number {
+  const matchingAddon = item.resolvedAddons.find(
+    (a) => a.addon_option_id === target_addon_option_id
+  );
+  return matchingAddon ? matchingAddon.unit_price_vnd : 0;
+}

@@ -25,6 +25,8 @@ export interface CartItem {
   quantityMap: Record<string, number>;
   /** Total addon cost snapshot in VND. */
   addonsPrice: number;
+  /** Exact price for each selected addon option. Used for precise Addon Voucher discounts. */
+  addonPrices: Record<string, number>;
   /** Resolved QUANTITY addon options (option_id + qty > 0 only). Sent to API. */
   quantityAddonOptions: { option_id: string; quantity: number }[];
   /** Fusion only — selected powder id. */
@@ -44,6 +46,10 @@ export interface CartItem {
   originalClientPriceVnd: number;
   /** Set when this item was added via a PRODUCT voucher (unit price reduced by voucher credit). */
   productVoucherId?: string;
+  productVoucherDiscountVnd?: number;
+  /** Set when an ADDON voucher is applied to this item's addons. */
+  addonVoucherId?: string;
+  addonVoucherDiscountVnd?: number;
   /** Explicit list of human-readable customization details to display in the cart. */
   details?: string[];
 }

@@ -51,6 +51,7 @@ export interface OrderItemInput {
   note?: string;
   addon_option_ids: { option_id: string; quantity: number }[];
   product_voucher_id?: string;
+  addon_voucher_id?: string;
   selected_powder_id?: string;
   selected_milk_type_id?: string;
   client_price_vnd: number;
@@ -72,6 +73,8 @@ export interface ProcessedOrderItem {
   coldwhisk: boolean;
   note: string | null;
   product_voucher_id: string | null;
+  addon_voucher_id: string | null;
+  addon_discount_vnd: number;
   selected_powder_id: string;
   selected_milk_type_id: string | null;
   /** Amount customer actually pays for the drink (after voucher credit). 0 if fully covered. */
@@ -129,7 +132,8 @@ export class PriceChangedError extends Error {
 export async function processOrderItems(
   items: OrderItemInput[],
   client: DbClient,
-  productVoucherMap?: Map<string, ProductVoucherInfo>
+  productVoucherMap?: Map<string, ProductVoucherInfo>,
+  addonVoucherMap?: Map<string, string>
 ): Promise<ProcessedOrderItem[]> {
   // Build pricing context once — avoids N+1 across the item loop
   const pricingCtx = await buildPricingContext(client as Parameters<typeof buildPricingContext>[0]);
@@ -138,7 +142,7 @@ export async function processOrderItems(
 
   const resolved: ProcessedOrderItem[] = [];
   for (const item of items) {
-    const res = await resolveOneItem(item, client, pricingCtx, priceConflicts, productVoucherMap);
+    const res = await resolveOneItem(item, client, pricingCtx, priceConflicts, productVoucherMap, addonVoucherMap);
     resolved.push(res);
   }
 
@@ -157,9 +161,17 @@ async function resolveOneItem(
   client: DbClient,
   pricingCtx: PricingContext,
   priceConflicts: PriceConflict[],
-  productVoucherMap?: Map<string, ProductVoucherInfo>
+  productVoucherMap?: Map<string, ProductVoucherInfo>,
+  addonVoucherMap?: Map<string, string>
 ): Promise<ProcessedOrderItem> {
   // 1. Fetch menu item — must be available
+  if ((item.product_voucher_id || item.addon_voucher_id) && item.quantity > 1) {
+    throw new OrderValidationError(
+      "VALIDATION_ERROR",
+      "Voucher chỉ có thể áp dụng cho 1 sản phẩm. Vui lòng tách sản phẩm ra trước khi áp dụng."
+    );
+  }
+
   const menuItem = await (client as PrismaClient).menuItem.findUnique({
     where: { id: item.menu_item_id },
     include: { sizes: true, fusionAllowedPowders: true },
@@ -297,8 +309,25 @@ async function resolveOneItem(
 
   // Apply any remaining voucher credit to addons
   const addons_after_credit = Math.max(0, addons_price_vnd - remaining_credit);
+
+  // Apply ADDON voucher discount — find the specific addon and zero its cost
+  let addon_discount_vnd = 0;
+  if (item.addon_voucher_id && addonVoucherMap) {
+    const targetAddonOptionId = addonVoucherMap.get(item.addon_voucher_id);
+    if (targetAddonOptionId) {
+      const matchingAddon = resolvedAddons.find(
+        (a) => a.addon_option_id === targetAddonOptionId
+      );
+      if (matchingAddon) {
+        addon_discount_vnd = matchingAddon.unit_price_vnd;
+      }
+    }
+  }
+
+  const final_addons_price_after_addon_voucher = Math.max(0, addons_after_credit - addon_discount_vnd);
+
   const final_unit_price = drink_after_credit;
-  const final_addons_price = addons_after_credit;
+  const final_addons_price = final_addons_price_after_addon_voucher;
 
   // 6. PRICE_CHANGED check
   // Client sends total per item = what they expect to pay (after voucher).
@@ -324,9 +353,11 @@ async function resolveOneItem(
     coldwhisk: item.coldwhisk ?? false,
     note: item.note ?? null,
     product_voucher_id: item.product_voucher_id ?? null,
+    addon_voucher_id: item.addon_voucher_id ?? null,
     selected_powder_id: powder_id,
     selected_milk_type_id: item.selected_milk_type_id ?? null,
     unit_price_vnd: final_unit_price,
+    addon_discount_vnd,
     addons_price_vnd: final_addons_price,
     original_unit_price_vnd: server_unit_price,
     line_total,

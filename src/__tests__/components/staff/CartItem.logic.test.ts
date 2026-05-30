@@ -37,7 +37,7 @@ function makeCartItem(overrides: Partial<CartItem> = {}): CartItem {
     selectedOptionIds: ["opt-cow"],
     quantityMap: {},
     quantityAddonOptions: [],
-    addonsPrice: 0,
+    addonsPrice: 0, addonPrices: {},
     clientPriceVnd: 55000,
     originalClientPriceVnd: 55000,
     ...overrides,

@@ -29,6 +29,16 @@ export default function Hero() {
         className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none"
       />
 
+      {/* Overlay Chawan Image */}
+      <motion.img
+        src="/chawan.png"
+        alt="Chawan Bowl"
+        className="absolute top-1/2 left-2/3 -translate-x-1/2 -translate-y-1/2 z-10 w-40 md:w-56 lg:w-64 h-auto pointer-events-none drop-shadow-2xl"
+        initial={{ opacity: 0, scale: 0.9, y: "-45%", x: "-50%" }}
+        animate={{ opacity: 1, scale: 1, y: "-50%", x: "-50%" }}
+        transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
+      />
+
       <div className="absolute inset-0 bg-black/10 pointer-events-none" />
 
       {/* TOP RIGHT: Highlights vertical list */}

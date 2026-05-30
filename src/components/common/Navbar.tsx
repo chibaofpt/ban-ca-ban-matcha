@@ -7,8 +7,6 @@ import {
   X,
   LogIn,
   LogOut,
-  Gift,
-  Star,
   Home,
   Info,
   UtensilsCrossed,
@@ -95,15 +93,6 @@ const Navbar = () => {
             Menu
           </NavLink>
 
-          <NavLink
-            href="/profile/points"
-            className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-1.5"
-            activeClassName="text-primary"
-          >
-            <Star className="w-3.5 h-3.5" />
-            Đổi điểm
-          </NavLink>
-
           {isLoggedIn ? (
             <>
               <NavLink
@@ -112,16 +101,7 @@ const Navbar = () => {
                 activeClassName="text-primary"
               >
                 <ClipboardList className="w-3.5 h-3.5" />
-                Đơn hàng &amp; Điểm
-              </NavLink>
-
-              <NavLink
-                href="/profile/vouchers"
-                className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-1.5"
-                activeClassName="text-primary"
-              >
-                <Gift className="w-3.5 h-3.5" />
-                Voucher
+                Đơn hàng &amp; Voucher
               </NavLink>
 
               <button
@@ -234,16 +214,6 @@ const Navbar = () => {
                 Menu
               </NavLink>
 
-              <NavLink
-                href="/profile/points"
-                onClick={close}
-                className="text-sm font-medium py-2.5 flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors"
-                activeClassName="text-primary"
-              >
-                <Star className="w-4 h-4" />
-                Đổi điểm
-              </NavLink>
-
               {isLoggedIn ? (
                 <>
                   <NavLink
@@ -253,17 +223,7 @@ const Navbar = () => {
                     activeClassName="text-primary"
                   >
                     <ClipboardList className="w-4 h-4" />
-                    Đơn hàng &amp; Điểm
-                  </NavLink>
-
-                  <NavLink
-                    href="/profile/vouchers"
-                    onClick={close}
-                    className="text-sm font-medium py-2.5 flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors"
-                    activeClassName="text-primary"
-                  >
-                    <Gift className="w-4 h-4" />
-                    Voucher
+                    Đơn hàng &amp; Voucher
                   </NavLink>
 
                   <button

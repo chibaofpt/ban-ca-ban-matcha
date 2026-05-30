@@ -57,7 +57,7 @@ function makeCartItem(overrides: Partial<CartItem> = {}): CartItem {
     note: "",
     selectedOptionIds: [],
     quantityMap: {},
-    addonsPrice: 0,
+    addonsPrice: 0, addonPrices: {},
     quantityAddonOptions: [],
     clientPriceVnd: 69000,
     originalClientPriceVnd: 69000,

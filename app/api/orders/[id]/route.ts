@@ -18,7 +18,7 @@ async function tryLazyCancel(orderId: string, auto_cancel_at: Date | null): Prom
     async (tx) => {
       const order = await tx.order.findUnique({
         where: { id: orderId },
-        select: { id: true, status: true, voucher_id: true, addon_voucher_id: true },
+        select: { id: true, status: true },
       });
       // Only cancel if still PENDING (prevent double-cancel race)
       if (!order || order.status !== "PENDING") return;
@@ -28,7 +28,7 @@ async function tryLazyCancel(orderId: string, auto_cancel_at: Date | null): Prom
         data: { status: "CANCELLED" },
       });
 
-      await restoreVouchersOnCancel(tx, orderId, order.voucher_id, order.addon_voucher_id);
+      await restoreVouchersOnCancel(tx, orderId);
     },
     { maxWait: 5000, timeout: 10000 }
   );
@@ -97,7 +97,6 @@ export async function GET(
             order_code: order.order_code,
             status: "CANCELLED",
             order_type: order.order_type,
-            voucher_id: order.voucher_id,
             subtotal_vnd: order.subtotal_vnd,
             discount_vnd: order.discount_vnd,
             total_vnd: order.total_vnd,
@@ -132,7 +131,6 @@ export async function GET(
         order_code: order.order_code,
         status: order.status,
         order_type: order.order_type,
-        voucher_id: order.voucher_id,
         subtotal_vnd: order.subtotal_vnd,
         discount_vnd: order.discount_vnd,
         total_vnd: order.total_vnd,
@@ -182,7 +180,7 @@ export async function PATCH(
 
     const order = await prisma.order.findUnique({
       where: { id },
-      select: { id: true, status: true, user_id: true, voucher_id: true, addon_voucher_id: true },
+      select: { id: true, status: true, user_id: true },
     });
 
     if (!order || order.user_id !== session.id) {
@@ -203,7 +201,7 @@ export async function PATCH(
           data: { status: "CANCELLED" },
         });
 
-        await restoreVouchersOnCancel(tx, order.id, order.voucher_id, order.addon_voucher_id);
+        await restoreVouchersOnCancel(tx, order.id);
       },
       { maxWait: 5000, timeout: 10000 }
     );

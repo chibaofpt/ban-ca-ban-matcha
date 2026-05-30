@@ -169,6 +169,7 @@ export function useAddVoucherToCart() {
             menuItem.addon_groups.filter((g) => g.type === "QUANTITY").map((g) => [g.id, 0])
           ),
           addonsPrice: 0,
+          addonPrices: {},
           quantityAddonOptions: [],
           selectedPowderId: menuItem.category === "fusion" ? (voucher.matcha_powder_id ?? undefined) : undefined,
           selectedMilkTypeId: menuItem.category === "latte" ? (voucher.milk_type_id ?? undefined) : undefined,

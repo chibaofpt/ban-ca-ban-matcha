@@ -26,8 +26,6 @@ export async function PATCH(
         status: true,
         order_type: true,
         auto_cancel_at: true,
-        voucher_id: true,
-        addon_voucher_id: true,
       },
     });
 
@@ -56,7 +54,7 @@ export async function PATCH(
       await prisma.$transaction(
         async (tx) => {
           await tx.order.update({ where: { id }, data: { status: "CANCELLED" } });
-          await restoreVouchersOnCancel(tx, id, order.voucher_id, order.addon_voucher_id);
+          await restoreVouchersOnCancel(tx, id);
         },
         { maxWait: 5000, timeout: 10000 }
       );
@@ -81,47 +79,44 @@ export async function PATCH(
           },
         });
 
-        // DISCOUNT voucher was RESERVED — now fully REDEEMED
-        if (order.voucher_id) {
-          await tx.voucher.update({
-            where: { id: order.voucher_id },
-            data: {
-              status: "REDEEMED",
-              used_channel: "ONLINE",
-              redeemed_at: new Date(),
-              redeemed_by: session.id,
-            },
-          });
-        }
+        // ── Redeem all Vouchers ──
 
-        // ADDON voucher was RESERVED — now fully REDEEMED
-        if (order.addon_voucher_id) {
-          await tx.voucher.update({
-            where: { id: order.addon_voucher_id },
-            data: {
-              status: "REDEEMED",
-              used_channel: "ONLINE",
-              redeemed_at: new Date(),
-              redeemed_by: session.id,
-            },
-          });
-        }
-
-        // PRODUCT vouchers were RESERVED — transition to REDEEMED
-        const productVoucherItems = await tx.orderItem.findMany({
-          where: { order_id: id, product_voucher_id: { not: null } },
-          select: { product_voucher_id: true },
+        // 1. DISCOUNT vouchers
+        const discountLinks = await tx.orderDiscountVoucher.findMany({
+          where: { order_id: id },
+          select: { voucher_id: true },
         });
-        const uniquePvIds = [
-          ...new Set(
-            productVoucherItems
-              .map((i) => i.product_voucher_id)
-              .filter((pvId): pvId is string => pvId !== null)
-          ),
-        ];
-        for (const pvId of uniquePvIds) {
+        for (const link of discountLinks) {
           await tx.voucher.update({
-            where: { id: pvId },
+            where: { id: link.voucher_id },
+            data: {
+              status: "REDEEMED",
+              used_channel: "ONLINE",
+              redeemed_at: new Date(),
+              redeemed_by: session.id,
+            },
+          });
+        }
+
+        // 2. PRODUCT & ADDON vouchers
+        const voucherItems = await tx.orderItem.findMany({
+          where: { 
+            order_id: id,
+            OR: [{ product_voucher_id: { not: null } }, { addon_voucher_id: { not: null } }],
+          },
+          select: { product_voucher_id: true, addon_voucher_id: true },
+        });
+
+        const uniqueItemVoucherIds = [
+          ...new Set([
+            ...voucherItems.map((i) => i.product_voucher_id).filter((id): id is string => id !== null),
+            ...voucherItems.map((i) => i.addon_voucher_id).filter((id): id is string => id !== null),
+          ]),
+        ];
+
+        for (const vId of uniqueItemVoucherIds) {
+          await tx.voucher.update({
+            where: { id: vId },
             data: {
               status: "REDEEMED",
               used_channel: "ONLINE",

@@ -71,18 +71,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const order = await tx.order.findUnique({
         where: { id },
         include: {
-          voucher: { select: { id: true, status: true } },
           items: { select: { product_voucher_id: true } },
         },
       });
       if (!order) throw new Error("NOT_FOUND");
 
-      // Also read addon_voucher_id
-      const orderWithAddon = await tx.order.findUnique({
-        where: { id },
-        select: { addon_voucher_id: true },
-      });
-      const addon_voucher_id = orderWithAddon?.addon_voucher_id ?? null;
+
 
       // Validate transition rules
       const transitionError = validateTransition(order.status, status, session.role as "STAFF" | "ADMIN");
@@ -125,18 +119,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       // When cancelling: restore ALL vouchers to ACTIVE
       if (status === "CANCELLED") {
-        await restoreVouchersOnCancel(
-          tx,
-          id,
-          order.voucher_id,
-          addon_voucher_id
-        );
+        await restoreVouchersOnCancel(tx, id);
       }
 
       // When → COMPLETED: mark all PRODUCT vouchers as REDEEMED
       if (status === "COMPLETED") {
-        const pvItems = order.items.filter((i) => i.product_voucher_id !== null);
-        const uniquePvIds = [...new Set(pvItems.map((i) => i.product_voucher_id as string))];
+        const pvItems = order.items.filter((i: { product_voucher_id: string | null }) => i.product_voucher_id !== null);
+        const uniquePvIds = [...new Set(pvItems.map((i: { product_voucher_id: string | null }) => i.product_voucher_id as string))];
         for (const pvId of uniquePvIds) {
           const pv = await tx.voucher.findUnique({
             where: { id: pvId },

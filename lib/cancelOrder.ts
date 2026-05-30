@@ -10,7 +10,7 @@ import type { PrismaClient } from "@prisma/client";
 /** Structural type satisfied by both PrismaClient and the Prisma transaction client. */
 type CancelTxClient = Pick<
   PrismaClient,
-  "order" | "orderItem" | "voucher" | "user" | "pointsLog"
+  "order" | "orderItem" | "voucher" | "user" | "pointsLog" | "orderDiscountVoucher"
 >;
 
 /**
@@ -19,58 +19,49 @@ type CancelTxClient = Pick<
  *
  * @param tx - Prisma transaction client (must be called inside $transaction)
  * @param orderId - The ID of the order being cancelled
- * @param discountVoucherId - The order's `voucher_id` (DISCOUNT voucher), or null
- * @param addonVoucherId - The order's `addon_voucher_id` (ADDON voucher), or null
  */
 export async function restoreVouchersOnCancel(
   tx: CancelTxClient,
-  orderId: string,
-  discountVoucherId: string | null,
-  addonVoucherId: string | null
+  orderId: string
 ): Promise<void> {
-  // 1. Restore DISCOUNT voucher → ACTIVE (if RESERVED or REDEEMED)
-  if (discountVoucherId) {
+  // 1. Restore all DISCOUNT vouchers tied to this order
+  const discountLinks = await tx.orderDiscountVoucher.findMany({
+    where: { order_id: orderId },
+    select: { voucher_id: true },
+  });
+
+  const uniqueDiscountIds = [...new Set(discountLinks.map((l) => l.voucher_id))];
+
+  for (const dvId of uniqueDiscountIds) {
     const dv = await tx.voucher.findUnique({
-      where: { id: discountVoucherId },
+      where: { id: dvId },
       select: { status: true },
     });
     if (dv && (dv.status === "RESERVED" || dv.status === "REDEEMED")) {
       await tx.voucher.update({
-        where: { id: discountVoucherId },
+        where: { id: dvId },
         data: { status: "ACTIVE", redeemed_at: null, redeemed_by: null, used_channel: null },
       });
     }
   }
 
-  // 2. Restore ADDON voucher → ACTIVE (if RESERVED or REDEEMED)
-  if (addonVoucherId) {
-    const av = await tx.voucher.findUnique({
-      where: { id: addonVoucherId },
-      select: { status: true },
-    });
-    if (av && (av.status === "RESERVED" || av.status === "REDEEMED")) {
-      await tx.voucher.update({
-        where: { id: addonVoucherId },
-        data: { status: "ACTIVE", redeemed_at: null, redeemed_by: null, used_channel: null },
-      });
-    }
-  }
-
-  // 3. Find all PRODUCT vouchers on order items and restore each to ACTIVE
-  const productVoucherItems = await tx.orderItem.findMany({
-    where: { order_id: orderId, product_voucher_id: { not: null } },
-    select: { product_voucher_id: true },
+  // 2. Find all PRODUCT & ADDON vouchers on order items and restore each to ACTIVE
+  const voucherItems = await tx.orderItem.findMany({
+    where: { 
+      order_id: orderId,
+      OR: [{ product_voucher_id: { not: null } }, { addon_voucher_id: { not: null } }],
+    },
+    select: { product_voucher_id: true, addon_voucher_id: true },
   });
 
-  const uniqueProductVoucherIds = [
-    ...new Set(
-      productVoucherItems
-        .map((i) => i.product_voucher_id)
-        .filter((id): id is string => id !== null)
-    ),
+  const uniqueItemVoucherIds = [
+    ...new Set([
+      ...voucherItems.map((i) => i.product_voucher_id).filter((id): id is string => id !== null),
+      ...voucherItems.map((i) => i.addon_voucher_id).filter((id): id is string => id !== null),
+    ]),
   ];
 
-  for (const pvId of uniqueProductVoucherIds) {
+  for (const pvId of uniqueItemVoucherIds) {
     const pv = await tx.voucher.findUnique({
       where: { id: pvId },
       select: { status: true },

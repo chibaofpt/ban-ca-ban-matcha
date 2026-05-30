@@ -2,8 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
-import { useRouter } from 'next/navigation';
-import { Search, ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Gift } from 'lucide-react';
 import Link from 'next/link';
 
 import type { MenuData, MenuItem, Category } from '@/src/lib/types/menu';
@@ -16,7 +15,10 @@ import MenuCard from '@/src/components/menu/MenuCard';
 import ProductModal from '@/src/components/menu/ProductModal';
 import CartButton from '@/src/components/menu/CartButton';
 import CartDrawer from '@/src/components/menu/CartDrawer';
-import { Skeleton } from '@/src/components/ui/skeleton';
+import VoucherModal from '@/src/components/shared/VoucherModal';
+import { useVoucherModalStore } from '@/src/lib/store/voucherModalStore';
+import { useIsLoggedIn } from '@/src/lib/store/authStore';
+import { usePointsStore } from '@/src/lib/store/pointsStore';
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 20 },
@@ -28,19 +30,27 @@ const fadeUp: Variants = {
 };
 
 export default function MenuPage() {
-  const router = useRouter();
   const [data, setData] = useState<MenuData | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>('latte');
-
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
 
   const setPowderData = usePowderStore((s) => s.setPowderData);
+  const isLoggedIn = useIsLoggedIn();
+  const openVoucherModal = useVoucherModalStore((s) => s.openModal);
+  
+  const points = usePointsStore((s) => s.points);
+  const fetchPoints = usePointsStore((s) => s.fetchPoints);
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchPoints();
+    }
+  }, [isLoggedIn, fetchPoints]);
 
   useEffect(() => {
     Promise.all([fetchMenu(), fetchPowders()])
       .then(([menuRes, powderRes]) => {
-        console.log("DEBUG: GET /api/menu response:", menuRes);
         setData(menuRes);
         setPowderData(powderRes);
       })
@@ -63,8 +73,8 @@ export default function MenuPage() {
     <main className="min-h-screen bg-[#fdfcf7] text-foreground font-sans pt-8 pb-32 px-6">
       <div className="max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto">
 
-        {/* Back Button */}
-        <div className="">
+        {/* Header — 1 row: Back + Title + Voucher button */}
+        <div className="flex items-center justify-between mb-3">
           <Link
             href="/"
             className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-sm border border-border/50 text-primary/60 hover:text-primary hover:shadow-md hover:scale-105 transition-all"
@@ -72,21 +82,28 @@ export default function MenuPage() {
           >
             <ArrowLeft className="w-5 h-5 -ml-0.5" />
           </Link>
+
+          <h1 className="font-serif text-2xl md:text-3xl font-bold text-primary">Menu</h1>
+
+          {isLoggedIn ? (
+            <button
+              id="voucher-modal-trigger-menu"
+              onClick={openVoucherModal}
+              className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-amber-500 to-orange-500 shadow-sm shadow-orange-500/20 px-3.5 py-2.5 rounded-xl hover:scale-105 transition-transform"
+            >
+              <Gift size={14} />
+              <span>Đổi quà {points !== null && `(${points} 🐟)`}</span>
+            </button>
+          ) : (
+            <div className="w-10" />
+          )}
         </div>
+        <p className="text-center text-primary/60 text-sm italic mb-10">Chọn đúng mùa, đúng vị, đúng giá</p>
 
-        {/* Header - Match Image 3 */}
-        <div className="text-center mb-12">
-          <h1 className="font-serif text-4xl md:text-5xl font-bold text-primary mb-2">Menu</h1>
-          <p className="text-primary/60 text-sm italic">Chọn đúng mùa, đúng vị, đúng giá</p>
-        </div>
-
-        {/* Search Bar - Removed */}
-
-
-        {/* Tabs - Now using restored TabBar */}
+        {/* Tabs */}
         <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-        {/* Menu Grid - Match Image 2/3 */}
+        {/* Menu Grid */}
         <div className="mt-4">
           <AnimatePresence mode="wait">
             {loading ? (
@@ -137,6 +154,7 @@ export default function MenuPage() {
         />
       )}
 
+      <VoucherModal />
       <CartButton />
       <CartDrawer />
     </main>

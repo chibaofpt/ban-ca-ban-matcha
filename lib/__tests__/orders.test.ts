@@ -528,6 +528,31 @@ describe("processOrderItems", () => {
 
   // ── Validation errors ──────────────────────────────────────────────────────
 
+  it("throws OrderValidationError (VALIDATION_ERROR) when item with voucher has quantity > 1", async () => {
+    const tx = makeTx({ menuItemResult: latteMenuItem });
+
+    await expect(
+      processOrderItems(
+        [
+          {
+            menu_item_id: MENU_ITEM_ID,
+            quantity: 2,
+            size: "L",
+            sweetness: "QUARTER",
+            addon_option_ids: [],
+            product_voucher_id: "voucher-123",
+            client_price_vnd: 69000,
+          },
+        ],
+        tx as never
+      )
+    ).rejects.toMatchObject({
+      name: "OrderValidationError",
+      code: "VALIDATION_ERROR",
+      message: "Voucher chỉ có thể áp dụng cho 1 sản phẩm. Vui lòng tách sản phẩm ra trước khi áp dụng.",
+    });
+  });
+
   it("throws OrderValidationError (NOT_FOUND) when menu item does not exist", async () => {
     const tx = makeTx({ menuItemResult: null });
 

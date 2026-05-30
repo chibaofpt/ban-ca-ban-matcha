@@ -39,3 +39,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local backup/utility scripts
+/backup_vouchers.js
+/backup_vouchers.json
+/fix.js
+/update_staff_orders.js
+
+# local logs
+/app/\(admin-shell\)/admin/logs/
+/app/api/admin/logs/
+.antigravitycli/
