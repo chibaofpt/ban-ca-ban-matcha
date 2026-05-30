@@ -340,11 +340,12 @@ Same shape as `GET /api/menu` but:
     note?: string
     addon_option_ids: { option_id: string, quantity: number }[]
     product_voucher_id?: string
+    addon_voucher_id?: string
     selected_powder_id?: string       // Fusion only
     selected_milk_type_id?: string    // Latte only, optional (defaults to sữa bò)
     client_price_vnd: number          // REQUIRED — frontend computed price. Missing = VALIDATION_ERROR.
   }[]
-  voucher_id?: string
+  discount_voucher_ids?: string[]
   pickup_time?: string
   note?: string
   delivery_address?: string
@@ -382,12 +383,12 @@ Same shape as `GET /api/menu` but:
     note?: string
     addon_option_ids: { option_id: string, quantity: number }[]
     product_voucher_id?: string
+    addon_voucher_id?: string
     selected_powder_id?: string
     selected_milk_type_id?: string
     client_price_vnd: number          // REQUIRED
   }[]
-  discount_voucher_id?: string
-  addon_voucher_id?: string
+  discount_voucher_ids?: string[]
 }
 ```
 
@@ -492,10 +493,10 @@ Same shape as `GET /api/menu` but:
   - Display as "Khách vãng lai" in all order list views
 
 ### Vouchers
-- Stacking: Orders can use 1 PRODUCT (line item), 1 ADDON (order level), and 1 DISCOUNT (order level) voucher simultaneously. Order of application: PRODUCT -> ADDON -> DISCOUNT.
-- PRODUCT: Snapshot exact config. Server subtracts up to `covered_price_vnd`. If actual price < covered, surplus is refunded as points: `floor(surplus / 10000)`.
-- ADDON: Applies to the first item containing the target `addon_option_id`. Does NOT apply to Extra Matcha.
-- DISCOUNT: Applies % or fixed to the remaining subtotal.
+- Stacking: Orders can use 1 PRODUCT (per item), 1 ADDON (per item), and multiple DISCOUNT (order level) vouchers simultaneously. Order of application: PRODUCT -> ADDON -> DISCOUNT.
+- PRODUCT: Snapshot exact config. Server subtracts up to `covered_price_vnd` from drink price, remaining spills over to addons.
+- ADDON: Applies to the specific item containing the target `addon_option_id`. Does NOT apply to Extra Matcha.
+- DISCOUNT: Supports multiple FIXED vouchers and max 1 PERCENT voucher per order. FIXED applied first, then PERCENT on remaining.
 - Offline: mark REDEEMED + `used_channel = OFFLINE`. No order created.
 
 ### Points
