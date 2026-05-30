@@ -133,6 +133,7 @@ export default function AdminTabBar({ userName, userRole }: AdminTabBarProps) {
             tabs.length === 4 && "grid-cols-4",
             tabs.length === 5 && "grid-cols-5",
             tabs.length === 6 && "grid-cols-6",
+            tabs.length === 7 && "grid-cols-7",
           )}
         >
           {tabs.map(({ to, label, icon: Icon }) => {
