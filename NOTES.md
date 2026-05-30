@@ -23,7 +23,6 @@
 | **`default_size_config` audit log** | Deferred | No audit trail when admin edits M/L/XL config. If needed: add `updated_at` + `updated_by` columns. Changes apply globally and immediately — admin is responsible. |
 | **`PRICE_CHANGED` mid-session edge case** | Not a concern | Admin updates prices at night when shop is closed. No real-time mitigation needed beyond reject + conflict response. |
 | **Voucher Gacha / Gamification** | Phase 5+ | Current `VoucherPackage` (template) + `Voucher` (instance) schema fully supports this. Do NOT modify order/voucher logic. Add `GachaPool` table + `POST /api/gacha/play` route to randomly pick a package and mint a voucher. Order logic remains 100% unaffected. |
-| **Product Voucher Manual Selector in Cart** | Dev Handoff Note | BE & Cart Store fully support `product_voucher_id` at the line item level. In MyVouchersPage, users can click "Dùng" to auto-add item with voucher. However, CartDrawer currently lacks a manual UI selector next to each cart item to let users select/attach available Product Vouchers to already added items. For future agents: add a dropdown/selector at each cart item row in `CartDrawer.tsx` that filters eligible active PRODUCT vouchers from `listMyVouchers()` and runs `applyProductVoucher(...)`. |
 
 ---
 

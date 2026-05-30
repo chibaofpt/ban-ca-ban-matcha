@@ -65,12 +65,12 @@ Calls `GET /api/staff/scan?token=xxx`:
 
 ## 4. Staff & Admin — Order List (`/staff/orders-list`)
 
-- All orders across all dates, newest first
+- **ADMIN**: Sees all orders across all dates, newest first. Can cancel orders via "Huỷ đơn" button (requires confirmation) → `PATCH /api/admin/orders/[id]/status` with `{ status: "CANCELLED" }`. After cancellation, manually reverse points via `/admin/points-log` if needed.
+- **STAFF**: Read-only, no actions (except progressing status if applicable). Only sees:
+  - Orders they handled/created (`handled_by = session.id`).
+  - Customer orders (`PICKUP`/`DELIVERY`) that are waiting to be processed (`status = ADMIN_CONFIRMED`). Once a staff progresses it to `STAFF_DONE`, it is assigned to them and disappears from other staff's view.
 - Each `OrderCard`: customer name + phone, created time, item list (collapsible), total "🐟 X cá", status badge
 - Status badge: COMPLETED (green) / CANCELLED (red)
-- **STAFF**: read-only, no actions
-- **ADMIN**: "Huỷ đơn" button → confirmation dialog → `PATCH /api/admin/orders/[id]/status` with `{ status: "CANCELLED" }`
-- After cancellation → manually reverse points via `/admin/points-log` if needed
 
 ---
 

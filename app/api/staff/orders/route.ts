@@ -500,6 +500,17 @@ export async function GET(req: NextRequest) {
     }
     // No status filter for COUNTER (show all — COMPLETED, CANCELLED)
 
+    // Filter for STAFF: only see their own orders or unassigned ADMIN_CONFIRMED customer orders
+    if (session.role === 'STAFF') {
+      where.OR = [
+        { handled_by: session.id },
+        { 
+          order_type: { in: ['PICKUP', 'DELIVERY'] },
+          status: 'ADMIN_CONFIRMED'
+        }
+      ];
+    }
+
     const [total, orders] = await prisma.$transaction([
       prisma.order.count({ where }),
       prisma.order.findMany({

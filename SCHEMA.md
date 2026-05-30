@@ -237,7 +237,6 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `id` uuid PK
 - `user_id` uuid FK → users
 - `handled_by` uuid FK nullable → users — Staff who created or accepted this order. NULL if created by customer and not yet accepted.
-- `voucher_id` uuid FK nullable → vouchers — DISCOUNT only, max 1 per order
 - `status` OrderStatus — customer default `PENDING`; staff = `COMPLETED` immediately
 - `order_type` OrderType — default `PICKUP`
 - `order_code` string UK nullable — e.g. "BCBM-A3X7K2". Null for COUNTER orders.
@@ -269,7 +268,17 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `coldwhisk` bool — default false
 - `sweetness` SweetnessLevel — default `QUARTER`
 - `product_voucher_id` uuid FK nullable → vouchers
+- `addon_voucher_id` uuid FK nullable → vouchers — Applied to specific topping
 - `note` string nullable
+
+---
+
+### order_discount_vouchers
+Junction table mapping an order to one or more DISCOUNT vouchers.
+
+- `order_id` uuid FK → orders (cascade delete)
+- `voucher_id` uuid FK → vouchers (no action delete)
+- PK: (`order_id`, `voucher_id`)
 
 ---
 
