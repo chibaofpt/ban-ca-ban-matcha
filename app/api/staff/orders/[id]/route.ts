@@ -1,25 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import type { OrderStatus, Prisma } from "@prisma/client";
+import type { OrderStatus, OrderType, Prisma } from "@prisma/client";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Validates a status transition given the caller's role.
+ * Validates a status transition given the caller's role and order type.
  * Returns an error string if invalid, null if allowed.
  */
 function validateTransition(
   currentStatus: OrderStatus,
   newStatus: OrderStatus,
-  role: "STAFF" | "ADMIN"
+  role: "STAFF" | "ADMIN",
+  orderType: OrderType
 ): string | null {
-  // Terminal states: no transitions allowed
-  if (currentStatus === "COMPLETED" || currentStatus === "CANCELLED") {
-    return `Order is already ${currentStatus} — no further transitions allowed`;
-  }
-
   switch (newStatus) {
     case "ADMIN_CONFIRMED":
       // Only admin can confirm payment, and only from PENDING
@@ -29,6 +25,9 @@ function validateTransition(
 
     case "STAFF_DONE":
       // Staff or admin can mark done, but only from ADMIN_CONFIRMED
+      if (currentStatus === "COMPLETED" || currentStatus === "CANCELLED") {
+        return `Order is already ${currentStatus} — no further transitions allowed`;
+      }
       if (currentStatus !== "ADMIN_CONFIRMED") {
         return "Order must be ADMIN_CONFIRMED before marking as STAFF_DONE";
       }
@@ -36,14 +35,24 @@ function validateTransition(
 
     case "COMPLETED":
       // Staff or admin can complete, but only from STAFF_DONE
+      if (currentStatus === "COMPLETED" || currentStatus === "CANCELLED") {
+        return `Order is already ${currentStatus} — no further transitions allowed`;
+      }
       if (currentStatus !== "STAFF_DONE") {
         return "Order must be STAFF_DONE before completing — cannot skip steps";
       }
       return null;
 
     case "CANCELLED":
-      // Only admin can cancel
+      // Only ADMIN can cancel — staff is never allowed
       if (role !== "ADMIN") return "Only ADMIN can cancel orders";
+      // Already cancelled — no-op
+      if (currentStatus === "CANCELLED") return "Order is already CANCELLED";
+      // COMPLETED online orders cannot be cancelled
+      if (currentStatus === "COMPLETED" && orderType !== "COUNTER") {
+        return "Completed online orders cannot be cancelled";
+      }
+      // Allow: COMPLETED+COUNTER (staff mistake), PENDING, ADMIN_CONFIRMED, STAFF_DONE
       return null;
 
     default:
@@ -76,10 +85,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
       if (!order) throw new Error("NOT_FOUND");
 
-
-
-      // Validate transition rules
-      const transitionError = validateTransition(order.status, status, session.role as "STAFF" | "ADMIN");
+      // Validate transition rules (includes orderType for cancel logic)
+      const transitionError = validateTransition(
+        order.status,
+        status,
+        session.role as "STAFF" | "ADMIN",
+        order.order_type
+      );
       if (transitionError) throw Object.assign(new Error(transitionError), { code: "INVALID_TRANSITION" });
 
       // Prepare update data
@@ -117,9 +129,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       }
 
-      // When cancelling: restore ALL vouchers to ACTIVE
+      // When cancelling: restore ALL vouchers to ACTIVE.
+      // For COMPLETED COUNTER orders, also reverse the order_complete points.
       if (status === "CANCELLED") {
-        await restoreVouchersOnCancel(tx, id);
+        const isCancellingCompleted = order.status === "COMPLETED";
+        await restoreVouchersOnCancel(tx, id, {
+          reverseCompletionPoints: isCancellingCompleted,
+          performedBy: session.id,
+        });
+        // Zero out points_earned so the order history is accurate
+        if (isCancellingCompleted) {
+          dataToUpdate.points_earned = 0;
+        }
       }
 
       // When → COMPLETED: mark all PRODUCT vouchers as REDEEMED

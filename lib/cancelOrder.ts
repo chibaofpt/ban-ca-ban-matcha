@@ -1,7 +1,8 @@
 /**
- * Shared cancel-order helper used by all 5 cancel paths.
+ * Shared cancel-order helper used by all cancel paths.
  * Restores ALL vouchers (DISCOUNT, ADDON, PRODUCT) to ACTIVE,
- * and reverses any surplus points awarded at order creation.
+ * reverses any surplus points awarded at order creation,
+ * and optionally reverses order_complete points for COMPLETED orders.
  * Must be called inside a prisma.$transaction().
  */
 
@@ -13,16 +14,50 @@ type CancelTxClient = Pick<
   "order" | "orderItem" | "voucher" | "user" | "pointsLog" | "orderDiscountVoucher"
 >;
 
+interface RestoreOptions {
+  /** If true, also reverses order_complete points. Use when cancelling a COMPLETED order. */
+  reverseCompletionPoints?: boolean;
+  /** Admin user ID to record as performed_by on reversal log rows. */
+  performedBy?: string;
+}
+
 /**
- * Restores ALL vouchers tied to an order back to ACTIVE, and reverses
- * any `voucher_surplus` points_log rows created at order creation.
+ * Safely decrements a user's points_balance, flooring at 0 to prevent negative balances.
+ * Returns the actual amount decremented (may be less than requested if balance < delta).
+ */
+async function safeDecrementPoints(
+  tx: CancelTxClient,
+  userId: string,
+  delta: number
+): Promise<number> {
+  const user = await tx.user.findUnique({
+    where: { id: userId },
+    select: { points_balance: true },
+  });
+  const current = user?.points_balance ?? 0;
+  const actualDecrement = Math.min(delta, current); // floor at 0
+  if (actualDecrement > 0) {
+    await tx.user.update({
+      where: { id: userId },
+      data: { points_balance: { decrement: actualDecrement } },
+    });
+  }
+  return actualDecrement;
+}
+
+/**
+ * Restores ALL vouchers tied to an order back to ACTIVE, reverses
+ * any `voucher_surplus` points_log rows, and optionally reverses
+ * `order_complete` points when cancelling a COMPLETED order.
  *
  * @param tx - Prisma transaction client (must be called inside $transaction)
  * @param orderId - The ID of the order being cancelled
+ * @param options - Optional flags for reversing completion points
  */
 export async function restoreVouchersOnCancel(
   tx: CancelTxClient,
-  orderId: string
+  orderId: string,
+  options?: RestoreOptions
 ): Promise<void> {
   // 1. Restore all DISCOUNT vouchers tied to this order
   const discountLinks = await tx.orderDiscountVoucher.findMany({
@@ -47,7 +82,7 @@ export async function restoreVouchersOnCancel(
 
   // 2. Find all PRODUCT & ADDON vouchers on order items and restore each to ACTIVE
   const voucherItems = await tx.orderItem.findMany({
-    where: { 
+    where: {
       order_id: orderId,
       OR: [{ product_voucher_id: { not: null } }, { addon_voucher_id: { not: null } }],
     },
@@ -74,8 +109,8 @@ export async function restoreVouchersOnCancel(
     }
   }
 
-  // 4. Reverse any voucher_surplus points_log rows created at order creation.
-  //    Inserts negative-delta rows (immutable log pattern).
+  // 3. Reverse any voucher_surplus points_log rows created at order creation.
+  //    Uses safe decrement to floor balance at 0 (prevents negative balance).
   const surplusLogs = await tx.pointsLog.findMany({
     where: { order_id: orderId, reason: "voucher_surplus" },
     select: { id: true, user_id: true, delta: true, voucher_id: true },
@@ -84,21 +119,45 @@ export async function restoreVouchersOnCancel(
   for (const log of surplusLogs) {
     if (log.delta <= 0) continue; // already a reversal row, skip
 
-    await tx.user.update({
-      where: { id: log.user_id },
-      data: { points_balance: { decrement: log.delta } },
-    });
+    const actualDecrement = await safeDecrementPoints(tx, log.user_id, log.delta);
 
     await tx.pointsLog.create({
       data: {
         user_id: log.user_id,
-        delta: -log.delta,
+        delta: -actualDecrement,
         reason: "voucher_surplus_reversed",
         voucher_id: log.voucher_id,
         order_id: orderId,
-        performed_by: null,
+        performed_by: options?.performedBy ?? null,
         reversed_log_id: log.id,
       },
     });
+  }
+
+  // 4. Reverse order_complete points — only when cancelling a COMPLETED order.
+  //    Uses safe decrement to floor balance at 0 (prevents negative balance).
+  if (options?.reverseCompletionPoints) {
+    const completionLogs = await tx.pointsLog.findMany({
+      where: { order_id: orderId, reason: "order_complete" },
+      select: { id: true, user_id: true, delta: true },
+    });
+
+    for (const log of completionLogs) {
+      if (log.delta <= 0) continue; // skip if already a reversal
+
+      const actualDecrement = await safeDecrementPoints(tx, log.user_id, log.delta);
+
+      await tx.pointsLog.create({
+        data: {
+          user_id: log.user_id,
+          delta: -actualDecrement,
+          reason: "order_complete_reversed",
+          voucher_id: null,
+          order_id: orderId,
+          performed_by: options?.performedBy ?? null,
+          reversed_log_id: log.id,
+        },
+      });
+    }
   }
 }

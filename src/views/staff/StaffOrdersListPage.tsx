@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { ChevronDown, ChevronUp, Phone, Clock, RefreshCw, CheckCircle2, XCircle } from "lucide-react";
+import { ChevronDown, ChevronUp, Phone, Clock, RefreshCw, CheckCircle2, XCircle, BarChart3 } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import { fetchOrdersList, type OrderRes } from "@/src/services/staffOrdersListService";
 import { apiClient } from "@/src/lib/api/client";
@@ -9,6 +9,7 @@ import { usePolling } from "@/src/hooks/usePolling";
 import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
 import { OrderTabs, type OrderTabKey } from "@/src/components/staff/OrderTabs";
 import { OrderProgressBar } from "@/src/components/shared/OrderProgressBar";
+import { DailyReportModal } from "@/src/components/report/DailyReportModal";
 import { toast } from "sonner";
 
 const formatDateTime = (iso: string): string => {
@@ -27,6 +28,7 @@ export default function StaffOrdersListPage() {
   const [activeTab, setActiveTab] = useState<OrderTabKey>("counter");
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [showReportModal, setShowReportModal] = useState(false);
 
   // Reset page when changing tabs
   useEffect(() => {
@@ -128,11 +130,19 @@ export default function StaffOrdersListPage() {
   };
 
   return (
+    <>
     <div className="px-4 md:px-0 py-4 space-y-4 pb-24 md:pb-8 max-w-7xl mx-auto">
       <div className="flex items-baseline justify-between">
         <h1 className="font-serif text-2xl font-semibold text-foreground">Đơn hàng</h1>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span>{orders.length} đơn</span>
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="p-1.5 bg-secondary/50 rounded-full hover:bg-secondary/80"
+            title="Báo cáo"
+          >
+            <BarChart3 size={14} />
+          </button>
           <button onClick={refetch} className="p-1.5 bg-secondary/50 rounded-full hover:bg-secondary/80">
             <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
           </button>
@@ -315,5 +325,13 @@ export default function StaffOrdersListPage() {
         </div>
       )}
     </div>
+
+      {/* Report Modal */}
+      <DailyReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        userRole="STAFF"
+      />
+    </>
   );
 }

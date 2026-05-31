@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import type { Prisma } from "@prisma/client";
+import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 
 export const dynamic = "force-dynamic";
 
@@ -113,9 +114,42 @@ export async function GET(req: NextRequest) {
 
     const totalPages = Math.ceil(total / limit);
 
-    return NextResponse.json({ 
-      data: orders, 
-      meta: { total, page, totalPages } 
+    // Lazy auto-cancel: expire any PENDING orders past their deadline.
+    // Triggered on every admin list fetch — cron is daily safety net only.
+    const now = new Date();
+    const expiredOrders = orders.filter(
+      (o) => o.status === "PENDING" && o.auto_cancel_at && o.auto_cancel_at <= now
+    );
+    if (expiredOrders.length > 0) {
+      await Promise.all(
+        expiredOrders.map(async (order) => {
+          try {
+            await prisma.$transaction(
+              async (tx) => {
+                const check = await tx.order.findUnique({
+                  where: { id: order.id },
+                  select: { status: true },
+                });
+                if (check?.status !== "PENDING") return; // race-safe: already handled
+                await tx.order.update({
+                  where: { id: order.id },
+                  data: { status: "CANCELLED" },
+                });
+                await restoreVouchersOnCancel(tx, order.id);
+              },
+              { maxWait: 5000, timeout: 10000 }
+            );
+            order.status = "CANCELLED"; // update in-memory for response
+          } catch (err) {
+            console.error(`[GET /api/admin/orders lazy-cancel] Failed for order ${order.id}:`, err);
+          }
+        })
+      );
+    }
+
+    return NextResponse.json({
+      data: orders,
+      meta: { total, page, totalPages }
     });
   } catch (err) {
     console.error("[GET /api/admin/orders]", err);

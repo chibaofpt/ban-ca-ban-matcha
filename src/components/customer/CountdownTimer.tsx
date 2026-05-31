@@ -22,11 +22,15 @@ export function CountdownTimer({ targetTime, className }: CountdownTimerProps) {
   const [seconds, setSeconds] = useState(() => getSecondsRemaining(targetTime));
 
   useEffect(() => {
-    const tick = () => setSeconds(getSecondsRemaining(targetTime));
-    tick();
-    const id = setInterval(tick, 1000);
+    // Stop ticking once expired — no need to keep updating after expiry
+    if (seconds <= 0) return;
+    const id = setInterval(() => {
+      const remaining = getSecondsRemaining(targetTime);
+      setSeconds(remaining);
+      if (remaining <= 0) clearInterval(id);
+    }, 1000);
     return () => clearInterval(id);
-  }, [targetTime]);
+  }, [targetTime, seconds <= 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (seconds <= 0) {
     return (
