@@ -193,6 +193,7 @@ function setupTx(overrides: {
       pointsLog: { create: mockPointsLogCreate },
       order: { create: mockOrderCreate },
       orderDiscountVoucher: { create: vi.fn() },
+      orderItemAddonVoucher: { createMany: vi.fn() },
     };
     return fn(tx);
   });
@@ -589,7 +590,7 @@ describe("POST /api/orders", () => {
       .mockResolvedValueOnce(addonVoucher2)
       .mockResolvedValue(null);
 
-    await POST(makeReq({ ...validPayload, items: [{ ...validPayload.items[0], addon_voucher_id: ADDON_VOUCHER_ID }] }));
+    await POST(makeReq({ ...validPayload, items: [{ ...validPayload.items[0], addon_voucher_ids: [{ voucher_id: ADDON_VOUCHER_ID, addon_option_id: ADDON_OPTION_ID }] }] }));
 
     expect(mockVoucherUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -610,7 +611,7 @@ describe("POST /api/orders", () => {
       expires_at: null,
     });
 
-    const res = await POST(makeReq({ ...validPayload, items: [{ ...validPayload.items[0], addon_voucher_id: ADDON_VOUCHER_ID }] }));
+    const res = await POST(makeReq({ ...validPayload, items: [{ ...validPayload.items[0], addon_voucher_ids: [{ voucher_id: ADDON_VOUCHER_ID, addon_option_id: ADDON_OPTION_ID }] }] }));
     expect(res.status).toBe(422);
     expect((await res.json()).code).toBe("VOUCHER_REDEEMED");
   });
@@ -644,7 +645,7 @@ describe("POST /api/orders", () => {
     const res = await POST(
       makeReq({
         ...validPayload,
-        items: [{ ...validPayload.items[0], addon_voucher_id: ADDON_VOUCHER_ID }],
+        items: [{ ...validPayload.items[0], addon_voucher_ids: [{ voucher_id: ADDON_VOUCHER_ID, addon_option_id: ADDON_OPTION_ID }] }],
         discount_voucher_ids: [V_PCT],
       })
     );

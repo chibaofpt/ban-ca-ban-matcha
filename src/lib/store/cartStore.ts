@@ -12,7 +12,7 @@ function computeFinalClientPrice(item: CartItem): number {
   const remainingCredit = Math.max(0, voucherCredit - baseDrinkPrice);
   
   const addonsAfterCredit = Math.max(0, item.addonsPrice - remainingCredit);
-  const addonDiscount = item.addonVoucherDiscountVnd ?? 0;
+  const addonDiscount = item.addonVouchers?.reduce((sum, v) => sum + v.discountVnd, 0) ?? 0;
   
   const finalAddonsPrice = Math.max(0, addonsAfterCredit - addonDiscount);
   
@@ -38,7 +38,7 @@ interface CartState {
    */
   removeProductVoucher: (cartId: string) => void;
   applyAddonVoucher: (cartId: string, voucherId: string, addonOptionId: string) => void;
-  removeAddonVoucher: (cartId: string) => void;
+  removeAddonVoucher: (cartId: string, voucherId: string) => void;
 }
 
 /**
@@ -70,7 +70,7 @@ export const useCartStore = create<CartState>()(
           items: get().items.map((i) => {
             if (i.cartId !== cartId) return i;
             // Prevent increasing quantity for items with vouchers
-            if ((i.productVoucherId || i.addonVoucherId) && quantity > 1) {
+            if ((i.productVoucherId || (i.addonVouchers && i.addonVouchers.length > 0)) && quantity > 1) {
               return i;
             }
             return { ...i, quantity: Math.max(1, quantity) };
@@ -130,8 +130,8 @@ export const useCartStore = create<CartState>()(
 
       applyAddonVoucher: (cartId, voucherId, addonOptionId) => {
         let currentItems = get().items.map((i) => {
-          if (i.addonVoucherId === voucherId) {
-            const nextI = { ...i, addonVoucherId: undefined, addonVoucherDiscountVnd: undefined };
+          if (i.addonVouchers?.some(v => v.voucherId === voucherId)) {
+            const nextI = { ...i, addonVouchers: i.addonVouchers.filter(v => v.voucherId !== voucherId) };
             nextI.clientPriceVnd = computeFinalClientPrice(nextI);
             return nextI;
           }
@@ -142,8 +142,20 @@ export const useCartStore = create<CartState>()(
         if (itemIndex === -1) return;
 
         const item = currentItems[itemIndex];
+        
+        let newAddonVouchers = item.addonVouchers ? [...item.addonVouchers] : [];
+        const existingIdx = newAddonVouchers.findIndex(v => v.addonOptionId === addonOptionId);
+        
         const toppingPrice = item.addonPrices?.[addonOptionId] ?? 0;
-        const nextItem = { ...item, addonVoucherId: voucherId, addonVoucherDiscountVnd: toppingPrice };
+        const newVoucher = { voucherId, addonOptionId, discountVnd: toppingPrice };
+
+        if (existingIdx !== -1) {
+          newAddonVouchers[existingIdx] = newVoucher;
+        } else {
+          newAddonVouchers.push(newVoucher);
+        }
+
+        const nextItem = { ...item, addonVouchers: newAddonVouchers };
         const discounted = computeFinalClientPrice(nextItem);
         nextItem.clientPriceVnd = discounted;
 
@@ -166,11 +178,12 @@ export const useCartStore = create<CartState>()(
         set({ items: currentItems });
       },
 
-      removeAddonVoucher: (cartId) => {
+      removeAddonVoucher: (cartId, voucherId) => {
         set({
           items: get().items.map((i) => {
             if (i.cartId !== cartId) return i;
-            const nextItem = { ...i, addonVoucherId: undefined, addonVoucherDiscountVnd: undefined };
+            if (!i.addonVouchers) return i;
+            const nextItem = { ...i, addonVouchers: i.addonVouchers.filter(v => v.voucherId !== voucherId) };
             nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
             return nextItem;
           }),

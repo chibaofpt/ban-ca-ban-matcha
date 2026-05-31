@@ -102,15 +102,20 @@ export async function PATCH(
         const voucherItems = await tx.orderItem.findMany({
           where: { 
             order_id: id,
-            OR: [{ product_voucher_id: { not: null } }, { addon_voucher_id: { not: null } }],
+            product_voucher_id: { not: null },
           },
-          select: { product_voucher_id: true, addon_voucher_id: true },
+          select: { product_voucher_id: true },
+        });
+
+        const addonVouchers = await tx.orderItemAddonVoucher.findMany({
+          where: { orderItem: { order_id: id } },
+          select: { voucher_id: true }
         });
 
         const uniqueItemVoucherIds = [
           ...new Set([
             ...voucherItems.map((i) => i.product_voucher_id).filter((id): id is string => id !== null),
-            ...voucherItems.map((i) => i.addon_voucher_id).filter((id): id is string => id !== null),
+            ...addonVouchers.map((i) => i.voucher_id)
           ]),
         ];
 

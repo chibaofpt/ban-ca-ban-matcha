@@ -64,7 +64,10 @@ export async function middleware(request: NextRequest) {
 
   if (!accessToken) {
     if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Phiên đăng nhập không hợp lệ', code: 'UNAUTHORIZED' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Phiên đăng nhập không hợp lệ', code: 'UNAUTHORIZED' },
+        { status: 401, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+      );
     }
 
     if (refreshToken) {
@@ -121,7 +124,10 @@ export async function middleware(request: NextRequest) {
     console.error('[MIDDLEWARE_ERROR]', error);
     
     if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Phiên đăng nhập hết hạn', code: 'SESSION_EXPIRED' }, { status: 401 });
+      return NextResponse.json(
+        { error: 'Phiên đăng nhập hết hạn', code: 'SESSION_EXPIRED' },
+        { status: 401, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+      );
     }
 
     if (refreshToken) {
@@ -164,7 +170,10 @@ function redirectOrUnauthorized(
   
   // JSON Response for API routes
   if (pathname.startsWith('/api/')) {
-    return NextResponse.json({ error, code }, { status });
+    return NextResponse.json(
+      { error, code },
+      { status, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
+    );
   }
 
   const url = request.nextUrl.clone();

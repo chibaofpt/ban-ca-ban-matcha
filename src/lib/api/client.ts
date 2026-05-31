@@ -79,6 +79,11 @@ apiClient.interceptors.response.use(
         }
         await refreshPromise;
 
+        // Cache buster to prevent browser from returning cached 401 response for GET requests
+        if (original.method?.toLowerCase() === 'get') {
+          original.params = { ...original.params, _t: Date.now() };
+        }
+
         // Refresh succeeded — retry the original request with the new cookie.
         return apiClient(original);
       } catch {

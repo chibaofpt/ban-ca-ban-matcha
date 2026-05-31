@@ -10,10 +10,34 @@ import { usePowderStore } from "@/src/lib/store/powderStore";
 import { calcLattePrice, calcFusionPrice, resolveGram } from "@/src/utils/pricing";
 import { AddonModal } from "@/src/components/staff/AddonModal";
 import { StaffCartDrawer } from "@/src/components/staff/StaffCartDrawer";
-import { StaffOrderForm } from "@/src/components/staff/StaffOrderForm";
+import { CustomerSelectModal } from "@/src/components/staff/CustomerSelectModal";
 import { QRScannerModal } from "@/src/components/staff/QRScannerModal";
+import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
+import * as staffOrderService from "@/src/services/staffOrderService";
+import type { CreateStaffOrderPayload } from "@/src/services/staffOrderService";
 import type { MenuData, MenuItem } from "@/src/lib/types/menu";
 import type { CartItem } from "@/src/lib/types/cart";
+import type { CustomerInfo } from "@/src/components/staff/CustomerSelectModal";
+
+function buildOrderItems(cart: CartItem[]): CreateStaffOrderPayload["items"] {
+  return cart.map((c) => ({
+    menu_item_id: c.menuItemId,
+    quantity: c.quantity,
+    size: c.size,
+    sweetness: c.sweetness,
+    ice_option: c.iceOption,
+    coldwhisk: c.coldwhisk,
+    ...(c.note ? { note: c.note } : {}),
+    addon_option_ids: [
+      ...c.selectedOptionIds.map((id) => ({ option_id: id, quantity: 1 })),
+      ...c.quantityAddonOptions,
+    ],
+    ...(c.productVoucherId ? { product_voucher_id: c.productVoucherId } : {}),
+    ...(c.selectedPowderId ? { selected_powder_id: c.selectedPowderId } : {}),
+    ...(c.selectedMilkTypeId ? { selected_milk_type_id: c.selectedMilkTypeId } : {}),
+    client_price_vnd: c.clientPriceVnd,
+  }));
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,13 +101,16 @@ export default function StaffOrdersPage() {
 
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [customerSelectOpen, setCustomerSelectOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
+  const [confirmCheckoutOpen, setConfirmCheckoutOpen] = useState(false);
 
-  // ── QR scan → checkout pre-fill ───────────────────────────────────────
+  // ── QR scan & Customer state ──────────────────────────────────────────
 
-  const [initialPhone, setInitialPhone] = useState("");
+  const [initialSearchQuery, setInitialSearchQuery] = useState("");
+  const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
   const [productVoucherId, setProductVoucherId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // ── Cart ──────────────────────────────────────────────────────────────
 
@@ -133,7 +160,6 @@ export default function StaffOrdersPage() {
       ? Math.floor((subtotal * discountVoucher.discount_value) / 100)
       : discountVoucher.discount_value
     : 0;
-  const total = Math.max(0, subtotal - discount);
 
   // ── Cart handlers ─────────────────────────────────────────────────────
 
@@ -156,18 +182,78 @@ export default function StaffOrdersPage() {
   const handleSuccess = () => {
     setCart([]);
     setDiscountVoucher(null);
-    setInitialPhone("");
-    setCheckoutOpen(false);
+    setCustomerInfo(null);
+    setInitialSearchQuery("");
     setCartOpen(false);
     toast.success("Đã tạo đơn hàng thành công!");
   };
 
+  const handleCheckoutClick = () => {
+    if (cart.length === 0) return;
+    setConfirmCheckoutOpen(true);
+  };
+
+  const handleCheckoutConfirm = async () => {
+    setConfirmCheckoutOpen(false);
+    setIsSubmitting(true);
+    try {
+      let payload: CreateStaffOrderPayload;
+
+      if (!customerInfo) {
+        // Anonymous order
+        payload = {
+          items: buildOrderItems(cart),
+          ...(discountVoucher?.id ? { voucher_id: discountVoucher.id } : {}),
+        };
+      } else if (customerInfo.type === "existing") {
+        payload = {
+          phone_number: customerInfo.data.phone_number,
+          items: buildOrderItems(cart),
+          ...(discountVoucher?.id ? { voucher_id: discountVoucher.id } : {}),
+        };
+      } else {
+        // New customer
+        payload = {
+          phone_number: customerInfo.phone_number,
+          customer_name: customerInfo.name,
+          items: buildOrderItems(cart),
+          ...(discountVoucher?.id ? { voucher_id: discountVoucher.id } : {}),
+        };
+      }
+
+      await staffOrderService.createStaffOrder(payload);
+      handleSuccess();
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } } };
+      if (error.response?.data?.error) {
+        toast.error(error.response.data.error);
+      } else {
+        toast.error("Tạo đơn thất bại. Vui lòng thử lại.");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // ── QR scan handlers ──────────────────────────────────────────────────
 
-  const handleScanUser = ({ phone_number }: { phone_number: string }) => {
+  const handleScanUser = ({ phone_number, name }: { phone_number: string; name?: string; points_balance?: number; id?: string }) => {
     setScanOpen(false);
-    setInitialPhone(phone_number);
-    setCheckoutOpen(true);
+    if (name) {
+      setCustomerInfo({
+        type: "existing",
+        data: {
+          id: name, // Dummy ID for type constraint if not returned
+          phone_number,
+          name,
+          points_balance: 0,
+        }
+      });
+      toast.success(`Đã áp dụng khách hàng: ${name}`);
+    } else {
+      setInitialSearchQuery(phone_number);
+      setCustomerSelectOpen(true);
+    }
   };
 
   const handleScanVoucherDiscount = (data: {
@@ -364,35 +450,43 @@ export default function StaffOrdersPage() {
                 }
               : null
           }
+          customerInfo={customerInfo}
+          isSubmitting={isSubmitting}
           onClose={() => setCartOpen(false)}
           onRemove={handleRemove}
           onChangeQuantity={handleChangeQuantity}
-          onCheckout={() => {
-            setCartOpen(false);
-            setCheckoutOpen(true);
+          onCheckout={handleCheckoutClick}
+          onOpenCustomerSelect={() => {
+            setCustomerSelectOpen(true);
+          }}
+          onClearCustomer={() => setCustomerInfo(null)}
+        />
+      )}
+
+      {/* CustomerSelectModal */}
+      {customerSelectOpen && (
+        <CustomerSelectModal
+          initialQuery={initialSearchQuery}
+          onClose={() => setCustomerSelectOpen(false)}
+          onSelect={(info) => {
+            setCustomerInfo(info);
+            setCustomerSelectOpen(false);
           }}
         />
       )}
 
-      {/* StaffOrderForm */}
-      {checkoutOpen && (
-        <StaffOrderForm
-          cart={cart}
-          total={total}
-          discountVoucherId={discountVoucher?.id ?? null}
-          discountVoucher={
-            discountVoucher
-              ? {
-                  discount_type: discountVoucher.discount_type,
-                  discount_value: discountVoucher.discount_value,
-                }
-              : null
-          }
-          initialPhone={initialPhone}
-          onClose={() => setCheckoutOpen(false)}
-          onSuccess={handleSuccess}
-        />
-      )}
+      {/* Confirm Checkout Modal */}
+      <ConfirmModal
+        isOpen={confirmCheckoutOpen}
+        title="Xác nhận tạo đơn"
+        message={`Bạn có chắc chắn muốn tạo đơn hàng này? ${
+          !customerInfo ? "(Đơn khách vãng lai)" : ""
+        }`}
+        confirmLabel="Tạo đơn"
+        cancelLabel="Huỷ"
+        onConfirm={handleCheckoutConfirm}
+        onCancel={() => setConfirmCheckoutOpen(false)}
+      />
 
       {/* QRScannerModal */}
       {scanOpen && (

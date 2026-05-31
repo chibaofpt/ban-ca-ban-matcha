@@ -71,7 +71,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
     const available = item.sizes ?? [];
     return (available.find((s) => s.size === "L") ?? available[0])?.size ?? "M";
   });
-  const [sweetness, setSweetness] = useState<SweetnessLevel>("QUARTER");
+  const [sweetness, setSweetness] = useState<SweetnessLevel>("HALF");
   const [iceOption, setIceOption] = useState<IceOption>("NORMAL");
   const [coldwhisk, setColdwhisk] = useState(false);
   const [selectedPowderId, setSelectedPowderId] = useState<string>(item.resolved_default_powder_id ?? "");
@@ -597,28 +597,36 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
         </div>
 
         {/* BOTTOM CTA */}
-        <div className="fixed md:absolute bottom-0 left-0 md:left-auto right-0 z-[110] w-full md:w-1/2 bg-[#fdfcf7]/95 backdrop-blur-md border-t border-border/60 px-5 py-4 pb-8 md:pb-6 md:rounded-br-[2.5rem]">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-0 bg-[#d9e4d4] rounded-2xl overflow-hidden shrink-0">
+        <div className="fixed md:absolute bottom-0 left-0 md:left-auto right-0 z-[110] w-full md:w-1/2 bg-[#fdfcf7]/95 backdrop-blur-md border-t border-border/60 shadow-[0_-8px_30px_rgba(0,0,0,0.04)] px-5 py-4 pb-8 md:pb-6 md:rounded-br-[2.5rem]">
+          <div className="flex items-center justify-between gap-3">
+            {/* Quantity Adjuster */}
+            <div className="flex items-center bg-[#d9e4d4] rounded-2xl overflow-hidden shrink-0">
               <button
                 onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                className="w-10 h-11 flex items-center justify-center hover:bg-primary/10 transition-colors text-primary font-bold text-lg"
+                className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 transition-colors text-primary font-bold text-lg"
               >−</button>
               <span className="text-sm font-bold w-6 text-center text-primary">{quantity}</span>
               <button
                 onClick={() => setQuantity(quantity + 1)}
-                className="w-10 h-11 flex items-center justify-center hover:bg-primary/10 transition-colors text-primary font-bold text-lg"
+                className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 transition-colors text-primary font-bold text-lg"
               >+</button>
             </div>
+
+            {/* Total price in the middle */}
+            <div className="flex flex-col items-center justify-center flex-1 min-w-0">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-primary/45">Tổng tiền</span>
+              <span className="font-serif font-bold text-lg md:text-xl text-primary leading-none mt-0.5 whitespace-nowrap">
+                {totalCost / 1000}k 🐟
+              </span>
+            </div>
+
+            {/* Add to Cart Button */}
             <button
               onClick={handleAddToCart}
-              className="flex-1 bg-primary text-white rounded-2xl h-11 font-bold text-sm shadow-lg active:scale-[0.98] transition-all flex items-center justify-between px-5"
+              className="bg-primary text-white rounded-2xl h-11 px-4 md:px-5 font-bold text-sm shadow-lg active:scale-[0.98] transition-all flex items-center gap-2 shrink-0"
             >
-              <div className="flex items-center gap-2">
-                <ShoppingBag className="w-4 h-4" />
-                <span>Thêm vào giỏ</span>
-              </div>
-              <span className="font-serif font-bold">{totalCost / 1000}k 🐟</span>
+              <ShoppingBag className="w-4 h-4" />
+              <span>Bỏ giỏ cá</span>
             </button>
           </div>
         </div>

@@ -48,3 +48,7 @@ next-env.d.ts
 
 # local logs
 .antigravitycli/
+
+# local test patch scripts
+/patch-tests.js
+/patch-tests-2.js
