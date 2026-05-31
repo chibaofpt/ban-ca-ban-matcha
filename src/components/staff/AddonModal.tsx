@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Minus, Plus } from "lucide-react";
+import { X, Minus, Plus, ShoppingBag } from "lucide-react";
 import type { MenuItem, SweetnessLevel, Size } from "@/src/lib/types/menu";
 import type { IceOption, CartItem } from "@/src/lib/types/cart";
 import { usePowderStore } from "@/src/lib/store/powderStore";
@@ -71,7 +71,7 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
     const available = item?.sizes ?? [];
     return (available.find((s) => s.size === "L") ?? available[0])?.size ?? "M";
   });
-  const [sweetness, setSweetness] = useState<SweetnessLevel>("QUARTER");
+  const [sweetness, setSweetness] = useState<SweetnessLevel>("HALF");
   const [iceOption, setIceOption] = useState<IceOption>("NORMAL");
   const [coldwhisk, setColdwhisk] = useState(false);
   const [selectedPowderId, setSelectedPowderId] = useState<string>(item?.resolved_default_powder_id ?? "");
@@ -85,6 +85,13 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
     item ? Object.fromEntries(item.addon_groups.filter((g) => g.type === "QUANTITY").map((g) => [g.id, 0])) : {}
   );
   const [note, setNote] = useState("");
+  const [quantity, setQuantity] = useState(1);
+
+  useEffect(() => {
+    if (item) {
+      setQuantity(1);
+    }
+  }, [item]);
 
   if (!item) return null;
 
@@ -163,6 +170,7 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
 
   const finalUnitPrice = freeVoucherId ? 0 : currentPriceContext.unitPrice;
   const finalAddonsCost = freeVoucherId ? 0 : currentPriceContext.addonsCost;
+  const totalCost = finalUnitPrice * quantity;
 
   // ── Validation ───────────────────────────────────────────────────────────
   const isConfirmDisabled = (): boolean => {
@@ -216,8 +224,8 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
       if (pwd && !isDefaultPwd) details.push(`Bột: ${pwd.name}`);
     }
 
-    // Sweetness — only show if not default (QUARTER)
-    if (sweetness !== "QUARTER") {
+    // Sweetness — only show if not default (HALF)
+    if (sweetness !== "HALF") {
       const sweetnessLabel = SWEETNESS_OPTIONS.find((o) => o.value === sweetness)?.label;
       if (sweetnessLabel) details.push(`Độ ngọt: ${sweetnessLabel}`);
     }
@@ -270,7 +278,7 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
       imageUrl: item.image_url,
       size: selectedSize,
       unitPrice: finalUnitPrice,
-      quantity: 1,
+      quantity,
       sweetness,
       iceOption,
       coldwhisk,
@@ -634,16 +642,39 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
         </div>
 
         {/* BOTTOM CTA */}
-        <div className="fixed md:absolute bottom-0 left-0 md:left-auto right-0 z-[110] w-full md:w-1/2 bg-[#fdfcf7]/95 backdrop-blur-md border-t border-border/60 px-5 py-4 pb-8 md:pb-6 md:rounded-br-[2.5rem]">
-          <button
-            onClick={handleConfirm}
-            disabled={isConfirmDisabled()}
-            className="w-full bg-primary text-white py-3.5 rounded-2xl font-bold text-sm shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {freeVoucherId
-              ? "Xác nhận món • 🎁 Miễn phí"
-              : <>Xác nhận món 🐟 → <span className="font-serif font-bold text-base">🐟 {currentPriceContext.unitPrice / 1000}k</span></>}
-          </button>
+        <div className="fixed md:absolute bottom-0 left-0 md:left-auto right-0 z-[110] w-full md:w-1/2 bg-[#fdfcf7]/95 backdrop-blur-md border-t border-border/60 shadow-[0_-8px_30px_rgba(0,0,0,0.04)] px-5 py-4 pb-8 md:pb-6 md:rounded-br-[2.5rem]">
+          <div className="flex items-center justify-between gap-3">
+            {/* Quantity Adjuster */}
+            <div className="flex items-center bg-[#d9e4d4] rounded-2xl overflow-hidden shrink-0">
+              <button
+                onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 transition-colors text-primary font-bold text-lg"
+              >−</button>
+              <span className="text-sm font-bold w-6 text-center text-primary">{quantity}</span>
+              <button
+                onClick={() => setQuantity(quantity + 1)}
+                className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 transition-colors text-primary font-bold text-lg"
+              >+</button>
+            </div>
+
+            {/* Total price in the middle */}
+            <div className="flex flex-col items-center justify-center flex-1 min-w-0">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-primary/45">Tổng tiền</span>
+              <span className="font-serif font-bold text-lg md:text-xl text-primary leading-none mt-0.5 whitespace-nowrap">
+                {freeVoucherId ? "0k 🐟" : `${totalCost / 1000}k 🐟`}
+              </span>
+            </div>
+
+            {/* Add to Cart Button */}
+            <button
+              onClick={handleConfirm}
+              disabled={isConfirmDisabled()}
+              className="bg-primary text-white rounded-2xl h-11 px-4 md:px-5 font-bold text-sm shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 flex items-center gap-2 shrink-0"
+            >
+              <ShoppingBag className="w-4 h-4" />
+              <span>Bỏ giỏ cá</span>
+            </button>
+          </div>
         </div>
       </motion.div>
     </AnimatePresence>

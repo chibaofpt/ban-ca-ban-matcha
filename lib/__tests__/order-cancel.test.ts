@@ -66,6 +66,7 @@ describe("PATCH /api/orders/[id] — customer self-cancel", () => {
         pointsLog: { findMany: mockPointsLogFindMany, create: vi.fn() },
         user: { update: mockUserUpdate },
         orderDiscountVoucher: { findMany: mockOrderDiscountVoucherFindMany },
+        orderItemAddonVoucher: { findMany: vi.fn().mockResolvedValue([]) },
       };
       return fn(tx);
     });

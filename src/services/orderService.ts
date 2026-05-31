@@ -17,7 +17,7 @@ export interface CreateOrderPayload {
     note?: string;
     addon_option_ids: { option_id: string; quantity: number }[];
     product_voucher_id?: string;
-    addon_voucher_id?: string;
+    addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
     selected_powder_id?: string;
     selected_milk_type_id?: string;
     client_price_vnd: number;
@@ -58,7 +58,14 @@ function buildPayloadItems(cart: CartItem[]): CreateOrderPayload["items"] {
       ...c.quantityAddonOptions,
     ],
     ...(c.productVoucherId ? { product_voucher_id: c.productVoucherId } : {}),
-    ...(c.addonVoucherId ? { addon_voucher_id: c.addonVoucherId } : {}),
+    ...(c.addonVouchers && c.addonVouchers.length > 0
+      ? {
+          addon_voucher_ids: c.addonVouchers.map((av) => ({
+            voucher_id: av.voucherId,
+            addon_option_id: av.addonOptionId,
+          })),
+        }
+      : {}),
     ...(c.selectedPowderId ? { selected_powder_id: c.selectedPowderId } : {}),
     ...(c.selectedMilkTypeId ? { selected_milk_type_id: c.selectedMilkTypeId } : {}),
     client_price_vnd: c.clientPriceVnd,

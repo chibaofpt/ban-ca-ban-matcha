@@ -266,7 +266,7 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `selected_milk_type_id` uuid FK nullable → milk_type — Latte only
 - `ice_option` IceOption — default `NORMAL`
 - `coldwhisk` bool — default false
-- `sweetness` SweetnessLevel — default `QUARTER`
+- `sweetness` SweetnessLevel — default `HALF`
 - `product_voucher_id` uuid FK nullable → vouchers
 - `addon_voucher_id` uuid FK nullable → vouchers — Applied to specific topping
 - `note` string nullable
