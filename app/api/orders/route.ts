@@ -16,6 +16,7 @@ import { checkStoreOpen, validatePickupTime } from "@/lib/storeSchedule";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
 import { logSystemEvent } from "@/lib/logger";
+import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 
 export const dynamic = "force-dynamic";
 
@@ -420,6 +421,39 @@ export async function GET(req: NextRequest) {
     })]);
 
     const totalPages = Math.ceil(total / limit);
+
+    // Lazy auto-cancel: expire any PENDING orders past their deadline.
+    // Triggered on every customer list fetch — cron is daily safety net only.
+    const now = new Date();
+    const expiredOrders = orders.filter(
+      (o) => o.status === "PENDING" && o.auto_cancel_at && o.auto_cancel_at <= now
+    );
+    if (expiredOrders.length > 0) {
+      await Promise.all(
+        expiredOrders.map(async (order) => {
+          try {
+            await prisma.$transaction(
+              async (tx) => {
+                const check = await tx.order.findUnique({
+                  where: { id: order.id },
+                  select: { status: true },
+                });
+                if (check?.status !== "PENDING") return; // race-safe: already handled
+                await tx.order.update({
+                  where: { id: order.id },
+                  data: { status: "CANCELLED" },
+                });
+                await restoreVouchersOnCancel(tx, order.id);
+              },
+              { maxWait: 5000, timeout: 10000 }
+            );
+            order.status = "CANCELLED"; // update in-memory for response
+          } catch (err) {
+            console.error(`[GET /api/orders lazy-cancel] Failed for order ${order.id}:`, err);
+          }
+        })
+      );
+    }
 
     // Build payment_qr_url for each PENDING order
     const data = orders.map((order) => {

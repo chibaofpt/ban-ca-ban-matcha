@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { ChevronDown, ChevronUp, Phone, Clock, Search, FilterX, Filter, CheckCircle2, XCircle } from "lucide-react";
+import { ChevronDown, ChevronUp, Phone, Clock, Search, FilterX, Filter, CheckCircle2, XCircle, BarChart3 } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import { fetchAdminOrders, confirmPayment, adminCancelOrder, type AdminOrderRes } from "@/src/services/adminOrderService";
 import { apiClient } from "@/src/lib/api/client";
@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { CountdownTimer } from "@/src/components/customer/CountdownTimer";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { OrderProgressBar } from "@/src/components/shared/OrderProgressBar";
+import { DailyReportModal } from "@/src/components/report/DailyReportModal";
 
 const formatDateTime = (iso: string): string => {
   const d = new Date(iso);
@@ -54,6 +55,7 @@ export default function AdminOrdersPage() {
   };
 
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
   const [activeFilters, setActiveFilters] = useState({
     search: "",
     staffName: "",
@@ -164,12 +166,15 @@ export default function AdminOrdersPage() {
     });
   };
 
-  const handleCancelOrder = (e: React.MouseEvent, orderId: string) => {
+  const handleCancelOrder = (e: React.MouseEvent, orderId: string, orderType: string, status: string) => {
     e.stopPropagation();
+    const isCancellingCompleted = orderType === "COUNTER" && status === "COMPLETED";
     setConfirmModal({
       isOpen: true,
       title: "Huỷ đơn hàng",
-      message: "Bạn có chắc chắn muốn huỷ đơn hàng này?",
+      message: isCancellingCompleted
+        ? "Đơn đã hoàn thành. Huỷ sẽ trừ lại điểm tích luỹ của khách. Bạn có chắc chắn không?"
+        : "Bạn có chắc chắn muốn huỷ đơn hàng này?",
       isDestructive: true,
       onConfirm: async () => {
         setConfirmModal((s) => ({ ...s, isOpen: false }));
@@ -208,6 +213,13 @@ export default function AdminOrdersPage() {
       <div className="flex items-baseline justify-between">
         <h1 className="font-serif text-2xl font-semibold text-foreground">Quản lý Đơn hàng</h1>
         <div className="flex gap-3 items-center">
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border bg-card hover:bg-secondary/40 transition text-sm font-medium shadow-sm"
+          >
+            <BarChart3 size={16} />
+            Báo cáo
+          </button>
           <button
             onClick={openFilterModal}
             className="relative flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg border bg-card hover:bg-secondary/40 transition text-sm font-medium shadow-sm"
@@ -370,36 +382,47 @@ export default function AdminOrdersPage() {
                       </span>
                     </div>
                     {/* Footer row: cancel (left) + staff name (right) OR status text */}
-                    <div className="flex items-center justify-between mt-1.5">
-                      {isTerminal ? (
-                        <span className={cn(
-                          "text-xs font-semibold flex items-center gap-1",
-                          order.status === "COMPLETED" ? "text-primary" : "text-red-500"
-                        )}>
-                          {order.status === "COMPLETED" ? (
-                            <>
-                              <CheckCircle2 size={13} className="text-primary" />
-                              <span>Đã hoàn thành</span>
-                            </>
-                          ) : (
-                            <>
+                    {(() => {
+                      // Admin can cancel:
+                      // - COUNTER + COMPLETED (staff mistake / customer changed mind)
+                      // - PICKUP/DELIVERY + any status except COMPLETED and CANCELLED
+                      const canCancel =
+                        (order.order_type === "COUNTER" && order.status === "COMPLETED") ||
+                        (order.order_type !== "COUNTER" &&
+                          order.status !== "COMPLETED" &&
+                          order.status !== "CANCELLED");
+
+                      return (
+                        <div className="flex items-center justify-between mt-1.5">
+                          {order.status === "CANCELLED" ? (
+                            <span className="text-xs font-semibold flex items-center gap-1 text-red-500">
                               <XCircle size={13} className="text-red-500" />
                               <span>Đã huỷ</span>
-                            </>
+                            </span>
+                          ) : order.status === "COMPLETED" && order.order_type !== "COUNTER" ? (
+                            <span className="text-xs font-semibold flex items-center gap-1 text-primary">
+                              <CheckCircle2 size={13} className="text-primary" />
+                              <span>Đã hoàn thành</span>
+                            </span>
+                          ) : canCancel ? (
+                            <button
+                              onClick={(e) => handleCancelOrder(e, order.id, order.order_type, order.status)}
+                              className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline transition-colors"
+                            >
+                              Huỷ đơn
+                            </button>
+                          ) : (
+                            <span className="text-xs font-semibold flex items-center gap-1 text-primary">
+                              <CheckCircle2 size={13} className="text-primary" />
+                              <span>Đã hoàn thành</span>
+                            </span>
                           )}
-                        </span>
-                      ) : (
-                        <button
-                          onClick={(e) => handleCancelOrder(e, order.id)}
-                          className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline transition-colors"
-                        >
-                          Huỷ đơn
-                        </button>
-                      )}
-                      <span className="text-[11px] text-muted-foreground ml-auto">
-                        Staff: {order.handler?.name ?? "Chưa nhận"}
-                      </span>
-                    </div>
+                          <span className="text-[11px] text-muted-foreground ml-auto">
+                            Staff: {order.handler?.name ?? "Chưa nhận"}
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -497,6 +520,12 @@ export default function AdminOrdersPage() {
           </div>
         </div>
       )}
+      {/* Report Modal */}
+      <DailyReportModal
+        isOpen={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        userRole="ADMIN"
+      />
       {/* Confirm Modal */}
       <ConfirmModal
         isOpen={confirmModal.isOpen}
