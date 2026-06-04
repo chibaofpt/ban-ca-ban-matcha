@@ -99,6 +99,9 @@ function makeStaffTx() {
     orderDiscountVoucher: {
       findMany: mockOrderDiscountVoucherFindManyStaff,
     },
+    orderItemAddonVoucher: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
   };
 }
 
@@ -562,6 +565,7 @@ describe("GET /api/orders — lazy auto-cancel đơn quá 20 phút", () => {
         user: { findUnique: vi.fn(), update: vi.fn() },
         pointsLog: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn() },
         orderDiscountVoucher: { findMany: vi.fn().mockResolvedValue([]) },
+        orderItemAddonVoucher: { findMany: vi.fn().mockResolvedValue([]) },
       });
     });
     mockOrderCountCustomer.mockResolvedValue(1);
@@ -608,6 +612,7 @@ describe("GET /api/orders — lazy auto-cancel đơn quá 20 phút", () => {
         user: { findUnique: vi.fn().mockResolvedValue({ points_balance: 0 }), update: vi.fn() },
         pointsLog: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn() },
         orderDiscountVoucher: { findMany: vi.fn().mockResolvedValue([]) },
+        orderItemAddonVoucher: { findMany: vi.fn().mockResolvedValue([]) },
       });
     });
 

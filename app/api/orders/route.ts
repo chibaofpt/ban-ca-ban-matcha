@@ -17,6 +17,8 @@ import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
 import { logSystemEvent } from "@/lib/logger";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
+import { after } from "next/server";
+import { sendPushToRoles } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
@@ -128,32 +130,42 @@ export async function POST(req: NextRequest) {
     const addonVoucherMap = new Map<string, string>(); // voucherId → addon_option_id
     const addonVoucherIds = new Set<string>();
     for (const item of data.items) {
-      console.log("ITEM ADDON VOUCHER ID:", item.addon_voucher_id);
-      if (item.addon_voucher_id) {
-        if (addonVoucherIds.has(item.addon_voucher_id)) {
-          return NextResponse.json(
-            { error: "The same addon voucher cannot be applied to multiple items", code: "VALIDATION_ERROR" },
-            { status: 400 }
-          );
-        }
-        const av = await prisma.voucher.findUnique({ where: { id: item.addon_voucher_id } });
-        try {
-          assertVoucherUsable(av, session.id, "ADDON");
-        } catch (e) {
-          if (e instanceof VoucherError) {
-            const status = e.code === "NOT_FOUND" ? 404 : e.code === "VALIDATION_ERROR" ? 400 : 422;
-            return NextResponse.json({ error: e.message, code: e.code }, { status });
+      if (item.addon_voucher_ids && item.addon_voucher_ids.length > 0) {
+        const itemAddonOptionIds = new Set<string>();
+        for (const av of item.addon_voucher_ids) {
+          if (addonVoucherIds.has(av.voucher_id)) {
+            return NextResponse.json(
+              { error: "The same addon voucher cannot be applied to multiple items", code: "VALIDATION_ERROR" },
+              { status: 400 }
+            );
           }
-          throw e;
+          if (itemAddonOptionIds.has(av.addon_option_id)) {
+            return NextResponse.json(
+              { error: "Cannot apply multiple vouchers for the same addon on a single item", code: "VALIDATION_ERROR" },
+              { status: 400 }
+            );
+          }
+          itemAddonOptionIds.add(av.addon_option_id);
+
+          const dbAv = await prisma.voucher.findUnique({ where: { id: av.voucher_id } });
+          try {
+            assertVoucherUsable(dbAv, session.id, "ADDON");
+          } catch (e) {
+            if (e instanceof VoucherError) {
+              const status = e.code === "NOT_FOUND" ? 404 : e.code === "VALIDATION_ERROR" ? 400 : 422;
+              return NextResponse.json({ error: e.message, code: e.code }, { status });
+            }
+            throw e;
+          }
+          if (!dbAv!.addon_option_id || dbAv!.addon_option_id !== av.addon_option_id) {
+            return NextResponse.json(
+              { error: "Addon voucher option mismatch or missing", code: "VALIDATION_ERROR" },
+              { status: 400 }
+            );
+          }
+          addonVoucherMap.set(dbAv!.id, dbAv!.addon_option_id);
+          addonVoucherIds.add(dbAv!.id);
         }
-        if (!av!.addon_option_id) {
-          return NextResponse.json(
-            { error: "Addon voucher has no addon_option_id configured", code: "VALIDATION_ERROR" },
-            { status: 400 }
-          );
-        }
-        addonVoucherMap.set(av!.id, av!.addon_option_id);
-        addonVoucherIds.add(av!.id);
       }
     }
 
@@ -249,7 +261,12 @@ export async function POST(req: NextRequest) {
                 coldwhisk: item.coldwhisk,
                 note: item.note,
                 product_voucher_id: item.product_voucher_id,
-                addon_voucher_id: item.addon_voucher_id,
+                addonVouchers: {
+                  create: item.addon_voucher_ids.map(v => ({
+                    voucher_id: v.voucher_id,
+                    addon_option_id: v.addon_option_id,
+                  })),
+                },
                 selected_powder_id: item.selected_powder_id,
                 selected_milk_type_id: item.selected_milk_type_id,
                 addons: {
@@ -315,6 +332,15 @@ export async function POST(req: NextRequest) {
     );
 
     const payment_qr_url = buildVietQRUrl({ amount: total_vnd, orderCode: order_code });
+
+    // Sau khi response HTTP đã trả về Vercel xong, chạy background job push notification:
+    after(() => {
+      sendPushToRoles(["ADMIN"], {
+        title: "🔔 Đơn hàng mới (Online)",
+        body: `${order.order_code} — ${data.items.length} món — ${new Intl.NumberFormat("vi-VN").format(order.total_vnd)}đ`,
+        url: "/admin/orders",
+      }).catch((err) => console.error("[after] Failed to send push:", err));
+    });
 
     return NextResponse.json(
       {

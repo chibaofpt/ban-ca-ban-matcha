@@ -147,7 +147,7 @@
 ### Order Options (Hardcoded — Not in Addon System)
 - Sweetness, ice option, and coldwhisk are stored as columns on `order_items`, not in `addon_groups`.
 - These options currently have no price. If any ever needs a price, a schema change is required — see `NOTES.md`.
-- Sweetness default: `QUARTER`. Ice default: `NORMAL` (hidden in UI). Coldwhisk default: `false`.
+- Sweetness default: `HALF`. Ice default: `NORMAL` (hidden in UI). Coldwhisk default: `false`.
 - Constants defined in `src/constants/orderOptions.ts` — not fetched from API.
 
 ### API Behaviour

@@ -10,7 +10,7 @@ export const orderItemSchema = z.object({
   quantity: z.number().int().min(1),
   /** Required for all items — server validates base_price_vnd IS NOT NULL for this size. */
   size: sizeEnum,
-  sweetness: sweetnessEnum.default("QUARTER"),
+  sweetness: sweetnessEnum.default("HALF"),
   ice_option: iceOptionEnum.default("NORMAL"),
   coldwhisk: z.boolean().default(false),
   note: z.string().max(500).optional(),
@@ -23,7 +23,14 @@ export const orderItemSchema = z.object({
     )
     .default([]),
   product_voucher_id: z.string().uuid().optional(),
-  addon_voucher_id: z.string().uuid().optional(),
+  addon_voucher_ids: z
+    .array(
+      z.object({
+        voucher_id: z.string().uuid(),
+        addon_option_id: z.string().uuid(),
+      })
+    )
+    .default([]),
   /** Fusion only — server validates against resolved_default_powder_id + fusion_allowed_powder. */
   selected_powder_id: z.string().uuid().optional(),
   /** Latte only — server defaults to is_default milk if omitted. */

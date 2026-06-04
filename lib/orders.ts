@@ -51,7 +51,7 @@ export interface OrderItemInput {
   note?: string;
   addon_option_ids: { option_id: string; quantity: number }[];
   product_voucher_id?: string;
-  addon_voucher_id?: string;
+  addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
   selected_powder_id?: string;
   selected_milk_type_id?: string;
   client_price_vnd: number;
@@ -73,7 +73,7 @@ export interface ProcessedOrderItem {
   coldwhisk: boolean;
   note: string | null;
   product_voucher_id: string | null;
-  addon_voucher_id: string | null;
+  addon_voucher_ids: { voucher_id: string; addon_option_id: string }[];
   addon_discount_vnd: number;
   selected_powder_id: string;
   selected_milk_type_id: string | null;
@@ -165,7 +165,7 @@ async function resolveOneItem(
   addonVoucherMap?: Map<string, string>
 ): Promise<ProcessedOrderItem> {
   // 1. Fetch menu item — must be available
-  if ((item.product_voucher_id || item.addon_voucher_id) && item.quantity > 1) {
+  if ((item.product_voucher_id || (item.addon_voucher_ids && item.addon_voucher_ids.length > 0)) && item.quantity > 1) {
     throw new OrderValidationError(
       "VALIDATION_ERROR",
       "Voucher chỉ có thể áp dụng cho 1 sản phẩm. Vui lòng tách sản phẩm ra trước khi áp dụng."
@@ -310,16 +310,20 @@ async function resolveOneItem(
   // Apply any remaining voucher credit to addons
   const addons_after_credit = Math.max(0, addons_price_vnd - remaining_credit);
 
-  // Apply ADDON voucher discount — find the specific addon and zero its cost
+  // Apply ADDON voucher discounts
   let addon_discount_vnd = 0;
-  if (item.addon_voucher_id && addonVoucherMap) {
-    const targetAddonOptionId = addonVoucherMap.get(item.addon_voucher_id);
-    if (targetAddonOptionId) {
-      const matchingAddon = resolvedAddons.find(
-        (a) => a.addon_option_id === targetAddonOptionId
-      );
-      if (matchingAddon) {
-        addon_discount_vnd = matchingAddon.unit_price_vnd;
+  if (item.addon_voucher_ids && addonVoucherMap) {
+    const discountedAddons = new Set<string>();
+    for (const av of item.addon_voucher_ids) {
+      const targetAddonOptionId = addonVoucherMap.get(av.voucher_id);
+      if (targetAddonOptionId && !discountedAddons.has(targetAddonOptionId)) {
+        const matchingAddon = resolvedAddons.find(
+          (a) => a.addon_option_id === targetAddonOptionId
+        );
+        if (matchingAddon) {
+          addon_discount_vnd += matchingAddon.unit_price_vnd;
+          discountedAddons.add(targetAddonOptionId);
+        }
       }
     }
   }
@@ -353,7 +357,7 @@ async function resolveOneItem(
     coldwhisk: item.coldwhisk ?? false,
     note: item.note ?? null,
     product_voucher_id: item.product_voucher_id ?? null,
-    addon_voucher_id: item.addon_voucher_id ?? null,
+    addon_voucher_ids: item.addon_voucher_ids || [],
     selected_powder_id: powder_id,
     selected_milk_type_id: item.selected_milk_type_id ?? null,
     unit_price_vnd: final_unit_price,

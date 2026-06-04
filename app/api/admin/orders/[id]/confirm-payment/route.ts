@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
+import { after } from "next/server";
+import { sendPushToRoles } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
@@ -102,15 +104,20 @@ export async function PATCH(
         const voucherItems = await tx.orderItem.findMany({
           where: { 
             order_id: id,
-            OR: [{ product_voucher_id: { not: null } }, { addon_voucher_id: { not: null } }],
+            product_voucher_id: { not: null },
           },
-          select: { product_voucher_id: true, addon_voucher_id: true },
+          select: { product_voucher_id: true },
+        });
+
+        const addonVouchers = await tx.orderItemAddonVoucher.findMany({
+          where: { orderItem: { order_id: id } },
+          select: { voucher_id: true }
         });
 
         const uniqueItemVoucherIds = [
           ...new Set([
             ...voucherItems.map((i) => i.product_voucher_id).filter((id): id is string => id !== null),
-            ...voucherItems.map((i) => i.addon_voucher_id).filter((id): id is string => id !== null),
+            ...addonVouchers.map((i) => i.voucher_id)
           ]),
         ];
 
@@ -130,6 +137,19 @@ export async function PATCH(
       },
       { maxWait: 5000, timeout: 10000 }
     );
+
+    // After response returns, trigger push notification
+    after(() => {
+      sendPushToRoles(
+        ["STAFF", "ADMIN"],
+        {
+          title: "✅ Đã xác nhận thanh toán",
+          body: `Đơn ${updatedOrder.order_code} đã được thanh toán. Chuẩn bị món thôi!`,
+          url: "/staff/orders",
+        },
+        session.id // Không push lại cho người vừa duyệt
+      ).catch((err) => console.error("[after] Failed to send push:", err));
+    });
 
     return NextResponse.json({ data: updatedOrder });
   } catch (err) {

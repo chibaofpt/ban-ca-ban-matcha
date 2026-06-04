@@ -24,7 +24,11 @@ const formatTimeOnly = (iso: string): string => {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-export default function StaffOrdersListPage() {
+interface StaffOrdersListPageProps {
+  userRole?: string;
+}
+
+export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersListPageProps) {
   const [activeTab, setActiveTab] = useState<OrderTabKey>("counter");
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -68,13 +72,14 @@ export default function StaffOrdersListPage() {
 
   // Background polling cho pendingCount
   const fetchPendingCountAPI = useCallback(async () => {
+    if (userRole !== "ADMIN") return null;
     try {
       const res = await fetchOrdersList({ status: "PENDING", limit: 1 });
       return res;
     } catch {
       return null;
     }
-  }, []);
+  }, [userRole]);
 
   const { data: pendingData } = usePolling({
     fetcher: fetchPendingCountAPI,
@@ -153,7 +158,7 @@ export default function StaffOrdersListPage() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         pendingCount={pendingCount}
-        isAdmin={true}
+        isAdmin={userRole === "ADMIN"}
       />
 
       {isInitialLoading ? (
@@ -330,7 +335,7 @@ export default function StaffOrdersListPage() {
       <DailyReportModal
         isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
-        userRole="STAFF"
+        userRole={userRole as "STAFF" | "ADMIN"}
       />
     </>
   );

@@ -100,8 +100,10 @@ export function buildAddonVoucherMap(
       ...item.selectedOptionIds,
       ...item.quantityAddonOptions.map((q) => q.option_id),
     ]);
+    const appliedOptionIds = new Set(item.addonVouchers?.map(av => av.addonOptionId) || []);
+    
     const matches = usable.filter(
-      (v) => v.addon_option_id !== null && itemOptionIds.has(v.addon_option_id)
+      (v) => v.addon_option_id !== null && itemOptionIds.has(v.addon_option_id) && !appliedOptionIds.has(v.addon_option_id)
     );
     if (matches.length > 0) {
       result.set(item.cartId, matches);
@@ -137,6 +139,31 @@ export function estimateDiscountSavings(voucher: MyVoucher, subtotal: number): n
     return Math.min(voucher.discount_value ?? 0, subtotal);
   }
   return 0;
+}
+
+/**
+ * Estimates total saving from multiple DISCOUNT vouchers — mirrors server calcMultiDiscountVouchers.
+ * Rule: all FIXED applied first (sequentially), then at most 1 PERCENT on the remainder.
+ * Result is capped so subtotal never goes below 0.
+ */
+export function estimateMultiDiscountSavings(vouchers: MyVoucher[], subtotal: number): number {
+  let remaining = subtotal;
+
+  // 1. Apply all FIXED vouchers first
+  for (const v of vouchers) {
+    if (v.discount_type === "FIXED" && (v.discount_value ?? 0) > 0) {
+      remaining = Math.max(0, remaining - (v.discount_value ?? 0));
+    }
+  }
+
+  // 2. Apply the single PERCENT voucher (if any)
+  const percentVoucher = vouchers.find((v) => v.discount_type === "PERCENT");
+  if (percentVoucher && (percentVoucher.discount_value ?? 0) > 0) {
+    const pct = Math.min(percentVoucher.discount_value ?? 0, 100);
+    remaining = Math.max(0, remaining - Math.floor((remaining * pct) / 100));
+  }
+
+  return subtotal - remaining;
 }
 
 /**

@@ -209,7 +209,7 @@ function isVoucherAlreadyUsed(
   return cartItems.some(
     (item) =>
       item.cartId !== excludeCartId &&
-      (item.productVoucherId === voucherId || item.addonVoucherId === voucherId)
+      (item.productVoucherId === voucherId || item.addonVouchers?.some(v => v.voucherId === voucherId))
   );
 }
 
@@ -276,7 +276,7 @@ function buildOrderPayloadMultiVoucher(
     quantity: number;
     client_price_vnd: number;
     product_voucher_id?: string;
-    addon_voucher_id?: string;
+    addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
   }[];
   discount_voucher_ids: string[];
 } {
@@ -287,7 +287,7 @@ function buildOrderPayloadMultiVoucher(
       quantity: c.quantity,
       client_price_vnd: c.clientPriceVnd,
       ...(c.productVoucherId ? { product_voucher_id: c.productVoucherId } : {}),
-      ...(c.addonVoucherId ? { addon_voucher_id: c.addonVoucherId } : {}),
+      ...(c.addonVouchers && c.addonVouchers.length > 0 ? { addon_voucher_ids: c.addonVouchers.map(av => ({ voucher_id: av.voucherId, addon_option_id: av.addonOptionId })) } : {}),
     })),
   };
 }
@@ -442,7 +442,7 @@ describe("isVoucherAlreadyUsed — 1 voucher 1 item constraint", () => {
   it("addon voucher cũng bị kiểm tra", () => {
     const items = [
       makeCartItem({ cartId: "c1" }),
-      makeCartItem({ cartId: "c2", addonVoucherId: "av-1" }),
+      makeCartItem({ cartId: "c2", addonVouchers: [{ voucherId: "av-1", addonOptionId: "addon-kem-tuoi", discountVnd: 0 }] }),
     ];
     expect(isVoucherAlreadyUsed("av-1", items, "c1")).toBe(true);
   });
@@ -594,7 +594,7 @@ describe("buildOrderPayloadMultiVoucher", () => {
 
     expect(payload.discount_voucher_ids).toHaveLength(0);
     expect("product_voucher_id" in payload.items[0]).toBe(false);
-    expect("addon_voucher_id" in payload.items[0]).toBe(false);
+    expect(payload.items[0].addon_voucher_ids).toBeUndefined();
   });
 
   it("1 DISCOUNT voucher → discount_voucher_ids chứa đúng id", () => {
@@ -620,23 +620,23 @@ describe("buildOrderPayloadMultiVoucher", () => {
   });
 
   it("item có addonVoucherId → addon_voucher_id có trong payload item", () => {
-    const items = [makeCartItem({ addonVoucherId: "av-xyz" })];
+    const items = [makeCartItem({ addonVouchers: [{ voucherId: "av-xyz", addonOptionId: "addon-kem-tuoi", discountVnd: 0 }] })];
     const payload = buildOrderPayloadMultiVoucher(items, []);
 
-    expect(payload.items[0].addon_voucher_id).toBe("av-xyz");
+    expect(payload.items[0].addon_voucher_ids).toEqual([{ voucher_id: "av-xyz", addon_option_id: "addon-kem-tuoi" }]);
   });
 
   it("mixed: item A có product voucher, item B có addon voucher, + 2 discount vouchers", () => {
     const items = [
       makeCartItem({ cartId: "c1", menuItemId: "item-a", productVoucherId: "pv-1" }),
-      makeCartItem({ cartId: "c2", menuItemId: "item-b", addonVoucherId: "av-1" }),
+      makeCartItem({ cartId: "c2", menuItemId: "item-b", addonVouchers: [{ voucherId: "av-1", addonOptionId: "addon-kem-tuoi", discountVnd: 0 }] }),
     ];
     const payload = buildOrderPayloadMultiVoucher(items, ["dv-1", "dv-2"]);
 
     expect(payload.discount_voucher_ids).toEqual(["dv-1", "dv-2"]);
     expect(payload.items[0].product_voucher_id).toBe("pv-1");
-    expect("addon_voucher_id" in payload.items[0]).toBe(false);
-    expect(payload.items[1].addon_voucher_id).toBe("av-1");
+    expect(payload.items[0].addon_voucher_ids).toBeUndefined();
+    expect(payload.items[1].addon_voucher_ids).toEqual([{ voucher_id: "av-1", addon_option_id: "addon-kem-tuoi" }]);
     expect("product_voucher_id" in payload.items[1]).toBe(false);
   });
 

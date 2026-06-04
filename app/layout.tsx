@@ -60,6 +60,12 @@ export const metadata: Metadata = {
     shortcut: "/logo.png",
     apple: "/logo.png",
   },
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "BCBM",
+    statusBarStyle: "default",
+  },
 };
 
 /** Root layout component wrapping all pages with common providers. */

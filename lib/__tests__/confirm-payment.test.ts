@@ -1,0 +1,226 @@
+/**
+ * Unit tests for PATCH /api/admin/orders/[id]/confirm-payment
+ * Focused on: push notification trigger behavior.
+ *
+ * Strategy: mock lib/push to verify sendPushToRoles is called correctly.
+ * Tests FAIL until after() + sendPushToRoles integration is implemented.
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
+
+// ── Mocks declared before imports ────────────────────────────────────────────
+
+const mockGetSession = vi.fn();
+
+vi.mock("@/lib/auth", () => ({
+  getSession: () => mockGetSession(),
+}));
+
+const mockSendPushToRoles = vi.fn();
+
+vi.mock("@/lib/push", () => ({
+  sendPushToRoles: (...args: unknown[]) => mockSendPushToRoles(...args),
+}));
+
+vi.mock("next/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/server")>();
+  return {
+    ...actual,
+    after: (fn: Function) => fn(),
+  };
+});
+
+const mockOrderFindUnique = vi.fn();
+const mockOrderUpdate = vi.fn();
+const mockOrderDiscountVoucherFindMany = vi.fn();
+const mockOrderItemFindMany = vi.fn();
+const mockOrderItemAddonVoucherFindMany = vi.fn();
+const mockVoucherUpdate = vi.fn();
+const mockTransaction = vi.fn();
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    order: {
+      findUnique: (...args: unknown[]) => mockOrderFindUnique(...args),
+    },
+    $transaction: (fn: (tx: unknown) => Promise<unknown>) => mockTransaction(fn),
+  },
+}));
+
+vi.mock("@/lib/cancelOrder", () => ({
+  restoreVouchersOnCancel: vi.fn(),
+}));
+
+// ── Import AFTER mocks ───────────────────────────────────────────────────────
+import { PATCH } from "@/app/api/admin/orders/[id]/confirm-payment/route";
+
+// ── Fixtures ─────────────────────────────────────────────────────────────────
+
+const ADMIN_ID = "550e8400-e29b-41d4-a716-446655440001";
+const ORDER_ID = "550e8400-e29b-41d4-a716-446655440002";
+
+const adminSession = { id: ADMIN_ID, role: "ADMIN" };
+
+const pendingOrder = {
+  id: ORDER_ID,
+  status: "PENDING",
+  order_type: "PICKUP",
+  auto_cancel_at: new Date(Date.now() + 20 * 60 * 1000), // 20 phút nữa
+  order_code: "BCBM-A3X7K2",
+};
+
+const updatedOrder = {
+  ...pendingOrder,
+  status: "ADMIN_CONFIRMED",
+  payment_confirmed_at: new Date(),
+  payment_confirmed_by: ADMIN_ID,
+  user: { name: "Nguyễn Văn A", phone_number: "+84901234567" },
+};
+
+function makeReq(orderId = ORDER_ID): NextRequest {
+  return new NextRequest(`http://localhost/api/admin/orders/${orderId}/confirm-payment`, {
+    method: "PATCH",
+  });
+}
+
+function setupSuccessfulConfirmation() {
+  mockOrderFindUnique.mockResolvedValue(pendingOrder);
+
+  mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+    const tx = {
+      order: {
+        update: mockOrderUpdate.mockResolvedValue(updatedOrder),
+      },
+      orderDiscountVoucher: {
+        findMany: mockOrderDiscountVoucherFindMany.mockResolvedValue([]),
+      },
+      orderItem: {
+        findMany: mockOrderItemFindMany.mockResolvedValue([]),
+      },
+      orderItemAddonVoucher: {
+        findMany: mockOrderItemAddonVoucherFindMany.mockResolvedValue([]),
+      },
+      voucher: {
+        update: mockVoucherUpdate,
+      },
+    };
+    return fn(tx);
+  });
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+describe("PATCH /api/admin/orders/[id]/confirm-payment — push notification", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetSession.mockResolvedValue(adminSession);
+    mockSendPushToRoles.mockResolvedValue(undefined);
+  });
+
+  it("gọi sendPushToRoles với ['STAFF', 'ADMIN'] và excludeUserId = admin.id sau khi confirm thành công", async () => {
+    setupSuccessfulConfirmation();
+
+    const res = await PATCH(makeReq(), {
+      params: Promise.resolve({ id: ORDER_ID }),
+    });
+
+    expect(res.status).toBe(200);
+
+    // Verify push was triggered with correct args
+    expect(mockSendPushToRoles).toHaveBeenCalledWith(
+      expect.arrayContaining(["STAFF", "ADMIN"]),
+      expect.objectContaining({
+        title: expect.stringContaining("xác nhận"),
+        url: "/staff/orders",
+      }),
+      ADMIN_ID // excludeUserId — admin không nhận push của chính mình
+    );
+  });
+
+  it("payload push chứa order_code trong body", async () => {
+    setupSuccessfulConfirmation();
+
+    await PATCH(makeReq(), {
+      params: Promise.resolve({ id: ORDER_ID }),
+    });
+
+    expect(mockSendPushToRoles).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({
+        body: expect.stringContaining("BCBM-A3X7K2"),
+      }),
+      ADMIN_ID
+    );
+  });
+
+  it("không gọi sendPushToRoles khi order không phải PENDING", async () => {
+    mockOrderFindUnique.mockResolvedValue({
+      ...pendingOrder,
+      status: "ADMIN_CONFIRMED", // đã confirm rồi
+    });
+
+    const res = await PATCH(makeReq(), {
+      params: Promise.resolve({ id: ORDER_ID }),
+    });
+
+    expect(res.status).toBe(422);
+    expect(mockSendPushToRoles).not.toHaveBeenCalled();
+  });
+
+  it("không gọi sendPushToRoles khi order đã expired (auto-cancel window)", async () => {
+    mockOrderFindUnique.mockResolvedValue({
+      ...pendingOrder,
+      auto_cancel_at: new Date(Date.now() - 1000), // đã quá hạn
+    });
+
+    // Transaction sẽ cancel order
+    mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        order: { update: vi.fn() },
+      };
+      return fn(tx);
+    });
+
+    const res = await PATCH(makeReq(), {
+      params: Promise.resolve({ id: ORDER_ID }),
+    });
+
+    expect(res.status).toBe(422);
+    expect(mockSendPushToRoles).not.toHaveBeenCalled();
+  });
+
+  it("không gọi sendPushToRoles khi order không tồn tại", async () => {
+    mockOrderFindUnique.mockResolvedValue(null);
+
+    const res = await PATCH(makeReq(), {
+      params: Promise.resolve({ id: ORDER_ID }),
+    });
+
+    expect(res.status).toBe(404);
+    expect(mockSendPushToRoles).not.toHaveBeenCalled();
+  });
+
+  it("push failure không ảnh hưởng response — vẫn trả 200", async () => {
+    setupSuccessfulConfirmation();
+    mockSendPushToRoles.mockRejectedValue(new Error("Push service down"));
+
+    // Dù push fail, response vẫn phải 200
+    const res = await PATCH(makeReq(), {
+      params: Promise.resolve({ id: ORDER_ID }),
+    });
+
+    expect(res.status).toBe(200);
+  });
+
+  it("trả 401 khi chưa đăng nhập", async () => {
+    mockGetSession.mockResolvedValue(null);
+
+    const res = await PATCH(makeReq(), {
+      params: Promise.resolve({ id: ORDER_ID }),
+    });
+
+    expect(res.status).toBe(401);
+    expect(mockSendPushToRoles).not.toHaveBeenCalled();
+  });
+});

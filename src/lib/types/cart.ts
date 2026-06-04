@@ -47,9 +47,8 @@ export interface CartItem {
   /** Set when this item was added via a PRODUCT voucher (unit price reduced by voucher credit). */
   productVoucherId?: string;
   productVoucherDiscountVnd?: number;
-  /** Set when an ADDON voucher is applied to this item's addons. */
-  addonVoucherId?: string;
-  addonVoucherDiscountVnd?: number;
+  /** Applied ADDON vouchers. Unlimited, each targeting a different addon_option_id. */
+  addonVouchers?: { voucherId: string; addonOptionId: string; discountVnd: number }[];
   /** Explicit list of human-readable customization details to display in the cart. */
   details?: string[];
 }
