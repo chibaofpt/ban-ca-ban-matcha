@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
+import { after } from "next/server";
+import { sendPushToRoles } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
@@ -135,6 +137,19 @@ export async function PATCH(
       },
       { maxWait: 5000, timeout: 10000 }
     );
+
+    // After response returns, trigger push notification
+    after(() => {
+      sendPushToRoles(
+        ["STAFF", "ADMIN"],
+        {
+          title: "✅ Đã xác nhận thanh toán",
+          body: `Đơn ${updatedOrder.order_code} đã được thanh toán. Chuẩn bị món thôi!`,
+          url: "/staff/orders",
+        },
+        session.id // Không push lại cho người vừa duyệt
+      ).catch((err) => console.error("[after] Failed to send push:", err));
+    });
 
     return NextResponse.json({ data: updatedOrder });
   } catch (err) {

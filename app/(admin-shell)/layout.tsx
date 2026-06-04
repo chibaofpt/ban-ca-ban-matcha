@@ -4,6 +4,7 @@ import type { Role } from "@/src/lib/types/user";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import PushSubscriptionManager from "@/src/components/admin/PushSubscriptionManager";
 
 /** Layout shell for all admin and staff pages — top bar + bottom tab bar. */
 export default async function AdminShellLayout({ children }: { children: ReactNode }) {
@@ -26,6 +27,7 @@ export default async function AdminShellLayout({ children }: { children: ReactNo
     <div className="min-h-screen bg-background flex flex-col">
       <AdminTabBar userName={userName} userRole={userRole} />
       <main className="flex-1 pb-24 md:pb-8 px-4 md:px-8 py-6 max-w-7xl mx-auto w-full">{children}</main>
+      <PushSubscriptionManager />
     </div>
   );
 }

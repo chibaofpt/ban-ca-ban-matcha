@@ -17,6 +17,8 @@ import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
 import { logSystemEvent } from "@/lib/logger";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
+import { after } from "next/server";
+import { sendPushToRoles } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 
@@ -330,6 +332,15 @@ export async function POST(req: NextRequest) {
     );
 
     const payment_qr_url = buildVietQRUrl({ amount: total_vnd, orderCode: order_code });
+
+    // Sau khi response HTTP đã trả về Vercel xong, chạy background job push notification:
+    after(() => {
+      sendPushToRoles(["ADMIN"], {
+        title: "🔔 Đơn hàng mới (Online)",
+        body: `${order.order_code} — ${data.items.length} món — ${new Intl.NumberFormat("vi-VN").format(order.total_vnd)}đ`,
+        url: "/admin/orders",
+      }).catch((err) => console.error("[after] Failed to send push:", err));
+    });
 
     return NextResponse.json(
       {

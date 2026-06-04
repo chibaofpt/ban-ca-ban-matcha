@@ -29,6 +29,7 @@ model User {
   sessions           Session[]
   redeemedVouchers   Voucher[]   @relation("StaffRedeemed")
   vouchers           Voucher[]   @relation("UserVouchers")
+  pushSubscriptions  PushSubscription[]
 
   @@map("users")
 }
@@ -553,5 +554,21 @@ model SystemLog {
 
   @@index([created_at(sort: Desc)], map: "idx_system_logs_created_at")
   @@map("system_logs")
+}
+
+model PushSubscription {
+  id         String   @id @default(uuid()) @db.Uuid
+  user_id    String   @db.Uuid
+  endpoint   String
+  p256dh     String
+  auth       String
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, endpoint])
+  @@index([user_id])
+  @@map("push_subscriptions")
 }
 

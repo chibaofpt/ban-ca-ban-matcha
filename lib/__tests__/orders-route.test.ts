@@ -8,6 +8,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
+const mockSendPushToRoles = vi.fn();
+
+vi.mock("@/lib/push", () => ({
+  sendPushToRoles: (...args: unknown[]) => mockSendPushToRoles(...args),
+}));
+
+vi.mock("next/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/server")>();
+  return {
+    ...actual,
+    after: (fn: Function) => fn(),
+  };
+});
+
 // ── Mocks declared before dynamic imports ─────────────────────────────────────
 
 const mockGetSession = vi.fn();
@@ -213,6 +227,7 @@ describe("POST /api/orders", () => {
     mockGetSession.mockResolvedValue(customerSession);
     mockUserUpdate.mockResolvedValue({});
     mockPointsLogCreate.mockResolvedValue({});
+    mockSendPushToRoles.mockResolvedValue(undefined);
     // Restore pricing mocks cleared by clearAllMocks
     vi.mocked(buildPricingContext).mockResolvedValue({
       defaultSizeConfigs: [
@@ -685,13 +700,49 @@ describe("POST /api/orders", () => {
     const json = await res.json();
     expect(json.code).toBe("INVALID_PICKUP_TIME");
     expect(json.error).toBe("Thời gian nhận tối thiểu phải cách hiện tại 10 phút");
-  });});
+  });
+
+  // ── Push notification trigger ──────────────────────────────────────────────
+
+  it("gọi sendPushToRoles với ['ADMIN'] sau khi tạo order thành công", async () => {
+    setupTx();
+    mockSendPushToRoles.mockResolvedValue(undefined);
+
+    const res = await POST(makeReq(validPayload));
+
+    expect(res.status).toBe(201);
+    expect(mockSendPushToRoles).toHaveBeenCalledWith(
+      ["ADMIN"],
+      expect.objectContaining({
+        title: expect.stringContaining("Đơn hàng mới"),
+        url: "/admin/orders",
+      })
+    );
+    // Không truyền excludeUserId (customer order — không exclude ai)
+    expect(mockSendPushToRoles).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.any(Object)
+    );
+  });
+
+  it("không gọi sendPushToRoles khi order creation thất bại (PRICE_CHANGED)", async () => {
+    vi.mocked(resolveOrderItemPrice).mockReturnValue(90000); // price mismatch
+    setupTx();
+
+    const res = await POST(makeReq(validPayload));
+
+    expect(res.status).toBe(409);
+    expect(mockSendPushToRoles).not.toHaveBeenCalled();
+  });
+});
 
 
 describe("GET /api/orders", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSession.mockResolvedValue(customerSession);
+    mockVoucherFindUnique.mockResolvedValue(null);
+    mockSendPushToRoles.mockResolvedValue(undefined); // Prevent .catch() from crashing on undefined
 
     // Mock $transaction to resolve array of promises for GET route
     (prisma.$transaction as any).mockImplementation(async (arg: unknown) => {
