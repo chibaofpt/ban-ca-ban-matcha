@@ -61,8 +61,28 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // ── 2. /admin/login is always public ─────────────────────────────────────
-  if (pathname === '/admin/login') return NextResponse.next();
+  // ── 2. /admin/login — public, but redirect away if already authenticated ─
+  if (pathname === '/admin/login') {
+    const accessToken = request.cookies.get('access_token')?.value;
+    if (accessToken) {
+      try {
+        const { payload } = await jwtVerify(accessToken, JWT_SECRET);
+        const userRole = payload.role as string;
+        const url = request.nextUrl.clone();
+        if (userRole === 'ADMIN') {
+          url.pathname = '/admin/menu';
+          return NextResponse.redirect(url);
+        }
+        if (userRole === 'STAFF') {
+          url.pathname = '/staff/orders';
+          return NextResponse.redirect(url);
+        }
+      } catch {
+        // Token expired/invalid — fall through and show the login form.
+      }
+    }
+    return NextResponse.next();
+  }
 
   // ── 3. Admin / Staff guard on public customer paths ───────────────────────
   //

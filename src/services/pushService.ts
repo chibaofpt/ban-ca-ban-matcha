@@ -27,6 +27,13 @@ export async function subscribeToPush(): Promise<void> {
     throw new Error("Push notifications not supported by browser");
   }
 
+  // 0. Request permission EXPLICITLY FIRST (Required for iOS Safari PWA)
+  // If we wait for service worker registration first, iOS might lose the 'user gesture' context and silently block the prompt.
+  const permission = await window.Notification.requestPermission();
+  if (permission !== "granted") {
+    throw new Error("Notification permission denied");
+  }
+
   // 1. Register Service Worker
   const registration = await navigator.serviceWorker.register("/sw.js");
   await navigator.serviceWorker.ready;
