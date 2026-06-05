@@ -47,15 +47,25 @@ Object.defineProperty(global, "navigator", {
   writable: true,
 });
 
+const mockRequestPermission = vi.fn().mockResolvedValue("granted");
+
+const mockNotification = {
+  permission: "granted",
+  requestPermission: mockRequestPermission,
+};
+
 // Mock Notification
 Object.defineProperty(global, "Notification", {
-  value: { permission: "granted" },
+  value: mockNotification,
   writable: true,
 });
 
-// Mock window.PushManager
+// Mock window.PushManager and window.Notification
 Object.defineProperty(global, "window", {
-  value: { PushManager: {} },
+  value: { 
+    PushManager: {},
+    Notification: mockNotification
+  },
   writable: true,
 });
 
