@@ -109,12 +109,18 @@ export function QRScannerModal({
 
     return () => {
       stopped = true;
-      scannerRef.current
-        ?.stop()
-        .catch(() => undefined)
-        .finally(() => {
-          scannerRef.current?.clear();
-        });
+      try {
+        if (scannerRef.current) {
+          scannerRef.current
+            .stop()
+            .catch(() => undefined)
+            .finally(() => {
+              try { scannerRef.current?.clear(); } catch (e) {}
+            });
+        }
+      } catch (err) {
+        try { scannerRef.current?.clear(); } catch (e) {}
+      }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -122,13 +128,22 @@ export function QRScannerModal({
   // ── Close handler ──────────────────────────────────────────────────────
 
   const handleClose = () => {
-    scannerRef.current
-      ?.stop()
-      .catch(() => undefined)
-      .finally(() => {
-        scannerRef.current?.clear();
+    try {
+      if (scannerRef.current) {
+        scannerRef.current
+          .stop()
+          .catch(() => undefined)
+          .finally(() => {
+            try { scannerRef.current?.clear(); } catch (e) {}
+            onClose();
+          });
+      } else {
         onClose();
-      });
+      }
+    } catch (err) {
+      try { scannerRef.current?.clear(); } catch (e) {}
+      onClose();
+    }
   };
 
   // ── Render ─────────────────────────────────────────────────────────────

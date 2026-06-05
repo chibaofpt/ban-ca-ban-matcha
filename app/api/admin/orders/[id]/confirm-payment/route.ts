@@ -140,6 +140,7 @@ export async function PATCH(
 
     // After response returns, trigger push notification
     after(() => {
+      console.log(`[AFTER JOB] Starting background push notification for confirmed order: ${updatedOrder.order_code}`);
       sendPushToRoles(
         ["STAFF", "ADMIN"],
         {
@@ -148,7 +149,9 @@ export async function PATCH(
           url: "/staff/orders",
         },
         session.id // Không push lại cho người vừa duyệt
-      ).catch((err) => console.error("[after] Failed to send push:", err));
+      )
+        .then(() => console.log(`[AFTER JOB] Successfully completed push task for confirmed order: ${updatedOrder.order_code}`))
+        .catch((err) => console.error("[AFTER JOB] Failed to send push:", err));
     });
 
     return NextResponse.json({ data: updatedOrder });
