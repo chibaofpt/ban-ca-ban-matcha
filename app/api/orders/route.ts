@@ -335,11 +335,14 @@ export async function POST(req: NextRequest) {
 
     // Sau khi response HTTP đã trả về Vercel xong, chạy background job push notification:
     after(() => {
+      console.log(`[AFTER JOB] Starting background push notification for new order: ${order.order_code}`);
       sendPushToRoles(["ADMIN"], {
         title: "🔔 Đơn hàng mới (Online)",
         body: `${order.order_code} — ${data.items.length} món — ${new Intl.NumberFormat("vi-VN").format(order.total_vnd)}đ`,
         url: "/admin/orders",
-      }).catch((err) => console.error("[after] Failed to send push:", err));
+      })
+        .then(() => console.log(`[AFTER JOB] Successfully completed push task for order: ${order.order_code}`))
+        .catch((err) => console.error("[AFTER JOB] Failed to send push:", err));
     });
 
     return NextResponse.json(

@@ -2,18 +2,35 @@ import type { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import webpush from "web-push";
 
-// Setup web-push VAPID details only if env vars are present
-if (
-  process.env.VAPID_SUBJECT &&
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY &&
-  process.env.VAPID_PRIVATE_KEY
-) {
-  webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT,
-    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+let isVapidInitialized = false;
+
+function initVapid(): boolean {
+  if (isVapidInitialized) return true;
+
+  const hasKeys = !!(
+    process.env.VAPID_SUBJECT &&
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY &&
     process.env.VAPID_PRIVATE_KEY
   );
+
+  if (hasKeys) {
+    try {
+      webpush.setVapidDetails(
+        process.env.VAPID_SUBJECT!,
+        process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+        process.env.VAPID_PRIVATE_KEY!
+      );
+      isVapidInitialized = true;
+      console.log("[Push Notification] VAPID keys loaded and configured successfully.");
+    } catch (err) {
+      console.error("[Push Notification] Failed to initialize web-push VAPID details:", err);
+    }
+  }
+  return isVapidInitialized;
 }
+
+// Initial check at startup
+initVapid();
 
 interface PushPayload {
   title: string;
@@ -41,7 +58,14 @@ export async function sendPushToRoles(
       },
     });
 
+    console.log(`[Push Notification] Found ${subscriptions.length} active subscription(s) for roles: ${roles.join(", ")}`);
+
     if (subscriptions.length === 0) return;
+
+    if (!initVapid()) {
+      console.warn(`[Push Notification] Skipped sending to ${roles.join(", ")} because VAPID keys are missing.`);
+      return;
+    }
 
     const payloadString = JSON.stringify(payload);
 
@@ -89,7 +113,14 @@ export async function sendPushToUser(
       },
     });
 
+    console.log(`[Push Notification] Found ${subscriptions.length} active subscription(s) for user: ${userId}`);
+
     if (subscriptions.length === 0) return 0;
+
+    if (!initVapid()) {
+      console.warn(`[Push Notification] Skipped sending to user ${userId} because VAPID keys are missing.`);
+      return 0;
+    }
 
     const payloadString = JSON.stringify(payload);
     let sentCount = 0;
