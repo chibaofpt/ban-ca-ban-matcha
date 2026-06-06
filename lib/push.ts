@@ -7,18 +7,19 @@ let isVapidInitialized = false;
 function initVapid(): boolean {
   if (isVapidInitialized) return true;
 
-  const hasKeys = !!(
-    process.env.VAPID_SUBJECT &&
-    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY &&
-    process.env.VAPID_PRIVATE_KEY
-  );
+  // Trim surrounding quotes in case the env vars on Vercel were accidentally wrapped with quotes
+  const vapidSubject = process.env.VAPID_SUBJECT?.replace(/^["']|["']$/g, "").trim();
+  const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.replace(/^["']|["']$/g, "").trim();
+  const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY?.replace(/^["']|["']$/g, "").trim();
+
+  const hasKeys = !!(vapidSubject && vapidPublicKey && vapidPrivateKey);
 
   if (hasKeys) {
     try {
       webpush.setVapidDetails(
-        process.env.VAPID_SUBJECT!,
-        process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-        process.env.VAPID_PRIVATE_KEY!
+        vapidSubject!,
+        vapidPublicKey!,
+        vapidPrivateKey!
       );
       isVapidInitialized = true;
       console.log("[Push Notification] VAPID keys loaded and configured successfully.");
