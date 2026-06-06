@@ -4,6 +4,17 @@ import webpush from "web-push";
 
 let isVapidInitialized = false;
 
+// Suppress url.parse deprecation warning from web-push in Node.js
+if (typeof process !== "undefined" && typeof process.on === "function") {
+  process.on("warning", (warning) => {
+    if (warning.name === "DeprecationWarning" && warning.message.includes("url.parse")) {
+      return;
+    }
+    console.warn(warning.stack || warning.message);
+  });
+}
+
+
 function initVapid(): boolean {
   if (isVapidInitialized) return true;
 

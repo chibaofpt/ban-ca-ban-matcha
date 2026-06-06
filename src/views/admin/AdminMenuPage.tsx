@@ -120,7 +120,7 @@ export default function AdminMenuPage() {
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
-  const handleCreateSuccess = (newItem: AdminMenuItem) => {
+  const handleCreateSuccess = (newItem: AdminMenuItem, powderName?: string) => {
     setMenuData((prev) => {
       if (!prev) return prev;
       const list = newItem.category === "latte" ? prev.latte : prev.fusion;
@@ -129,7 +129,11 @@ export default function AdminMenuPage() {
         [newItem.category]: [...list, newItem],
       };
     });
-    showToast(`Đã thêm món "${newItem.name}"`);
+    if (powderName) {
+      showToast(`Đã tạo món "${newItem.name}" và bột "${powderName}"`);
+    } else {
+      showToast(`Đã thêm món "${newItem.name}"`);
+    }
     loadData(); // Re-fetch to sync fully with DB
   };
 
@@ -148,11 +152,11 @@ export default function AdminMenuPage() {
     loadData(); // Re-fetch to sync fully with DB
   };
 
-  const handleModalSuccess = (item: AdminMenuItem) => {
+  const handleModalSuccess = (item: AdminMenuItem, powderName?: string) => {
     if (modalState.open && modalState.mode === "edit") {
       handleEditSuccess(item);
     } else {
-      handleCreateSuccess(item);
+      handleCreateSuccess(item, powderName);
     }
   };
 

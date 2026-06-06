@@ -30,6 +30,13 @@ interface FormFields {
   grams_m: string;
   grams_l: string;
   grams_xl: string;
+  // Inline powder creation (Latte only, create mode)
+  powder_mode: "new" | "existing";
+  new_powder_name: string;
+  new_powder_price_per_gram: string;
+  new_powder_grams_m: string;
+  new_powder_grams_l: string;
+  new_powder_grams_xl: string;
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -68,6 +75,12 @@ export function buildDefaultValues(item: AdminMenuItem): MenuItemFormValues {
     grams_m: cpg?.M != null ? String(cpg.M) : "",
     grams_l: cpg?.L != null ? String(cpg.L) : "",
     grams_xl: cpg?.XL != null ? String(cpg.XL) : "",
+    powder_mode: "new",
+    new_powder_name: "",
+    new_powder_price_per_gram: "",
+    new_powder_grams_m: "",
+    new_powder_grams_l: "",
+    new_powder_grams_xl: "",
   };
 }
 
@@ -106,6 +119,12 @@ export default function MenuItemForm({
       grams_m: "",
       grams_l: "",
       grams_xl: "",
+      powder_mode: "new",
+      new_powder_name: "",
+      new_powder_price_per_gram: "",
+      new_powder_grams_m: "",
+      new_powder_grams_l: "",
+      new_powder_grams_xl: "",
       ...defaultValues,
     },
   });
@@ -113,6 +132,7 @@ export default function MenuItemForm({
   const category = watch("category");
   const defaultPowderId = watch("default_powder_id");
   const allowedPowderIds = watch("allowed_powder_ids");
+  const powderMode = watch("powder_mode");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -148,9 +168,21 @@ export default function MenuItemForm({
     setFormError(null);
 
     // Validate: Latte requires a powder
-    if (values.category === "latte" && mode === "create" && !values.matcha_powder_id) {
-      setFormError("Vui lòng chọn bột matcha cho món Latte.");
-      return;
+    if (values.category === "latte" && mode === "create") {
+      if (values.powder_mode === "existing" && !values.matcha_powder_id) {
+        setFormError("Vui lòng chọn bột matcha cho món Latte.");
+        return;
+      }
+      if (values.powder_mode === "new") {
+        if (!values.new_powder_name.trim()) {
+          setFormError("Vui lòng nhập tên bột mới.");
+          return;
+        }
+        if (!values.new_powder_price_per_gram.trim()) {
+          setFormError("Vui lòng nhập giá bột mới.");
+          return;
+        }
+      }
     }
 
     // Validate: At least one size must be provided
@@ -191,7 +223,24 @@ export default function MenuItemForm({
 
     // Category-specific fields
     if (values.category === "latte") {
-      if (values.matcha_powder_id) fd.append("matcha_powder_id", values.matcha_powder_id);
+      if (mode === "create" && values.powder_mode === "new") {
+        fd.append("new_powder_name", values.new_powder_name.trim());
+        fd.append("new_powder_price_per_gram", values.new_powder_price_per_gram.trim());
+        
+        const newPowderGmM = parseGrams(values.new_powder_grams_m);
+        const newPowderGmL = parseGrams(values.new_powder_grams_l);
+        const newPowderGmXL = parseGrams(values.new_powder_grams_xl);
+        const powderSizeConfig = [];
+        if (newPowderGmM != null) powderSizeConfig.push({ size: "M", grams: newPowderGmM });
+        if (newPowderGmL != null) powderSizeConfig.push({ size: "L", grams: newPowderGmL });
+        if (newPowderGmXL != null) powderSizeConfig.push({ size: "XL", grams: newPowderGmXL });
+        
+        if (powderSizeConfig.length > 0) {
+          fd.append("new_powder_size_config", JSON.stringify(powderSizeConfig));
+        }
+      } else {
+        if (values.matcha_powder_id) fd.append("matcha_powder_id", values.matcha_powder_id);
+      }
     }
     if (values.category === "fusion") {
       if (values.default_powder_id) fd.append("default_powder_id", values.default_powder_id);
@@ -306,24 +355,103 @@ export default function MenuItemForm({
 
       {/* Latte only: Bột matcha */}
       {category === "latte" && (
-        <div>
+        <div className="space-y-4">
           <label className={labelClass}>Bột matcha *</label>
           {mode === "edit" ? (
-            <div className="mt-1 px-3 py-2 bg-secondary/20 border border-border rounded-xl text-sm text-foreground">
+            <div className="px-3 py-2 bg-secondary/20 border border-border rounded-xl text-sm text-foreground">
               {sortedPowders.find(p => p.id === watch("matcha_powder_id"))?.name || "Đang tải..."}
               <p className="text-[10px] text-muted-foreground mt-0.5">Không thể đổi bột sau khi tạo (neo giá Fusion).</p>
             </div>
           ) : (
-            <select {...register("matcha_powder_id")} className={inputClass}>
-              <option value="">— Chọn bột —</option>
-              {sortedPowders.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.type !== "NONE" ? ` (${p.type})` : ""}
-                  {!p.is_available ? " (Ngưng bán)" : ""}
-                </option>
-              ))}
-            </select>
+            <>
+              {/* Toggle switch for Create mode */}
+              <div className="flex bg-secondary/30 rounded-xl p-1">
+                <button
+                  type="button"
+                  className={cn(
+                    "flex-1 py-1.5 text-sm font-medium rounded-lg transition-colors",
+                    powderMode === "new" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                  onClick={() => setValue("powder_mode", "new")}
+                >
+                  Tạo bột mới
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex-1 py-1.5 text-sm font-medium rounded-lg transition-colors",
+                    powderMode === "existing" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"
+                  )}
+                  onClick={() => setValue("powder_mode", "existing")}
+                >
+                  Chọn bột có sẵn
+                </button>
+              </div>
+
+              {powderMode === "existing" && (
+                <div className="animate-in fade-in zoom-in-95 duration-200">
+                  <select {...register("matcha_powder_id")} className={inputClass}>
+                    <option value="">— Chọn bột —</option>
+                    {sortedPowders
+                      // Optionally, filter to only show powders without reference_latte_item_id
+                      // But for now, we just list them, backend handles P2002 if taken
+                      .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                        {p.type !== "NONE" ? ` (${p.type})` : ""}
+                        {!p.is_available ? " (Ngưng bán)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {powderMode === "new" && (
+                <div className="space-y-3 bg-secondary/10 p-3 rounded-xl border border-border/50 animate-in fade-in zoom-in-95 duration-200">
+                  <div>
+                    <label className="text-xs text-muted-foreground">Tên bột *</label>
+                    <input
+                      {...register("new_powder_name")}
+                      placeholder="Ví dụ: Meyumi"
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Giá (VND/gram) *</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      {...register("new_powder_price_per_gram")}
+                      placeholder="Ví dụ: 6000"
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">
+                      Gram bột riêng <span className="font-normal">— để trống = hệ thống</span>
+                    </label>
+                    <div className="grid grid-cols-3 gap-2 mt-1">
+                      {(["M", "L", "XL"] as const).map((size) => {
+                        const field = `new_powder_grams_${size.toLowerCase()}` as "new_powder_grams_m" | "new_powder_grams_l" | "new_powder_grams_xl";
+                        return (
+                          <div key={size}>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              {...register(field)}
+                              placeholder={`Size ${size}`}
+                              className={cn(inputClass, "text-xs px-2")}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
