@@ -54,6 +54,7 @@ app/                              # Next.js App Router — entry points only, ze
     staff/orders/route.ts
     staff/scan/route.ts
     staff/users/route.ts
+    staff/users/[id]/vouchers/route.ts
     staff/vouchers/[id]/redeem/route.ts
     admin/points/add/route.ts
     admin/orders/[id]/status/route.ts
@@ -83,6 +84,7 @@ src/                              # Frontend — never import lib/ from here
     LoginPage.tsx
     RegisterPage.tsx
     ProfilePage.tsx               # Phase 3
+    CustomerQRDisplay.tsx         # Phase 4
     OrdersPage.tsx                # Phase 3
     PointsPage.tsx                # Phase 4
     VouchersPage.tsx              # Phase 4

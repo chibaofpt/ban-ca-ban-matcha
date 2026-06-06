@@ -130,6 +130,7 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 | `/api/staff/scan` | GET | Resolve QR token → user or voucher |
 | `/api/staff/vouchers/[id]/redeem` | PATCH | Mark voucher REDEEMED offline |
 | `/api/staff/users` | GET | Search customers by name or last digits of phone |
+| `/api/staff/users/[id]/vouchers` | GET | List ACTIVE vouchers of a customer |
 
 ### Admin — ADMIN only
 

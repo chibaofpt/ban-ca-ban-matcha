@@ -6,12 +6,15 @@ import { toast } from "sonner";
 import { cn } from "@/src/utils/cn";
 import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
+import { fetchCustomerVouchers, type MyVoucher } from "@/src/services/staffVoucherService";
+import { computeFinalClientPrice } from "@/src/lib/store/cartStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { calcLattePrice, calcFusionPrice, resolveGram } from "@/src/utils/pricing";
 import { AddonModal } from "@/src/components/staff/AddonModal";
 import { StaffCartDrawer } from "@/src/components/staff/StaffCartDrawer";
 import { CustomerSelectModal } from "@/src/components/staff/CustomerSelectModal";
 import { QRScannerModal } from "@/src/components/staff/QRScannerModal";
+import { VoucherQRVerifyModal } from "@/src/components/staff/VoucherQRVerifyModal";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import * as staffOrderService from "@/src/services/staffOrderService";
 import type { CreateStaffOrderPayload } from "@/src/services/staffOrderService";
@@ -19,27 +22,44 @@ import type { MenuData, MenuItem } from "@/src/lib/types/menu";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { CustomerInfo } from "@/src/components/staff/CustomerSelectModal";
 
-function buildOrderItems(cart: CartItem[]): CreateStaffOrderPayload["items"] {
-  return cart.map((c) => ({
-    menu_item_id: c.menuItemId,
-    quantity: c.quantity,
-    size: c.size,
-    sweetness: c.sweetness,
-    ice_option: c.iceOption,
-    coldwhisk: c.coldwhisk,
-    ...(c.note ? { note: c.note } : {}),
-    addon_option_ids: [
-      ...c.selectedOptionIds.map((id) => ({ option_id: id, quantity: 1 })),
-      ...c.quantityAddonOptions,
-    ],
-    ...(c.productVoucherId ? { product_voucher_id: c.productVoucherId } : {}),
-    ...(c.selectedPowderId ? { selected_powder_id: c.selectedPowderId } : {}),
-    ...(c.selectedMilkTypeId ? { selected_milk_type_id: c.selectedMilkTypeId } : {}),
-    client_price_vnd: c.clientPriceVnd,
-  }));
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function buildOrderItems(
+  cart: CartItem[]
+): CreateStaffOrderPayload["items"] {
+  return cart.map((c) => {
+    const productVoucherId = c.productVoucherId;
+    const addonVouchers = c.addonVouchers ?? [];
+
+    return {
+      menu_item_id: c.menuItemId,
+      quantity: c.quantity,
+      size: c.size,
+      sweetness: c.sweetness,
+      ice_option: c.iceOption,
+      coldwhisk: c.coldwhisk,
+      ...(c.note ? { note: c.note } : {}),
+      addon_option_ids: [
+        ...c.selectedOptionIds.map((id) => ({ option_id: id, quantity: 1 })),
+        ...c.quantityAddonOptions,
+      ],
+      ...(productVoucherId ? { product_voucher_id: productVoucherId } : {}),
+      ...(addonVouchers.length > 0
+        ? {
+            addon_voucher_ids: addonVouchers.map((av) => ({
+              voucher_id: av.voucherId,
+              addon_option_id: av.addonOptionId,
+            })),
+          }
+        : {}),
+      ...(c.selectedPowderId ? { selected_powder_id: c.selectedPowderId } : {}),
+      ...(c.selectedMilkTypeId ? { selected_milk_type_id: c.selectedMilkTypeId } : {}),
+      client_price_vnd: c.clientPriceVnd,
+    };
+  });
 }
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 type LoadStatus = "loading" | "error" | "success";
 
@@ -55,10 +75,10 @@ interface DiscountVoucher {
   discount_value: number;
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────────
 
 /** Staff POS page — menu grid, cart drawer, checkout form, QR scanner. */
-export default function StaffOrdersPage() {
+export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "STAFF" | "ADMIN" }) {
   // ── Server data ───────────────────────────────────────────────────────
 
   const [menuData, setMenuData] = useState<MenuData | null>(null);
@@ -71,11 +91,11 @@ export default function StaffOrdersPage() {
   const getDisplayPrice = (item: MenuItem, sizeObj: MenuItem["sizes"][0]) => {
     const isLatte = item.category === "latte";
     const defaultPowderId = isLatte ? item.powder?.id : item.resolved_default_powder_id;
-    const defaultMilk = item.milk_types?.find(m => m.is_default) ?? item.milk_types?.[0];
+    const defaultMilk = item.milk_types?.find((m) => m.is_default) ?? item.milk_types?.[0];
 
     const s = sizeObj.size;
     const base = sizeObj.base_price_vnd ?? 0;
-    const pwd = powders.find(p => p.id === defaultPowderId);
+    const pwd = powders.find((p) => p.id === defaultPowderId);
     const pwdPrice = pwd?.price_per_gram ?? 0;
     const gram = resolveGram(s, item.custom_powder_grams, pwd?.size_config ?? [], defaultPowderGrams);
 
@@ -85,14 +105,14 @@ export default function StaffOrdersPage() {
         gram,
         powder_price_per_gram: pwdPrice,
         milk_ml: sizeObj.milk_ml ?? 0,
-        milk_price_per_ml: defaultMilk?.price_per_ml ?? 40
+        milk_price_per_ml: defaultMilk?.price_per_ml ?? 40,
       });
     } else {
       return calcFusionPrice({
         base_price_vnd: base,
         gram,
         powder_price_per_gram: pwdPrice,
-        premium_latte: 0
+        premium_latte: 0,
       });
     }
   };
@@ -104,6 +124,7 @@ export default function StaffOrdersPage() {
   const [customerSelectOpen, setCustomerSelectOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [confirmCheckoutOpen, setConfirmCheckoutOpen] = useState(false);
+  const [qrVerifyOpen, setQrVerifyOpen] = useState(false);
 
   // ── QR scan & Customer state ──────────────────────────────────────────
 
@@ -116,6 +137,13 @@ export default function StaffOrdersPage() {
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discountVoucher, setDiscountVoucher] = useState<DiscountVoucher | null>(null);
+
+  // ── Voucher state (list-based) ────────────────────────────────────────
+
+  const [customerVouchers, setCustomerVouchers] = useState<MyVoucher[]>([]);
+  const [selectedDiscountIds, setSelectedDiscountIds] = useState<string[]>([]);
+  // We removed selectedProductVouchers and selectedAddonVouchers states. 
+  // Cart items directly maintain their applied vouchers (c.productVoucherId, c.addonVouchers).
 
   // ── Category filter ───────────────────────────────────────────────────
 
@@ -139,6 +167,25 @@ export default function StaffOrdersPage() {
     loadMenu();
   }, [loadMenu]);
 
+  // Fetch customer vouchers when customer changes
+  useEffect(() => {
+    if (customerInfo?.type === "existing") {
+      fetchCustomerVouchers(customerInfo.data.id)
+        .then(setCustomerVouchers)
+        .catch(() => setCustomerVouchers([]));
+    } else {
+      setCustomerVouchers([]);
+    }
+    // Clear all voucher selections when customer changes
+    setSelectedDiscountIds([]);
+    // Remove applied vouchers from existing cart
+    setCart(prev => prev.map(c => {
+      const next = { ...c, productVoucherId: undefined, productVoucherDiscountVnd: undefined, addonVouchers: undefined };
+      next.clientPriceVnd = computeFinalClientPrice(next);
+      return next;
+    }));
+  }, [customerInfo]);
+
   // ── Derived ───────────────────────────────────────────────────────────
 
   const categories = useMemo(
@@ -154,12 +201,18 @@ export default function StaffOrdersPage() {
     [menuItems, activeCategory]
   );
 
-  const subtotal = cart.reduce((s, c) => s + c.unitPrice * c.quantity, 0);
+  const subtotal = cart.reduce((s, c) => s + c.clientPriceVnd * c.quantity, 0);
   const discount = discountVoucher
     ? discountVoucher.discount_type === "PERCENT"
       ? Math.floor((subtotal * discountVoucher.discount_value) / 100)
       : discountVoucher.discount_value
     : 0;
+
+  /** Returns true if any voucher is applied (either scan-based or list-based). */
+  const hasAnyVoucher =
+    !!discountVoucher ||
+    selectedDiscountIds.length > 0 ||
+    cart.some(c => !!c.productVoucherId || (c.addonVouchers && c.addonVouchers.length > 0));
 
   // ── Cart handlers ─────────────────────────────────────────────────────
 
@@ -169,8 +222,9 @@ export default function StaffOrdersPage() {
     setProductVoucherId(null);
   };
 
-  const handleRemove = (cartId: string) =>
+  const handleRemove = (cartId: string) => {
     setCart((prev) => prev.filter((c) => c.cartId !== cartId));
+  };
 
   const handleChangeQuantity = (cartId: string, newQty: number) =>
     setCart((prev) =>
@@ -184,40 +238,54 @@ export default function StaffOrdersPage() {
     setDiscountVoucher(null);
     setCustomerInfo(null);
     setInitialSearchQuery("");
+    setCustomerVouchers([]);
+    setSelectedDiscountIds([]);
     setCartOpen(false);
     toast.success("Đã tạo đơn hàng thành công!");
   };
 
+  // ── Checkout flow ─────────────────────────────────────────────────────
+
   const handleCheckoutClick = () => {
     if (cart.length === 0) return;
-    setConfirmCheckoutOpen(true);
+
+    if (hasAnyVoucher && customerInfo?.type === "existing") {
+      if (userRole === "ADMIN") {
+        setConfirmCheckoutOpen(true);
+      } else {
+        setQrVerifyOpen(true);
+      }
+    } else {
+      setConfirmCheckoutOpen(true);
+    }
   };
 
-  const handleCheckoutConfirm = async () => {
+  const handleCheckoutConfirm = async (customerQrToken?: string) => {
     setConfirmCheckoutOpen(false);
+    setQrVerifyOpen(false);
     setIsSubmitting(true);
     try {
       let payload: CreateStaffOrderPayload;
+      const items = buildOrderItems(cart);
+      const discountVoucherIds = [
+        ...(discountVoucher ? [discountVoucher.id] : []),
+        ...selectedDiscountIds,
+      ];
 
       if (!customerInfo) {
-        // Anonymous order
-        payload = {
-          items: buildOrderItems(cart),
-          ...(discountVoucher?.id ? { voucher_id: discountVoucher.id } : {}),
-        };
+        payload = { items };
       } else if (customerInfo.type === "existing") {
         payload = {
           phone_number: customerInfo.data.phone_number,
-          items: buildOrderItems(cart),
-          ...(discountVoucher?.id ? { voucher_id: discountVoucher.id } : {}),
+          items,
+          ...(discountVoucherIds.length > 0 ? { discount_voucher_ids: discountVoucherIds } : {}),
+          ...(customerQrToken ? { customer_qr_token: customerQrToken } : {}),
         };
       } else {
-        // New customer
         payload = {
           phone_number: customerInfo.phone_number,
           customer_name: customerInfo.name,
-          items: buildOrderItems(cart),
-          ...(discountVoucher?.id ? { voucher_id: discountVoucher.id } : {}),
+          items,
         };
       }
 
@@ -237,17 +305,25 @@ export default function StaffOrdersPage() {
 
   // ── QR scan handlers ──────────────────────────────────────────────────
 
-  const handleScanUser = ({ phone_number, name }: { phone_number: string; name?: string; points_balance?: number; id?: string }) => {
+  const handleScanUser = ({
+    phone_number,
+    name,
+  }: {
+    phone_number: string;
+    name?: string;
+    points_balance?: number;
+    id?: string;
+  }) => {
     setScanOpen(false);
     if (name) {
       setCustomerInfo({
         type: "existing",
         data: {
-          id: name, // Dummy ID for type constraint if not returned
+          id: name,
           phone_number,
           name,
           points_balance: 0,
-        }
+        },
       });
       toast.success(`Đã áp dụng khách hàng: ${name}`);
     } else {
@@ -279,6 +355,123 @@ export default function StaffOrdersPage() {
     setScanOpen(false);
   };
 
+  // ── Voucher list handlers ─────────────────────────────────────────────
+
+  const handleToggleDiscount = (voucherId: string) => {
+    setSelectedDiscountIds((prev) =>
+      prev.includes(voucherId)
+        ? prev.filter((id) => id !== voucherId)
+        : [...prev, voucherId]
+    );
+  };
+
+  const handleApplyProduct = (cartId: string, voucher: MyVoucher) => {
+    if (!voucher.covered_price_vnd) return;
+    setCart((prev) => {
+      const currentItems = [...prev];
+      const itemIndex = currentItems.findIndex((c) => c.cartId === cartId);
+      if (itemIndex === -1) return prev;
+
+      const item = currentItems[itemIndex];
+      const nextItem = { 
+        ...item, 
+        productVoucherId: voucher.id, 
+        productVoucherDiscountVnd: voucher.covered_price_vnd ?? undefined 
+      };
+      nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
+
+      if (item.quantity === 1) {
+        currentItems[itemIndex] = nextItem;
+        return currentItems;
+      }
+
+      // Split if quantity > 1
+      const newCartId = crypto.randomUUID();
+      const splitItem = { ...nextItem, cartId: newCartId, quantity: 1 };
+      currentItems[itemIndex] = { ...item, quantity: item.quantity - 1 };
+      currentItems.splice(itemIndex + 1, 0, splitItem);
+      
+      return currentItems;
+    });
+  };
+
+  const handleRemoveProduct = (cartId: string) => {
+    setCart((prev) =>
+      prev.map((c) => {
+        if (c.cartId !== cartId) return c;
+        const nextItem = {
+          ...c,
+          productVoucherId: undefined,
+          productVoucherDiscountVnd: undefined,
+        };
+        nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
+        return nextItem;
+      })
+    );
+  };
+
+  const handleApplyAddon = (cartId: string, voucher: MyVoucher) => {
+    const addonOptionId = voucher.addon_option_id;
+    if (!addonOptionId) return;
+    
+    setCart((prev) => {
+      const currentItems = [...prev];
+      const itemIndex = currentItems.findIndex((c) => c.cartId === cartId);
+      if (itemIndex === -1) return prev;
+
+      const item = currentItems[itemIndex];
+      const newAddonVouchers = item.addonVouchers ? [...item.addonVouchers] : [];
+      
+      // Prevent applying duplicate voucher
+      if (newAddonVouchers.some(av => av.voucherId === voucher.id)) return prev;
+
+      const existingIdx = newAddonVouchers.findIndex(v => v.addonOptionId === addonOptionId);
+      const toppingPrice = item.addonPrices?.[addonOptionId] ?? 0;
+      const newVoucher = { voucherId: voucher.id, addonOptionId: addonOptionId, discountVnd: toppingPrice };
+
+      if (existingIdx !== -1) {
+        newAddonVouchers[existingIdx] = newVoucher;
+      } else {
+        newAddonVouchers.push(newVoucher);
+      }
+
+      const nextItem = { ...item, addonVouchers: newAddonVouchers };
+      nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
+
+      if (item.quantity === 1) {
+        currentItems[itemIndex] = nextItem;
+        return currentItems;
+      }
+
+      // Split
+      const newCartId = crypto.randomUUID();
+      const splitItem = { ...nextItem, cartId: newCartId, quantity: 1 };
+      currentItems[itemIndex] = { ...item, quantity: item.quantity - 1 };
+      currentItems.splice(itemIndex + 1, 0, splitItem);
+      
+      return currentItems;
+    });
+  };
+
+  const handleRemoveAddon = (cartId: string, voucherId: string) => {
+    setCart((prev) =>
+      prev.map((c) => {
+        if (c.cartId !== cartId) return c;
+        if (!c.addonVouchers) return c;
+        const nextItem = { ...c, addonVouchers: c.addonVouchers.filter(v => v.voucherId !== voucherId) };
+        nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
+        return nextItem;
+      })
+    );
+  };
+
+  // ── QR verify success (STAFF role) ────────────────────────────────────
+
+  const handleQrVerified = (qrToken: string) => {
+    setQrVerifyOpen(false);
+    handleCheckoutConfirm(qrToken);
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
@@ -294,7 +487,7 @@ export default function StaffOrdersPage() {
           <span className="font-medium">Quét QR khách hàng</span>
         </button>
 
-        {/* Discount voucher indicator */}
+        {/* Discount voucher indicator (from QR scan) */}
         {discountVoucher && (
           <div className="flex items-center justify-between bg-green-500/10 border border-green-500/30 rounded-xl px-3 py-2 text-sm">
             <span className="text-green-700 dark:text-green-400 font-medium">
@@ -382,7 +575,7 @@ export default function StaffOrdersPage() {
                   <p className="text-[11px] text-muted-foreground line-clamp-1 capitalize mb-2">
                     {item.category}
                   </p>
-                  
+
                   {/* Size prices row */}
                   <div className="mt-auto pt-2 border-t border-border/50 w-full">
                     <div className="flex items-end justify-between gap-1">
@@ -456,10 +649,15 @@ export default function StaffOrdersPage() {
           onRemove={handleRemove}
           onChangeQuantity={handleChangeQuantity}
           onCheckout={handleCheckoutClick}
-          onOpenCustomerSelect={() => {
-            setCustomerSelectOpen(true);
-          }}
+          onOpenCustomerSelect={() => setCustomerSelectOpen(true)}
           onClearCustomer={() => setCustomerInfo(null)}
+          customerVouchers={customerVouchers}
+          selectedDiscountIds={selectedDiscountIds}
+          onToggleDiscount={handleToggleDiscount}
+          onApplyProduct={handleApplyProduct}
+          onRemoveProduct={handleRemoveProduct}
+          onApplyAddon={handleApplyAddon}
+          onRemoveAddon={handleRemoveAddon}
         />
       )}
 
@@ -475,7 +673,7 @@ export default function StaffOrdersPage() {
         />
       )}
 
-      {/* Confirm Checkout Modal */}
+      {/* Confirm Checkout Modal (no voucher path) */}
       <ConfirmModal
         isOpen={confirmCheckoutOpen}
         title="Xác nhận tạo đơn"
@@ -484,9 +682,18 @@ export default function StaffOrdersPage() {
         }`}
         confirmLabel="Tạo đơn"
         cancelLabel="Huỷ"
-        onConfirm={handleCheckoutConfirm}
+        onConfirm={() => handleCheckoutConfirm()}
         onCancel={() => setConfirmCheckoutOpen(false)}
       />
+
+      {/* VoucherQRVerifyModal — STAFF role only, shown when order has vouchers */}
+      {qrVerifyOpen && customerInfo?.type === "existing" && (
+        <VoucherQRVerifyModal
+          customerInfo={customerInfo}
+          onVerified={handleQrVerified}
+          onClose={() => setQrVerifyOpen(false)}
+        />
+      )}
 
       {/* QRScannerModal */}
       {scanOpen && (

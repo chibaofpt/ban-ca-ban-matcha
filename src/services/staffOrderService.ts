@@ -20,6 +20,8 @@ export interface CreateStaffOrderPayload {
     note?: string;
     addon_option_ids: { option_id: string; quantity: number }[];
     product_voucher_id?: string;
+    /** ADDON vouchers per item — each targets a specific addon_option_id. */
+    addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
     /** Fusion only — server validates against item's allowed powder list. */
     selected_powder_id?: string;
     /** Latte only — server defaults to is_default milk if omitted. */
@@ -30,7 +32,13 @@ export interface CreateStaffOrderPayload {
      */
     client_price_vnd: number;
   }[];
-  voucher_id?: string;
+  /** DISCOUNT voucher IDs (multiple allowed, max 1 PERCENT). Omit for anonymous orders. */
+  discount_voucher_ids?: string[];
+  /**
+   * Customer QR token (‘qr_token’ from users table). Required for STAFF when any voucher is used.
+   * Admin auto-bypasses QR verification — omit for admin orders.
+   */
+  customer_qr_token?: string;
 }
 
 /** A single customer result returned by the search endpoint. */

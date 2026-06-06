@@ -32,10 +32,12 @@ interface AdminTabBarProps {
   userName: string;
   /** Role of the currently signed-in user. */
   userRole: Role;
+  /** The main content of the layout to be rendered between the header and bottom nav. */
+  children?: React.ReactNode;
 }
 
 /** AdminTabBar — client component that renders the bottom nav + top-bar actions for admin/staff shell. */
-export default function AdminTabBar({ userName, userRole }: AdminTabBarProps) {
+export default function AdminTabBar({ userName, userRole, children }: AdminTabBarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -123,8 +125,11 @@ export default function AdminTabBar({ userName, userRole }: AdminTabBarProps) {
         </div>
       </header>
 
+      {/* Main Content */}
+      {children}
+
       {/* Bottom tab bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+      <nav className="md:hidden sticky bottom-0 w-full z-40 bg-card border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.05)] mt-auto pb-[env(safe-area-inset-bottom)]">
         <div
           className={cn(
             "grid",

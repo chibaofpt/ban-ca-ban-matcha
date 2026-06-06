@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { CartItem } from "@/src/lib/types/cart";
 
-function computeFinalClientPrice(item: CartItem): number {
+export function computeFinalClientPrice(item: CartItem): number {
   const baseDrinkPrice = item.unitPrice - item.addonsPrice;
   const voucherCredit = item.productVoucherDiscountVnd ?? 0;
   

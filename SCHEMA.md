@@ -43,11 +43,11 @@
 
 | Display Label | Enum Value | Default |
 |---|---|---|
-| Lạt | `NONE` | |
-| Vừa | `QUARTER` | ✅ |
-| Ngọt | `HALF` | |
-| Rất ngọt | `THREE_QUARTER` | |
-| Ngọt Điên | `FULL` | |
+| 0% | `NONE` | |
+| 25% | `QUARTER` | |
+| 50% | `HALF` | ✅ |
+| 75% | `THREE_QUARTER` | |
+| 100% | `FULL` | |
 
 ## Ice Option Mapping
 
@@ -165,7 +165,7 @@ Global milk options. Applies to all Latte items automatically — no junction ta
 - `description` string nullable
 - `category` string — `"latte"` or `"fusion"` only
 - `is_seasonal` bool — default false
-- `matcha_powder_id` uuid FK nullable → matcha_powder — Latte only: the fixed powder
+- `matcha_powder_id` uuid FK nullable UK → matcha_powder — Latte only: the fixed powder. 1 powder can only belong to 1 Latte item.
 - `default_powder_id` uuid FK nullable → matcha_powder — Fusion only: default powder
 - `custom_powder_grams` Json nullable — `{"M": 4.5, "L": 8.0}`. Keys: "M" | "L" | "XL" only.
 - `base_liquid_note` string nullable — Fusion only, display text

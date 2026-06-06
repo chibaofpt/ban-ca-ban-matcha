@@ -82,9 +82,9 @@ export default function MenuItemModal({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 custom-scrollbar">
+        <div className="flex-1 overflow-hidden flex flex-col relative">
           {errorMsg && (
-            <div className="mb-6 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
+            <div className="mx-6 mt-6 mb-0 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium shrink-0">
               {errorMsg}
             </div>
           )}

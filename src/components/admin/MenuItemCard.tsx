@@ -69,16 +69,6 @@ export default function MenuItemCard({
         {item.description && (
           <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{item.description}</p>
         )}
-        <div className="mt-auto pt-2 flex items-center">
-          <div className="bg-primary/10 text-primary px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5">
-            <span>🐟</span>
-            {minPriceCa != null ? (
-              <span>{minPriceCa}+ <span className="font-medium text-[10px]">cá</span></span>
-            ) : (
-              <span className="italic font-medium">Chưa có giá</span>
-            )}
-          </div>
-        </div>
       </div>
 
       {/* Footer — toggle only */}

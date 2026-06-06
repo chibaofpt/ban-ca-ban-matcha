@@ -145,6 +145,20 @@ export default function AdminOrdersPage() {
     (activeFilters.startDate && activeFilters.startDate !== getTodayStr() ? 1 : 0) +
     (activeFilters.endDate ? 1 : 0);
 
+  const updateStatus = async (orderId: string, newStatus: string) => {
+    try {
+      await apiClient.patch(`/api/staff/orders/${orderId}`, { status: newStatus });
+      toast.success("Cập nhật trạng thái thành công");
+      refetch();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(err.message);
+      } else {
+        toast.error("Cập nhật thất bại");
+      }
+    }
+  };
+
   const handleConfirmPayment = (e: React.MouseEvent, orderId: string) => {
     e.stopPropagation();
     setConfirmModal({
@@ -200,6 +214,38 @@ export default function AdminOrdersPage() {
           >
             <CheckCircle2 size={14} />
             Đã nhận CK
+          </button>
+        </div>
+      );
+    }
+    
+    if (order.status === "ADMIN_CONFIRMED") {
+      return (
+        <div className="flex flex-col items-end gap-2 mt-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              updateStatus(order.id, "STAFF_DONE");
+            }}
+            className="w-full px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+          >
+            Đã làm xong
+          </button>
+        </div>
+      );
+    }
+
+    if (order.status === "STAFF_DONE") {
+      return (
+        <div className="flex flex-col items-end gap-2 mt-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              updateStatus(order.id, "COMPLETED");
+            }}
+            className="w-full px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+          >
+            Khách đã đến lấy
           </button>
         </div>
       );

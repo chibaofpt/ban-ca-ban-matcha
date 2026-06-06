@@ -11,6 +11,7 @@ import {
   Info,
   UtensilsCrossed,
   ClipboardList,
+  UserCircle,
 } from "lucide-react";
 import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -53,7 +54,7 @@ const Navbar = () => {
     <motion.nav
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-border/40"
+      className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-border/40"
     >
       <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-16">
         {/* Brand */}
@@ -95,6 +96,15 @@ const Navbar = () => {
 
           {isLoggedIn ? (
             <>
+              <NavLink
+                href="/profile"
+                className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-1.5"
+                activeClassName="text-primary"
+              >
+                <UserCircle className="w-3.5 h-3.5" />
+                Tài khoản (QR)
+              </NavLink>
+
               <NavLink
                 href="/history"
                 className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-1.5"
@@ -216,6 +226,16 @@ const Navbar = () => {
 
               {isLoggedIn ? (
                 <>
+                  <NavLink
+                    href="/profile"
+                    onClick={close}
+                    className="text-sm font-medium py-2.5 flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors"
+                    activeClassName="text-primary"
+                  >
+                    <UserCircle className="w-4 h-4" />
+                    Tài khoản (QR)
+                  </NavLink>
+
                   <NavLink
                     href="/history"
                     onClick={close}

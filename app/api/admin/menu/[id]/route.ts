@@ -188,6 +188,19 @@ export async function PUT(
     const validData = validation.data;
     console.log("[PUT] STEP 6 — validation passed");
 
+    // ── Check uniqueness of powder ──────────────────────────────────────────
+    if (existing.category === "latte" && validData.matcha_powder_id && validData.matcha_powder_id !== existing.matcha_powder_id) {
+      const powderUsed = await prisma.menuItem.findUnique({
+        where: { matcha_powder_id: validData.matcha_powder_id },
+      });
+      if (powderUsed && powderUsed.id !== id) {
+        return NextResponse.json(
+          { error: "Loại bột này đã được sử dụng cho một món Latte khác", code: "VALIDATION_ERROR" },
+          { status: 400 }
+        );
+      }
+    }
+
     // ── Image upload (multipart only) ─────────────────────────────────────
     let image_url: string | undefined;
     if (imageFile) {
