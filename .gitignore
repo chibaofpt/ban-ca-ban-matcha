@@ -52,3 +52,6 @@ next-env.d.ts
 # local test patch scripts
 /patch-tests.js
 /patch-tests-2.js
+
+# scratch scripts directory
+/scratch

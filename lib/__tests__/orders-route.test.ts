@@ -373,7 +373,7 @@ describe("POST /api/orders", () => {
 
   // ── Voucher happy paths ────────────────────────────────────────────────────
 
-  it("applies PERCENT discount voucher: 20% off 69000 = 55200 total", async () => {
+  it("applies PERCENT discount voucher: 20% off 69000 = 56000 total (rounded to nearest 1000)", async () => {
     const voucher = {
       id: V_PCT,
       user_id: USER_ID,
@@ -392,8 +392,8 @@ describe("POST /api/orders", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           subtotal_vnd: 69000,
-          discount_vnd: 13800,  // floor(69000 × 0.20)
-          total_vnd: 55200,
+          discount_vnd: 13000,  // floor(69000 * 0.20 / 1000) * 1000
+          total_vnd: 56000,
         }),
       })
     );

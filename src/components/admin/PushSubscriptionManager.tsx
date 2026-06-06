@@ -9,8 +9,10 @@ export default function PushSubscriptionManager() {
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
+    setIsMounted(true);
     if (!("Notification" in window) || !("serviceWorker" in navigator)) {
       setLoading(false);
       return;
@@ -53,6 +55,8 @@ export default function PushSubscriptionManager() {
       setLoading(false);
     }
   };
+
+  if (!isMounted) return null;
 
   if (!("Notification" in window) || !("serviceWorker" in navigator)) {
     return null; // Not supported

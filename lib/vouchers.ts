@@ -108,7 +108,8 @@ export function calcDiscountVoucher(
   subtotal_vnd: number
 ): number {
   if (voucher.discount_type === "PERCENT" && voucher.discount_value !== null) {
-    return Math.floor((subtotal_vnd * voucher.discount_value) / 100);
+    const rawDiscount = (subtotal_vnd * voucher.discount_value) / 100;
+    return Math.floor(rawDiscount / 1000) * 1000;
   }
   if (voucher.discount_type === "FIXED" && voucher.discount_value !== null) {
     return Math.min(voucher.discount_value, subtotal_vnd);
@@ -196,7 +197,9 @@ export function calcMultiDiscountVouchers(
   );
   if (percentVoucher && percentVoucher.discount_value !== null) {
     const pct = Math.min(percentVoucher.discount_value, 100);
-    remaining = Math.max(0, remaining - Math.floor((remaining * pct) / 100));
+    const rawDiscount = (remaining * pct) / 100;
+    const roundedDiscount = Math.floor(rawDiscount / 1000) * 1000;
+    remaining = Math.max(0, remaining - roundedDiscount);
   }
 
   return subtotal_vnd - remaining;

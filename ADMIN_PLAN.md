@@ -44,7 +44,7 @@ Calls `GET /api/staff/scan?token=xxx`:
 |---|---|
 | `voucher` + PRODUCT | Add to cart as line item, `unit_price_vnd = 0`, open `AddonModal` |
 | `voucher` + DISCOUNT | Apply discount to order |
-| `user` | Pre-fill customer phone into order form |
+| `user` | Pre-fill customer phone into order form, check user's ACTIVE vouchers using `GET /api/staff/users/[id]/vouchers` to apply in cart |
 
 ### Confirm Order
 1. Tap cart → `StaffCartDrawer`

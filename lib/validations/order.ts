@@ -54,6 +54,8 @@ export const staffOrderSchema = z.object({
   items: z.array(orderItemSchema).min(1),
   /** DISCOUNT vouchers — multiple allowed. Max 1 PERCENT enforced in route handler. */
   discount_voucher_ids: z.array(z.string().uuid()).max(10).default([]),
+  /** QR token xác thực khách — bắt buộc khi có voucher và role = STAFF. Admin tự động bypass. */
+  customer_qr_token: z.string().uuid().optional(),
 });
 
 /** Schema for a customer-initiated order (PICKUP or DELIVERY). */

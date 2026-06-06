@@ -83,7 +83,6 @@
 - Never hard delete a Latte `menu_item` — soft delete only (`is_available = false`). Before soft-deleting, check if any `matcha_powder.reference_latte_item_id` points to it and warn admin.
 - `menu_item_addons` junction table does not exist — do not create it.
 - Error responses with additional payload use `details` key, never `data`: `{ error: string, code: string, details: {...} }`
-
 ---
 
 ## Decision Log — Non-Negotiable

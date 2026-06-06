@@ -110,14 +110,20 @@ export default function AdminMenuPage() {
     ? [...menuData.latte, ...menuData.fusion]
     : [];
 
-  const filteredItems = allItems.filter((item) => {
-    const matchesCategory =
-      categoryFilter === "all" || item.category === categoryFilter;
-    const matchesSearch =
-      searchQuery.trim() === "" ||
-      item.name.toLowerCase().includes(searchQuery.trim().toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
+  const filteredItems = allItems
+    .filter((item) => {
+      const matchesCategory =
+        categoryFilter === "all" || item.category === categoryFilter;
+      const matchesSearch =
+        searchQuery.trim() === "" ||
+        item.name.toLowerCase().includes(searchQuery.trim().toLowerCase());
+      return matchesCategory && matchesSearch;
+    })
+    .sort((a, b) => {
+      // Đang bán (true) lên trước ngưng bán (false)
+      if (a.is_available === b.is_available) return 0;
+      return a.is_available ? -1 : 1;
+    });
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -187,51 +193,51 @@ export default function AdminMenuPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Sản phẩm</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold text-foreground truncate">Sản phẩm</h1>
+          <p className="text-xs text-muted-foreground mt-0.5 truncate">
             {allItems.length} món · {allItems.filter((i) => i.is_available).length} đang bán
           </p>
         </div>
-        <div className="flex gap-2">
-          <div className="flex bg-secondary/30 rounded-xl p-1 border border-border/50">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <div className="flex bg-secondary/30 rounded-lg sm:rounded-xl p-0.5 sm:p-1 border border-border/50">
             <button
               type="button"
               onClick={() => setViewMode("grid")}
               className={cn(
-                "p-1.5 rounded-lg transition-colors",
+                "p-1 sm:p-1.5 rounded-md sm:rounded-lg transition-colors",
                 viewMode === "grid" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
               )}
             >
-              <LayoutGrid size={16} />
+              <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
             <button
               type="button"
               onClick={() => setViewMode("table")}
               className={cn(
-                "p-1.5 rounded-lg transition-colors",
+                "p-1 sm:p-1.5 rounded-md sm:rounded-lg transition-colors",
                 viewMode === "table" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
               )}
             >
-              <List size={16} />
+              <List className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           </div>
           <button
             type="button"
             aria-label="Làm mới"
             onClick={loadData}
-            className="rounded-xl p-2 hover:bg-secondary/60 transition border border-border/50 bg-background text-muted-foreground hover:text-foreground shadow-sm"
+            className="rounded-lg sm:rounded-xl p-1.5 sm:p-2 sm:px-3 hover:bg-secondary/60 transition border border-border/50 bg-background text-muted-foreground hover:text-foreground shadow-sm flex items-center justify-center h-7 w-7 sm:h-auto sm:w-auto"
           >
-            <RefreshCw size={16} />
+            <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
           <button
             type="button"
             onClick={() => setModalState({ open: true, mode: "create" })}
-            className="flex items-center gap-2 rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition shadow-sm shadow-primary/20"
+            className="flex items-center justify-center gap-1.5 rounded-lg sm:rounded-xl bg-primary text-primary-foreground h-7 w-7 sm:h-auto sm:w-auto sm:px-4 sm:py-2 text-sm font-medium hover:bg-primary/90 transition shadow-sm shadow-primary/20"
           >
-            <Plus size={15} />
-            Thêm món
+            <Plus className="w-4 h-4 sm:w-[15px] sm:h-[15px]" />
+            <span className="hidden sm:inline">Thêm món</span>
           </button>
         </div>
       </div>
@@ -302,7 +308,6 @@ export default function AdminMenuPage() {
                 <tr>
                   <th className="px-6 py-4 font-semibold tracking-wider">Món</th>
                   <th className="px-6 py-4 font-semibold tracking-wider">Danh mục</th>
-                  <th className="px-6 py-4 font-semibold tracking-wider">Giá từ (🐟)</th>
                   <th className="px-6 py-4 font-semibold tracking-wider text-center">Trạng thái</th>
                 </tr>
               </thead>
@@ -353,13 +358,6 @@ export default function AdminMenuPage() {
                         >
                           {item.category}
                         </span>
-                      </td>
-                      <td className="px-6 py-3">
-                        {minPriceCa != null ? (
-                          <div className="font-semibold text-foreground">{minPriceCa}+</div>
-                        ) : (
-                          <span className="italic text-muted-foreground text-xs">Chưa có giá</span>
-                        )}
                       </td>
                       <td className="px-6 py-3">
                         <div className="flex justify-center">

@@ -98,8 +98,8 @@ describe("calcMultiDiscountVouchers — single PERCENT", () => {
     expect(calcMultiDiscountVouchers([percent(100)], 80_000)).toBe(80_000);
   });
 
-  it("1 PERCENT 15% trên 70K → floor(70000 * 0.15) = 10500", () => {
-    expect(calcMultiDiscountVouchers([percent(15)], 70_000)).toBe(10_500);
+  it("1 PERCENT 15% trên 70K → floor(70000 * 0.15 / 1000) * 1000 = 10000", () => {
+    expect(calcMultiDiscountVouchers([percent(15)], 70_000)).toBe(10_000);
   });
 });
 
@@ -113,11 +113,11 @@ describe("calcMultiDiscountVouchers — FIXED trước, PERCENT sau", () => {
 
   it("2 FIXED (10K+15K) + 1 PERCENT 15% trên 100K → đúng thứ tự", () => {
     // Step 1: 100K - 10K = 90K, 90K - 15K = 75K
-    // Step 2: 75K * 15% = 11250
-    // total discount = 25K + 11250 = 36250
+    // Step 2: 75K * 15% = 11250 → floor to 11000
+    // total discount = 25K + 11000 = 36000
     expect(
       calcMultiDiscountVouchers([fixed(10_000), fixed(15_000), percent(15)], 100_000)
-    ).toBe(36_250);
+    ).toBe(36_000);
   });
 
   it("FIXED sau khi trừ còn lại 0 → PERCENT không tạo thêm discount", () => {
@@ -131,11 +131,11 @@ describe("calcMultiDiscountVouchers — FIXED trước, PERCENT sau", () => {
     expect(subtotal - discount).toBeGreaterThanOrEqual(0);
   });
 
-  it("ví dụ thực tế từ plan: 100K - 20K - 10K = 70K → 70K×15% = 10.5K → total = 40.5K", () => {
-    // 100K - 20K = 80K, 80K - 10K = 70K → 70K * 15% = 10500 → total discount = 40500
+  it("ví dụ thực tế từ plan: 100K - 20K - 10K = 70K → 70K×15% = 10.5K → làm tròn 10K → total = 40K", () => {
+    // 100K - 20K = 80K, 80K - 10K = 70K → 70K * 15% = 10500 → rounded to 10000 → total discount = 40000
     expect(
       calcMultiDiscountVouchers([fixed(20_000), fixed(10_000), percent(15)], 100_000)
-    ).toBe(40_500);
+    ).toBe(40_000);
   });
 });
 

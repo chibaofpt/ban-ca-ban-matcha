@@ -3,11 +3,11 @@ import type { IceOption } from "@/src/lib/types/cart";
 
 /** Sweetness picker options. Default is HALF. */
 export const SWEETNESS_OPTIONS: { label: string; value: SweetnessLevel }[] = [
-  { label: "Lạt", value: "NONE" },
-  { label: "Ít ngọt", value: "QUARTER" },
-  { label: "Vừa", value: "HALF" },
-  { label: "Ngọt", value: "THREE_QUARTER" },
-  { label: "Rất ngọt", value: "FULL" },
+  { label: "0%", value: "NONE" },
+  { label: "25%", value: "QUARTER" },
+  { label: "50%", value: "HALF" },
+  { label: "75%", value: "THREE_QUARTER" },
+  { label: "100%", value: "FULL" },
 ];
 
 /**

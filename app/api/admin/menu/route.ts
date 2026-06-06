@@ -192,6 +192,19 @@ export async function POST(req: Request): Promise<NextResponse> {
     }
     const validData = validation.data;
 
+    // ── Check uniqueness of powder ──────────────────────────────────────────
+    if (validData.category === "latte" && validData.matcha_powder_id) {
+      const existing = await prisma.menuItem.findUnique({
+        where: { matcha_powder_id: validData.matcha_powder_id },
+      });
+      if (existing) {
+        return NextResponse.json(
+          { error: "Loại bột này đã được sử dụng cho một món Latte khác", code: "VALIDATION_ERROR" },
+          { status: 400 }
+        );
+      }
+    }
+
     // ── Image upload ────────────────────────────────────────────────────────
     let image_url: string | null = null;
     const imageFile = formData.get("image") as File | null;

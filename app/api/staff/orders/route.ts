@@ -109,6 +109,35 @@ export async function POST(req: NextRequest) {
 
     // Step 2: Validate all PRODUCT vouchers BEFORE processOrderItems.
     let existingUserForVoucher: { id: string } | null = existingUser;
+
+    // ── QR token verification — required for STAFF when order has any voucher ──
+    const hasAnyVoucher = (
+      data.discount_voucher_ids.length > 0 ||
+      data.items.some((i) => i.product_voucher_id || (i.addon_voucher_ids && i.addon_voucher_ids.length > 0))
+    );
+
+    if (hasAnyVoucher && existingUser) {
+      if (session.role === "STAFF") {
+        if (!data.customer_qr_token) {
+          return NextResponse.json(
+            { error: "customer_qr_token bắt buộc khi có voucher", code: "VALIDATION_ERROR" },
+            { status: 400 }
+          );
+        }
+        const qrUser = await prisma.user.findUnique({
+          where: { qr_token: data.customer_qr_token },
+          select: { id: true },
+        });
+        if (!qrUser || qrUser.id !== existingUser.id) {
+          return NextResponse.json(
+            { error: "QR không khớp với khách hàng", code: "VALIDATION_ERROR" },
+            { status: 400 }
+          );
+        }
+      }
+      // ADMIN: auto bypass — no QR check needed
+    }
+
     const productVoucherMap = new Map<string, ProductVoucherInfo>();
     if (existingUserForVoucher) {
       for (const item of data.items) {

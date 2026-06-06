@@ -146,14 +146,14 @@ describe("assertVoucherUsable", () => {
 // ── calcDiscountVoucher ───────────────────────────────────────────────────────
 
 describe("calcDiscountVoucher", () => {
-  it("PERCENT: floor(69000 × 20%) = 13800", () => {
+  it("PERCENT: floor(69000 × 20%) = 13000 (floored to nearest 1000)", () => {
     const v = makeVoucher({ discount_type: "PERCENT", discount_value: 20 });
-    expect(calcDiscountVoucher(v, 69000)).toBe(13800);
+    expect(calcDiscountVoucher(v, 69000)).toBe(13000);
   });
 
-  it("PERCENT: floors fractional result (69000 × 33% = 22770)", () => {
+  it("PERCENT: floors fractional result (69000 × 33% = 22000) (floored to nearest 1000)", () => {
     const v = makeVoucher({ discount_type: "PERCENT", discount_value: 33 });
-    expect(calcDiscountVoucher(v, 69000)).toBe(22770);
+    expect(calcDiscountVoucher(v, 69000)).toBe(22000);
   });
 
   it("PERCENT: 100% off = entire subtotal", () => {

@@ -84,7 +84,7 @@ export default function RootLayout({
         <AuthGuardProvider>
           <Navbar />
           <AuthModal />
-          <main className="flex-1 pt-16">
+          <main className="flex-1 flex flex-col">
             <StoreStatusBanner />
             {children}
           </main>
