@@ -26,6 +26,7 @@ const mockSubscribe = vi.fn();
 const mockGetSubscription = vi.fn();
 const mockUnsubscribe = vi.fn();
 const mockRegister = vi.fn();
+const mockGetRegistration = vi.fn();
 
 const mockPushManager = {
   subscribe: (...args: unknown[]) => mockSubscribe(...args),
@@ -42,6 +43,7 @@ Object.defineProperty(global, "navigator", {
     serviceWorker: {
       register: (...args: unknown[]) => mockRegister(...args),
       ready: Promise.resolve(mockRegistration),
+      getRegistration: () => mockGetRegistration(),
     },
   },
   writable: true,
@@ -186,12 +188,13 @@ describe("checkAndResubscribe", () => {
   });
 
   it("không throw dù có lỗi — silent, iOS reliability", async () => {
-    // Giả sử serviceWorker.ready throw
+    // Giả sử serviceWorker.ready hoặc getRegistration throw
     Object.defineProperty(global, "navigator", {
       value: {
         serviceWorker: {
           register: vi.fn(),
-          ready: Promise.reject(new Error("SW not supported")),
+          ready: Promise.resolve(null),
+          getRegistration: () => Promise.reject(new Error("SW not supported")),
         },
       },
       writable: true,
@@ -206,6 +209,7 @@ describe("checkAndResubscribe", () => {
         serviceWorker: {
           register: mockRegister.mockResolvedValue(mockRegistration),
           ready: Promise.resolve(mockRegistration),
+          getRegistration: () => Promise.resolve(mockRegistration),
         },
       },
       writable: true,
@@ -230,6 +234,7 @@ describe("checkAndResubscribe", () => {
         serviceWorker: {
           register: vi.fn(),
           ready: Promise.resolve(mockRegistration),
+          getRegistration: () => Promise.resolve(mockRegistration),
         },
       },
       writable: true,
