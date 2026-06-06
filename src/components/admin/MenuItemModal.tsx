@@ -4,6 +4,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import MenuItemForm, { buildDefaultValues } from "@/src/components/admin/MenuItemForm";
 import { createMenuItem, updateMenuItem } from "@/src/services/adminMenuService";
+import { createLatteWithPowder } from "@/src/services/adminMenuService";
 import type { AdminMenuItem } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
 
@@ -12,7 +13,7 @@ interface MenuItemModalProps {
   item?: AdminMenuItem;  // Required when mode="edit"
   powders: Powder[];
   onClose: () => void;
-  onSuccess: (item: AdminMenuItem) => void;
+  onSuccess: (item: AdminMenuItem, powderName?: string) => void;
 }
 
 /** Unified modal cho tạo mới và sửa menu item. */
@@ -31,12 +32,20 @@ export default function MenuItemModal({
     setErrorMsg(null);
     try {
       let saved: AdminMenuItem;
+      let createdPowderName: string | undefined = undefined;
+
       if (mode === "edit" && item) {
         saved = await updateMenuItem(item.id, fd);
       } else {
-        saved = await createMenuItem(fd);
+        if (fd.get("new_powder_name")) {
+          const res = await createLatteWithPowder(fd);
+          saved = res.menu_item;
+          createdPowderName = res.powder_name;
+        } else {
+          saved = await createMenuItem(fd);
+        }
       }
-      onSuccess(saved);
+      onSuccess(saved, createdPowderName);
       onClose();
     } catch (err: unknown) {
       const message =

@@ -7,7 +7,16 @@ import type { AdminMenuItem } from "@/src/lib/types/menu";
 const URL = {
   list: "/api/admin/menu",
   byId: (id: string) => `/api/admin/menu/${id}`,
+  createLatteWithPowder: "/api/admin/menu/create-latte-with-powder",
 } as const;
+
+// ── Response shapes ───────────────────────────────────────────────────────────
+
+/** Response shape for POST /api/admin/menu/create-latte-with-powder. */
+export interface CreateLatteWithPowderResponse {
+  menu_item: AdminMenuItem;
+  powder_name: string;
+}
 
 // ── Response shape from GET /api/admin/menu ───────────────────────────────────
 
@@ -33,6 +42,24 @@ export async function createMenuItem(fd: FormData): Promise<AdminMenuItem> {
   } catch (error: any) {
     if (error.response?.data) {
       console.error("API Error Response Data (CREATE):", error.response.data);
+    }
+    throw error;
+  }
+}
+
+/** Tạo Latte + bột mới inline — POST /api/admin/menu/create-latte-with-powder (multipart/form-data). */
+export async function createLatteWithPowder(
+  fd: FormData
+): Promise<CreateLatteWithPowderResponse> {
+  try {
+    const res = await apiClient.post<ApiResponse<CreateLatteWithPowderResponse>>(
+      URL.createLatteWithPowder,
+      fd
+    );
+    return res.data.data;
+  } catch (error: any) {
+    if (error.response?.data) {
+      console.error("API Error Response Data (CREATE_LATTE_WITH_POWDER):", error.response.data);
     }
     throw error;
   }

@@ -1,0 +1,66 @@
+import { z } from "zod";
+
+/** Schema cho phần bột mới tạo inline cùng với Latte. */
+const inlinePowderSchema = z.object({
+  name: z.string().min(1, "Vui lòng nhập tên bột"),
+  price_per_gram: z
+    .number()
+    .int("Giá phải là số nguyên VND")
+    .min(0, "Giá không được âm"),
+  /** Per-powder gram exception — nếu không có thì dùng default_size_config. */
+  size_config: z
+    .array(
+      z.object({
+        size: z.enum(["M", "L", "XL"]),
+        grams: z.number().positive(),
+      })
+    )
+    .max(3)
+    .optional(),
+});
+
+const sizeRowSchema = z.object({
+  size: z.enum(["M", "L", "XL"]),
+  base_price_vnd: z.number().int().min(0).nullable(),
+});
+
+const sizesSchema = z
+  .array(sizeRowSchema)
+  .length(3)
+  .refine(
+    (sizes) => {
+      const keys = new Set(sizes.map((s) => s.size));
+      return keys.has("M") && keys.has("L") && keys.has("XL");
+    },
+    { message: "Phải có đủ 3 size M, L, XL" }
+  );
+
+const customPowderGramsSchema = z
+  .object({
+    M: z.number().positive().optional(),
+    L: z.number().positive().optional(),
+    XL: z.number().positive().optional(),
+  })
+  .nullable()
+  .optional();
+
+/**
+ * Schema cho POST /api/admin/menu/create-latte-with-powder.
+ * Nhận dữ liệu menu item Latte + inline powder mới.
+ * Dùng trong route handler sau khi parse FormData.
+ */
+export const createLatteWithPowderSchema = z.object({
+  // ── Menu item fields ──────────────────────────────────────────────────────
+  name: z.string().min(1, "Vui lòng nhập tên món"),
+  description: z.string().optional().nullable(),
+  is_available: z.boolean().default(true),
+  is_seasonal: z.boolean().default(false),
+  sort_order: z.number().int().min(0).default(0),
+  sizes: sizesSchema,
+  custom_powder_grams: customPowderGramsSchema,
+
+  // ── Inline powder fields ──────────────────────────────────────────────────
+  new_powder: inlinePowderSchema,
+});
+
+export type CreateLatteWithPowderInput = z.infer<typeof createLatteWithPowderSchema>;
