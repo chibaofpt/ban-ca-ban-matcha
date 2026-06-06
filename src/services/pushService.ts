@@ -2,7 +2,9 @@ import { apiClient } from "@/src/lib/api/client";
 
 function getVapidPublicKey() {
   const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-  if (!key) throw new Error("Missing VAPID public key");
+  if (!key) {
+    throw new Error("Hệ thống chưa được cấu hình khóa thông báo (Thiếu VAPID Public Key). Vui lòng thêm biến môi trường NEXT_PUBLIC_VAPID_PUBLIC_KEY.");
+  }
   return key;
 }
 
