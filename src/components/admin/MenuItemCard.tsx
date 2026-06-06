@@ -27,36 +27,36 @@ export default function MenuItemCard({
     <div
       onClick={() => onClick(item)}
       className={cn(
-        "relative flex flex-col rounded-2xl border border-border bg-card overflow-hidden shadow-sm transition hover:shadow-md cursor-pointer hover:border-primary/30",
-        !item.is_available && "opacity-60"
+        "group relative flex flex-col rounded-2xl border border-border/60 bg-card overflow-hidden shadow-sm transition-all duration-300 hover:shadow-md cursor-pointer hover:border-primary/40 hover:-translate-y-0.5",
+        !item.is_available && "opacity-60 grayscale-[0.3]"
       )}
     >
       {/* Image */}
-      <div className="relative h-36 bg-secondary/30 flex items-center justify-center">
+      <div className="relative h-40 bg-secondary/30 flex items-center justify-center overflow-hidden">
         {item.image_url ? (
           <img
             src={item.image_url}
             alt={item.name}
-            className="w-full h-full object-cover absolute inset-0"
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
           />
         ) : (
-          <span className="text-4xl select-none">🍵</span>
+          <span className="text-4xl select-none opacity-50 group-hover:scale-110 transition-transform duration-500">🍵</span>
         )}
 
         {/* Badges */}
-        <div className="absolute top-2 left-2 flex gap-1 flex-wrap">
+        <div className="absolute top-2.5 left-2.5 flex gap-1.5 flex-wrap">
           <span
             className={cn(
-              "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+              "rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur-md border",
               item.category === "latte"
-                ? "bg-emerald-100 text-emerald-700"
-                : "bg-violet-100 text-violet-700"
+                ? "bg-emerald-500/20 text-emerald-800 border-emerald-500/30"
+                : "bg-violet-500/20 text-violet-800 border-violet-500/30"
             )}
           >
             {item.category}
           </span>
           {item.is_seasonal && (
-            <span className="rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+            <span className="rounded-full bg-amber-500/20 text-amber-800 border border-amber-500/30 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur-md">
               Mùa vụ
             </span>
           )}
@@ -64,29 +64,28 @@ export default function MenuItemCard({
       </div>
 
       {/* Body */}
-      <div className="flex flex-col gap-1 p-3 flex-1">
-        <p className="text-sm font-semibold text-foreground line-clamp-2">{item.name}</p>
+      <div className="flex flex-col gap-1.5 p-4 flex-1">
+        <p className="text-sm font-bold text-foreground line-clamp-2 leading-snug">{item.name}</p>
         {item.description && (
-          <p className="text-xs text-muted-foreground line-clamp-2">{item.description}</p>
+          <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{item.description}</p>
         )}
-        <p className="text-xs text-muted-foreground mt-auto pt-1">
-          {minPriceCa != null ? (
-            <>
-              🐟{" "}
-              <span className="font-medium text-foreground">
-                {minPriceCa}+
-              </span>{" "}
-              cá
-            </>
-          ) : (
-            <span className="italic">Chưa có giá</span>
-          )}
-        </p>
+        <div className="mt-auto pt-2 flex items-center">
+          <div className="bg-primary/10 text-primary px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5">
+            <span>🐟</span>
+            {minPriceCa != null ? (
+              <span>{minPriceCa}+ <span className="font-medium text-[10px]">cá</span></span>
+            ) : (
+              <span className="italic font-medium">Chưa có giá</span>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Footer — toggle only */}
-      <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2">
-        <span className="text-[10px] text-muted-foreground uppercase font-semibold">Trạng thái</span>
+      <div className="flex items-center justify-between gap-2 border-t border-border/50 px-4 py-2.5 bg-secondary/5">
+        <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
+          {item.is_available ? "Đang bán" : "Tạm ẩn"}
+        </span>
         {/* Availability toggle */}
         <button
           type="button"
@@ -98,13 +97,13 @@ export default function MenuItemCard({
             onToggleAvailable(item.id, !item.is_available);
           }}
           className={cn(
-            "relative inline-flex h-5 w-9 rounded-full transition",
-            item.is_available ? "bg-primary" : "bg-border"
+            "relative inline-flex h-5 w-9 rounded-full transition-colors duration-200",
+            item.is_available ? "bg-primary" : "bg-muted-foreground/30"
           )}
         >
           <span
             className={cn(
-              "block h-4 w-4 rounded-full bg-white shadow transition-transform m-0.5",
+              "block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 m-0.5",
               item.is_available ? "translate-x-4" : "translate-x-0"
             )}
           />

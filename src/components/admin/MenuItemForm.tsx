@@ -49,6 +49,7 @@ interface MenuItemFormProps {
   powders: Powder[];
   onSubmit: (fd: FormData) => Promise<void>;
   isSubmitting: boolean;
+  onCancel: () => void;
 }
 
 // ── Helper: build defaultValues from AdminMenuItem ─────────────────────────────
@@ -93,6 +94,7 @@ export default function MenuItemForm({
   powders,
   onSubmit,
   isSubmitting,
+  onCancel,
 }: MenuItemFormProps) {
   const {
     register,
@@ -282,361 +284,441 @@ export default function MenuItemForm({
   const labelClass = "text-sm font-medium text-foreground";
   const errorClass = "text-xs text-destructive mt-1";
 
+  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <div className="bg-card border border-border/50 rounded-2xl p-5 shadow-sm space-y-4">
+      <h3 className="font-semibold text-sm text-foreground flex items-center gap-2">
+        <div className="w-1.5 h-4 bg-primary rounded-full"></div>
+        {title}
+      </h3>
+      {children}
+    </div>
+  );
+
   return (
-    <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
-      {formError && (
-        <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
-          {formError}
-        </div>
-      )}
+    <form onSubmit={handleSubmit(onFormSubmit)} className="flex flex-col h-full relative">
+      <div className="space-y-6 pb-24">
+        {formError && (
+          <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
+            {formError}
+          </div>
+        )}
 
-      {/* Tên món */}
-      <div>
-        <label className={labelClass}>Tên món *</label>
-        <input
-          {...register("name", { required: "Vui lòng nhập tên món" })}
-          placeholder="Ví dụ: Matcha Latte"
-          className={inputClass}
-        />
-        {errors.name && <p className={errorClass}>{errors.name.message}</p>}
-      </div>
+        <Section title="Thông tin chung">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="md:col-span-2 space-y-4">
+              <div>
+                <label className={labelClass}>Tên món <span className="text-destructive">*</span></label>
+                <input
+                  {...register("name", { required: "Vui lòng nhập tên món" })}
+                  placeholder="Ví dụ: Matcha Latte"
+                  className={inputClass}
+                />
+                {errors.name && <p className={errorClass}>{errors.name.message}</p>}
+              </div>
 
-      {/* Mô tả */}
-      <div>
-        <label className={labelClass}>Mô tả</label>
-        <textarea
-          {...register("description")}
-          placeholder="Mô tả ngắn về món"
-          className={cn(inputClass, "min-h-[60px] resize-none")}
-        />
-      </div>
+              <div>
+                <label className={labelClass}>Mô tả</label>
+                <textarea
+                  {...register("description")}
+                  placeholder="Mô tả ngắn về thành phần, hương vị..."
+                  className={cn(inputClass, "min-h-[80px] resize-none")}
+                />
+              </div>
 
-      {/* Danh mục — ẩn nếu edit Latte */}
-      {!(mode === "edit" && category === "latte") && (
-        <div>
-          <label className={labelClass}>Danh mục *</label>
-          <select {...register("category")} disabled={mode === "edit"} className={inputClass}>
-            <option value="latte">Latte</option>
-            <option value="fusion">Fusion</option>
-          </select>
-          {mode === "edit" && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Danh mục không thể thay đổi sau khi tạo.
-            </p>
+              {!(mode === "edit" && category === "latte") && (
+                <div>
+                  <label className={labelClass}>Danh mục <span className="text-destructive">*</span></label>
+                  <select {...register("category")} disabled={mode === "edit"} className={inputClass}>
+                    <option value="latte">Latte</option>
+                    <option value="fusion">Fusion</option>
+                  </select>
+                  {mode === "edit" && (
+                    <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
+                      <span className="w-1 h-1 rounded-full bg-muted-foreground"></span>
+                      Danh mục không thể thay đổi sau khi tạo.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className={labelClass}>Ảnh đại diện</label>
+              <div className="relative group rounded-2xl border-2 border-dashed border-border hover:border-primary/50 transition-colors bg-secondary/20 aspect-square flex flex-col items-center justify-center overflow-hidden cursor-pointer">
+                {imagePreview || (mode === "edit" && defaultValues?.name) /* Ideally we pass image_url in defaultValues, but for now we preview picked image */ ? (
+                  imagePreview ? (
+                     <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="text-4xl">🍵</div>
+                  )
+                ) : (
+                  <div className="text-center p-4">
+                    <div className="bg-background w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2 shadow-sm">
+                      <span className="text-muted-foreground">📷</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground font-medium">Tải ảnh lên</span>
+                  </div>
+                )}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleImageChange}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground text-center">JPEG, PNG, WEBP (Max 5MB)</p>
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Định giá & Khối lượng (Tuỳ chọn)">
+          <div className="space-y-4">
+            <div>
+              <label className={labelClass}>
+                Giá cơ sở (🐟 cá)
+                <span className="text-muted-foreground font-normal ml-2 text-xs opacity-80">— Bỏ trống nếu không bán size tương ứng</span>
+              </label>
+              <div className="grid grid-cols-3 gap-4 mt-2">
+                {(["M", "L", "XL"] as const).map((size) => {
+                  const field = `size_${size.toLowerCase()}` as "size_m" | "size_l" | "size_xl";
+                  return (
+                    <div key={size} className="relative">
+                      <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                        <span className="text-xs font-bold text-muted-foreground w-4">{size}</span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        {...register(field)}
+                        placeholder="—"
+                        className={cn(inputClass, "pl-9 font-medium")}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-border/40">
+              <label className={labelClass}>
+                Gram bột tuỳ chỉnh (g)
+                <span className="text-muted-foreground font-normal ml-2 text-xs opacity-80">— Bỏ trống sẽ dùng cấu hình hệ thống</span>
+              </label>
+              <div className="grid grid-cols-3 gap-4 mt-2">
+                {(["M", "L", "XL"] as const).map((size) => {
+                  const field = `grams_${size.toLowerCase()}` as "grams_m" | "grams_l" | "grams_xl";
+                  return (
+                    <div key={size} className="relative">
+                      <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                        <span className="text-xs font-bold text-muted-foreground w-4">{size}</span>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        {...register(field)}
+                        placeholder="—"
+                        className={cn(inputClass, "pl-9 bg-secondary/10")}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Cấu hình Bột Matcha">
+          {category === "latte" && (
+            <div className="space-y-4">
+              <label className={labelClass}>Bột matcha cố định <span className="text-destructive">*</span></label>
+              {mode === "edit" ? (
+                <div className="px-4 py-3 bg-secondary/30 border border-border rounded-xl flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">
+                    🍵
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      {sortedPowders.find(p => p.id === watch("matcha_powder_id"))?.name || "Đang tải..."}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Bột không thể đổi sau khi tạo món để đảm bảo cấu trúc giá trị.</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex bg-secondary/30 rounded-xl p-1.5 w-full md:w-max">
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex-1 md:flex-none md:w-36 py-1.5 text-sm font-medium rounded-lg transition-all duration-200",
+                        powderMode === "new" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                      )}
+                      onClick={() => setValue("powder_mode", "new")}
+                    >
+                      Tạo bột mới
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        "flex-1 md:flex-none md:w-36 py-1.5 text-sm font-medium rounded-lg transition-all duration-200",
+                        powderMode === "existing" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                      )}
+                      onClick={() => setValue("powder_mode", "existing")}
+                    >
+                      Chọn có sẵn
+                    </button>
+                  </div>
+
+                  {powderMode === "existing" && (
+                    <div className="animate-in slide-in-from-top-2 duration-200">
+                      <select {...register("matcha_powder_id")} className={inputClass}>
+                        <option value="">— Chọn bột từ danh sách —</option>
+                        {sortedPowders.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} {p.type !== "NONE" ? `(${p.type})` : ""} {!p.is_available ? "(Ngưng bán)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {powderMode === "new" && (
+                    <div className="space-y-4 bg-secondary/10 p-5 rounded-2xl border border-border/50 animate-in slide-in-from-top-2 duration-200">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-xs font-medium text-foreground mb-1 block">Tên bột mới <span className="text-destructive">*</span></label>
+                          <input
+                            {...register("new_powder_name")}
+                            placeholder="Ví dụ: Meyumi Premium"
+                            className={inputClass}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-foreground mb-1 block">Giá (VND/gram) <span className="text-destructive">*</span></label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            {...register("new_powder_price_per_gram")}
+                            placeholder="Ví dụ: 6000"
+                            className={inputClass}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="pt-2">
+                        <label className="text-xs font-medium text-foreground mb-2 block">
+                          Định lượng bột riêng (g) <span className="text-muted-foreground font-normal ml-1">— Bỏ trống = dùng hệ thống</span>
+                        </label>
+                        <div className="grid grid-cols-3 gap-3">
+                          {(["M", "L", "XL"] as const).map((size) => {
+                            const field = `new_powder_grams_${size.toLowerCase()}` as "new_powder_grams_m" | "new_powder_grams_l" | "new_powder_grams_xl";
+                            return (
+                              <div key={size} className="relative">
+                                <div className="absolute inset-y-0 left-0 flex items-center pl-2.5 pointer-events-none">
+                                  <span className="text-[10px] font-bold text-muted-foreground">{size}</span>
+                                </div>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.1"
+                                  {...register(field)}
+                                  placeholder="—"
+                                  className={cn(inputClass, "pl-7 text-xs")}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           )}
-        </div>
-      )}
 
-      {/* Giá — 3 sizes (nhập bằng cá 🐟, để trống = không bán size đó) */}
-      <div>
-        <label className={labelClass}>
-          Giá cơ sở (🐟 cá){" "}
-          <span className="text-muted-foreground font-normal">— để trống = không bán size đó</span>
-        </label>
-        <div className="grid grid-cols-3 gap-3 mt-1">
-          {(["M", "L", "XL"] as const).map((size) => {
-            const field = `size_${size.toLowerCase()}` as "size_m" | "size_l" | "size_xl";
-            return (
-              <div key={size}>
-                <label className="text-xs text-muted-foreground">Size {size}</label>
+          {category === "fusion" && (
+            <div className="space-y-5">
+              <div>
+                <label className={labelClass}>Bột mặc định</label>
+                <select {...register("default_powder_id")} className={inputClass}>
+                  <option value="">— Tự động (Meyumi → Hana → MH-3 → rẻ nhất) —</option>
+                  {sortedPowders.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} {p.type !== "NONE" ? `(${p.type})` : ""} {!p.is_available ? "(Ngưng bán)" : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-muted-foreground mt-1.5 flex items-center gap-1">
+                  <span className="w-1 h-1 rounded-full bg-primary/60"></span>
+                  Hệ thống tự fallback nếu để trống.
+                </p>
+              </div>
+
+              <div>
+                <label className={labelClass}>Base liquid (Dung dịch nền)</label>
+                <input
+                  {...register("base_liquid_note")}
+                  placeholder="Ví dụ: Nước ép cam, Trà nhài..."
+                  className={inputClass}
+                />
+              </div>
+
+              <div className="pt-2 border-t border-border/40">
+                <div className="flex items-center justify-between mb-3">
+                  <label className={labelClass}>Bột cho phép Swap</label>
+                  <span className="text-[10px] bg-secondary px-2 py-0.5 rounded-full text-muted-foreground">
+                    Đã chọn {allowedPowderIds.length}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 bg-secondary/10 p-3 rounded-xl border border-border/40">
+                  {sortedPowders
+                    .filter((p) => p.id !== defaultPowderId)
+                    .map((p) => (
+                      <label
+                        key={p.id}
+                        className={cn(
+                          "flex items-center space-x-2 text-sm p-2 rounded-lg hover:bg-background transition-colors cursor-pointer border border-transparent hover:border-border/60", 
+                          !p.is_available && "opacity-50 grayscale"
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          value={p.id}
+                          {...register("allowed_powder_ids")}
+                          className="rounded border-border text-primary focus:ring-primary/40"
+                        />
+                        <span className="truncate">
+                          {p.name}
+                        </span>
+                      </label>
+                    ))}
+                  {sortedPowders.filter((p) => p.id !== defaultPowderId).length === 0 && (
+                    <p className="text-xs text-muted-foreground col-span-full py-2 text-center">Không có bột khả dụng</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </Section>
+
+        <Section title="Cài đặt Hiển thị">
+          <div className="space-y-3">
+            {(
+              [
+                { name: "is_seasonal", label: "Theo mùa", desc: "Đánh dấu nổi bật món chỉ bán theo mùa" },
+                { name: "is_available", label: "Trạng thái bán", desc: "Mở bán hoặc tạm ẩn trên menu" },
+              ] as const
+            ).map(({ name, label, desc }) => (
+              <div
+                key={name}
+                className="flex items-center justify-between bg-secondary/20 rounded-xl px-4 py-3 border border-border/30"
+              >
+                <div>
+                  <label className="text-sm font-medium text-foreground block">{label}</label>
+                  <span className="text-[11px] text-muted-foreground">{desc}</span>
+                </div>
+                <Controller
+                  name={name}
+                  control={control}
+                  render={({ field }) => (
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={field.value}
+                      onClick={() => field.onChange(!field.value)}
+                      className={cn(
+                        "relative inline-flex h-6 w-11 rounded-full transition-colors duration-200",
+                        field.value ? "bg-primary" : "bg-muted"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 m-0.5",
+                          field.value ? "translate-x-5" : "translate-x-0"
+                        )}
+                      />
+                    </button>
+                  )}
+                />
+              </div>
+            ))}
+
+            <div className="pt-2">
+              <label className={labelClass}>Thứ tự sắp xếp ưu tiên</label>
+              <div className="relative mt-1">
                 <input
                   type="number"
                   min="0"
                   step="1"
-                  {...register(field)}
-                  placeholder="—"
-                  className={inputClass}
+                  {...register("sort_order")}
+                  placeholder="0"
+                  className={cn(inputClass, "pl-10")}
                 />
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Latte only: Bột matcha */}
-      {category === "latte" && (
-        <div className="space-y-4">
-          <label className={labelClass}>Bột matcha *</label>
-          {mode === "edit" ? (
-            <div className="px-3 py-2 bg-secondary/20 border border-border rounded-xl text-sm text-foreground">
-              {sortedPowders.find(p => p.id === watch("matcha_powder_id"))?.name || "Đang tải..."}
-              <p className="text-[10px] text-muted-foreground mt-0.5">Không thể đổi bột sau khi tạo (neo giá Fusion).</p>
-            </div>
-          ) : (
-            <>
-              {/* Toggle switch for Create mode */}
-              <div className="flex bg-secondary/30 rounded-xl p-1">
-                <button
-                  type="button"
-                  className={cn(
-                    "flex-1 py-1.5 text-sm font-medium rounded-lg transition-colors",
-                    powderMode === "new" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"
-                  )}
-                  onClick={() => setValue("powder_mode", "new")}
-                >
-                  Tạo bột mới
-                </button>
-                <button
-                  type="button"
-                  className={cn(
-                    "flex-1 py-1.5 text-sm font-medium rounded-lg transition-colors",
-                    powderMode === "existing" ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"
-                  )}
-                  onClick={() => setValue("powder_mode", "existing")}
-                >
-                  Chọn bột có sẵn
-                </button>
-              </div>
-
-              {powderMode === "existing" && (
-                <div className="animate-in fade-in zoom-in-95 duration-200">
-                  <select {...register("matcha_powder_id")} className={inputClass}>
-                    <option value="">— Chọn bột —</option>
-                    {sortedPowders
-                      // Optionally, filter to only show powders without reference_latte_item_id
-                      // But for now, we just list them, backend handles P2002 if taken
-                      .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                        {p.type !== "NONE" ? ` (${p.type})` : ""}
-                        {!p.is_available ? " (Ngưng bán)" : ""}
-                      </option>
-                    ))}
-                  </select>
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-muted-foreground">
+                  <span className="text-sm">#</span>
                 </div>
-              )}
-
-              {powderMode === "new" && (
-                <div className="space-y-3 bg-secondary/10 p-3 rounded-xl border border-border/50 animate-in fade-in zoom-in-95 duration-200">
-                  <div>
-                    <label className="text-xs text-muted-foreground">Tên bột *</label>
-                    <input
-                      {...register("new_powder_name")}
-                      placeholder="Ví dụ: Meyumi"
-                      className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">Giá (VND/gram) *</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      {...register("new_powder_price_per_gram")}
-                      placeholder="Ví dụ: 6000"
-                      className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground">
-                      Gram bột riêng <span className="font-normal">— để trống = hệ thống</span>
-                    </label>
-                    <div className="grid grid-cols-3 gap-2 mt-1">
-                      {(["M", "L", "XL"] as const).map((size) => {
-                        const field = `new_powder_grams_${size.toLowerCase()}` as "new_powder_grams_m" | "new_powder_grams_l" | "new_powder_grams_xl";
-                        return (
-                          <div key={size}>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.1"
-                              {...register(field)}
-                              placeholder={`Size ${size}`}
-                              className={cn(inputClass, "text-xs px-2")}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Fusion only */}
-      {category === "fusion" && (
-        <>
-          <div>
-            <label className={labelClass}>Bột mặc định</label>
-            <select {...register("default_powder_id")} className={inputClass}>
-              <option value="">— Tự động (Meyumi → Hana → MH-3 → rẻ nhất) —</option>
-              {sortedPowders.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.type !== "NONE" ? ` (${p.type})` : ""}
-                  {!p.is_available ? " (Ngưng bán)" : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={labelClass}>Các bột cho phép swap</label>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {sortedPowders
-                .filter((p) => p.id !== defaultPowderId)
-                .map((p) => (
-                  <label
-                    key={p.id}
-                    className={cn("flex items-center space-x-2 text-sm", !p.is_available && "opacity-60")}
-                  >
-                    <input
-                      type="checkbox"
-                      value={p.id}
-                      {...register("allowed_powder_ids")}
-                      className="rounded border-border text-primary focus:ring-primary/40"
-                    />
-                    <span>
-                      {p.name}
-                      {!p.is_available && <span className="text-[10px] ml-1 opacity-70">(Ngưng bán)</span>}
-                    </span>
-                  </label>
-                ))}
+              </div>
             </div>
           </div>
-          <div>
-            <label className={labelClass}>Base liquid</label>
-            <input
-              {...register("base_liquid_note")}
-              placeholder="Ví dụ: Nước ép cam, Milk foam"
-              className={inputClass}
-            />
-          </div>
-        </>
-      )}
-
-      {/* Custom gram override — label unit: gram (g) */}
-      <div>
-        <label className={labelClass}>
-          Gram bột tuỳ chỉnh{" "}
-          <span className="text-muted-foreground font-normal">
-            gram (g) — để trống = dùng cấu hình hệ thống
-          </span>
-        </label>
-        <div className="grid grid-cols-3 gap-3 mt-1">
-          {(["M", "L", "XL"] as const).map((size) => {
-            const field = `grams_${size.toLowerCase()}` as "grams_m" | "grams_l" | "grams_xl";
-            return (
-              <div key={size}>
-                <label className="text-xs text-muted-foreground">Size {size} (g)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  {...register(field)}
-                  placeholder="—"
-                  className={inputClass}
-                />
-              </div>
-            );
-          })}
-        </div>
+        </Section>
       </div>
 
-      {/* Ảnh */}
-      <div>
-        <label className={labelClass}>Ảnh sản phẩm</label>
-        <input
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          onChange={handleImageChange}
-          className="mt-1 block w-full text-sm text-muted-foreground file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-secondary/40 file:text-sm file:font-medium hover:file:bg-secondary/60"
-        />
-        {imagePreview && (
-          <img
-            src={imagePreview}
-            alt="Preview"
-            className="mt-2 h-20 w-20 rounded-xl object-cover border border-border"
-          />
-        )}
-      </div>
-
-      {/* Toggles */}
-      <div className="space-y-2">
-        {(
-          [
-            { name: "is_seasonal", label: "Theo mùa" },
-            { name: "is_available", label: "Đang bán" },
-          ] as const
-        ).map(({ name, label }) => (
-          <div
-            key={name}
-            className="flex items-center justify-between bg-secondary/30 rounded-xl px-3 py-2"
-          >
-            <label className={labelClass}>{label}</label>
-            <Controller
-              name={name}
-              control={control}
-              render={({ field }) => (
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={field.value}
-                  onClick={() => field.onChange(!field.value)}
-                  className={cn(
-                    "relative inline-flex h-5 w-9 rounded-full transition",
-                    field.value ? "bg-primary" : "bg-border"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "block h-4 w-4 rounded-full bg-white shadow transition-transform m-0.5",
-                      field.value ? "translate-x-4" : "translate-x-0"
-                    )}
-                  />
-                </button>
-              )}
-            />
-          </div>
-        ))}
-      </div>
-
-      {/* Sort order */}
-      <div>
-        <label className={labelClass}>Thứ tự hiển thị</label>
-        <input
-          type="number"
-          min="0"
-          step="1"
-          {...register("sort_order")}
-          placeholder="0"
-          className={inputClass}
-        />
-      </div>
-
-      {/* Submit */}
-      <div className="flex gap-2 justify-end pt-2">
+      {/* Sticky Footer */}
+      <div className="absolute bottom-0 left-0 right-0 bg-background/80 backdrop-blur-xl border-t border-border p-4 flex gap-3 justify-end z-20 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)]">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isSubmitting}
+          className="px-6 py-2.5 rounded-xl text-sm font-medium border border-border bg-background hover:bg-secondary/60 transition-colors disabled:opacity-50"
+        >
+          Hủy
+        </button>
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-6 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition disabled:opacity-50"
+          className="px-8 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-all shadow-md shadow-primary/20 disabled:opacity-50 disabled:shadow-none flex items-center gap-2"
         >
-          {isSubmitting ? "Đang xử lý..." : mode === "create" ? "Thêm món" : "Cập nhật"}
+          {isSubmitting ? (
+            <>
+              <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+              Đang lưu...
+            </>
+          ) : (
+             mode === "create" ? "Tạo món" : "Lưu thay đổi"
+          )}
         </button>
       </div>
 
-      {/* Confirm Dialog */}
+      {/* Confirm Dialog Layer */}
       {showConfirm && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-background rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <h3 className="font-serif font-bold text-xl text-foreground mb-2">Xác nhận</h3>
-            <p className="text-sm text-muted-foreground mb-6">
-              Bạn có chắc chắn muốn {mode === "create" ? "thêm món này" : "cập nhật thay đổi"} không?
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-card rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200 border border-border/50">
+            <div className="w-12 h-12 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mb-4">
+              <span className="text-2xl">✨</span>
+            </div>
+            <h3 className="font-serif font-bold text-xl text-foreground mb-2">Xác nhận lưu</h3>
+            <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+              Bạn có chắc chắn muốn {mode === "create" ? "thêm món mới này vào menu" : "cập nhật các thay đổi cho món này"} không?
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 type="button"
                 onClick={() => setShowConfirm(false)}
-                className="px-4 py-2 rounded-xl font-medium text-sm text-foreground hover:bg-secondary transition-colors"
+                className="flex-1 px-4 py-2.5 rounded-xl font-medium text-sm text-foreground hover:bg-secondary/60 transition-colors border border-transparent hover:border-border"
               >
-                Hủy
+                Quay lại
               </button>
               <button
                 type="button"
                 onClick={handleConfirmSubmit}
-                className="px-5 py-2 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors shadow-sm"
+                className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors shadow-sm"
               >
                 Đồng ý
               </button>

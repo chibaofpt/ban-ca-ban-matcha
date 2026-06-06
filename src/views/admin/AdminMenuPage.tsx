@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Plus, Search, RefreshCw } from "lucide-react";
+import { Plus, Search, RefreshCw, LayoutGrid, List } from "lucide-react";
 import MenuItemCard from "@/src/components/admin/MenuItemCard";
 import MenuItemModal from "@/src/components/admin/MenuItemModal";
 import {
@@ -69,6 +69,7 @@ export default function AdminMenuPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<"all" | "latte" | "fusion">("all");
+  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [modalState, setModalState] = useState<ModalState>({ open: false });
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -194,18 +195,40 @@ export default function AdminMenuPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <div className="flex bg-secondary/30 rounded-xl p-1 border border-border/50">
+            <button
+              type="button"
+              onClick={() => setViewMode("grid")}
+              className={cn(
+                "p-1.5 rounded-lg transition-colors",
+                viewMode === "grid" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <LayoutGrid size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("table")}
+              className={cn(
+                "p-1.5 rounded-lg transition-colors",
+                viewMode === "table" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <List size={16} />
+            </button>
+          </div>
           <button
             type="button"
             aria-label="Làm mới"
             onClick={loadData}
-            className="rounded-xl p-2 hover:bg-secondary/60 transition text-muted-foreground"
+            className="rounded-xl p-2 hover:bg-secondary/60 transition border border-border/50 bg-background text-muted-foreground hover:text-foreground shadow-sm"
           >
             <RefreshCw size={16} />
           </button>
           <button
             type="button"
             onClick={() => setModalState({ open: true, mode: "create" })}
-            className="flex items-center gap-2 rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition"
+            className="flex items-center gap-2 rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition shadow-sm shadow-primary/20"
           >
             <Plus size={15} />
             Thêm món
@@ -266,17 +289,115 @@ export default function AdminMenuPage() {
           </button>
         </div>
       ) : filteredItems.length === 0 ? (
-        <div className="py-16 text-center text-muted-foreground text-sm">
+        <div className="py-16 text-center text-muted-foreground text-sm border-2 border-dashed border-border/60 rounded-2xl bg-secondary/10">
           {searchQuery || categoryFilter !== "all"
             ? "Không tìm thấy món phù hợp."
             : "Chưa có món nào. Bấm «Thêm món» để bắt đầu."}
         </div>
+      ) : viewMode === "table" ? (
+        <div className="rounded-2xl border border-border/60 bg-card overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-secondary/30 text-xs uppercase text-muted-foreground border-b border-border/50">
+                <tr>
+                  <th className="px-6 py-4 font-semibold tracking-wider">Món</th>
+                  <th className="px-6 py-4 font-semibold tracking-wider">Danh mục</th>
+                  <th className="px-6 py-4 font-semibold tracking-wider">Giá từ (🐟)</th>
+                  <th className="px-6 py-4 font-semibold tracking-wider text-center">Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {filteredItems.map((item) => {
+                  const activeSizes = item.sizes.filter((s) => s.base_price_vnd != null);
+                  const minPriceCa = activeSizes.length > 0
+                    ? Math.min(...activeSizes.map((s) => Math.floor(s.base_price_vnd! / 1000)))
+                    : null;
+                  
+                  return (
+                    <tr
+                      key={item.id}
+                      onClick={() => setModalState({ open: true, mode: "edit", item })}
+                      className={cn(
+                        "hover:bg-secondary/20 transition-colors cursor-pointer",
+                        !item.is_available && "bg-secondary/5 opacity-70",
+                        togglingId === item.id && "pointer-events-none opacity-50"
+                      )}
+                    >
+                      <td className="px-6 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-secondary/50 flex items-center justify-center overflow-hidden flex-shrink-0">
+                            {item.image_url ? (
+                              <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-xl">🍵</span>
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-foreground">{item.name}</div>
+                            {item.is_seasonal && (
+                              <span className="inline-block mt-0.5 rounded-full bg-amber-500/20 text-amber-800 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider">
+                                Mùa vụ
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-3">
+                        <span
+                          className={cn(
+                            "rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border",
+                            item.category === "latte"
+                              ? "bg-emerald-500/10 text-emerald-800 border-emerald-500/20"
+                              : "bg-violet-500/10 text-violet-800 border-violet-500/20"
+                          )}
+                        >
+                          {item.category}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3">
+                        {minPriceCa != null ? (
+                          <div className="font-semibold text-foreground">{minPriceCa}+</div>
+                        ) : (
+                          <span className="italic text-muted-foreground text-xs">Chưa có giá</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-3">
+                        <div className="flex justify-center">
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={item.is_available}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleAvailable(item.id, !item.is_available);
+                            }}
+                            className={cn(
+                              "relative inline-flex h-5 w-9 rounded-full transition-colors duration-200",
+                              item.is_available ? "bg-primary" : "bg-muted-foreground/30"
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 m-0.5",
+                                item.is_available ? "translate-x-4" : "translate-x-0"
+                              )}
+                            />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-5">
           {filteredItems.map((item) => (
             <div
               key={item.id}
-              className={cn(togglingId === item.id && "pointer-events-none opacity-70")}
+              className={cn(togglingId === item.id && "pointer-events-none opacity-50")}
             >
               <MenuItemCard
                 item={item}
