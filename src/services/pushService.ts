@@ -82,7 +82,10 @@ export async function checkAndResubscribe(): Promise<boolean> {
   try {
     if (!("serviceWorker" in navigator)) return false;
 
-    const registration = await navigator.serviceWorker.ready;
+    // Use getRegistration() instead of ready, because 'ready' hangs forever if no SW is registered yet
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (!registration) return false;
+
     let subscription = await registration.pushManager.getSubscription();
 
     // If we lost the subscription locally but the user has granted permission, resubscribe silently
