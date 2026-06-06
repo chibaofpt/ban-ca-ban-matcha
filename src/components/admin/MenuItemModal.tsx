@@ -57,45 +57,45 @@ export default function MenuItemModal({
   };
 
   const defaultValues = mode === "edit" && item ? buildDefaultValues(item) : undefined;
-
   return (
-    /* Backdrop */
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      {/* Dialog */}
-      <div className="relative w-full max-w-lg bg-card rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-[100] flex justify-end bg-black/40 backdrop-blur-sm p-0 transition-opacity">
+      <div 
+        className="w-full max-w-2xl h-full bg-background flex flex-col shadow-2xl animate-in slide-in-from-right duration-300"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
-          <h2 className="text-base font-semibold text-foreground">
-            {mode === "create" ? "Thêm món mới" : "Sửa món"}
-          </h2>
+        <div className="flex items-center justify-between border-b border-border/50 px-6 py-4 bg-card/50 backdrop-blur-md sticky top-0 z-10">
+          <div>
+            <h2 className="font-serif text-xl font-bold text-foreground">
+              {mode === "create" ? "Thêm món mới" : "Chỉnh sửa món"}
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {mode === "create" ? "Điền thông tin để tạo món mới trên menu" : "Cập nhật thông tin chi tiết của món"}
+            </p>
+          </div>
           <button
             type="button"
-            aria-label="Đóng"
             onClick={onClose}
-            className="rounded-lg p-1.5 hover:bg-secondary/60 transition text-muted-foreground hover:text-foreground"
+            className="rounded-full p-2 text-muted-foreground hover:bg-secondary/80 hover:text-foreground transition-colors"
           >
-            <X size={16} />
+            <X size={20} />
           </button>
         </div>
 
-        {/* Body — scrollable */}
-        <div className="overflow-y-auto px-5 py-4 flex-1">
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-6 custom-scrollbar">
           {errorMsg && (
-            <div className="mb-4 rounded-xl bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
+            <div className="mb-6 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
               {errorMsg}
             </div>
           )}
+
           <MenuItemForm
             mode={mode}
-            defaultValues={defaultValues}
+            defaultValues={item ? buildDefaultValues(item) : undefined}
             powders={powders}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
+            onCancel={onClose}
           />
         </div>
       </div>
