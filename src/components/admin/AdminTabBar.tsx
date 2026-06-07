@@ -8,6 +8,7 @@ import type { Role } from "@/src/lib/types/user";
 import * as authService from "@/src/services/authService";
 import { useState } from "react";
 import StoreSettingsModal from "@/src/components/admin/StoreSettingsModal";
+import { useAuthStore } from "@/src/lib/store/authStore";
 
 interface Tab {
   to: string;
@@ -41,14 +42,16 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
   const pathname = usePathname();
   const router = useRouter();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const authStoreLogout = useAuthStore((s) => s.logout);
 
   const tabs = TABS.filter((t) => t.roles.includes(userRole));
 
   const handleLogout = async () => {
     try {
       await authService.logout();
+      authStoreLogout();
     } finally {
-      router.replace("/admin/login");
+      router.replace("/");
     }
   };
 

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
 import Navbar from "@/src/components/common/Navbar";
 import AuthModal from "@/src/components/common/AuthModal";
@@ -7,6 +7,9 @@ import StoreStatusBanner from "@/src/components/common/StoreStatusBanner";
 import { Toaster } from "sonner";
 import "./globals.css";
 
+export const viewport: Viewport = {
+  maximumScale: 1, // Prevents auto-zoom on iOS when focusing inputs
+};
 
 const inter = Inter({
   variable: "--font-inter",

@@ -115,11 +115,23 @@ export function calcShippingFee(distanceKm: number): number {
 }
 
 /**
- * Calculate FREESHIP discount — min(shipping_fee, covered_delivery_fee_vnd).
+ * Estimates Free Delivery discount.
+ * Compares covered_delivery_fee_vnd vs actual distance fee.
+ * Does NOT check min_order_vnd (that is checked at query/UI layer).
  */
-export function calcFreeshipDiscount(
-  shippingFeeVnd: number,
-  coveredDeliveryFeeVnd: number
-): number {
-  return Math.min(shippingFeeVnd, coveredDeliveryFeeVnd);
+export function calcFreeshipDiscount(shippingFeeVnd: number, freeshipCoveredVnd: number | null): number {
+  if (freeshipCoveredVnd === null || freeshipCoveredVnd === undefined) {
+    return 0; // Not a FREESHIP voucher or missing config
+  }
+  return Math.min(shippingFeeVnd, freeshipCoveredVnd);
+}
+
+// ── UI Formatting ─────────────────────────────────────────────────────────────
+
+/**
+ * Formats VND amount as currency string.
+ * Example: 45000 -> "45.000"
+ */
+export function formatMoney(amount: number): string {
+  return amount.toLocaleString("vi-VN");
 }
