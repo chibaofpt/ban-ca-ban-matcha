@@ -28,6 +28,7 @@ export async function PATCH(
         status: true,
         order_type: true,
         auto_cancel_at: true,
+        freeship_voucher_id: true,
       },
     });
 
@@ -124,6 +125,19 @@ export async function PATCH(
         for (const vId of uniqueItemVoucherIds) {
           await tx.voucher.update({
             where: { id: vId },
+            data: {
+              status: "REDEEMED",
+              used_channel: "ONLINE",
+              redeemed_at: new Date(),
+              redeemed_by: session.id,
+            },
+          });
+        }
+
+        // 3. FREESHIP voucher
+        if (order.freeship_voucher_id) {
+          await tx.voucher.update({
+            where: { id: order.freeship_voucher_id },
             data: {
               status: "REDEEMED",
               used_channel: "ONLINE",

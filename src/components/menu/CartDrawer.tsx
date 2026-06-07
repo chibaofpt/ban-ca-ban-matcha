@@ -14,6 +14,8 @@ import { useRouter } from "next/navigation";
 import { listMyVouchers, type MyVoucher } from "@/src/services/customerVoucherService";
 import { filterUsableVouchers, buildAddonVoucherMap, buildProductVoucherMap, estimateProductSavings, estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
+import { DeliverySection } from "@/src/components/delivery/DeliverySection";
+import type { Address } from "@/src/lib/types/address";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -49,8 +51,16 @@ const CartDrawer = () => {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
 
+  // ── Delivery state ──
+  const [orderType, setOrderType] = useState<"PICKUP" | "DELIVERY">("PICKUP");
+  const [deliveryAddress, setDeliveryAddress] = useState<Address | null>(null);
+  const [shippingFee, setShippingFee] = useState<number | null>(null);
+  const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number | null>(null);
+  const [deliveryError, setDeliveryError] = useState<string | null>(null);
+
   // Derived voucher lists
   const discountVouchers = filterUsableVouchers(allVouchers, "DISCOUNT");
+  const freeshipVouchers = filterUsableVouchers(allVouchers, "FREESHIP");
   const applicableAddonVouchersMap = buildAddonVoucherMap(allVouchers, items);
   const applicableProductVouchers = buildProductVoucherMap(allVouchers, items);
 
@@ -63,8 +73,20 @@ const CartDrawer = () => {
   const discountK = Math.floor(rawDiscountAmount / 1000); // Conservative discount display
   const finalK = Math.max(0, subtotalK - discountK);
   
+  const shippingK = orderType === "DELIVERY" && shippingFee !== null ? Math.floor(shippingFee / 1000) : 0;
+  
+  let freeshipDiscountK = 0;
+  let appliedFreeshipId: string | null = null;
+  if (orderType === "DELIVERY" && shippingFee !== null && freeshipVouchers.length > 0) {
+    const bestVoucher = freeshipVouchers.reduce((best, v) => (v.covered_price_vnd ?? 0) > (best.covered_price_vnd ?? 0) ? v : best, freeshipVouchers[0]);
+    freeshipDiscountK = Math.floor(Math.min(shippingFee, bestVoucher.covered_price_vnd ?? 0) / 1000);
+    appliedFreeshipId = bestVoucher.id;
+  }
+
+  const grandTotalK = Math.max(0, finalK + shippingK - freeshipDiscountK);
+  
   const discountAmount = discountK * 1000;
-  const finalPrice = finalK * 1000;
+  const finalPrice = grandTotalK * 1000;
 
   useEffect(() => {
     const updateTimes = () => {
@@ -134,9 +156,27 @@ const CartDrawer = () => {
 
       let payloadItems = [...items];
 
+      if (orderType === "DELIVERY") {
+        if (!deliveryAddress || shippingFee === null) {
+          setCheckout({ status: "error", message: "Vui lòng chọn địa chỉ giao hàng hợp lệ." });
+          return;
+        }
+      }
+
       const result = await createOrder(payloadItems, {
+        orderType,
         pickupTime: finalPickupTime,
         discountVoucherIds: selectedVoucherIds,
+        ...(orderType === "DELIVERY" && deliveryAddress ? {
+          addressId: deliveryAddress.id,
+          deliveryAddress: deliveryAddress.address,
+          deliveryLat: deliveryAddress.lat,
+          deliveryLng: deliveryAddress.lng,
+          deliveryReceiverName: deliveryAddress.receiver_name,
+          deliveryReceiverPhone: deliveryAddress.receiver_phone,
+          clientShippingFeeVnd: shippingFee ?? 0,
+          freeshipVoucherId: appliedFreeshipId ?? undefined,
+        } : {})
       });
       clearCart();
       setCartOpen(false);
@@ -161,6 +201,9 @@ const CartDrawer = () => {
     setSelectedVoucherIds([]);
     setIsDiscountPickerOpen(false);
     setActiveItemForVoucher(null);
+    setOrderType("PICKUP");
+    setDeliveryAddress(null);
+    setShippingFee(null);
   }, [setCartOpen, resetCheckout]);
 
   /** The cart item currently being assigned a voucher. */
@@ -209,8 +252,32 @@ const CartDrawer = () => {
                 </button>
               </div>
 
+              {/* Order Type Toggle */}
+              <div className="px-5 pt-4 pb-2 shrink-0 bg-[#fdfcf7] z-10">
+                <div className="flex bg-secondary/10 p-1 rounded-2xl">
+                  <button
+                    onClick={() => setOrderType("PICKUP")}
+                    className={cn(
+                      "flex-1 py-2 text-sm font-bold rounded-xl transition-all",
+                      orderType === "PICKUP" ? "bg-white text-primary shadow-sm" : "text-primary/50 hover:text-primary/70"
+                    )}
+                  >
+                    Đến lấy
+                  </button>
+                  <button
+                    onClick={() => setOrderType("DELIVERY")}
+                    className={cn(
+                      "flex-1 py-2 text-sm font-bold rounded-xl transition-all",
+                      orderType === "DELIVERY" ? "bg-white text-primary shadow-sm" : "text-primary/50 hover:text-primary/70"
+                    )}
+                  >
+                    Giao hàng
+                  </button>
+                </div>
+              </div>
+
               {/* Scrollable content */}
-              <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
+              <div className="flex-1 overflow-y-auto px-5 pb-4 min-h-0">
                 <AnimatePresence mode="wait">
 
                   {/* PRICE_CHANGED */}
@@ -579,7 +646,7 @@ const CartDrawer = () => {
                       )}
                     </div>
 
-                     {/* Right 40% — Tạm tính / Giảm giá / Tổng, aligned to bottom */}
+                     {/* Right 40% — Tạm tính / Giảm giá / Phí ship / Tổng, aligned to bottom */}
                     <div className="flex flex-col justify-end flex-1 gap-0.5">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-medium text-primary/50">Tạm tính</span>
@@ -588,8 +655,22 @@ const CartDrawer = () => {
                       
                       {discountAmount > 0 && (
                         <div className="flex items-center justify-between text-orange-600">
-                          <span className="text-[11px] font-medium">Giảm</span>
+                          <span className="text-[11px] font-medium">Giảm giá</span>
                           <span className="text-[11px] font-bold">-{discountK.toLocaleString("vi-VN")}k</span>
+                        </div>
+                      )}
+
+                      {orderType === "DELIVERY" && shippingFee !== null && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-medium text-primary/50">Phí ship</span>
+                          <span className="text-[11px] font-bold text-primary/50">{shippingK}k</span>
+                        </div>
+                      )}
+
+                      {orderType === "DELIVERY" && freeshipDiscountK > 0 && (
+                        <div className="flex items-center justify-between text-orange-600">
+                          <span className="text-[11px] font-medium">Freeship</span>
+                          <span className="text-[11px] font-bold">-{freeshipDiscountK.toLocaleString("vi-VN")}k</span>
                         </div>
                       )}
                       
@@ -598,7 +679,7 @@ const CartDrawer = () => {
                       <div className="flex flex-col items-end">
                         <span className="text-[10px] font-bold text-primary/40 uppercase tracking-widest leading-none mb-0.5">Tổng</span>
                         <span className="font-serif text-2xl font-bold text-primary leading-none flex items-center gap-1">
-                          <span className="text-xl">🐟</span> {finalK}k
+                          <span className="text-xl">🐟</span> {grandTotalK}k
                         </span>
                         {isLoggedIn && finalPrice >= 10000 && (
                           <span className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-100 px-1.5 py-[2px] rounded-md mt-1">
@@ -609,8 +690,26 @@ const CartDrawer = () => {
                     </div>
                   </div>
 
+                  {/* Delivery section if DELIVERY selected */}
+                  {orderType === "DELIVERY" && (
+                    <div className="pt-2 border-t border-border/20">
+                      <DeliverySection
+                        selectedAddressId={deliveryAddress?.id ?? null}
+                        onAddressSelect={(address, distance, fee) => {
+                          setDeliveryAddress(address);
+                          setDeliveryDistanceKm(distance);
+                          setShippingFee(fee);
+                        }}
+                        onError={setDeliveryError}
+                      />
+                      {deliveryError && (
+                        <p className="mt-2 text-sm text-red-500 font-medium">{deliveryError}</p>
+                      )}
+                    </div>
+                  )}
+
                   {/* ── DIV 2: Action row — Xoá (1/4) + Checkout (3/4) ── */}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 mt-2">
                     {/* Trash — flex-[1] = ~25%, left */}
                     <button
                       onClick={() => setShowClearConfirm(true)}
@@ -630,10 +729,16 @@ const CartDrawer = () => {
                     <button
                       id="btn-checkout"
                       onClick={handleCheckout}
-                      disabled={checkout.status === "loading" || items.length === 0 || (!!pickupTime && pickupTime < minTimeStr) || isStoreClosed}
+                      disabled={
+                        checkout.status === "loading" || 
+                        items.length === 0 || 
+                        (orderType === "PICKUP" && !!pickupTime && pickupTime < minTimeStr) || 
+                        isStoreClosed ||
+                        (orderType === "DELIVERY" && (!deliveryAddress || shippingFee === null || !!deliveryError))
+                      }
                       className={cn(
                         "flex-[3] py-3.5 rounded-[1.25rem] font-bold text-sm shadow-[0_4px_20px_-4px_rgba(0,0,0,0.12)] transition-all flex items-center justify-center gap-2",
-                        checkout.status === "loading" || (!!pickupTime && pickupTime < minTimeStr) || isStoreClosed
+                        checkout.status === "loading" || (orderType === "PICKUP" && !!pickupTime && pickupTime < minTimeStr) || isStoreClosed || (orderType === "DELIVERY" && (!deliveryAddress || shippingFee === null || !!deliveryError))
                           ? "bg-primary/60 text-white cursor-not-allowed"
                           : "bg-primary text-white hover:scale-[1.02] active:scale-[0.98]"
                       )}

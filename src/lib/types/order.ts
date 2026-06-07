@@ -48,6 +48,9 @@ export interface CustomerOrderDetail {
   subtotal_vnd: number;
   discount_vnd: number;
   total_vnd: number;
+  shipping_fee_vnd: number;
+  freeship_discount_vnd: number;
+  grand_total_vnd: number;
   pickup_time: string | null;
   /** ISO datetime of auto-cancel deadline. Null for COUNTER orders. */
   auto_cancel_at: string | null;
@@ -55,6 +58,16 @@ export interface CustomerOrderDetail {
   payment_qr_url: string | null;
   created_at: string;
   items: OrderItemDetail[];
+  
+  // Delivery fields
+  address_id: string | null;
+  delivery_address: string | null;
+  delivery_lat: number | null;
+  delivery_lng: number | null;
+  delivery_distance_km: number | null;
+  delivery_receiver_name: string | null;
+  delivery_receiver_phone: string | null;
+  freeship_voucher_id: string | null;
 }
 
 /** Slim result returned immediately after creating a new customer order. */
@@ -66,6 +79,9 @@ export interface CreateOrderResult {
   subtotal_vnd: number;
   discount_vnd: number;
   total_vnd: number;
+  shipping_fee_vnd: number;
+  freeship_discount_vnd: number;
+  grand_total_vnd: number;
   pickup_time: string | null;
   auto_cancel_at: string;
   payment_qr_url: string;

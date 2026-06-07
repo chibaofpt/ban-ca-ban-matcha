@@ -30,6 +30,7 @@ model User {
   redeemedVouchers   Voucher[]   @relation("StaffRedeemed")
   vouchers           Voucher[]   @relation("UserVouchers")
   pushSubscriptions  PushSubscription[]
+  addresses          Address[]
 
   @@map("users")
 }
@@ -45,6 +46,26 @@ model Session {
   @@index([refresh_token], map: "idx_sessions_refresh_token")
   @@index([user_id], map: "idx_sessions_user_id")
   @@map("sessions")
+}
+
+model Address {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id         String   @db.Uuid
+  label           String   /// "Nhà", "Công ty", etc.
+  full_address    String   /// Full text address from Goong
+  lat             Float
+  lng             Float
+  receiver_name   String
+  receiver_phone  String   /// Normalized +84
+  is_default      Boolean  @default(false)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  orders          Order[]
+
+  @@index([user_id])
+  @@map("addresses")
 }
 
 model OtpAttempt {
@@ -266,10 +287,25 @@ model Order {
   payment_confirmed_by String?     @db.Uuid
   /// Auto-cancel deadline for PENDING PICKUP/DELIVERY orders. NULL for COUNTER orders.
   auto_cancel_at       DateTime?   @db.Timestamptz(6)
-  /// Delivery address — Phase 5+. NULL for PICKUP orders.
-  delivery_address     String?
-  /// Delivery shipping fee in VND — Phase 5+. Always 0 for PICKUP/COUNTER.
-  shipping_fee_vnd     Int         @default(0)
+  
+  // -- DELIVERY FIELDS --
+  /// FK reference to source address — nullable, SET NULL safe. Not cascade delete.
+  address_id                String?   @db.Uuid
+  delivery_address          String?
+  delivery_lat              Float?
+  delivery_lng              Float?
+  delivery_distance_km      Float?    /// Actual distance from Distance Matrix (km)
+  delivery_receiver_name    String?
+  delivery_receiver_phone   String?
+  /// Shipping fee based on distance (VND). Default 0 for non-DELIVERY.
+  shipping_fee_vnd          Int       @default(0)
+  /// Discount from FREESHIP voucher (VND). Default 0.
+  freeship_discount_vnd     Int       @default(0)
+  /// Grand total = total_vnd + shipping_fee_vnd - freeship_discount_vnd. Actual amount customer pays.
+  grand_total_vnd           Int       @default(0)
+  /// FK to FREESHIP voucher applied on this order. Nullable.
+  freeship_voucher_id       String?   @db.Uuid
+
   created_at           DateTime    @default(now()) @db.Timestamptz(6)
   updated_at           DateTime    @default(now()) @updatedAt @db.Timestamptz(6)
   items                OrderItem[]
@@ -277,6 +313,7 @@ model Order {
   handled_by           String?     @db.Uuid
   handler              User?       @relation("HandledOrders", fields: [handled_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   paymentConfirmer     User?       @relation("PaymentConfirmer", fields: [payment_confirmed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  address              Address?    @relation(fields: [address_id], references: [id], onDelete: SetNull)
   discountVouchers     OrderDiscountVoucher[]
   pointsLogs           PointsLog[]
 

@@ -116,6 +116,25 @@ export async function restoreVouchersOnCancel(
     }
   }
 
+  // 2b. Restore FREESHIP voucher if any
+  const orderWithFreeship = await tx.order.findUnique({
+    where: { id: orderId },
+    select: { freeship_voucher_id: true },
+  });
+
+  if (orderWithFreeship?.freeship_voucher_id) {
+    const fv = await tx.voucher.findUnique({
+      where: { id: orderWithFreeship.freeship_voucher_id },
+      select: { status: true },
+    });
+    if (fv && (fv.status === "RESERVED" || fv.status === "REDEEMED")) {
+      await tx.voucher.update({
+        where: { id: orderWithFreeship.freeship_voucher_id },
+        data: { status: "ACTIVE", redeemed_at: null, redeemed_by: null, used_channel: null },
+      });
+    }
+  }
+
   // 3. Reverse any voucher_surplus points_log rows created at order creation.
   //    Uses safe decrement to floor balance at 0 (prevents negative balance).
   const surplusLogs = await tx.pointsLog.findMany({
