@@ -7,6 +7,7 @@ import type { Address } from "@/src/lib/types/address";
 import { AddressCard } from "@/src/components/address/AddressCard";
 import { AddressForm } from "@/src/components/address/AddressForm";
 import { MapPin, Plus, Loader2 } from "lucide-react";
+import { DELIVERY_CONFIG } from "@/src/constants/delivery";
 
 
 interface Props {
@@ -49,15 +50,28 @@ export function DeliverySection({ selectedAddressId, onAddressSelect, onError }:
     try {
       setEstimating(true);
       onError(null);
-      onAddressSelect(address, null, null); // Set address immediately, loading fees...
       
-      const estimate = await deliveryService.estimateFee(address.lat, address.lng);
-      onAddressSelect(address, estimate.distance_km, estimate.shipping_fee_vnd);
+      if (address.distance_km !== null) {
+        // Distance is already available from DB
+        const distance = address.distance_km;
+        if (distance > DELIVERY_CONFIG.MAX_RADIUS_KM) {
+          throw new Error(`Ngoài vùng giao hàng (${distance.toFixed(1)}km / tối đa ${DELIVERY_CONFIG.MAX_RADIUS_KM}km)`);
+        }
+        import("@/src/utils/pricing").then(({ calcShippingFee }) => {
+          const fee = calcShippingFee(distance);
+          onAddressSelect(address, distance, fee);
+          setEstimating(false);
+        });
+      } else {
+        // Fallback for older addresses missing distance_km
+        onAddressSelect(address, null, null);
+        const estimate = await deliveryService.estimateFee(address.lat, address.lng);
+        onAddressSelect(address, estimate.distance_km, estimate.shipping_fee_vnd);
+        setEstimating(false);
+      }
     } catch (err: any) {
-      // It might throw DELIVERY_OUT_OF_RANGE error
       onAddressSelect(address, null, null);
       onError(err.message || "Không thể tính phí giao hàng");
-    } finally {
       setEstimating(false);
     }
   };
@@ -123,7 +137,7 @@ export function DeliverySection({ selectedAddressId, onAddressSelect, onError }:
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3 max-h-60 overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 gap-3">
               {addresses.map((addr) => (
                 <AddressCard
                   key={addr.id}

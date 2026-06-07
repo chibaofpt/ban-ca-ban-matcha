@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { QrCode, User } from "lucide-react";
+import Link from "next/link";
+import { QrCode, User, MapPin, ChevronRight } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { CustomerQRDisplay } from "@/src/views/CustomerQRDisplay";
@@ -61,8 +62,24 @@ export default async function ProfilePage() {
           </div>
         </div>
 
+        {/* Menu Actions */}
+        <div className="pt-2 pb-2">
+          <Link
+            href="/profile/addresses"
+            className="flex items-center justify-between p-3 rounded-xl hover:bg-secondary/10 transition-colors"
+          >
+            <div className="flex items-center gap-3 text-primary">
+              <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center text-orange-600">
+                <MapPin size={20} />
+              </div>
+              <div className="font-medium text-[15px]">Sổ địa chỉ giao hàng</div>
+            </div>
+            <ChevronRight size={18} className="text-muted-foreground" />
+          </Link>
+        </div>
+
         {/* QR Section */}
-        <div className="space-y-4">
+        <div className="space-y-4 border-t border-border/50 pt-5">
           <div className="text-center space-y-1">
             <h3 className="font-medium flex items-center justify-center gap-1.5">
               <QrCode size={18} className="text-primary" />

@@ -1,6 +1,7 @@
 import React from "react";
 import type { Address } from "@/src/lib/types/address";
 import { MapPin, User, Phone, CheckCircle2, MoreVertical, Edit2, Trash2 } from "lucide-react";
+import { calcShippingFee } from "@/src/utils/pricing";
 
 interface Props {
   address: Address;
@@ -49,16 +50,34 @@ export function AddressCard({
     >
       <div className="flex justify-between items-start mb-3">
         <div className="flex items-center gap-2">
-          <div className="bg-green-100 p-2 rounded-full text-green-600">
+          <div className="bg-green-100 p-2 rounded-full text-green-600 shrink-0">
             <MapPin className="h-5 w-5" />
           </div>
           <div>
-            <h3 className="font-semibold text-gray-900 line-clamp-1">{address.address}</h3>
-            {address.is_default && (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full mt-1">
-                <CheckCircle2 className="h-3 w-3" /> Mặc định
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-gray-900">{address.label}</h3>
+              {address.is_default && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-green-700 bg-green-100 px-1.5 py-0.5 rounded mt-0.5">
+                  <CheckCircle2 className="h-2.5 w-2.5" /> Mặc định
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-gray-600 mt-0.5 line-clamp-1">
+              {address.full_address}
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1.5">
+              {address.distance_km !== null ? (
+                <>
+                  <span>Cách cửa hàng {address.distance_km.toFixed(1)}km</span>
+                  <span className="text-[10px]">•</span>
+                  <span className="font-medium text-orange-600">
+                    Phí ship {(calcShippingFee(address.distance_km) / 1000).toLocaleString("vi-VN")}k
+                  </span>
+                </>
+              ) : (
+                "Chưa có thông tin khoảng cách"
+              )}
+            </p>
           </div>
         </div>
 

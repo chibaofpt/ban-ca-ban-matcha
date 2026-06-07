@@ -121,3 +121,32 @@ export async function goongDistanceMatrix(
 
   return null;
 }
+
+/**
+ * Reverse Geocode — convert lat/lng to a human-readable address.
+ */
+export async function goongReverseGeocode(
+  lat: number,
+  lng: number
+): Promise<{ address: string } | null> {
+  const apiKey = getApiKey();
+  const url = new URL(`${GOONG_BASE}/Geocode`);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("latlng", `${lat},${lng}`);
+
+  const res = await fetch(url.toString(), { method: "GET" });
+  if (!res.ok) {
+    console.error("[goongReverseGeocode] Error response:", await res.text());
+    throw new Error(`Goong API error: ${res.status}`);
+  }
+
+  const data = await res.json();
+  if (data.status === "ZERO_RESULTS" || !data.results || data.results.length === 0) {
+    return null;
+  }
+  if (data.status !== "OK") {
+    throw new Error(`Goong API returned status: ${data.status}`);
+  }
+
+  return { address: data.results[0].formatted_address };
+}

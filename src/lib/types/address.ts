@@ -3,10 +3,12 @@ export interface Address {
   user_id: string;
   lat: number;
   lng: number;
-  address: string;
+  label: string;
+  full_address: string;
   receiver_name: string;
   receiver_phone: string;
   is_default: boolean;
+  distance_km: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -14,7 +16,8 @@ export interface Address {
 export interface AddressPayload {
   lat: number;
   lng: number;
-  address: string;
+  label: string;
+  full_address: string;
   receiver_name: string;
   receiver_phone: string;
   is_default?: boolean;

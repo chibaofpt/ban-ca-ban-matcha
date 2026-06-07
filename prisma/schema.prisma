@@ -58,6 +58,7 @@ model Address {
   receiver_name   String
   receiver_phone  String   /// Normalized +84
   is_default      Boolean  @default(false)
+  distance_km     Float?   /// Road distance from store
   created_at      DateTime @default(now()) @db.Timestamptz(6)
   updated_at      DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 

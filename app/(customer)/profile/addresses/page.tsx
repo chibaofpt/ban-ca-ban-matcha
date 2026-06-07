@@ -67,7 +67,8 @@ export default function AddressesPage() {
   const handleSetDefault = async (address: Address) => {
     try {
       await addressService.updateAddress(address.id, {
-        address: address.address,
+        label: address.label,
+        full_address: address.full_address,
         lat: address.lat,
         lng: address.lng,
         receiver_name: address.receiver_name,

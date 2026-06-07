@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { addressSchema } from "@/lib/validations/address";
 import { DELIVERY_CONFIG } from "@/src/constants/delivery";
+import { getStoreLocation, goongDistanceMatrix } from "@/lib/goong";
 
 export const dynamic = "force-dynamic";
 
@@ -64,14 +65,41 @@ export async function POST(req: NextRequest) {
     const isFirst = count === 0;
     const shouldBeDefault = isFirst || parsed.data.is_default;
 
+    // Calculate exact road distance using Goong API
+    const storeLoc = getStoreLocation();
+    const distanceEstimate = await goongDistanceMatrix(
+      storeLoc.lat,
+      storeLoc.lng,
+      parsed.data.lat,
+      parsed.data.lng
+    );
+
+    if (!distanceEstimate) {
+      return NextResponse.json(
+        { error: "Không thể tính toán khoảng cách đến địa chỉ này. Vui lòng chọn vị trí khác hoặc thử lại.", code: "DELIVERY_ESTIMATE_FAILED" },
+        { status: 400 }
+      );
+    }
+
     const address = await prisma.$transaction(async (tx) => {
+      // If setting default, unset others
+      if (shouldBeDefault && !isFirst) {
+        await tx.address.updateMany({
+          where: { user_id: session.id, is_default: true },
+          data: { is_default: false },
+        });
+      }
+
       const createdAddress = await tx.address.create({
         data: {
           user_id: session.id,
           ...parsed.data,
           is_default: shouldBeDefault,
+          distance_km: distanceEstimate.distanceKm,
         },
       });
+
+      return createdAddress;
     });
 
     return NextResponse.json({ data: address }, { status: 201 });
