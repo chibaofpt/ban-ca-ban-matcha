@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const predictions = await goongAutocomplete(q, sessionToken || undefined);
-    return NextResponse.json({ data: { predictions } });
+    return NextResponse.json({ data: predictions });
   } catch (error) {
     console.error("[GET /api/delivery/autocomplete] Error:", error);
     return NextResponse.json(

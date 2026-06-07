@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { addressSchema } from "@/lib/validations/address";
+import { getStoreLocation, goongDistanceMatrix } from "@/lib/goong";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,26 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const shouldBeDefault = parsed.data.is_default;
 
+    let finalDistanceKm = existing.distance_km;
+    const coordsChanged = existing.lat !== parsed.data.lat || existing.lng !== parsed.data.lng;
+    
+    if (coordsChanged || existing.distance_km === null) {
+      const storeLoc = getStoreLocation();
+      const distanceEstimate = await goongDistanceMatrix(
+        storeLoc.lat,
+        storeLoc.lng,
+        parsed.data.lat,
+        parsed.data.lng
+      );
+      if (!distanceEstimate) {
+        return NextResponse.json(
+          { error: "Không thể tính toán khoảng cách đến địa chỉ này. Vui lòng chọn vị trí khác hoặc thử lại.", code: "DELIVERY_ESTIMATE_FAILED" },
+          { status: 400 }
+        );
+      }
+      finalDistanceKm = distanceEstimate.distanceKm;
+    }
+
     const address = await prisma.$transaction(async (tx) => {
       if (shouldBeDefault && !existing.is_default) {
         await tx.address.updateMany({
@@ -41,13 +62,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         });
       }
 
-      // If user tries to unset default, but it's the only one or they just want no defaults?
-      // Business rule: one default is nice to have, but we let them unset if they want, 
-      // though typically they just set another as default. For simplicity, just follow input.
       return tx.address.update({
         where: { id },
         data: {
           ...parsed.data,
+          distance_km: finalDistanceKm,
         },
       });
     });

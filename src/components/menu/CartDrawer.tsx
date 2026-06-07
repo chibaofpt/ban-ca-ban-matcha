@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Trash2, ShoppingBag, CheckCircle2, AlertTriangle, RefreshCcw, Minus, Plus, Ticket, ChevronRight, Clock, ArrowLeft } from "lucide-react";
+import { X, Trash2, ShoppingBag, CheckCircle2, AlertTriangle, RefreshCcw, Minus, Plus, Ticket, ChevronRight, Clock, ArrowLeft, MapPin } from "lucide-react";
 import { useCartStore, useCartTotalPrice } from "@/src/lib/store/cartStore";
 import Image from "next/image";
 import { createOrder, PriceChangedError, type PriceConflict } from "@/src/services/orderService";
@@ -50,6 +50,7 @@ const CartDrawer = () => {
   const [activeItemForVoucher, setActiveItemForVoucher] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const [isAddressPickerOpen, setIsAddressPickerOpen] = useState(false);
 
   // ── Delivery state ──
   const [orderType, setOrderType] = useState<"PICKUP" | "DELIVERY">("PICKUP");
@@ -57,6 +58,8 @@ const CartDrawer = () => {
   const [shippingFee, setShippingFee] = useState<number | null>(null);
   const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number | null>(null);
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
+  const [isFetchingAddress, setIsFetchingAddress] = useState(false);
+  const [isVouchersLoading, setIsVouchersLoading] = useState(false);
 
   // Derived voucher lists
   const discountVouchers = filterUsableVouchers(allVouchers, "DISCOUNT");
@@ -116,10 +119,69 @@ const CartDrawer = () => {
       setSelectedVoucherIds([]);
       return;
     }
+    setIsVouchersLoading(true);
     listMyVouchers()
       .then(setAllVouchers)
-      .catch(() => {}); // silently fail — non-critical
+      .catch(() => {}) // silently fail — non-critical
+      .finally(() => setIsVouchersLoading(false));
   }, [isCartOpen, isLoggedIn]);
+
+  // Auto-fetch default address when switching to DELIVERY
+  useEffect(() => {
+    if (orderType === "DELIVERY" && !deliveryAddress && isLoggedIn) {
+      let isMounted = true;
+      setIsFetchingAddress(true);
+      import("@/src/services/addressService").then(({ addressService }) => {
+        addressService.getAddresses()
+          .then(async (data) => {
+            if (!isMounted) return;
+            const defaultAddr = data.find(a => a.is_default) || data[0];
+            if (defaultAddr) {
+              setDeliveryAddress(defaultAddr);
+              try {
+                if (defaultAddr.distance_km !== null) {
+                  import("@/src/constants/delivery").then(({ DELIVERY_CONFIG }) => {
+                    if (defaultAddr.distance_km! > DELIVERY_CONFIG.MAX_RADIUS_KM) {
+                      if (isMounted) {
+                        setDeliveryDistanceKm(null);
+                        setShippingFee(null);
+                        setDeliveryError(`Ngoài vùng giao hàng (${defaultAddr.distance_km!.toFixed(1)}km / tối đa ${DELIVERY_CONFIG.MAX_RADIUS_KM}km)`);
+                      }
+                      return;
+                    }
+                    import("@/src/utils/pricing").then(({ calcShippingFee }) => {
+                      if (isMounted) {
+                        setDeliveryDistanceKm(defaultAddr.distance_km);
+                        setShippingFee(calcShippingFee(defaultAddr.distance_km!));
+                        setDeliveryError(null);
+                      }
+                    });
+                  });
+                } else {
+                  const { deliveryService } = await import("@/src/services/deliveryService");
+                  const estimate = await deliveryService.estimateFee(defaultAddr.lat, defaultAddr.lng);
+                  if (isMounted) {
+                    setDeliveryDistanceKm(estimate.distance_km);
+                    setShippingFee(estimate.shipping_fee_vnd);
+                    setDeliveryError(null);
+                  }
+                }
+              } catch (err: any) {
+                if (isMounted) {
+                  setDeliveryDistanceKm(null);
+                  setShippingFee(null);
+                  setDeliveryError(err.message || "Không thể tính phí giao hàng");
+                }
+              }
+            }
+          })
+          .finally(() => {
+            if (isMounted) setIsFetchingAddress(false);
+          });
+      });
+      return () => { isMounted = false; };
+    }
+  }, [orderType, deliveryAddress, isLoggedIn]);
 
   const handleCheckout = () => setShowSubmitConfirm(true);
 
@@ -169,7 +231,7 @@ const CartDrawer = () => {
         discountVoucherIds: selectedVoucherIds,
         ...(orderType === "DELIVERY" && deliveryAddress ? {
           addressId: deliveryAddress.id,
-          deliveryAddress: deliveryAddress.address,
+          deliveryAddress: deliveryAddress.full_address,
           deliveryLat: deliveryAddress.lat,
           deliveryLng: deliveryAddress.lng,
           deliveryReceiverName: deliveryAddress.receiver_name,
@@ -201,6 +263,7 @@ const CartDrawer = () => {
     setSelectedVoucherIds([]);
     setIsDiscountPickerOpen(false);
     setActiveItemForVoucher(null);
+    setIsAddressPickerOpen(false);
     setOrderType("PICKUP");
     setDeliveryAddress(null);
     setShippingFee(null);
@@ -623,7 +686,7 @@ const CartDrawer = () => {
                       </div>
 
                       {/* Voucher trigger pill */}
-                      {isLoggedIn && discountVouchers.length > 0 && (
+                      {isLoggedIn && (isVouchersLoading || discountVouchers.length > 0) && (
                         <button
                           onClick={() => setIsDiscountPickerOpen(true)}
                           className="flex items-center justify-between bg-orange-50 border border-orange-100 hover:bg-orange-100/80 transition-colors rounded-xl px-3 py-2.5 text-left"
@@ -635,9 +698,11 @@ const CartDrawer = () => {
                             <div className="min-w-0">
                               <p className="text-[11px] font-bold text-orange-800 leading-tight">Ưu đãi</p>
                               <p className="text-[10px] text-orange-600/80 leading-tight truncate">
-                                {selectedVoucherIds.length > 0
-                                  ? `${selectedVoucherIds.length} mã đang áp`
-                                  : "Chọn mã"}
+                                {isVouchersLoading 
+                                  ? "Đang tải..." 
+                                  : selectedVoucherIds.length > 0
+                                    ? `${selectedVoucherIds.length} mã đang áp`
+                                    : "Chọn mã"}
                               </p>
                             </div>
                           </div>
@@ -690,20 +755,32 @@ const CartDrawer = () => {
                     </div>
                   </div>
 
-                  {/* Delivery section if DELIVERY selected */}
+                  {/* Delivery section trigger if DELIVERY selected */}
                   {orderType === "DELIVERY" && (
-                    <div className="pt-2 border-t border-border/20">
-                      <DeliverySection
-                        selectedAddressId={deliveryAddress?.id ?? null}
-                        onAddressSelect={(address, distance, fee) => {
-                          setDeliveryAddress(address);
-                          setDeliveryDistanceKm(distance);
-                          setShippingFee(fee);
-                        }}
-                        onError={setDeliveryError}
-                      />
+                    <div className="pt-2 border-t border-border/20 flex flex-col gap-1">
+                      <button
+                        onClick={() => setIsAddressPickerOpen(true)}
+                        className="flex items-center justify-between bg-green-50 border border-green-100 hover:bg-green-100/80 transition-colors rounded-xl px-3 py-2.5 text-left"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="bg-green-100 p-1 rounded-md text-green-600 shrink-0">
+                            <MapPin size={13} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-bold text-green-800 leading-tight">Giao đến</p>
+                            <p className="text-[10px] text-green-600/80 leading-tight truncate">
+                              {isFetchingAddress 
+                                ? "Đang tải địa chỉ..." 
+                                : deliveryAddress 
+                                  ? deliveryAddress.label || deliveryAddress.full_address 
+                                  : "Chọn địa chỉ giao hàng"}
+                            </p>
+                          </div>
+                        </div>
+                        <ChevronRight size={13} className="text-green-400 shrink-0 ml-1" />
+                      </button>
                       {deliveryError && (
-                        <p className="mt-2 text-sm text-red-500 font-medium">{deliveryError}</p>
+                        <p className="px-1 text-[11px] text-red-500 font-medium">{deliveryError}</p>
                       )}
                     </div>
                   )}
@@ -989,6 +1066,45 @@ const CartDrawer = () => {
                   </motion.div>
                 );
               })()}
+            </AnimatePresence>
+
+            {/* ── Overlay: Address Picker ───────────────────────────────── */}
+            <AnimatePresence>
+              {isAddressPickerOpen && (
+                <motion.div
+                  initial={{ x: "100%" }}
+                  animate={{ x: 0 }}
+                  exit={{ x: "100%" }}
+                  transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                  className="absolute inset-0 z-20 bg-[#fdfcf7] flex flex-col"
+                >
+                  <div className="flex items-center gap-3 px-5 py-4 border-b border-border/40 shrink-0 bg-white">
+                    <button
+                      onClick={() => setIsAddressPickerOpen(false)}
+                      className="w-8 h-8 rounded-full bg-primary/5 flex items-center justify-center hover:bg-primary/10 transition-colors"
+                    >
+                      <ArrowLeft className="w-4 h-4 text-primary" />
+                    </button>
+                    <h3 className="font-bold text-primary flex-1 text-base">Địa chỉ giao hàng</h3>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-5 bg-[#fdfcf7]">
+                    <DeliverySection
+                      selectedAddressId={deliveryAddress?.id ?? null}
+                      onAddressSelect={(address, distance, fee) => {
+                        setDeliveryAddress(address);
+                        setDeliveryDistanceKm(distance);
+                        setShippingFee(fee);
+                        // Auto-close overlay when selection finishes (fee is calculated successfully)
+                        if (address && fee !== null) {
+                          setIsAddressPickerOpen(false);
+                        }
+                      }}
+                      onError={setDeliveryError}
+                    />
+                  </div>
+                </motion.div>
+              )}
             </AnimatePresence>
 
           </motion.div>

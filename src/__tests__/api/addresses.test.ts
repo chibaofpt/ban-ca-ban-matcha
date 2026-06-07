@@ -9,6 +9,11 @@ vi.mock("@/lib/auth", () => ({
   getSession: vi.fn(),
 }));
 
+vi.mock("@/lib/goong", () => ({
+  getStoreLocation: vi.fn(() => ({ lat: 10.762622, lng: 106.660172 })),
+  goongDistanceMatrix: vi.fn(async () => ({ distanceKm: 2.5, durationMinutes: 10 })),
+}));
+
 vi.mock("@/lib/prisma", () => {
   const mockAddress = {
     findMany: vi.fn(),
