@@ -71,6 +71,8 @@ const createPackageSchema = z.discriminatedUnion("voucher_type", [
     points_cost: z.number().int().min(1),
     /** Maximum delivery fee this voucher will cover in VND. Minimum 1,000. */
     covered_delivery_fee_vnd: z.number().int().min(1000),
+    /** Minimum order total (after discount, before ship) required. NULL = no minimum. */
+    min_order_vnd: z.number().int().min(1000).optional().nullable(),
     ...quantityFields,
   }),
 ]);
@@ -320,6 +322,7 @@ export async function POST(req: NextRequest) {
           quantity: data.quantity ?? null,
           max_per_user: data.max_per_user ?? 1,
           covered_delivery_fee_vnd: data.covered_delivery_fee_vnd,
+          min_order_vnd: data.min_order_vnd ?? null,
         },
       });
 

@@ -18,6 +18,8 @@ export interface VoucherPackage {
   covered_price_vnd: number | null;
   /** Max shipping fee covered. FREESHIP vouchers only. */
   covered_delivery_fee_vnd: number | null;
+  /** Minimum order total required. FREESHIP vouchers only. NULL = no minimum. */
+  min_order_vnd: number | null;
   is_active: boolean;
   expires_after_days: number | null;
   quantity: number | null;
@@ -74,6 +76,7 @@ export type CreateVoucherPackageInput =
       description?: string;
       points_cost: number;
       covered_delivery_fee_vnd: number;
+      min_order_vnd?: number | null;
       expires_after_days?: number | null;
       quantity?: number | null;
       max_per_user?: number | null;

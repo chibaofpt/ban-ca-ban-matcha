@@ -29,6 +29,8 @@ export interface VoucherPackage {
   covered_price_vnd: number | null;
   /** Max shipping fee covered. FREESHIP vouchers only. */
   covered_delivery_fee_vnd: number | null;
+  /** Minimum order total required. FREESHIP vouchers only. NULL = no minimum. */
+  min_order_vnd: number | null;
   is_active: boolean;
   expires_after_days: number | null;
   quantity: number | null;
@@ -56,6 +58,8 @@ export interface MyVoucher {
   covered_price_vnd: number | null;
   /** Max shipping fee covered. FREESHIP vouchers only. */
   covered_delivery_fee_vnd: number | null;
+  /** Minimum order total required. FREESHIP vouchers only. NULL = no minimum. */
+  min_order_vnd: number | null;
   status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED";
   used_channel: "ONLINE" | "OFFLINE" | null;
   expires_at: string | null;
