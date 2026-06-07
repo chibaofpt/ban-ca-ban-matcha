@@ -99,6 +99,8 @@ model VoucherPackage {
   covered_price_vnd          Int?
   /// Max shipping fee covered for FREESHIP vouchers (VND). NULL for all other types.
   covered_delivery_fee_vnd   Int?
+  /// Minimum order total (after discount, before shipping) required to use this voucher. NULL = no minimum.
+  min_order_vnd              Int?
   is_active                  Boolean       @default(true)
   expires_after_days         Int?
   /// NULL = unlimited. Total number of vouchers that can be issued from this package.
@@ -132,6 +134,8 @@ model Voucher {
   covered_price_vnd          Int?
   /// Max shipping fee covered — snapshot from package at exchange time. FREESHIP only.
   covered_delivery_fee_vnd   Int?
+  /// Minimum order total required — snapshot from package. NULL = no minimum.
+  min_order_vnd              Int?
   status                     VoucherStatus  @default(ACTIVE)
   used_channel               UsedChannel?
   expires_at                 DateTime?      @db.Timestamptz(6)

@@ -36,6 +36,7 @@ interface VoucherPackageForm {
   addon_option_id: string;
   // FREESHIP fields
   covered_delivery_fee_vnd: number | "";
+  min_order_vnd: number | "";
   // LIMITS
   quantity: number | "";
   max_per_user: number | "";
@@ -55,6 +56,7 @@ const emptyForm: VoucherPackageForm = {
   milk_type_id: "",
   addon_option_id: "",
   covered_delivery_fee_vnd: "",
+  min_order_vnd: "",
   quantity: "",
   max_per_user: 1,
 };
@@ -196,6 +198,7 @@ export default function AdminVoucherPackagesPage() {
       milk_type_id: pkg.milk_type_id || "",
       addon_option_id: pkg.addon_option_id || uniqueAddonOptions[0]?.id || "",
       covered_delivery_fee_vnd: pkg.covered_delivery_fee_vnd ?? "",
+      min_order_vnd: pkg.min_order_vnd ?? "",
       quantity: pkg.quantity ?? "",
       max_per_user: pkg.max_per_user ?? 1,
     });
@@ -278,6 +281,7 @@ export default function AdminVoucherPackagesPage() {
             description: form.description || undefined,
             points_cost: form.points_cost,
             covered_delivery_fee_vnd: Number(form.covered_delivery_fee_vnd),
+            min_order_vnd: form.min_order_vnd === "" ? null : Number(form.min_order_vnd),
             expires_after_days: expiresDays,
             quantity: form.quantity === "" ? null : Number(form.quantity),
             max_per_user: form.max_per_user === "" ? null : Number(form.max_per_user),
@@ -446,6 +450,7 @@ export default function AdminVoucherPackagesPage() {
                       {pkg.voucher_type === "FREESHIP" && (
                         <span>
                           Freeship tối đa {pkg.covered_delivery_fee_vnd?.toLocaleString() ?? "?"}đ
+                          {pkg.min_order_vnd ? ` (Đơn từ ${(pkg.min_order_vnd / 1000).toLocaleString()}k)` : ""}
                         </span>
                       )}
                     </span>
@@ -622,7 +627,7 @@ export default function AdminVoucherPackagesPage() {
                     <option value="DISCOUNT">Giảm giá</option>
                     <option value="PRODUCT">Sản phẩm</option>
                     <option value="ADDON">Topping Addon</option>
-                    <option value="FREESHIP">Freeship (Phase 5)</option>
+                    <option value="FREESHIP">Freeship</option>
                   </select>
                 </div>
 
@@ -748,23 +753,41 @@ export default function AdminVoucherPackagesPage() {
                   </div>
                 )}
                 {form.voucher_type === "FREESHIP" && (
-                  <div>
-                    <label className="text-sm font-medium text-foreground">Phí giao hàng được bao (VND)</label>
-                    <input
-                      type="number"
-                      min={1000}
-                      step={1000}
-                      value={form.covered_delivery_fee_vnd}
-                      onChange={(e) =>
-                        setForm({
-                          ...form,
-                          covered_delivery_fee_vnd: e.target.value === "" ? "" : Number(e.target.value),
-                        })
-                      }
-                      placeholder="Ví dụ: 30000"
-                      className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">⚠️ Logic áp dụng chưa được implement (Phase 5+)</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium text-foreground">Phí giao hàng được bao (VND)</label>
+                      <input
+                        type="number"
+                        min={1000}
+                        step={1000}
+                        value={form.covered_delivery_fee_vnd}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            covered_delivery_fee_vnd: e.target.value === "" ? "" : Number(e.target.value),
+                          })
+                        }
+                        placeholder="Ví dụ: 30000"
+                        className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-foreground">Đơn tối thiểu (VND) — Để trống = không yêu cầu</label>
+                      <input
+                        type="number"
+                        min={1000}
+                        step={1000}
+                        value={form.min_order_vnd}
+                        onChange={(e) =>
+                          setForm({
+                            ...form,
+                            min_order_vnd: e.target.value === "" ? "" : Number(e.target.value),
+                          })
+                        }
+                        placeholder="Ví dụ: 100000 (đơn từ 100k)"
+                        className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1"
+                      />
+                    </div>
                   </div>
                 )}
               </>

@@ -99,17 +99,28 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const store = getStoreLocation();
-      const distanceMatrix = await goongDistanceMatrix(store.lat, store.lng, data.delivery_lat, data.delivery_lng);
-      
-      if (!distanceMatrix) {
-        return NextResponse.json(
-          { error: "Không thể tính toán khoảng cách giao hàng. Vui lòng thử lại.", code: "DISTANCE_MATRIX_FAILED" },
-          { status: 400 }
-        );
+      if (data.address_id) {
+        const address = await prisma.address.findUnique({
+          where: { id: data.address_id }
+        });
+        if (address && address.distance_km !== null) {
+          actual_distance_km = address.distance_km;
+        }
       }
 
-      actual_distance_km = distanceMatrix.distanceKm;
+      // Fallback to Goong if no address_id or distance_km is null
+      if (actual_distance_km === 0) {
+        const store = getStoreLocation();
+        const distanceMatrix = await goongDistanceMatrix(store.lat, store.lng, data.delivery_lat, data.delivery_lng);
+        
+        if (!distanceMatrix) {
+          return NextResponse.json(
+            { error: "Không thể tính toán khoảng cách giao hàng. Vui lòng thử lại.", code: "DISTANCE_MATRIX_FAILED" },
+            { status: 400 }
+          );
+        }
+        actual_distance_km = distanceMatrix.distanceKm;
+      }
 
       if (actual_distance_km > DELIVERY_CONFIG.MAX_RADIUS_KM) {
         return NextResponse.json(
@@ -283,6 +294,17 @@ export async function POST(req: NextRequest) {
       if (!fv!.covered_delivery_fee_vnd) {
         return NextResponse.json(
           { error: "Voucher FREESHIP không hợp lệ (thiếu số tiền hỗ trợ)", code: "VALIDATION_ERROR" },
+          { status: 400 }
+        );
+      }
+
+      // Check minimum order requirement (compare with total_vnd = subtotal after discount, before shipping)
+      if (fv!.min_order_vnd !== null && total_vnd < fv!.min_order_vnd) {
+        return NextResponse.json(
+          { 
+            error: `Đơn hàng tối thiểu ${(fv!.min_order_vnd / 1000).toLocaleString("vi-VN")}k để sử dụng voucher freeship này`, 
+            code: "MIN_ORDER_NOT_MET" 
+          },
           { status: 400 }
         );
       }

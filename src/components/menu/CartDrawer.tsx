@@ -80,10 +80,18 @@ const CartDrawer = () => {
   
   let freeshipDiscountK = 0;
   let appliedFreeshipId: string | null = null;
+  // total after discount (before shipping) = finalK * 1000
+  const totalAfterDiscount = finalK * 1000;
   if (orderType === "DELIVERY" && shippingFee !== null && freeshipVouchers.length > 0) {
-    const bestVoucher = freeshipVouchers.reduce((best, v) => (v.covered_price_vnd ?? 0) > (best.covered_price_vnd ?? 0) ? v : best, freeshipVouchers[0]);
-    freeshipDiscountK = Math.floor(Math.min(shippingFee, bestVoucher.covered_price_vnd ?? 0) / 1000);
-    appliedFreeshipId = bestVoucher.id;
+    // Filter vouchers that meet min_order_vnd requirement
+    const eligibleFreeship = freeshipVouchers.filter(v => 
+      v.min_order_vnd === null || v.min_order_vnd === undefined || totalAfterDiscount >= v.min_order_vnd
+    );
+    if (eligibleFreeship.length > 0) {
+      const bestVoucher = eligibleFreeship.reduce((best, v) => (v.covered_delivery_fee_vnd ?? 0) > (best.covered_delivery_fee_vnd ?? 0) ? v : best, eligibleFreeship[0]);
+      freeshipDiscountK = Math.floor(Math.min(shippingFee, bestVoucher.covered_delivery_fee_vnd ?? 0) / 1000);
+      appliedFreeshipId = bestVoucher.id;
+    }
   }
 
   const grandTotalK = Math.max(0, finalK + shippingK - freeshipDiscountK);
