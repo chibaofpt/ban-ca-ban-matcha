@@ -26,6 +26,15 @@ export interface CreateOrderPayload {
   pickup_time?: string;
   note?: string;
   delivery_address?: string;
+  
+  // Delivery fields
+  address_id?: string;
+  delivery_lat?: number;
+  delivery_lng?: number;
+  delivery_receiver_name?: string;
+  delivery_receiver_phone?: string;
+  client_shipping_fee_vnd?: number;
+  freeship_voucher_id?: string;
 }
 
 export interface PriceConflict {
@@ -85,6 +94,15 @@ export async function createOrder(
     pickupTime?: string;
     note?: string;
     deliveryAddress?: string;
+    
+    // Delivery fields
+    addressId?: string;
+    deliveryLat?: number;
+    deliveryLng?: number;
+    deliveryReceiverName?: string;
+    deliveryReceiverPhone?: string;
+    clientShippingFeeVnd?: number;
+    freeshipVoucherId?: string;
   }
 ): Promise<CreateOrderResult> {
   const payload: CreateOrderPayload = {
@@ -94,6 +112,13 @@ export async function createOrder(
     ...(options?.pickupTime ? { pickup_time: options.pickupTime } : {}),
     ...(options?.note ? { note: options.note } : {}),
     ...(options?.deliveryAddress ? { delivery_address: options.deliveryAddress } : {}),
+    ...(options?.addressId ? { address_id: options.addressId } : {}),
+    ...(options?.deliveryLat !== undefined ? { delivery_lat: options.deliveryLat } : {}),
+    ...(options?.deliveryLng !== undefined ? { delivery_lng: options.deliveryLng } : {}),
+    ...(options?.deliveryReceiverName ? { delivery_receiver_name: options.deliveryReceiverName } : {}),
+    ...(options?.deliveryReceiverPhone ? { delivery_receiver_phone: options.deliveryReceiverPhone } : {}),
+    ...(options?.clientShippingFeeVnd !== undefined ? { client_shipping_fee_vnd: options.clientShippingFeeVnd } : {}),
+    ...(options?.freeshipVoucherId ? { freeship_voucher_id: options.freeshipVoucherId } : {}),
   };
 
   try {

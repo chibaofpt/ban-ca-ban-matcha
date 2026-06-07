@@ -202,4 +202,30 @@ describe("PATCH /api/orders/[id] — customer self-cancel", () => {
       data: { status: "ACTIVE", redeemed_at: null, redeemed_by: null, used_channel: null },
     });
   });
+
+  it("restores FREESHIP voucher to ACTIVE when cancelling an order", async () => {
+    mockGetSession.mockResolvedValue(CUSTOMER_SESSION);
+    mockOrderFindUnique.mockResolvedValue({
+      id: "order-123",
+      status: "PENDING",
+      user_id: "user-abc",
+      freeship_voucher_id: "freeship-1",
+    });
+    mockOrderUpdate.mockResolvedValue({ id: "order-123", status: "CANCELLED" });
+    
+    // restoreVouchersOnCancel calls findUnique to check current status
+    mockVoucherFindUnique.mockResolvedValue({ status: "RESERVED" });
+    mockVoucherUpdate.mockResolvedValue({ id: "freeship-1", status: "ACTIVE" });
+
+    const { PATCH } = await import("@/app/api/orders/[id]/route");
+    const res = await PATCH(makeReq({ status: "CANCELLED" }), {
+      params: Promise.resolve({ id: "order-123" }),
+    });
+    
+    expect(res.status).toBe(200);
+    expect(mockVoucherUpdate).toHaveBeenCalledWith({
+      where: { id: "freeship-1" },
+      data: { status: "ACTIVE", redeemed_at: null, redeemed_by: null, used_channel: null },
+    });
+  });
 });

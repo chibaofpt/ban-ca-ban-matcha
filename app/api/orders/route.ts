@@ -16,6 +16,9 @@ import { checkStoreOpen, validatePickupTime } from "@/lib/storeSchedule";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
 import { logSystemEvent } from "@/lib/logger";
+import { calcShippingFee, calcFreeshipDiscount } from "@/src/utils/pricing";
+import { goongDistanceMatrix, getStoreLocation } from "@/lib/goong";
+import { DELIVERY_CONFIG } from "@/src/constants/delivery";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 import { after } from "next/server";
 import { sendPushToRoles } from "@/lib/push";
@@ -79,6 +82,56 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           { error: pickupValidation.error, code: "INVALID_PICKUP_TIME" },
           { status: 400 }
+        );
+      }
+    }
+
+    // 5.2. Delivery validation
+    let shipping_fee_vnd = 0;
+    let freeship_discount_vnd = 0;
+    let actual_distance_km = 0;
+
+    if (data.order_type === "DELIVERY") {
+      if (!data.delivery_lat || !data.delivery_lng || !data.delivery_receiver_name || !data.delivery_receiver_phone) {
+        return NextResponse.json(
+          { error: "Vui lòng cung cấp đầy đủ thông tin giao hàng", code: "VALIDATION_ERROR" },
+          { status: 400 }
+        );
+      }
+
+      const store = getStoreLocation();
+      const distanceMatrix = await goongDistanceMatrix(store.lat, store.lng, data.delivery_lat, data.delivery_lng);
+      
+      if (!distanceMatrix) {
+        return NextResponse.json(
+          { error: "Không thể tính toán khoảng cách giao hàng. Vui lòng thử lại.", code: "DISTANCE_MATRIX_FAILED" },
+          { status: 400 }
+        );
+      }
+
+      actual_distance_km = distanceMatrix.distanceKm;
+
+      if (actual_distance_km > DELIVERY_CONFIG.MAX_RADIUS_KM) {
+        return NextResponse.json(
+          { 
+            error: `Khoảng cách giao hàng (${actual_distance_km.toFixed(1)}km) vượt quá giới hạn cho phép (${DELIVERY_CONFIG.MAX_RADIUS_KM}km)`, 
+            code: "DELIVERY_OUT_OF_RANGE",
+            details: { distanceKm: actual_distance_km }
+          },
+          { status: 400 }
+        );
+      }
+
+      shipping_fee_vnd = calcShippingFee(actual_distance_km);
+
+      if (data.client_shipping_fee_vnd !== undefined && data.client_shipping_fee_vnd !== shipping_fee_vnd) {
+        return NextResponse.json(
+          {
+            error: "Phí giao hàng đã thay đổi. Vui lòng thử lại.",
+            code: "SHIPPING_FEE_CHANGED",
+            details: { conflicts: ["shipping_fee"] },
+          },
+          { status: 409 }
         );
       }
     }
@@ -207,6 +260,38 @@ export async function POST(req: NextRequest) {
     const discount_vnd = calcMultiDiscountVouchers(validatedDiscountVouchers, subtotal_vnd);
     const total_vnd = Math.max(0, subtotal_vnd - discount_vnd);
 
+    // Step 4b: Validate FREESHIP voucher (Delivery only)
+    if (data.freeship_voucher_id) {
+      if (data.order_type !== "DELIVERY") {
+        return NextResponse.json(
+          { error: "Voucher FREESHIP chỉ áp dụng cho đơn giao hàng", code: "VALIDATION_ERROR" },
+          { status: 400 }
+        );
+      }
+
+      const fv = await prisma.voucher.findUnique({ where: { id: data.freeship_voucher_id } });
+      try {
+        assertVoucherUsable(fv, session.id, "FREESHIP");
+      } catch (e) {
+        if (e instanceof VoucherError) {
+          const status = e.code === "NOT_FOUND" ? 404 : e.code === "VALIDATION_ERROR" ? 400 : 422;
+          return NextResponse.json({ error: e.message, code: e.code }, { status });
+        }
+        throw e;
+      }
+
+      if (!fv!.covered_delivery_fee_vnd) {
+        return NextResponse.json(
+          { error: "Voucher FREESHIP không hợp lệ (thiếu số tiền hỗ trợ)", code: "VALIDATION_ERROR" },
+          { status: 400 }
+        );
+      }
+
+      freeship_discount_vnd = calcFreeshipDiscount(shipping_fee_vnd, fv!.covered_delivery_fee_vnd);
+    }
+
+    const grand_total_vnd = Math.max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd);
+
     // Step 3c: Compute PRODUCT voucher surplus points (per item)
     // Surplus = floor((covered_price_vnd - actual_total) / 10000), min 0.
     // actual_total = original drink price + addons price (BEFORE voucher discount).
@@ -242,13 +327,23 @@ export async function POST(req: NextRequest) {
             subtotal_vnd,
             discount_vnd,
             total_vnd,
+            shipping_fee_vnd,
+            freeship_discount_vnd,
+            grand_total_vnd,
+            freeship_voucher_id: data.freeship_voucher_id ?? null,
             points_earned: null,
             pickup_time: data.order_type === "PICKUP" 
               ? (data.pickup_time ? new Date(data.pickup_time) : new Date(Date.now() + 10 * 60 * 1000))
               : (data.pickup_time ? new Date(data.pickup_time) : null),
             note: data.note ?? null,
             auto_cancel_at,
+            address_id: data.address_id ?? null,
             delivery_address: data.delivery_address ?? null,
+            delivery_lat: data.delivery_lat ?? null,
+            delivery_lng: data.delivery_lng ?? null,
+            delivery_distance_km: data.order_type === "DELIVERY" ? actual_distance_km : null,
+            delivery_receiver_name: data.delivery_receiver_name ?? null,
+            delivery_receiver_phone: data.delivery_receiver_phone ?? null,
             items: {
               create: resolvedItems.map((item) => ({
                 menu_item_id: item.menu_item_id,
@@ -292,6 +387,14 @@ export async function POST(req: NextRequest) {
           });
         }
 
+        // Reserve FREESHIP voucher
+        if (data.freeship_voucher_id) {
+          await tx.voucher.update({
+            where: { id: data.freeship_voucher_id },
+            data: { status: "RESERVED" },
+          });
+        }
+
         // Reserve ADDON vouchers (per-item)
         for (const avId of addonVoucherIds) {
           await tx.voucher.update({
@@ -331,7 +434,7 @@ export async function POST(req: NextRequest) {
       { maxWait: 5000, timeout: 10000 }
     );
 
-    const payment_qr_url = buildVietQRUrl({ amount: total_vnd, orderCode: order_code });
+    const payment_qr_url = buildVietQRUrl({ amount: grand_total_vnd, orderCode: order_code });
 
     // Sau khi response HTTP đã trả về Vercel xong, chạy background job push notification:
     after(() => {
@@ -355,6 +458,9 @@ export async function POST(req: NextRequest) {
           subtotal_vnd: order.subtotal_vnd,
           discount_vnd: order.discount_vnd,
           total_vnd: order.total_vnd,
+          shipping_fee_vnd: order.shipping_fee_vnd,
+          freeship_discount_vnd: order.freeship_discount_vnd,
+          grand_total_vnd: order.grand_total_vnd,
           pickup_time: order.pickup_time,
           auto_cancel_at: order.auto_cancel_at,
           payment_qr_url,
@@ -489,7 +595,7 @@ export async function GET(req: NextRequest) {
       let payment_qr_url: string | null = null;
       if (order.status === "PENDING" && order.order_code && order.order_type !== "COUNTER") {
         try {
-          payment_qr_url = buildVietQRUrl({ amount: order.total_vnd, orderCode: order.order_code });
+          payment_qr_url = buildVietQRUrl({ amount: order.grand_total_vnd || order.total_vnd, orderCode: order.order_code });
         } catch {
           payment_qr_url = null;
         }

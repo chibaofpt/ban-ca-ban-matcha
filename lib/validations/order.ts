@@ -69,6 +69,15 @@ export const customerOrderSchema = z.object({
   note: z.string().max(500).optional(),
   /** Delivery address — required when order_type = DELIVERY (enforced in route handler). Phase 5+. */
   delivery_address: z.string().max(500).optional(),
+  
+  // -- DELIVERY FIELDS --
+  address_id: z.string().uuid().optional(),
+  delivery_lat: z.number().optional(),
+  delivery_lng: z.number().optional(),
+  delivery_receiver_name: z.string().min(2).optional(),
+  delivery_receiver_phone: z.string().regex(/^\+84[3|5|7|8|9][0-9]{8}$/).optional(),
+  client_shipping_fee_vnd: z.number().int().min(0).optional(),
+  freeship_voucher_id: z.string().uuid().optional(),
 });
 
 export type OrderItem = z.infer<typeof orderItemSchema>;

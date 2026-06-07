@@ -105,7 +105,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // Award points when → COMPLETED
       if (status === "COMPLETED" && order.points_earned === null) {
         if (order.user_id) {
-          const points_earned = Math.floor(order.total_vnd / 10000);
+          const points_earned = Math.floor((order.grand_total_vnd ?? order.total_vnd) / 10000);
           dataToUpdate.points_earned = points_earned;
 
           if (points_earned > 0) {

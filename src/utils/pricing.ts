@@ -4,6 +4,8 @@
  * Used by: frontend real-time estimates AND lib/pricing.ts (server order-time validation).
  */
 
+import { DELIVERY_CONFIG } from "@/src/constants/delivery";
+
 export type Size = "M" | "L" | "XL";
 
 export interface CustomPowderGrams {
@@ -96,4 +98,28 @@ export interface FusionPriceParams {
 export function calcFusionPrice(params: FusionPriceParams): number {
   const { base_price_vnd, gram, powder_price_per_gram, premium_latte } = params;
   return ceilTo1000(base_price_vnd + gram * powder_price_per_gram + premium_latte);
+}
+
+// ── Delivery price ────────────────────────────────────────────────────────────
+
+/**
+ * Calculate shipping fee based on distance using Xanh SM 1H formula.
+ * Returns fee ceiled to nearest 1,000 VND.
+ */
+export function calcShippingFee(distanceKm: number): number {
+  if (distanceKm <= 0) return 0;
+  const { BASE_FEE_VND, BASE_DISTANCE_KM, PER_KM_FEE_VND } = DELIVERY_CONFIG;
+  if (distanceKm <= BASE_DISTANCE_KM) return ceilTo1000(BASE_FEE_VND);
+  const extraKm = distanceKm - BASE_DISTANCE_KM;
+  return ceilTo1000(BASE_FEE_VND + extraKm * PER_KM_FEE_VND);
+}
+
+/**
+ * Calculate FREESHIP discount — min(shipping_fee, covered_delivery_fee_vnd).
+ */
+export function calcFreeshipDiscount(
+  shippingFeeVnd: number,
+  coveredDeliveryFeeVnd: number
+): number {
+  return Math.min(shippingFeeVnd, coveredDeliveryFeeVnd);
 }
