@@ -47,10 +47,11 @@ const LoginForm = () => {
       login(user.phone_number, user.name);
       close();
 
-      const params = new URLSearchParams(window.location.search);
-      const from = params.get("from");
-      if (from) {
-        router.push(from);
+      // Redirect based on role — all roles share this single form.
+      if (user.role === "ADMIN" || user.role === "STAFF") {
+        router.replace("/staff/orders");
+      } else {
+        router.replace("/menu");
       }
     } catch (error) {
       const axiosError = error as { response?: { data?: { error?: string } } };

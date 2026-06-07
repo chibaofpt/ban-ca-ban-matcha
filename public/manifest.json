@@ -2,7 +2,7 @@
   "name": "Bạn Cá Bán Matcha",
   "short_name": "BCBM",
   "description": "Hệ thống quản lý Bạn Cá Bán Matcha",
-  "start_url": "/admin/login",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#16a34a",

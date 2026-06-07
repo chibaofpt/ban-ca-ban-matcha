@@ -32,22 +32,21 @@ function checkRateLimit(ip: string): boolean {
  *
  * Flow:
  *  1. Rate-limit auth endpoints.
- *  2. Let /admin/login through unconditionally.
- *  3. On public customer paths (/, /menu/*) — if the visitor has an ADMIN or
- *     STAFF token, redirect them straight to their dashboard. This also fixes
- *     the PWA "start_url: /" issue: opening the pinned icon will immediately
- *     land staff/admin on their correct page.
- *  4. On protected paths (/admin, /staff, /profile, …) — enforce auth and
- *     role guards, with silent token refresh on navigation.
+ *  2. On public customer paths (/, /menu/*, /profile, /history, /orders client-side)
+ *     — if the visitor has an ADMIN or STAFF token, redirect them to /staff/orders.
+ *     This covers the PWA cold-open scenario and prevents admin/staff from ever
+ *     seeing the customer UI.
+ *  3. On protected paths (/admin/*, /staff/*, /api/profile/*, …) — enforce auth
+ *     and role guards, with silent token refresh on page navigation.
+ *
+ * Note: /admin/login no longer exists — it was removed when all roles were
+ * unified into the single customer-facing login modal.
  */
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // ── 1. Auth route rate limiting ──────────────────────────────────────────
   if (pathname.startsWith('/api/auth')) {
-    // /api/auth/me is a lightweight read-only session check — no rate limit needed.
-    if (pathname === '/api/auth/me') return NextResponse.next();
-
     const ip =
       request.headers.get('x-forwarded-for') ??
       request.headers.get('x-real-ip') ??
@@ -61,42 +60,21 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // ── 2. /admin/login — public, but redirect away if already authenticated ─
-  if (pathname === '/admin/login') {
-    const accessToken = request.cookies.get('access_token')?.value;
-    if (accessToken) {
-      try {
-        const { payload } = await jwtVerify(accessToken, JWT_SECRET);
-        const userRole = payload.role as string;
-        const url = request.nextUrl.clone();
-        if (userRole === 'ADMIN') {
-          url.pathname = '/admin/menu';
-          return NextResponse.redirect(url);
-        }
-        if (userRole === 'STAFF') {
-          url.pathname = '/staff/orders';
-          return NextResponse.redirect(url);
-        }
-      } catch {
-        // Token expired/invalid — fall through and show the login form.
-      }
-    }
-    return NextResponse.next();
-  }
-
-  // ── 3. Admin / Staff guard on public customer paths ───────────────────────
+  // ── 2. Admin/Staff guard on ALL customer-facing paths ────────────────────
   //
-  // If a logged-in admin or staff member visits /, /menu, etc., push them to
-  // their dashboard immediately.  This covers the PWA cold-open scenario where
-  // the manifest's start_url is "/" — the redirect happens server-side before
-  // the browser renders anything.
+  // Admin and staff must never see the customer UI. If their token is detected
+  // on any public/customer path, redirect them straight to /staff/orders.
   //
-  // We also handle the expired-access-token case: if the token can't be
-  // verified but a refresh_token exists, we silently refresh and redirect back
-  // to the same URL so the middleware runs again with a fresh token.
-  const isCustomerPublicPath = pathname === '/' || pathname.startsWith('/menu');
+  // We also handle the expired-access-token case: silently refresh and redirect
+  // back to the same URL so the middleware re-runs with a fresh token.
+  const isCustomerFacingPath =
+    pathname === '/' ||
+    pathname.startsWith('/menu') ||
+    pathname.startsWith('/profile') ||
+    pathname.startsWith('/history') ||
+    pathname.startsWith('/orders');
 
-  if (isCustomerPublicPath) {
+  if (isCustomerFacingPath) {
     const accessToken = request.cookies.get('access_token')?.value;
     const refreshToken = request.cookies.get('refresh_token')?.value;
 
@@ -104,20 +82,16 @@ export async function middleware(request: NextRequest) {
       try {
         const { payload } = await jwtVerify(accessToken, JWT_SECRET);
         const userRole = payload.role as string;
-        const url = request.nextUrl.clone();
 
-        if (userRole === 'ADMIN') {
-          url.pathname = '/admin/menu';
-          return NextResponse.redirect(url);
-        }
-        if (userRole === 'STAFF') {
+        if (userRole === 'ADMIN' || userRole === 'STAFF') {
+          const url = request.nextUrl.clone();
           url.pathname = '/staff/orders';
           return NextResponse.redirect(url);
         }
         // CUSTOMER role — let through normally.
       } catch {
-        // Access token is expired. Try a silent refresh so the next pass can
-        // detect the role (important for PWA opens after 15+ minutes idle).
+        // Access token expired — silently refresh so the next middleware pass
+        // can detect admin/staff role. Important for PWA cold-opens after idle.
         if (refreshToken) {
           try {
             const refreshUrl = new URL('/api/auth/refresh', request.url);
@@ -126,8 +100,6 @@ export async function middleware(request: NextRequest) {
               headers: { cookie: request.headers.get('cookie') || '' },
             });
             if (refreshRes.ok) {
-              // Redirect back to the same URL with the new cookies applied.
-              // The middleware will run again and detect ADMIN/STAFF role.
               const redirectRes = NextResponse.redirect(request.url);
               for (const c of refreshRes.headers.getSetCookie()) {
                 redirectRes.headers.append('Set-Cookie', c);
@@ -141,15 +113,42 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    // No token / CUSTOMER token / refresh failed — serve the public page.
+    // No token / CUSTOMER token / refresh failed — for protected customer paths
+    // (/profile, /history, /orders) require auth; for public paths let through.
+    const isCustomerProtectedPath =
+      pathname.startsWith('/profile') ||
+      pathname.startsWith('/history') ||
+      pathname.startsWith('/orders');
+
+    if (isCustomerProtectedPath && !accessToken) {
+      // No valid session — try refresh one more time (covers no-access-token case)
+      const refreshToken2 = request.cookies.get('refresh_token')?.value;
+      if (refreshToken2) {
+        try {
+          const refreshUrl = new URL('/api/auth/refresh', request.url);
+          const refreshRes = await fetch(refreshUrl, {
+            method: 'POST',
+            headers: { cookie: request.headers.get('cookie') || '' },
+          });
+          if (refreshRes.ok) {
+            const redirectRes = NextResponse.redirect(request.url);
+            for (const c of refreshRes.headers.getSetCookie()) {
+              redirectRes.headers.append('Set-Cookie', c);
+            }
+            return redirectRes;
+          }
+        } catch (fetchError) {
+          console.error('[MIDDLEWARE_REFRESH_ERROR]', fetchError);
+        }
+      }
+      return redirectOrUnauthorized(request, 'Phiên đăng nhập không hợp lệ', 'UNAUTHORIZED', 401);
+    }
+
     return NextResponse.next();
   }
 
-  // ── 4. Protected paths — enforce auth ─────────────────────────────────────
+  // ── 3. Protected internal paths — enforce auth ────────────────────────────
   const isProtectedPath =
-    pathname.startsWith('/profile') ||
-    pathname.startsWith('/history') ||
-    pathname.startsWith('/orders') ||
     pathname.startsWith('/api/orders') ||
     pathname.startsWith('/api/profile') ||
     pathname.startsWith('/api/staff') ||
@@ -179,7 +178,6 @@ export async function middleware(request: NextRequest) {
           method: 'POST',
           headers: { cookie: request.headers.get('cookie') || '' },
         });
-
         if (refreshRes.ok) {
           const redirectRes = NextResponse.redirect(request.url);
           for (const c of refreshRes.headers.getSetCookie()) {
@@ -241,7 +239,6 @@ export async function middleware(request: NextRequest) {
           method: 'POST',
           headers: { cookie: request.headers.get('cookie') || '' },
         });
-
         if (refreshRes.ok) {
           const redirectRes = NextResponse.redirect(request.url);
           for (const c of refreshRes.headers.getSetCookie()) {
@@ -260,6 +257,7 @@ export async function middleware(request: NextRequest) {
 
 /**
  * Returns a JSON error for API routes, or a redirect for page routes.
+ * All unauthenticated page redirects go to / (no separate /admin/login page).
  */
 function redirectOrUnauthorized(
   request: NextRequest,
@@ -279,7 +277,7 @@ function redirectOrUnauthorized(
 
   const url = request.nextUrl.clone();
 
-  // 403 — wrong role
+  // 403 — wrong role: staff trying /admin → go to their own dashboard
   if (status === 403) {
     if (userRole === 'STAFF' && pathname.startsWith('/admin')) {
       url.pathname = '/staff/orders';
@@ -289,20 +287,15 @@ function redirectOrUnauthorized(
     return NextResponse.redirect(url);
   }
 
-  // 401 — not logged in
-  if (pathname.startsWith('/admin') || pathname.startsWith('/staff')) {
-    url.pathname = '/admin/login';
-    return NextResponse.redirect(url);
-  }
-
+  // 401 — not logged in: all roles go to / (login modal is there)
   url.pathname = '/';
   return NextResponse.redirect(url);
 }
 
 /**
  * Matcher — covers:
- *  - Public customer paths that need the staff/admin redirect guard (/, /menu/*)
- *  - All protected paths (admin, staff, profile, orders, …)
+ *  - Customer-facing paths needing admin/staff guard (/, /menu/*, /profile/*, etc.)
+ *  - Internal protected paths (admin/*, staff/*, api/*)
  *  - Auth API endpoints (for rate limiting)
  */
 export const config = {
@@ -310,10 +303,10 @@ export const config = {
     '/',
     '/menu',
     '/menu/:path*',
-    '/api/auth/:path*',
     '/profile/:path*',
     '/history/:path*',
     '/orders/:path*',
+    '/api/auth/:path*',
     '/api/orders/:path*',
     '/api/profile/:path*',
     '/api/staff/:path*',
