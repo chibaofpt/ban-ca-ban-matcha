@@ -50,6 +50,15 @@ const Navbar = () => {
 
   const close = () => setOpen(false);
 
+  const handleCartClick = () => {
+    if (pathname !== "/menu") {
+      router.push("/menu");
+    }
+    if (count > 0) {
+      setCartOpen(true);
+    }
+  };
+
   return (
     <motion.nav
       initial={{ y: -20, opacity: 0 }}
@@ -134,7 +143,7 @@ const Navbar = () => {
 
           {/* Cart button */}
           <button
-            onClick={() => setCartOpen(true)}
+            onClick={handleCartClick}
             className="relative p-2 rounded-full hover:bg-secondary transition-colors"
             aria-label="Giỏ hàng"
           >
@@ -157,7 +166,7 @@ const Navbar = () => {
         {/* ── Mobile: cart + hamburger ── */}
         <div className="flex md:hidden items-center gap-3">
           <button
-            onClick={() => setCartOpen(true)}
+            onClick={handleCartClick}
             className="relative p-2"
             aria-label="Giỏ hàng"
           >
@@ -191,7 +200,7 @@ const Navbar = () => {
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
-            className="md:hidden overflow-hidden bg-white/98 backdrop-blur-md border-t border-border/40"
+            className="md:hidden absolute top-full left-0 right-0 overflow-hidden bg-white/98 backdrop-blur-md border-t border-border/40 shadow-lg"
           >
             <div className="max-w-6xl mx-auto px-6 py-4 flex flex-col gap-1">
               <NavLink

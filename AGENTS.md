@@ -76,6 +76,7 @@
 - No `window.confirm`. Always use a custom React modal (`ConfirmModal`) for user confirmations.
 - No hardcoded secrets — always `process.env`, add new vars to `.env.local.example`
 - Every exported function needs a one-line JSDoc
+- File length should ideally be 150-200 lines. Maximum 300 lines. Break down large components into smaller files.
 - Every page must export `metadata`. Dynamic pages use `generateMetadata`
 - Never import `lib/` inside `src/` — backend is server-only
 - Pricing logic lives in `src/utils/pricing.ts` (pure functions, no DB deps). `lib/pricing.ts` is a thin wrapper: fetch DB data → call `src/utils/pricing.ts`. Never duplicate pricing logic between the two files.
