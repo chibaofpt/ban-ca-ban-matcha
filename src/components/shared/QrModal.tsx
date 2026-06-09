@@ -24,8 +24,16 @@ export function QrModal({ voucher, onClose }: QrModalProps) {
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
+        drag="y"
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={0.2}
+        onDragEnd={(e, info) => {
+          if (info.offset.y > 100) onClose();
+        }}
         className="relative bg-card rounded-2xl p-6 w-full max-w-xs shadow-2xl space-y-4"
       >
+        <div className="w-10 h-1 bg-border/60 rounded-full mx-auto mb-2 md:hidden" />
+        
         <div className="text-center space-y-1">
           <h3 className="font-serif text-lg font-bold text-primary">Mã QR Voucher</h3>
           <p className="text-xs text-muted-foreground">{getVoucherBenefitText(voucher)}</p>
@@ -52,12 +60,13 @@ export function QrModal({ voucher, onClose }: QrModalProps) {
           </p>
         )}
 
-        <button
+        <motion.button
+          whileTap={{ scale: 0.92 }}
           onClick={onClose}
           className="w-full py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-secondary/40 transition"
         >
           Đóng
-        </button>
+        </motion.button>
       </motion.div>
     </div>
   );

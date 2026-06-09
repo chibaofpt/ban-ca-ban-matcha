@@ -4,6 +4,7 @@ import Navbar from "@/src/components/common/Navbar";
 import AuthModal from "@/src/components/common/AuthModal";
 import AuthGuardProvider from "@/src/components/common/AuthGuardProvider";
 import StoreStatusBanner from "@/src/components/common/StoreStatusBanner";
+import ReactQueryProvider from "@/src/components/common/ReactQueryProvider";
 import { Toaster } from "sonner";
 import "./globals.css";
 
@@ -84,15 +85,17 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-paper text-foreground font-sans overflow-x-hidden border-border transition-colors duration-300 text-ink">
-        <AuthGuardProvider>
-          <Navbar />
-          <AuthModal />
-          <main className="flex-1 flex flex-col">
-            <StoreStatusBanner />
-            {children}
-          </main>
-          <Toaster richColors position="top-center" />
-        </AuthGuardProvider>
+        <ReactQueryProvider>
+          <AuthGuardProvider>
+            <Navbar />
+            <AuthModal />
+            <main className="flex-1 flex flex-col">
+              <StoreStatusBanner />
+              {children}
+            </main>
+            <Toaster richColors position="top-center" />
+          </AuthGuardProvider>
+        </ReactQueryProvider>
       </body>
     </html>
   );

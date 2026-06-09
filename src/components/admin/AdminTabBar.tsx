@@ -7,6 +7,7 @@ import { cn } from "@/src/utils/cn";
 import type { Role } from "@/src/lib/types/user";
 import * as authService from "@/src/services/authService";
 import { useState } from "react";
+import { motion } from "framer-motion";
 import StoreSettingsModal from "@/src/components/admin/StoreSettingsModal";
 import { useAuthStore } from "@/src/lib/store/authStore";
 
@@ -74,14 +75,21 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
                   key={to}
                   href={to}
                   className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors",
+                    "relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors",
                     isActive
-                      ? "bg-white/15 text-white font-medium shadow-sm"
+                      ? "text-white font-medium shadow-sm"
                       : "text-white/80 hover:text-white hover:bg-white/5"
                   )}
                 >
-                  <Icon size={16} />
-                  <span>{label}</span>
+                  {isActive && (
+                    <motion.div
+                      layoutId="admin-desktop-tab-indicator"
+                      className="absolute inset-0 bg-white/15 rounded-lg pointer-events-none"
+                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                    />
+                  )}
+                  <Icon size={16} className="relative z-10" />
+                  <span className="relative z-10">{label}</span>
                 </Link>
               );
             })}
@@ -151,12 +159,24 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
                 key={to}
                 href={to}
                 className={cn(
-                  "flex flex-col items-center justify-center gap-1 py-2.5 text-xs transition-colors",
+                  "relative flex flex-col items-center justify-center py-2 text-xs transition-colors w-full",
                   isActive ? "text-primary font-medium" : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                <Icon size={20} className={isActive ? "stroke-[2.5]" : undefined} />
-                <span className="leading-none text-[11px]">{label}</span>
+                {isActive && (
+                  <motion.div
+                    layoutId="admin-mobile-tab-indicator"
+                    className="absolute inset-0 bg-primary/5 rounded-xl pointer-events-none mx-1"
+                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                  />
+                )}
+                <motion.div
+                  whileTap={{ scale: 0.85 }}
+                  className="flex flex-col items-center gap-1 relative z-10"
+                >
+                  <Icon size={20} className={isActive ? "stroke-[2.5]" : undefined} />
+                  <span className="leading-none text-[11px]">{label}</span>
+                </motion.div>
               </Link>
             );
           })}

@@ -20,4 +20,9 @@ export const addressService = {
   deleteAddress: async (id: string): Promise<void> => {
     await api.delete(`/api/profile/addresses/${id}`);
   },
+
+  setDefaultAddress: async (id: string): Promise<Address> => {
+    const { data } = await api.put<{ data: Address }>(`/api/profile/addresses/${id}`, { is_default: true });
+    return data.data;
+  },
 };

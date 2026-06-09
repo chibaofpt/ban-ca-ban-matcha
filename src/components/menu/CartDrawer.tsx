@@ -1,11 +1,12 @@
-﻿"use client";
+"use client";
 
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Trash2, ShoppingBag, CheckCircle2, AlertTriangle, RefreshCcw, Minus, Plus, Ticket, ChevronRight, Clock, ArrowLeft, MapPin } from "lucide-react";
 import { useCartStore, useCartTotalPrice } from "@/src/lib/store/cartStore";
 import Image from "next/image";
-import { createOrder, PriceChangedError, type PriceConflict } from "@/src/services/orderService";
+import { useCheckout } from "@/src/hooks/useCheckout";
+import { PriceChangedError, type PriceConflict } from "@/src/services/orderService";
 import { useIsLoggedIn } from "@/src/lib/store/authStore";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { useStoreStatusStore } from "@/src/lib/store/storeStore";
@@ -60,6 +61,8 @@ const CartDrawer = () => {
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const [isFetchingAddress, setIsFetchingAddress] = useState(false);
   const [isVouchersLoading, setIsVouchersLoading] = useState(false);
+
+  const checkoutMutation = useCheckout();
 
   // Derived voucher lists
   const discountVouchers = filterUsableVouchers(allVouchers, "DISCOUNT");
@@ -233,20 +236,23 @@ const CartDrawer = () => {
         }
       }
 
-      const result = await createOrder(payloadItems, {
-        orderType,
-        pickupTime: finalPickupTime,
-        discountVoucherIds: selectedVoucherIds,
-        ...(orderType === "DELIVERY" && deliveryAddress ? {
-          addressId: deliveryAddress.id,
-          deliveryAddress: deliveryAddress.full_address,
-          deliveryLat: deliveryAddress.lat,
-          deliveryLng: deliveryAddress.lng,
-          deliveryReceiverName: deliveryAddress.receiver_name,
-          deliveryReceiverPhone: deliveryAddress.receiver_phone,
-          clientShippingFeeVnd: shippingFee ?? 0,
-          freeshipVoucherId: appliedFreeshipId ?? undefined,
-        } : {})
+      const result = await checkoutMutation.mutateAsync({
+        items: payloadItems,
+        options: {
+          orderType,
+          pickupTime: finalPickupTime,
+          discountVoucherIds: selectedVoucherIds,
+          ...(orderType === "DELIVERY" && deliveryAddress ? {
+            addressId: deliveryAddress.id,
+            deliveryAddress: deliveryAddress.full_address,
+            deliveryLat: deliveryAddress.lat,
+            deliveryLng: deliveryAddress.lng,
+            deliveryReceiverName: deliveryAddress.receiver_name,
+            deliveryReceiverPhone: deliveryAddress.receiver_phone,
+            clientShippingFeeVnd: shippingFee ?? 0,
+            freeshipVoucherId: appliedFreeshipId ?? undefined,
+          } : {})
+        }
       });
       clearCart();
       setCartOpen(false);

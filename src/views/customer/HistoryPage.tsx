@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cancelOrder, fetchCustomerOrders } from "@/src/services/orderService";
 import { listMyVouchers, type MyVoucher } from "@/src/services/customerVoucherService";
-import { usePolling } from "@/src/hooks/usePolling";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronUp, Clock, Copy, CheckCircle2, XCircle, Ticket, Fish, ArrowRightLeft, User, ShieldCheck, Gift } from "lucide-react";
@@ -15,7 +15,7 @@ import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import type { OrderStatus } from "@/src/lib/types/order";
 import VoucherModal from "@/src/components/shared/VoucherModal";
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
-import { usePointsStore } from "@/src/lib/store/pointsStore";
+import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
 import { useIsLoggedIn } from "@/src/lib/store/authStore";
 
 interface CustomerHistoryOrder {
@@ -158,10 +158,10 @@ function VoucherHistoryCard({ voucher: v }: { voucher: MyVoucher }) {
 
 /** Page lịch sử đơn hàng và voucher của khách hàng. */
 export default function HistoryPage() {
+  const queryClient = useQueryClient();
   const openVoucherModal = useVoucherModalStore((s) => s.openModal);
   const isLoggedIn = useIsLoggedIn();
-  const points = usePointsStore((s) => s.points);
-  const fetchPoints = usePointsStore((s) => s.fetchPoints);
+  const { data: points } = useCustomerPoints();
   
   const [activeTab, setActiveTab] = useState<"orders" | "vouchers">("orders");
   const [page, setPage] = useState(1);
@@ -172,44 +172,40 @@ export default function HistoryPage() {
     orderId: string;
   }>({ isOpen: false, orderId: "" });
 
-  // Voucher history state
-  const [vouchers, setVouchers] = useState<MyVoucher[]>([]);
-  const [vouchersLoading, setVouchersLoading] = useState(false);
+  // Voucher history state is now managed by TanStack Query
+  // The UI can use isVouchersLoading and vouchers directly
 
   // Reset page when changing tabs (though vouchers tab currently has no pagination)
   useEffect(() => {
     setPage(1);
   }, [activeTab]);
 
-  // Fetch vouchers when tab is active
-  useEffect(() => {
-    if (activeTab !== "vouchers") return;
-    if (isLoggedIn) fetchPoints();
+  // Points are automatically fetched by useCustomerPoints hook
+  useEffect(() => {}, [isLoggedIn]);
 
-    setVouchersLoading(true);
-    listMyVouchers()
-      .then(setVouchers)
-      .catch(() => toast.error("Không tải được lịch sử voucher"))
-      .finally(() => setVouchersLoading(false));
-  }, [activeTab, isLoggedIn, fetchPoints]);
+  const { data: vouchersData, isLoading: vouchersLoading } = useQuery({
+    queryKey: ["customer", "vouchers"],
+    queryFn: listMyVouchers,
+    enabled: activeTab === "vouchers",
+  });
+  
+  const vouchers = vouchersData || [];
 
   const fetchOrdersFn = useCallback(async () => {
     return await fetchCustomerOrders({ page, limit: 10 });
   }, [page]);
 
-  const { data, isInitialLoading, refetch } = usePolling({
-    fetcher: fetchOrdersFn,
-    interval: 15000,
-    dependencies: [page],
+  const { data: queryData, isLoading: isInitialLoading } = useQuery({
+    queryKey: ["customer", "orders", { page }],
+    queryFn: fetchOrdersFn,
+    refetchInterval: 15000,
     enabled: activeTab === "orders",
   });
 
-  const rawOrders: CustomerHistoryOrder[] = data?.data || [];
-  const totalPages = data?.meta?.totalPages || 1;
+  const rawOrders: CustomerHistoryOrder[] = queryData?.data || [];
+  const totalPages = queryData?.meta?.totalPages || 1;
 
-  // We only poll fast if there's any PENDING order, otherwise usePolling handles it?
-  // Since usePolling doesn't natively support dynamic interval based on data yet,
-  // we can just stick to 15000 interval which is fine for the customer view.
+  const refetch = () => queryClient.invalidateQueries({ queryKey: ["customer", "orders"] });
 
   const toggle = (id: string) => setExpanded((s) => ({ ...s, [id]: !s[id] }));
 
@@ -219,16 +215,21 @@ export default function HistoryPage() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const cancelOrderMutation = useMutation({
+    mutationFn: cancelOrder,
+    onSuccess: () => {
+      toast.success("Đã huỷ đơn hàng");
+      refetch();
+    },
+    onError: () => {
+      toast.error("Không thể huỷ đơn hàng. Vui lòng thử lại.");
+    },
+  });
+
   const handleCancelConfirm = async () => {
     const { orderId } = cancelModal;
     setCancelModal({ isOpen: false, orderId: "" });
-    try {
-      await cancelOrder(orderId);
-      toast.success("Đã huỷ đơn hàng");
-      refetch();
-    } catch {
-      toast.error("Không thể huỷ đơn hàng. Vui lòng thử lại.");
-    }
+    cancelOrderMutation.mutate(orderId);
   };
 
   return (

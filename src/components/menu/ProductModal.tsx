@@ -25,8 +25,9 @@ function OptionCard({
   const isSizePrice = sub && sub.endsWith("k") && !sub.startsWith("+") && !sub.startsWith("-");
 
   return (
-    <button
+    <motion.button
       onClick={onClick}
+      whileTap={{ scale: 0.92 }}
       className={cn(
         "flex flex-col items-center justify-center rounded-2xl border-2 py-3 px-2 text-center transition-all min-w-0 h-full",
         isActive ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-white hover:border-primary/30"
@@ -47,7 +48,7 @@ function OptionCard({
           {sub}
         </span>
       )}
-    </button>
+    </motion.button>
   );
 }
 
@@ -281,9 +282,19 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
         animate={isDesktop ? { opacity: 1, scale: 1, x: "-50%", y: "-50%" } : { y: 0 }}
         exit={isDesktop ? { opacity: 0, scale: 0.9, x: "-50%", y: "-50%" } : { y: "100%" }}
         transition={{ type: "spring", damping: 30, stiffness: 300 }}
+        drag={isDesktop ? false : "y"}
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={0.2}
+        onDragEnd={(e, info) => {
+          if (info.offset.y > 100) onClose();
+        }}
         className="fixed inset-x-0 bottom-0 z-[101] max-h-[92vh] overflow-y-auto md:overflow-hidden rounded-t-[2.5rem] bg-[#fdfcf7] shadow-2xl md:bottom-auto md:top-1/2 md:left-1/2 md:w-[90vw] md:max-w-4xl md:h-[80vh] md:max-h-[85vh] md:rounded-[2.5rem] md:grid md:grid-cols-2 md:pb-0"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Drag Handle (Mobile only) */}
+        {!isDesktop && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-border rounded-full z-10" />
+        )}
         {/* Left Column (Desktop only) */}
         <div className="hidden md:flex flex-col bg-[#d9e4d4]/30 border-r border-border/40 p-8 justify-between relative h-full">
           {item.image_url ? (
@@ -344,14 +355,14 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
                 {SWEETNESS_OPTIONS[sweetnessIdx]?.label}
               </span>
             </div>
-            <div className="relative">
-              <div className="h-1.5 bg-primary/15 rounded-full mx-2">
+            <div className="relative mx-3 mt-4">
+              <div className="h-1.5 bg-primary/15 rounded-full w-full">
                 <div
-                  className="absolute inset-y-0 left-2 bg-primary rounded-full transition-all duration-200 h-1.5"
-                  style={{ width: `calc(${(sweetnessIdx / (SWEETNESS_OPTIONS.length - 1)) * 100}% - 0px)` }}
+                  className="absolute inset-y-0 left-0 bg-primary rounded-full transition-all duration-200 h-1.5"
+                  style={{ width: `${(sweetnessIdx / (SWEETNESS_OPTIONS.length - 1)) * 100}%` }}
                 />
               </div>
-              <div className="absolute inset-x-2 top-0 h-1.5">
+              <div className="absolute inset-x-0 top-0 h-1.5">
                 {SWEETNESS_OPTIONS.map((opt, i) => {
                   const pct = (i / (SWEETNESS_OPTIONS.length - 1)) * 100;
                   const isActive = i === sweetnessIdx;
@@ -361,7 +372,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
                       key={opt.value}
                       onClick={() => setSweetness(opt.value)}
                       style={{ left: `${pct}%` }}
-                      className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 p-3 focus:outline-none"
+                      className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center focus:outline-none"
                     >
                       <span className={cn(
                         "block rounded-full transition-all duration-200 border-2",
@@ -372,7 +383,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
                   );
                 })}
               </div>
-              <div className="relative mt-6 mx-2 h-5">
+              <div className="relative mt-8 h-5">
                 {SWEETNESS_OPTIONS.map((opt, i) => (
                   <span
                     key={opt.value}
@@ -447,7 +458,9 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
                 <p className="text-[11px] text-primary/50 mt-0.5 font-medium">Foam matcha mịn màng</p>
               </div>
               <button
-                onClick={() => setColdwhisk(!coldwhisk)}
+                onClick={() => {
+                  setColdwhisk(!coldwhisk);
+                }}
                 className={cn(
                   "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
                   coldwhisk ? "bg-primary" : "bg-primary/20"

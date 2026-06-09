@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
 import { Plus, Search, RefreshCw } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PowderCard from "@/src/components/admin/PowderCard";
 import PowderModal from "@/src/components/admin/PowderModal";
 import {
@@ -19,36 +20,41 @@ type ModalState =
   | { open: true; mode: "edit"; item: Powder };
 
 export default function AdminPowderPage() {
-  const [powders, setPowders] = useState<Powder[]>([]);
-  const [latteItems, setLatteItems] = useState<AdminMenuItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [modalState, setModalState] = useState<ModalState>({ open: false });
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const [powderList, menuData] = await Promise.all([
-        listAdminPowders(),
-        listAdminMenuItems(),
-      ]);
-      setPowders(powderList);
-      setLatteItems(menuData.latte);
-    } catch {
-      setError("Không thể tải danh sách bột. Vui lòng thử lại.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const {
+    data: powders = [],
+    isLoading: isPowdersLoading,
+    isError: isPowdersError,
+    refetch: refetchPowders,
+  } = useQuery({
+    queryKey: ["admin", "powders"],
+    queryFn: listAdminPowders,
+  });
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  const {
+    data: menuData,
+    isLoading: isMenuLoading,
+    isError: isMenuError,
+    refetch: refetchMenu,
+  } = useQuery({
+    queryKey: ["admin", "menu"],
+    queryFn: listAdminMenuItems,
+  });
+
+  const latteItems = menuData?.latte || [];
+  const isLoading = isPowdersLoading || isMenuLoading;
+  const error = (isPowdersError || isMenuError) ? "Không thể tải danh sách bột. Vui lòng thử lại." : null;
+
+  const loadData = () => {
+    refetchPowders();
+    refetchMenu();
+  };
 
   const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToast({ msg, type });
@@ -64,12 +70,14 @@ export default function AdminPowderPage() {
   });
 
   const handleCreateSuccess = (newPowder: Powder) => {
-    setPowders((prev) => [newPowder, ...prev]);
+    queryClient.setQueryData<Powder[]>(["admin", "powders"], (old) => [newPowder, ...(old || [])]);
     showToast(`Đã thêm bột "${newPowder.name}"`);
   };
 
   const handleEditSuccess = (updatedPowder: Powder) => {
-    setPowders((prev) => prev.map((p) => (p.id === updatedPowder.id ? updatedPowder : p)));
+    queryClient.setQueryData<Powder[]>(["admin", "powders"], (old) =>
+      old?.map((p) => (p.id === updatedPowder.id ? updatedPowder : p))
+    );
     showToast(`Đã cập nhật bột "${updatedPowder.name}"`);
   };
 
@@ -81,18 +89,33 @@ export default function AdminPowderPage() {
     }
   };
 
-  const handleToggleAvailable = async (id: string, next: boolean) => {
-    setTogglingId(id);
-    const rollback = powders;
-    setPowders((prev) => prev.map((p) => (p.id === id ? { ...p, is_available: next } : p)));
-    try {
-      await togglePowderAvailability(id, next);
-    } catch {
-      setPowders(rollback);
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, next }: { id: string; next: boolean }) =>
+      togglePowderAvailability(id, next),
+    onMutate: async ({ id, next }) => {
+      setTogglingId(id);
+      await queryClient.cancelQueries({ queryKey: ["admin", "powders"] });
+      const previousPowders = queryClient.getQueryData<Powder[]>(["admin", "powders"]);
+      if (previousPowders) {
+        queryClient.setQueryData<Powder[]>(["admin", "powders"], (old) =>
+          old?.map((p) => (p.id === id ? { ...p, is_available: next } : p))
+        );
+      }
+      return { previousPowders };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousPowders) {
+        queryClient.setQueryData(["admin", "powders"], context.previousPowders);
+      }
       showToast("Không thể thay đổi trạng thái. Vui lòng thử lại.", "error");
-    } finally {
+    },
+    onSettled: () => {
       setTogglingId(null);
-    }
+    },
+  });
+
+  const handleToggleAvailable = async (id: string, next: boolean) => {
+    toggleMutation.mutate({ id, next });
   };
 
   return (

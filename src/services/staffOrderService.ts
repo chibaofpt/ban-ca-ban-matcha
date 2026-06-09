@@ -78,6 +78,7 @@ const URLS = {
   users: "/api/staff/users",
   orders: "/api/staff/orders",
   scan: "/api/staff/scan",
+  scanFallback: "/api/staff/scan-fallback",
   redeemVoucher: (qrToken: string) => `/api/staff/vouchers/${qrToken}/redeem`,
 } as const;
 
@@ -115,4 +116,16 @@ export async function scanQrToken(token: string): Promise<QrScanResult> {
  */
 export async function redeemVoucher(qrToken: string): Promise<void> {
   await apiClient.patch(URLS.redeemVoucher(qrToken));
+}
+
+/**
+ * Fallback to resolve a QR token manually when scanning fails.
+ * Only supports looking up users right now.
+ */
+export async function scanFallback(phone_number: string, code: string): Promise<QrScanResult> {
+  const res = await apiClient.post<ApiResponse<QrScanResult>>(URLS.scanFallback, {
+    phone_number,
+    code,
+  });
+  return res.data.data;
 }

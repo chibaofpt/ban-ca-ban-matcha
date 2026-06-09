@@ -5,6 +5,7 @@ import { apiClient } from "@/src/lib/api/client";
 
 interface PointsState {
   points: number | null;
+  /** @deprecated Dùng useCustomerPoints() (TanStack Query) thay thế */
   fetchPoints: () => Promise<void>;
   setPoints: (pts: number) => void;
 }
@@ -12,12 +13,7 @@ interface PointsState {
 export const usePointsStore = create<PointsState>()((set) => ({
   points: null,
   fetchPoints: async () => {
-    try {
-      const res = await apiClient.get<{ data: { points_balance: number } }>("/api/profile/points");
-      set({ points: res.data.data.points_balance });
-    } catch (e) {
-      // Ignore errors (user might not be logged in)
-    }
+    console.warn("fetchPoints is deprecated. Please use useCustomerPoints() hook instead.");
   },
   setPoints: (pts) => set({ points: pts }),
 }));

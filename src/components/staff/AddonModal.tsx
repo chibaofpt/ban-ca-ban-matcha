@@ -11,6 +11,7 @@ import { calcLattePrice, calcFusionPrice, resolveGram, ceilTo1000 } from "@/src/
 import { SWEETNESS_OPTIONS, ICE_OPTIONS, SIZE_LABELS } from "@/src/constants/orderOptions";
 
 interface AddonModalProps {
+  isOpen: boolean;
   item: MenuItem | null;
   latteItems: MenuItem[];
   freeVoucherId?: string;
@@ -26,7 +27,8 @@ function OptionCard({
   const isSizePrice = sub && sub.endsWith("k") && !sub.startsWith("+") && !sub.startsWith("-");
 
   return (
-    <button
+    <motion.button
+      whileTap={{ scale: 0.95 }}
       onClick={onClick}
       className={cn(
         "flex flex-col items-center justify-center rounded-2xl border-2 py-3 px-2 text-center transition-all min-w-0 h-full",
@@ -48,11 +50,23 @@ function OptionCard({
           {sub}
         </span>
       )}
-    </button>
+    </motion.button>
   );
 }
 
-export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm }: AddonModalProps) {
+export function AddonModal({ isOpen, item, latteItems, freeVoucherId, onClose, onConfirm }: AddonModalProps) {
+  const [cachedItem, setCachedItem] = useState(item);
+  useEffect(() => {
+    if (item) setCachedItem(item);
+  }, [item]);
+
+  const activeItem = isOpen ? item : cachedItem;
+
+  if (!activeItem) return null;
+  return <AddonModalInner isOpen={isOpen} item={activeItem} latteItems={latteItems} freeVoucherId={freeVoucherId} onClose={onClose} onConfirm={onConfirm} />
+}
+
+function AddonModalInner({ isOpen, item, latteItems, freeVoucherId, onClose, onConfirm }: AddonModalProps & { item: MenuItem }) {
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
 
@@ -305,22 +319,37 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
 
   return (
     <AnimatePresence>
-      <motion.div
-        key="addon-backdrop"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <motion.div
-        key="addon-content"
-        initial={isDesktop ? { opacity: 0, scale: 0.9, x: "-50%", y: "-50%" } : { y: "100%" }}
-        animate={isDesktop ? { opacity: 1, scale: 1, x: "-50%", y: "-50%" } : { y: 0 }}
-        exit={isDesktop ? { opacity: 0, scale: 0.9, x: "-50%", y: "-50%" } : { y: "100%" }}
-        transition={{ type: "spring", damping: 30, stiffness: 300 }}
-        className="fixed inset-x-0 bottom-0 z-[61] max-h-[92vh] overflow-y-auto md:overflow-hidden rounded-t-[2.5rem] bg-[#fdfcf7] shadow-2xl md:bottom-auto md:top-1/2 md:left-1/2 md:w-[90vw] md:max-w-4xl md:h-[80vh] md:max-h-[85vh] md:rounded-[2.5rem] md:grid md:grid-cols-2 md:pb-0"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Left Column (Desktop only) */}
+      {isOpen && (
+        <React.Fragment>
+          <motion.div
+            key="addon-backdrop"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm"
+            onClick={onClose}
+          />
+          <motion.div
+            key="addon-content"
+            initial={isDesktop ? { opacity: 0, scale: 0.9, x: "-50%", y: "-50%" } : { y: "100%" }}
+            animate={isDesktop ? { opacity: 1, scale: 1, x: "-50%", y: "-50%" } : { y: 0 }}
+            exit={isDesktop ? { opacity: 0, scale: 0.9, x: "-50%", y: "-50%" } : { y: "100%" }}
+            transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            drag={isDesktop ? false : "y"}
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={0.2}
+            onDragEnd={(_, info) => {
+              if (!isDesktop && info.offset.y > 100 && info.velocity.y > 200) {
+                onClose();
+              }
+            }}
+            className="fixed inset-x-0 bottom-0 z-[61] max-h-[92vh] overflow-y-auto md:overflow-hidden rounded-t-[2.5rem] bg-[#fdfcf7] shadow-2xl md:bottom-auto md:top-1/2 md:left-1/2 md:w-[90vw] md:max-w-4xl md:h-[80vh] md:max-h-[85vh] md:rounded-[2.5rem] md:grid md:grid-cols-2 md:pb-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Mobile Drag Handle */}
+            <div className="md:hidden flex justify-center pt-3 pb-1 w-full absolute top-0 left-0 z-10 bg-[#fdfcf7] rounded-t-[2.5rem]">
+              <div className="w-12 h-1.5 bg-border rounded-full" />
+            </div>
+
+            {/* Left Column (Desktop only) */}
         <div className="hidden md:flex flex-col bg-[#d9e4d4]/30 border-r border-border/40 p-8 justify-between relative h-full">
           {item.image_url ? (
             <div className="w-full aspect-square rounded-3xl overflow-hidden shadow-md bg-white flex items-center justify-center mb-6">
@@ -610,19 +639,21 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
                     </p>
                   </div>
                   <div className="flex items-center gap-3 bg-[#d9e4d4] rounded-xl px-3 py-2">
-                    <button
+                    <motion.button
+                      whileTap={{ scale: 0.9 }}
                       onClick={() => setQuantityMap((p) => ({ ...p, [group.id]: Math.max(0, qty - 1) }))}
                       className="w-6 h-6 rounded-full bg-white/60 flex items-center justify-center hover:bg-white transition-colors"
                     >
                       <Minus className="w-3 h-3 text-primary" />
-                    </button>
+                    </motion.button>
                     <span className="text-sm font-bold w-4 text-center text-primary">{qty}</span>
-                    <button
+                    <motion.button
+                      whileTap={{ scale: 0.9 }}
                       onClick={() => setQuantityMap((p) => ({ ...p, [group.id]: Math.min(max, qty + 1) }))}
                       className="w-6 h-6 rounded-full bg-white/60 flex items-center justify-center hover:bg-white transition-colors"
                     >
                       <Plus className="w-3 h-3 text-primary" />
-                    </button>
+                    </motion.button>
                   </div>
                 </div>
               </div>
@@ -646,15 +677,17 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
           <div className="flex items-center justify-between gap-3">
             {/* Quantity Adjuster */}
             <div className="flex items-center bg-[#d9e4d4] rounded-2xl overflow-hidden shrink-0">
-              <button
+              <motion.button
+                whileTap={{ scale: 0.9 }}
                 onClick={() => setQuantity(Math.max(1, quantity - 1))}
                 className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 transition-colors text-primary font-bold text-lg"
-              >−</button>
+              >−</motion.button>
               <span className="text-sm font-bold w-6 text-center text-primary">{quantity}</span>
-              <button
+              <motion.button
+                whileTap={{ scale: 0.9 }}
                 onClick={() => setQuantity(quantity + 1)}
                 className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 transition-colors text-primary font-bold text-lg"
-              >+</button>
+              >+</motion.button>
             </div>
 
             {/* Total price in the middle */}
@@ -666,17 +699,20 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
             </div>
 
             {/* Add to Cart Button */}
-            <button
+            <motion.button
+              whileTap={{ scale: 0.98 }}
               onClick={handleConfirm}
               disabled={isConfirmDisabled()}
-              className="bg-primary text-white rounded-2xl h-11 px-4 md:px-5 font-bold text-sm shadow-lg active:scale-[0.98] transition-all disabled:opacity-50 flex items-center gap-2 shrink-0"
+              className="bg-primary text-white rounded-2xl h-11 px-4 md:px-5 font-bold text-sm shadow-lg transition-all disabled:opacity-50 flex items-center gap-2 shrink-0"
             >
               <ShoppingBag className="w-4 h-4" />
               <span>Bỏ giỏ cá</span>
-            </button>
+            </motion.button>
           </div>
         </div>
-      </motion.div>
+          </motion.div>
+        </React.Fragment>
+      )}
     </AnimatePresence>
   );
 }

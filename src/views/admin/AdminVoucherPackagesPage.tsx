@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Coins, Gift, Plus, Pencil, Trash2 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/src/utils/cn";
 import { toast } from "sonner";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
@@ -85,15 +86,10 @@ function VoucherTypeBadge({ type }: { type: VoucherPackage["voucher_type"] }) {
 }
 
 export default function AdminVoucherPackagesPage() {
-  const [voucherPackages, setVoucherPackages] = useState<VoucherPackage[]>([]);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [powders, setPowders] = useState<Powder[]>([]);
-  const [loading, setLoading] = useState(true);
-
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<VoucherPackageForm>(emptyForm);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -108,6 +104,24 @@ export default function AdminVoucherPackagesPage() {
     isDestructive: false,
     onConfirm: () => {},
   });
+
+  const { data: voucherPackages = [], isLoading: isPkgsLoading } = useQuery({
+    queryKey: ["admin", "voucher-packages"],
+    queryFn: listVoucherPackages,
+  });
+
+  const { data: menuItems = [], isLoading: isMenuLoading } = useQuery({
+    queryKey: ["admin", "menu", "flat"],
+    queryFn: fetchMenuItems,
+  });
+
+  const { data: powdersData, isLoading: isPowdersLoading } = useQuery({
+    queryKey: ["admin", "powders", "raw"],
+    queryFn: fetchPowders,
+  });
+  const powders = powdersData?.data || [];
+
+  const loading = isPkgsLoading || isMenuLoading || isPowdersLoading;
 
   // Extract unique non-matcha addon options from all menu items
   const uniqueAddonOptions = Array.from(
@@ -129,36 +143,15 @@ export default function AdminVoucherPackagesPage() {
     ).values()
   );
 
-  // Load data on mount
+  // Prepopulate select defaults if items are loaded
   useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true);
-        const [pkgs, items, powdersRes] = await Promise.all([
-          listVoucherPackages(),
-          fetchMenuItems(),
-          fetchPowders()
-        ]);
-        setVoucherPackages(pkgs);
-        setMenuItems(items);
-        setPowders(powdersRes.data);
-
-        // Prepopulate select defaults if items are loaded
-        if (items.length > 0) {
-          setForm(prev => ({
-            ...prev,
-            menu_item_id: prev.menu_item_id || items[0].id
-          }));
-        }
-
-      } catch (err: any) {
-        toast.error(err.response?.data?.error || "Không thể tải dữ liệu.");
-      } finally {
-        setLoading(false);
-      }
+    if (menuItems.length > 0 && !form.menu_item_id && form.name === emptyForm.name) {
+      setForm(prev => ({
+        ...prev,
+        menu_item_id: menuItems[0].id
+      }));
     }
-    loadData();
-  }, []);
+  }, [menuItems, form.menu_item_id, form.name]);
 
   // Sync menu_item_id and addon_option_id when dialog opens
   useEffect(() => {
@@ -205,6 +198,32 @@ export default function AdminVoucherPackagesPage() {
     setOpen(true);
   };
 
+  const createMutation = useMutation({
+    mutationFn: createVoucherPackage,
+    onSuccess: (newPkg) => {
+      queryClient.setQueryData<VoucherPackage[]>(["admin", "voucher-packages"], (old) => [newPkg, ...(old || [])]);
+      toast.success("Đã thêm gói voucher mới");
+      setOpen(false);
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.error || "Thao tác thất bại.");
+    }
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string, data: any }) => updateVoucherPackage(id, data),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<VoucherPackage[]>(["admin", "voucher-packages"], (old) =>
+        old?.map((p) => (p.id === updated.id ? { ...p, ...updated } : p))
+      );
+      toast.success("Đã cập nhật gói voucher");
+      setOpen(false);
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.error || "Thao tác thất bại.");
+    }
+  });
+
   const handleSave = async () => {
     if (!form.name.trim()) {
       toast.error("Vui lòng nhập tên gói voucher");
@@ -215,112 +234,112 @@ export default function AdminVoucherPackagesPage() {
       return;
     }
 
-    setIsSubmitting(true);
-    try {
-      const expiresDays = form.expires_after_days === "" ? null : Number(form.expires_after_days);
+    const expiresDays = form.expires_after_days === "" ? null : Number(form.expires_after_days);
 
-      if (editingId) {
-        // Edit mode (API allows updating name, description, points_cost, expires_after_days, quantity, max_per_user, is_active)
-        const updated = await updateVoucherPackage(editingId, {
+    if (editingId) {
+      // Edit mode
+      updateMutation.mutate({
+        id: editingId,
+        data: {
           name: form.name,
           description: form.description || null,
           points_cost: form.points_cost,
           expires_after_days: expiresDays,
           quantity: form.quantity === "" ? null : Number(form.quantity),
           max_per_user: form.max_per_user === "" ? null : Number(form.max_per_user),
-        });
-        setVoucherPackages((prev) =>
-          prev.map((p) => (p.id === editingId ? { ...p, ...updated } : p))
-        );
-        toast.success("Đã cập nhật gói voucher");
+        }
+      });
+    } else {
+      // Create mode
+      let createInput: CreateVoucherPackageInput;
+
+      if (form.voucher_type === "DISCOUNT") {
+        if (form.discount_value === "" || Number(form.discount_value) <= 0) {
+          toast.error("Vui lòng nhập giá trị giảm giá hợp lệ");
+          return;
+        }
+        createInput = {
+          voucher_type: "DISCOUNT",
+          name: form.name,
+          description: form.description || undefined,
+          points_cost: form.points_cost,
+          discount_type: form.discount_type,
+          discount_value: Number(form.discount_value),
+          expires_after_days: expiresDays,
+        };
+      } else if (form.voucher_type === "PRODUCT") {
+        if (!form.menu_item_id) {
+          toast.error("Vui lòng chọn một sản phẩm");
+          return;
+        }
+        createInput = {
+          voucher_type: "PRODUCT",
+          name: form.name,
+          description: form.description || undefined,
+          points_cost: form.points_cost,
+          menu_item_id: form.menu_item_id,
+          size: form.size,
+          matcha_powder_id: form.matcha_powder_id || undefined,
+          milk_type_id: form.milk_type_id || undefined,
+          expires_after_days: expiresDays,
+          quantity: form.quantity === "" ? null : Number(form.quantity),
+          max_per_user: form.max_per_user === "" ? null : Number(form.max_per_user),
+        };
+      } else if (form.voucher_type === "FREESHIP") {
+        if (form.covered_delivery_fee_vnd === "" || Number(form.covered_delivery_fee_vnd) < 1000) {
+          toast.error("Vui lòng nhập phí giao hàng tối thiểu 1.000đ");
+          return;
+        }
+        createInput = {
+          voucher_type: "FREESHIP",
+          name: form.name,
+          description: form.description || undefined,
+          points_cost: form.points_cost,
+          covered_delivery_fee_vnd: Number(form.covered_delivery_fee_vnd),
+          min_order_vnd: form.min_order_vnd === "" ? null : Number(form.min_order_vnd),
+          expires_after_days: expiresDays,
+          quantity: form.quantity === "" ? null : Number(form.quantity),
+          max_per_user: form.max_per_user === "" ? null : Number(form.max_per_user),
+        };
       } else {
-        // Create mode
-        let createInput: CreateVoucherPackageInput;
-
-        if (form.voucher_type === "DISCOUNT") {
-          if (form.discount_value === "" || Number(form.discount_value) <= 0) {
-            toast.error("Vui lòng nhập giá trị giảm giá hợp lệ");
-            return;
-          }
-          createInput = {
-            voucher_type: "DISCOUNT",
-            name: form.name,
-            description: form.description || undefined,
-            points_cost: form.points_cost,
-            discount_type: form.discount_type,
-            discount_value: Number(form.discount_value),
-            expires_after_days: expiresDays,
-          };
-        } else if (form.voucher_type === "PRODUCT") {
-          if (!form.menu_item_id) {
-            toast.error("Vui lòng chọn một sản phẩm");
-            return;
-          }
-          createInput = {
-            voucher_type: "PRODUCT",
-            name: form.name,
-            description: form.description || undefined,
-            points_cost: form.points_cost,
-            menu_item_id: form.menu_item_id,
-            size: form.size,
-            matcha_powder_id: form.matcha_powder_id || undefined,
-            milk_type_id: form.milk_type_id || undefined,
-            expires_after_days: expiresDays,
-            quantity: form.quantity === "" ? null : Number(form.quantity),
-            max_per_user: form.max_per_user === "" ? null : Number(form.max_per_user),
-          };
-
-        } else if (form.voucher_type === "FREESHIP") {
-          if (form.covered_delivery_fee_vnd === "" || Number(form.covered_delivery_fee_vnd) < 1000) {
-            toast.error("Vui lòng nhập phí giao hàng tối thiểu 1.000đ");
-            return;
-          }
-          createInput = {
-            voucher_type: "FREESHIP",
-            name: form.name,
-            description: form.description || undefined,
-            points_cost: form.points_cost,
-            covered_delivery_fee_vnd: Number(form.covered_delivery_fee_vnd),
-            min_order_vnd: form.min_order_vnd === "" ? null : Number(form.min_order_vnd),
-            expires_after_days: expiresDays,
-            quantity: form.quantity === "" ? null : Number(form.quantity),
-            max_per_user: form.max_per_user === "" ? null : Number(form.max_per_user),
-          };
-        } else {
-          // ADDON
-          if (!form.addon_option_id) {
-            toast.error("Vui lòng chọn một addon");
-            return;
-          }
-          createInput = {
-            voucher_type: "ADDON",
-            name: form.name,
-            description: form.description || undefined,
-            points_cost: form.points_cost,
-            addon_option_id: form.addon_option_id,
-            expires_after_days: expiresDays,
-            quantity: form.quantity === "" ? null : Number(form.quantity),
-            max_per_user: form.max_per_user === "" ? null : Number(form.max_per_user),
-          };
+        // ADDON
+        if (!form.addon_option_id) {
+          toast.error("Vui lòng chọn một addon");
+          return;
         }
-
-        // Apply shared fields for DISCOUNT
-        if (createInput.voucher_type === "DISCOUNT") {
-          createInput.quantity = form.quantity === "" ? null : Number(form.quantity);
-          createInput.max_per_user = form.max_per_user === "" ? null : Number(form.max_per_user);
-        }
-
-        const newPkg = await createVoucherPackage(createInput);
-        setVoucherPackages((prev) => [newPkg, ...prev]);
-        toast.success("Đã thêm gói voucher mới");
+        createInput = {
+          voucher_type: "ADDON",
+          name: form.name,
+          description: form.description || undefined,
+          points_cost: form.points_cost,
+          addon_option_id: form.addon_option_id,
+          expires_after_days: expiresDays,
+          quantity: form.quantity === "" ? null : Number(form.quantity),
+          max_per_user: form.max_per_user === "" ? null : Number(form.max_per_user),
+        };
       }
-      setOpen(false);
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || "Thao tác thất bại.");
-    } finally {
-      setIsSubmitting(false);
+
+      if (createInput.voucher_type === "DISCOUNT") {
+        createInput.quantity = form.quantity === "" ? null : Number(form.quantity);
+        createInput.max_per_user = form.max_per_user === "" ? null : Number(form.max_per_user);
+      }
+
+      createMutation.mutate(createInput);
     }
   };
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteVoucherPackage,
+    onSuccess: (_, id) => {
+      queryClient.setQueryData<VoucherPackage[]>(["admin", "voucher-packages"], (old) =>
+        old?.filter((p) => p.id !== id)
+      );
+      toast.success("Đã ngưng hoạt động gói voucher");
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.error || "Xóa thất bại");
+    }
+  });
 
   const handleDelete = (id: string) => {
     setConfirmModal({
@@ -330,28 +349,27 @@ export default function AdminVoucherPackagesPage() {
       isDestructive: true,
       onConfirm: async () => {
         setConfirmModal((s) => ({ ...s, isOpen: false }));
-        try {
-          await deleteVoucherPackage(id);
-          setVoucherPackages((prev) => prev.filter((p) => p.id !== id));
-          toast.success("Đã ngưng hoạt động gói voucher");
-        } catch (err: any) {
-          toast.error(err.response?.data?.error || "Xóa thất bại");
-        }
+        deleteMutation.mutate(id);
       },
     });
   };
 
-  const toggleActive = async (pkg: VoucherPackage) => {
-    try {
-      const nextActive = !pkg.is_active;
-      const updated = await updateVoucherPackage(pkg.id, { is_active: nextActive });
-      setVoucherPackages((prev) =>
-        prev.map((p) => (p.id === pkg.id ? { ...p, is_active: updated.is_active } : p))
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string, data: { is_active: boolean } }) => updateVoucherPackage(id, data),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<VoucherPackage[]>(["admin", "voucher-packages"], (old) =>
+        old?.map((p) => (p.id === updated.id ? { ...p, is_active: updated.is_active } : p))
       );
-      toast.success(nextActive ? "Đã kích hoạt gói" : "Đã hủy kích hoạt gói");
-    } catch (err: any) {
+      toast.success(updated.is_active ? "Đã kích hoạt gói" : "Đã hủy kích hoạt gói");
+    },
+    onError: (err: any) => {
       toast.error(err.response?.data?.error || "Cập nhật thất bại");
     }
+  });
+
+  const toggleActive = async (pkg: VoucherPackage) => {
+    const nextActive = !pkg.is_active;
+    toggleMutation.mutate({ id: pkg.id, data: { is_active: nextActive } });
   };
 
   const activeVoucherCount = voucherPackages.filter((p) => p.is_active).length;
@@ -796,7 +814,7 @@ export default function AdminVoucherPackagesPage() {
             <div className="flex gap-2 justify-end pt-1">
               <button
                 type="button"
-                disabled={isSubmitting}
+                disabled={createMutation.isPending || updateMutation.isPending}
                 onClick={() => setOpen(false)}
                 className="px-4 py-2 rounded-xl border border-border text-sm hover:bg-secondary/40 transition disabled:opacity-50"
               >
@@ -804,11 +822,11 @@ export default function AdminVoucherPackagesPage() {
               </button>
               <button
                 type="button"
-                disabled={isSubmitting}
+                disabled={createMutation.isPending || updateMutation.isPending}
                 onClick={handleSave}
                 className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition flex items-center gap-2 disabled:opacity-70"
               >
-                {isSubmitting ? (
+                {(createMutation.isPending || updateMutation.isPending) ? (
                   <>
                     <span className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></span>
                     Đang lưu...

@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp, Phone, Clock, RefreshCw, CheckCircle2, XCircle,
 import { cn } from "@/src/utils/cn";
 import { fetchOrdersList, type OrderRes } from "@/src/services/staffOrdersListService";
 import { apiClient } from "@/src/lib/api/client";
-import { usePolling } from "@/src/hooks/usePolling";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
 import { OrderTabs, type OrderTabKey } from "@/src/components/staff/OrderTabs";
 import { OrderProgressBar } from "@/src/components/shared/OrderProgressBar";
@@ -29,6 +29,7 @@ interface StaffOrdersListPageProps {
 }
 
 export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersListPageProps) {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<OrderTabKey>("counter");
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -61,14 +62,14 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
     });
   }, [activeTab, page]);
 
-  const { data, isInitialLoading, isRefreshing, refetch } = usePolling({
-    fetcher: fetchOrdersFn,
-    interval: activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000,
-    dependencies: [activeTab, page],
+  const { data: queryData, isLoading: isInitialLoading, isFetching: isRefreshing } = useQuery({
+    queryKey: ["staff", "orders", { activeTab, page }],
+    queryFn: fetchOrdersFn,
+    refetchInterval: activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000,
   });
 
-  const orders = data?.data || [];
-  const totalPages = data?.meta.totalPages || 1;
+  const orders = queryData?.data || [];
+  const totalPages = queryData?.meta.totalPages || 1;
 
   // Background polling cho pendingCount
   const fetchPendingCountAPI = useCallback(async () => {
@@ -81,27 +82,37 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
     }
   }, [userRole]);
 
-  const { data: pendingData } = usePolling({
-    fetcher: fetchPendingCountAPI,
-    interval: 20000,
+  const { data: pendingRes } = useQuery({
+    queryKey: ["staff", "orders", "pending-count"],
+    queryFn: fetchPendingCountAPI,
+    refetchInterval: 20000,
+    enabled: userRole === "ADMIN",
   });
 
-  const pendingCount = pendingData?.meta?.total || 0;
+  const pendingCount = pendingRes?.meta?.total || 0;
+
+  const refetch = () => queryClient.invalidateQueries({ queryKey: ["staff", "orders"] });
 
   const toggle = (id: string) => setExpanded((s) => ({ ...s, [id]: !s[id] }));
 
-  const updateStatus = async (orderId: string, newStatus: OrderRes["status"]) => {
-    try {
-      await apiClient.patch(`/api/staff/orders/${orderId}`, { status: newStatus });
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ orderId, newStatus }: { orderId: string; newStatus: OrderRes["status"] }) =>
+      apiClient.patch(`/api/staff/orders/${orderId}`, { status: newStatus }),
+    onSuccess: () => {
       toast.success("Cập nhật trạng thái thành công");
       refetch();
-    } catch (err: unknown) {
+    },
+    onError: (err: unknown) => {
       if (err instanceof Error) {
         toast.error(err.message);
       } else {
         toast.error("Cập nhật thất bại");
       }
-    }
+    },
+  });
+
+  const updateStatus = async (orderId: string, newStatus: OrderRes["status"]) => {
+    updateStatusMutation.mutate({ orderId, newStatus });
   };
 
   const renderActionButtons = (order: OrderRes) => {

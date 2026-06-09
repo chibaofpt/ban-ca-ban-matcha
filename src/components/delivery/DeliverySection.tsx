@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { addressService } from "@/src/services/addressService";
+import React, { useState, useEffect } from "react";
+import { useCustomerAddresses, useCreateAddress } from "@/src/hooks/useCustomerAddresses";
 import { deliveryService } from "@/src/services/deliveryService";
 import type { Address } from "@/src/lib/types/address";
 import { AddressCard } from "@/src/components/address/AddressCard";
@@ -17,34 +17,18 @@ interface Props {
 }
 
 export function DeliverySection({ selectedAddressId, onAddressSelect, onError }: Props) {
-  const [addresses, setAddresses] = useState<Address[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: addresses = [], isLoading: loading } = useCustomerAddresses();
+  const createAddressMutation = useCreateAddress();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [estimating, setEstimating] = useState(false);
 
-  const fetchAddresses = async () => {
-    try {
-      setLoading(true);
-      const data = await addressService.getAddresses();
-      setAddresses(data);
-      
-      // Auto-select default address if none selected and not form open
-      if (!selectedAddressId && data.length > 0) {
-        const defaultAddr = data.find(a => a.is_default) || data[0];
-        handleSelectAddress(defaultAddr);
-      }
-    } catch (err) {
-      console.error("Failed to load addresses", err);
-      onError("Không thể tải danh sách địa chỉ");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchAddresses();
+    if (!loading && !selectedAddressId && addresses.length > 0) {
+      const defaultAddr = addresses.find(a => a.is_default) || addresses[0];
+      handleSelectAddress(defaultAddr);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loading, addresses.length]);
 
   const handleSelectAddress = async (address: Address) => {
     try {
@@ -79,8 +63,7 @@ export function DeliverySection({ selectedAddressId, onAddressSelect, onError }:
   const handleSaveNew = async (payload: any) => {
     try {
       setEstimating(true); // Treat as estimating state to show spinner
-      const newAddr = await addressService.createAddress(payload);
-      await fetchAddresses();
+      const newAddr = await createAddressMutation.mutateAsync(payload);
       setIsFormOpen(false);
       handleSelectAddress(newAddr);
     } catch (err: any) {

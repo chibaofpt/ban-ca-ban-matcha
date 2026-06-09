@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useMemo } from "react";
 import { motion, Variants } from "framer-motion";
 import { ArrowRight, Coffee } from "lucide-react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { fetchMenu } from "@/src/services/menuService";
 import type { MenuItem } from "@/src/lib/types/menu";
 
@@ -17,16 +18,15 @@ const fadeUp: Variants = {
 };
 
 const FeaturedProducts: React.FC = () => {
-  const [items, setItems] = useState<MenuItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ['menu'],
+    queryFn: fetchMenu,
+  });
 
-  useEffect(() => {
-    fetchMenu().then((data) => {
-      // Pick up to 4 latte items to feature (Phase 2: categories are latte / fusion)
-      setItems(data.latte.slice(0, 4));
-      setLoading(false);
-    });
-  }, []);
+  const items = useMemo(() => {
+    if (!data) return [];
+    return data.latte.slice(0, 4);
+  }, [data]);
 
   if (loading || items.length === 0) return null;
 

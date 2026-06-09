@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Coffee } from 'lucide-react';
+import { motion } from 'framer-motion';
 import type { MenuItem } from '@/src/lib/types/menu';
 import { usePowderStore } from '@/src/lib/store/powderStore';
 import { calcLattePrice, calcFusionPrice, resolveGram } from '@/src/utils/pricing';
@@ -20,7 +21,7 @@ const SIZE_CARD_LABELS: Record<string, string> = {
 };
 
 /** MenuCard — displays a single menu item in the customer menu grid. */
-const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
+const MenuCard: React.FC<MenuCardProps> = ({ item, index, onClick }) => {
   const sizes = item.sizes.filter((s) => s.base_price_vnd != null);
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
@@ -54,52 +55,72 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
     }
   };
 
+  const isReversed = index % 2 !== 0;
+
   return (
-    <div
+    <motion.div
       onClick={onClick}
-      className="group flex flex-col h-full bg-white rounded-4xl overflow-hidden border border-border shadow-sm hover:shadow-lg active:scale-[0.98] transition-all duration-300 cursor-pointer"
+      whileTap={{ scale: 0.96 }}
+      initial={{ opacity: 0, y: 30 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-50px" }}
+      className={`group flex ${
+        isReversed ? 'flex-row-reverse' : 'flex-row'
+      } h-40 md:h-48 bg-white/80 backdrop-blur-md rounded-[2rem] overflow-hidden shadow-sm hover:shadow-md border border-border/60 transition-all duration-300 cursor-pointer`}
     >
-      {/* Image / Icon Area */}
-      <div className="aspect-4/3 bg-[#d9e4d4] relative overflow-hidden flex items-center justify-center">
+      {/* Image Area - 45% width */}
+      <div className="w-[45%] bg-[#eef1eb] relative overflow-hidden flex-shrink-0">
         {item.is_seasonal && (
-          <div className="absolute top-3 right-3 z-10 bg-white/90 backdrop-blur-sm text-amber-600 text-[9px] font-medium uppercase tracking-[0.2em] px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 border border-amber-200/50">
-            <span>✨ Seasonal</span>
+          <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur-sm text-amber-600 text-[10px] font-medium uppercase tracking-widest px-2.5 py-1 rounded-full shadow-sm flex items-center gap-1 border border-amber-200/50">
+            <span>✨ Theo mùa</span>
           </div>
         )}
         {item.image_url ? (
           <img
             src={item.image_url}
             alt={item.name}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
           />
         ) : (
-          <Coffee className="w-full h-full text-[#b8c9b4] group-hover:scale-110 transition-transform duration-500" />
+          <div className="w-full h-full flex items-center justify-center">
+            <Coffee className="w-12 h-12 text-[#b8c9b4] group-hover:scale-110 transition-transform duration-500" />
+          </div>
         )}
       </div>
 
-      {/* Content Area */}
-      <div className="px-4 pt-3 pb-4 flex flex-col flex-1 bg-white">
-        <h3 className="font-serif font-light text-base text-foreground mb-3 truncate">
-          {item.name}
-        </h3>
+      {/* Content Area - 55% width */}
+      <div className="flex flex-col w-[55%] px-4 md:px-5 py-4 bg-transparent justify-between">
+        <div>
+          <h3 className="font-serif font-medium text-lg text-[#2d4a22] leading-tight line-clamp-2 mb-1.5">
+            {item.name}
+          </h3>
+          {item.description && (
+            <p className="text-xs text-primary/60 line-clamp-2 leading-relaxed">
+              {item.description}
+            </p>
+          )}
+        </div>
 
-        {/* Size prices row */}
-        <div className="mt-auto pt-3">
-          <div className="flex items-end justify-between gap-1">
-            {sizes.map((s) => (
-              <div key={s.size} className="flex flex-col items-center gap-0.5 flex-1">
-                <span className="text-[8px] font-bold text-primary/40 uppercase tracking-wide whitespace-nowrap">
+        {/* Sizes & Prices - Horizontal Layout */}
+        <div className={`mt-auto pt-2 flex items-end gap-3 ${isReversed ? 'justify-end text-right' : 'justify-start text-left'}`}>
+          {sizes.map((s) => {
+            const isDefault = s.size === 'L';
+            const price = getDisplayPrice(s) / 1000;
+            
+            return (
+              <div key={s.size} className={`flex flex-col ${isReversed ? 'items-end' : 'items-start'} gap-0.5`}>
+                <span className={`uppercase tracking-wide whitespace-nowrap ${isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
                   {SIZE_CARD_LABELS[s.size] ?? s.size}
                 </span>
-                <span className="text-sm font-bold text-primary">
-                  {getDisplayPrice(s) / 1000}k
+                <span className={`${isDefault ? 'text-base font-bold text-[#2d4a22]' : 'text-sm font-semibold text-primary/50'}`}>
+                  {price}k
                 </span>
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };
 

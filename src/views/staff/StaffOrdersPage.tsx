@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { QrCode, ShoppingBag } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { cn } from "@/src/utils/cn";
 import { fetchMenu } from "@/src/services/menuService";
@@ -81,9 +82,27 @@ interface DiscountVoucher {
 export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "STAFF" | "ADMIN" }) {
   // ── Server data ───────────────────────────────────────────────────────
 
-  const [menuData, setMenuData] = useState<MenuData | null>(null);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [status, setStatus] = useState<LoadStatus>("loading");
+  // ── Server data ───────────────────────────────────────────────────────
+  const queryClient = useQueryClient();
+
+  const { data: menuData, isLoading: isMenuLoading } = useQuery({
+    queryKey: ["staff", "menu"],
+    queryFn: fetchMenu,
+  });
+
+  const { data: pData, isLoading: isPowderLoading } = useQuery({
+    queryKey: ["staff", "powders"],
+    queryFn: fetchPowders,
+  });
+
+  const menuItems = menuData ? [...menuData.latte, ...menuData.fusion] : [];
+  const status: LoadStatus = isMenuLoading || isPowderLoading ? "loading" : (menuData && pData) ? "success" : "error";
+  
+  const loadMenu = () => {
+    queryClient.invalidateQueries({ queryKey: ["staff", "menu"] });
+    queryClient.invalidateQueries({ queryKey: ["staff", "powders"] });
+  };
+
   const setPowderData = usePowderStore((s) => s.setPowderData);
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
@@ -151,21 +170,12 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
 
   // ── Data fetching ─────────────────────────────────────────────────────
 
-  const loadMenu = useCallback(() => {
-    setStatus("loading");
-    Promise.all([fetchMenu(), fetchPowders()])
-      .then(([mData, pData]) => {
-        setMenuData(mData);
-        setMenuItems([...mData.latte, ...mData.fusion]);
-        setPowderData(pData);
-        setStatus("success");
-      })
-      .catch(() => setStatus("error"));
-  }, [setPowderData]);
-
+  // Sync fetched powders to Zustand
   useEffect(() => {
-    loadMenu();
-  }, [loadMenu]);
+    if (pData) {
+      setPowderData(pData);
+    }
+  }, [pData, setPowderData]);
 
   // Fetch customer vouchers when customer changes
   useEffect(() => {
@@ -260,47 +270,56 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     }
   };
 
-  const handleCheckoutConfirm = async (customerQrToken?: string) => {
-    setConfirmCheckoutOpen(false);
-    setQrVerifyOpen(false);
-    setIsSubmitting(true);
-    try {
-      let payload: CreateStaffOrderPayload;
-      const items = buildOrderItems(cart);
-      const discountVoucherIds = [
-        ...(discountVoucher ? [discountVoucher.id] : []),
-        ...selectedDiscountIds,
-      ];
-
-      if (!customerInfo) {
-        payload = { items };
-      } else if (customerInfo.type === "existing") {
-        payload = {
-          phone_number: customerInfo.data.phone_number,
-          items,
-          ...(discountVoucherIds.length > 0 ? { discount_voucher_ids: discountVoucherIds } : {}),
-          ...(customerQrToken ? { customer_qr_token: customerQrToken } : {}),
-        };
-      } else {
-        payload = {
-          phone_number: customerInfo.phone_number,
-          customer_name: customerInfo.name,
-          items,
-        };
-      }
-
-      await staffOrderService.createStaffOrder(payload);
+  const createOrderMutation = useMutation({
+    mutationFn: staffOrderService.createStaffOrder,
+    onSuccess: () => {
       handleSuccess();
-    } catch (err: unknown) {
+      queryClient.invalidateQueries({ queryKey: ["staff", "orders"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
+    },
+    onError: (err: unknown) => {
       const error = err as { response?: { data?: { error?: string } } };
       if (error.response?.data?.error) {
         toast.error(error.response.data.error);
       } else {
         toast.error("Tạo đơn thất bại. Vui lòng thử lại.");
       }
-    } finally {
+    },
+    onSettled: () => {
       setIsSubmitting(false);
     }
+  });
+
+  const handleCheckoutConfirm = async (customerQrToken?: string) => {
+    setConfirmCheckoutOpen(false);
+    setQrVerifyOpen(false);
+    setIsSubmitting(true);
+    
+    let payload: CreateStaffOrderPayload;
+    const items = buildOrderItems(cart);
+    const discountVoucherIds = [
+      ...(discountVoucher ? [discountVoucher.id] : []),
+      ...selectedDiscountIds,
+    ];
+
+    if (!customerInfo) {
+      payload = { items };
+    } else if (customerInfo.type === "existing") {
+      payload = {
+        phone_number: customerInfo.data.phone_number,
+        items,
+        ...(discountVoucherIds.length > 0 ? { discount_voucher_ids: discountVoucherIds } : {}),
+        ...(customerQrToken ? { customer_qr_token: customerQrToken } : {}),
+      };
+    } else {
+      payload = {
+        phone_number: customerInfo.phone_number,
+        customer_name: customerInfo.name,
+        items,
+      };
+    }
+
+    createOrderMutation.mutate(payload);
   };
 
   // ── QR scan handlers ──────────────────────────────────────────────────
@@ -618,48 +637,46 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         </button>
       )}
 
-      {selectedItem && (
-        <AddonModal
-          item={selectedItem}
-          latteItems={menuData?.latte ?? []}
-          freeVoucherId={productVoucherId ?? undefined}
-          onClose={() => {
-            setSelectedItem(null);
-            setProductVoucherId(null);
-          }}
-          onConfirm={handleAddToCart}
-        />
-      )}
+      <AddonModal
+        isOpen={!!selectedItem}
+        item={selectedItem}
+        latteItems={menuData?.latte ?? []}
+        freeVoucherId={productVoucherId ?? undefined}
+        onClose={() => {
+          setSelectedItem(null);
+          setProductVoucherId(null);
+        }}
+        onConfirm={handleAddToCart}
+      />
 
       {/* StaffCartDrawer */}
-      {cartOpen && (
-        <StaffCartDrawer
-          cart={cart}
-          discountVoucher={
-            discountVoucher
-              ? {
-                  discount_type: discountVoucher.discount_type,
-                  discount_value: discountVoucher.discount_value,
-                }
-              : null
-          }
-          customerInfo={customerInfo}
-          isSubmitting={isSubmitting}
-          onClose={() => setCartOpen(false)}
-          onRemove={handleRemove}
-          onChangeQuantity={handleChangeQuantity}
-          onCheckout={handleCheckoutClick}
-          onOpenCustomerSelect={() => setCustomerSelectOpen(true)}
-          onClearCustomer={() => setCustomerInfo(null)}
-          customerVouchers={customerVouchers}
-          selectedDiscountIds={selectedDiscountIds}
-          onToggleDiscount={handleToggleDiscount}
-          onApplyProduct={handleApplyProduct}
-          onRemoveProduct={handleRemoveProduct}
-          onApplyAddon={handleApplyAddon}
-          onRemoveAddon={handleRemoveAddon}
-        />
-      )}
+      <StaffCartDrawer
+        isOpen={cartOpen}
+        cart={cart}
+        discountVoucher={
+          discountVoucher
+            ? {
+                discount_type: discountVoucher.discount_type,
+                discount_value: discountVoucher.discount_value,
+              }
+            : null
+        }
+        customerInfo={customerInfo}
+        isSubmitting={isSubmitting}
+        onClose={() => setCartOpen(false)}
+        onRemove={handleRemove}
+        onChangeQuantity={handleChangeQuantity}
+        onCheckout={handleCheckoutClick}
+        onOpenCustomerSelect={() => setCustomerSelectOpen(true)}
+        onClearCustomer={() => setCustomerInfo(null)}
+        customerVouchers={customerVouchers}
+        selectedDiscountIds={selectedDiscountIds}
+        onToggleDiscount={handleToggleDiscount}
+        onApplyProduct={handleApplyProduct}
+        onRemoveProduct={handleRemoveProduct}
+        onApplyAddon={handleApplyAddon}
+        onRemoveAddon={handleRemoveAddon}
+      />
 
       {/* CustomerSelectModal */}
       {customerSelectOpen && (

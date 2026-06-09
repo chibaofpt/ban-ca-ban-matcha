@@ -124,6 +124,24 @@ describe("filterModalVouchers", () => {
   });
 });
 
+// ── filterModalPackages ────────────────────────────────────────────────────────
+
+describe("filterModalPackages", () => {
+  it("loại bỏ các package đã hết lượt đổi (user_redeemed_count >= max_per_user)", async () => {
+    const packages = [
+      makePackage({ id: "p1", max_per_user: 1, user_redeemed_count: 0 }),
+      makePackage({ id: "p2", max_per_user: 2, user_redeemed_count: 2 }), // maxed out
+      makePackage({ id: "p3", max_per_user: 1, user_redeemed_count: undefined }), // backward compatibility
+    ];
+    // @ts-ignore
+    const { filterModalPackages } = await import("@/src/lib/utils/voucherModalHelpers");
+    const result = filterModalPackages(packages);
+    
+    expect(result).toHaveLength(2);
+    expect(result.map((p: any) => p.id)).toEqual(["p1", "p3"]);
+  });
+});
+
 // ── canInteract ────────────────────────────────────────────────────────────────
 
 describe("canInteract", () => {

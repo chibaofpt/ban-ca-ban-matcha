@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { QrCode, ScanLine } from "lucide-react";
-import { scanQrToken } from "@/src/services/staffOrderService";
+import { scanQrToken, scanFallback } from "@/src/services/staffOrderService";
 import type { CustomerInfo } from "./CustomerSelectModal";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -32,6 +32,8 @@ export function VoucherQRVerifyModal({
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [showManualInput, setShowManualInput] = useState(false);
+  const [manualCode, setManualCode] = useState("");
   const containerId = "qr-verify-container";
 
   const customerPhone =
@@ -144,6 +146,25 @@ export function VoucherQRVerifyModal({
     }
   };
 
+  const handleManualSubmit = async () => {
+    if (manualCode.length !== 6) return;
+    setProcessing(true);
+    setError(null);
+    try {
+      const result = await scanFallback(customerPhone, manualCode);
+      if (result.type !== "user") {
+         setError("Mã này không phải mã cá nhân của khách.");
+         setProcessing(false);
+         return;
+      }
+      // Success — pass back the raw token
+      onVerified(result.data.id);
+    } catch (err: any) {
+      setError(err.response?.data?.error || "Mã không đúng. Vui lòng thử lại.");
+      setProcessing(false);
+    }
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
@@ -186,6 +207,38 @@ export function VoucherQRVerifyModal({
           <p className="text-sm text-destructive text-center bg-destructive/10 rounded-xl px-3 py-2">
             {error}
           </p>
+        )}
+
+        {/* Manual Fallback */}
+        {showManualInput ? (
+          <div className="space-y-3 pt-2 border-t border-border/50">
+            <p className="text-xs font-medium text-center text-muted-foreground">Nhập mã 6 ký tự trên app khách</p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                maxLength={6}
+                value={manualCode}
+                onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+                placeholder="VD: A3F9B2"
+                className="flex-1 rounded-xl border border-input bg-background px-3 py-2 text-sm uppercase text-center font-mono tracking-widest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={processing}
+              />
+              <button
+                onClick={handleManualSubmit}
+                disabled={manualCode.length !== 6 || processing}
+                className="bg-primary text-primary-foreground px-4 rounded-xl text-sm font-medium disabled:opacity-50"
+              >
+                Xác nhận
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowManualInput(true)}
+            className="w-full py-1 text-sm text-primary hover:underline"
+          >
+            Nhập mã thủ công
+          </button>
         )}
 
         <button

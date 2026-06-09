@@ -7,18 +7,18 @@ import { toast } from "sonner";
 import { cn } from "@/src/utils/cn";
 
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
-import { usePointsStore } from "@/src/lib/store/pointsStore";
 import { useIsLoggedIn } from "@/src/lib/store/authStore";
-import { apiClient } from "@/src/lib/api/client";
+import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
+import { useCustomerVouchers } from "@/src/hooks/useCustomerVouchers";
+import { useVoucherPackages } from "@/src/hooks/useVoucherPackages";
+import { useExchangeVoucher } from "@/src/hooks/useExchangeVoucher";
 import {
-  listMyVouchers,
-  listActiveVoucherPackages,
-  exchangeVoucher,
   type MyVoucher,
   type VoucherPackage,
 } from "@/src/services/customerVoucherService";
 import {
   filterModalVouchers,
+  filterModalPackages,
   canInteract,
   canExchange,
   getExchangeErrorMessage,
@@ -49,12 +49,12 @@ function VoucherCard({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       className={cn(
-        "rounded-2xl border bg-card shadow-sm overflow-hidden flex flex-col",
+        "rounded-xl border bg-card shadow-sm overflow-hidden flex items-center p-3 gap-3",
         !isInteractable && "opacity-50"
       )}
     >
-      <div className="p-3 flex flex-col gap-2 flex-1">
-        {/* Type badge + status */}
+      {/* Left: Info */}
+      <div className="flex-1 min-w-0 flex flex-col gap-1.5">
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold", typeConfig.badgeCls)}>
             {typeConfig.label}
@@ -65,33 +65,30 @@ function VoucherCard({
             </span>
           )}
         </div>
-
-        {/* Name + benefit */}
-        <div className="flex-1 min-w-0">
-          <p className="font-bold text-sm text-foreground leading-tight line-clamp-2">
+        <div>
+          <p className="font-bold text-sm text-foreground leading-tight truncate">
             {voucher.package.name}
           </p>
-          <p className="text-xs text-primary font-medium mt-0.5">
+          <p className="text-xs text-primary font-medium mt-0.5 truncate">
             {getVoucherBenefitText(voucher)}
           </p>
         </div>
-
-        {/* Expiry */}
         <p className="text-[10px] text-muted-foreground flex items-center gap-1">
           <Clock size={10} />
           {formatVoucherExpiry(voucher.expires_at)}
         </p>
       </div>
 
-      {/* QR button — only ACTIVE */}
+      {/* Right: Action */}
       {isInteractable && (
-        <button
+        <motion.button
+          whileTap={{ scale: 0.92 }}
           onClick={() => onShowQr(voucher)}
-          className="w-full flex items-center justify-center gap-1.5 py-2 border-t border-border/50 text-xs font-bold text-primary hover:bg-primary/5 transition"
+          className="flex-shrink-0 flex flex-col items-center justify-center gap-1 bg-primary/10 text-primary rounded-lg px-3 py-2 hover:bg-primary/20 transition h-full min-w-[70px]"
         >
-          <QrCode size={13} />
-          Hiện QR
-        </button>
+          <QrCode size={18} />
+          <span className="text-[10px] font-bold">QR</span>
+        </motion.button>
       )}
     </motion.div>
   );
@@ -110,29 +107,29 @@ function PackageCard({
   onExchange: (pkg: VoucherPackage) => void;
   isExchanging: boolean;
 }) {
-  // Pass 0 for redeemedCount — server validates the limit; UI only checks points + sold_out
-  const { ok, reason } = canExchange(pkg, userBalance, 0);
+  const { ok, reason } = canExchange(pkg, userBalance, pkg.user_redeemed_count ?? 0);
   const typeConfig = VOUCHER_TYPE_CONFIG[pkg.voucher_type] ?? VOUCHER_TYPE_CONFIG.DISCOUNT;
 
-  const btnLabel = (() => {
-    if (isExchanging) return <Loader2 size={13} className="animate-spin" />;
-    if (reason === "sold_out") return "Hết hàng";
-    if (reason === "insufficient_points") {
-      const needed = pkg.points_cost - userBalance;
-      return `Cần thêm ${needed} điểm`;
-    }
-    return `Đổi ${pkg.points_cost} 🐟`;
-  })();
+  // Calculate progress for insufficient points
+  const progressPercent = Math.min(100, Math.round((userBalance / pkg.points_cost) * 100));
 
   return (
     <motion.div
       layout
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-2xl border bg-card shadow-sm overflow-hidden flex flex-col"
+      className="rounded-xl border bg-card shadow-sm overflow-hidden flex items-center p-3 gap-3 relative"
     >
-      <div className="p-3 flex flex-col gap-2 flex-1">
-        {/* Type badge */}
+      {/* Progress background if insufficient points */}
+      {!ok && reason === "insufficient_points" && (
+        <div 
+          className="absolute left-0 bottom-0 top-0 bg-primary/5 transition-all duration-500 ease-out z-0"
+          style={{ width: `${progressPercent}%` }}
+        />
+      )}
+
+      {/* Left: Info */}
+      <div className="flex-1 min-w-0 flex flex-col gap-1.5 relative z-10">
         <div className="flex items-center gap-1.5">
           <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold", typeConfig.badgeCls)}>
             {typeConfig.label}
@@ -143,14 +140,10 @@ function PackageCard({
             </span>
           )}
         </div>
-
-        {/* Name + benefit */}
-        <div className="flex-1 min-w-0">
-          <p className="font-bold text-sm text-foreground leading-tight line-clamp-2">{pkg.name}</p>
-          <p className="text-xs text-primary font-medium mt-0.5">{getPackageBenefitText(pkg)}</p>
+        <div>
+          <p className="font-bold text-sm text-foreground leading-tight truncate">{pkg.name}</p>
+          <p className="text-xs text-primary font-medium mt-0.5 truncate">{getPackageBenefitText(pkg)}</p>
         </div>
-
-        {/* Expiry */}
         {pkg.expires_after_days !== null && (
           <p className="text-[10px] text-muted-foreground flex items-center gap-1">
             <Clock size={10} />
@@ -159,19 +152,42 @@ function PackageCard({
         )}
       </div>
 
-      {/* Exchange button */}
-      <button
-        onClick={() => ok && !isExchanging && onExchange(pkg)}
-        disabled={!ok || isExchanging}
-        className={cn(
-          "w-full flex items-center justify-center gap-1.5 py-2 border-t border-border/50 text-xs font-bold transition",
-          ok && !isExchanging
-            ? "text-primary hover:bg-primary/5"
-            : "text-muted-foreground cursor-not-allowed"
-        )}
-      >
-        {btnLabel}
-      </button>
+      {/* Right: Action or Progress */}
+      <div className="flex-shrink-0 relative z-10 flex flex-col items-end justify-center min-w-[80px]">
+        {(() => {
+          if (isExchanging) {
+            return (
+              <div className="flex items-center justify-center h-9 w-full bg-primary/10 text-primary rounded-lg">
+                <Loader2 size={16} className="animate-spin" />
+              </div>
+            );
+          }
+          if (reason === "sold_out") {
+            return <span className="text-xs font-bold text-muted-foreground bg-secondary px-3 py-2 rounded-lg">Hết hàng</span>;
+          }
+          if (reason === "insufficient_points") {
+            return (
+              <div className="flex flex-col items-end gap-1">
+                <span className="text-[10px] font-bold text-muted-foreground whitespace-nowrap">
+                  {userBalance} / {pkg.points_cost} 🐟
+                </span>
+                <span className="text-[10px] text-primary font-bold">
+                  {progressPercent}%
+                </span>
+              </div>
+            );
+          }
+          return (
+            <motion.button
+              whileTap={{ scale: 0.92 }}
+              onClick={() => onExchange(pkg)}
+              className="bg-primary text-primary-foreground text-xs font-bold px-3 py-2 rounded-lg hover:bg-primary/90 transition shadow-sm whitespace-nowrap"
+            >
+              Đổi {pkg.points_cost} 🐟
+            </motion.button>
+          );
+        })()}
+      </div>
     </motion.div>
   );
 }
@@ -181,41 +197,21 @@ function PackageCard({
 export default function VoucherModal() {
   const { open, close } = useVoucherModalStore();
   const isLoggedIn = useIsLoggedIn();
-  const points = usePointsStore((s) => s.points);
-  const fetchPoints = usePointsStore((s) => s.fetchPoints);
+  const { data: points } = useCustomerPoints();
 
-  const [vouchers, setVouchers] = useState<MyVoucher[]>([]);
-  const [packages, setPackages] = useState<VoucherPackage[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { data: vouchers = [], isLoading: vLoading } = useCustomerVouchers({ enabled: open && isLoggedIn });
+  const { data: packages = [], isLoading: pLoading } = useVoucherPackages({ enabled: open && isLoggedIn });
+  const exchangeMutation = useExchangeVoucher();
+
+  const loading = vLoading || pLoading;
   const [exchangingId, setExchangingId] = useState<string | null>(null);
   const [qrVoucher, setQrVoucher] = useState<MyVoucher | null>(null);
-
-  // Fetch data when modal opens
-  useEffect(() => {
-    if (!open || !isLoggedIn) return;
-    setLoading(true);
-    fetchPoints();
-    Promise.all([
-      listMyVouchers(),
-      listActiveVoucherPackages(),
-    ])
-      .then(([v, p]) => {
-        setVouchers(v);
-        setPackages(p);
-      })
-      .catch(() => toast.error("Không thể tải dữ liệu voucher"))
-      .finally(() => setLoading(false));
-  }, [open, isLoggedIn, fetchPoints]);
 
   async function handleExchange(pkg: VoucherPackage) {
     setExchangingId(pkg.id);
     try {
-      await exchangeVoucher(pkg.id);
+      await exchangeMutation.mutateAsync(pkg.id);
       toast.success(`Đổi thành công: ${pkg.name} 🎉`);
-      // Refresh vouchers + points
-      fetchPoints();
-      const v = await listMyVouchers();
-      setVouchers(v);
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: { code?: string } } };
       const code = anyErr?.response?.data?.code ?? "UNKNOWN";
@@ -226,6 +222,7 @@ export default function VoucherModal() {
   }
 
   const filteredVouchers = filterModalVouchers(vouchers);
+  const filteredPackages = filterModalPackages(packages);
 
   return (
     <AnimatePresence>
@@ -248,12 +245,21 @@ export default function VoucherModal() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 40 }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
+            drag="y"
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={0.2}
+            onDragEnd={(e, info) => {
+              if (info.offset.y > 100) close();
+            }}
             className="fixed inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center z-50 p-0 md:p-4"
           >
             <div className="relative bg-background w-full md:max-w-2xl md:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[90vh]">
 
+              {/* Mobile Drag Handle */}
+              <div className="w-12 h-1.5 bg-border/60 rounded-full mx-auto mt-3 mb-1 md:hidden" />
+
               {/* ── Sticky Header ── */}
-              <div className="sticky top-0 bg-background rounded-t-2xl z-10 px-4 pt-4 pb-3 border-b border-border/50">
+              <div className="sticky top-0 bg-background md:rounded-t-2xl z-10 px-4 pt-2 md:pt-4 pb-3 border-b border-border/50">
                 <div className="flex items-center justify-between mb-2">
                   <h2 className="font-serif text-lg font-bold text-primary">Voucher của tôi 🎁</h2>
                   <button
@@ -314,14 +320,14 @@ export default function VoucherModal() {
                         Đổi thưởng
                       </h3>
 
-                      {packages.length === 0 ? (
+                      {filteredPackages.length === 0 ? (
                         <div className="rounded-2xl border border-dashed border-border/60 bg-secondary/10 py-10 flex flex-col items-center gap-2 text-center">
                           <Gift size={28} className="text-primary/30" />
                           <p className="text-sm font-bold text-primary/60">Chưa có gói đổi thưởng nào</p>
                         </div>
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {packages.map((pkg) => (
+                          {filteredPackages.map((pkg) => (
                             <PackageCard
                               key={pkg.id}
                               pkg={pkg}
