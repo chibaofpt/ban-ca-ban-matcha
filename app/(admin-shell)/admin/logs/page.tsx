@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { apiClient } from "@/src/lib/api/client";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/src/components/ui/card";
 import { Bug, Clock, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/src/utils/cn";
@@ -17,33 +18,24 @@ interface SystemLog {
 }
 
 export default function LogsPage() {
-  const [logs, setLogs] = useState<SystemLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchLogs();
-  }, []);
-
-  async function fetchLogs() {
-    try {
-      setLoading(true);
+  const { data: logs = [] as SystemLog[], isLoading: loading, error: queryError, refetch: fetchLogs } = useQuery({
+    queryKey: ["admin", "logs"],
+    queryFn: async () => {
       const res = await apiClient.get("/api/admin/logs?limit=50");
-      setLogs(res.data.data);
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message);
-    } finally {
-      setLoading(false);
+      return res.data.data as SystemLog[];
     }
-  }
+  });
+
+  const error = queryError ? (queryError as any).response?.data?.error || queryError.message : "";
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold font-serif text-primary">System Logs</h1>
         <button
-          onClick={fetchLogs}
+          onClick={() => fetchLogs()}
           disabled={loading}
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition text-sm font-medium disabled:opacity-50"
         >

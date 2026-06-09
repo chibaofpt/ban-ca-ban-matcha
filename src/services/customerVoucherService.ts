@@ -36,6 +36,7 @@ export interface VoucherPackage {
   quantity: number | null;
   max_per_user: number;
   created_at: string;
+  user_redeemed_count?: number;
   menuItem?: { name: string; is_available: boolean } | null;
   addonOption?: { label: string } | null;
 }

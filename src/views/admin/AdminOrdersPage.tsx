@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp, Phone, Clock, Search, FilterX, Filter, CheckCir
 import { cn } from "@/src/utils/cn";
 import { fetchAdminOrders, confirmPayment, adminCancelOrder, type AdminOrderRes } from "@/src/services/adminOrderService";
 import { apiClient } from "@/src/lib/api/client";
-import { usePolling } from "@/src/hooks/usePolling";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
 import { OrderTabs, type OrderTabKey } from "@/src/components/staff/OrderTabs";
 import { toast } from "sonner";
@@ -35,6 +35,7 @@ const formatOrderType = (type: string): string => {
 };
 
 export default function AdminOrdersPage() {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<OrderTabKey>("counter");
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -98,14 +99,14 @@ export default function AdminOrdersPage() {
     });
   }, [activeTab, activeFilters, page]);
 
-  const { data, isInitialLoading, refetch } = usePolling({
-    fetcher: fetchOrdersFn,
-    interval: activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000,
-    dependencies: [activeTab, activeFilters, page],
+  const { data: queryData, isLoading: isInitialLoading } = useQuery({
+    queryKey: ["admin", "orders", { activeTab, activeFilters, page }],
+    queryFn: fetchOrdersFn,
+    refetchInterval: activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000,
   });
 
-  const orders = data?.data || [];
-  const totalPages = data?.meta.totalPages || 1;
+  const orders = queryData?.data || [];
+  const totalPages = queryData?.meta.totalPages || 1;
 
   // Background polling cho pendingCount
   const fetchPendingCountAPI = useCallback(async () => {
@@ -113,12 +114,15 @@ export default function AdminOrdersPage() {
     return res;
   }, []);
 
-  const { data: pendingData } = usePolling({
-    fetcher: fetchPendingCountAPI,
-    interval: 20000,
+  const { data: pendingRes } = useQuery({
+    queryKey: ["admin", "orders", "pending-count"],
+    queryFn: fetchPendingCountAPI,
+    refetchInterval: 20000,
   });
 
-  const pendingCount = pendingData?.meta.total || 0;
+  const pendingCount = pendingRes?.meta.total || 0;
+
+  const refetch = () => queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
 
   const toggle = (id: string) => setExpanded((s) => ({ ...s, [id]: !s[id] }));
 
@@ -145,19 +149,37 @@ export default function AdminOrdersPage() {
     (activeFilters.startDate && activeFilters.startDate !== getTodayStr() ? 1 : 0) +
     (activeFilters.endDate ? 1 : 0);
 
-  const updateStatus = async (orderId: string, newStatus: string) => {
-    try {
-      await apiClient.patch(`/api/staff/orders/${orderId}`, { status: newStatus });
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ orderId, newStatus }: { orderId: string; newStatus: string }) =>
+      apiClient.patch(`/api/staff/orders/${orderId}`, { status: newStatus }),
+    onSuccess: () => {
       toast.success("Cập nhật trạng thái thành công");
       refetch();
-    } catch (err: unknown) {
+    },
+    onError: (err: unknown) => {
       if (err instanceof Error) {
         toast.error(err.message);
       } else {
         toast.error("Cập nhật thất bại");
       }
-    }
+    },
+  });
+
+  const updateStatus = async (orderId: string, newStatus: string) => {
+    updateStatusMutation.mutate({ orderId, newStatus });
   };
+
+  const confirmPaymentMutation = useMutation({
+    mutationFn: confirmPayment,
+    onSuccess: () => {
+      toast.success("Xác nhận thanh toán thành công");
+      refetch();
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Xác nhận thất bại";
+      toast.error(msg);
+    },
+  });
 
   const handleConfirmPayment = (e: React.MouseEvent, orderId: string) => {
     e.stopPropagation();
@@ -168,17 +190,22 @@ export default function AdminOrdersPage() {
       isDestructive: false,
       onConfirm: async () => {
         setConfirmModal((s) => ({ ...s, isOpen: false }));
-        try {
-          await confirmPayment(orderId);
-          toast.success("Xác nhận thanh toán thành công");
-          refetch();
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : "Xác nhận thất bại";
-          toast.error(msg);
-        }
+        confirmPaymentMutation.mutate(orderId);
       },
     });
   };
+
+  const cancelOrderMutation = useMutation({
+    mutationFn: adminCancelOrder,
+    onSuccess: () => {
+      toast.success("Đã huỷ đơn hàng");
+      refetch();
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "Huỷ thất bại";
+      toast.error(msg);
+    },
+  });
 
   const handleCancelOrder = (e: React.MouseEvent, orderId: string, orderType: string, status: string) => {
     e.stopPropagation();
@@ -192,14 +219,7 @@ export default function AdminOrdersPage() {
       isDestructive: true,
       onConfirm: async () => {
         setConfirmModal((s) => ({ ...s, isOpen: false }));
-        try {
-          await adminCancelOrder(orderId);
-          toast.success("Đã huỷ đơn hàng");
-          refetch();
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : "Huỷ thất bại";
-          toast.error(msg);
-        }
+        cancelOrderMutation.mutate(orderId);
       },
     });
   };

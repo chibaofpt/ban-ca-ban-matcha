@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { addressService } from "@/src/services/addressService";
+import React, { useState } from "react";
+import { useCustomerAddresses, useCreateAddress, useUpdateAddress, useDeleteAddress, useSetDefaultAddress } from "@/src/hooks/useCustomerAddresses";
 import type { Address, AddressPayload } from "@/src/lib/types/address";
 import { AddressCard } from "@/src/components/address/AddressCard";
 import { AddressForm } from "@/src/components/address/AddressForm";
@@ -9,39 +9,25 @@ import { Plus, MapPin, Loader2 } from "lucide-react";
 import { DELIVERY_CONFIG } from "@/src/constants/delivery";
 
 export default function AddressesPage() {
-  const [addresses, setAddresses] = useState<Address[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: addresses = [], isLoading: loading } = useCustomerAddresses();
+  const createAddressMutation = useCreateAddress();
+  const updateAddressMutation = useUpdateAddress();
+  const deleteAddressMutation = useDeleteAddress();
+  const setDefaultAddressMutation = useSetDefaultAddress();
   const [error, setError] = useState("");
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState<Address | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fetchAddresses = async () => {
-    try {
-      setLoading(true);
-      const data = await addressService.getAddresses();
-      setAddresses(data);
-    } catch (err) {
-      setError("Không thể tải danh sách địa chỉ. Vui lòng thử lại sau.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchAddresses();
-  }, []);
-
   const handleSave = async (payload: AddressPayload) => {
     setIsSubmitting(true);
     try {
       if (editingAddress) {
-        await addressService.updateAddress(editingAddress.id, payload);
+        await updateAddressMutation.mutateAsync({ id: editingAddress.id, payload });
       } else {
-        await addressService.createAddress(payload);
+        await createAddressMutation.mutateAsync(payload);
       }
-      await fetchAddresses();
       setIsFormOpen(false);
       setEditingAddress(null);
     } catch (err) {
@@ -52,13 +38,8 @@ export default function AddressesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    // In a real app, use a custom ConfirmModal. 
-    // The instructions say "No window.confirm", so we should ideally build a ConfirmModal.
-    // Assuming user wants simple list first, I will just call API directly for now or implement modal.
-    // Let's implement a quick inline state or just call it directly since we can't use window.confirm.
     try {
-      await addressService.deleteAddress(id);
-      await fetchAddresses();
+      await deleteAddressMutation.mutateAsync(id);
     } catch (err) {
       console.error("Failed to delete", err);
     }
@@ -66,16 +47,7 @@ export default function AddressesPage() {
 
   const handleSetDefault = async (address: Address) => {
     try {
-      await addressService.updateAddress(address.id, {
-        label: address.label,
-        full_address: address.full_address,
-        lat: address.lat,
-        lng: address.lng,
-        receiver_name: address.receiver_name,
-        receiver_phone: address.receiver_phone,
-        is_default: true,
-      });
-      await fetchAddresses();
+      await setDefaultAddressMutation.mutateAsync(address.id);
     } catch (err) {
       console.error("Failed to set default", err);
     }

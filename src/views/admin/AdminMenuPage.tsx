@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
 import { Plus, Search, RefreshCw, LayoutGrid, List } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import MenuItemCard from "@/src/components/admin/MenuItemCard";
 import MenuItemModal from "@/src/components/admin/MenuItemModal";
 import {
@@ -63,10 +64,7 @@ function ConfirmDialog({ message, onConfirm, onCancel, isLoading }: ConfirmDialo
 
 /** Trang quản lý menu — Admin. */
 export default function AdminMenuPage() {
-  const [menuData, setMenuData] = useState<AdminMenuData | null>(null);
-  const [powders, setPowders] = useState<Powder[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<"all" | "latte" | "fusion">("all");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
@@ -76,26 +74,37 @@ export default function AdminMenuPage() {
 
   // ── Data fetching ───────────────────────────────────────────────────────────
 
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const [menu, powderRes] = await Promise.all([
-        listAdminMenuItems(),
-        listAdminPowders(),
-      ]);
-      setMenuData(menu);
-      setPowders(powderRes);
-    } catch {
-      setError("Không thể tải danh sách món. Vui lòng thử lại.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const {
+    data: menuData,
+    isLoading: isMenuLoading,
+    isError: isMenuError,
+    refetch: refetchMenu,
+  } = useQuery({
+    queryKey: ["admin", "menu"],
+    queryFn: listAdminMenuItems,
+  });
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  const {
+    data: powders = [],
+    isLoading: isPowdersLoading,
+    isError: isPowdersError,
+    refetch: refetchPowders,
+  } = useQuery({
+    queryKey: ["admin", "powders"],
+    queryFn: listAdminPowders,
+  });
+
+  const isLoading = isMenuLoading || isPowdersLoading;
+  const error = (isMenuError || isPowdersError) ? "Không thể tải danh sách món. Vui lòng thử lại." : null;
+
+  const loadData = () => {
+    refetchMenu();
+    refetchPowders();
+  };
+
+  // ── Data fetching ───────────────────────────────────────────────────────────
+
+  // (already handled by TQ)
 
   // ── Toast helper ────────────────────────────────────────────────────────────
 
@@ -128,11 +137,11 @@ export default function AdminMenuPage() {
   // ── Handlers ────────────────────────────────────────────────────────────────
 
   const handleCreateSuccess = (newItem: AdminMenuItem, powderName?: string) => {
-    setMenuData((prev) => {
-      if (!prev) return prev;
-      const list = newItem.category === "latte" ? prev.latte : prev.fusion;
+    queryClient.setQueryData<AdminMenuData>(["admin", "menu"], (old) => {
+      if (!old) return old;
+      const list = newItem.category === "latte" ? old.latte : old.fusion;
       return {
-        ...prev,
+        ...old,
         [newItem.category]: [...list, newItem],
       };
     });
@@ -141,22 +150,20 @@ export default function AdminMenuPage() {
     } else {
       showToast(`Đã thêm món "${newItem.name}"`);
     }
-    loadData(); // Re-fetch to sync fully with DB
   };
 
   const handleEditSuccess = (updatedItem: AdminMenuItem) => {
-    setMenuData((prev) => {
-      if (!prev) return prev;
+    queryClient.setQueryData<AdminMenuData>(["admin", "menu"], (old) => {
+      if (!old) return old;
       const updateList = (list: AdminMenuItem[]) =>
         list.map((i) => (i.id === updatedItem.id ? updatedItem : i));
       return {
-        ...prev,
-        latte: updateList(prev.latte),
-        fusion: updateList(prev.fusion),
+        ...old,
+        latte: updateList(old.latte),
+        fusion: updateList(old.fusion),
       };
     });
     showToast(`Đã cập nhật món "${updatedItem.name}"`);
-    loadData(); // Re-fetch to sync fully with DB
   };
 
   const handleModalSuccess = (item: AdminMenuItem, powderName?: string) => {
@@ -167,25 +174,36 @@ export default function AdminMenuPage() {
     }
   };
 
-  const handleToggleAvailable = async (id: string, next: boolean) => {
-    setTogglingId(id);
-    // Optimistic update
-    const rollback = menuData;
-    setMenuData((prev) => {
-      if (!prev) return prev;
-      const toggle = (list: AdminMenuItem[]) =>
-        list.map((i) => (i.id === id ? { ...i, is_available: next } : i));
-      return { ...prev, latte: toggle(prev.latte), fusion: toggle(prev.fusion) };
-    });
-    try {
-      await toggleMenuItemAvailability(id, next);
-      await loadData(); // Re-fetch to sync fully with DB
-    } catch {
-      setMenuData(rollback);
+  const toggleMutation = useMutation({
+    mutationFn: ({ id, next }: { id: string; next: boolean }) =>
+      toggleMenuItemAvailability(id, next),
+    onMutate: async ({ id, next }) => {
+      setTogglingId(id);
+      await queryClient.cancelQueries({ queryKey: ["admin", "menu"] });
+      const previousMenu = queryClient.getQueryData<AdminMenuData>(["admin", "menu"]);
+      if (previousMenu) {
+        queryClient.setQueryData<AdminMenuData>(["admin", "menu"], (old) => {
+          if (!old) return old;
+          const toggle = (list: AdminMenuItem[]) =>
+            list.map((i) => (i.id === id ? { ...i, is_available: next } : i));
+          return { ...old, latte: toggle(old.latte), fusion: toggle(old.fusion) };
+        });
+      }
+      return { previousMenu };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousMenu) {
+        queryClient.setQueryData(["admin", "menu"], context.previousMenu);
+      }
       showToast("Không thể thay đổi trạng thái. Vui lòng thử lại.", "error");
-    } finally {
+    },
+    onSettled: () => {
       setTogglingId(null);
-    }
+    },
+  });
+
+  const handleToggleAvailable = async (id: string, next: boolean) => {
+    toggleMutation.mutate({ id, next });
   };
 
   // ── Render ──────────────────────────────────────────────────────────────────

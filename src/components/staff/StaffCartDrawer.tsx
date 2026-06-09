@@ -29,6 +29,7 @@ const SWEETNESS_LABEL: Record<SweetnessLevel, string> = {
 // ── Props ────────────────────────────────────────────────────────────────────
 
 interface StaffCartDrawerProps {
+  isOpen: boolean;
   cart: CartItem[];
   discountVoucher: {
     discount_type: "PERCENT" | "FIXED";
@@ -63,6 +64,7 @@ function discountLabel(v: MyVoucher): string {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function StaffCartDrawer({
+  isOpen,
   cart,
   discountVoucher,
   customerInfo,
@@ -115,23 +117,44 @@ export function StaffCartDrawer({
   const activeItem = cart.find(i => i.cartId === activeItemForVoucher);
 
   return (
-    <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      
-      <div className="absolute bottom-0 left-0 right-0 bg-card rounded-t-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
-        
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 pt-4 pb-3 shrink-0 border-b border-border/40">
-          <h2 className="font-serif text-lg font-bold flex items-center gap-2">
-            Giỏ hàng <span className="bg-primary/10 text-primary text-xs px-2 py-0.5 rounded-full">{cart.reduce((sum, c) => sum + c.quantity, 0)}</span>
-          </h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-secondary/50 flex items-center justify-center hover:bg-secondary transition"
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-50">
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-black/40" onClick={onClose} 
+          />
+          
+          <motion.div 
+            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            drag="y"
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={0.2}
+            onDragEnd={(_, info) => {
+              if (info.offset.y > 100 && info.velocity.y > 200) {
+                onClose();
+              }
+            }}
+            className="absolute bottom-0 left-0 right-0 bg-card rounded-t-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
           >
-            <X size={16} />
-          </button>
-        </div>
+            {/* Mobile Drag Handle */}
+            <div className="flex justify-center pt-3 pb-1 w-full shrink-0">
+              <div className="w-12 h-1.5 bg-border rounded-full" />
+            </div>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 pt-2 pb-3 shrink-0 border-b border-border/40">
+              <h2 className="font-serif text-lg font-bold flex items-center gap-2">
+                Giỏ hàng <span className="bg-primary/10 text-primary text-xs px-2 py-0.5 rounded-full">{cart.reduce((sum, c) => sum + c.quantity, 0)}</span>
+              </h2>
+              <button
+                onClick={onClose}
+                className="w-8 h-8 rounded-full bg-secondary/50 flex items-center justify-center hover:bg-secondary transition"
+              >
+                <X size={16} />
+              </button>
+            </div>
 
         {/* Customer Section */}
         <div className="px-4 py-3 shrink-0 border-b border-border/30">
@@ -201,21 +224,23 @@ export function StaffCartDrawer({
                     </div>
                     {/* Stepper */}
                     <div className="flex items-center gap-1.5 bg-secondary/30 rounded-full px-1.5 py-1">
-                      <button
+                      <motion.button
+                        whileTap={{ scale: 0.9 }}
                         onClick={() => onChangeQuantity(c.cartId, c.quantity - 1)}
                         disabled={c.quantity <= 1 || !!appliedProductVoucherId}
                         className="w-5 h-5 rounded-full bg-background flex items-center justify-center text-[10px] shadow-sm disabled:opacity-30"
                       >
                         −
-                      </button>
+                      </motion.button>
                       <span className="text-xs font-bold w-4 text-center">{c.quantity}</span>
-                      <button
+                      <motion.button
+                        whileTap={{ scale: 0.9 }}
                         onClick={() => onChangeQuantity(c.cartId, c.quantity + 1)}
                         disabled={!!appliedProductVoucherId}
                         className="w-5 h-5 rounded-full bg-background flex items-center justify-center text-[10px] shadow-sm disabled:opacity-30"
                       >
                         +
-                      </button>
+                      </motion.button>
                     </div>
                   </div>
 
@@ -353,10 +378,11 @@ export function StaffCartDrawer({
               </div>
             </div>
 
-            <button
+            <motion.button
+              whileTap={{ scale: 0.98 }}
               onClick={onCheckout}
               disabled={isSubmitting}
-              className="w-full bg-primary text-primary-foreground rounded-2xl h-12 font-bold text-sm shadow-md hover:scale-[1.02] active:scale-[0.98] transition mt-4 flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
+              className="w-full bg-primary text-primary-foreground rounded-2xl h-12 font-bold text-sm shadow-md transition mt-4 flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
             >
               {isSubmitting ? (
                 <>
@@ -366,7 +392,7 @@ export function StaffCartDrawer({
               ) : (
                 "Chốt đơn"
               )}
-            </button>
+            </motion.button>
           </div>
         )}
 
@@ -551,7 +577,9 @@ export function StaffCartDrawer({
           )}
         </AnimatePresence>
 
-      </div>
-    </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
   );
 }

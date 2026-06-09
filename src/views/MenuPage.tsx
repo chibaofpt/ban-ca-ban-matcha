@@ -5,6 +5,8 @@ import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { ArrowLeft, Gift } from 'lucide-react';
 import Link from 'next/link';
 
+import { useQuery } from '@tanstack/react-query';
+
 import type { MenuData, MenuItem, Category } from '@/src/lib/types/menu';
 import { fetchMenu } from '@/src/services/menuService';
 import { fetchPowders } from '@/src/services/powderService';
@@ -18,7 +20,7 @@ import CartDrawer from '@/src/components/menu/CartDrawer';
 import VoucherModal from '@/src/components/shared/VoucherModal';
 import { useVoucherModalStore } from '@/src/lib/store/voucherModalStore';
 import { useIsLoggedIn } from '@/src/lib/store/authStore';
-import { usePointsStore } from '@/src/lib/store/pointsStore';
+import { useCustomerPoints } from '@/src/hooks/useCustomerPoints';
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 20 },
@@ -30,8 +32,6 @@ const fadeUp: Variants = {
 };
 
 export default function MenuPage() {
-  const [data, setData] = useState<MenuData | null>(null);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>('latte');
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
 
@@ -39,24 +39,35 @@ export default function MenuPage() {
   const isLoggedIn = useIsLoggedIn();
   const openVoucherModal = useVoucherModalStore((s) => s.openModal);
   
-  const points = usePointsStore((s) => s.points);
-  const fetchPoints = usePointsStore((s) => s.fetchPoints);
+  const { data: points } = useCustomerPoints();
+
+  const { data: menuRes, isLoading: menuLoading, isError: menuError } = useQuery({
+    queryKey: ['menu'],
+    queryFn: fetchMenu,
+  });
+
+  const { data: powderRes, isLoading: powderLoading, isError: powderError } = useQuery({
+    queryKey: ['powders'],
+    queryFn: fetchPowders,
+  });
+
+  const loading = menuLoading || powderLoading;
+  const data = menuRes ?? null;
+
+  // Points are automatically fetched by useCustomerPoints hook
+  useEffect(() => {}, [isLoggedIn]);
 
   useEffect(() => {
-    if (isLoggedIn) {
-      fetchPoints();
+    if (powderRes) {
+      setPowderData(powderRes);
     }
-  }, [isLoggedIn, fetchPoints]);
+  }, [powderRes, setPowderData]);
 
   useEffect(() => {
-    Promise.all([fetchMenu(), fetchPowders()])
-      .then(([menuRes, powderRes]) => {
-        setData(menuRes);
-        setPowderData(powderRes);
-      })
-      .catch((error) => console.error("Error fetching menu or powders:", error))
-      .finally(() => setLoading(false));
-  }, [setPowderData]);
+    if (menuError || powderError) {
+      console.error("Error fetching menu or powders");
+    }
+  }, [menuError, powderError]);
 
   const filteredItems = useMemo((): MenuItem[] => {
     if (!data) return [];
@@ -128,7 +139,7 @@ export default function MenuPage() {
                 key={activeTab}
                 initial="hidden"
                 animate="visible"
-                className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6"
+                className="flex flex-col gap-6 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-8 pb-8"
               >
                 {filteredItems.map((item, idx) => (
                   <motion.div key={item.id} variants={fadeUp} custom={idx}>

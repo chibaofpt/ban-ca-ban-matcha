@@ -1,5 +1,6 @@
 import { cn } from "@/src/utils/cn";
 import { Receipt, ShoppingBag, Clock, XCircle } from "lucide-react";
+import { motion } from "framer-motion";
 
 export type OrderTabKey = "counter" | "customer" | "pending" | "cancelled";
 
@@ -18,68 +19,54 @@ interface OrderTabsProps {
  * - Đã huỷ: CANCELLED orders (Admin only)
  */
 export function OrderTabs({ activeTab, onTabChange, pendingCount, isAdmin }: OrderTabsProps) {
+  const tabs = [
+    { id: "counter" as OrderTabKey, label: "Tại quầy", icon: Receipt },
+    { id: "customer" as OrderTabKey, label: "Khách đặt", icon: ShoppingBag },
+    ...(isAdmin ? [
+      { id: "pending" as OrderTabKey, label: "Chờ CK", icon: Clock },
+      { id: "cancelled" as OrderTabKey, label: "Đã huỷ", icon: XCircle }
+    ] : [])
+  ];
+
   return (
     <div className="flex bg-secondary/30 p-1 rounded-lg w-full">
-      <button
-        onClick={() => onTabChange("counter")}
-        className={cn(
-          "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-3 py-2 rounded-md text-[11px] sm:text-xs font-medium transition-all whitespace-nowrap",
-          activeTab === "counter"
-            ? "bg-primary text-primary-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-        )}
-      >
-        <Receipt className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-        <span>Tại quầy</span>
-      </button>
-
-      <button
-        onClick={() => onTabChange("customer")}
-        className={cn(
-          "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-3 py-2 rounded-md text-[11px] sm:text-xs font-medium transition-all whitespace-nowrap",
-          activeTab === "customer"
-            ? "bg-primary text-primary-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-        )}
-      >
-        <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-        <span>Khách đặt</span>
-      </button>
-
-      {isAdmin && (
-        <>
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.id;
+        const Icon = tab.icon;
+        
+        return (
           <button
-            onClick={() => onTabChange("pending")}
+            key={tab.id}
+            onClick={() => onTabChange(tab.id)}
             className={cn(
-              "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-3 py-2 rounded-md text-[11px] sm:text-xs font-medium transition-all whitespace-nowrap",
-              activeTab === "pending"
-                ? "bg-primary text-primary-foreground shadow-sm"
+              "relative flex flex-1 items-center justify-center py-2 px-1 sm:px-3 rounded-md transition-colors",
+              isActive
+                ? "text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
             )}
           >
-            <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span>Chờ CK</span>
-            {pendingCount > 0 && (
-              <span className="bg-red-500 text-white text-[9px] sm:text-[10px] leading-none px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center">
-                {pendingCount}
-              </span>
+            {isActive && (
+              <motion.div
+                layoutId="order-tab-indicator"
+                className="absolute inset-0 bg-primary rounded-md shadow-sm pointer-events-none"
+                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              />
             )}
+            <motion.div
+              whileTap={{ scale: 0.92 }}
+              className="flex items-center justify-center gap-1 sm:gap-1.5 w-full relative z-10 text-[11px] sm:text-xs font-medium whitespace-nowrap"
+            >
+              <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span>{tab.label}</span>
+              {tab.id === "pending" && pendingCount > 0 && (
+                <span className="bg-red-500 text-white text-[9px] sm:text-[10px] leading-none px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center ml-0.5">
+                  {pendingCount}
+                </span>
+              )}
+            </motion.div>
           </button>
-
-          <button
-            onClick={() => onTabChange("cancelled")}
-            className={cn(
-              "flex flex-1 items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-3 py-2 rounded-md text-[11px] sm:text-xs font-medium transition-all whitespace-nowrap",
-              activeTab === "cancelled"
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"
-            )}
-          >
-            <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span>Đã huỷ</span>
-          </button>
-        </>
-      )}
+        );
+      })}
     </div>
   );
 }

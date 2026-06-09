@@ -35,6 +35,15 @@ export function canInteract(voucher: MyVoucher): boolean {
 // ── Section 2: Exchange Packages ─────────────────────────────────────────────
 
 /**
+ * Filter packages to hide those that the user has already maxed out.
+ */
+export function filterModalPackages(packages: VoucherPackage[]): VoucherPackage[] {
+  return packages.filter(
+    (pkg) => pkg.user_redeemed_count === undefined || pkg.user_redeemed_count < pkg.max_per_user
+  );
+}
+
+/**
  * Checks whether a user can exchange a package.
  * Priority: points check → sold_out → limit_reached.
  */
