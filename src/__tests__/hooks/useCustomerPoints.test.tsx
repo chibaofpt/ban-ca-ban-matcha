@@ -35,7 +35,7 @@ describe("useCustomerPoints — React Query Hook", () => {
   });
 
   it("gọi API và trả về điểm cá thành công", async () => {
-    mockGet.mockResolvedValueOnce({ data: { data: { points: 1500 } } });
+    mockGet.mockResolvedValueOnce({ data: { data: { points_balance: 1500 } } });
 
     const { result } = renderHook(() => useCustomerPoints(), { wrapper });
 
@@ -46,7 +46,7 @@ describe("useCustomerPoints — React Query Hook", () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    expect(mockGet).toHaveBeenCalledWith("/api/customer/points");
+    expect(mockGet).toHaveBeenCalledWith("/api/profile/points");
     expect(result.current.data).toBe(1500);
   });
 

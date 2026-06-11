@@ -184,6 +184,13 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
     );
   };
 
+  const [isOpen, setIsOpen] = useState(true);
+
+  const handleClose = () => {
+    setIsOpen(false);
+    setTimeout(onClose, 300); // wait for exit animation
+  };
+
   const handleAddToCart = () => {
     const quantityAddonOptions = item.addon_groups
       .filter((g) => g.type === "QUANTITY")
@@ -260,7 +267,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
       originalClientPriceVnd: currentPriceContext.unitPrice,
       details,
     });
-    onClose();
+    handleClose();
   };
 
   const sweetnessIdx = SWEETNESS_OPTIONS.findIndex((o) => o.value === sweetness);
@@ -270,12 +277,14 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
 
   return (
     <AnimatePresence>
-      <motion.div
-        key="pm-backdrop"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
-      />
+      {isOpen && (
+        <React.Fragment>
+          <motion.div
+            key="pm-backdrop"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm"
+            onClick={handleClose}
+          />
       <motion.div
         key="pm-sheet"
         initial={isDesktop ? { opacity: 0, scale: 0.9, x: "-50%", y: "-50%" } : { y: "100%" }}
@@ -286,7 +295,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
         dragConstraints={{ top: 0, bottom: 0 }}
         dragElastic={0.2}
         onDragEnd={(e, info) => {
-          if (info.offset.y > 100) onClose();
+          if (info.offset.y > 100) handleClose();
         }}
         className="fixed inset-x-0 bottom-0 z-[101] max-h-[92vh] overflow-y-auto md:overflow-hidden rounded-t-[2.5rem] bg-[#fdfcf7] shadow-2xl md:bottom-auto md:top-1/2 md:left-1/2 md:w-[90vw] md:max-w-4xl md:h-[80vh] md:max-h-[85vh] md:rounded-[2.5rem] md:grid md:grid-cols-2 md:pb-0"
         onClick={(e) => e.stopPropagation()}
@@ -316,7 +325,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
         </div>
 
         {/* Right Column (customization options + scrolled container) */}
-        <button onClick={onClose} className="absolute top-5 right-5 w-9 h-9 rounded-full bg-primary/8 flex items-center justify-center hover:rotate-90 transition-transform z-10">
+        <button onClick={handleClose} className="absolute top-5 right-5 w-9 h-9 rounded-full bg-primary/8 flex items-center justify-center hover:rotate-90 transition-transform z-10">
           <X className="w-5 h-5 text-primary" />
         </button>
 
@@ -644,6 +653,8 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
           </div>
         </div>
       </motion.div>
+        </React.Fragment>
+      )}
     </AnimatePresence>
   );
 };

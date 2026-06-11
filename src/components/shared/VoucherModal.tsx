@@ -249,7 +249,8 @@ export default function VoucherModal() {
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={0.2}
             onDragEnd={(e, info) => {
-              if (info.offset.y > 100) close();
+              // Trigger close if pulled down by 50px or swiped down quickly
+              if (info.offset.y > 50 || info.velocity.y > 300) close();
             }}
             className="fixed inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center z-50 p-0 md:p-4"
           >

@@ -3,7 +3,7 @@ import { apiClient } from "@/src/lib/api/client";
 
 interface PointsResponse {
   data: {
-    points: number;
+    points_balance: number;
   };
 }
 
@@ -16,8 +16,8 @@ export function useCustomerPoints() {
   return useQuery({
     queryKey: ["customer", "points"],
     queryFn: async () => {
-      const res = await apiClient.get<PointsResponse>("/api/customer/points");
-      return res.data.data.points;
+      const res = await apiClient.get<PointsResponse>("/api/profile/points");
+      return res.data.data.points_balance;
     },
     staleTime: 5 * 60 * 1000,
   });
