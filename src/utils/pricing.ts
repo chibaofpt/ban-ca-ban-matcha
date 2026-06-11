@@ -105,13 +105,19 @@ export function calcFusionPrice(params: FusionPriceParams): number {
 /**
  * Calculate shipping fee based on distance using Xanh SM 1H formula.
  * Returns fee ceiled to nearest 1,000 VND.
+ * Includes a 15% subsidy from the store (fee * 0.85).
  */
 export function calcShippingFee(distanceKm: number): number {
   if (distanceKm <= 0) return 0;
   const { BASE_FEE_VND, BASE_DISTANCE_KM, PER_KM_FEE_VND } = DELIVERY_CONFIG;
-  if (distanceKm <= BASE_DISTANCE_KM) return ceilTo1000(BASE_FEE_VND);
-  const extraKm = distanceKm - BASE_DISTANCE_KM;
-  return ceilTo1000(BASE_FEE_VND + extraKm * PER_KM_FEE_VND);
+  
+  let fee = BASE_FEE_VND;
+  if (distanceKm > BASE_DISTANCE_KM) {
+    const extraKm = distanceKm - BASE_DISTANCE_KM;
+    fee += extraKm * PER_KM_FEE_VND;
+  }
+  
+  return ceilTo1000(fee * 0.85);
 }
 
 /**

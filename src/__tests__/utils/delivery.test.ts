@@ -8,21 +8,21 @@ describe("Delivery calculation utilities", () => {
       expect(calcShippingFee(-1)).toBe(0);
     });
 
-    it("calcShippingFee: <= 2km -> 15k", () => {
-      expect(calcShippingFee(0.5)).toBe(15000);
-      expect(calcShippingFee(1)).toBe(15000);
-      expect(calcShippingFee(2)).toBe(15000);
+    it("calcShippingFee: <= 2km -> 15k * 85% = 12.75k -> ceil 1000 -> 13k", () => {
+      expect(calcShippingFee(0.5)).toBe(13000);
+      expect(calcShippingFee(1)).toBe(13000);
+      expect(calcShippingFee(2)).toBe(13000);
     });
 
-    it("calcShippingFee: > 2km -> tính đúng công thức", () => {
-      // 2km = 15k, extra = 1km * 5.7k = 5.7k -> 20.7k -> ceil 1000 -> 21k
-      expect(calcShippingFee(3)).toBe(21000);
+    it("calcShippingFee: > 2km -> tính đúng công thức * 85%", () => {
+      // 2km = 15k, extra = 1km * 5.7k = 5.7k -> 20.7k * 0.85 = 17595 -> ceil 1000 -> 18k
+      expect(calcShippingFee(3)).toBe(18000);
       
-      // 2km = 15k, extra = 1.5km * 5.7k = 8.55k -> 23.55k -> ceil 1000 -> 24k
-      expect(calcShippingFee(3.5)).toBe(24000);
+      // 2km = 15k, extra = 1.5km * 5.7k = 8.55k -> 23.55k * 0.85 = 20017.5 -> ceil 1000 -> 21k
+      expect(calcShippingFee(3.5)).toBe(21000);
       
-      // 10km: 2km = 15k, extra = 8km * 5.7k = 45.6k -> 60.6k -> ceil 1000 -> 61k
-      expect(calcShippingFee(10)).toBe(61000);
+      // 10km: 2km = 15k, extra = 8km * 5.7k = 45.6k -> 60.6k * 0.85 = 51510 -> ceil 1000 -> 52k
+      expect(calcShippingFee(10)).toBe(52000);
     });
   });
 
