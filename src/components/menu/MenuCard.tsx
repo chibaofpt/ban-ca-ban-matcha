@@ -13,14 +13,12 @@ interface MenuCardProps {
   onClick: () => void;
 }
 
-/** Size label map for the 3 sizes shown on the card. */
 const SIZE_CARD_LABELS: Record<string, string> = {
   M: "Cá Con",
   L: "Cá Vừa",
   XL: "Cá Lớn",
 };
 
-/** MenuCard — displays a single menu item in the customer menu grid. */
 const MenuCard: React.FC<MenuCardProps> = ({ item, index, onClick }) => {
   const sizes = item.sizes.filter((s) => s.base_price_vnd != null);
   const powders = usePowderStore((s) => s.data);
@@ -55,26 +53,14 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, index, onClick }) => {
     }
   };
 
-  const isReversed = index % 2 !== 0;
-
   return (
     <motion.div
       onClick={onClick}
       whileTap={{ scale: 0.96 }}
-      initial={{ opacity: 0, y: 30 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-50px" }}
-      className={`group flex ${
-        isReversed ? 'flex-row-reverse' : 'flex-row'
-      } h-40 md:h-48 bg-white/80 backdrop-blur-md rounded-[2rem] overflow-hidden shadow-sm hover:shadow-md border border-border/60 transition-all duration-300 cursor-pointer`}
+      className="group flex flex-row items-center justify-between gap-4 md:gap-5 w-full h-[130px] md:h-[150px] border-b border-dashed border-primary/20 last:border-0 transition-all duration-300 cursor-pointer bg-transparent"
     >
-      {/* Image Area - 45% width */}
-      <div className="w-[45%] bg-[#eef1eb] relative overflow-hidden flex-shrink-0">
-        {item.is_seasonal && (
-          <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur-sm text-amber-600 text-[10px] font-medium uppercase tracking-widest px-2.5 py-1 rounded-full shadow-sm flex items-center gap-1 border border-amber-200/50">
-            <span>✨ Theo mùa</span>
-          </div>
-        )}
+      {/* Image Area - 4/5 height */}
+      <div className="h-[80%] aspect-square bg-[#eef1eb] relative overflow-hidden flex-shrink-0 rounded-2xl">
         {item.image_url ? (
           <img
             src={item.image_url}
@@ -83,32 +69,37 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, index, onClick }) => {
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Coffee className="w-12 h-12 text-[#b8c9b4] group-hover:scale-110 transition-transform duration-500" />
+            <Coffee className="w-10 h-10 text-[#b8c9b4] group-hover:scale-110 transition-transform duration-500" />
           </div>
         )}
       </div>
 
-      {/* Content Area - 55% width */}
-      <div className="flex flex-col w-[55%] px-4 md:px-5 py-4 bg-transparent justify-between">
-        <div>
-          <h3 className="font-serif font-medium text-lg text-[#2d4a22] leading-tight line-clamp-2 mb-1.5">
+      {/* Content Area */}
+      <div className="flex flex-col flex-1 h-[80%] justify-between py-1 text-left items-start">
+        <div className="w-full">
+          <h3 className="font-serif font-medium text-lg text-[#2d4a22] leading-tight line-clamp-2 mb-1">
             {item.name}
+            {item.is_seasonal && (
+              <span className="inline-flex items-center bg-amber-50 text-amber-600 text-[8px] font-sans font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border border-amber-200/50 align-middle ml-2 -translate-y-[1px]">
+                ✨ Theo mùa
+              </span>
+            )}
           </h3>
           {item.description && (
-            <p className="text-xs text-primary/60 line-clamp-2 leading-relaxed">
+            <p className="text-[11px] text-primary/60 line-clamp-2 leading-relaxed">
               {item.description}
             </p>
           )}
         </div>
 
-        {/* Sizes & Prices - Horizontal Layout */}
-        <div className={`mt-auto pt-2 flex items-end gap-3 ${isReversed ? 'justify-end text-right' : 'justify-start text-left'}`}>
+        {/* Sizes & Prices */}
+        <div className="mt-auto pt-2 flex items-end gap-6 w-full justify-center">
           {sizes.map((s) => {
             const isDefault = s.size === 'L';
             const price = getDisplayPrice(s) / 1000;
             
             return (
-              <div key={s.size} className={`flex flex-col ${isReversed ? 'items-end' : 'items-start'} gap-0.5`}>
+              <div key={s.size} className="flex flex-col items-center gap-0.5 min-w-[36px]">
                 <span className={`uppercase tracking-wide whitespace-nowrap ${isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
                   {SIZE_CARD_LABELS[s.size] ?? s.size}
                 </span>

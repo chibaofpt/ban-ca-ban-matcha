@@ -28,7 +28,8 @@ export function QrModal({ voucher, onClose }: QrModalProps) {
         dragConstraints={{ top: 0, bottom: 0 }}
         dragElastic={0.2}
         onDragEnd={(e, info) => {
-          if (info.offset.y > 100) onClose();
+          // Trigger close if pulled down by 50px or swiped down quickly
+          if (info.offset.y > 50 || info.velocity.y > 300) onClose();
         }}
         className="relative bg-card rounded-2xl p-6 w-full max-w-xs shadow-2xl space-y-4"
       >
