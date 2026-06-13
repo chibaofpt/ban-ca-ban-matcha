@@ -36,7 +36,7 @@ describe("StaffOrdersListPage — Contract 1: fetch với params đúng theo tab
   it("tab 'counter' → gọi với order_type=COUNTER", async () => {
     mockFetchOrdersList.mockResolvedValueOnce(mockOrdersResponse);
 
-    const activeTab = "counter";
+    const activeTab = "counter" as string;
     const orderTypeParam = activeTab === "counter" ? "COUNTER"
       : activeTab === "customer" ? "PICKUP,DELIVERY" : "";
     const statusParam = activeTab === "pending" ? "PENDING"
@@ -77,20 +77,20 @@ describe("StaffOrdersListPage — Contract 1: fetch với params đúng theo tab
 
 describe("StaffOrdersListPage — Contract 2: polling interval theo tab", () => {
   it("tab customer → interval 15000ms", () => {
-    const activeTab = "customer";
-    const interval = activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000;
+    const activeTab = "customer" as string;
+    const interval = activeTab === "counter" ? 30000 : activeTab === "customer" ? 15000 : activeTab === "pending" ? 5000 : 30000;
     expect(interval).toBe(15000);
   });
 
   it("tab pending → interval 10000ms", () => {
-    const activeTab = "pending";
+    const activeTab = "pending" as string;
     const interval = activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000;
     expect(interval).toBe(10000);
   });
 
   it("tab counter → interval 30000ms", () => {
-    const activeTab = "counter";
-    const interval = activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000;
+    const activeTab = "counter" as string;
+    const interval = activeTab === "pending" ? 5000 : activeTab === "customer" ? 15000 : 30000;
     expect(interval).toBe(30000);
   });
 });
@@ -133,9 +133,10 @@ describe("StaffOrdersListPage — Contract 5: pendingCount chỉ fetch khi userR
   beforeEach(() => vi.clearAllMocks());
 
   it("userRole = STAFF → KHÔNG gọi fetchOrdersList cho pending count", async () => {
-    const userRole = "STAFF";
+    const role = "STAFF" as string;
+    const isOwner = role === "ADMIN";
 
-    if (userRole === "ADMIN") {
+    if (isOwner) {
       await mockFetchOrdersList({ status: "PENDING", limit: 1 });
     }
 

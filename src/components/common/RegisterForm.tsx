@@ -106,7 +106,12 @@ const RegisterForm = () => {
       close();
 
       const from = new URLSearchParams(window.location.search).get("from");
-      if (from) router.push(from);
+      if (from) {
+        router.push(from);
+      } else {
+        router.push("/menu");
+      }
+      router.refresh();
     } catch (error) {
       const axiosError = error as { response?: { data?: { error?: string } } };
       setServerError(

@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls, animate } from "framer-motion";
 import { X, Minus, Plus, ShoppingBag } from "lucide-react";
 import type { MenuItem, SweetnessLevel, Size } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
@@ -186,6 +186,67 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
 
   const [isOpen, setIsOpen] = useState(true);
 
+  // --- Pull-to-dismiss logic ---
+  const y = useMotionValue<number | string>(0);
+  const scale = useTransform(y, (latest) => {
+    if (typeof latest === "string") return 1;
+    if (latest < 0) return 1;
+    if (latest > 300) return 0.9;
+    return 1 - (latest / 300) * 0.1;
+  });
+  const dragControls = useDragControls();
+
+  const contentRef = useRef<HTMLDivElement>(null);
+  const touchStartY = useRef(0);
+  const isPulling = useRef(false);
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    touchStartY.current = e.touches[0].clientY;
+    isPulling.current = false;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!contentRef.current) return;
+    const scrollTop = contentRef.current.scrollTop;
+    const currentY = e.touches[0].clientY;
+
+    if (scrollTop <= 0) {
+      if (!isPulling.current) {
+        touchStartY.current = currentY;
+        isPulling.current = true;
+      }
+      const deltaY = currentY - touchStartY.current;
+      if (deltaY > 0) {
+        y.set(deltaY);
+      } else {
+        y.set(0);
+      }
+    } else {
+      isPulling.current = false;
+      if (typeof y.get() === "number" && (y.get() as number) > 0) y.set(0);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    isPulling.current = false;
+    if (typeof y.get() === "number" && (y.get() as number) > 100) {
+      handleClose();
+    } else if (typeof y.get() === "number" && (y.get() as number) > 0) {
+      animate(y, 0, { type: "spring", stiffness: 300, damping: 28 });
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isOpen]);
+
   const handleClose = () => {
     setIsOpen(false);
     setTimeout(onClose, 300); // wait for exit animation
@@ -291,18 +352,26 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
         animate={isDesktop ? { opacity: 1, scale: 1, x: "-50%", y: "-50%" } : { y: 0 }}
         exit={isDesktop ? { opacity: 0, scale: 0.9, x: "-50%", y: "-50%" } : { y: "100%" }}
         transition={{ type: "spring", damping: 30, stiffness: 300 }}
+        style={isDesktop ? {} : { y, scale, touchAction: "pan-y" }}
         drag={isDesktop ? false : "y"}
+        dragListener={false}
+        dragControls={dragControls}
         dragConstraints={{ top: 0, bottom: 0 }}
         dragElastic={0.2}
         onDragEnd={(e, info) => {
-          if (info.offset.y > 100) handleClose();
+          if (info.offset.y > 100 || info.velocity.y > 300) handleClose();
         }}
-        className="fixed inset-x-0 bottom-0 z-[101] max-h-[92vh] overflow-y-auto md:overflow-hidden rounded-t-[2.5rem] bg-[#fdfcf7] shadow-2xl md:bottom-auto md:top-1/2 md:left-1/2 md:w-[90vw] md:max-w-4xl md:h-[80vh] md:max-h-[85vh] md:rounded-[2.5rem] md:grid md:grid-cols-2 md:pb-0"
+        className="fixed inset-x-0 bottom-0 z-[101] flex flex-col max-h-[92vh] overflow-hidden rounded-t-[2.5rem] bg-[#fdfcf7] shadow-2xl md:bottom-auto md:top-1/2 md:left-1/2 md:w-[90vw] md:max-w-4xl md:h-[80vh] md:max-h-[85vh] md:rounded-[2.5rem] md:grid md:grid-cols-2 md:pb-0"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Drag Handle (Mobile only) */}
         {!isDesktop && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 bg-border rounded-full z-10" />
+          <div 
+            onPointerDown={(e) => dragControls.start(e)}
+            className="absolute top-0 left-0 right-0 h-10 z-10 flex items-start justify-center pt-3 touch-none"
+          >
+            <div className="w-12 h-1.5 bg-border rounded-full" />
+          </div>
         )}
         {/* Left Column (Desktop only) */}
         <div className="hidden md:flex flex-col bg-[#d9e4d4]/30 border-r border-border/40 p-8 justify-between relative h-full">
@@ -329,8 +398,17 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
           <X className="w-5 h-5 text-primary" />
         </button>
 
-        <div className="flex flex-col h-full overflow-y-auto px-5 md:px-8 pt-7 pb-44 md:pb-40 md:pt-0">
-          <div className="pt-7 pb-5 border-b border-border/40 md:hidden">
+        <div 
+          ref={contentRef}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          className="flex flex-col flex-1 min-h-0 h-full overflow-y-auto overscroll-contain px-5 md:px-8 pt-7 pb-44 md:pb-40 md:pt-0"
+        >
+          <div 
+            onPointerDown={(e) => dragControls.start(e)}
+            className="pt-7 pb-5 border-b border-border/40 md:hidden touch-none"
+          >
             <h2 className="font-serif text-2xl font-bold text-primary">{item.name}</h2>
             {item.description && <p className="text-sm text-primary/55 mt-1.5 leading-relaxed">{item.description}</p>}
           </div>
@@ -346,7 +424,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
                     <OptionCard
                       key={s.size}
                       label={SIZE_LABELS[s.size]}
-                      sub={`${sizePrice / 1000}k`}
+                      sub={`${sizePrice / 1000} ká`}
                       isActive={selectedSize === s.size}
                       onClick={() => setSelectedSize(s.size)}
                     />
@@ -423,7 +501,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
                     <OptionCard
                       key={milk.id}
                       label={milk.name}
-                      sub={isDefault ? "Mặc định" : diff > 0 ? `+${diff / 1000}k` : diff < 0 ? `${diff / 1000}k` : "Cùng giá"}
+                      sub={isDefault ? "Mặc định" : diff > 0 ? `+${diff / 1000} ká` : diff < 0 ? `${diff / 1000} ká` : "Cùng giá"}
                       isActive={selectedMilkId === milk.id}
                       onClick={() => setSelectedMilkId(milk.id)}
                     />
@@ -448,7 +526,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
                     <OptionCard
                       key={pid}
                       label={pwd.name}
-                      sub={isDefault ? "Mặc định" : diff !== 0 ? `${diff > 0 ? "+" : ""}${diff / 1000}k` : "Cùng giá"}
+                      sub={isDefault ? "Mặc định" : diff !== 0 ? `${diff > 0 ? "+" : ""}${diff / 1000} ká` : "Cùng giá"}
                       isActive={selectedPowderId === pid}
                       onClick={() => setSelectedPowderId(pid)}
                     />
@@ -512,7 +590,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
                       <OptionCard
                         key={opt.id}
                         label={opt.label}
-                        sub={opt.price_vnd > 0 ? `+${opt.price_vnd / 1000}k` : undefined}
+                        sub={opt.price_vnd > 0 ? `+${opt.price_vnd / 1000} ká` : undefined}
                         isActive={selectedOptionIds.includes(opt.id)}
                         onClick={() => handleSelectorToggle(group.id, opt.id, defaultOpt?.id)}
                       />
@@ -526,7 +604,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
                     <OptionCard
                       key={group.id}
                       label={group.name}
-                      sub={opt.price_vnd > 0 ? `+${opt.price_vnd / 1000}k` : undefined}
+                      sub={opt.price_vnd > 0 ? `+${opt.price_vnd / 1000} ká` : undefined}
                       isActive={selectedOptionIds.includes(opt.id)}
                       onClick={() => handleToggleChange(opt.id)}
                     />
@@ -548,7 +626,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
                     <OptionCard
                       key={opt.id}
                       label={opt.label}
-                      sub={price > 0 ? `+${price / 1000}k` : (opt.is_default ? "Mặc định" : "0k")}
+                      sub={price > 0 ? `+${price / 1000} ká` : (opt.is_default ? "Mặc định" : "0 ká")}
                       isActive={selectedOptionIds.includes(opt.id)}
                       onClick={() => handleSelectorToggle(group.id, opt.id, defaultOpt?.id)}
                     />
@@ -573,7 +651,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
             const pricesStr = Array.from({ length: listLimit }).map((_, i) => {
               const amount = i + 1;
               const cost = ceilTo1000(amount * rawPricePerQty) / 1000;
-              return `${amount}g: +${cost}k`;
+              return `${amount}g: +${cost} ká`;
             }).join(", ") + (max > listLimit ? "..." : "");
 
             return (
@@ -621,6 +699,14 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
         {/* BOTTOM CTA */}
         <div className="fixed md:absolute bottom-0 left-0 md:left-auto right-0 z-[110] w-full md:w-1/2 bg-[#fdfcf7]/95 backdrop-blur-md border-t border-border/60 shadow-[0_-8px_30px_rgba(0,0,0,0.04)] px-5 py-4 pb-8 md:pb-6 md:rounded-br-[2.5rem]">
           <div className="flex items-center justify-between gap-3">
+            {/* Total price */}
+            <div className="flex flex-col items-start justify-center flex-1 min-w-0">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-primary/45">Tổng tiền</span>
+              <span className="font-serif font-bold text-lg md:text-xl text-primary leading-none mt-0.5 whitespace-nowrap">
+                {totalCost / 1000} ká
+              </span>
+            </div>
+
             {/* Quantity Adjuster */}
             <div className="flex items-center bg-[#d9e4d4] rounded-2xl overflow-hidden shrink-0">
               <button
@@ -632,14 +718,6 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
                 onClick={() => setQuantity(quantity + 1)}
                 className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 transition-colors text-primary font-bold text-lg"
               >+</button>
-            </div>
-
-            {/* Total price in the middle */}
-            <div className="flex flex-col items-center justify-center flex-1 min-w-0">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-primary/45">Tổng tiền</span>
-              <span className="font-serif font-bold text-lg md:text-xl text-primary leading-none mt-0.5 whitespace-nowrap">
-                {totalCost / 1000}k 🐟
-              </span>
             </div>
 
             {/* Add to Cart Button */}

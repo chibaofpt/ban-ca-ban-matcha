@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls, animate } from "framer-motion";
 import { X, QrCode, Star, Clock, Loader2, Ticket, Gift, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/src/utils/cn";
@@ -207,6 +207,56 @@ export default function VoucherModal() {
   const [exchangingId, setExchangingId] = useState<string | null>(null);
   const [qrVoucher, setQrVoucher] = useState<MyVoucher | null>(null);
 
+  // --- Pull-to-dismiss logic ---
+  const y = useMotionValue<number | string>(0);
+  const scale = useTransform(y, (latest) => {
+    if (typeof latest === "string") return 1;
+    if (latest < 0) return 1;
+    if (latest > 300) return 0.9;
+    return 1 - (latest / 300) * 0.1;
+  });
+  const dragControls = useDragControls();
+
+  const contentRef = useRef<HTMLDivElement>(null);
+  const touchStartY = useRef(0);
+  const isPulling = useRef(false);
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    touchStartY.current = e.touches[0].clientY;
+    isPulling.current = false;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!contentRef.current) return;
+    const scrollTop = contentRef.current.scrollTop;
+    const currentY = e.touches[0].clientY;
+
+    if (scrollTop <= 0) {
+      if (!isPulling.current) {
+        touchStartY.current = currentY;
+        isPulling.current = true;
+      }
+      const deltaY = currentY - touchStartY.current;
+      if (deltaY > 0) {
+        y.set(deltaY);
+      } else {
+        y.set(0);
+      }
+    } else {
+      isPulling.current = false;
+      if (typeof y.get() === "number" && (y.get() as number) > 0) y.set(0);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    isPulling.current = false;
+    if (typeof y.get() === "number" && (y.get() as number) > 100) {
+      close();
+    } else if (typeof y.get() === "number" && (y.get() as number) > 0) {
+      animate(y, 0, { type: "spring", stiffness: 300, damping: 28 });
+    }
+  };
+
   async function handleExchange(pkg: VoucherPackage) {
     setExchangingId(pkg.id);
     try {
@@ -223,6 +273,17 @@ export default function VoucherModal() {
 
   const filteredVouchers = filterModalVouchers(vouchers);
   const filteredPackages = filterModalPackages(packages);
+
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [open]);
 
   return (
     <AnimatePresence>
@@ -245,22 +306,32 @@ export default function VoucherModal() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 40 }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
+            style={{ y, scale, touchAction: "pan-y" }}
             drag="y"
+            dragListener={false}
+            dragControls={dragControls}
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={0.2}
             onDragEnd={(e, info) => {
-              // Trigger close if pulled down by 50px or swiped down quickly
-              if (info.offset.y > 50 || info.velocity.y > 300) close();
+              if (info.offset.y > 100 || info.velocity.y > 300) close();
             }}
             className="fixed inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center z-50 p-0 md:p-4"
           >
             <div className="relative bg-background w-full md:max-w-2xl md:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col max-h-[90vh]">
 
               {/* Mobile Drag Handle */}
-              <div className="w-12 h-1.5 bg-border/60 rounded-full mx-auto mt-3 mb-1 md:hidden" />
+              <div 
+                onPointerDown={(e) => dragControls.start(e)}
+                className="w-full flex justify-center pt-3 pb-1 md:hidden touch-none"
+              >
+                <div className="w-12 h-1.5 bg-border/60 rounded-full" />
+              </div>
 
               {/* ── Sticky Header ── */}
-              <div className="sticky top-0 bg-background md:rounded-t-2xl z-10 px-4 pt-2 md:pt-4 pb-3 border-b border-border/50">
+              <div 
+                onPointerDown={(e) => dragControls.start(e)}
+                className="sticky top-0 bg-background md:rounded-t-2xl z-10 px-4 pt-2 md:pt-4 pb-3 border-b border-border/50 touch-none"
+              >
                 <div className="flex items-center justify-between mb-2">
                   <h2 className="font-serif text-lg font-bold text-primary">Voucher của tôi 🎁</h2>
                   <button
@@ -279,7 +350,13 @@ export default function VoucherModal() {
               </div>
 
               {/* ── Scrollable Body ── */}
-              <div className="overflow-y-auto flex-1 px-4 py-4 space-y-6">
+              <div 
+                ref={contentRef}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                className="overflow-y-auto overscroll-contain flex-1 px-4 py-4 space-y-6"
+              >
                 {loading ? (
                   <div className="flex flex-col items-center gap-3 py-16 text-muted-foreground">
                     <Loader2 size={28} className="animate-spin text-primary" />

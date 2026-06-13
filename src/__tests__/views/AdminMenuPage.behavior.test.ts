@@ -34,7 +34,7 @@ const mockLatteItem: AdminMenuItem = {
   base_liquid_note: null,
   custom_powder_grams: null,
   matcha_powder_id: "p-1",
-  powder: { id: "p-1", name: "Meyumi", price_per_gram: 300, type: "RECOMMEND" },
+  powder: { id: "p-1", name: "Meyumi", updated_at: "2023-10-27T00:00:00Z", type: "RECOMMEND" },
   resolved_default_powder_id: null,
   allowed_powder_ids: [],
   sizes: [
@@ -42,11 +42,12 @@ const mockLatteItem: AdminMenuItem = {
     { size: "L", base_price_vnd: 55000, milk_ml: 220 },
     { size: "XL", base_price_vnd: 65000, milk_ml: 260 },
   ],
-};
+} as any;
 
 const mockMenuData: AdminMenuData = {
   latte: [mockLatteItem],
   fusion: [],
+  updated_at: new Date().toISOString(),
 };
 
 const mockPowders: Powder[] = [];
