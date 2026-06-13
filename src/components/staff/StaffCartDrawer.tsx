@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Trash2, User, UserX, Ticket, ArrowLeft, CheckCircle2, ChevronRight, X } from "lucide-react";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
@@ -14,7 +14,7 @@ import {
   estimateMultiDiscountSavings,
   filterUsableVouchers,
 } from "@/src/utils/voucherMatchUtils";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls, animate } from "framer-motion";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -86,6 +86,78 @@ export function StaffCartDrawer({
   const [activeItemForVoucher, setActiveItemForVoucher] = useState<string | null>(null);
   const [isDiscountPickerOpen, setIsDiscountPickerOpen] = useState(false);
 
+  // --- Pull-to-dismiss logic ---
+  const y = useMotionValue<number | string>(0);
+  const scale = useTransform(y, (latest) => {
+    if (typeof latest === "string") return 1;
+    if (latest < 0) return 1;
+    if (latest > 300) return 0.9;
+    return 1 - (latest / 300) * 0.1;
+  });
+  const dragControls = useDragControls();
+
+  const contentRef = useRef<HTMLDivElement>(null);
+  const touchStartY = useRef(0);
+  const isPulling = useRef(false);
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    touchStartY.current = e.touches[0].clientY;
+    isPulling.current = false;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!contentRef.current) return;
+    const scrollTop = contentRef.current.scrollTop;
+    const currentY = e.touches[0].clientY;
+
+    if (scrollTop <= 0) {
+      if (!isPulling.current) {
+        touchStartY.current = currentY;
+        isPulling.current = true;
+      }
+      const deltaY = currentY - touchStartY.current;
+      if (deltaY > 0) {
+        y.set(deltaY);
+      } else {
+        y.set(0);
+      }
+    } else {
+      isPulling.current = false;
+      if (typeof y.get() === "number" && (y.get() as number) > 0) y.set(0);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    isPulling.current = false;
+    if (typeof y.get() === "number" && (y.get() as number) > 100) {
+      onClose();
+    } else if (typeof y.get() === "number" && (y.get() as number) > 0) {
+      animate(y, 0, { type: "spring", stiffness: 300, damping: 28 });
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      const timer = setTimeout(() => {
+        setActiveItemForVoucher(null);
+        setIsDiscountPickerOpen(false);
+        y.set(0);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isOpen]);
+
   // Subtotal (already reflects PRODUCT voucher credit if applied)
   const subtotalPrice = cart.reduce((s, c) => s + c.clientPriceVnd * c.quantity, 0);
 
@@ -128,23 +200,32 @@ export function StaffCartDrawer({
           <motion.div 
             initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            style={{ y, scale, touchAction: "pan-y" }}
             drag="y"
+            dragListener={false}
+            dragControls={dragControls}
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={0.2}
             onDragEnd={(_, info) => {
-              if (info.offset.y > 100 && info.velocity.y > 200) {
+              if (info.offset.y > 100 || info.velocity.y > 300) {
                 onClose();
               }
             }}
             className="absolute bottom-0 left-0 right-0 bg-card rounded-t-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
           >
             {/* Mobile Drag Handle */}
-            <div className="flex justify-center pt-3 pb-1 w-full shrink-0">
+            <div 
+              onPointerDown={(e) => dragControls.start(e)}
+              className="flex justify-center pt-3 pb-1 w-full shrink-0 touch-none"
+            >
               <div className="w-12 h-1.5 bg-border rounded-full" />
             </div>
 
             {/* Header */}
-            <div className="flex items-center justify-between px-4 pt-2 pb-3 shrink-0 border-b border-border/40">
+            <div 
+              onPointerDown={(e) => dragControls.start(e)}
+              className="flex items-center justify-between px-4 pt-2 pb-3 shrink-0 border-b border-border/40 touch-none"
+            >
               <h2 className="font-serif text-lg font-bold flex items-center gap-2">
                 Giỏ hàng <span className="bg-primary/10 text-primary text-xs px-2 py-0.5 rounded-full">{cart.reduce((sum, c) => sum + c.quantity, 0)}</span>
               </h2>
@@ -194,7 +275,13 @@ export function StaffCartDrawer({
         </div>
 
         {/* Item list */}
-        <div className="overflow-y-auto flex-1 p-4 space-y-4">
+        <div 
+          ref={contentRef}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          className="overflow-y-auto overscroll-contain flex-1 min-h-0 p-4 space-y-4"
+        >
           {cart.length === 0 ? (
              <div className="text-center py-10 text-muted-foreground space-y-3">
                <span className="text-5xl block">🛒</span>

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls, animate } from "framer-motion";
 import { X, Trash2, ShoppingBag, CheckCircle2, AlertTriangle, RefreshCcw, Minus, Plus, Ticket, ChevronRight, Clock, ArrowLeft, MapPin } from "lucide-react";
 import { useCartStore, useCartTotalPrice } from "@/src/lib/store/cartStore";
 import Image from "next/image";
@@ -64,6 +64,56 @@ const CartDrawer = () => {
 
   const checkoutMutation = useCheckout();
 
+  // --- Pull-to-dismiss logic ---
+  const y = useMotionValue<number | string>(0);
+  const scale = useTransform(y, (latest) => {
+    if (typeof latest === "string") return 1;
+    if (latest < 0) return 1;
+    if (latest > 300) return 0.9;
+    return 1 - (latest / 300) * 0.1;
+  });
+  const dragControls = useDragControls();
+
+  const contentRef = useRef<HTMLDivElement>(null);
+  const touchStartY = useRef(0);
+  const isPulling = useRef(false);
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    touchStartY.current = e.touches[0].clientY;
+    isPulling.current = false;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!contentRef.current) return;
+    const scrollTop = contentRef.current.scrollTop;
+    const currentY = e.touches[0].clientY;
+
+    if (scrollTop <= 0) {
+      if (!isPulling.current) {
+        touchStartY.current = currentY;
+        isPulling.current = true;
+      }
+      const deltaY = currentY - touchStartY.current;
+      if (deltaY > 0) {
+        y.set(deltaY);
+      } else {
+        y.set(0);
+      }
+    } else {
+      isPulling.current = false;
+      if (typeof y.get() === "number" && (y.get() as number) > 0) y.set(0);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    isPulling.current = false;
+    if (typeof y.get() === "number" && (y.get() as number) > 100) {
+      handleClose();
+    } else if (typeof y.get() === "number" && (y.get() as number) > 0) {
+      animate(y, 0, { type: "spring", stiffness: 300, damping: 28 });
+    }
+  };
+
   // Derived voucher lists
   const discountVouchers = filterUsableVouchers(allVouchers, "DISCOUNT");
   const freeshipVouchers = filterUsableVouchers(allVouchers, "FREESHIP");
@@ -85,18 +135,14 @@ const CartDrawer = () => {
   let appliedFreeshipId: string | null = null;
   // total after discount (before shipping) = finalK * 1000
   const totalAfterDiscount = finalK * 1000;
-  if (orderType === "DELIVERY" && shippingFee !== null && freeshipVouchers.length > 0) {
-    // Filter vouchers that meet min_order_vnd requirement
-    const eligibleFreeship = freeshipVouchers.filter(v => 
-      v.min_order_vnd === null || v.min_order_vnd === undefined || totalAfterDiscount >= v.min_order_vnd
-    );
-    if (eligibleFreeship.length > 0) {
-      const bestVoucher = eligibleFreeship.reduce((best, v) => (v.covered_delivery_fee_vnd ?? 0) > (best.covered_delivery_fee_vnd ?? 0) ? v : best, eligibleFreeship[0]);
-      freeshipDiscountK = Math.floor(Math.min(shippingFee, bestVoucher.covered_delivery_fee_vnd ?? 0) / 1000);
-      appliedFreeshipId = bestVoucher.id;
-    }
+  const selectedFreeshipVouchers = freeshipVouchers.filter(v => selectedVoucherIds.includes(v.id));
+  if (orderType === "DELIVERY" && shippingFee !== null && selectedFreeshipVouchers.length > 0) {
+    const bestVoucher = selectedFreeshipVouchers[0];
+    freeshipDiscountK = Math.floor(Math.min(shippingFee, bestVoucher.covered_delivery_fee_vnd ?? 0) / 1000);
+    appliedFreeshipId = bestVoucher.id;
   }
 
+  const totalDiscountK = discountK + freeshipDiscountK;
   const grandTotalK = Math.max(0, finalK + shippingK - freeshipDiscountK);
   
   const discountAmount = discountK * 1000;
@@ -122,6 +168,25 @@ const CartDrawer = () => {
   }, [isTimeCustom]);
 
   const resetCheckout = useCallback(() => setCheckout({ status: "idle" }), []);
+
+  const handleToggleDragEnd = (event: any, info: any) => {
+    if (info.offset.x > 30) {
+      setOrderType("PICKUP");
+    } else if (info.offset.x < -30) {
+      setOrderType("DELIVERY");
+    }
+  };
+
+  // Prevent background scrolling when cart is open
+  useEffect(() => {
+    if (isCartOpen) {
+      const originalStyle = window.getComputedStyle(document.body).overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = originalStyle;
+      };
+    }
+  }, [isCartOpen]);
 
   // Fetch all vouchers when cart opens + user logged in
   useEffect(() => {
@@ -281,7 +346,8 @@ const CartDrawer = () => {
     setOrderType("PICKUP");
     setDeliveryAddress(null);
     setShippingFee(null);
-  }, [setCartOpen, resetCheckout]);
+    setTimeout(() => y.set(0), 300);
+  }, [setCartOpen, resetCheckout, y]);
 
   /** The cart item currently being assigned a voucher. */
   const activeItem = items.find(i => i.cartId === activeItemForVoucher);
@@ -295,27 +361,49 @@ const CartDrawer = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-70 bg-foreground/40 backdrop-blur-sm"
+            className="fixed inset-0 z-70 bg-foreground/40 backdrop-blur-sm touch-none"
             onClick={handleClose}
           />
 
           {/* Drawer shell — overlays are rendered inside via `absolute inset-0` */}
           <motion.div
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 30, stiffness: 300 }}
-            className="fixed inset-y-0 right-0 z-71 w-full max-w-md bg-[#fdfcf7] md:rounded-l-3xl border-l border-border shadow-2xl flex flex-col overflow-hidden"
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            style={{ y, scale, touchAction: "pan-y" }}
+            drag="y"
+            dragListener={false}
+            dragControls={dragControls}
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={0.2}
+            onDragEnd={(_, info) => {
+              if (info.offset.y > 100 || info.velocity.y > 300) {
+                handleClose();
+              }
+            }}
+            className="fixed bottom-0 left-0 right-0 h-[100dvh] mx-auto z-71 w-full max-w-md bg-[#fdfcf7] shadow-2xl flex flex-col overflow-hidden"
           >
             {/* ── Main cart view ───────────────────────────────────────────── */}
             <div className="flex-1 flex flex-col overflow-hidden relative">
 
+              {/* Mobile Drag Handle */}
+              <div 
+                onPointerDown={(e) => dragControls.start(e)}
+                className="flex justify-center pt-2 pb-1 w-full shrink-0 touch-none bg-white/60 backdrop-blur-md"
+              >
+                <div className="w-10 h-1 bg-border rounded-full" />
+              </div>
+
               {/* Header */}
-              <div className="flex items-center justify-between px-6 py-5 border-b border-border/40 shrink-0 bg-white/60 backdrop-blur-md">
-                <h2 className="font-serif text-2xl font-bold text-primary flex items-center gap-2">
-                  Giỏ cá <span className="text-3xl">🐟</span>
+              <div 
+                onPointerDown={(e) => dragControls.start(e)}
+                className="flex items-center justify-between px-4 pt-0 pb-2 border-b border-border/40 shrink-0 bg-white/60 backdrop-blur-md touch-none"
+              >
+                <h2 className="font-serif text-lg font-bold text-primary flex items-center gap-1.5">
+                  Giỏ cá <span className="text-2xl">🐟</span>
                   {items.length > 0 && (
-                    <span className="ml-1 text-sm font-bold bg-primary/10 text-primary rounded-full px-2 py-0.5">
+                    <span className="ml-1 text-xs font-bold bg-primary/10 text-primary rounded-full px-1.5 py-0.5">
                       {items.reduce((s, i) => s + i.quantity, 0)}
                     </span>
                   )}
@@ -323,38 +411,22 @@ const CartDrawer = () => {
                 <button
                   onClick={handleClose}
                   aria-label="Đóng giỏ hàng"
-                  className="w-10 h-10 rounded-full bg-primary/5 flex items-center justify-center hover:bg-primary/10 transition-colors"
+                  className="w-8 h-8 rounded-full bg-primary/5 flex items-center justify-center hover:bg-primary/10 transition-colors"
                 >
-                  <X className="w-5 h-5 text-primary" />
+                  <X className="w-4 h-4 text-primary" />
                 </button>
               </div>
 
-              {/* Order Type Toggle */}
-              <div className="px-5 pt-4 pb-2 shrink-0 bg-[#fdfcf7] z-10">
-                <div className="flex bg-secondary/10 p-1 rounded-2xl">
-                  <button
-                    onClick={() => setOrderType("PICKUP")}
-                    className={cn(
-                      "flex-1 py-2 text-sm font-bold rounded-xl transition-all",
-                      orderType === "PICKUP" ? "bg-white text-primary shadow-sm" : "text-primary/50 hover:text-primary/70"
-                    )}
-                  >
-                    Đến lấy
-                  </button>
-                  <button
-                    onClick={() => setOrderType("DELIVERY")}
-                    className={cn(
-                      "flex-1 py-2 text-sm font-bold rounded-xl transition-all",
-                      orderType === "DELIVERY" ? "bg-white text-primary shadow-sm" : "text-primary/50 hover:text-primary/70"
-                    )}
-                  >
-                    Giao hàng
-                  </button>
-                </div>
-              </div>
+
 
               {/* Scrollable content */}
-              <div className="flex-1 overflow-y-auto px-5 pb-4 min-h-0">
+              <div 
+                ref={contentRef}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                className="flex-1 overflow-y-auto overscroll-contain px-5 pb-4 min-h-0"
+              >
                 <AnimatePresence mode="wait">
 
                   {/* PRICE_CHANGED */}
@@ -380,13 +452,13 @@ const CartDrawer = () => {
                           <div key={`${c.menu_item_id}-${c.size}`} className="bg-white border border-border rounded-xl p-3">
                             <p className="font-bold text-sm text-primary">{c.name} · {c.size}</p>
                             <div className="flex items-center gap-3 mt-1.5">
-                              <span className="text-xs line-through text-primary/40">{c.client_price_vnd / 1000}k</span>
+                              <span className="text-[13px] line-through text-primary/40">{c.client_price_vnd / 1000} ká</span>
                               <span className="text-xs">→</span>
                               <span className={cn(
-                                "text-xs font-bold",
+                                "text-[13px] font-bold",
                                 c.server_price_vnd > c.client_price_vnd ? "text-red-500" : "text-green-600"
                               )}>
-                                {c.server_price_vnd / 1000}k
+                                {c.server_price_vnd / 1000} ká
                               </span>
                             </div>
                           </div>
@@ -445,16 +517,16 @@ const CartDrawer = () => {
                           const hasAvailableVouchers = hasMoreProductVouchers || hasMoreAddonVouchers;
                           const hasAnyVoucher = !!item.productVoucherId || (item.addonVouchers && item.addonVouchers.length > 0);
 
-                          // Parse details for new layout
-                          const sizeLabel = item.size === "M" ? "Cá con" : item.size === "L" ? "Cá vừa" : "Cá lớn";
-                          const sweetnessMap: Record<string, string> = { NONE: "Không đường", QUARTER: "Ngọt ít", HALF: "Ngọt vừa", THREE_QUARTER: "Ngọt nhiều", FULL: "Siêu ngọt" };
+                          // Parse details for chip layout
+                          const sizeLabel = item.size === "M" ? "Cá con (360ml)" : item.size === "L" ? "Cá vừa (500ml)" : "Cá lớn (1000ml)";
+                          const sweetnessMap: Record<string, string> = { NONE: "Ngọt 0%", QUARTER: "Ngọt 25%", HALF: "Ngọt 50%", THREE_QUARTER: "Ngọt 75%", FULL: "Ngọt 100%" };
                           const iceMap: Record<string, string> = { NORMAL: "", LESS_ICE: "Ít đá", NO_ICE: "Không đá", SEPARATE_ICE: "Đá riêng" };
-                          const sw = item.sweetness !== "HALF" ? sweetnessMap[item.sweetness] : null;
+                          const sw = sweetnessMap[item.sweetness];
                           const ic = item.iceOption !== "NORMAL" ? iceMap[item.iceOption] : null;
                           
                           const powderDetail = item.details?.find(d => d.startsWith("Bột: "));
-                          let powderName = null;
-                          let extraMatcha = null;
+                          let powderName: string | null = null;
+                          let extraMatcha: string | null = null;
                           if (powderDetail) {
                             const raw = powderDetail.replace("Bột: ", "");
                             const match = raw.match(/^(.*?)( \+?\d+g)?$/);
@@ -465,27 +537,23 @@ const CartDrawer = () => {
                           }
 
                           const hasDaDua = item.details?.some(d => d.includes("Đá dừa"));
-                          let icDisplay = ic;
-                          if (hasDaDua) {
-                            icDisplay = ic ? `${ic} (Đá dừa)` : "Đá dừa";
-                          }
                           
-                          const line1 = [sizeLabel, sw, icDisplay].filter(Boolean).join(" · ");
+                          // Line 1 chips: size + milk (latte) or powder (fusion)
+                          const milkDetail = item.details?.find(d => d.startsWith("Sữa: "));
+                          const milkName = milkDetail ? milkDetail.replace("Sữa: ", "") : null;
+                          const line1Chips: string[] = [sizeLabel];
+                          if (item.category === "latte" && milkName) line1Chips.push(milkName);
+                          if (item.category === "fusion" && powderName) line1Chips.push(powderName);
                           
-                          const coldwhisk = item.coldwhisk ? "Coldwhisk" : null;
-                          const milk = item.details?.find(d => d.startsWith("Sữa: "));
+                          // Line 2 chips: sweetness + ice + coldwhisk
+                          const line2Chips: string[] = [];
+                          if (sw) line2Chips.push(sw);
+                          if (ic) line2Chips.push(ic);
+                          if (item.coldwhisk) line2Chips.push("Coldwhisk");
                           
-                          const line2 = [coldwhisk, milk].filter(Boolean).join(" · ");
-                          
-                          let line4 = null;
-                          if (extraMatcha) {
-                            const ex = extraMatcha.startsWith("+") ? extraMatcha : `+${extraMatcha}`;
-                            line4 = `${ex} bột ${powderName}`;
-                          }
-                          
-                          // Exclude already parsed details
-                          const productModalSweetnessLabels = ["Lạt", "Ít ngọt", "Vừa", "Ngọt", "Rất ngọt"];
-                          const addons = item.details?.filter(d => {
+                          // Line 3 chips: addons + đá dừa + extra matcha
+                          const productModalSweetnessLabels = ["Lạt", "Ít ngọt", "Vừa", "Ngọt", "Rất ngọt", "0%", "25%", "50%", "75%", "100%", "Ngọt 0%", "Ngọt 25%", "Ngọt 50%", "Ngọt 75%", "Ngọt 100%"];
+                          const addonChips = item.details?.filter(d => {
                             if (d.startsWith("Size ")) return false;
                             if (d.startsWith("Bột: ")) return false;
                             if (d.startsWith("Sữa: ")) return false;
@@ -495,9 +563,15 @@ const CartDrawer = () => {
                             if (productModalSweetnessLabels.includes(d)) return false;
                             if (d.includes("Đá dừa")) return false;
                             return true;
-                          }).map(d => d.startsWith("+") ? d : `+${d}`);
-                          const line3 = addons?.join(" · ");
-                          const line5 = item.note ? `📝 ${item.note}` : null;
+                          }).map(d => d.startsWith("+") ? d : `+${d}`) || [];
+                          if (hasDaDua) addonChips.push("+Đá dừa");
+                          if (extraMatcha) {
+                            const ex = extraMatcha.startsWith("+") ? extraMatcha : `+${extraMatcha}`;
+                            addonChips.push(`${ex} ${powderName || "bột"}`);
+                          }
+                          
+                          // Line 4: note
+                          const noteText = item.note || null;
 
                           return (
                             <div
@@ -539,31 +613,57 @@ const CartDrawer = () => {
 
                               {/* Content */}
                               <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-                                {/* Name + delete */}
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <h4 className="font-bold text-sm text-primary leading-tight truncate">
-                                      {item.name} {item.category === "fusion" && powderName && `- ${powderName}`}
-                                    </h4>
-                                    <div className="mt-1.5 flex flex-col gap-1 items-start">
-                                      {line1 && <p className="text-[11px] text-primary font-medium bg-primary/25 px-2 py-1 rounded-md">{line1}</p>}
-                                      {line2 && <p className="text-[11px] text-primary/[0.95] font-medium bg-primary/20 px-2 py-1 rounded-md">{line2}</p>}
-                                      {line3 && <p className="text-[11px] text-primary/90 font-medium bg-primary/15 px-2 py-1 rounded-md">{line3}</p>}
-                                      {line4 && <p className="text-[11px] text-primary/[0.85] font-medium bg-primary/10 px-2 py-1 rounded-md">{line4}</p>}
-                                      {line5 && <p className="text-[11px] text-primary/80 font-medium bg-primary/5 px-2 py-1 rounded-md italic">{line5}</p>}
-                                    </div>
+                                {/* Title + Delete */}
+                                <div className="flex items-start justify-between w-full">
+                                  <h4 className="font-bold text-sm text-primary leading-tight truncate w-4/5 pr-2">
+                                    {item.name} {item.category === "fusion" && powderName && `- ${powderName}`}
+                                  </h4>
+                                  <div className="w-1/5 flex justify-end">
+                                    <button
+                                      onClick={() => removeItem(item.cartId)}
+                                      aria-label={`Xoá ${item.name}`}
+                                      className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-primary/30 hover:text-red-500 hover:bg-red-50 transition-colors -mt-1 -mr-1"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
                                   </div>
-                                  <button
-                                    onClick={() => removeItem(item.cartId)}
-                                    aria-label={`Xoá ${item.name}`}
-                                    className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-primary/30 hover:text-red-500 hover:bg-red-50 transition-colors -mt-1 -mr-1"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
+                                </div>
+
+                                {/* Customize (full line) */}
+                                <div className="mt-1.5 flex flex-col gap-1 w-full">
+                                  {/* Line 1 — Size + Milk/Powder */}
+                                  {line1Chips.length > 0 && (
+                                    <div className="flex flex-wrap gap-1">
+                                      {line1Chips.map((chip, idx) => (
+                                        <span key={idx} className="text-[11px] font-medium bg-primary/25 text-primary px-2 py-0.5 rounded-full">{chip}</span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {/* Line 2 — Sweetness + Ice + Coldwhisk */}
+                                  {line2Chips.length > 0 && (
+                                    <div className="flex flex-wrap gap-1">
+                                      {line2Chips.map((chip, idx) => (
+                                        <span key={idx} className="text-[11px] font-medium bg-primary/20 text-primary/[0.95] px-2 py-0.5 rounded-full">{chip}</span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {/* Line 3 — Addons + Đá dừa + Extra matcha */}
+                                  {addonChips.length > 0 && (
+                                    <div className="flex flex-wrap gap-1">
+                                      {addonChips.map((chip, idx) => (
+                                        <span key={idx} className="text-[11px] font-medium bg-primary/15 text-primary/90 px-2 py-0.5 rounded-full">{chip}</span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {/* Line 4 — Note */}
+                                  {noteText && (
+                                    <span className="text-[11px] font-medium bg-primary/5 text-primary/80 px-2 py-0.5 rounded-full italic inline-block">📝 {noteText}</span>
+                                  )}
                                 </div>
 
                                 {/* Voucher tags / CTA and Price at the bottom */}
-                                <div className="flex items-end justify-between mt-3 gap-2">
+                                <div className="flex items-end justify-between mt-3 gap-2 w-full">
+                                  {/* Vouchers (Left side) */}
                                   <div className="flex flex-wrap gap-1.5 flex-1">
                                     {/* Applied: product voucher */}
                                     {item.productVoucherId && (() => {
@@ -608,16 +708,16 @@ const CartDrawer = () => {
                                       </button>
                                     )}
                                   </div>
-                                  
-                                  {/* Price */}
-                                  <div className="flex items-center gap-1.5 shrink-0">
+
+                                  {/* Price (Right side) */}
+                                  <div className="flex items-center gap-1.5 shrink-0 justify-end">
                                     {item.originalClientPriceVnd > item.clientPriceVnd && (
-                                      <span className="text-[11px] line-through text-primary/30 font-medium">
-                                        {(item.originalClientPriceVnd * item.quantity) / 1000}k
+                                      <span className="text-[12px] line-through text-primary/30 font-medium">
+                                        {(item.originalClientPriceVnd * item.quantity) / 1000} ká
                                       </span>
                                     )}
                                     <span className="font-bold text-[15px] text-primary">
-                                      {(item.clientPriceVnd * item.quantity) / 1000}k
+                                      {(item.clientPriceVnd * item.quantity) / 1000} ká
                                     </span>
                                   </div>
                                 </div>
@@ -633,15 +733,15 @@ const CartDrawer = () => {
 
               {/* ── Footer ───────────────────────────────────────────────── */}
               {items.length > 0 && (
-                <div className="border-t border-border/40 bg-white px-5 pb-4 pt-4 shrink-0 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.06)] space-y-3 flex flex-col">
+                <div className="border-t border-border/40 bg-white px-4 pb-2 pt-2.5 shrink-0 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.06)] space-y-2 flex flex-col touch-none">
                   {/* Guest Voucher Teaser */}
                   {!isLoggedIn && (
-                    <div className="mb-2 p-3 bg-orange-50 border border-orange-200 rounded-xl flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Ticket className="w-4 h-4 text-orange-500" />
-                        <span className="text-[11px] font-medium text-orange-800">Đăng nhập để xem & áp dụng voucher</span>
+                    <div className="mb-1 p-2 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Ticket className="w-3.5 h-3.5 text-orange-500" />
+                        <span className="text-[10px] font-medium text-orange-800">Đăng nhập để xem & áp dụng voucher</span>
                       </div>
-                      <button onClick={openLogin} className="text-[11px] px-3 py-1.5 rounded-full font-bold text-white bg-orange-500 hover:bg-orange-600 transition-colors">Đăng nhập</button>
+                      <button onClick={openLogin} className="text-[10px] px-2.5 py-1 rounded-full font-bold text-white bg-orange-500 hover:bg-orange-600 transition-colors">Đăng nhập</button>
                     </div>
                   )}
 
@@ -657,53 +757,92 @@ const CartDrawer = () => {
                     </div>
                   )}
 
-                  {/* ── DIV 1: Controls + Pricing (two-column 60/40) ── */}
+                  {/* ── Row 1: Order Type Toggle (2/3) + Giờ nhận (1/3) ── */}
+                  <div className="flex gap-2 items-stretch">
+                    {/* Left 2/3 — Order type toggle */}
+                    <motion.div 
+                      className="relative flex bg-secondary/10 p-1 rounded-xl" style={{ width: "66.67%" }}
+                      drag="x"
+                      dragConstraints={{ left: 0, right: 0 }}
+                      dragElastic={0.15}
+                      onDragEnd={handleToggleDragEnd}
+                    >
+                      {/* Sliding Background Indicator */}
+                      <div 
+                        className="absolute top-1 bottom-1 w-[calc(50%-0.25rem)] bg-[#2d4a22] rounded-lg shadow-sm transition-transform duration-300 ease-out z-0"
+                        style={{ transform: orderType === "PICKUP" ? "translateX(0)" : "translateX(100%)" }}
+                      />
+                      <button
+                        onClick={() => setOrderType("PICKUP")}
+                        className={cn(
+                          "relative z-10 flex-1 py-1.5 text-xs font-bold transition-colors duration-300",
+                          orderType === "PICKUP" ? "text-white" : "text-primary/50 hover:text-primary/70"
+                        )}
+                      >
+                        Đến lấy
+                      </button>
+                      <button
+                        onClick={() => setOrderType("DELIVERY")}
+                        className={cn(
+                          "relative z-10 flex-1 py-1.5 text-xs font-bold transition-colors duration-300",
+                          orderType === "DELIVERY" ? "text-white" : "text-primary/50 hover:text-primary/70"
+                        )}
+                      >
+                        Giao hàng
+                      </button>
+                    </motion.div>
+
+                    {/* Right 1/3 — Giờ nhận */}
+                    <div className="flex flex-col gap-0.5" style={{ width: "33.33%" }}>
+                      <div className="flex items-center justify-between bg-secondary/10 rounded-xl px-2 py-1.5 h-full">
+                        <div className="flex items-center gap-1">
+                          <p className="text-[10px] font-bold text-primary leading-tight">Giờ</p>
+                        </div>
+                        <input
+                          type="time"
+                          min={minTimeStr}
+                          value={pickupTime}
+                          onClick={() => {
+                            if (!pickupTime) {
+                              setPickupTime(minTimeStr);
+                              setIsTimeCustom(true);
+                            }
+                          }}
+                          onChange={(e) => {
+                            setPickupTime(e.target.value);
+                            setIsTimeCustom(true);
+                          }}
+                          className={cn(
+                            "bg-transparent text-xs font-bold focus:outline-none w-16 text-right cursor-pointer",
+                            pickupTime && pickupTime < minTimeStr ? "text-red-500" : "text-primary"
+                          )}
+                        />
+                      </div>
+                      {pickupTime && pickupTime < minTimeStr && (
+                        <span className="text-[9px] text-red-500 font-medium text-right">
+                          Tối thiểu {minTimeStr}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Row 2: Ưu đãi + Địa chỉ (60%) | Pricing (40%) ── */}
                   <div className="flex gap-3 items-stretch">
 
-                    {/* Left 60% — Pickup time + Voucher stacked vertically */}
-                    <div className="flex flex-col gap-2" style={{ width: "60%" }}>
-
-                      {/* Pickup time pill */}
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center justify-between bg-secondary/10 rounded-xl px-3 py-2.5">
-                          <div className="flex items-center gap-2">
-                            <div className="bg-white p-1 rounded-md shadow-sm shrink-0">
-                              <Clock size={13} className="text-primary" />
-                            </div>
-                            <p className="text-[11px] font-bold text-primary">Giờ nhận</p>
-                          </div>
-                          <input
-                            type="time"
-                            min={minTimeStr}
-                            value={pickupTime}
-                            onClick={() => {
-                              if (!pickupTime) {
-                                setPickupTime(minTimeStr);
-                                setIsTimeCustom(true);
-                              }
-                            }}
-                            onChange={(e) => {
-                              setPickupTime(e.target.value);
-                              setIsTimeCustom(true);
-                            }}
-                            className={cn(
-                              "bg-transparent text-xs font-bold focus:outline-none w-16 text-right cursor-pointer",
-                              pickupTime && pickupTime < minTimeStr ? "text-red-500" : "text-primary"
-                            )}
-                          />
-                        </div>
-                        {pickupTime && pickupTime < minTimeStr && (
-                          <span className="text-[9px] text-red-500 font-medium text-right">
-                            Tối thiểu {minTimeStr}
-                          </span>
-                        )}
-                      </div>
+                    {/* Left 60% — Voucher + Delivery address */}
+                    <motion.div 
+                      className="flex flex-col gap-1.5 min-h-[82px] touch-pan-y" style={{ width: "60%" }}
+                      drag="x"
+                      dragConstraints={{ left: 0, right: 0 }}
+                      dragElastic={0.15}
+                      onDragEnd={handleToggleDragEnd}
+                    >
 
                       {/* Voucher trigger pill */}
-                      {isLoggedIn && (isVouchersLoading || discountVouchers.length > 0) && (
+                      {isLoggedIn && (isVouchersLoading || discountVouchers.length > 0 || freeshipVouchers.length > 0) && (
                         <button
                           onClick={() => setIsDiscountPickerOpen(true)}
-                          className="flex items-center justify-between bg-orange-50 border border-orange-100 hover:bg-orange-100/80 transition-colors rounded-xl px-3 py-2.5 text-left"
+                          className="flex items-center justify-between bg-orange-50 border border-orange-100 hover:bg-orange-100/80 transition-colors rounded-xl px-2 py-2 text-left"
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <div className="bg-orange-100 p-1 rounded-md text-orange-600 shrink-0">
@@ -723,91 +862,94 @@ const CartDrawer = () => {
                           <ChevronRight size={13} className="text-orange-400 shrink-0 ml-1" />
                         </button>
                       )}
-                    </div>
 
-                     {/* Right 40% — Tạm tính / Giảm giá / Phí ship / Tổng, aligned to bottom */}
+                      {/* Delivery address trigger (only when DELIVERY) */}
+                      {orderType === "DELIVERY" && (
+                        <>
+                          <button
+                            onClick={() => setIsAddressPickerOpen(true)}
+                            className="flex items-center justify-between bg-green-50 border border-green-100 hover:bg-green-100/80 transition-colors rounded-xl px-2 py-2 text-left"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="bg-green-100 p-1 rounded-md text-green-600 shrink-0">
+                                <MapPin size={13} />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[11px] font-bold text-green-800 leading-tight">Giao đến</p>
+                                <p className="text-[10px] text-green-600/80 leading-tight truncate">
+                                  {isFetchingAddress 
+                                    ? "Đang tải địa chỉ..." 
+                                    : deliveryAddress 
+                                      ? `${deliveryAddress.label || deliveryAddress.full_address}${deliveryDistanceKm !== null ? ` · ${deliveryDistanceKm.toFixed(1)}km` : ""}`
+                                      : "Chọn địa chỉ giao hàng"}
+                                </p>
+                              </div>
+                            </div>
+                            <ChevronRight size={13} className="text-green-400 shrink-0 ml-1" />
+                          </button>
+                          {deliveryError && (
+                            <p className="px-1 text-[11px] text-red-500 font-medium">{deliveryError}</p>
+                          )}
+                        </>
+                      )}
+                    </motion.div>
+
+                    {/* Right 40% — Pricing breakdown */}
                     <div className="flex flex-col justify-end flex-1 gap-0.5">
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-medium text-primary/50">Tạm tính</span>
-                        <span className="text-[11px] font-bold text-primary/50">{subtotalK}k</span>
+                        <span className="text-[10px] font-medium text-primary/50">Tạm tính</span>
+                        <span className="text-[11px] font-bold text-primary/50">{subtotalK} ká</span>
                       </div>
-                      
-                      {discountAmount > 0 && (
-                        <div className="flex items-center justify-between text-orange-600">
-                          <span className="text-[11px] font-medium">Giảm giá</span>
-                          <span className="text-[11px] font-bold">-{discountK.toLocaleString("vi-VN")}k</span>
-                        </div>
-                      )}
 
-                      {orderType === "DELIVERY" && shippingFee !== null && (
+                      {orderType === "DELIVERY" && shippingFee !== null ? (
                         <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-medium text-primary/50">Phí ship</span>
-                          <span className="text-[11px] font-bold text-primary/50">{shippingK}k</span>
+                          <span className="text-[10px] font-medium text-primary/50">Phí ship</span>
+                          <span className="text-[11px] font-bold text-primary/50">{shippingK} ká</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between invisible">
+                          <span className="text-[10px] font-medium text-primary/50">Phí ship</span>
+                          <span className="text-[11px] font-bold text-primary/50">0 ká</span>
                         </div>
                       )}
 
-                      {orderType === "DELIVERY" && freeshipDiscountK > 0 && (
+                      {totalDiscountK > 0 ? (
                         <div className="flex items-center justify-between text-orange-600">
-                          <span className="text-[11px] font-medium">Freeship</span>
-                          <span className="text-[11px] font-bold">-{freeshipDiscountK.toLocaleString("vi-VN")}k</span>
+                          <span className="text-[10px] font-medium">Giảm giá</span>
+                          <span className="text-[11px] font-bold">-{totalDiscountK.toLocaleString("vi-VN")} ká</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between invisible">
+                          <span className="text-[10px] font-medium">Giảm giá</span>
+                          <span className="text-[11px] font-bold">0 ká</span>
                         </div>
                       )}
                       
-                      <div className="border-t border-dashed border-border/40 my-1" />
+                      <div className="border-t border-dashed border-border/40 my-0.5" />
                       
-                      <div className="flex flex-col items-end">
-                        <span className="text-[10px] font-bold text-primary/40 uppercase tracking-widest leading-none mb-0.5">Tổng</span>
-                        <span className="font-serif text-2xl font-bold text-primary leading-none flex items-center gap-1">
-                          <span className="text-xl">🐟</span> {grandTotalK}k
-                        </span>
-                        {isLoggedIn && finalPrice >= 10000 && (
-                          <span className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-100 px-1.5 py-[2px] rounded-md mt-1">
-                            +{Math.floor(finalPrice / 10000)} điểm cá
+                      <div className="flex justify-between items-baseline mt-0.5">
+                        <span className="text-[9px] font-bold text-primary/40 uppercase tracking-widest leading-none">Tổng tiền</span>
+                        <div className="flex flex-col items-end">
+                          <span className="font-serif text-xl font-bold text-primary leading-none">
+                            {grandTotalK} ká
                           </span>
-                        )}
+                          {isLoggedIn && finalPrice >= 10000 && (
+                            <span className="text-[9px] font-bold text-teal-700 bg-teal-50 px-1 py-0.5 rounded-sm mt-0.5">
+                              +{Math.floor(finalPrice / 10000)} điểm
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Delivery section trigger if DELIVERY selected */}
-                  {orderType === "DELIVERY" && (
-                    <div className="pt-2 border-t border-border/20 flex flex-col gap-1">
-                      <button
-                        onClick={() => setIsAddressPickerOpen(true)}
-                        className="flex items-center justify-between bg-green-50 border border-green-100 hover:bg-green-100/80 transition-colors rounded-xl px-3 py-2.5 text-left"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="bg-green-100 p-1 rounded-md text-green-600 shrink-0">
-                            <MapPin size={13} />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-[11px] font-bold text-green-800 leading-tight">Giao đến</p>
-                            <p className="text-[10px] text-green-600/80 leading-tight truncate">
-                              {isFetchingAddress 
-                                ? "Đang tải địa chỉ..." 
-                                : deliveryAddress 
-                                  ? deliveryAddress.label || deliveryAddress.full_address 
-                                  : "Chọn địa chỉ giao hàng"}
-                            </p>
-                          </div>
-                        </div>
-                        <ChevronRight size={13} className="text-green-400 shrink-0 ml-1" />
-                      </button>
-                      {deliveryError && (
-                        <p className="px-1 text-[11px] text-red-500 font-medium">{deliveryError}</p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* ── DIV 2: Action row — Xoá (1/4) + Checkout (3/4) ── */}
+                  {/* ── DIV 2: Action row ── */}
                   <div className="flex gap-2 mt-2">
-                    {/* Trash — flex-[1] = ~25%, left */}
                     <button
                       onClick={() => setShowClearConfirm(true)}
                       disabled={checkout.status === "loading"}
-                      aria-label="Xoá tất cả"
                       className={cn(
-                        "flex-[1] py-3.5 rounded-[1.25rem] font-bold text-xs border-2 transition-all flex items-center justify-center",
+                        "flex-[1] py-3.5 rounded-xl font-bold text-xs border transition-all flex items-center justify-center",
                         checkout.status === "loading"
                           ? "border-border/30 text-primary/20 cursor-not-allowed"
                           : "border-border/60 text-primary/40 hover:border-red-300 hover:text-red-500 hover:bg-red-50"
@@ -816,7 +958,6 @@ const CartDrawer = () => {
                       <Trash2 className="w-4 h-4" />
                     </button>
 
-                    {/* Checkout — flex-[3] = ~75%, right */}
                     <button
                       id="btn-checkout"
                       onClick={handleCheckout}
@@ -828,10 +969,10 @@ const CartDrawer = () => {
                         (orderType === "DELIVERY" && (!deliveryAddress || shippingFee === null || !!deliveryError))
                       }
                       className={cn(
-                        "flex-[3] py-3.5 rounded-[1.25rem] font-bold text-sm shadow-[0_4px_20px_-4px_rgba(0,0,0,0.12)] transition-all flex items-center justify-center gap-2",
+                        "flex-[3] py-3.5 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center justify-center gap-1.5",
                         checkout.status === "loading" || (orderType === "PICKUP" && !!pickupTime && pickupTime < minTimeStr) || isStoreClosed || (orderType === "DELIVERY" && (!deliveryAddress || shippingFee === null || !!deliveryError))
                           ? "bg-primary/60 text-white cursor-not-allowed"
-                          : "bg-primary text-white hover:scale-[1.02] active:scale-[0.98]"
+                          : "bg-primary text-white hover:scale-[1.01] active:scale-[0.99]"
                       )}
                     >
                       {checkout.status === "loading" ? (
@@ -924,7 +1065,7 @@ const CartDrawer = () => {
                                   </p>
                                   {savings > 0 && (
                                     <p className="text-xs text-orange-600 mt-1">
-                                      Giảm {(savings / 1000).toLocaleString('vi-VN')}k
+                                      Giảm {(savings / 1000).toLocaleString('vi-VN')} ká
                                     </p>
                                   )}
                                 </div>
@@ -1006,7 +1147,7 @@ const CartDrawer = () => {
                         </button>
                         <div>
                           <h3 className="font-bold text-primary">Ưu đãi toàn đơn</h3>
-                          <p className="text-[11px] text-primary/50">Chọn nhiều mã — tối đa 1 mã % toàn đơn</p>
+                          <p className="text-[11px] text-primary/50">Tối đa 1 mã % giảm, 1 mã freeship</p>
                         </div>
                       </div>
                       {selectedVoucherIds.length > 0 && (
@@ -1020,12 +1161,27 @@ const CartDrawer = () => {
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-5 space-y-3">
-                      {discountVouchers.map((v) => {
+                      {[...discountVouchers, ...freeshipVouchers].map((v) => {
                         const isSelected = selectedVoucherIds.includes(v.id);
-                        // Disable a PERCENT voucher if another PERCENT is already selected
-                        const isDisabled = !isSelected && v.discount_type === "PERCENT" && hasSelectedPercent;
-                        const label =
-                          v.discount_type === "PERCENT"
+                        const hasSelectedPercent = selectedVoucherIds.some(id => discountVouchers.find(d => d.id === id)?.discount_type === "PERCENT");
+                        const hasSelectedFreeship = selectedVoucherIds.some(id => freeshipVouchers.find(f => f.id === id));
+                        
+                        let isDisabled = false;
+                        let disabledReason = "";
+                        
+                        if (!isSelected) {
+                          if (v.voucher_type === "DISCOUNT" && v.discount_type === "PERCENT" && hasSelectedPercent) {
+                            isDisabled = true;
+                            disabledReason = "Đã chọn 1 mã giảm %";
+                          } else if (v.voucher_type === "FREESHIP" && hasSelectedFreeship) {
+                            isDisabled = true;
+                            disabledReason = "Đã chọn 1 mã freeship";
+                          }
+                        }
+
+                        const label = v.voucher_type === "FREESHIP"
+                          ? `Giảm ${(v.covered_delivery_fee_vnd ?? 0).toLocaleString("vi-VN")}đ phí ship`
+                          : v.discount_type === "PERCENT"
                             ? `Giảm ${v.discount_value}% toàn đơn`
                             : `Giảm ${(v.discount_value ?? 0).toLocaleString("vi-VN")}đ toàn đơn`;
 
@@ -1051,7 +1207,7 @@ const CartDrawer = () => {
                               <p className="font-bold text-sm text-primary">{v.package.name}</p>
                               <p className="text-xs text-orange-600 mt-1 font-medium">{label}</p>
                               {isDisabled && (
-                                <p className="text-[10px] text-primary/40 mt-0.5">Đã chọn 1 mã giảm %</p>
+                                <p className="text-[10px] text-primary/40 mt-0.5">{disabledReason}</p>
                               )}
                             </div>
                             {isSelected && <CheckCircle2 className="w-5 h-5 text-orange-500 shrink-0" />}
@@ -1066,7 +1222,7 @@ const CartDrawer = () => {
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium text-primary/60">Tổng ưu đãi ({selectedVoucherIds.length} mã)</span>
                           <span className="text-sm font-bold text-orange-600">
-                            -{Math.floor(estimateMultiDiscountSavings(selectedDiscountVouchers, subtotalPrice) / 1000).toLocaleString('vi-VN')}k
+                            -{Math.floor((estimateMultiDiscountSavings(selectedDiscountVouchers, subtotalPrice) + (orderType === "DELIVERY" ? Math.min(shippingFee ?? 0, selectedFreeshipVouchers[0]?.covered_delivery_fee_vnd ?? 0) : 0)) / 1000).toLocaleString('vi-VN')} ká
                           </span>
                         </div>
                         <button

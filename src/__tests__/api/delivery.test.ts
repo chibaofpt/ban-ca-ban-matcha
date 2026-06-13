@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { POST } from "@/app/api/orders/route";
 import { getSession } from "@/lib/auth";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { goongDistanceMatrix } from "@/lib/goong";
 import { NextRequest } from "next/server";
 

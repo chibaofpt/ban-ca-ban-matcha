@@ -91,21 +91,21 @@ describe("AdminOrdersPage — Contract 1: fetch với params đúng theo activeT
 
 describe("AdminOrdersPage — Contract 2: polling interval theo tab", () => {
   it("tab pending → interval 10000ms", () => {
-    const activeTab = "pending";
+    const activeTab = "pending" as string;
     const interval =
       activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000;
     expect(interval).toBe(10000);
   });
 
   it("tab customer → interval 15000ms", () => {
-    const activeTab = "customer";
+    const activeTab = "customer" as string;
     const interval =
       activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000;
     expect(interval).toBe(15000);
   });
 
   it("tab counter/cancelled → interval 30000ms", () => {
-    const activeTab = "counter";
+    const activeTab = "counter" as string;
     const interval =
       activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000;
     expect(interval).toBe(30000);

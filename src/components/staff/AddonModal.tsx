@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls, animate } from "framer-motion";
 import { X, Minus, Plus, ShoppingBag } from "lucide-react";
 import type { MenuItem, SweetnessLevel, Size } from "@/src/lib/types/menu";
 import type { IceOption, CartItem } from "@/src/lib/types/cart";
@@ -102,10 +102,36 @@ function AddonModalInner({ isOpen, item, latteItems, freeVoucherId, onClose, onC
   const [quantity, setQuantity] = useState(1);
 
   useEffect(() => {
-    if (item) {
-      setQuantity(1);
+    if (!isOpen) {
+      const timer = setTimeout(() => {
+        setSweetness("HALF");
+        setIceOption("NORMAL");
+        setColdwhisk(false);
+        setNote("");
+        setQuantity(1);
+        y.set(0);
+        if (item) {
+          setSelectedPowderId(item.resolved_default_powder_id ?? "");
+          setSelectedMilkId(item.milk_types?.find(m => m.is_default)?.id ?? item.milk_types?.[0]?.id ?? "");
+          setSelectedOptionIds(item.addon_groups.flatMap((g) => g.options.filter((o) => o.is_default).map((o) => o.id)) ?? []);
+          setQuantityMap(Object.fromEntries(item.addon_groups.filter((g) => g.type === "QUANTITY").map((g) => [g.id, 0])));
+          setSelectedSize((item.sizes.find((s) => s.size === "L") ?? item.sizes[0])?.size ?? "M");
+        }
+      }, 300);
+      return () => clearTimeout(timer);
     }
-  }, [item]);
+  }, [isOpen, item]);
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isOpen]);
 
   if (!item) return null;
 
@@ -193,6 +219,56 @@ function AddonModalInner({ isOpen, item, latteItems, freeVoucherId, onClose, onC
       if (g.type === "SELECTOR" && g.is_required && !g.options.some((o) => selectedOptionIds.includes(o.id))) return true;
     }
     return false;
+  };
+
+  // --- Pull-to-dismiss logic ---
+  const y = useMotionValue<number | string>(0);
+  const scale = useTransform(y, (latest) => {
+    if (typeof latest === "string") return 1;
+    if (latest < 0) return 1;
+    if (latest > 300) return 0.9;
+    return 1 - (latest / 300) * 0.1;
+  });
+  const dragControls = useDragControls();
+
+  const contentRef = useRef<HTMLDivElement>(null);
+  const touchStartY = useRef(0);
+  const isPulling = useRef(false);
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    touchStartY.current = e.touches[0].clientY;
+    isPulling.current = false;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!contentRef.current) return;
+    const scrollTop = contentRef.current.scrollTop;
+    const currentY = e.touches[0].clientY;
+
+    if (scrollTop <= 0) {
+      if (!isPulling.current) {
+        touchStartY.current = currentY;
+        isPulling.current = true;
+      }
+      const deltaY = currentY - touchStartY.current;
+      if (deltaY > 0) {
+        y.set(deltaY);
+      } else {
+        y.set(0);
+      }
+    } else {
+      isPulling.current = false;
+      if (typeof y.get() === "number" && (y.get() as number) > 0) y.set(0);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    isPulling.current = false;
+    if (typeof y.get() === "number" && (y.get() as number) > 100) {
+      onClose();
+    } else if (typeof y.get() === "number" && (y.get() as number) > 0) {
+      animate(y, 0, { type: "spring", stiffness: 300, damping: 28 });
+    }
   };
 
   // ── Handlers ─────────────────────────────────────────────────────────────
@@ -333,19 +409,25 @@ function AddonModalInner({ isOpen, item, latteItems, freeVoucherId, onClose, onC
             animate={isDesktop ? { opacity: 1, scale: 1, x: "-50%", y: "-50%" } : { y: 0 }}
             exit={isDesktop ? { opacity: 0, scale: 0.9, x: "-50%", y: "-50%" } : { y: "100%" }}
             transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            style={isDesktop ? {} : { y, scale, touchAction: "pan-y" }}
             drag={isDesktop ? false : "y"}
+            dragListener={false}
+            dragControls={dragControls}
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={0.2}
             onDragEnd={(_, info) => {
-              if (!isDesktop && info.offset.y > 100 && info.velocity.y > 200) {
+              if (info.offset.y > 100 || info.velocity.y > 300) {
                 onClose();
               }
             }}
-            className="fixed inset-x-0 bottom-0 z-[61] max-h-[92vh] overflow-y-auto md:overflow-hidden rounded-t-[2.5rem] bg-[#fdfcf7] shadow-2xl md:bottom-auto md:top-1/2 md:left-1/2 md:w-[90vw] md:max-w-4xl md:h-[80vh] md:max-h-[85vh] md:rounded-[2.5rem] md:grid md:grid-cols-2 md:pb-0"
+            className="fixed inset-x-0 bottom-0 z-[61] flex flex-col max-h-[92vh] overflow-hidden rounded-t-[2.5rem] bg-[#fdfcf7] shadow-2xl md:bottom-auto md:top-1/2 md:left-1/2 md:w-[90vw] md:max-w-4xl md:h-[80vh] md:max-h-[85vh] md:rounded-[2.5rem] md:grid md:grid-cols-2 md:pb-0"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Mobile Drag Handle */}
-            <div className="md:hidden flex justify-center pt-3 pb-1 w-full absolute top-0 left-0 z-10 bg-[#fdfcf7] rounded-t-[2.5rem]">
+            <div 
+              onPointerDown={(e) => dragControls.start(e)}
+              className="md:hidden flex justify-center pt-3 pb-1 w-full absolute top-0 left-0 z-10 bg-[#fdfcf7] rounded-t-[2.5rem] touch-none"
+            >
               <div className="w-12 h-1.5 bg-border rounded-full" />
             </div>
 
@@ -378,9 +460,18 @@ function AddonModalInner({ isOpen, item, latteItems, freeVoucherId, onClose, onC
           <X className="w-5 h-5 text-primary" />
         </button>
 
-        <div className="flex flex-col h-full overflow-y-auto px-5 md:px-8 pt-7 pb-36 md:pb-32 md:pt-0">
+        <div 
+          ref={contentRef}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          className="flex flex-col flex-1 min-h-0 h-full overflow-y-auto overscroll-contain px-5 md:px-8 pt-7 pb-36 md:pb-32 md:pt-0 mt-6 md:mt-0"
+        >
           {/* Header */}
-          <div className="pt-7 pb-5 border-b border-border/40 md:hidden">
+          <div 
+            onPointerDown={(e) => dragControls.start(e)}
+            className="pt-7 pb-5 border-b border-border/40 md:hidden touch-none"
+          >
             <h2 className="font-serif text-2xl font-bold text-primary">{item.name}</h2>
             {item.description && <p className="text-sm text-primary/55 mt-1.5 leading-relaxed">{item.description}</p>}
             {freeVoucherId && (
@@ -675,6 +766,14 @@ function AddonModalInner({ isOpen, item, latteItems, freeVoucherId, onClose, onC
         {/* BOTTOM CTA */}
         <div className="fixed md:absolute bottom-0 left-0 md:left-auto right-0 z-[110] w-full md:w-1/2 bg-[#fdfcf7]/95 backdrop-blur-md border-t border-border/60 shadow-[0_-8px_30px_rgba(0,0,0,0.04)] px-5 py-4 pb-8 md:pb-6 md:rounded-br-[2.5rem]">
           <div className="flex items-center justify-between gap-3">
+            {/* Total price */}
+            <div className="flex flex-col items-start justify-center flex-1 min-w-0">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-primary/45">Tổng tiền</span>
+              <span className="font-serif font-bold text-lg md:text-xl text-primary leading-none mt-0.5 whitespace-nowrap">
+                {freeVoucherId ? "0k 🐟" : `${totalCost / 1000}k 🐟`}
+              </span>
+            </div>
+
             {/* Quantity Adjuster */}
             <div className="flex items-center bg-[#d9e4d4] rounded-2xl overflow-hidden shrink-0">
               <motion.button
@@ -688,14 +787,6 @@ function AddonModalInner({ isOpen, item, latteItems, freeVoucherId, onClose, onC
                 onClick={() => setQuantity(quantity + 1)}
                 className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 transition-colors text-primary font-bold text-lg"
               >+</motion.button>
-            </div>
-
-            {/* Total price in the middle */}
-            <div className="flex flex-col items-center justify-center flex-1 min-w-0">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-primary/45">Tổng tiền</span>
-              <span className="font-serif font-bold text-lg md:text-xl text-primary leading-none mt-0.5 whitespace-nowrap">
-                {freeVoucherId ? "0k 🐟" : `${totalCost / 1000}k 🐟`}
-              </span>
             </div>
 
             {/* Add to Cart Button */}

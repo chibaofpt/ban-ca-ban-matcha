@@ -45,9 +45,8 @@ function makeVoucher(overrides: Partial<MyVoucher> = {}): MyVoucher {
     package: { name: "Giảm 20%", description: null, points_cost: 50 },
     menuItem: null,
     addonOption: null,
-    staff: null,
     ...overrides,
-  };
+  } as MyVoucher;
 }
 
 function makePackage(overrides: Partial<VoucherPackage> = {}): VoucherPackage {
@@ -67,6 +66,7 @@ function makePackage(overrides: Partial<VoucherPackage> = {}): VoucherPackage {
     addon_option_id: null,
     covered_price_vnd: null,
     covered_delivery_fee_vnd: null,
+    min_order_vnd: null,
     is_active: true,
     expires_after_days: 30,
     quantity: 100,
@@ -75,7 +75,7 @@ function makePackage(overrides: Partial<VoucherPackage> = {}): VoucherPackage {
     menuItem: null,
     addonOption: null,
     ...overrides,
-  };
+  } as VoucherPackage;
 }
 
 // ── filterModalVouchers ────────────────────────────────────────────────────────

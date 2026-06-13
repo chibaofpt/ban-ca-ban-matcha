@@ -68,7 +68,7 @@ describe("HistoryPage — Contract 2: fetch vouchers chỉ khi tab = vouchers", 
   beforeEach(() => vi.clearAllMocks());
 
   it("tab = orders → KHÔNG gọi listMyVouchers", async () => {
-    const activeTab = "orders";
+    const activeTab = "orders" as string;
 
     if (activeTab === "vouchers") {
       await mockListMyVouchers();
@@ -98,13 +98,13 @@ describe("HistoryPage — Contract 3: polling interval cho orders", () => {
   });
 
   it("orders polling chỉ enabled khi tab = orders", () => {
-    const activeTab = "vouchers";
+    const activeTab = "vouchers" as string;
     const enabled = activeTab === "orders";
     expect(enabled).toBe(false);
   });
 
   it("orders polling enabled khi tab = orders", () => {
-    const activeTab = "orders";
+    const activeTab = "orders" as string;
     const enabled = activeTab === "orders";
     expect(enabled).toBe(true);
   });

@@ -51,7 +51,9 @@ const LoginForm = () => {
       if (user.role === "ADMIN" || user.role === "STAFF") {
         router.replace("/staff/orders");
       } else {
-        router.replace("/menu");
+        // Theo yêu cầu: luôn set /menu là trang mặc định sau khi customer đăng nhập
+        router.push("/menu");
+        router.refresh();
       }
     } catch (error) {
       const axiosError = error as { response?: { data?: { error?: string } } };

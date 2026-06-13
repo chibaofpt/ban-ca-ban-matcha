@@ -516,5 +516,7 @@ Same shape as `GET /api/menu` but:
 |---|---|
 | `order_complete` | Order status → COMPLETED |
 | `manual_admin_adjustment` | Admin manually adds/deducts points |
-| `voucher_redemption` | Customer spends points on voucher package |
+| `voucher_purchase` | Customer spends points to buy a voucher package |
+| `voucher_surplus` | Actual price < covered_price_vnd → refund difference as points |
+| `voucher_refund` | Target item soft-deleted → full points refund |
 | `reversed_by_admin` | Admin reverses a manual adjustment |

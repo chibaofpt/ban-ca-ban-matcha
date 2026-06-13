@@ -38,6 +38,7 @@ function makeVoucher(overrides: Partial<Voucher> = {}): Voucher {
     included_addon_option_ids: [],
     addon_option_id: null,
     covered_price_vnd: null,
+    min_order_vnd: null,
     covered_delivery_fee_vnd: null,
     status: "ACTIVE",
     used_channel: null,

@@ -28,14 +28,14 @@ const mockPowder: Powder = {
   description: null,
   reference_latte_item_id: null,
   size_config: [],
-  image_url: null,
-};
+} as any;
 
 const mockPowders: Powder[] = [mockPowder];
 
 const mockMenuData: AdminMenuData = {
   latte: [],
   fusion: [],
+  updated_at: new Date().toISOString(),
 };
 
 // ── Tests ──────────────────────────────────────────────────────────────────

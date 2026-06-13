@@ -128,7 +128,7 @@ describe("Address CRUD API", () => {
       );
 
       const req = createRequest("DELETE", undefined, "http://localhost/api/profile/addresses/addr-1");
-      const res = await DELETE(req, { params: { id: "addr-1" } });
+      const res = await DELETE(req, { params: Promise.resolve({ id: "addr-1" }) as any });
 
       expect(res.status).toBe(200);
       expect(prisma.address.delete).toHaveBeenCalledWith({ where: { id: "addr-1" } });

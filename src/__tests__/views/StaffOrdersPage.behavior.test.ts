@@ -114,7 +114,7 @@ describe("StaffOrdersPage — Contract 2: customer vouchers conditional fetch", 
   it("customerInfo.type = new → KHÔNG fetch vouchers", async () => {
     const customerInfo = { type: "new" as const, phone_number: "+84901234567", name: "Khách mới" };
 
-    if (customerInfo?.type === "existing") {
+    if ((customerInfo as any)?.type === "existing") {
       await mockFetchCustomerVouchers("user-1");
     }
 

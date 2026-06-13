@@ -31,13 +31,15 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, setActiveTab, carouselX }) =
 
   return (
     <div className="sticky top-2 z-20 w-full mb-6 mt-2">
-      <div className="relative flex w-full bg-primary/5 p-1 rounded-full backdrop-blur-md border border-primary/10">
+      <div className="relative flex w-full bg-primary/5 py-1 rounded-full backdrop-blur-md border border-primary/10">
         
         {/* High-Performance Sliding Indicator */}
         <motion.div
           style={{ x: indicatorX }}
-          className="absolute top-1 bottom-1 left-1 w-[calc(33.333%-2.6px)] rounded-full shadow-md z-0 transition-colors duration-300 bg-[#2d4a22]"
-        />
+          className="absolute top-1 bottom-1 left-0 w-1/3 z-0 px-1"
+        >
+          <div className="w-full h-full rounded-full shadow-md transition-colors duration-300 bg-[#2d4a22]" />
+        </motion.div>
 
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;

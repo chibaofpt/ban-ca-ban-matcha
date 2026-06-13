@@ -103,8 +103,8 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, index, onClick }) => {
                 <span className={`uppercase tracking-wide whitespace-nowrap ${isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
                   {SIZE_CARD_LABELS[s.size] ?? s.size}
                 </span>
-                <span className={`${isDefault ? 'text-base font-bold text-[#2d4a22]' : 'text-sm font-semibold text-primary/50'}`}>
-                  {price}k
+                <span className={`${isDefault ? 'text-base font-bold text-[#5b9a2b]' : 'text-sm font-semibold text-primary/50'}`}>
+                  {price} ká
                 </span>
               </div>
             );

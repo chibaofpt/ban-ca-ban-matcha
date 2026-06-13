@@ -125,6 +125,11 @@ export function QRScannerModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = "unset"; };
+  }, []);
+
   // ── Close handler ──────────────────────────────────────────────────────
 
   const handleClose = () => {
