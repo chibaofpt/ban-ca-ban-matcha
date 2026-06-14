@@ -75,72 +75,55 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/orders');
 
   if (isCustomerFacingPath) {
-    const accessToken = request.cookies.get('access_token')?.value;
+    let accessToken = request.cookies.get('access_token')?.value;
     const refreshToken = request.cookies.get('refresh_token')?.value;
+    let isValidRole: string | null = null;
 
     if (accessToken) {
       try {
         const { payload } = await jwtVerify(accessToken, JWT_SECRET);
-        const userRole = payload.role as string;
-
-        if (userRole === 'ADMIN' || userRole === 'STAFF') {
-          const url = request.nextUrl.clone();
-          url.pathname = '/staff/orders';
-          return NextResponse.redirect(url);
-        }
-        // CUSTOMER role — let through normally.
+        isValidRole = payload.role as string;
       } catch {
-        // Access token expired — silently refresh so the next middleware pass
-        // can detect admin/staff role. Important for PWA cold-opens after idle.
-        if (refreshToken) {
-          try {
-            const refreshUrl = new URL('/api/auth/refresh', request.url);
-            const refreshRes = await fetch(refreshUrl, {
-              method: 'POST',
-              headers: { cookie: request.headers.get('cookie') || '' },
-            });
-            if (refreshRes.ok) {
-              const redirectRes = NextResponse.redirect(request.url);
-              for (const c of refreshRes.headers.getSetCookie()) {
-                redirectRes.headers.append('Set-Cookie', c);
-              }
-              return redirectRes;
-            }
-          } catch {
-            // Refresh failed — treat as logged-out, let through as normal visitor.
-          }
-        }
+        // Token expired or invalid
+        accessToken = undefined;
       }
     }
 
-    // No token / CUSTOMER token / refresh failed — for protected customer paths
-    // (/profile, /history, /orders) require auth; for public paths let through.
+    // Eagerly refresh if access token is missing but refresh token exists.
+    // This prevents Admins from seeing the customer home page with an expired access token,
+    // and also prevents 401 -> retry roundtrips for customers.
+    if (!accessToken && refreshToken) {
+      try {
+        const refreshUrl = new URL('/api/auth/refresh', request.url);
+        const refreshRes = await fetch(refreshUrl, {
+          method: 'POST',
+          headers: { cookie: request.headers.get('cookie') || '' },
+        });
+        if (refreshRes.ok) {
+          const redirectRes = NextResponse.redirect(request.url);
+          for (const c of refreshRes.headers.getSetCookie()) {
+            redirectRes.headers.append('Set-Cookie', c);
+          }
+          return redirectRes;
+        }
+      } catch (fetchError) {
+        console.error('[MIDDLEWARE_REFRESH_ERROR]', fetchError);
+      }
+    }
+
+    if (isValidRole === 'ADMIN' || isValidRole === 'STAFF') {
+      const url = request.nextUrl.clone();
+      url.pathname = '/staff/orders';
+      return NextResponse.redirect(url);
+    }
+
+    // No valid token — for protected customer paths require auth; for public paths let through.
     const isCustomerProtectedPath =
       pathname.startsWith('/profile') ||
       pathname.startsWith('/history') ||
       pathname.startsWith('/orders');
 
-    if (isCustomerProtectedPath && !accessToken) {
-      // No valid session — try refresh one more time (covers no-access-token case)
-      const refreshToken2 = request.cookies.get('refresh_token')?.value;
-      if (refreshToken2) {
-        try {
-          const refreshUrl = new URL('/api/auth/refresh', request.url);
-          const refreshRes = await fetch(refreshUrl, {
-            method: 'POST',
-            headers: { cookie: request.headers.get('cookie') || '' },
-          });
-          if (refreshRes.ok) {
-            const redirectRes = NextResponse.redirect(request.url);
-            for (const c of refreshRes.headers.getSetCookie()) {
-              redirectRes.headers.append('Set-Cookie', c);
-            }
-            return redirectRes;
-          }
-        } catch (fetchError) {
-          console.error('[MIDDLEWARE_REFRESH_ERROR]', fetchError);
-        }
-      }
+    if (isCustomerProtectedPath && !isValidRole) {
       return redirectOrUnauthorized(request, 'Phiên đăng nhập không hợp lệ', 'UNAUTHORIZED', 401);
     }
 

@@ -120,7 +120,7 @@ const Navbar = () => {
                 activeClassName="text-primary"
               >
                 <ClipboardList className="w-3.5 h-3.5" />
-                Đơn hàng &amp; Voucher
+                Lịch sử
               </NavLink>
 
               <button
@@ -192,6 +192,20 @@ const Navbar = () => {
         </div>
       </div>
 
+      {/* ── Mobile drawer overlay ── */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 top-16 z-40 bg-black/20 md:hidden"
+            onClick={close}
+          />
+        )}
+      </AnimatePresence>
+
       {/* ── Mobile drawer ── */}
       <AnimatePresence>
         {open && (
@@ -200,13 +214,13 @@ const Navbar = () => {
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
-            className="md:hidden absolute top-full left-0 right-0 overflow-hidden bg-white/98 backdrop-blur-md border-t border-border/40 shadow-lg"
+            className="md:hidden absolute top-full left-0 right-0 z-50 overflow-hidden bg-white/98 backdrop-blur-md border-t border-border/40 shadow-lg"
           >
-            <div className="max-w-6xl mx-auto px-6 py-4 flex flex-col gap-1">
+            <div className="max-w-6xl mx-auto px-6 py-4 flex flex-col items-end gap-1 text-right">
               <NavLink
                 href="/"
                 onClick={close}
-                className="text-sm font-medium py-2.5 flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors"
+                className="text-sm font-medium py-2.5 flex items-center justify-end flex-row-reverse gap-2 text-foreground/80 hover:text-primary transition-colors w-full"
                 activeClassName="text-primary"
               >
                 <Home className="w-4 h-4" />
@@ -216,7 +230,7 @@ const Navbar = () => {
               <NavLink
                 href="/about"
                 onClick={close}
-                className="text-sm font-medium py-2.5 flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors"
+                className="text-sm font-medium py-2.5 flex items-center justify-end flex-row-reverse gap-2 text-foreground/80 hover:text-primary transition-colors w-full"
                 activeClassName="text-primary"
               >
                 <Info className="w-4 h-4" />
@@ -226,7 +240,7 @@ const Navbar = () => {
               <NavLink
                 href="/menu"
                 onClick={close}
-                className="text-sm font-medium py-2.5 flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors"
+                className="text-sm font-medium py-2.5 flex items-center justify-end flex-row-reverse gap-2 text-foreground/80 hover:text-primary transition-colors w-full"
                 activeClassName="text-primary"
               >
                 <UtensilsCrossed className="w-4 h-4" />
@@ -238,7 +252,7 @@ const Navbar = () => {
                   <NavLink
                     href="/profile"
                     onClick={close}
-                    className="text-sm font-medium py-2.5 flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors"
+                    className="text-sm font-medium py-2.5 flex items-center justify-end flex-row-reverse gap-2 text-foreground/80 hover:text-primary transition-colors w-full"
                     activeClassName="text-primary"
                   >
                     <UserCircle className="w-4 h-4" />
@@ -248,16 +262,16 @@ const Navbar = () => {
                   <NavLink
                     href="/history"
                     onClick={close}
-                    className="text-sm font-medium py-2.5 flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors"
+                    className="text-sm font-medium py-2.5 flex items-center justify-end flex-row-reverse gap-2 text-foreground/80 hover:text-primary transition-colors w-full"
                     activeClassName="text-primary"
                   >
                     <ClipboardList className="w-4 h-4" />
-                    Đơn hàng &amp; Voucher
+                    Lịch sử
                   </NavLink>
 
                   <button
                     onClick={handleLogout}
-                    className="text-sm font-medium py-2.5 flex items-center gap-2 text-destructive hover:text-destructive/80 transition-colors"
+                    className="text-sm font-medium py-2.5 flex items-center justify-end flex-row-reverse gap-2 text-destructive hover:text-destructive/80 transition-colors w-full"
                   >
                     <LogOut className="w-4 h-4" />
                     Đăng xuất
@@ -266,7 +280,7 @@ const Navbar = () => {
               ) : (
                 <button
                   onClick={() => { openLogin(); close(); }}
-                  className="text-sm font-medium py-2.5 flex items-center gap-2 text-primary hover:text-primary/80 transition-colors"
+                  className="text-sm font-medium py-2.5 flex items-center justify-end flex-row-reverse gap-2 text-primary hover:text-primary/80 transition-colors w-full"
                 >
                   <LogIn className="w-4 h-4" />
                   Đăng nhập
