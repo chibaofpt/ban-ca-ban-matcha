@@ -17,7 +17,7 @@ interface QRScannerModalProps {
     discount_value: number;
   }) => void;
   /** Called when a PRODUCT voucher QR is scanned and status is ACTIVE. */
-  onScanVoucherProduct: (data: { id: string; menu_item_id: string }) => void;
+  onScanVoucherProduct: (data: { id: string; menu_item_id: string; covered_price_vnd: number }) => void;
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -35,6 +35,7 @@ export function QRScannerModal({
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const processingRef = useRef(false);
   const containerId = "qr-scanner-container";
 
   // ── Start scanner ──────────────────────────────────────────────────────
@@ -53,7 +54,8 @@ export function QRScannerModal({
           { facingMode: "environment" },
           { fps: 10, qrbox: { width: 250, height: 250 } },
           async (decodedText) => {
-            if (processing || stopped) return;
+            if (processingRef.current || stopped) return;
+            processingRef.current = true;
             setProcessing(true);
             setError(null);
 
@@ -68,6 +70,7 @@ export function QRScannerModal({
               // Voucher
               if (result.data.status !== "ACTIVE") {
                 setError("Voucher đã dùng hoặc đã hết hạn.");
+                processingRef.current = false;
                 setProcessing(false);
                 return;
               }
@@ -85,12 +88,14 @@ export function QRScannerModal({
               } else {
                 // PRODUCT
                 const mid = result.data.menu_item_id;
-                if (mid !== null) {
-                  onScanVoucherProduct({ id: result.data.id, menu_item_id: mid });
+                const cpv = result.data.covered_price_vnd;
+                if (mid !== null && cpv !== null) {
+                  onScanVoucherProduct({ id: result.data.id, menu_item_id: mid, covered_price_vnd: cpv });
                 }
               }
             } catch {
               setError("Không thể đọc mã QR. Vui lòng thử lại.");
+              processingRef.current = false;
               setProcessing(false);
             }
           },

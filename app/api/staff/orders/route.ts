@@ -236,7 +236,8 @@ export async function POST(req: NextRequest) {
     let percentVoucherCount = 0;
 
     if (existingUser && data.discount_voucher_ids.length > 0) {
-      for (const dvId of data.discount_voucher_ids) {
+      const uniqueDiscountIds = Array.from(new Set(data.discount_voucher_ids));
+      for (const dvId of uniqueDiscountIds) {
         const dv = await prisma.voucher.findUnique({ where: { id: dvId } });
         try {
           assertVoucherUsable(dv, existingUser.id, "DISCOUNT");

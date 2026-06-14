@@ -32,6 +32,7 @@ export function VoucherQRVerifyModal({
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const processingRef = useRef(false);
   const [showManualInput, setShowManualInput] = useState(false);
   const [manualCode, setManualCode] = useState("");
   const containerId = "qr-verify-container";
@@ -54,7 +55,8 @@ export function VoucherQRVerifyModal({
           { facingMode: "environment" },
           { fps: 10, qrbox: { width: 220, height: 220 } },
           async (decodedText) => {
-            if (processing || stopped) return;
+            if (processingRef.current || stopped) return;
+            processingRef.current = true;
             setProcessing(true);
             setError(null);
 
@@ -63,6 +65,7 @@ export function VoucherQRVerifyModal({
 
               if (result.type !== "user") {
                 setError("Vui lòng quét QR cá nhân, không phải QR voucher.");
+                processingRef.current = false;
                 setProcessing(false);
                 return;
               }
@@ -72,6 +75,7 @@ export function VoucherQRVerifyModal({
                 setError(
                   `QR không khớp. Yêu cầu QR của khách ${customerPhone}.`
                 );
+                processingRef.current = false;
                 setProcessing(false);
                 return;
               }
@@ -80,6 +84,7 @@ export function VoucherQRVerifyModal({
               onVerified(decodedText);
             } catch {
               setError("Không thể đọc mã QR. Vui lòng thử lại.");
+              processingRef.current = false;
               setProcessing(false);
             }
           },

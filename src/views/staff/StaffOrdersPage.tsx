@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { QrCode, ShoppingBag } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -11,7 +11,7 @@ import { fetchCustomerVouchers, type MyVoucher } from "@/src/services/staffVouch
 import { computeFinalClientPrice } from "@/src/lib/store/cartStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { calcLattePrice, calcFusionPrice, resolveGram } from "@/src/utils/pricing";
-import { AddonModal } from "@/src/components/staff/AddonModal";
+import ProductModal from "@/src/components/shared/ProductModal";
 import { StaffCartDrawer } from "@/src/components/staff/StaffCartDrawer";
 import { CustomerSelectModal } from "@/src/components/staff/CustomerSelectModal";
 import { QRScannerModal } from "@/src/components/staff/QRScannerModal";
@@ -139,6 +139,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   // ── Modal control — only one open at a time ────────────────────────────
 
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [editingCartItem, setEditingCartItem] = useState<CartItem | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [customerSelectOpen, setCustomerSelectOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
@@ -149,8 +150,9 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
 
   const [initialSearchQuery, setInitialSearchQuery] = useState("");
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
-  const [productVoucherId, setProductVoucherId] = useState<string | null>(null);
+  const [scannedProductVoucher, setScannedProductVoucher] = useState<{ id: string; covered_price_vnd: number } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   // ── Cart ──────────────────────────────────────────────────────────────
 
@@ -227,9 +229,22 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   // ── Cart handlers ─────────────────────────────────────────────────────
 
   const handleAddToCart = (item: CartItem) => {
-    setCart((prev) => [...prev, item]);
+    if (editingCartItem) {
+      setCart(prev => prev.map(c => c.cartId === item.cartId ? item : c));
+    } else {
+      setCart((prev) => [...prev, item]);
+    }
     setSelectedItem(null);
-    setProductVoucherId(null);
+    setEditingCartItem(null);
+    setScannedProductVoucher(null);
+  };
+
+  const handleEditItem = (item: CartItem) => {
+    const menuItem = menuItems.find(m => m.id === item.menuItemId);
+    if (!menuItem) return;
+    setEditingCartItem(item);
+    setSelectedItem(menuItem);
+    setCartOpen(false);
   };
 
   const handleRemove = (cartId: string) => {
@@ -286,21 +301,25 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
       }
     },
     onSettled: () => {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   });
 
   const handleCheckoutConfirm = async (customerQrToken?: string) => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+
     setConfirmCheckoutOpen(false);
     setQrVerifyOpen(false);
     setIsSubmitting(true);
     
     let payload: CreateStaffOrderPayload;
     const items = buildOrderItems(cart);
-    const discountVoucherIds = [
+    const discountVoucherIds = Array.from(new Set([
       ...(discountVoucher ? [discountVoucher.id] : []),
       ...selectedDiscountIds,
-    ];
+    ]));
 
     if (!customerInfo) {
       payload = { items };
@@ -363,13 +382,15 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   const handleScanVoucherProduct = ({
     id,
     menu_item_id,
+    covered_price_vnd,
   }: {
     id: string;
     menu_item_id: string;
+    covered_price_vnd: number;
   }) => {
     const item = menuItems.find((i) => i.id === menu_item_id);
     if (!item) return;
-    setProductVoucherId(id);
+    setScannedProductVoucher({ id, covered_price_vnd });
     setSelectedItem(item);
     setScanOpen(false);
   };
@@ -637,17 +658,24 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         </button>
       )}
 
-      <AddonModal
-        isOpen={!!selectedItem}
-        item={selectedItem}
-        latteItems={menuData?.latte ?? []}
-        freeVoucherId={productVoucherId ?? undefined}
-        onClose={() => {
-          setSelectedItem(null);
-          setProductVoucherId(null);
-        }}
-        onConfirm={handleAddToCart}
-      />
+      {/* Addon Modal -> ProductModal for staff add */}
+      {selectedItem && (
+        <ProductModal
+          key="staff-add-modal"
+          item={selectedItem}
+          latteItems={menuData?.latte ?? []}
+          editingItem={editingCartItem || undefined}
+          freeVoucherId={scannedProductVoucher?.id}
+          freeVoucherCoveredPriceVnd={scannedProductVoucher?.covered_price_vnd}
+          onClose={() => {
+            setSelectedItem(null);
+            setEditingCartItem(null);
+            setScannedProductVoucher(null);
+            if (editingCartItem) setCartOpen(true);
+          }}
+          onConfirm={handleAddToCart}
+        />
+      )}
 
       {/* StaffCartDrawer */}
       <StaffCartDrawer
@@ -665,6 +693,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         isSubmitting={isSubmitting}
         onClose={() => setCartOpen(false)}
         onRemove={handleRemove}
+        onEditItem={handleEditItem}
         onChangeQuantity={handleChangeQuantity}
         onCheckout={handleCheckoutClick}
         onOpenCustomerSelect={() => setCustomerSelectOpen(true)}

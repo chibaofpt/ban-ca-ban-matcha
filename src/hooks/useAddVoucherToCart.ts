@@ -175,7 +175,6 @@ export function useAddVoucherToCart() {
           selectedMilkTypeId: menuItem.category === "latte" ? (voucher.milk_type_id ?? undefined) : undefined,
           clientPriceVnd: originalPrice,
           originalClientPriceVnd: originalPrice,
-          details,
         };
 
         // addItem assigns cartId internally

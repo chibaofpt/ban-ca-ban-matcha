@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls, animate } from "framer-motion";
 import { X, Minus, Plus, ShoppingBag } from "lucide-react";
 import type { MenuItem, SweetnessLevel, Size } from "@/src/lib/types/menu";
-import type { IceOption } from "@/src/lib/types/cart";
+import type { IceOption, CartItem } from "@/src/lib/types/cart";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { cn } from "@/src/utils/cn";
@@ -15,6 +15,12 @@ interface ProductModalProps {
   item: MenuItem;
   latteItems: MenuItem[];
   onClose: () => void;
+  // ── Edit mode ──
+  editingItem?: CartItem;
+  // ── Staff mode ──
+  onConfirm?: (item: CartItem) => void;
+  freeVoucherId?: string;
+  freeVoucherCoveredPriceVnd?: number;
 }
 
 // Reusable card-style option button
@@ -52,8 +58,8 @@ function OptionCard({
   );
 }
 
-const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) => {
-  const { addItem } = useCartStore();
+const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, editingItem, onConfirm, freeVoucherId, freeVoucherCoveredPriceVnd }) => {
+  const { addItem, updateItem } = useCartStore();
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
 
@@ -69,24 +75,44 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
 
   // ── State ────────────────────────────────────────────────────────────────
   const [selectedSize, setSelectedSize] = useState<Size>(() => {
+    if (editingItem) return editingItem.size;
     const available = item.sizes ?? [];
     return (available.find((s) => s.size === "L") ?? available[0])?.size ?? "M";
   });
-  const [sweetness, setSweetness] = useState<SweetnessLevel>("HALF");
-  const [iceOption, setIceOption] = useState<IceOption>("NORMAL");
-  const [coldwhisk, setColdwhisk] = useState(false);
-  const [selectedPowderId, setSelectedPowderId] = useState<string>(item.resolved_default_powder_id ?? "");
-  const [selectedMilkId, setSelectedMilkId] = useState<string>(() =>
-    item.milk_types?.find(m => m.is_default)?.id ?? item.milk_types?.[0]?.id ?? ""
-  );
-  const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>(() =>
-    item.addon_groups.flatMap((g) => g.options.filter((o) => o.is_default).map((o) => o.id))
-  );
-  const [quantityMap, setQuantityMap] = useState<Record<string, number>>(() =>
-    Object.fromEntries(item.addon_groups.filter((g) => g.type === "QUANTITY").map((g) => [g.id, 0]))
-  );
-  const [quantity, setQuantity] = useState(1);
-  const [note, setNote] = useState("");
+  const [sweetness, setSweetness] = useState<SweetnessLevel>(() => editingItem?.sweetness ?? "HALF");
+  const [iceOption, setIceOption] = useState<IceOption>(() => editingItem?.iceOption ?? "NORMAL");
+  const [coldwhisk, setColdwhisk] = useState(() => editingItem?.coldwhisk ?? false);
+  const [selectedPowderId, setSelectedPowderId] = useState<string>(() => editingItem?.selectedPowderId ?? item.resolved_default_powder_id ?? "");
+  const [selectedMilkId, setSelectedMilkId] = useState<string>(() => {
+    if (editingItem?.selectedMilkTypeId) return editingItem.selectedMilkTypeId;
+    return item.milk_types?.find(m => m.is_default)?.id ?? item.milk_types?.[0]?.id ?? "";
+  });
+  const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>(() => {
+    if (editingItem) return editingItem.selectedOptionIds;
+    return item.addon_groups.flatMap((g) => g.options.filter((o) => o.is_default).map((o) => o.id));
+  });
+  const [quantityMap, setQuantityMap] = useState<Record<string, number>>(() => {
+    if (editingItem) return editingItem.quantityMap;
+    return Object.fromEntries(item.addon_groups.filter((g) => g.type === "QUANTITY").map((g) => [g.id, 0]));
+  });
+  const [quantity, setQuantity] = useState(() => editingItem?.quantity ?? 1);
+  const [note, setNote] = useState(() => editingItem?.note ?? "");
+
+  // ── Edit Validation ──────────────────────────────────────────────────────
+  const hideQuantityPicker = !!editingItem?.productVoucherId || (editingItem?.addonVouchers && editingItem.addonVouchers.length > 0);
+  
+  useEffect(() => {
+    if (!editingItem) return;
+    const allValidOptionIds = new Set(
+      item.addon_groups.flatMap(g => g.options.map(o => o.id))
+    );
+    const removedOptions = editingItem.selectedOptionIds.filter(
+      id => !allValidOptionIds.has(id)
+    );
+    if (removedOptions.length > 0) {
+      setSelectedOptionIds(prev => prev.filter(id => allValidOptionIds.has(id)));
+    }
+  }, [editingItem, item.addon_groups]);
 
   // ── Derived ──────────────────────────────────────────────────────────────
   const isLatte = item.category === "latte";
@@ -161,7 +187,20 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
 
   const currentPriceContext = getPriceForContext(selectedSize, activePowderId);
   const defaultPowderPriceCtx = getPriceForContext(selectedSize, item.resolved_default_powder_id ?? "");
-  const totalCost = currentPriceContext.unitPrice * quantity;
+
+  let finalUnitPrice = currentPriceContext.unitPrice;
+  let finalAddonsCost = currentPriceContext.addonsCost;
+
+  if (freeVoucherId && freeVoucherCoveredPriceVnd !== undefined) {
+    const baseDrinkPrice = finalUnitPrice - finalAddonsCost;
+    const drinkAfterCredit = Math.max(0, baseDrinkPrice - freeVoucherCoveredPriceVnd);
+    const remainingCredit = Math.max(0, freeVoucherCoveredPriceVnd - baseDrinkPrice);
+    const addonsAfterCredit = Math.max(0, finalAddonsCost - remainingCredit);
+    finalUnitPrice = drinkAfterCredit + addonsAfterCredit;
+    finalAddonsCost = addonsAfterCredit;
+  }
+
+  const totalCost = finalUnitPrice * quantity;
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleSelectorToggle = (groupId: string, optionId: string, defaultOptId?: string) => {
@@ -260,74 +299,41 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
         return qty > 0 && g.options[0] ? [{ option_id: g.options[0].id, quantity: qty }] : [];
       });
 
-    const details: string[] = [];
-    details.push(`Size ${selectedSize}`);
-    
-    const sweetnessLabel = SWEETNESS_OPTIONS.find(o => o.value === sweetness)?.label;
-    if (sweetnessLabel) details.push(sweetnessLabel);
-    
-    let hasDaDua = false;
-    for (const group of item.addon_groups) {
-      if (group.name.toLowerCase().includes("đá dừa")) {
-        if (group.options.some(o => selectedOptionIds.includes(o.id) && !o.is_default)) {
-          hasDaDua = true;
-        }
-      }
-    }
-    const iceLabel = ICE_OPTIONS.find(o => o.value === iceOption)?.label;
-    if (hasDaDua) {
-      details.push(iceOption !== "NORMAL" ? `${iceLabel} (Đá dừa)` : "Đá dừa");
-    } else if (iceOption !== "NORMAL" && iceLabel) {
-      details.push(`Đá: ${iceLabel}`);
-    }
-    
-    if (coldwhisk) details.push("Đánh lạnh foam");
-
-    if (isLatte && selectedMilkId !== defaultMilkId) {
-      const milk = item.milk_types?.find(m => m.id === selectedMilkId);
-      if (milk) details.push(`Sữa: ${milk.name}`);
+    // Cleanup addon vouchers if the addon was removed during edit
+    let cleanedAddonVouchers = editingItem?.addonVouchers;
+    if (cleanedAddonVouchers) {
+      cleanedAddonVouchers = cleanedAddonVouchers.filter(av => 
+        selectedOptionIds.includes(av.addonOptionId) ||
+        quantityAddonOptions.some(q => q.option_id === av.addonOptionId)
+      );
     }
 
-    let extraMatchaStr = "";
-    for (const group of item.addon_groups) {
-      if (group.name.toLowerCase().includes("matcha") && group.type === "SELECTOR") {
-        const opt = group.options.find(o => selectedOptionIds.includes(o.id) && !o.is_default);
-        if (opt) extraMatchaStr = ` ${opt.label}`;
-      }
-    }
-    const powderName = activePowder?.name;
-    if (powderName) {
-      details.push(`Bột: ${powderName}${extraMatchaStr}`);
-    }
-
-    for (const group of item.addon_groups) {
-      const isMatcha = group.name.toLowerCase().includes("matcha");
-      const isDaDua = group.name.toLowerCase().includes("đá dừa");
-      if (isMatcha || isDaDua) continue;
-
-      if (group.type === "QUANTITY") {
-        const qty = quantityMap[group.id] ?? 0;
-        if (qty > 0) details.push(`${qty}x ${group.name}`);
-      } else {
-        const selectedGroupOptions = group.options.filter(o => selectedOptionIds.includes(o.id) && !o.is_default);
-        for (const opt of selectedGroupOptions) {
-           details.push(opt.label);
-        }
-      }
-    }
-
-    if (note.trim()) details.push(`Ghi chú: ${note.trim()}`);
-
-    addItem({
+    const cartItemData = {
       menuItemId: item.id, name: item.name, category: item.category, imageUrl: item.image_url,
-      size: selectedSize, unitPrice: currentPriceContext.unitPrice, quantity, sweetness, iceOption, coldwhisk,
+      size: selectedSize, unitPrice: finalUnitPrice, quantity, sweetness, iceOption, coldwhisk,
       note, selectedOptionIds, quantityMap, addonsPrice: currentPriceContext.addonsCost, addonPrices: currentPriceContext.addonPricesMap, quantityAddonOptions,
       selectedPowderId: isLatte ? undefined : selectedPowderId,
       selectedMilkTypeId: isLatte ? selectedMilkId : undefined,
-      clientPriceVnd: currentPriceContext.unitPrice,
+      clientPriceVnd: finalUnitPrice,
       originalClientPriceVnd: currentPriceContext.unitPrice,
-      details,
-    });
+      addonVouchers: cleanedAddonVouchers,
+      ...(freeVoucherId ? { productVoucherId: freeVoucherId, productVoucherDiscountVnd: freeVoucherCoveredPriceVnd } : {}),
+    };
+
+    if (onConfirm) {
+      // Staff mode
+      onConfirm({
+        ...cartItemData,
+        cartId: editingItem?.cartId || crypto.randomUUID(),
+      } as CartItem);
+    } else if (editingItem) {
+      // Customer Edit mode
+      updateItem(editingItem.cartId, cartItemData);
+    } else {
+      // Customer Add mode
+      addItem(cartItemData as any);
+    }
+    
     handleClose();
   };
 
@@ -708,17 +714,19 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
             </div>
 
             {/* Quantity Adjuster */}
-            <div className="flex items-center bg-[#d9e4d4] rounded-2xl overflow-hidden shrink-0">
-              <button
-                onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 transition-colors text-primary font-bold text-lg"
-              >−</button>
-              <span className="text-sm font-bold w-6 text-center text-primary">{quantity}</span>
-              <button
-                onClick={() => setQuantity(quantity + 1)}
-                className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 transition-colors text-primary font-bold text-lg"
-              >+</button>
-            </div>
+            {!hideQuantityPicker && (
+              <div className="flex items-center bg-[#d9e4d4] rounded-2xl overflow-hidden shrink-0">
+                <button
+                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                  className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 transition-colors text-primary font-bold text-lg"
+                >−</button>
+                <span className="text-sm font-bold w-6 text-center text-primary">{quantity}</span>
+                <button
+                  onClick={() => setQuantity(quantity + 1)}
+                  className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 transition-colors text-primary font-bold text-lg"
+                >+</button>
+              </div>
+            )}
 
             {/* Add to Cart Button */}
             <button
@@ -726,7 +734,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
               className="bg-primary text-white rounded-2xl h-11 px-4 md:px-5 font-bold text-sm shadow-lg active:scale-[0.98] transition-all flex items-center gap-2 shrink-0"
             >
               <ShoppingBag className="w-4 h-4" />
-              <span>Bỏ giỏ cá</span>
+              <span>{editingItem ? 'Cập nhật' : 'Bỏ giỏ cá'}</span>
             </button>
           </div>
         </div>

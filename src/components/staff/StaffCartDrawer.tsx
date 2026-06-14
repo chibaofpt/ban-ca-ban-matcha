@@ -15,6 +15,10 @@ import {
   filterUsableVouchers,
 } from "@/src/utils/voucherMatchUtils";
 import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls, animate } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
+import { fetchMenu } from "@/src/services/menuService";
+import { fetchPowders } from "@/src/services/powderService";
+import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -39,6 +43,7 @@ interface StaffCartDrawerProps {
   isSubmitting?: boolean;
   onClose: () => void;
   onRemove: (cartId: string) => void;
+  onEditItem?: (item: CartItem) => void;
   onChangeQuantity: (cartId: string, newQty: number) => void;
   onCheckout: () => void;
   onOpenCustomerSelect: () => void;
@@ -71,6 +76,7 @@ export function StaffCartDrawer({
   isSubmitting,
   onClose,
   onRemove,
+  onEditItem,
   onChangeQuantity,
   onCheckout,
   onOpenCustomerSelect,
@@ -83,6 +89,10 @@ export function StaffCartDrawer({
   onApplyAddon,
   onRemoveAddon,
 }: StaffCartDrawerProps) {
+  const { data: menuData } = useQuery({ queryKey: ["staff", "menu"], queryFn: fetchMenu });
+  const { data: powderData } = useQuery({ queryKey: ["staff", "powders"], queryFn: fetchPowders });
+  const menuItems = menuData ? [...menuData.latte, ...menuData.fusion] : [];
+
   const [activeItemForVoucher, setActiveItemForVoucher] = useState<string | null>(null);
   const [isDiscountPickerOpen, setIsDiscountPickerOpen] = useState(false);
 
@@ -298,8 +308,22 @@ export function StaffCartDrawer({
               const appliedProductVoucherId = c.productVoucherId;
               const appliedAddonVouchers = c.addonVouchers ?? [];
 
+              const menuItem = menuItems.find(m => m.id === c.menuItemId);
+              const line1Chips = line1ItemDetails(c, menuItem, powderData?.data);
+              const line2Chips = line2ItemDetails(c, menuItem);
+              const addonChips = addonsDetails(c, menuItem, powderData?.data);
+              
+              const noteText = c.note || null;
+
               return (
-                <div key={c.cartId} className="bg-white dark:bg-secondary/20 rounded-2xl p-3.5 flex gap-3 shadow-sm border border-border/50">
+                <div 
+                  key={c.cartId} 
+                  onClick={() => onEditItem?.(c)}
+                  className={cn(
+                    "bg-white dark:bg-secondary/20 rounded-2xl p-3.5 flex gap-3 shadow-sm border border-border/50 transition-colors cursor-pointer hover:border-border/80",
+                    !menuItem && "opacity-50 pointer-events-none"
+                  )}
+                >
                   {/* Thumbnail & Stepper */}
                   <div className="flex flex-col items-center gap-2 shrink-0">
                     <div className="w-16 h-16 rounded-xl overflow-hidden bg-secondary/40 flex items-center justify-center text-3xl">
@@ -310,7 +334,10 @@ export function StaffCartDrawer({
                       )}
                     </div>
                     {/* Stepper */}
-                    <div className="flex items-center gap-1.5 bg-secondary/30 rounded-full px-1.5 py-1">
+                    <div 
+                      className="flex items-center gap-1.5 bg-secondary/30 rounded-full px-1.5 py-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => onChangeQuantity(c.cartId, c.quantity - 1)}
@@ -334,24 +361,48 @@ export function StaffCartDrawer({
                   {/* Content */}
                   <div className="flex-1 min-w-0 flex flex-col">
                     <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <h4 className="font-bold text-sm leading-tight text-primary">{c.name}</h4>
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          <span className="text-[10px] font-medium bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">Size {c.size}</span>
-                          <span className="text-[10px] font-medium bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">{SWEETNESS_LABEL[c.sweetness]}</span>
-                          {c.selectedOptionIds.length > 0 && (
-                            <span className="text-[10px] font-medium bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">{c.selectedOptionIds.length} addon</span>
-                          )}
-                        </div>
-                      </div>
-                      <button onClick={() => onRemove(c.cartId)} className="text-muted-foreground hover:text-red-500 transition shrink-0 p-1">
+                      <h4 className="font-bold text-sm leading-tight text-primary truncate w-4/5 pr-2">
+                        {c.name} {c.category === "fusion" && powderData?.data?.find(p => p.id === c.selectedPowderId)?.name && `- ${powderData?.data?.find(p => p.id === c.selectedPowderId)?.name}`}
+                      </h4>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); onRemove(c.cartId); }} 
+                        className="text-muted-foreground hover:text-red-500 transition shrink-0 p-1 w-1/5 flex justify-end"
+                      >
                         <Trash2 size={16} />
                       </button>
                     </div>
 
-                    {c.note && (
-                      <p className="text-[10px] italic text-muted-foreground mt-1">📝 {c.note}</p>
-                    )}
+                    {/* Customize (full line) */}
+                    <div className="mt-1.5 flex flex-col gap-1 w-full">
+                      {/* Line 1 — Size + Milk/Powder */}
+                      {line1Chips.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {line1Chips.map((chip, idx) => (
+                            <span key={idx} className="text-[10px] font-medium bg-primary/10 text-primary px-1.5 py-0.5 rounded">{chip}</span>
+                          ))}
+                        </div>
+                      )}
+                      {/* Line 2 — Sweetness + Ice + Coldwhisk */}
+                      {line2Chips.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {line2Chips.map((chip, idx) => (
+                            <span key={idx} className="text-[10px] font-medium bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">{chip}</span>
+                          ))}
+                        </div>
+                      )}
+                      {/* Line 3 — Addons + Đá dừa + Extra matcha */}
+                      {addonChips.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {addonChips.map((chip, idx) => (
+                            <span key={idx} className="text-[10px] font-medium bg-secondary text-secondary-foreground/90 px-1.5 py-0.5 rounded">{chip}</span>
+                          ))}
+                        </div>
+                      )}
+                      {/* Line 4 — Note */}
+                      {noteText && (
+                        <span className="text-[10px] font-medium bg-primary/5 text-primary/80 px-1.5 py-0.5 rounded italic inline-block w-fit">📝 {noteText}</span>
+                      )}
+                    </div>
 
                     <div className="mt-auto pt-3 flex items-end justify-between gap-2">
                       {/* Vouchers area */}
@@ -361,7 +412,7 @@ export function StaffCartDrawer({
                           return (
                             <div className="text-[10px] font-bold bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 px-2 py-1 rounded-full flex items-center gap-1">
                               <Ticket size={10} /> {pv?.package?.name || "Free món"}
-                              <button onClick={() => onRemoveProduct!(c.cartId)} className="ml-1 hover:text-red-500"><X size={10}/></button>
+                              <button onClick={(e) => { e.stopPropagation(); onRemoveProduct!(c.cartId); }} className="ml-1 hover:text-red-500"><X size={10}/></button>
                             </div>
                           )
                         })()}
@@ -369,14 +420,14 @@ export function StaffCartDrawer({
                           const voucherInfo = customerVouchers.find(v => v.id === av.voucherId);
                           return (
                             <div key={`${av.voucherId}-${idx}`} className="text-[10px] font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-1 rounded-full flex items-center gap-1">
-                              <Ticket size={10} /> Free {voucherInfo?.addonOption?.label || "Topping"}
-                              <button onClick={() => onRemoveAddon!(c.cartId, av.voucherId)} className="ml-1 hover:text-red-500"><X size={10}/></button>
+                              <Ticket size={10} /> {voucherInfo?.addonOption?.label || "Free Topping"}
+                              <button onClick={(e) => { e.stopPropagation(); onRemoveAddon!(c.cartId, av.voucherId); }} className="ml-1 hover:text-red-500"><X size={10}/></button>
                             </div>
                           )
                         })}
-                        {hasAvailableVouchers && customerInfo && !!onApplyProduct && (
+                        {hasAvailableVouchers && (
                           <button
-                            onClick={() => setActiveItemForVoucher(c.cartId)}
+                            onClick={(e) => { e.stopPropagation(); setActiveItemForVoucher(c.cartId); setIsDiscountPickerOpen(false); }}
                             className="text-[10px] font-bold bg-orange-50 border border-orange-200 text-orange-600 px-2.5 py-1 rounded-full flex items-center gap-1 hover:bg-orange-100 transition-colors"
                           >
                             <Ticket size={10} /> Ưu đãi ({productVouchersForItem.length + addonVouchersForItem.length})

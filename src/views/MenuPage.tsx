@@ -15,7 +15,7 @@ import TabBar from '@/src/components/menu/TabBar';
 import type { TabId } from '@/src/components/menu/TabBar';
 import { tabs as tabsConfig } from '@/src/components/menu/TabBar';
 import MenuCard from '@/src/components/menu/MenuCard';
-import ProductModal from '@/src/components/menu/ProductModal';
+import ProductModal from '@/src/components/shared/ProductModal';
 import CartButton from '@/src/components/menu/CartButton';
 import CartDrawer from '@/src/components/menu/CartDrawer';
 import VoucherModal from '@/src/components/shared/VoucherModal';

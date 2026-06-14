@@ -67,6 +67,7 @@ export type QrScanResult =
         discount_type: "PERCENT" | "FIXED" | null;
         discount_value: number | null;
         menu_item_id: string | null;
+        covered_price_vnd: number | null;
         status: "ACTIVE" | "REDEEMED" | "EXPIRED";
         expires_at: string | null;
       };

@@ -17,6 +17,12 @@ import { filterUsableVouchers, buildAddonVoucherMap, buildProductVoucherMap, est
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { DeliverySection } from "@/src/components/delivery/DeliverySection";
 import type { Address } from "@/src/lib/types/address";
+import { useQuery } from "@tanstack/react-query";
+import { fetchMenu } from "@/src/services/menuService";
+import { fetchPowders } from "@/src/services/powderService";
+import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
+import ProductModal from "@/src/components/shared/ProductModal";
+import type { CartItem } from "@/src/lib/types/cart";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -52,6 +58,7 @@ const CartDrawer = () => {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [isAddressPickerOpen, setIsAddressPickerOpen] = useState(false);
+  const [editingCartItem, setEditingCartItem] = useState<CartItem | null>(null);
 
   // ── Delivery state ──
   const [orderType, setOrderType] = useState<"PICKUP" | "DELIVERY">("PICKUP");
@@ -63,6 +70,10 @@ const CartDrawer = () => {
   const [isVouchersLoading, setIsVouchersLoading] = useState(false);
 
   const checkoutMutation = useCheckout();
+
+  const { data: menuData } = useQuery({ queryKey: ["menu"], queryFn: fetchMenu });
+  const { data: powderData } = useQuery({ queryKey: ["powders"], queryFn: fetchPowders });
+  const menuItems = menuData ? [...menuData.latte, ...menuData.fusion] : [];
 
   // --- Pull-to-dismiss logic ---
   const y = useMotionValue<number | string>(0);
@@ -352,7 +363,18 @@ const CartDrawer = () => {
   /** The cart item currently being assigned a voucher. */
   const activeItem = items.find(i => i.cartId === activeItemForVoucher);
 
+  const handleEditItem = (cartItem: CartItem) => {
+    const menuItem = menuItems.find(m => m.id === cartItem.menuItemId);
+    if (!menuItem) {
+      // It's handled visually via unavailable state, so just return
+      return;
+    }
+    setEditingCartItem(cartItem);
+    setCartOpen(false); // Hide drawer to show modal
+  };
+
   return (
+    <>
     <AnimatePresence mode="wait">
       {isCartOpen && (
         <>
@@ -517,66 +539,23 @@ const CartDrawer = () => {
                           const hasAvailableVouchers = hasMoreProductVouchers || hasMoreAddonVouchers;
                           const hasAnyVoucher = !!item.productVoucherId || (item.addonVouchers && item.addonVouchers.length > 0);
 
-                          // Parse details for chip layout
-                          const sizeLabel = item.size === "M" ? "Cá con (360ml)" : item.size === "L" ? "Cá vừa (500ml)" : "Cá lớn (1000ml)";
-                          const sweetnessMap: Record<string, string> = { NONE: "Ngọt 0%", QUARTER: "Ngọt 25%", HALF: "Ngọt 50%", THREE_QUARTER: "Ngọt 75%", FULL: "Ngọt 100%" };
-                          const iceMap: Record<string, string> = { NORMAL: "", LESS_ICE: "Ít đá", NO_ICE: "Không đá", SEPARATE_ICE: "Đá riêng" };
-                          const sw = sweetnessMap[item.sweetness];
-                          const ic = item.iceOption !== "NORMAL" ? iceMap[item.iceOption] : null;
-                          
-                          const powderDetail = item.details?.find(d => d.startsWith("Bột: "));
-                          let powderName: string | null = null;
-                          let extraMatcha: string | null = null;
-                          if (powderDetail) {
-                            const raw = powderDetail.replace("Bột: ", "");
-                            const match = raw.match(/^(.*?)( \+?\d+g)?$/);
-                            if (match) {
-                              powderName = match[1];
-                              extraMatcha = match[2]?.trim() || null;
-                            }
-                          }
-
-                          const hasDaDua = item.details?.some(d => d.includes("Đá dừa"));
-                          
-                          // Line 1 chips: size + milk (latte) or powder (fusion)
-                          const milkDetail = item.details?.find(d => d.startsWith("Sữa: "));
-                          const milkName = milkDetail ? milkDetail.replace("Sữa: ", "") : null;
-                          const line1Chips: string[] = [sizeLabel];
-                          if (item.category === "latte" && milkName) line1Chips.push(milkName);
-                          if (item.category === "fusion" && powderName) line1Chips.push(powderName);
-                          
-                          // Line 2 chips: sweetness + ice + coldwhisk
-                          const line2Chips: string[] = [];
-                          if (sw) line2Chips.push(sw);
-                          if (ic) line2Chips.push(ic);
-                          if (item.coldwhisk) line2Chips.push("Coldwhisk");
-                          
-                          // Line 3 chips: addons + đá dừa + extra matcha
-                          const productModalSweetnessLabels = ["Lạt", "Ít ngọt", "Vừa", "Ngọt", "Rất ngọt", "0%", "25%", "50%", "75%", "100%", "Ngọt 0%", "Ngọt 25%", "Ngọt 50%", "Ngọt 75%", "Ngọt 100%"];
-                          const addonChips = item.details?.filter(d => {
-                            if (d.startsWith("Size ")) return false;
-                            if (d.startsWith("Bột: ")) return false;
-                            if (d.startsWith("Sữa: ")) return false;
-                            if (d.startsWith("Ghi chú: ")) return false;
-                            if (d.startsWith("Đá: ")) return false;
-                            if (d === "Đánh lạnh foam" || d === "Đánh lạnh (Coldwhisk)") return false;
-                            if (productModalSweetnessLabels.includes(d)) return false;
-                            if (d.includes("Đá dừa")) return false;
-                            return true;
-                          }).map(d => d.startsWith("+") ? d : `+${d}`) || [];
-                          if (hasDaDua) addonChips.push("+Đá dừa");
-                          if (extraMatcha) {
-                            const ex = extraMatcha.startsWith("+") ? extraMatcha : `+${extraMatcha}`;
-                            addonChips.push(`${ex} ${powderName || "bột"}`);
-                          }
+                          const menuItem = menuItems.find(m => m.id === item.menuItemId);
+                          const line1Chips = line1ItemDetails(item, menuItem, powderData?.data);
+                          const line2Chips = line2ItemDetails(item, menuItem);
+                          const addonChips = addonsDetails(item, menuItem, powderData?.data);
                           
                           // Line 4: note
                           const noteText = item.note || null;
+                          const isUnavailable = !menuItem;
 
                           return (
                             <div
                               key={item.cartId}
-                              className="p-3.5 rounded-[1.25rem] bg-white border border-transparent shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] hover:border-border/60 transition-colors flex gap-3.5"
+                              onClick={() => handleEditItem(item)}
+                              className={cn(
+                                "p-3.5 rounded-[1.25rem] bg-white border border-transparent shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] transition-colors flex gap-3.5 cursor-pointer",
+                                isUnavailable ? "opacity-50 pointer-events-none" : "hover:border-border/60"
+                              )}
                             >
                               {/* Thumbnail & Stepper */}
                               <div className="flex flex-col items-center gap-2 shrink-0">
@@ -589,7 +568,10 @@ const CartDrawer = () => {
                                 </div>
                                 
                                 {!hasAnyVoucher && (
-                                  <div className="flex items-center gap-2.5 bg-white border border-border shadow-sm rounded-full px-1.5 py-1 w-full justify-between">
+                                  <div 
+                                    className="flex items-center gap-2.5 bg-white border border-border shadow-sm rounded-full px-1.5 py-1 w-full justify-between"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
                                     <button
                                       onClick={() => item.quantity <= 1 ? removeItem(item.cartId) : updateQuantity(item.cartId, item.quantity - 1)}
                                       aria-label="Giảm số lượng"
@@ -616,11 +598,14 @@ const CartDrawer = () => {
                                 {/* Title + Delete */}
                                 <div className="flex items-start justify-between w-full">
                                   <h4 className="font-bold text-sm text-primary leading-tight truncate w-4/5 pr-2">
-                                    {item.name} {item.category === "fusion" && powderName && `- ${powderName}`}
+                                    {item.name} {item.category === "fusion" && powderData?.data?.find(p => p.id === item.selectedPowderId)?.name && `- ${powderData?.data?.find(p => p.id === item.selectedPowderId)?.name}`}
                                   </h4>
                                   <div className="w-1/5 flex justify-end">
                                     <button
-                                      onClick={() => removeItem(item.cartId)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        removeItem(item.cartId);
+                                      }}
                                       aria-label={`Xoá ${item.name}`}
                                       className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-primary/30 hover:text-red-500 hover:bg-red-50 transition-colors -mt-1 -mr-1"
                                     >
@@ -672,7 +657,7 @@ const CartDrawer = () => {
                                         <div className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-1 rounded-full flex items-center gap-1.5">
                                           <Ticket className="w-3 h-3" /> {pv?.package?.name || "Free món"}
                                           <button
-                                            onClick={() => removeProductVoucher(item.cartId)}
+                                            onClick={(e) => { e.stopPropagation(); removeProductVoucher(item.cartId); }}
                                             aria-label="Bỏ voucher sản phẩm"
                                             className="hover:text-red-500 transition-colors ml-0.5"
                                           >
@@ -688,7 +673,7 @@ const CartDrawer = () => {
                                         <div key={av.voucherId} className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full flex items-center gap-1.5">
                                           <Ticket className="w-3 h-3" /> Free {voucherInfo?.addonOption?.label || "Topping"}
                                           <button
-                                            onClick={() => removeAddonVoucher(item.cartId, av.voucherId)}
+                                            onClick={(e) => { e.stopPropagation(); removeAddonVoucher(item.cartId, av.voucherId); }}
                                             aria-label="Bỏ voucher topping"
                                             className="hover:text-red-500 transition-colors ml-0.5"
                                           >
@@ -700,7 +685,7 @@ const CartDrawer = () => {
                                     {/* Available vouchers CTA */}
                                     {hasAvailableVouchers && (
                                       <button
-                                        onClick={() => setActiveItemForVoucher(item.cartId)}
+                                        onClick={(e) => { e.stopPropagation(); setActiveItemForVoucher(item.cartId); }}
                                         className="text-[10px] font-bold bg-orange-50 border border-orange-200 text-orange-600 px-2.5 py-1 rounded-full flex items-center gap-1 hover:bg-orange-100 transition-colors"
                                       >
                                         <Ticket className="w-3 h-3" />
@@ -1307,6 +1292,25 @@ const CartDrawer = () => {
         </>
       )}
     </AnimatePresence>
+
+    {/* Product Modal overlay for edit */}
+    {editingCartItem && (() => {
+      const menuItem = menuItems.find(m => m.id === editingCartItem.menuItemId);
+      if (!menuItem) return null;
+      return (
+        <ProductModal
+          key="edit-modal"
+          item={menuItem}
+          latteItems={menuData?.latte ?? []}
+          editingItem={editingCartItem}
+          onClose={() => {
+            setEditingCartItem(null);
+            setCartOpen(true);
+          }}
+        />
+      );
+    })()}
+    </>
   );
 };
 
