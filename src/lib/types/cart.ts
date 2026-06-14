@@ -49,6 +49,4 @@ export interface CartItem {
   productVoucherDiscountVnd?: number;
   /** Applied ADDON vouchers. Unlimited, each targeting a different addon_option_id. */
   addonVouchers?: { voucherId: string; addonOptionId: string; discountVnd: number }[];
-  /** Explicit list of human-readable customization details to display in the cart. */
-  details?: string[];
 }

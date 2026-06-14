@@ -25,6 +25,7 @@ interface CartState {
   setCartOpen: (open: boolean) => void;
   addItem: (newItem: Omit<CartItem, "cartId">) => void;
   removeItem: (cartId: string) => void;
+  updateItem: (cartId: string, updates: Partial<CartItem>) => void;
   updateQuantity: (cartId: string, quantity: number) => void;
   clearCart: () => void;
   /**
@@ -62,6 +63,15 @@ export const useCartStore = create<CartState>()(
       removeItem: (cartId) => {
         set({
           items: get().items.filter((i) => i.cartId !== cartId),
+        });
+      },
+
+      updateItem: (cartId, updates) => {
+        set({
+          items: get().items.map((i) => {
+            if (i.cartId !== cartId) return i;
+            return { ...i, ...updates };
+          }),
         });
       },
 

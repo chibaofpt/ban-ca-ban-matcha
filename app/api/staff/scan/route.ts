@@ -48,17 +48,8 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 2. Check if token belongs to a Voucher
     const voucher = await prisma.voucher.findUnique({
       where: { qr_token: token },
-      include: {
-        package: {
-          select: {
-            discount_type: true,
-            discount_value: true,
-          },
-        },
-      },
     });
 
     if (voucher) {
@@ -68,9 +59,10 @@ export async function GET(request: NextRequest) {
           data: {
             id: voucher.qr_token, // API.md: "Never return internal id — always qr_token"
             voucher_type: voucher.voucher_type,
-            discount_type: voucher.package?.discount_type || null,
-            discount_value: voucher.package?.discount_value || null,
+            discount_type: voucher.discount_type,
+            discount_value: voucher.discount_value,
             menu_item_id: voucher.menu_item_id,
+            covered_price_vnd: voucher.covered_price_vnd,
             status: voucher.status,
             expires_at: voucher.expires_at ? voucher.expires_at.toISOString() : null,
           },
