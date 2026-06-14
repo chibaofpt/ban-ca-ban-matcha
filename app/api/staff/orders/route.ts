@@ -202,6 +202,14 @@ export async function POST(req: NextRequest) {
             }
             itemAddonOptionIds.add(av.addon_option_id);
 
+            const matchingAddonInput = item.addon_option_ids?.find((a: any) => a.option_id === av.addon_option_id);
+            if (!matchingAddonInput) {
+              return NextResponse.json(
+                { error: "Voucher áp dụng cho addon không có trong món nước", code: "VALIDATION_ERROR" },
+                { status: 400 }
+              );
+            }
+
             const dbAv = await prisma.voucher.findUnique({ where: { id: av.voucher_id } });
             try {
               assertVoucherUsable(dbAv, existingUser.id, "ADDON");
@@ -277,7 +285,7 @@ export async function POST(req: NextRequest) {
         if (item.product_voucher_id) {
           const pvInfo = productVoucherMap.get(item.product_voucher_id);
           if (pvInfo) {
-            const actual_total = item.original_unit_price_vnd + item.addons_price_vnd;
+            const actual_total = item.original_unit_price_vnd + item.original_addons_price_vnd - item.addon_discount_vnd;
             const surplus = calcProductVoucherSurplusPoints(pvInfo.covered_price_vnd, actual_total);
             if (surplus > 0) {
               productVoucherSurplusMap.set(item.product_voucher_id, surplus);
@@ -331,6 +339,7 @@ export async function POST(req: NextRequest) {
                 coldwhisk: item.coldwhisk,
                 note: item.note,
                 product_voucher_id: item.product_voucher_id,
+                surplus_points: productVoucherSurplusMap.get(item.product_voucher_id ?? "") || null,
                 addonVouchers: {
                   create: item.addon_voucher_ids.map((v: any) => ({
                     voucher_id: v.voucher_id,
@@ -353,8 +362,8 @@ export async function POST(req: NextRequest) {
 
         // Mark DISCOUNT vouchers as redeemed (OFFLINE for staff counter)
         for (const dv of validatedDiscountVouchers) {
-          await tx.voucher.update({
-            where: { id: dv.id },
+          const updated = await tx.voucher.updateMany({
+            where: { id: dv.id, status: "ACTIVE" },
             data: {
               status: "REDEEMED",
               used_channel: "OFFLINE",
@@ -362,6 +371,9 @@ export async function POST(req: NextRequest) {
               redeemed_by: session.id,
             },
           });
+          if (updated.count === 0) {
+            throw new OrderValidationError("CONFLICT", "Voucher discount đã được sử dụng hoặc đang bị khóa.");
+          }
           await tx.orderDiscountVoucher.create({
             data: { order_id: createdOrder.id, voucher_id: dv.id },
           });
@@ -369,8 +381,8 @@ export async function POST(req: NextRequest) {
 
         // Mark ADDON vouchers as redeemed (OFFLINE)
         for (const avId of addonVoucherIds) {
-          await tx.voucher.update({
-            where: { id: avId },
+          const updated = await tx.voucher.updateMany({
+            where: { id: avId, status: "ACTIVE" },
             data: {
               status: "REDEEMED",
               used_channel: "OFFLINE",
@@ -378,12 +390,15 @@ export async function POST(req: NextRequest) {
               redeemed_by: session.id,
             },
           });
+          if (updated.count === 0) {
+            throw new OrderValidationError("CONFLICT", "Voucher addon đã được sử dụng hoặc đang bị khóa.");
+          }
         }
 
         // Mark ALL PRODUCT vouchers as REDEEMED immediately (counter = COMPLETED)
         for (const pvId of productVoucherMap.keys()) {
-          await tx.voucher.update({
-            where: { id: pvId },
+          const updated = await tx.voucher.updateMany({
+            where: { id: pvId, status: "ACTIVE" },
             data: {
               status: "REDEEMED",
               used_channel: "OFFLINE",
@@ -391,6 +406,9 @@ export async function POST(req: NextRequest) {
               redeemed_by: session.id,
             },
           });
+          if (updated.count === 0) {
+            throw new OrderValidationError("CONFLICT", "Voucher sản phẩm đã được sử dụng hoặc đang bị khóa.");
+          }
         }
 
         // Award order_complete points only for orders with a known user

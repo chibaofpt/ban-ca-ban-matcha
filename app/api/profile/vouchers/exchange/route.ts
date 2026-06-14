@@ -71,30 +71,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check total quantity limit (NULL = unlimited)
-    if (pkg.quantity !== null) {
-      const issuedCount = await prisma.voucher.count({ where: { package_id: pkg.id } });
-      if (issuedCount >= pkg.quantity) {
-        return NextResponse.json(
-          { error: "This voucher package is sold out", code: "VOUCHER_SOLD_OUT" },
-          { status: 422 }
-        );
-      }
-    }
-
-    // Check per-user limit
-    const userIssuedCount = await prisma.voucher.count({
-      where: { package_id: pkg.id, user_id: session.id },
-    });
-    if (userIssuedCount >= pkg.max_per_user) {
-      return NextResponse.json(
-        {
-          error: `You have already redeemed the maximum allowed vouchers from this package (${pkg.max_per_user})`,
-          code: "VOUCHER_LIMIT_REACHED",
-        },
-        { status: 422 }
-      );
-    }
+    // Note: quantity and max_per_user checks have been moved inside the transaction to prevent race conditions.
 
     // 4. Compute expiry
     const expires_at =
@@ -105,11 +82,34 @@ export async function POST(req: NextRequest) {
     // 5. Write: deduct points + create voucher + log — all atomic
     const voucher = await prisma.$transaction(
       async (tx) => {
-        // Deduct points
-        await tx.user.update({
+        // Lock the package row
+        await tx.$queryRaw`SELECT 1 FROM voucher_packages WHERE id = ${pkg.id}::uuid FOR UPDATE`;
+
+        // Check limits inside the transaction
+        if (pkg.quantity !== null) {
+          const issuedCount = await tx.voucher.count({ where: { package_id: pkg.id } });
+          if (issuedCount >= pkg.quantity) {
+            throw new Error("VOUCHER_SOLD_OUT");
+          }
+        }
+
+        const userIssuedCount = await tx.voucher.count({
+          where: { package_id: pkg.id, user_id: session.id },
+        });
+        if (userIssuedCount >= pkg.max_per_user) {
+          throw new Error("VOUCHER_LIMIT_REACHED");
+        }
+
+        // Deduct points and check negative balance
+        const updatedUser = await tx.user.update({
           where: { id: session.id },
           data: { points_balance: { decrement: pkg.points_cost } },
+          select: { points_balance: true },
         });
+
+        if (updatedUser.points_balance < 0) {
+          throw new Error("INSUFFICIENT_POINTS");
+        }
 
         // Create voucher instance — snapshot all fields from package
         const newVoucher = await tx.voucher.create({
@@ -163,6 +163,26 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (err) {
+    if (err instanceof Error) {
+      if (err.message === "VOUCHER_SOLD_OUT") {
+        return NextResponse.json(
+          { error: "This voucher package is sold out", code: "VOUCHER_SOLD_OUT" },
+          { status: 422 }
+        );
+      }
+      if (err.message === "VOUCHER_LIMIT_REACHED") {
+        return NextResponse.json(
+          { error: "You have already redeemed the maximum allowed vouchers from this package", code: "VOUCHER_LIMIT_REACHED" },
+          { status: 422 }
+        );
+      }
+      if (err.message === "INSUFFICIENT_POINTS") {
+        return NextResponse.json(
+          { error: "Insufficient points.", code: "INSUFFICIENT_POINTS" },
+          { status: 422 }
+        );
+      }
+    }
     console.error("[POST /api/profile/vouchers/exchange]", err);
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },

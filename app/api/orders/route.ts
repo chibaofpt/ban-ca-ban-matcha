@@ -211,6 +211,14 @@ export async function POST(req: NextRequest) {
           }
           itemAddonOptionIds.add(av.addon_option_id);
 
+          const matchingAddonInput = item.addon_option_ids?.find((a: any) => a.option_id === av.addon_option_id);
+          if (!matchingAddonInput) {
+            return NextResponse.json(
+              { error: "Voucher áp dụng cho addon không có trong món nước", code: "VALIDATION_ERROR" },
+              { status: 400 }
+            );
+          }
+
           const dbAv = await prisma.voucher.findUnique({ where: { id: av.voucher_id } });
           try {
             assertVoucherUsable(dbAv, session.id, "ADDON");
@@ -240,9 +248,24 @@ export async function POST(req: NextRequest) {
     // Step 4: Validate DISCOUNT vouchers (multi)
     const validatedDiscountVouchers: { id: string; discount_type: import("@prisma/client").DiscountType | null; discount_value: number | null }[] = [];
     let percentVoucherCount = 0;
+    
+    let final_freeship_voucher_id = data.freeship_voucher_id;
+    const uniqueDiscountIds = Array.from(new Set(data.discount_voucher_ids));
 
-    for (const dvId of data.discount_voucher_ids) {
+    for (const dvId of uniqueDiscountIds) {
       const dv = await prisma.voucher.findUnique({ where: { id: dvId } });
+      
+      if (dv?.voucher_type === "FREESHIP") {
+        if (final_freeship_voucher_id && final_freeship_voucher_id !== dvId) {
+          return NextResponse.json(
+            { error: "Chỉ được áp dụng tối đa 1 voucher FREESHIP", code: "VALIDATION_ERROR" },
+            { status: 400 }
+          );
+        }
+        final_freeship_voucher_id = dvId;
+        continue;
+      }
+
       try {
         assertVoucherUsable(dv, session.id, "DISCOUNT");
       } catch (e) {
@@ -272,7 +295,7 @@ export async function POST(req: NextRequest) {
     const total_vnd = Math.max(0, subtotal_vnd - discount_vnd);
 
     // Step 4b: Validate FREESHIP voucher (Delivery only)
-    if (data.freeship_voucher_id) {
+    if (final_freeship_voucher_id) {
       if (data.order_type !== "DELIVERY") {
         return NextResponse.json(
           { error: "Voucher FREESHIP chỉ áp dụng cho đơn giao hàng", code: "VALIDATION_ERROR" },
@@ -280,7 +303,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const fv = await prisma.voucher.findUnique({ where: { id: data.freeship_voucher_id } });
+      const fv = await prisma.voucher.findUnique({ where: { id: final_freeship_voucher_id } });
       try {
         assertVoucherUsable(fv, session.id, "FREESHIP");
       } catch (e) {
@@ -322,7 +345,7 @@ export async function POST(req: NextRequest) {
       if (item.product_voucher_id) {
         const pvInfo = productVoucherMap.get(item.product_voucher_id);
         if (pvInfo) {
-          const actual_total = item.original_unit_price_vnd + item.addons_price_vnd;
+          const actual_total = item.original_unit_price_vnd + item.original_addons_price_vnd - item.addon_discount_vnd;
           const surplus = calcProductVoucherSurplusPoints(pvInfo.covered_price_vnd, actual_total);
           if (surplus > 0) {
             productVoucherSurplusMap.set(item.product_voucher_id, surplus);
@@ -352,7 +375,7 @@ export async function POST(req: NextRequest) {
             shipping_fee_vnd,
             freeship_discount_vnd,
             grand_total_vnd,
-            freeship_voucher_id: data.freeship_voucher_id ?? null,
+            freeship_voucher_id: final_freeship_voucher_id ?? null,
             points_earned: null,
             pickup_time: data.order_type === "PICKUP" 
               ? (data.pickup_time ? new Date(data.pickup_time) : new Date(Date.now() + 10 * 60 * 1000))
@@ -378,6 +401,7 @@ export async function POST(req: NextRequest) {
                 coldwhisk: item.coldwhisk,
                 note: item.note,
                 product_voucher_id: item.product_voucher_id,
+                surplus_points: productVoucherSurplusMap.get(item.product_voucher_id ?? "") || null,
                 addonVouchers: {
                   create: item.addon_voucher_ids.map(v => ({
                     voucher_id: v.voucher_id,
@@ -400,56 +424,53 @@ export async function POST(req: NextRequest) {
 
         // Reserve DISCOUNT vouchers + link to order
         for (const dv of validatedDiscountVouchers) {
-          await tx.voucher.update({
-            where: { id: dv.id },
+          const updated = await tx.voucher.updateMany({
+            where: { id: dv.id, status: "ACTIVE" },
             data: { status: "RESERVED" },
           });
+          if (updated.count === 0) {
+            throw new OrderValidationError("CONFLICT", "Voucher discount đã được sử dụng hoặc đang bị khóa.");
+          }
           await tx.orderDiscountVoucher.create({
             data: { order_id: createdOrder.id, voucher_id: dv.id },
           });
         }
 
         // Reserve FREESHIP voucher
-        if (data.freeship_voucher_id) {
-          await tx.voucher.update({
-            where: { id: data.freeship_voucher_id },
+        if (final_freeship_voucher_id) {
+          const updated = await tx.voucher.updateMany({
+            where: { id: final_freeship_voucher_id, status: "ACTIVE" },
             data: { status: "RESERVED" },
           });
+          if (updated.count === 0) {
+            throw new OrderValidationError("CONFLICT", "Voucher freeship đã được sử dụng hoặc đang bị khóa.");
+          }
         }
 
         // Reserve ADDON vouchers (per-item)
         for (const avId of addonVoucherIds) {
-          await tx.voucher.update({
-            where: { id: avId },
+          const updated = await tx.voucher.updateMany({
+            where: { id: avId, status: "ACTIVE" },
             data: { status: "RESERVED" },
           });
+          if (updated.count === 0) {
+            throw new OrderValidationError("CONFLICT", "Voucher addon đã được sử dụng hoặc đang bị khóa.");
+          }
         }
 
         // Reserve ALL PRODUCT vouchers — prevents double-use across concurrent orders
         for (const pvId of productVoucherMap.keys()) {
-          await tx.voucher.update({
-            where: { id: pvId },
+          const updated = await tx.voucher.updateMany({
+            where: { id: pvId, status: "ACTIVE" },
             data: { status: "RESERVED" },
           });
+          if (updated.count === 0) {
+            throw new OrderValidationError("CONFLICT", "Voucher sản phẩm đã được sử dụng hoặc đang bị khóa.");
+          }
         }
 
-        // Award PRODUCT voucher surplus points immediately
-        for (const [pvId, surplusPoints] of productVoucherSurplusMap) {
-          await tx.user.update({
-            where: { id: session.id },
-            data: { points_balance: { increment: surplusPoints } },
-          });
-          await tx.pointsLog.create({
-            data: {
-              user_id: session.id,
-              delta: surplusPoints,
-              reason: "voucher_surplus",
-              voucher_id: pvId,
-              performed_by: null,
-              order_id: createdOrder.id,
-            },
-          });
-        }
+        // Award PRODUCT voucher surplus points IMMEDIATELY is REMOVED.
+        // Surplus points are now saved to OrderItem and awarded upon payment confirmation (ADMIN_CONFIRMED).
 
         return createdOrder;
       },
