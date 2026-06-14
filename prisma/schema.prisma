@@ -338,6 +338,7 @@ model OrderItem {
   unit_price_vnd        Int
   addons_price_vnd      Int              @default(0)
   product_voucher_id    String?          @db.Uuid
+  surplus_points        Int?
   note                  String?
   sweetness             SweetnessLevel   @default(HALF)
   size                  Size

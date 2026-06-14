@@ -65,7 +65,7 @@ vi.mock("@/lib/prisma", () => ({
     menuItem: { findUnique: vi.fn() },
     addonOption: { findUnique: vi.fn() },
     order: { findUnique: vi.fn() },
-    voucher: { findUnique: vi.fn(), update: vi.fn() },
+    voucher: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     user: { update: vi.fn() },
     pointsLog: { create: vi.fn() },
   },
@@ -182,6 +182,12 @@ function setupTx(overrides: {
   mockPrisma.voucher = {
     findUnique: mockVoucherFindUnique,
     update: mockVoucherUpdate,
+    updateMany: vi.fn().mockImplementation((args) => {
+      const clonedArgs = { ...args, where: { ...args.where } };
+      delete clonedArgs.where.status;
+      mockVoucherUpdate(clonedArgs);
+      return Promise.resolve({ count: 1 });
+    }),
   };
   mockPrisma.user = {
     update: mockUserUpdate,
@@ -202,6 +208,12 @@ function setupTx(overrides: {
       voucher: {
         findUnique: mockVoucherFindUnique,
         update: mockVoucherUpdate,
+        updateMany: vi.fn().mockImplementation((args) => {
+          const clonedArgs = { ...args, where: { ...args.where } };
+          delete clonedArgs.where.status;
+          mockVoucherUpdate(clonedArgs);
+          return Promise.resolve({ count: 1 });
+        }),
       },
       user: { update: mockUserUpdate },
       pointsLog: { create: mockPointsLogCreate },
@@ -591,7 +603,7 @@ describe("POST /api/orders", () => {
   });
 
   it("reserves ADDON voucher in transaction", async () => {
-    setupTx();
+    setupTx({ addonOption: { id: ADDON_OPTION_ID, label: "Kem", price_vnd: 8000 } });
 
     const addonVoucher2 = {
       id: ADDON_VOUCHER_ID,
@@ -605,7 +617,7 @@ describe("POST /api/orders", () => {
       .mockResolvedValueOnce(addonVoucher2)
       .mockResolvedValue(null);
 
-    await POST(makeReq({ ...validPayload, items: [{ ...validPayload.items[0], addon_voucher_ids: [{ voucher_id: ADDON_VOUCHER_ID, addon_option_id: ADDON_OPTION_ID }] }] }));
+    await POST(makeReq({ ...validPayload, items: [{ ...validPayload.items[0], addon_option_ids: [{ option_id: ADDON_OPTION_ID, quantity: 1 }], addon_voucher_ids: [{ voucher_id: ADDON_VOUCHER_ID, addon_option_id: ADDON_OPTION_ID }] }] }));
 
     expect(mockVoucherUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -616,7 +628,7 @@ describe("POST /api/orders", () => {
   });
 
   it("returns 422 when ADDON voucher is already REDEEMED", async () => {
-    setupTx();
+    setupTx({ addonOption: { id: ADDON_OPTION_ID, label: "Kem", price_vnd: 8000 } });
     mockVoucherFindUnique.mockResolvedValueOnce({
       id: ADDON_VOUCHER_ID,
       user_id: USER_ID,
@@ -626,13 +638,13 @@ describe("POST /api/orders", () => {
       expires_at: null,
     });
 
-    const res = await POST(makeReq({ ...validPayload, items: [{ ...validPayload.items[0], addon_voucher_ids: [{ voucher_id: ADDON_VOUCHER_ID, addon_option_id: ADDON_OPTION_ID }] }] }));
+    const res = await POST(makeReq({ ...validPayload, items: [{ ...validPayload.items[0], addon_option_ids: [{ option_id: ADDON_OPTION_ID, quantity: 1 }], addon_voucher_ids: [{ voucher_id: ADDON_VOUCHER_ID, addon_option_id: ADDON_OPTION_ID }] }] }));
     expect(res.status).toBe(422);
     expect((await res.json()).code).toBe("VOUCHER_REDEEMED");
   });
 
   it("can stack ADDON + DISCOUNT vouchers in same order", async () => {
-    setupTx();
+    setupTx({ addonOption: { id: ADDON_OPTION_ID, label: "Kem", price_vnd: 8000 } });
 
     const addonVoucher3 = {
       id: ADDON_VOUCHER_ID,
@@ -660,7 +672,7 @@ describe("POST /api/orders", () => {
     const res = await POST(
       makeReq({
         ...validPayload,
-        items: [{ ...validPayload.items[0], addon_voucher_ids: [{ voucher_id: ADDON_VOUCHER_ID, addon_option_id: ADDON_OPTION_ID }] }],
+        items: [{ ...validPayload.items[0], addon_option_ids: [{ option_id: ADDON_OPTION_ID, quantity: 1 }], addon_voucher_ids: [{ voucher_id: ADDON_VOUCHER_ID, addon_option_id: ADDON_OPTION_ID }] }],
         discount_voucher_ids: [V_PCT],
       })
     );

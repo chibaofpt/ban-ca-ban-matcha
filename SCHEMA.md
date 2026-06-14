@@ -238,7 +238,7 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `user_id` uuid FK → users
 - `handled_by` uuid FK nullable → users — Staff who created or accepted this order. NULL if created by customer and not yet accepted.
 - `status` OrderStatus — customer default `PENDING`; staff = `COMPLETED` immediately
-- `order_type` OrderType — default `PICKUP`
+- `order_type` OrderType — customer default `DELIVERY`; staff auto `COUNTER`
 - `order_code` string UK nullable — e.g. "BCBM-A3X7K2". Null for COUNTER orders.
 - `subtotal_vnd` int
 - `discount_vnd` int — default 0. If > subtotal → total_vnd = 0, no error.

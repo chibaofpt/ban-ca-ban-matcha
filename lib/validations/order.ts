@@ -60,8 +60,8 @@ export const staffOrderSchema = z.object({
 
 /** Schema for a customer-initiated order (PICKUP or DELIVERY). */
 export const customerOrderSchema = z.object({
-  /** Order fulfilment type. Defaults to PICKUP. DELIVERY is reserved for Phase 5+. */
-  order_type: z.enum(["PICKUP", "DELIVERY"]).default("PICKUP"),
+  /** Order fulfilment type. Defaults to DELIVERY. */
+  order_type: z.enum(["PICKUP", "DELIVERY"]).default("DELIVERY"),
   items: z.array(orderItemSchema).min(1),
   /** DISCOUNT vouchers — multiple allowed. Max 1 PERCENT enforced in route handler. */
   discount_voucher_ids: z.array(z.string().uuid()).max(10).default([]),

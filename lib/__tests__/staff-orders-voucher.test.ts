@@ -59,6 +59,7 @@ vi.mock("@/lib/prisma", () => ({
     voucher: {
       findUnique: (...args: unknown[]) => mockVoucherFindUnique(...args),
       update: (...args: unknown[]) => mockVoucherUpdate(...args),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     user: {
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
@@ -161,7 +162,14 @@ function setupTx() {
       const tx = {
         menuItem: { findUnique: mockMenuItemFind },
         addonOption: { findUnique: mockAddonOptionFind },
-        voucher: { findUnique: mockVoucherFindUnique, update: mockVoucherUpdate },
+        voucher: {
+          findUnique: mockVoucherFindUnique,
+          update: mockVoucherUpdate,
+          updateMany: vi.fn().mockImplementation((args) => {
+            mockVoucherUpdate(args);
+            return Promise.resolve({ count: 1 });
+          }),
+        },
         user: { findUnique: mockUserFindUnique, update: mockUserUpdate, create: mockUserCreate },
         pointsLog: { create: mockPointsLogCreate },
         order: { create: mockOrderCreate },

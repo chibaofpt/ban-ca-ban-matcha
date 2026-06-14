@@ -147,6 +147,30 @@ export async function PATCH(
           });
         }
 
+        // 4. Award deferred surplus points
+        if (result.user_id) {
+          const itemsWithSurplus = await tx.orderItem.findMany({
+            where: { order_id: id, surplus_points: { gt: 0 } },
+            select: { surplus_points: true, product_voucher_id: true }
+          });
+          for (const item of itemsWithSurplus) {
+            await tx.user.update({
+              where: { id: result.user_id },
+              data: { points_balance: { increment: item.surplus_points! } }
+            });
+            await tx.pointsLog.create({
+              data: {
+                user_id: result.user_id,
+                delta: item.surplus_points!,
+                reason: "voucher_surplus",
+                voucher_id: item.product_voucher_id,
+                order_id: id,
+                performed_by: session.id,
+              }
+            });
+          }
+        }
+
         return result;
       },
       { maxWait: 5000, timeout: 10000 }

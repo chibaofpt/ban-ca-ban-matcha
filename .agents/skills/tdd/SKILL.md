@@ -200,6 +200,22 @@ describe("Feature / Endpoint", () => {
 });
 ```
 
+### Race Condition & Limit Bypass (Security Tests)
+
+Khi implement logic liên quan đến giới hạn (limits), số dư (balances), hoặc trạng thái sử dụng (voucher status), BẮT BUỘC phải thêm các test cases phòng chống **Race Condition (TOCTOU)** và **Double-Spend**:
+
+1. **Voucher / Point Limit Race Conditions**:
+   - Limit checks (`count`, `balance`) phải nằm BÊN TRONG transaction và phải đi kèm cơ chế lock (ví dụ: `SELECT ... FOR UPDATE` khóa row cha) hoặc check lại condition khi update (`decrement`).
+   - Mẫu test: `it("ném lỗi hoặc rollback transaction khi xử lý concurrent request vượt quá limit/số dư")`
+
+2. **Double-Spend Status Race Conditions**:
+   - Các logic chuyển trạng thái (ví dụ: voucher từ `ACTIVE` → `RESERVED`/`REDEEMED`) BẮT BUỘC phải dùng `updateMany` kết hợp expected state (VD: `where: { id, status: 'ACTIVE' }`), và phải rollback nếu `count === 0`. KHÔNG ĐƯỢC dùng `update` thông thường.
+   - Mẫu test: `it("chặn double-spend khi update trạng thái bằng cách check count của updateMany")`
+
+3. **Input Validation Mismatch (Cross-array verification)**:
+   - Khi áp dụng các sub-item mapping (như ADDON voucher), BẮT BUỘC phải check ID của sub-item đó có thực sự tồn tại trong array payload của Parent (món nước) hay không.
+   - Mẫu test: `it("trả 400 khi voucher áp dụng cho addon ID không tồn tại trong danh sách addon của món")`
+
 ---
 
 ## Checklist — Agent tự kiểm tra trước khi submit

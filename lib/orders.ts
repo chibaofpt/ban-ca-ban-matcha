@@ -83,6 +83,8 @@ export interface ProcessedOrderItem {
   addons_price_vnd: number;
   /** Server-computed drink price BEFORE any voucher credit. Used for surplus calculation. */
   original_unit_price_vnd: number;
+  /** Server-computed addons price BEFORE any voucher credit. Used for surplus calculation. */
+  original_addons_price_vnd: number;
   /** line_total = (unit_price_vnd + addons_price_vnd) × quantity */
   line_total: number;
   resolvedAddons: ProcessedAddon[];
@@ -273,7 +275,7 @@ async function resolveOneItem(
   const remaining_credit = Math.max(0, voucher_credit - server_unit_price);
 
   // 5. Resolve addon prices — snapshot at order time
-  let addons_price_vnd = 0;
+  let original_addons_price_vnd = 0;
   const resolvedAddons: ProcessedAddon[] = [];
 
   for (const addon of item.addon_option_ids) {
@@ -299,7 +301,7 @@ async function resolveOneItem(
     }
 
     const addonLineCost = addonUnitPrice * addon.quantity;
-    addons_price_vnd += addonLineCost;
+    original_addons_price_vnd += addonLineCost;
     resolvedAddons.push({
       addon_option_id: option.id,
       quantity: addon.quantity,
@@ -307,10 +309,7 @@ async function resolveOneItem(
     });
   }
 
-  // Apply any remaining voucher credit to addons
-  const addons_after_credit = Math.max(0, addons_price_vnd - remaining_credit);
-
-  // Apply ADDON voucher discounts
+  // Apply ADDON voucher discounts FIRST (before PRODUCT voucher spillover)
   let addon_discount_vnd = 0;
   if (item.addon_voucher_ids && addonVoucherMap) {
     const discountedAddons = new Set<string>();
@@ -328,10 +327,13 @@ async function resolveOneItem(
     }
   }
 
-  const final_addons_price_after_addon_voucher = Math.max(0, addons_after_credit - addon_discount_vnd);
+  // Addons price after ADDON voucher
+  const addons_after_addon_voucher = Math.max(0, original_addons_price_vnd - addon_discount_vnd);
+
+  // Now apply any remaining PRODUCT voucher credit to addons
+  const final_addons_price = Math.max(0, addons_after_addon_voucher - remaining_credit);
 
   const final_unit_price = drink_after_credit;
-  const final_addons_price = final_addons_price_after_addon_voucher;
 
   // 6. PRICE_CHANGED check
   // Client sends total per item = what they expect to pay (after voucher).
@@ -364,6 +366,7 @@ async function resolveOneItem(
     addon_discount_vnd,
     addons_price_vnd: final_addons_price,
     original_unit_price_vnd: server_unit_price,
+    original_addons_price_vnd,
     line_total,
     resolvedAddons,
   };
