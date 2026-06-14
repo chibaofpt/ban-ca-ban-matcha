@@ -38,13 +38,17 @@ export async function POST(req: Request) {
       );
     }
 
-    // Timing-safe password compare
+    // Timing-safe password compare. Ghost users have a non-bcrypt string which would fail instantly,
+    // so we substitute it with DUMMY_HASH to maintain timing safety.
+    const isGhostUser = user && user.password_hash === "GHOST_USER_NO_PASSWORD";
+    const hashToCompare = (!user || isGhostUser) ? DUMMY_HASH : user.password_hash;
+
     const isValidPassword = await bcrypt.compare(
       password,
-      user ? user.password_hash : DUMMY_HASH
+      hashToCompare
     );
 
-    if (!user || !isValidPassword) {
+    if (!user || isGhostUser || !isValidPassword) {
       if (user) {
         const newAttempts = user.failed_login_attempts + 1;
         let lockedUntil = null;

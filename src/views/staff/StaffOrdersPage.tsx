@@ -244,7 +244,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     if (!menuItem) return;
     setEditingCartItem(item);
     setSelectedItem(menuItem);
-    setCartOpen(false);
+    // Removed setCartOpen(false) to keep cart drawer visible underneath
   };
 
   const handleRemove = (cartId: string) => {
@@ -408,7 +408,15 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   const handleApplyProduct = (cartId: string, voucher: MyVoucher) => {
     if (!voucher.covered_price_vnd) return;
     setCart((prev) => {
-      const currentItems = [...prev];
+      let currentItems = prev.map((i) => {
+        if (i.productVoucherId === voucher.id) {
+          const nextI = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined };
+          nextI.clientPriceVnd = computeFinalClientPrice(nextI);
+          return nextI;
+        }
+        return i;
+      });
+
       const itemIndex = currentItems.findIndex((c) => c.cartId === cartId);
       if (itemIndex === -1) return prev;
 
@@ -455,15 +463,20 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     if (!addonOptionId) return;
     
     setCart((prev) => {
-      const currentItems = [...prev];
+      let currentItems = prev.map((i) => {
+        if (i.addonVouchers?.some(v => v.voucherId === voucher.id)) {
+          const nextI = { ...i, addonVouchers: i.addonVouchers.filter(v => v.voucherId !== voucher.id) };
+          nextI.clientPriceVnd = computeFinalClientPrice(nextI);
+          return nextI;
+        }
+        return i;
+      });
+
       const itemIndex = currentItems.findIndex((c) => c.cartId === cartId);
       if (itemIndex === -1) return prev;
 
       const item = currentItems[itemIndex];
       const newAddonVouchers = item.addonVouchers ? [...item.addonVouchers] : [];
-      
-      // Prevent applying duplicate voucher
-      if (newAddonVouchers.some(av => av.voucherId === voucher.id)) return prev;
 
       const existingIdx = newAddonVouchers.findIndex(v => v.addonOptionId === addonOptionId);
       const toppingPrice = item.addonPrices?.[addonOptionId] ?? 0;
@@ -671,7 +684,6 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
             setSelectedItem(null);
             setEditingCartItem(null);
             setScannedProductVoucher(null);
-            if (editingCartItem) setCartOpen(true);
           }}
           onConfirm={handleAddToCart}
         />

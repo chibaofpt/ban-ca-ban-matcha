@@ -576,8 +576,25 @@ export async function GET(req: NextRequest) {
         take: limit,
       orderBy: { created_at: "desc" },
       include: {
+        discountVouchers: {
+          include: {
+            voucher: {
+              include: { package: { select: { name: true } } }
+            }
+          }
+        },
         items: {
           include: {
+            productVoucher: {
+              include: { package: { select: { name: true } } }
+            },
+            addonVouchers: {
+              include: {
+                voucher: {
+                  include: { package: { select: { name: true } } }
+                }
+              }
+            },
             menuItem: { select: { name: true, category: true } },
             selectedPowder: { select: { name: true, price_per_gram: true } },
             milkType: { select: { name: true, is_default: true } },

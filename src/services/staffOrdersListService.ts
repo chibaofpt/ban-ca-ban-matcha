@@ -23,6 +23,8 @@ export interface OrderItemRes {
     };
     quantity: number;
   }[];
+  productVoucher?: { package: { name: string } } | null;
+  addonVouchers?: Array<{ voucher: { package: { name: string } } }>;
 }
 
 export interface OrderRes {
@@ -42,6 +44,7 @@ export interface OrderRes {
   user: { name: string; phone_number: string } | null;
   handled_by: string | null;
   voucher_id: string | null;
+  discountVouchers?: Array<{ voucher: { package: { name: string } } }>;
   items: OrderItemRes[];
 }
 
