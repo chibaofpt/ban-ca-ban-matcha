@@ -19,6 +19,7 @@ import { NavLink } from "@/src/components/common/NavLink";
 import { useCartStore, useCartTotalItems } from "@/src/lib/store/cartStore";
 import { useAuthStore } from "@/src/lib/store/authStore";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
+import { logout as serverLogout } from "@/src/services/authService";
 
 /**
  * Navbar — fixed top bar with desktop links and mobile drawer.
@@ -42,8 +43,11 @@ const Navbar = () => {
     return null;
   }
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    // Best-effort server-side logout — destroys session in DB and clears httpOnly cookies.
+    // Swallowed so a network error never blocks the UI.
+    try { await serverLogout(); } catch { /* best-effort */ }
+    logout(); // clear Zustand + localStorage
     setOpen(false);
     router.push("/");
   };

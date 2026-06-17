@@ -410,27 +410,27 @@ export function StaffCartDrawer({
                         {appliedProductVoucherId && (() => {
                           const pv = customerVouchers.find(v => v.id === appliedProductVoucherId);
                           return (
-                            <div className="text-[10px] font-bold bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 px-2 py-1 rounded-full flex items-center gap-1">
-                              <Ticket size={10} /> {pv?.package?.name || "Free món"}
-                              <button onClick={(e) => { e.stopPropagation(); onRemoveProduct!(c.cartId); }} className="ml-1 hover:text-red-500"><X size={10}/></button>
+                            <div className="text-[10px] font-bold bg-orange-50 border border-orange-200 text-orange-700 dark:bg-orange-900/30 dark:border-orange-500/30 dark:text-orange-400 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                              <Ticket size={12} className="text-orange-500" /> {pv?.package?.name || "Free món"}
+                              <button onClick={(e) => { e.stopPropagation(); onRemoveProduct!(c.cartId); }} className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-orange-200 text-orange-500 hover:text-orange-700 transition-colors ml-0.5"><X size={12} strokeWidth={2.5} /></button>
                             </div>
                           )
                         })()}
                         {appliedAddonVouchers.map((av, idx) => {
                           const voucherInfo = customerVouchers.find(v => v.id === av.voucherId);
                           return (
-                            <div key={`${av.voucherId}-${idx}`} className="text-[10px] font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-1 rounded-full flex items-center gap-1">
-                              <Ticket size={10} /> {voucherInfo?.addonOption?.label || "Free Topping"}
-                              <button onClick={(e) => { e.stopPropagation(); onRemoveAddon!(c.cartId, av.voucherId); }} className="ml-1 hover:text-red-500"><X size={10}/></button>
+                            <div key={`${av.voucherId}-${idx}`} className="text-[10px] font-bold bg-green-50 border border-green-200 text-green-700 dark:bg-green-900/30 dark:border-green-500/30 dark:text-green-400 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                              <Ticket size={12} className="text-green-600" /> Free {voucherInfo?.addonOption?.label || "Topping"}
+                              <button onClick={(e) => { e.stopPropagation(); onRemoveAddon!(c.cartId, av.voucherId); }} className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-green-200 text-green-600 hover:text-green-800 transition-colors ml-0.5"><X size={12} strokeWidth={2.5} /></button>
                             </div>
                           )
                         })}
                         {hasAvailableVouchers && (
                           <button
                             onClick={(e) => { e.stopPropagation(); setActiveItemForVoucher(c.cartId); setIsDiscountPickerOpen(false); }}
-                            className="text-[10px] font-bold bg-orange-50 border border-orange-200 text-orange-600 px-2.5 py-1 rounded-full flex items-center gap-1 hover:bg-orange-100 transition-colors"
+                            className="text-[10px] font-bold bg-white border border-dashed border-orange-300 text-orange-600 px-3 py-1.5 rounded-full flex items-center gap-1 hover:bg-orange-50 hover:border-solid transition-all shadow-sm"
                           >
-                            <Ticket size={10} /> Ưu đãi ({productVouchersForItem.length + addonVouchersForItem.length})
+                            <Ticket size={12} /> Ưu đãi ({productVouchersForItem.length + addonVouchersForItem.length})
                           </button>
                         )}
                       </div>

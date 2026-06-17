@@ -22,6 +22,7 @@ import VoucherModal from '@/src/components/shared/VoucherModal';
 import { useVoucherModalStore } from '@/src/lib/store/voucherModalStore';
 import { useIsLoggedIn } from '@/src/lib/store/authStore';
 import { useCustomerPoints } from '@/src/hooks/useCustomerPoints';
+import { listMyVouchers } from '@/src/services/customerVoucherService';
 
 const swipeConfidenceThreshold = 10000;
 const swipePower = (offset: number, velocity: number) => {
@@ -49,6 +50,12 @@ export default function MenuPage() {
   const { data: powderRes, isLoading: powderLoading, isError: powderError } = useQuery({
     queryKey: ['powders'],
     queryFn: fetchPowders,
+  });
+
+  const { data: vouchersData } = useQuery({
+    queryKey: ['my_vouchers'],
+    queryFn: listMyVouchers,
+    enabled: isLoggedIn,
   });
 
   const loading = menuLoading || powderLoading;
@@ -210,6 +217,7 @@ export default function MenuPage() {
             item={selectedItem}
             latteItems={data?.latte ?? []}
             onClose={() => setSelectedItem(null)}
+            availableVouchers={vouchersData ?? []}
           />
         )}
       </AnimatePresence>

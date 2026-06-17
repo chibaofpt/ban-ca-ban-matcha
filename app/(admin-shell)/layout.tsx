@@ -1,17 +1,17 @@
 import type { ReactNode } from "react";
 import AdminTabBar from "@/src/components/admin/AdminTabBar";
 import type { Role } from "@/src/lib/types/user";
-import { getSession } from "@/lib/auth";
+import { getSessionOrRefresh } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import PushSubscriptionManager from "@/src/components/admin/PushSubscriptionManager";
 
 /** Layout shell for all admin and staff pages — top bar + bottom tab bar. */
 export default async function AdminShellLayout({ children }: { children: ReactNode }) {
-  const session = await getSession();
+  const session = await getSessionOrRefresh();
 
   if (!session || (session.role !== "ADMIN" && session.role !== "STAFF")) {
-    redirect("/admin/login");
+    redirect("/?auth=login");
   }
 
   // Fetch the actual user name from the database

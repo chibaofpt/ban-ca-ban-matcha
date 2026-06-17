@@ -9,8 +9,11 @@ import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 
 
 /**
- * AuthGuardProvider — Client-side wrapper that listens for force-logout
- * events fired by the Axios interceptor when the refresh token is also dead.
+ * AuthGuardProvider — Client-side wrapper that:
+ *  1. Listens for force-logout events fired by the Axios interceptor when
+ *     the refresh token is also dead.
+ *  2. Detects `?auth=login` query param (set by server layouts / middleware
+ *     when redirecting unauthenticated users) and auto-opens the login modal.
  *
  * Mount this once in the root layout so it covers all routes.
  * Behaviour on force-logout (all roles — CUSTOMER, STAFF, ADMIN):
@@ -25,6 +28,19 @@ export default function AuthGuardProvider({ children }: { children: ReactNode })
   const logout = useAuthStore((s) => s.logout);
   const openLogin = useAuthModalStore((s) => s.openLogin);
 
+  // ── Auto-open login modal on ?auth=login ────────────────────────────────────
+  // Server layouts and middleware set this param when redirecting unauthenticated
+  // users to /. We open the modal and clean the URL so refresh doesn't reopen it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("auth") === "login" && !user) {
+      openLogin();
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Force-logout listener ───────────────────────────────────────────────────
   useEffect(() => {
     onForceLogout(() => {
       // Only act when the client state indicates a user was logged in.
@@ -46,3 +62,4 @@ export default function AuthGuardProvider({ children }: { children: ReactNode })
 
   return <>{children}</>;
 }
+

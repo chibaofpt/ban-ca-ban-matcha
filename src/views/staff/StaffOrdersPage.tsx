@@ -667,6 +667,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
           editingItem={editingCartItem || undefined}
           freeVoucherId={scannedProductVoucher?.id}
           freeVoucherCoveredPriceVnd={scannedProductVoucher?.covered_price_vnd}
+          availableVouchers={customerVouchers}
           onClose={() => {
             setSelectedItem(null);
             setEditingCartItem(null);

@@ -20,6 +20,7 @@ import {
   register as registerRequest,
   type RegisterPayload,
 } from "@/src/services/authService";
+import { resetForceLogout } from "@/src/lib/api/client";
 
 /** 2-step registration wizard: step 1 = phone + password, step 2 = name. */
 const RegisterForm = () => {
@@ -103,6 +104,7 @@ const RegisterForm = () => {
       const user = await registerRequest(payload);
 
       login(user.phone_number, user.name);
+      resetForceLogout(); // Allow force-logout to fire again after re-register (BUG-3)
       close();
 
       const from = new URLSearchParams(window.location.search).get("from");

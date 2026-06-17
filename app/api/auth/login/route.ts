@@ -4,9 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { normalizePhone, signJwt, createSession, setAuthCookies } from "@/lib/auth";
 import bcrypt from "bcryptjs";
 
-
 // Dummy hash to prevent timing attacks. It corresponds to an empty string with cost 12.
 const DUMMY_HASH = "$2a$12$R9h/cIPz0gi.URNNX3rub2A9WEH71/x7LpZ9zL1Pz.x0bI/tXh9eW";
+
+/** Maximum number of concurrent active sessions per user. */
+const MAX_ACTIVE_SESSIONS = 5;
 
 /**
  * Handle POST request for user login.
@@ -35,6 +37,16 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "Tài khoản bị khoá tạm thời. Vui lòng thử lại sau 15 phút.", code: "ACCOUNT_LOCKED" },
         { status: 429 }
+      );
+    }
+
+    // EDGE-3: Ghost user guard — must run bcrypt for timing-safety, then reject clearly.
+    // Ghost users have never set a password; they should register, not login.
+    if (user && user.password_hash === "GHOST_USER_NO_PASSWORD") {
+      await bcrypt.compare(password, DUMMY_HASH); // timing-safe: always run compare
+      return NextResponse.json(
+        { error: "Số điện thoại chưa được đăng ký. Vui lòng tạo tài khoản.", code: "NOT_REGISTERED" },
+        { status: 401 }
       );
     }
 
@@ -70,6 +82,21 @@ export async function POST(req: Request) {
           locked_until: null,
         },
       });
+    }
+
+    // EDGE-4: Session limit — keep at most MAX_ACTIVE_SESSIONS-1 existing sessions
+    // so the new one makes exactly MAX_ACTIVE_SESSIONS total.
+    const activeSessions = await prisma.session.findMany({
+      where: { user_id: user.id, expires_at: { gt: new Date() } },
+      orderBy: { created_at: "asc" },
+      select: { id: true },
+    });
+    if (activeSessions.length >= MAX_ACTIVE_SESSIONS) {
+      // Delete oldest sessions, keep (MAX_ACTIVE_SESSIONS - 1) newest
+      const idsToDelete = activeSessions
+        .slice(0, activeSessions.length - (MAX_ACTIVE_SESSIONS - 1))
+        .map((s) => s.id);
+      await prisma.session.deleteMany({ where: { id: { in: idsToDelete } } });
     }
 
     // Create session

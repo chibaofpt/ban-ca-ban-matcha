@@ -654,14 +654,14 @@ const CartDrawer = () => {
                                     {item.productVoucherId && (() => {
                                       const pv = allVouchers.find(v => v.id === item.productVoucherId);
                                       return (
-                                        <div className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-1 rounded-full flex items-center gap-1.5">
-                                          <Ticket className="w-3 h-3" /> {pv?.package?.name || "Free món"}
+                                        <div className="text-[10px] font-bold bg-orange-50 border border-orange-200 text-orange-700 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                                          <Ticket className="w-3 h-3 text-orange-500" /> {pv?.package?.name || "Free món"}
                                           <button
                                             onClick={(e) => { e.stopPropagation(); removeProductVoucher(item.cartId); }}
                                             aria-label="Bỏ voucher sản phẩm"
-                                            className="hover:text-red-500 transition-colors ml-0.5"
+                                            className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-orange-200 text-orange-500 hover:text-orange-700 transition-colors ml-0.5"
                                           >
-                                            <X size={11} />
+                                            <X size={12} strokeWidth={2.5} />
                                           </button>
                                         </div>
                                       );
@@ -670,14 +670,14 @@ const CartDrawer = () => {
                                     {item.addonVouchers && item.addonVouchers.map(av => {
                                       const voucherInfo = allVouchers.find(v => v.id === av.voucherId);
                                       return (
-                                        <div key={av.voucherId} className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full flex items-center gap-1.5">
-                                          <Ticket className="w-3 h-3" /> Free {voucherInfo?.addonOption?.label || "Topping"}
+                                        <div key={av.voucherId} className="text-[10px] font-bold bg-green-50 border border-green-200 text-green-700 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                                          <Ticket className="w-3 h-3 text-green-600" /> Free {voucherInfo?.addonOption?.label || "Topping"}
                                           <button
                                             onClick={(e) => { e.stopPropagation(); removeAddonVoucher(item.cartId, av.voucherId); }}
                                             aria-label="Bỏ voucher topping"
-                                            className="hover:text-red-500 transition-colors ml-0.5"
+                                            className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-green-200 text-green-600 hover:text-green-800 transition-colors ml-0.5"
                                           >
-                                            <X size={11} />
+                                            <X size={12} strokeWidth={2.5} />
                                           </button>
                                         </div>
                                       );
@@ -686,7 +686,7 @@ const CartDrawer = () => {
                                     {hasAvailableVouchers && (
                                       <button
                                         onClick={(e) => { e.stopPropagation(); setActiveItemForVoucher(item.cartId); }}
-                                        className="text-[10px] font-bold bg-orange-50 border border-orange-200 text-orange-600 px-2.5 py-1 rounded-full flex items-center gap-1 hover:bg-orange-100 transition-colors"
+                                        className="text-[10px] font-bold bg-white border border-dashed border-orange-300 text-orange-600 px-3 py-1.5 rounded-full flex items-center gap-1 hover:bg-orange-50 hover:border-solid transition-all shadow-sm"
                                       >
                                         <Ticket className="w-3 h-3" />
                                         Chọn ưu đãi ({productVouchersForItem.length + addonVouchersForItem.length})
@@ -1307,6 +1307,7 @@ const CartDrawer = () => {
             setEditingCartItem(null);
             setCartOpen(true);
           }}
+          availableVouchers={allVouchers}
         />
       );
     })()}
