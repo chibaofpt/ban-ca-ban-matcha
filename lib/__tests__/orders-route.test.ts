@@ -173,7 +173,7 @@ function setupTx(overrides: {
   mockOrderCreate.mockResolvedValue(overrides.orderResult ?? createdOrder);
 
   const mockPrisma = prisma as unknown as {
-    voucher: { findUnique: unknown; update: unknown };
+    voucher: { findUnique: unknown; update: unknown; updateMany: unknown };
     user: { update: unknown };
     pointsLog: { create: unknown };
     order: { findUnique: unknown; create: unknown };

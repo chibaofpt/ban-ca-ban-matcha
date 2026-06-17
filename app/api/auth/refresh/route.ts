@@ -28,8 +28,13 @@ export async function POST(req: Request) {
 
     const userId = session.user_id;
 
-    // Delete old session and create a new one (Token rotation)
-    await prisma.session.delete({ where: { id: session.id } });
+    // Grace Period for Token Rotation (30 seconds)
+    // Instead of deleting the old session immediately, we truncate its lifetime to 30s.
+    // This allows concurrent requests (e.g. from multiple tabs) using the same old token to succeed.
+    await prisma.session.update({
+      where: { id: session.id },
+      data: { expires_at: new Date(Date.now() + 30 * 1000) }
+    });
     const newRefreshToken = await createSession(userId, session.user.role);
 
     // Issue new access token

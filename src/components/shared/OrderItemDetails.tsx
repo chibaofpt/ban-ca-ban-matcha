@@ -56,10 +56,22 @@ export function OrderItemDetails({ item }: { item: OrderItemRes }) {
     details.push(`Ghi chú: ${item.note}`);
   }
 
+  // Vouchers applied on this item
+  if (item.productVoucher) {
+    details.push(`Voucher: Miễn phí (${item.productVoucher.package.name})`);
+  }
+  if (item.addonVouchers && item.addonVouchers.length > 0) {
+    for (const av of item.addonVouchers) {
+      details.push(`Voucher: Topping (${av.voucher.package.name})`);
+    }
+  }
+
   return (
     <div className="text-[11px] text-muted-foreground mt-0.5 space-y-0.5">
       {details.map((detail, idx) => (
-        <div key={idx}>• {detail}</div>
+        <div key={idx} className={detail.startsWith('Voucher:') ? 'text-primary font-medium' : ''}>
+          • {detail}
+        </div>
       ))}
     </div>
   );

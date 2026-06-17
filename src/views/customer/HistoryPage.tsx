@@ -29,6 +29,7 @@ interface CustomerHistoryOrder {
   created_at: string;
   auto_cancel_at: string | null;
   payment_qr_url: string | null;
+  discountVouchers?: Array<{ voucher: { package: { name: string } } }>;
   items: Array<{
     quantity: number;
     size: string;
@@ -39,6 +40,8 @@ interface CustomerHistoryOrder {
     coldwhisk: boolean;
     note: string | null;
     menuItem: { name: string; category: string };
+    productVoucher?: { package: { name: string } } | null;
+    addonVouchers?: Array<{ voucher: { package: { name: string } } }>;
     selectedPowder: { name: string; price_per_gram: number } | null;
     milkType: { name: string; is_default: boolean } | null;
     addons: Array<{
@@ -236,7 +239,7 @@ export default function HistoryPage() {
     <div className="px-4 py-6 max-w-2xl md:max-w-4xl lg:max-w-6xl mx-auto space-y-5 pb-24">
       {/* Header: title + voucher button */}
       <div className="flex items-center justify-between">
-        <h1 className="font-serif text-3xl font-bold text-primary">Lịch sử của tôi</h1>
+        <h1 className="font-serif text-3xl font-bold text-primary">Lịch sử</h1>
         <button
           id="voucher-modal-trigger-history"
           onClick={openVoucherModal}
@@ -419,8 +422,13 @@ export default function HistoryPage() {
                               </li>
                             ))}
                             {order.discount_vnd > 0 && (
-                              <li className="text-xs text-green-600 pt-1">
-                                Giảm giá: -{(order.discount_vnd / 1000).toLocaleString("vi-VN")}K
+                              <li className="text-xs text-green-600 pt-1 flex flex-col">
+                                <span>Giảm giá: -{(order.discount_vnd / 1000).toLocaleString("vi-VN")}K</span>
+                                {order.discountVouchers && order.discountVouchers.length > 0 && (
+                                  <span className="font-medium mt-0.5">
+                                    (Voucher: {order.discountVouchers.map(dv => dv.voucher.package.name).join(", ")})
+                                  </span>
+                                )}
                               </li>
                             )}
                           </ul>

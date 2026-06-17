@@ -574,26 +574,32 @@ export function StaffCartDrawer({
                       {applicableProductVouchers.get(activeItem.menuItemId)?.map(v => {
                         const savings = estimateProductSavings(v, activeItem.originalClientPriceVnd);
                         const isSelected = activeItem.productVoucherId === v.id;
+                        const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && c.productVoucherId === v.id);
                         
                         return (
                           <button
                             key={v.id}
+                            disabled={isAlreadyUsed}
                             onClick={() => {
+                              if (isAlreadyUsed) return;
                               if (isSelected) onRemoveProduct(activeItem.cartId);
                               else onApplyProduct(activeItem.cartId, v);
                               setActiveItemForVoucher(null);
                             }}
                             className={cn(
                               "w-full flex items-center justify-between p-3.5 rounded-xl border text-left transition-colors",
-                              isSelected ? "bg-orange-50 border-orange-200" : "bg-card border-border hover:bg-orange-50/30"
+                              isSelected ? "bg-orange-50 border-orange-200" : isAlreadyUsed ? "opacity-40 bg-secondary/30 border-transparent cursor-not-allowed" : "bg-card border-border hover:bg-orange-50/30"
                             )}
                           >
                             <div>
                               <p className="font-bold text-sm flex items-center gap-2">
                                 <Ticket size={14} className="text-orange-500" /> {v.package.name}
                               </p>
-                              {savings > 0 && (
+                              {savings > 0 && !isAlreadyUsed && (
                                 <p className="text-xs text-orange-600 mt-1 font-medium">Giảm {(savings / 1000).toLocaleString('vi-VN')}k</p>
+                              )}
+                              {isAlreadyUsed && (
+                                <p className="text-[10px] text-muted-foreground mt-1 italic">Đã dùng ở ly khác</p>
                               )}
                             </div>
                             {isSelected && <CheckCircle2 size={18} className="text-orange-500" />}
@@ -611,23 +617,30 @@ export function StaffCartDrawer({
                     <div className="space-y-2">
                       {applicableAddonVouchersMap.get(activeItem.cartId)?.map(v => {
                         const isSelected = (activeItem.addonVouchers ?? []).some(av => av.voucherId === v.id);
+                        const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && c.addonVouchers?.some(av => av.voucherId === v.id));
+                        
                         return (
                           <button
                             key={v.id}
+                            disabled={isAlreadyUsed}
                             onClick={() => {
+                              if (isAlreadyUsed) return;
                               if (isSelected) onRemoveAddon(activeItem.cartId, v.id);
                               else onApplyAddon(activeItem.cartId, v);
                               setActiveItemForVoucher(null);
                             }}
                             className={cn(
                               "w-full flex items-center justify-between p-3.5 rounded-xl border text-left transition-colors",
-                              isSelected ? "bg-green-50 border-green-200" : "bg-card border-border hover:bg-green-50/30"
+                              isSelected ? "bg-green-50 border-green-200" : isAlreadyUsed ? "opacity-40 bg-secondary/30 border-transparent cursor-not-allowed" : "bg-card border-border hover:bg-green-50/30"
                             )}
                           >
                             <div>
                               <p className="font-bold text-sm flex items-center gap-2">
                                 <Ticket size={14} className="text-green-600" /> Free {v.addonOption?.label || "Topping"}
                               </p>
+                              {isAlreadyUsed && (
+                                <p className="text-[10px] text-muted-foreground mt-1 italic">Đã dùng ở ly khác</p>
+                              )}
                             </div>
                             {isSelected && <CheckCircle2 size={18} className="text-green-600" />}
                           </button>
