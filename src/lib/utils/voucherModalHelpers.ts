@@ -11,17 +11,19 @@ import type { MyVoucher, VoucherPackage } from "@/src/services/customerVoucherSe
 
 /**
  * Filter vouchers to show in Section 1 of VoucherModal.
- * Shows only ACTIVE + RESERVED; hides REDEEMED/EXPIRED/REFUNDED.
- * ACTIVE vouchers are sorted before RESERVED.
+ * Sort order: ACTIVE/RESERVED > EXPIRED > REDEEMED.
  */
 export function filterModalVouchers(vouchers: MyVoucher[]): MyVoucher[] {
+  const getWeight = (status: string) => {
+    if (status === "ACTIVE") return 4;
+    if (status === "RESERVED") return 3;
+    if (status === "EXPIRED") return 2;
+    if (status === "REDEEMED") return 1;
+    return 0;
+  };
   return vouchers
-    .filter((v) => v.status === "ACTIVE" || v.status === "RESERVED")
-    .sort((a, b) => {
-      if (a.status === "ACTIVE" && b.status !== "ACTIVE") return -1;
-      if (a.status !== "ACTIVE" && b.status === "ACTIVE") return 1;
-      return 0;
-    });
+    .filter((v) => getWeight(v.status) > 0)
+    .sort((a, b) => getWeight(b.status) - getWeight(a.status));
 }
 
 /**
@@ -137,6 +139,40 @@ export function formatVoucherExpiry(expiresAt: string | null): string {
   if (diffDays === 1) return "Hết hạn hôm nay";
   if (diffDays <= 7) return `Còn ${diffDays} ngày`;
   return `HSD: ${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+}
+
+/**
+ * Returns a formatted date string for a REDEEMED voucher.
+ */
+export function formatRedeemedDate(redeemedAt: string | null): string {
+  if (!redeemedAt) return "Đã dùng";
+  const d = new Date(redeemedAt);
+  return `Đã dùng: ${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+}
+
+/**
+ * Returns a short, highlighted text for the Ticket Layout (Left Side).
+ * e.g., "10K", "15%", "FREE"
+ */
+export function getTicketHighlightText(
+  vType: string,
+  discountType?: "PERCENT" | "FIXED" | null,
+  discountValue?: number | null
+): { text: string; subtext: string } {
+  if (vType === "DISCOUNT") {
+    if (discountType === "PERCENT") return { text: `${discountValue}%`, subtext: "GIẢM" };
+    if (discountType === "FIXED" && discountValue) {
+      if (discountValue >= 1000) return { text: `${Math.floor(discountValue / 1000)}K`, subtext: "GIẢM" };
+      return { text: `${discountValue}`, subtext: "GIẢM" };
+    }
+  }
+  if (vType === "PRODUCT" || vType === "ADDON") {
+    return { text: "FREE", subtext: "TẶNG" };
+  }
+  if (vType === "FREESHIP") {
+    return { text: "SHIP", subtext: "FREE" };
+  }
+  return { text: "GIFT", subtext: "VOUCHER" };
 }
 
 /**

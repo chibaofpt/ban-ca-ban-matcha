@@ -81,7 +81,7 @@ function makePackage(overrides: Partial<VoucherPackage> = {}): VoucherPackage {
 // ── filterModalVouchers ────────────────────────────────────────────────────────
 
 describe("filterModalVouchers", () => {
-  it("chỉ trả ACTIVE + RESERVED, ẩn REDEEMED/EXPIRED/REFUNDED", () => {
+  it("trả về ACTIVE, RESERVED, EXPIRED, REDEEMED và ẩn REFUNDED", () => {
     const vouchers = [
       makeVoucher({ id: "v1", status: "ACTIVE" }),
       makeVoucher({ id: "v2", status: "RESERVED" }),
@@ -90,37 +90,35 @@ describe("filterModalVouchers", () => {
       makeVoucher({ id: "v5", status: "REFUNDED" }),
     ];
     const result = filterModalVouchers(vouchers);
-    expect(result).toHaveLength(2);
-    expect(result.map((v) => v.id)).toEqual(expect.arrayContaining(["v1", "v2"]));
-    expect(result.map((v) => v.id)).not.toContain("v3");
-    expect(result.map((v) => v.id)).not.toContain("v4");
+    expect(result).toHaveLength(4);
+    expect(result.map((v) => v.id)).toEqual(expect.arrayContaining(["v1", "v2", "v3", "v4"]));
     expect(result.map((v) => v.id)).not.toContain("v5");
   });
 
-  it("sắp xếp ACTIVE trước, RESERVED sau", () => {
+  it("sắp xếp ACTIVE trước, RESERVED sau, EXPIRED sau nữa, REDEEMED cuối cùng", () => {
     const vouchers = [
+      makeVoucher({ id: "rd1", status: "REDEEMED" }),
+      makeVoucher({ id: "ex1", status: "EXPIRED" }),
       makeVoucher({ id: "r1", status: "RESERVED" }),
       makeVoucher({ id: "a1", status: "ACTIVE" }),
-      makeVoucher({ id: "r2", status: "RESERVED" }),
-      makeVoucher({ id: "a2", status: "ACTIVE" }),
     ];
     const result = filterModalVouchers(vouchers);
     expect(result[0].status).toBe("ACTIVE");
-    expect(result[1].status).toBe("ACTIVE");
-    expect(result[2].status).toBe("RESERVED");
-    expect(result[3].status).toBe("RESERVED");
+    expect(result[1].status).toBe("RESERVED");
+    expect(result[2].status).toBe("EXPIRED");
+    expect(result[3].status).toBe("REDEEMED");
   });
 
   it("mảng rỗng → rỗng", () => {
     expect(filterModalVouchers([])).toHaveLength(0);
   });
 
-  it("tất cả REDEEMED → rỗng", () => {
+  it("tất cả REDEEMED → trả về tất cả", () => {
     const vouchers = [
       makeVoucher({ status: "REDEEMED" }),
       makeVoucher({ status: "REDEEMED" }),
     ];
-    expect(filterModalVouchers(vouchers)).toHaveLength(0);
+    expect(filterModalVouchers(vouchers)).toHaveLength(2);
   });
 });
 

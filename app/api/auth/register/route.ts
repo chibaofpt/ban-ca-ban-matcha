@@ -42,6 +42,9 @@ export async function POST(req: Request) {
     // Hash password with cost 12
     const passwordHash = await bcrypt.hash(password, 12);
 
+    /** Maximum number of concurrent active sessions per user. */
+    const MAX_ACTIVE_SESSIONS = 5;
+
     // Create or update user, award welcome points, and open a session in one atomic transaction
     const { user, refreshToken } = await prisma.$transaction(async (tx) => {
       let finalUser;
@@ -76,6 +79,19 @@ export async function POST(req: Request) {
           performed_by: null,
         },
       });
+
+      // EDGE-4: Session limit — enforce max active sessions before creating new one
+      const activeSessions = await tx.session.findMany({
+        where: { user_id: finalUser.id, expires_at: { gt: new Date() } },
+        orderBy: { created_at: "asc" },
+        select: { id: true },
+      });
+      if (activeSessions.length >= MAX_ACTIVE_SESSIONS) {
+        const idsToDelete = activeSessions
+          .slice(0, activeSessions.length - (MAX_ACTIVE_SESSIONS - 1))
+          .map((s) => s.id);
+        await tx.session.deleteMany({ where: { id: { in: idsToDelete } } });
+      }
 
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
       const session = await tx.session.create({

@@ -10,14 +10,38 @@ if (!secretStr) {
 const JWT_SECRET = new TextEncoder().encode(secretStr);
 
 /**
- * Normalizes phone number format from 0xxxxxxxxx to +84xxxxxxxxx.
+ * Normalizes phone number to E.164 format (+84xxxxxxxxx).
+ * Handles multiple input formats from Vietnamese users:
+ *  - "0912345678"      → "+84912345678"  (standard local format)
+ *  - "+84912345678"    → "+84912345678"  (already normalized)
+ *  - "84912345678"     → "+84912345678"  (missing leading +)
+ *  - "+840912345678"   → "+84912345678"  (extra 0 after country code)
+ *  - "091 234 5678"    → "+84912345678"  (spaces — common in UI input)
+ *  - "091-234-5678"    → "+84912345678"  (dashes)
  */
 export function normalizePhone(phone: string): string {
-  if (phone.startsWith("0")) {
-    return `+84${phone.slice(1)}`;
+  // Strip whitespace, dashes, dots, parentheses
+  let cleaned = phone.replace(/[\s\-\.\(\)]/g, "");
+
+  // "84xxxxxxxxx" (11 digits, missing leading +) → "+84xxxxxxxxx"
+  if (/^84\d{9}$/.test(cleaned)) {
+    return `+${cleaned}`;
   }
-  return phone;
+
+  // "+840xxxxxxxxx" (extra 0 after country code) → "+84xxxxxxxxx"
+  if (/^\+840\d{9}$/.test(cleaned)) {
+    return `+84${cleaned.slice(4)}`;
+  }
+
+  // "0xxxxxxxxx" (10 digits) → "+84xxxxxxxxx"
+  if (/^0\d{9}$/.test(cleaned)) {
+    return `+84${cleaned.slice(1)}`;
+  }
+
+  // "+84xxxxxxxxx" already normalized — return as-is
+  return cleaned;
 }
+
 
 /**
  * Signs a JWT token with HS256. 15 minutes for all roles.

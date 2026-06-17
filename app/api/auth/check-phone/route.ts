@@ -30,10 +30,15 @@ export async function POST(req: Request) {
 
     const existing = await prisma.user.findUnique({
       where: { phone_number: normalizedPhone },
-      select: { id: true },
+      select: { id: true, password_hash: true },
     });
 
-    return NextResponse.json({ data: { exists: existing !== null } }, { status: 200 });
+    // Ghost user (placed an order before registering) is not yet a real account.
+    // Allow them through to the register flow so they can convert their account.
+    const isRegistered =
+      existing !== null && existing.password_hash !== "GHOST_USER_NO_PASSWORD";
+
+    return NextResponse.json({ data: { exists: isRegistered } }, { status: 200 });
   } catch (error) {
     return NextResponse.json(
       { error: "Đã có lỗi xảy ra", code: "SERVER_ERROR" },

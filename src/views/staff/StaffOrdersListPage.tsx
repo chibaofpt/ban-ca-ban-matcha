@@ -278,6 +278,16 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
                           <span className="font-medium text-foreground shrink-0 mt-0.5">×{it.quantity}</span>
                         </li>
                       ))}
+                      {order.discount_vnd > 0 && (
+                        <li className="text-xs text-green-600 pt-1 flex flex-col">
+                          <span>Giảm giá: -{(order.discount_vnd / 1000).toLocaleString("vi-VN")}K</span>
+                          {order.discountVouchers && order.discountVouchers.length > 0 && (
+                            <span className="font-medium mt-0.5">
+                              (Voucher: {order.discountVouchers.map(dv => dv.voucher.package.name).join(", ")})
+                            </span>
+                          )}
+                        </li>
+                      )}
                     </ul>
                   )}
 

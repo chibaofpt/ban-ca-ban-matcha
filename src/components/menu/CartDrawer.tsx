@@ -370,7 +370,7 @@ const CartDrawer = () => {
       return;
     }
     setEditingCartItem(cartItem);
-    setCartOpen(false); // Hide drawer to show modal
+    // Removed setCartOpen(false) to keep cart drawer visible underneath
   };
 
   return (
@@ -654,14 +654,14 @@ const CartDrawer = () => {
                                     {item.productVoucherId && (() => {
                                       const pv = allVouchers.find(v => v.id === item.productVoucherId);
                                       return (
-                                        <div className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-1 rounded-full flex items-center gap-1.5">
-                                          <Ticket className="w-3 h-3" /> {pv?.package?.name || "Free món"}
+                                        <div className="text-[10px] font-bold bg-orange-50 border border-orange-200 text-orange-700 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                                          <Ticket className="w-3 h-3 text-orange-500" /> {pv?.package?.name || "Free món"}
                                           <button
                                             onClick={(e) => { e.stopPropagation(); removeProductVoucher(item.cartId); }}
                                             aria-label="Bỏ voucher sản phẩm"
-                                            className="hover:text-red-500 transition-colors ml-0.5"
+                                            className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-orange-200 text-orange-500 hover:text-orange-700 transition-colors ml-0.5"
                                           >
-                                            <X size={11} />
+                                            <X size={12} strokeWidth={2.5} />
                                           </button>
                                         </div>
                                       );
@@ -670,14 +670,14 @@ const CartDrawer = () => {
                                     {item.addonVouchers && item.addonVouchers.map(av => {
                                       const voucherInfo = allVouchers.find(v => v.id === av.voucherId);
                                       return (
-                                        <div key={av.voucherId} className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full flex items-center gap-1.5">
-                                          <Ticket className="w-3 h-3" /> Free {voucherInfo?.addonOption?.label || "Topping"}
+                                        <div key={av.voucherId} className="text-[10px] font-bold bg-green-50 border border-green-200 text-green-700 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                                          <Ticket className="w-3 h-3 text-green-600" /> Free {voucherInfo?.addonOption?.label || "Topping"}
                                           <button
                                             onClick={(e) => { e.stopPropagation(); removeAddonVoucher(item.cartId, av.voucherId); }}
                                             aria-label="Bỏ voucher topping"
-                                            className="hover:text-red-500 transition-colors ml-0.5"
+                                            className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-green-200 text-green-600 hover:text-green-800 transition-colors ml-0.5"
                                           >
-                                            <X size={11} />
+                                            <X size={12} strokeWidth={2.5} />
                                           </button>
                                         </div>
                                       );
@@ -686,7 +686,7 @@ const CartDrawer = () => {
                                     {hasAvailableVouchers && (
                                       <button
                                         onClick={(e) => { e.stopPropagation(); setActiveItemForVoucher(item.cartId); }}
-                                        className="text-[10px] font-bold bg-orange-50 border border-orange-200 text-orange-600 px-2.5 py-1 rounded-full flex items-center gap-1 hover:bg-orange-100 transition-colors"
+                                        className="text-[10px] font-bold bg-white border border-dashed border-orange-300 text-orange-600 px-3 py-1.5 rounded-full flex items-center gap-1 hover:bg-orange-50 hover:border-solid transition-all shadow-sm"
                                       >
                                         <Ticket className="w-3 h-3" />
                                         Chọn ưu đãi ({productVouchersForItem.length + addonVouchersForItem.length})
@@ -732,9 +732,9 @@ const CartDrawer = () => {
 
                   {/* Store closed notice */}
                   {isStoreClosed && (
-                    <div className="flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
-                      <span className="text-base leading-none">🔴</span>
-                      <span className="text-xs font-medium text-amber-800 leading-snug">
+                    <div className="flex items-start gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
+                      <span className="text-base leading-none mt-0.5 shrink-0">🔴</span>
+                      <span className="text-xs font-medium text-amber-800 leading-snug flex-1">
                         {closure_note
                           ? `Cửa hàng tạm đóng: ${closure_note}`
                           : "Cửa hàng hiện đang đóng cửa, chưa thể đặt hàng"}
@@ -1026,10 +1026,14 @@ const CartDrawer = () => {
                           {applicableProductVouchers.get(activeItem.menuItemId)?.map(v => {
                             const savings = estimateProductSavings(v, activeItem.originalClientPriceVnd);
                             const isSelected = activeItem.productVoucherId === v.id;
+                            const isAlreadyUsed = items.some(c => c.cartId !== activeItem.cartId && c.productVoucherId === v.id);
+                            
                             return (
                               <button
                                 key={v.id}
+                                disabled={isAlreadyUsed}
                                 onClick={() => {
+                                  if (isAlreadyUsed) return;
                                   if (isSelected) {
                                     removeProductVoucher(activeItem.cartId);
                                   } else {
@@ -1041,6 +1045,8 @@ const CartDrawer = () => {
                                   "w-full flex items-center justify-between p-3 rounded-xl border text-left transition-colors",
                                   isSelected
                                     ? "bg-orange-50 border-orange-200"
+                                    : isAlreadyUsed
+                                    ? "opacity-40 bg-secondary/30 border-transparent cursor-not-allowed"
                                     : "bg-white border-border hover:bg-orange-50/50 hover:border-orange-100"
                                 )}
                               >
@@ -1048,10 +1054,13 @@ const CartDrawer = () => {
                                   <p className="font-bold text-sm text-primary flex items-center gap-2">
                                     <Ticket className="w-4 h-4 text-orange-500" /> {v.package.name}
                                   </p>
-                                  {savings > 0 && (
+                                  {savings > 0 && !isAlreadyUsed && (
                                     <p className="text-xs text-orange-600 mt-1">
                                       Giảm {(savings / 1000).toLocaleString('vi-VN')} ká
                                     </p>
+                                  )}
+                                  {isAlreadyUsed && (
+                                    <p className="text-[10px] text-muted-foreground mt-1 italic">Đã dùng ở ly khác</p>
                                   )}
                                 </div>
                                 {isSelected && <CheckCircle2 className="w-5 h-5 text-orange-500 shrink-0" />}
@@ -1069,10 +1078,14 @@ const CartDrawer = () => {
                         <div className="space-y-2">
                             {applicableAddonVouchersMap.get(activeItem.cartId)?.map(v => {
                               const isSelected = activeItem.addonVouchers?.some(av => av.voucherId === v.id);
+                              const isAlreadyUsed = items.some(c => c.cartId !== activeItem.cartId && c.addonVouchers?.some(av => av.voucherId === v.id));
+                              
                               return (
                                 <button
                                   key={v.id}
+                                  disabled={isAlreadyUsed}
                                   onClick={() => {
+                                    if (isAlreadyUsed) return;
                                     if (isSelected) {
                                       removeAddonVoucher(activeItem.cartId, v.id);
                                     } else {
@@ -1084,6 +1097,8 @@ const CartDrawer = () => {
                                   "w-full flex items-center justify-between p-3 rounded-xl border text-left transition-colors",
                                   isSelected
                                     ? "bg-green-50 border-green-200"
+                                    : isAlreadyUsed
+                                    ? "opacity-40 bg-secondary/30 border-transparent cursor-not-allowed"
                                     : "bg-white border-border hover:bg-green-50/50 hover:border-green-100"
                                 )}
                               >
@@ -1094,6 +1109,9 @@ const CartDrawer = () => {
                                   <p className="text-xs text-green-700 mt-1">
                                     Free {v.addonOption?.label || "Topping"}
                                   </p>
+                                  {isAlreadyUsed && (
+                                    <p className="text-[10px] text-muted-foreground mt-1 italic">Đã dùng ở ly khác</p>
+                                  )}
                                 </div>
                                 {isSelected && <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />}
                               </button>
@@ -1305,8 +1323,8 @@ const CartDrawer = () => {
           editingItem={editingCartItem}
           onClose={() => {
             setEditingCartItem(null);
-            setCartOpen(true);
           }}
+          availableVouchers={allVouchers}
         />
       );
     })()}

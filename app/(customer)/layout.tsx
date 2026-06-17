@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { getSessionOrRefresh } from "@/lib/auth";
 
 /**
  * Server-side layout guard for all customer-protected pages
@@ -9,7 +9,7 @@ import { getSession } from "@/lib/auth";
  * Middleware handles silent token rotation.
  */
 export default async function CustomerLayout({ children }: { children: ReactNode }) {
-  const session = await getSession();
+  const session = await getSessionOrRefresh();
 
   if (!session || session.role !== "CUSTOMER") {
     // Not authenticated or wrong role — send to home page.

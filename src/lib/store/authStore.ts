@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { resetForceLogout } from "@/src/lib/api/client";
 
 /** Shape of the logged-in user stored in the auth store. */
 export interface AuthUser {
@@ -26,8 +27,10 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       user: null,
 
-      login: (phone, name) =>
-        set({ user: { phone, name: name ?? phone } }),
+      login: (phone, name) => {
+        resetForceLogout();
+        set({ user: { phone, name: name ?? phone } });
+      },
 
       logout: () => set({ user: null }),
     }),

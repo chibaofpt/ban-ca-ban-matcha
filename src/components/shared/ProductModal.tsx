@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls, animate } from "framer-motion";
-import { X, Minus, Plus, ShoppingBag } from "lucide-react";
+import { X, Minus, Plus, ShoppingBag, Ticket, CheckCircle2 } from "lucide-react";
+import type { MyVoucher } from "@/src/services/customerVoucherService";
+import { filterUsableVouchers } from "@/src/utils/voucherMatchUtils";
 import type { MenuItem, SweetnessLevel, Size } from "@/src/lib/types/menu";
 import type { IceOption, CartItem } from "@/src/lib/types/cart";
 import { useCartStore } from "@/src/lib/store/cartStore";
@@ -21,6 +23,7 @@ interface ProductModalProps {
   onConfirm?: (item: CartItem) => void;
   freeVoucherId?: string;
   freeVoucherCoveredPriceVnd?: number;
+  availableVouchers?: MyVoucher[];
 }
 
 // Reusable card-style option button
@@ -58,7 +61,7 @@ function OptionCard({
   );
 }
 
-const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, editingItem, onConfirm, freeVoucherId, freeVoucherCoveredPriceVnd }) => {
+const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, editingItem, onConfirm, freeVoucherId, freeVoucherCoveredPriceVnd, availableVouchers }) => {
   const { addItem, updateItem } = useCartStore();
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
@@ -98,8 +101,31 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
   const [quantity, setQuantity] = useState(() => editingItem?.quantity ?? 1);
   const [note, setNote] = useState(() => editingItem?.note ?? "");
 
+  const [selectedProductVoucherId, setSelectedProductVoucherId] = useState<string | null>(() => editingItem?.productVoucherId ?? null);
+  const [selectedAddonVoucherIds, setSelectedAddonVoucherIds] = useState<string[]>(() => editingItem?.addonVouchers?.map(v => v.voucherId) ?? []);
+
+  const applicableProductVouchers = useMemo(() => {
+    return filterUsableVouchers(availableVouchers ?? [], "PRODUCT").filter(v => v.menu_item_id === item.id);
+  }, [availableVouchers, item.id]);
+
+  const applicableAddonVouchers = useMemo(() => {
+    const currentAddonIds = new Set([
+      ...selectedOptionIds,
+      ...item.addon_groups.filter(g => g.type === "QUANTITY" && (quantityMap[g.id] ?? 0) > 0).map(g => g.options[0]?.id).filter(Boolean)
+    ]);
+    return filterUsableVouchers(availableVouchers ?? [], "ADDON").filter(v => v.addon_option_id !== null && currentAddonIds.has(v.addon_option_id));
+  }, [availableVouchers, selectedOptionIds, quantityMap, item.addon_groups]);
+
+  const isProductVoucherApplied = selectedProductVoucherId !== null || freeVoucherId !== undefined;
+  
+  useEffect(() => {
+    if (isProductVoucherApplied && quantity !== 1) {
+      setQuantity(1);
+    }
+  }, [isProductVoucherApplied, quantity]);
+
   // ── Edit Validation ──────────────────────────────────────────────────────
-  const hideQuantityPicker = !!editingItem?.productVoucherId || (editingItem?.addonVouchers && editingItem.addonVouchers.length > 0);
+  const hideQuantityPicker = isProductVoucherApplied || selectedAddonVoucherIds.length > 0;
   
   useEffect(() => {
     if (!editingItem) return;
@@ -191,10 +217,25 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
   let finalUnitPrice = currentPriceContext.unitPrice;
   let finalAddonsCost = currentPriceContext.addonsCost;
 
-  if (freeVoucherId && freeVoucherCoveredPriceVnd !== undefined) {
+  // 1. Apply Addon Vouchers deduction
+  for (const vid of selectedAddonVoucherIds) {
+      const v = availableVouchers?.find(av => av.id === vid);
+      if (v && v.addon_option_id) {
+          const addonPrice = currentPriceContext.addonPricesMap[v.addon_option_id] ?? 0;
+          finalAddonsCost = Math.max(0, finalAddonsCost - addonPrice);
+          finalUnitPrice = Math.max(0, finalUnitPrice - addonPrice);
+      }
+  }
+
+  // 2. Apply Product Voucher deduction
+  const activeProductVoucher = availableVouchers?.find(v => v.id === selectedProductVoucherId);
+  const effectiveFreeVoucherId = freeVoucherId || selectedProductVoucherId;
+  const effectiveFreeCoveredPrice = freeVoucherCoveredPriceVnd ?? activeProductVoucher?.covered_price_vnd ?? undefined;
+
+  if (effectiveFreeVoucherId && effectiveFreeCoveredPrice !== undefined) {
     const baseDrinkPrice = finalUnitPrice - finalAddonsCost;
-    const drinkAfterCredit = Math.max(0, baseDrinkPrice - freeVoucherCoveredPriceVnd);
-    const remainingCredit = Math.max(0, freeVoucherCoveredPriceVnd - baseDrinkPrice);
+    const drinkAfterCredit = Math.max(0, baseDrinkPrice - effectiveFreeCoveredPrice);
+    const remainingCredit = Math.max(0, effectiveFreeCoveredPrice - baseDrinkPrice);
     const addonsAfterCredit = Math.max(0, finalAddonsCost - remainingCredit);
     finalUnitPrice = drinkAfterCredit + addonsAfterCredit;
     finalAddonsCost = addonsAfterCredit;
@@ -299,14 +340,14 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
         return qty > 0 && g.options[0] ? [{ option_id: g.options[0].id, quantity: qty }] : [];
       });
 
-    // Cleanup addon vouchers if the addon was removed during edit
-    let cleanedAddonVouchers = editingItem?.addonVouchers;
-    if (cleanedAddonVouchers) {
-      cleanedAddonVouchers = cleanedAddonVouchers.filter(av => 
-        selectedOptionIds.includes(av.addonOptionId) ||
-        quantityAddonOptions.some(q => q.option_id === av.addonOptionId)
-      );
-    }
+    const finalAddonVouchers = selectedAddonVoucherIds.map(vid => {
+        const v = availableVouchers?.find(av => av.id === vid);
+        return v ? { 
+            addonOptionId: v.addon_option_id!, 
+            voucherId: vid,
+            discountVnd: currentPriceContext.addonPricesMap[v.addon_option_id!] ?? 0
+        } : null;
+    }).filter((x): x is NonNullable<typeof x> => Boolean(x));
 
     const cartItemData = {
       menuItemId: item.id, name: item.name, category: item.category, imageUrl: item.image_url,
@@ -316,8 +357,8 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
       selectedMilkTypeId: isLatte ? selectedMilkId : undefined,
       clientPriceVnd: finalUnitPrice,
       originalClientPriceVnd: currentPriceContext.unitPrice,
-      addonVouchers: cleanedAddonVouchers,
-      ...(freeVoucherId ? { productVoucherId: freeVoucherId, productVoucherDiscountVnd: freeVoucherCoveredPriceVnd } : {}),
+      addonVouchers: finalAddonVouchers,
+      ...(effectiveFreeVoucherId ? { productVoucherId: effectiveFreeVoucherId, productVoucherDiscountVnd: effectiveFreeCoveredPrice } : {}),
     };
 
     if (onConfirm) {
@@ -690,6 +731,8 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
             );
           })}
 
+
+
           {/* 8. GHI CHÚ */}
           <div className="mt-7">
             <SectionLabel text="Ghi chú" />
@@ -700,6 +743,58 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
               className="w-full rounded-2xl border-2 border-border bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 min-h-[72px] resize-none"
             />
           </div>
+
+          {/* 9. ƯU ĐÃI CỦA BẠN */}
+          {(applicableProductVouchers.length > 0 || applicableAddonVouchers.length > 0) && (
+            <div className="mt-7">
+              <SectionLabel text="🎟 Ưu đãi có thể áp dụng" />
+              <div className="space-y-2">
+                {applicableProductVouchers.map(v => {
+                  const isSelected = selectedProductVoucherId === v.id;
+                  return (
+                    <button
+                      key={v.id}
+                      onClick={() => setSelectedProductVoucherId(isSelected ? null : v.id)}
+                      className={cn(
+                        "w-full flex items-center justify-between p-3.5 rounded-xl border-2 text-left transition-colors",
+                        isSelected ? "bg-orange-50 border-orange-200" : "bg-card border-border hover:bg-orange-50/30"
+                      )}
+                    >
+                      <div>
+                        <p className="font-bold text-sm flex items-center gap-2 text-primary">
+                          <Ticket size={14} className="text-orange-500" /> {v.package.name}
+                        </p>
+                        {v.covered_price_vnd && (
+                          <p className="text-[11px] text-orange-600/80 mt-1 font-medium">Giảm tối đa {(v.covered_price_vnd / 1000).toLocaleString('vi-VN')}k</p>
+                        )}
+                      </div>
+                      {isSelected && <CheckCircle2 size={18} className="text-orange-500 shrink-0 ml-2" />}
+                    </button>
+                  );
+                })}
+                {applicableAddonVouchers.map(v => {
+                  const isSelected = selectedAddonVoucherIds.includes(v.id);
+                  return (
+                    <button
+                      key={v.id}
+                      onClick={() => setSelectedAddonVoucherIds(prev => isSelected ? prev.filter(id => id !== v.id) : [...prev, v.id])}
+                      className={cn(
+                        "w-full flex items-center justify-between p-3.5 rounded-xl border-2 text-left transition-colors",
+                        isSelected ? "bg-green-50 border-green-200" : "bg-card border-border hover:bg-green-50/30"
+                      )}
+                    >
+                      <div>
+                        <p className="font-bold text-sm flex items-center gap-2 text-primary">
+                          <Ticket size={14} className="text-green-600" /> Free {v.addonOption?.label || "Topping"}
+                        </p>
+                      </div>
+                      {isSelected && <CheckCircle2 size={18} className="text-green-600 shrink-0 ml-2" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* BOTTOM CTA */}

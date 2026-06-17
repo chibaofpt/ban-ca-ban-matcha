@@ -93,17 +93,17 @@ export default function StoreStatusBanner() {
           exit={{ y: -20, opacity: 0, scale: 0.95 }}
           transition={{ duration: 0.3, ease: "easeOut" }}
           id="store-closed-banner"
-          className={`fixed top-20 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-3 px-4 py-2.5 rounded-full shadow-lg backdrop-blur-md border border-white/20 w-[92vw] max-w-fit ${config.colorClass}`}
+          className={`fixed top-20 left-1/2 -translate-x-1/2 z-[100] flex items-start gap-3 px-4 py-3 rounded-2xl shadow-lg backdrop-blur-md border border-white/20 w-[92vw] max-w-md ${config.colorClass}`}
         >
-          <div className="shrink-0 flex items-center justify-center bg-white/50 rounded-full p-1.5 shadow-sm">
+          <div className="shrink-0 flex items-center justify-center bg-white/50 rounded-full p-1.5 shadow-sm mt-0.5">
             {config.icon}
           </div>
-          <span className="text-sm font-medium pr-2 truncate">
+          <span className="text-sm font-medium pr-2 leading-snug flex-1">
             {config.message}
           </span>
           <button
             onClick={() => setBannerDismissed(true)}
-            className="shrink-0 ml-auto p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+            className="shrink-0 ml-auto p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors mt-0.5"
             aria-label="Đóng thông báo"
           >
             <X className="w-4 h-4 opacity-70" />

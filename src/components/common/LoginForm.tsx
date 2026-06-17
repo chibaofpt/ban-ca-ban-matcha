@@ -10,6 +10,7 @@ import { useAuthStore } from "@/src/lib/store/authStore";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { loginFormSchema, LoginFormValues as LoginInput } from "@/src/lib/validations/auth";
 import { login as loginRequest, type LoginPayload } from "@/src/services/authService";
+import { resetForceLogout } from "@/src/lib/api/client";
 
 const LoginForm = () => {
   const router = useRouter();
@@ -45,6 +46,7 @@ const LoginForm = () => {
       const user = await loginRequest(payload);
 
       login(user.phone_number, user.name);
+      resetForceLogout(); // Allow force-logout to fire again after re-login (BUG-3)
       close();
 
       // Redirect based on role — all roles share this single form.
