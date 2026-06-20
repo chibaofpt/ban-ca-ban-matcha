@@ -46,10 +46,10 @@ export interface CustomerOrderDetail {
   order_type: OrderType;
   voucher_id: string | null;
   subtotal_vnd: number;
-  discount_vnd: number;
+  total_voucher_discount_vnd: number;
   total_vnd: number;
   shipping_fee_vnd: number;
-  freeship_discount_vnd: number;
+  freeship_total_voucher_discount_vnd: number;
   grand_total_vnd: number;
   pickup_time: string | null;
   /** ISO datetime of auto-cancel deadline. Null for COUNTER orders. */
@@ -77,10 +77,10 @@ export interface CreateOrderResult {
   status: OrderStatus;
   order_type: OrderType;
   subtotal_vnd: number;
-  discount_vnd: number;
+  total_voucher_discount_vnd: number;
   total_vnd: number;
   shipping_fee_vnd: number;
-  freeship_discount_vnd: number;
+  freeship_total_voucher_discount_vnd: number;
   grand_total_vnd: number;
   pickup_time: string | null;
   auto_cancel_at: string;

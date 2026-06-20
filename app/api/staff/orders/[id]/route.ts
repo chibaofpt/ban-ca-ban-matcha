@@ -80,7 +80,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const order = await tx.order.findUnique({
         where: { id },
         include: {
-          items: { select: { product_voucher_id: true } },
+          items: {
+            select: { 
+              product_voucher_id: true,
+              surplus_points: true,
+              addonVouchers: { select: { voucher_id: true } }
+            }
+          },
+          discountVouchers: { select: { voucher_id: true } },
         },
       });
       if (!order) throw new Error("NOT_FOUND");
@@ -143,25 +150,53 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       }
 
-      // When → COMPLETED: mark all PRODUCT vouchers as REDEEMED
+      // When → COMPLETED: mark all vouchers as REDEEMED and award surplus points
       if (status === "COMPLETED") {
-        const pvItems = order.items.filter((i: { product_voucher_id: string | null }) => i.product_voucher_id !== null);
-        const uniquePvIds = [...new Set(pvItems.map((i: { product_voucher_id: string | null }) => i.product_voucher_id as string))];
-        for (const pvId of uniquePvIds) {
-          const pv = await tx.voucher.findUnique({
-            where: { id: pvId },
-            select: { status: true },
+        const allVoucherIds = new Set<string>();
+        if (order.freeship_voucher_id) allVoucherIds.add(order.freeship_voucher_id);
+        
+        for (const dv of order.discountVouchers) {
+          allVoucherIds.add(dv.voucher_id);
+        }
+        
+        for (const item of order.items) {
+          if (item.product_voucher_id) allVoucherIds.add(item.product_voucher_id);
+          for (const av of item.addonVouchers) {
+            allVoucherIds.add(av.voucher_id);
+          }
+        }
+        
+        if (allVoucherIds.size > 0) {
+          await tx.voucher.updateMany({
+            where: { id: { in: Array.from(allVoucherIds) }, status: "RESERVED" },
+            data: {
+              status: "REDEEMED",
+              used_channel: "ONLINE",
+              redeemed_at: new Date(),
+              redeemed_by: session.id,
+            },
           });
-          if (pv && pv.status === "RESERVED") {
-            await tx.voucher.update({
-              where: { id: pvId },
-              data: {
-                status: "REDEEMED",
-                used_channel: "ONLINE",
-                redeemed_at: new Date(),
-                redeemed_by: session.id,
-              },
-            });
+        }
+
+        // Award PRODUCT voucher surplus points
+        if (order.user_id) {
+          for (const item of order.items) {
+            if (item.surplus_points && item.surplus_points > 0 && item.product_voucher_id) {
+              await tx.user.update({
+                where: { id: order.user_id },
+                data: { points_balance: { increment: item.surplus_points } },
+              });
+              await tx.pointsLog.create({
+                data: {
+                  user_id: order.user_id,
+                  delta: item.surplus_points,
+                  reason: "voucher_surplus",
+                  voucher_id: item.product_voucher_id,
+                  order_id: order.id,
+                  performed_by: session.id,
+                },
+              });
+            }
           }
         }
       }

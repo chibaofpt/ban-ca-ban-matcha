@@ -206,6 +206,7 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
       powderSizeConfigMap: {},
       defaultMilkPricePerMl: 40,
       milkPriceMap: {},
+      availablePowders: [],
     });
     vi.mocked(resolveOrderItemPrice).mockReturnValue(69000);
     vi.mocked(resolveOrderItemPremiumLatte).mockResolvedValue(0);

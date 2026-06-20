@@ -39,3 +39,47 @@ export interface StaffMember {
   name: string;
   role: "STAFF" | "ADMIN";
 }
+
+// ---------------------------------------------------------------------------
+// Staff-only report (minimal — chỉ summary cơ bản, không có powder/milk/sales)
+// ---------------------------------------------------------------------------
+
+/** Staff report — chỉ trả tổng đơn và doanh thu */
+export interface StaffReport {
+  summary: {
+    total_orders: number;
+    total_revenue_vnd: number;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Admin-only report extras
+// ---------------------------------------------------------------------------
+
+/** Số lượt dùng từng addon option trong khoảng thời gian */
+export interface AddonUsage {
+  addon_label: string;
+  group_name: string;
+  total_count: number;
+}
+
+/** Doanh thu và số đơn theo phương thức đặt hàng */
+export interface RevenueByType {
+  order_type: "COUNTER" | "PICKUP" | "DELIVERY";
+  total_revenue_vnd: number;
+  order_count: number;
+}
+
+/** Sản phẩm bán chạy — sorted descending theo total_cups */
+export interface TopProduct {
+  name: string;
+  category: string;
+  total_cups: number;
+}
+
+/** Full admin report (mở rộng DailyReport với 3 mục bổ sung) */
+export interface AdminReport extends DailyReport {
+  addon_usage: AddonUsage[];
+  revenue_by_type: RevenueByType[];
+  top_products: TopProduct[];
+}

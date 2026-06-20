@@ -280,9 +280,9 @@ model Order {
   order_type           OrderType   @default(COUNTER)
   /// Human-readable order code for bank transfer reference. Format: BCBM-XXXXXX. NULL for COUNTER orders.
   order_code           String?     @unique
-  subtotal_vnd         Int
-  discount_vnd         Int         @default(0)
-  total_vnd            Int
+  subtotal_vnd              Int
+  total_voucher_discount_vnd Int         @default(0)
+  total_vnd                 Int
   points_earned        Int?
   pickup_time          DateTime?   @db.Timestamptz(6)
   note                 String?
@@ -335,9 +335,11 @@ model OrderItem {
   order_id              String           @db.Uuid
   menu_item_id          String           @db.Uuid
   quantity              Int
-  unit_price_vnd        Int
-  addons_price_vnd      Int              @default(0)
-  product_voucher_id    String?          @db.Uuid
+  unit_price_vnd             Int
+  addons_price_vnd           Int              @default(0)
+  product_voucher_discount_vnd Int            @default(0)
+  total_discount_vnd         Int              @default(0)
+  product_voucher_id         String?          @db.Uuid
   surplus_points        Int?
   note                  String?
   sweetness             SweetnessLevel   @default(HALF)
@@ -371,9 +373,10 @@ model OrderItemAddon {
 }
 
 model OrderDiscountVoucher {
-  order_id   String  @db.Uuid
-  voucher_id String  @db.Uuid
-  order      Order   @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  order_id            String  @db.Uuid
+  voucher_id          String  @db.Uuid
+  discount_applied_vnd Int    @default(0)
+  order               Order   @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   voucher    Voucher @relation("UsedAsDiscount", fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([order_id, voucher_id])
@@ -381,10 +384,11 @@ model OrderDiscountVoucher {
 }
 
 model OrderItemAddonVoucher {
-  order_item_id   String  @db.Uuid
-  voucher_id      String  @db.Uuid
-  addon_option_id String  @db.Uuid
-  orderItem       OrderItem   @relation(fields: [order_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  order_item_id        String  @db.Uuid
+  voucher_id           String  @db.Uuid
+  addon_option_id      String  @db.Uuid
+  discount_applied_vnd Int     @default(0)
+  orderItem            OrderItem   @relation(fields: [order_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   voucher         Voucher     @relation("OrderItemAddonVoucher", fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   addonOption     AddonOption @relation(fields: [addon_option_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 

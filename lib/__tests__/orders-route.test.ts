@@ -251,6 +251,7 @@ describe("POST /api/orders", () => {
       powderSizeConfigMap: {},
       defaultMilkPricePerMl: 40,
       milkPriceMap: {},
+      availablePowders: [],
     });
     vi.mocked(resolveOrderItemPrice).mockReturnValue(69000);
     vi.mocked(resolveOrderItemPremiumLatte).mockResolvedValue(0);
@@ -404,7 +405,7 @@ describe("POST /api/orders", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           subtotal_vnd: 69000,
-          discount_vnd: 13000,  // floor(69000 * 0.20 / 1000) * 1000
+          total_voucher_discount_vnd: 13000,  // floor(69000 * 0.20 / 1000) * 1000
           total_vnd: 56000,
         }),
       })
@@ -428,7 +429,7 @@ describe("POST /api/orders", () => {
     expect(mockOrderCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          discount_vnd: 69000,  // capped at subtotal
+          total_voucher_discount_vnd: 69000,  // capped at subtotal
           total_vnd: 0,
         }),
       })

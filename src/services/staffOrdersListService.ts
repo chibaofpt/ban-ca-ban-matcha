@@ -6,6 +6,8 @@ export interface OrderItemRes {
   quantity: number;
   unit_price_vnd: number;
   addons_price_vnd: number;
+  total_discount_vnd?: number;
+  product_voucher_discount_vnd?: number;
   size: string;
   sweetness: string;
   ice_option: string;
@@ -24,7 +26,7 @@ export interface OrderItemRes {
     quantity: number;
   }[];
   productVoucher?: { package: { name: string } } | null;
-  addonVouchers?: Array<{ voucher: { package: { name: string } } }>;
+  addonVouchers?: Array<{ discount_applied_vnd?: number; voucher: { package: { name: string } } }>;
 }
 
 export interface OrderRes {
@@ -37,14 +39,23 @@ export interface OrderRes {
   auto_cancel_at: string | null;
   pickup_time: string | null;
   subtotal_vnd: number;
-  discount_vnd: number;
+  total_voucher_discount_vnd: number;
   total_vnd: number;
+  shipping_fee_vnd: number;
+  freeship_discount_vnd: number;
+  grand_total_vnd: number;
   created_at: string;
   /** Null for anonymous (walk-in) orders that have no linked customer. */
   user: { name: string; phone_number: string } | null;
   handled_by: string | null;
   voucher_id: string | null;
-  discountVouchers?: Array<{ voucher: { package: { name: string } } }>;
+  discountVouchers?: Array<{
+    voucher: {
+      discount_value: number | null;
+      discount_type: string | null;
+      package: { name: string };
+    };
+  }>;
   items: OrderItemRes[];
 }
 

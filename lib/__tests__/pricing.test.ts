@@ -332,7 +332,7 @@ describe("resolveOrderItemPremiumLatte", () => {
       "selected-powder",
       "default-powder",
       "L",
-      client as Parameters<typeof resolveOrderItemPremiumLatte>[3]
+      client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
     );
 
     expect(result).toBe(5000); // 90000 - 85000
@@ -350,7 +350,7 @@ describe("resolveOrderItemPremiumLatte", () => {
       "selected-powder",
       "default-powder",
       "L",
-      client as Parameters<typeof resolveOrderItemPremiumLatte>[3]
+      client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
     );
 
     expect(result).toBe(-5000); // 80000 - 85000
@@ -366,7 +366,7 @@ describe("resolveOrderItemPremiumLatte", () => {
       "selected-powder",
       "default-powder",
       "L",
-      client as Parameters<typeof resolveOrderItemPremiumLatte>[3]
+      client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
     );
 
     expect(result).toBe(0);
@@ -382,7 +382,7 @@ describe("resolveOrderItemPremiumLatte", () => {
       "selected-powder",
       "default-powder",
       "L",
-      client as Parameters<typeof resolveOrderItemPremiumLatte>[3]
+      client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
     );
 
     expect(result).toBe(0);
@@ -398,7 +398,7 @@ describe("resolveOrderItemPremiumLatte", () => {
       "selected-powder",
       "default-powder",
       "L",
-      client as Parameters<typeof resolveOrderItemPremiumLatte>[3]
+      client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
     );
 
     expect(result).toBe(0);
@@ -416,7 +416,7 @@ describe("resolveOrderItemPremiumLatte", () => {
       "selected-powder",
       "default-powder",
       "XL",
-      client as Parameters<typeof resolveOrderItemPremiumLatte>[3]
+      client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
     );
 
     // null fallback to 0: 0 - 85000 = -85000
@@ -435,7 +435,7 @@ describe("resolveOrderItemPremiumLatte", () => {
       "selected-powder",
       "default-powder",
       "L",
-      client as Parameters<typeof resolveOrderItemPremiumLatte>[3]
+      client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
     );
 
     expect(result).toBe(0);

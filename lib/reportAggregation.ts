@@ -253,3 +253,153 @@ export function buildReport(
     fusion_sales: fusionSales,
   };
 }
+
+// ---------------------------------------------------------------------------
+// RawAdminOrder — extends RawOrder with order_type
+// ---------------------------------------------------------------------------
+
+/** Order item addon for admin report (includes label + group) */
+export interface RawAdminAddonItem {
+  quantity: number;
+  unit_price_vnd: number;
+  addonOption: {
+    label: string;
+    group: { name: string } | null;
+    gram_value: number | null;
+  };
+}
+
+/** Extended order item for admin report */
+export interface RawAdminOrderItem
+  extends Omit<RawOrderItem, "addons"> {
+  addons: RawAdminAddonItem[];
+}
+
+/** Extended order for admin report — includes order_type */
+export interface RawAdminOrder extends Omit<RawOrder, "items"> {
+  order_type: "COUNTER" | "PICKUP" | "DELIVERY";
+  items: RawAdminOrderItem[];
+}
+
+// ---------------------------------------------------------------------------
+// AddonUsage / RevenueByType / TopProduct output types
+// ---------------------------------------------------------------------------
+
+export interface AddonUsageResult {
+  addon_label: string;
+  group_name: string;
+  total_count: number;
+}
+
+export interface RevenueByTypeResult {
+  order_type: "COUNTER" | "PICKUP" | "DELIVERY";
+  total_revenue_vnd: number;
+  order_count: number;
+}
+
+export interface TopProductResult {
+  name: string;
+  category: string;
+  total_cups: number;
+}
+
+export interface AdminReportResult extends DailyReportResult {
+  addon_usage: AddonUsageResult[];
+  revenue_by_type: RevenueByTypeResult[];
+  top_products: TopProductResult[];
+}
+
+// ---------------------------------------------------------------------------
+// buildAdminReport — extends buildReport with admin-only extras
+// ---------------------------------------------------------------------------
+
+/**
+ * Build full admin report from raw completed orders with order_type.
+ * Extends buildReport with: addon_usage, revenue_by_type, top_products.
+ * top_products = all products sorted descending by total_cups.
+ */
+export function buildAdminReport(
+  orders: RawAdminOrder[],
+  powders: PowderConfig[],
+  milkTypes: MilkConfig[],
+  powderSizeEntries: PowderSizeEntry[],
+  defaultSizeEntries: DefaultSizeEntry[]
+): AdminReportResult {
+  // -- Build base report using existing function --
+  // Cast to RawOrder[] since base items are compatible (addons just have extra fields)
+  const base = buildReport(
+    orders as unknown as RawOrder[],
+    powders,
+    milkTypes,
+    powderSizeEntries,
+    defaultSizeEntries
+  );
+
+  // -- Addon usage accumulator: label → { group_name, total_count } --
+  const addonMap = new Map<string, { group_name: string; total_count: number }>();
+
+  // -- Revenue by type accumulator --
+  const revenueMap = new Map<
+    "COUNTER" | "PICKUP" | "DELIVERY",
+    { total_revenue_vnd: number; order_count: number }
+  >();
+
+  // -- Top products: re-use latte_sales + fusion_sales from base, just resort --
+
+  for (const order of orders) {
+    // Revenue by type
+    const prev = revenueMap.get(order.order_type);
+    if (prev) {
+      prev.total_revenue_vnd += order.total_vnd;
+      prev.order_count += 1;
+    } else {
+      revenueMap.set(order.order_type, {
+        total_revenue_vnd: order.total_vnd,
+        order_count: 1,
+      });
+    }
+
+    // Addon usage
+    for (const item of order.items) {
+      for (const addon of item.addons) {
+        if (addon.quantity <= 0) continue;
+        const label = addon.addonOption.label;
+        const groupName = addon.addonOption.group?.name ?? "";
+        const existing = addonMap.get(label);
+        if (existing) {
+          existing.total_count += addon.quantity;
+        } else {
+          addonMap.set(label, { group_name: groupName, total_count: addon.quantity });
+        }
+      }
+    }
+  }
+
+  // -- Build addon_usage array (sorted descending by total_count) --
+  const addonUsage: AddonUsageResult[] = [];
+  for (const [label, { group_name, total_count }] of addonMap) {
+    addonUsage.push({ addon_label: label, group_name, total_count });
+  }
+  addonUsage.sort((a, b) => b.total_count - a.total_count || a.addon_label.localeCompare(b.addon_label));
+
+  // -- Build revenue_by_type array (sorted descending by revenue) --
+  const revenueByType: RevenueByTypeResult[] = [];
+  for (const [orderType, { total_revenue_vnd, order_count }] of revenueMap) {
+    revenueByType.push({ order_type: orderType, total_revenue_vnd, order_count });
+  }
+  revenueByType.sort((a, b) => b.total_revenue_vnd - a.total_revenue_vnd);
+
+  // -- Build top_products: sorted descending by total_cups, then alphabetically --
+  const topProducts: TopProductResult[] = [
+    ...base.latte_sales.map((s) => ({ name: s.name, category: "latte", total_cups: s.total_cups })),
+    ...base.fusion_sales.map((s) => ({ name: s.name, category: "fusion", total_cups: s.total_cups })),
+  ].sort((a, b) => b.total_cups - a.total_cups || a.name.localeCompare(b.name));
+
+
+  return {
+    ...base,
+    addon_usage: addonUsage,
+    revenue_by_type: revenueByType,
+    top_products: topProducts,
+  };
+}

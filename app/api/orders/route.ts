@@ -300,8 +300,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const discount_vnd = calcMultiDiscountVouchers(validatedDiscountVouchers, subtotal_vnd);
-    const total_vnd = Math.max(0, subtotal_vnd - discount_vnd);
+    const total_voucher_discount_vnd = calcMultiDiscountVouchers(validatedDiscountVouchers, subtotal_vnd);
+    const items_discount_vnd = resolvedItems.reduce((sum, item) => sum + item.total_discount_vnd, 0);
+    const total_vnd = Math.max(0, subtotal_vnd - items_discount_vnd - total_voucher_discount_vnd);
 
     // Step 4b: Validate FREESHIP voucher (Delivery only)
     if (final_freeship_voucher_id) {
@@ -354,7 +355,7 @@ export async function POST(req: NextRequest) {
       if (item.product_voucher_id) {
         const pvInfo = productVoucherMap.get(item.product_voucher_id);
         if (pvInfo) {
-          const actual_total = item.original_unit_price_vnd + item.original_addons_price_vnd - item.addon_discount_vnd;
+          const actual_total = item.unit_price_vnd + item.addons_price_vnd - (item.total_discount_vnd - item.product_voucher_discount_vnd);
           const surplus = calcProductVoucherSurplusPoints(pvInfo.covered_price_vnd, actual_total);
           if (surplus > 0) {
             productVoucherSurplusMap.set(item.product_voucher_id, surplus);
@@ -379,7 +380,7 @@ export async function POST(req: NextRequest) {
             order_type: data.order_type,
             order_code,
             subtotal_vnd,
-            discount_vnd,
+            total_voucher_discount_vnd,
             total_vnd,
             shipping_fee_vnd,
             freeship_discount_vnd,
@@ -405,6 +406,8 @@ export async function POST(req: NextRequest) {
                 size: item.size,
                 unit_price_vnd: item.unit_price_vnd,
                 addons_price_vnd: item.addons_price_vnd,
+                product_voucher_discount_vnd: item.product_voucher_discount_vnd,
+                total_discount_vnd: item.total_discount_vnd,
                 sweetness: item.sweetness as SweetnessLevel,
                 ice_option: item.ice_option as IceOption,
                 coldwhisk: item.coldwhisk,
@@ -412,10 +415,15 @@ export async function POST(req: NextRequest) {
                 product_voucher_id: item.product_voucher_id,
                 surplus_points: productVoucherSurplusMap.get(item.product_voucher_id ?? "") || null,
                 addonVouchers: {
-                  create: item.addon_voucher_ids.map(v => ({
-                    voucher_id: v.voucher_id,
-                    addon_option_id: v.addon_option_id,
-                  })),
+                  create: item.addon_voucher_ids.map(v => {
+                    // Find the discount applied to this specific addon voucher
+                    const matchingResolvedAddon = item.resolvedAddons.find(a => a.addon_option_id === v.addon_option_id);
+                    return {
+                      voucher_id: v.voucher_id,
+                      addon_option_id: v.addon_option_id,
+                      discount_applied_vnd: matchingResolvedAddon?.discount_applied_vnd || 0,
+                    };
+                  }),
                 },
                 selected_powder_id: item.selected_powder_id,
                 selected_milk_type_id: item.selected_milk_type_id,
@@ -440,8 +448,17 @@ export async function POST(req: NextRequest) {
           if (updated.count === 0) {
             throw new OrderValidationError("CONFLICT", "Voucher discount đã được sử dụng hoặc đang bị khóa.");
           }
+          // Distribution of discount is simplified here. 
+          // If total_voucher_discount_vnd is capped by subtotal_vnd, we should proportionally divide it.
+          // For now, if there is only one voucher, it takes the whole discount.
           await tx.orderDiscountVoucher.create({
-            data: { order_id: createdOrder.id, voucher_id: dv.id },
+            data: { 
+              order_id: createdOrder.id, 
+              voucher_id: dv.id,
+              discount_applied_vnd: validatedDiscountVouchers.length === 1 
+                ? total_voucher_discount_vnd 
+                : Math.floor(total_voucher_discount_vnd / validatedDiscountVouchers.length)
+            },
           });
         }
 
@@ -508,7 +525,7 @@ export async function POST(req: NextRequest) {
           status: order.status,
           order_type: order.order_type,
           subtotal_vnd: order.subtotal_vnd,
-          discount_vnd: order.discount_vnd,
+          total_voucher_discount_vnd: order.total_voucher_discount_vnd,
           total_vnd: order.total_vnd,
           shipping_fee_vnd: order.shipping_fee_vnd,
           freeship_discount_vnd: order.freeship_discount_vnd,

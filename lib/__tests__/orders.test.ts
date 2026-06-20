@@ -157,6 +157,8 @@ describe("processOrderItems", () => {
     expect(result).toHaveLength(1);
     expect(result[0].unit_price_vnd).toBe(SERVER_PRICE);
     expect(result[0].addons_price_vnd).toBe(0);
+    expect(result[0].product_voucher_discount_vnd).toBe(0);
+    expect(result[0].total_discount_vnd).toBe(0);
     expect(result[0].line_total).toBe(SERVER_PRICE * 2);
     expect(result[0].selected_powder_id).toBe(POWDER_ID); // Latte: auto-set
     expect(result[0].ice_option).toBe("NORMAL"); // default
@@ -241,6 +243,8 @@ describe("processOrderItems", () => {
 
     expect(result[0].addons_price_vnd).toBe(8000);
     expect(result[0].resolvedAddons[0].unit_price_vnd).toBe(8000);
+    expect(result[0].resolvedAddons[0].discount_applied_vnd).toBe(0);
+    expect(result[0].total_discount_vnd).toBe(0);
     expect(result[0].line_total).toBe((69000 + 8000) * 1);
   });
 
@@ -306,7 +310,9 @@ describe("processOrderItems", () => {
     );
 
     expect(result[0].resolvedAddons[0].unit_price_vnd).toBe(0);
+    expect(result[0].resolvedAddons[0].discount_applied_vnd).toBe(0);
     expect(result[0].addons_price_vnd).toBe(0);
+    expect(result[0].total_discount_vnd).toBe(0);
   });
 
   it("PRODUCT voucher → drink discount applied, customer pays diff, addons still charged", async () => {
@@ -339,10 +345,11 @@ describe("processOrderItems", () => {
       productVoucherMap
     );
 
-    expect(result[0].unit_price_vnd).toBe(0); // drink fully covered
-    expect(result[0].addons_price_vnd).toBe(8000); // addons still charged
-    expect(result[0].original_unit_price_vnd).toBe(69000); // original drink price
-    expect(result[0].line_total).toBe(8000);
+    expect(result[0].unit_price_vnd).toBe(69000);
+    expect(result[0].addons_price_vnd).toBe(8000);
+    expect(result[0].product_voucher_discount_vnd).toBe(69000);
+    expect(result[0].total_discount_vnd).toBe(69000);
+    expect(result[0].line_total).toBe(69000 + 8000);
   });
 
   it("PRODUCT voucher → partial coverage: customer pays size upgrade diff", async () => {
@@ -373,11 +380,51 @@ describe("processOrderItems", () => {
       productVoucherMap
     );
 
-    expect(result[0].unit_price_vnd).toBe(21000); // 90000 - 69000
-    expect(result[0].original_unit_price_vnd).toBe(90000);
-    expect(result[0].line_total).toBe(21000);
+    expect(result[0].unit_price_vnd).toBe(90000);
+    expect(result[0].product_voucher_discount_vnd).toBe(69000);
+    expect(result[0].total_discount_vnd).toBe(69000);
+    expect(result[0].line_total).toBe(90000);
   });
 
+
+
+  it("ADDON voucher → exact addon discount applied", async () => {
+    mockResolveOrderItemPrice.mockReturnValue(69000);
+    const tx = makeTx({
+      menuItemResult: latteMenuItem,
+      addonResults: {
+        [ADDON_KEM_ID]: { id: ADDON_KEM_ID, price_vnd: 8000, gram_value: null },
+      },
+    });
+
+    const addonVoucherMap = new Map([
+      ["addon-voucher-123", ADDON_KEM_ID],
+    ]);
+
+    const result = await processOrderItems(
+      [
+        {
+          menu_item_id: MENU_ITEM_ID,
+          quantity: 1,
+          size: "L",
+          sweetness: "QUARTER",
+          addon_option_ids: [{ option_id: ADDON_KEM_ID, quantity: 1 }],
+          addon_voucher_ids: [{ voucher_id: "addon-voucher-123", addon_option_id: ADDON_KEM_ID }],
+          client_price_vnd: 69000, // 69000 + 8000 - 8000
+        },
+      ],
+      tx as never,
+      undefined,
+      addonVoucherMap
+    );
+
+    expect(result[0].unit_price_vnd).toBe(69000);
+    expect(result[0].addons_price_vnd).toBe(8000);
+    expect(result[0].resolvedAddons[0].discount_applied_vnd).toBe(8000);
+    expect(result[0].product_voucher_discount_vnd).toBe(0);
+    expect(result[0].total_discount_vnd).toBe(8000);
+    expect(result[0].line_total).toBe(69000 + 8000);
+  });
 
   // ── Fusion powder validation ───────────────────────────────────────────────
 

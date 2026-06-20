@@ -71,6 +71,9 @@ export async function GET(req: NextRequest) {
     // 4. Status filter
     if (status) {
       where.status = status as Prisma.EnumOrderStatusFilter["equals"];
+    } else if (orderType) {
+      // Tab "Tại quầy" / "Khách đặt": exclude CANCELLED — it belongs only in the "Đã huỷ" tab
+      where.status = { notIn: ["CANCELLED"] } as Prisma.EnumOrderStatusFilter;
     }
 
     // 5. Order Type filter (supports comma-separated values like PICKUP,DELIVERY)
@@ -78,6 +81,7 @@ export async function GET(req: NextRequest) {
       const types = orderType.split(",").map((t) => t.trim());
       where.order_type = { in: types as any[] };
     }
+
 
     const [total, orders] = await prisma.$transaction([
       prisma.order.count({ where }),

@@ -124,16 +124,18 @@ export function DismissableSheet({
   const touchStartY = useRef(0);
   const isPulling = useRef(false);
 
-  // ── Body scroll lock — set once on mount, clean up on unmount ─────────────
+  // ── Body scroll lock — set when open, clean up when closed/unmounted ──────
   // QA R2: overflow:hidden still needed; overscroll-behavior:contain on content
   // area prevents chaining but does NOT stop body scroll when touching backdrop.
   useEffect(() => {
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "";
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (open) {
+      const originalStyle = window.getComputedStyle(document.body).overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = originalStyle;
+      };
+    }
+  }, [open]);
 
   // ── Pull-to-dismiss touch handlers (content area) ─────────────────────────
   const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {

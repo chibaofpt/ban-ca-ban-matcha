@@ -15,7 +15,7 @@ import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
 import type { Prisma } from "@prisma/client";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
-import { checkStoreOpen } from "@/lib/storeSchedule";
+
 import { logSystemEvent } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -69,23 +69,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5a. Store open check — only applies to non-COUNTER order types.
-    // COUNTER = staff at the physical counter, always allowed regardless of hours.
-    const orderType = (data as { order_type?: string }).order_type;
-    if (orderType && orderType !== "COUNTER") {
-      const storeStatus = await checkStoreOpen();
-      if (!storeStatus.is_open) {
-        return NextResponse.json(
-          {
-            error: storeStatus.closure_note
-              ? `Cửa hàng tạm đóng cửa: ${storeStatus.closure_note}`
-              : "Cửa hàng hiện đang đóng cửa",
-            code: "STORE_CLOSED",
-          },
-          { status: 503 }
-        );
-      }
-    }
+
 
     // ── Phase 1: READS (outside transaction — avoids P2028 pgBouncer timeout) ──
 
@@ -273,8 +257,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const discount_vnd = calcMultiDiscountVouchers(validatedDiscountVouchers, subtotal_vnd);
-    const total_vnd = Math.max(0, subtotal_vnd - discount_vnd);
+    const total_voucher_discount_vnd = calcMultiDiscountVouchers(validatedDiscountVouchers, subtotal_vnd);
+    const items_discount_vnd = resolvedItems.reduce((sum, item) => sum + item.total_discount_vnd, 0);
+    const total_vnd = Math.max(0, subtotal_vnd - items_discount_vnd - total_voucher_discount_vnd);
     // Anonymous orders never earn points
     const points_earned = isAnonymous ? 0 : Math.floor(total_vnd / 10000);
 
@@ -285,7 +270,7 @@ export async function POST(req: NextRequest) {
         if (item.product_voucher_id) {
           const pvInfo = productVoucherMap.get(item.product_voucher_id);
           if (pvInfo) {
-            const actual_total = item.original_unit_price_vnd + item.original_addons_price_vnd - item.addon_discount_vnd;
+            const actual_total = item.unit_price_vnd + item.addons_price_vnd - (item.total_discount_vnd - item.product_voucher_discount_vnd);
             const surplus = calcProductVoucherSurplusPoints(pvInfo.covered_price_vnd, actual_total);
             if (surplus > 0) {
               productVoucherSurplusMap.set(item.product_voucher_id, surplus);
@@ -322,8 +307,11 @@ export async function POST(req: NextRequest) {
             handled_by: session.id,
             status: "COMPLETED",
             subtotal_vnd,
-            discount_vnd,
+            total_voucher_discount_vnd,
             total_vnd,
+            shipping_fee_vnd: 0,
+            freeship_discount_vnd: 0,
+            grand_total_vnd: total_vnd,
             points_earned,
             pickup_time: null,
             note: null,
@@ -334,6 +322,8 @@ export async function POST(req: NextRequest) {
                 size: item.size,
                 unit_price_vnd: item.unit_price_vnd,
                 addons_price_vnd: item.addons_price_vnd,
+                product_voucher_discount_vnd: item.product_voucher_discount_vnd,
+                total_discount_vnd: item.total_discount_vnd,
                 sweetness: item.sweetness as SweetnessLevel,
                 ice_option: item.ice_option as IceOption,
                 coldwhisk: item.coldwhisk,
@@ -341,10 +331,14 @@ export async function POST(req: NextRequest) {
                 product_voucher_id: item.product_voucher_id,
                 surplus_points: productVoucherSurplusMap.get(item.product_voucher_id ?? "") || null,
                 addonVouchers: {
-                  create: item.addon_voucher_ids.map((v: any) => ({
-                    voucher_id: v.voucher_id,
-                    addon_option_id: v.addon_option_id,
-                  })),
+                  create: item.addon_voucher_ids.map((v: any) => {
+                    const matchingResolvedAddon = item.resolvedAddons.find(a => a.addon_option_id === v.addon_option_id);
+                    return {
+                      voucher_id: v.voucher_id,
+                      addon_option_id: v.addon_option_id,
+                      discount_applied_vnd: matchingResolvedAddon?.discount_applied_vnd || 0,
+                    };
+                  }),
                 },
                 selected_powder_id: item.selected_powder_id,
                 selected_milk_type_id: item.selected_milk_type_id,
@@ -538,13 +532,14 @@ export async function GET(req: NextRequest) {
   const limit = Math.max(1, Math.min(100, parseInt(searchParams.get("limit") || "10", 10)));
   const skip = (page - 1) * limit;
 
-  // Only ADMIN can access the "Chờ CK" tab (PENDING customer orders)
-  if (statusParam === 'PENDING' && session.role === 'STAFF') {
+  // Only ADMIN can access the "Chờ CK" (PENDING) and "Đã huỷ" (CANCELLED) tabs
+  if ((statusParam === 'PENDING' || statusParam === 'CANCELLED') && session.role === 'STAFF') {
     return NextResponse.json(
-      { error: 'Forbidden — only ADMIN can view pending payment orders', code: 'FORBIDDEN' },
+      { error: 'Forbidden — only ADMIN can view this tab', code: 'FORBIDDEN' },
       { status: 403 }
     );
   }
+
 
   try {
     // Build dynamic where clause
@@ -559,11 +554,17 @@ export async function GET(req: NextRequest) {
     if (statusParam === 'PENDING') {
       // "Chờ CK" tab: admin-only, show all PENDING customer orders
       where.status = 'PENDING';
+    } else if (statusParam === 'CANCELLED') {
+      // "Đã huỷ" tab: show only CANCELLED orders (admin only — enforced above)
+      where.status = 'CANCELLED';
     } else if (orderTypeParam && !orderTypeParam.includes('COUNTER')) {
-      // "Khách đặt" tab: show PICKUP/DELIVERY orders that have passed PENDING
-      where.status = { in: ['ADMIN_CONFIRMED', 'STAFF_DONE', 'COMPLETED', 'CANCELLED'] };
+      // "Khách đặt" tab: show PICKUP/DELIVERY orders that have passed PENDING, exclude CANCELLED
+      where.status = { in: ['ADMIN_CONFIRMED', 'STAFF_DONE', 'COMPLETED'] };
+    } else if (orderTypeParam) {
+      // "Tại quầy" tab (COUNTER): show all except CANCELLED
+      where.status = { notIn: ['CANCELLED'] };
     }
-    // No status filter for COUNTER (show all — COMPLETED, CANCELLED)
+
 
     // Filter for STAFF: only see their own orders or unassigned ADMIN_CONFIRMED customer orders
     if (session.role === 'STAFF') {

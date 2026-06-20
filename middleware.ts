@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify, SignJWT } from 'jose';
-import { findSessionWithUser, deleteSession, createSession } from '@/lib/middleware-auth';
+import { findSessionWithUser, deleteSession, createSession, updateSessionGracePeriod } from '@/lib/middleware-auth';
 
 const secretStr = process.env.JWT_SECRET;
 if (!secretStr) {
@@ -89,8 +89,8 @@ async function resolveSession(request: NextRequest): Promise<ResolvedSession> {
     }
 
     try {
-      // Rotate: delete old session, create new one
-      await deleteSession(session.id);
+      // Rotate: truncate old session lifetime (30s grace period), create new one
+      await updateSessionGracePeriod(session.id);
       const newSession = await createSession(session.user_id);
       const newAccessToken = await signAccessToken({
         id: session.user_id,

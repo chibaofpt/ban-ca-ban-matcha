@@ -60,8 +60,10 @@ export interface OrderItemInput {
 export interface ProcessedAddon {
   addon_option_id: string;
   quantity: number;
-  /** Snapshot price at order time. Extra matcha: gram_value × price_per_gram. Others: price_vnd. */
+  /** Snapshot original price at order time. Extra matcha: gram_value × price_per_gram. Others: price_vnd. */
   unit_price_vnd: number;
+  /** Exact amount of discount applied by an addon voucher (0 if none) */
+  discount_applied_vnd: number;
 }
 
 export interface ProcessedOrderItem {
@@ -74,18 +76,17 @@ export interface ProcessedOrderItem {
   note: string | null;
   product_voucher_id: string | null;
   addon_voucher_ids: { voucher_id: string; addon_option_id: string }[];
-  addon_discount_vnd: number;
   selected_powder_id: string;
   selected_milk_type_id: string | null;
-  /** Amount customer actually pays for the drink (after voucher credit). 0 if fully covered. */
+  /** Server-computed drink price BEFORE any voucher credit. (Original price) */
   unit_price_vnd: number;
-  /** Total addon cost for this line item (not affected by voucher credit). */
+  /** Server-computed addons price BEFORE any voucher credit. (Original price) */
   addons_price_vnd: number;
-  /** Server-computed drink price BEFORE any voucher credit. Used for surplus calculation. */
-  original_unit_price_vnd: number;
-  /** Server-computed addons price BEFORE any voucher credit. Used for surplus calculation. */
-  original_addons_price_vnd: number;
-  /** line_total = (unit_price_vnd + addons_price_vnd) × quantity */
+  /** Exact amount of discount applied by the product voucher */
+  product_voucher_discount_vnd: number;
+  /** Total discount for this line item (product_voucher_discount_vnd + sum of addon voucher discounts) */
+  total_discount_vnd: number;
+  /** line_total = (unit_price_vnd + addons_price_vnd) × quantity (Original line total before discounts) */
   line_total: number;
   resolvedAddons: ProcessedAddon[];
 }
@@ -278,29 +279,6 @@ async function resolveOneItem(
     pricingCtx
   );
 
-  // Apply PRODUCT voucher credit: covered_price_vnd acts as a credit against (drink + addons).
-  // We first subtract from the drink price; any remaining credit reduces the addons paid.
-  // The final unit_price_vnd is what the customer actually pays for the drink portion.
-  // Surplus (when covered > actual total) is computed after addons are resolved below.
-  let voucher_credit = 0;
-  if (item.product_voucher_id && productVoucherMap) {
-    const pvInfo = productVoucherMap.get(item.product_voucher_id);
-    if (pvInfo) {
-      if (pvInfo.menu_item_id !== item.menu_item_id) {
-        throw new OrderValidationError(
-          "VALIDATION_ERROR",
-          `Product voucher is not valid for this menu item`
-        );
-      }
-      voucher_credit = pvInfo.covered_price_vnd;
-    }
-  }
-
-  // Drink portion after credit (never below 0)
-  const drink_after_credit = Math.max(0, server_unit_price - voucher_credit);
-  // Remaining credit that can spill over to addons
-  const remaining_credit = Math.max(0, voucher_credit - server_unit_price);
-
   // 5. Resolve addon prices — snapshot at order time
   let original_addons_price_vnd = 0;
   const resolvedAddons: ProcessedAddon[] = [];
@@ -316,8 +294,6 @@ async function resolveOneItem(
       );
     }
 
-    // Extra matcha: price = ceil(gram_value × selected_powder.price_per_gram, 1000)
-    // All other addons: price = price_vnd directly
     let addonUnitPrice: number;
     if (option.gram_value !== null && Number(option.gram_value) > 0) {
       const pricePerGram = pricingCtx.powderPriceMap[powder_id] ?? 0;
@@ -333,11 +309,12 @@ async function resolveOneItem(
       addon_option_id: option.id,
       quantity: addon.quantity,
       unit_price_vnd: addonUnitPrice,
+      discount_applied_vnd: 0,
     });
   }
 
-  // Apply ADDON voucher discounts FIRST (before PRODUCT voucher spillover)
-  let addon_discount_vnd = 0;
+  // 6. Apply ADDON voucher discounts FIRST
+  let total_addon_discount = 0;
   if (item.addon_voucher_ids && addonVoucherMap) {
     const discountedAddons = new Set<string>();
     for (const av of item.addon_voucher_ids) {
@@ -347,35 +324,48 @@ async function resolveOneItem(
           (a) => a.addon_option_id === targetAddonOptionId
         );
         if (matchingAddon) {
-          addon_discount_vnd += matchingAddon.unit_price_vnd;
+          matchingAddon.discount_applied_vnd = matchingAddon.unit_price_vnd; // Fully discounts 1 qty
+          total_addon_discount += matchingAddon.discount_applied_vnd;
           discountedAddons.add(targetAddonOptionId);
         }
       }
     }
   }
 
-  // Addons price after ADDON voucher
-  const addons_after_addon_voucher = Math.max(0, original_addons_price_vnd - addon_discount_vnd);
+  // 7. Apply PRODUCT voucher credit
+  let product_voucher_discount_vnd = 0;
+  if (item.product_voucher_id && productVoucherMap) {
+    const pvInfo = productVoucherMap.get(item.product_voucher_id);
+    if (pvInfo) {
+      if (pvInfo.menu_item_id !== item.menu_item_id) {
+        throw new OrderValidationError(
+          "VALIDATION_ERROR",
+          `Product voucher is not valid for this menu item`
+        );
+      }
+      const max_discount_possible = server_unit_price + original_addons_price_vnd - total_addon_discount;
+      product_voucher_discount_vnd = Math.min(max_discount_possible, pvInfo.covered_price_vnd);
+    }
+  }
 
-  // Now apply any remaining PRODUCT voucher credit to addons
-  const final_addons_price = Math.max(0, addons_after_addon_voucher - remaining_credit);
+  const total_discount_vnd = product_voucher_discount_vnd + total_addon_discount;
 
-  const final_unit_price = drink_after_credit;
+  // 8. PRICE_CHANGED check
+  // expectedClientPrice is the net price the customer should pay for a single unit
+  const expectedClientPrice = (server_unit_price + original_addons_price_vnd) - total_discount_vnd;
 
-  // 6. PRICE_CHANGED check
-  // Client sends total per item = what they expect to pay (after voucher).
-  const full_server_unit_price = final_unit_price + final_addons_price;
-  if (item.client_price_vnd !== full_server_unit_price) {
+  if (item.client_price_vnd !== expectedClientPrice) {
     priceConflicts.push({
       menu_item_id: item.menu_item_id,
       name: menuItem.name,
       size: item.size,
       client_price_vnd: item.client_price_vnd,
-      server_price_vnd: full_server_unit_price,
+      server_price_vnd: expectedClientPrice,
     });
   }
 
-  const line_total = full_server_unit_price * item.quantity;
+  // line_total is the original line total (before discounts)
+  const line_total = (server_unit_price + original_addons_price_vnd) * item.quantity;
 
   return {
     menu_item_id: item.menu_item_id,
@@ -389,11 +379,10 @@ async function resolveOneItem(
     addon_voucher_ids: item.addon_voucher_ids || [],
     selected_powder_id: powder_id,
     selected_milk_type_id: item.selected_milk_type_id ?? null,
-    unit_price_vnd: final_unit_price,
-    addon_discount_vnd,
-    addons_price_vnd: final_addons_price,
-    original_unit_price_vnd: server_unit_price,
-    original_addons_price_vnd,
+    unit_price_vnd: server_unit_price,
+    addons_price_vnd: original_addons_price_vnd,
+    product_voucher_discount_vnd,
+    total_discount_vnd,
     line_total,
     resolvedAddons,
   };

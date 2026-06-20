@@ -3,14 +3,14 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { reportQuerySchema } from "@/lib/validations/report";
 import {
-  buildReport,
-  type RawOrder,
-  type RawOrderItem,
+  buildAdminReport,
+  type RawAdminOrder,
+  type RawAdminOrderItem,
   type PowderSizeEntry,
   type DefaultSizeEntry,
 } from "@/lib/reportAggregation";
 
-/** GET /api/report — Generate daily/range report for staff or admin */
+/** GET /api/admin/report — Generate full admin report with addon usage, revenue by type, and top products */
 export async function GET(req: NextRequest) {
   // 1. Validate query params
   const { searchParams } = req.nextUrl;
@@ -37,8 +37,8 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // 3. Role check — STAFF or ADMIN only
-  if (session.role !== "STAFF" && session.role !== "ADMIN") {
+  // 3. Role check — ADMIN only
+  if (session.role !== "ADMIN") {
     return NextResponse.json(
       { error: "Forbidden", code: "FORBIDDEN" },
       { status: 403 }
@@ -48,18 +48,14 @@ export async function GET(req: NextRequest) {
   const { startDate, endDate, staffId } = parsed.data;
 
   // 4. Build date range in Asia/Ho_Chi_Minh (UTC+7)
-  // startDate 00:00:00+07 = startDate T17:00:00Z (previous day) — handle by offsetting
   const startIso = new Date(`${startDate}T00:00:00+07:00`);
   const endIso = new Date(`${endDate}T23:59:59+07:00`);
 
-  // 5. Determine staff filter
-  // STAFF: always forced to own id
-  // ADMIN: optional staffId param (undefined = all staff)
-  const handledByFilter =
-    session.role === "STAFF" ? session.id : (staffId ?? undefined);
+  // 5. Admin: optional staffId param (undefined = all staff)
+  const handledByFilter = staffId ?? undefined;
 
   try {
-    // 6. Fetch completed orders with all required relations
+    // 6. Fetch completed orders with all required relations — includes order_type and addon label/group
     const orders = await prisma.order.findMany({
       where: {
         status: "COMPLETED",
@@ -68,6 +64,7 @@ export async function GET(req: NextRequest) {
       },
       select: {
         total_vnd: true,
+        order_type: true,
         items: {
           select: {
             menu_item_id: true,
@@ -86,9 +83,12 @@ export async function GET(req: NextRequest) {
             addons: {
               select: {
                 quantity: true,
+                unit_price_vnd: true,
                 addonOption: {
                   select: {
+                    label: true,
                     gram_value: true,
+                    group: { select: { name: true } },
                   },
                 },
               },
@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    // 7. Fetch lookup tables for retroactive calculation
+    // 7. Fetch lookup tables
     const [defaultSizeConfigs, powderSizeConfigs, powders, milkTypes] =
       await Promise.all([
         prisma.defaultSizeConfig.findMany(),
@@ -129,8 +129,9 @@ export async function GET(req: NextRequest) {
     );
 
     // 9. Normalize order items (convert Decimal, parse JSON)
-    const rawOrders: RawOrder[] = orders.map((order: {
+    const rawOrders: RawAdminOrder[] = orders.map((order: {
       total_vnd: number;
+      order_type: string;
       items: Array<{
         menu_item_id: string;
         quantity: number;
@@ -145,12 +146,18 @@ export async function GET(req: NextRequest) {
         };
         addons: Array<{
           quantity: number;
-          addonOption: { gram_value: { toNumber(): number } | null };
+          unit_price_vnd: number;
+          addonOption: {
+            label: string;
+            gram_value: { toNumber(): number } | null;
+            group: { name: string } | null;
+          };
         }>;
       }>;
     }) => ({
       total_vnd: order.total_vnd,
-      items: order.items.map((item): RawOrderItem => {
+      order_type: order.order_type as "COUNTER" | "PICKUP" | "DELIVERY",
+      items: order.items.map((item): RawAdminOrderItem => {
         // custom_powder_grams is a JSON field — may be Record<string, number> or null
         let customGrams: Record<string, number> | null = null;
         if (
@@ -158,10 +165,7 @@ export async function GET(req: NextRequest) {
           typeof item.menuItem.custom_powder_grams === "object" &&
           !Array.isArray(item.menuItem.custom_powder_grams)
         ) {
-          customGrams = item.menuItem.custom_powder_grams as Record<
-            string,
-            number
-          >;
+          customGrams = item.menuItem.custom_powder_grams as Record<string, number>;
         }
 
         return {
@@ -178,19 +182,22 @@ export async function GET(req: NextRequest) {
           },
           addons: item.addons.map((addon) => ({
             quantity: addon.quantity,
+            unit_price_vnd: addon.unit_price_vnd,
             addonOption: {
+              label: addon.addonOption.label,
               gram_value:
                 addon.addonOption.gram_value != null
                   ? Number(addon.addonOption.gram_value)
                   : null,
+              group: addon.addonOption.group,
             },
           })),
         };
       }),
     }));
 
-    // 10. Build report using pure aggregation function
-    const report = buildReport(
+    // 10. Build admin report using extended aggregation function
+    const report = buildAdminReport(
       rawOrders,
       powders,
       milkTypes,
@@ -198,20 +205,7 @@ export async function GET(req: NextRequest) {
       defaultSizeEntries
     );
 
-    // Staff: chỉ trả tổng đơn và doanh thu — không trả powder/milk/sales
-    if (session.role === "STAFF") {
-      return NextResponse.json({
-        data: {
-          summary: {
-            total_orders: report.summary.total_orders,
-            total_revenue_vnd: report.summary.total_revenue_vnd,
-          },
-        },
-      });
-    }
-
     return NextResponse.json({ data: report });
-
   } catch {
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },

@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { apiClient } from "@/src/lib/api/client";
 import { getReport, getStaffList } from "@/src/services/reportService";
+// getStaffReport and getAdminReport will be available once implemented
 import type { DailyReport, StaffMember } from "@/src/lib/types/report";
+// AdminReport will be imported once type is implemented
+// import type { AdminReport } from "@/src/lib/types/report";
 
 // ---------------------------------------------------------------------------
 // Mock apiClient
@@ -208,5 +211,173 @@ describe("getStaffList", () => {
     vi.mocked(apiClient.get).mockRejectedValueOnce(new Error("Forbidden"));
 
     await expect(getStaffList()).rejects.toThrow("Forbidden");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getStaffReport
+// ---------------------------------------------------------------------------
+
+describe("getStaffReport", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("gọi GET /api/report với startDate và endDate", async () => {
+    const { getStaffReport } = await import("@/src/services/reportService");
+
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      data: { data: { summary: { total_orders: 5, total_revenue_vnd: 350_000 } } },
+    });
+
+    await getStaffReport({ startDate: "2026-06-01", endDate: "2026-06-20" });
+
+    expect(apiClient.get).toHaveBeenCalledOnce();
+    const [url, config] = vi.mocked(apiClient.get).mock.calls[0];
+    expect(url).toBe("/api/report");
+    expect(config?.params).toMatchObject({ startDate: "2026-06-01", endDate: "2026-06-20" });
+  });
+
+  it("trả về chỉ summary (total_orders + total_revenue_vnd)", async () => {
+    const { getStaffReport } = await import("@/src/services/reportService");
+
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      data: { data: { summary: { total_orders: 5, total_revenue_vnd: 350_000 } } },
+    });
+
+    const result = await getStaffReport({ startDate: "2026-06-01", endDate: "2026-06-20" });
+
+    expect(result.summary.total_orders).toBe(5);
+    expect(result.summary.total_revenue_vnd).toBe(350_000);
+    // No total_cups in staff summary
+    expect((result.summary as Record<string, unknown>).total_cups).toBeUndefined();
+  });
+
+  it("propagates API errors", async () => {
+    const { getStaffReport } = await import("@/src/services/reportService");
+
+    vi.mocked(apiClient.get).mockRejectedValueOnce(new Error("Forbidden"));
+
+    await expect(
+      getStaffReport({ startDate: "2026-06-01", endDate: "2026-06-20" })
+    ).rejects.toThrow("Forbidden");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getAdminReport
+// ---------------------------------------------------------------------------
+
+describe("getAdminReport", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("gọi GET /api/admin/report với đầy đủ params", async () => {
+    const { getAdminReport } = await import("@/src/services/reportService");
+
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      data: {
+        data: {
+          summary: { total_orders: 10, total_cups: 20, total_revenue_vnd: 500_000 },
+          powder_usage: [],
+          milk_usage: [],
+          latte_sales: [],
+          fusion_sales: [],
+          addon_usage: [],
+          revenue_by_type: [],
+          top_products: [],
+        },
+      },
+    });
+
+    await getAdminReport({ startDate: "2026-06-01", endDate: "2026-06-20" });
+
+    expect(apiClient.get).toHaveBeenCalledOnce();
+    const [url, config] = vi.mocked(apiClient.get).mock.calls[0];
+    expect(url).toBe("/api/admin/report");
+    expect(config?.params).toMatchObject({ startDate: "2026-06-01", endDate: "2026-06-20" });
+  });
+
+  it("bao gồm staffId khi được cung cấp", async () => {
+    const { getAdminReport } = await import("@/src/services/reportService");
+
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      data: {
+        data: {
+          summary: { total_orders: 0, total_cups: 0, total_revenue_vnd: 0 },
+          powder_usage: [],
+          milk_usage: [],
+          latte_sales: [],
+          fusion_sales: [],
+          addon_usage: [],
+          revenue_by_type: [],
+          top_products: [],
+        },
+      },
+    });
+
+    await getAdminReport({ startDate: "2026-06-01", endDate: "2026-06-20", staffId: "staff-id-1" });
+
+    const [, config] = vi.mocked(apiClient.get).mock.calls[0];
+    expect(config?.params).toMatchObject({ staffId: "staff-id-1" });
+  });
+
+  it("không bỏ staffId khi không được cung cấp", async () => {
+    const { getAdminReport } = await import("@/src/services/reportService");
+
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      data: {
+        data: {
+          summary: { total_orders: 0, total_cups: 0, total_revenue_vnd: 0 },
+          powder_usage: [],
+          milk_usage: [],
+          latte_sales: [],
+          fusion_sales: [],
+          addon_usage: [],
+          revenue_by_type: [],
+          top_products: [],
+        },
+      },
+    });
+
+    await getAdminReport({ startDate: "2026-06-01", endDate: "2026-06-20" });
+
+    const [, config] = vi.mocked(apiClient.get).mock.calls[0];
+    expect(config?.params?.staffId).toBeUndefined();
+  });
+
+  it("trả về AdminReport với addon_usage, revenue_by_type, top_products", async () => {
+    const { getAdminReport } = await import("@/src/services/reportService");
+
+    const mockAdminReport = {
+      summary: { total_orders: 5, total_cups: 12, total_revenue_vnd: 350_000 },
+      powder_usage: [{ powder_name: "Meyumi", total_grams: 40 }],
+      milk_usage: [{ milk_name: "Sữa bò", total_ml: 2400 }],
+      latte_sales: [{ name: "Latte Test", sizes: { M: 5, L: 3, XL: 1 }, total_cups: 9 }],
+      fusion_sales: [],
+      addon_usage: [{ addon_label: "Nửa viên kem", group_name: "Kem", total_count: 3 }],
+      revenue_by_type: [{ order_type: "COUNTER", total_revenue_vnd: 350_000, order_count: 5 }],
+      top_products: [{ name: "Latte Test", category: "latte", total_cups: 9 }],
+    };
+
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { data: mockAdminReport } });
+
+    const result = await getAdminReport({ startDate: "2026-06-01", endDate: "2026-06-20" });
+
+    expect(result).toEqual(mockAdminReport);
+    expect(result.addon_usage).toHaveLength(1);
+    expect(result.revenue_by_type).toHaveLength(1);
+    expect(result.top_products).toHaveLength(1);
+  });
+
+  it("propagates API errors", async () => {
+    const { getAdminReport } = await import("@/src/services/reportService");
+
+    vi.mocked(apiClient.get).mockRejectedValueOnce(new Error("Forbidden"));
+
+    await expect(
+      getAdminReport({ startDate: "2026-06-01", endDate: "2026-06-20" })
+    ).rejects.toThrow("Forbidden");
   });
 });

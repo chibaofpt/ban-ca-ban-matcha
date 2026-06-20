@@ -278,24 +278,54 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
                           <span className="font-medium text-foreground shrink-0 mt-0.5">×{it.quantity}</span>
                         </li>
                       ))}
-                      {order.discount_vnd > 0 && (
-                        <li className="text-xs text-green-600 pt-1 flex flex-col">
-                          <span>Giảm giá: -{(order.discount_vnd / 1000).toLocaleString("vi-VN")}K</span>
-                          {order.discountVouchers && order.discountVouchers.length > 0 && (
-                            <span className="font-medium mt-0.5">
-                              (Voucher: {order.discountVouchers.map(dv => dv.voucher.package.name).join(", ")})
-                            </span>
-                          )}
+                      {order.discountVouchers && order.discountVouchers.length > 0 && (
+                        <li className="text-xs text-green-600 pt-1 flex flex-col gap-0.5">
+                          {order.discountVouchers.map((dv, idx) => {
+                            const v = dv.voucher;
+                            let discountText = "";
+                            if (v.discount_type === "PERCENT") {
+                              discountText = `Giảm ${v.discount_value}%`;
+                            } else if (v.discount_type === "FIXED") {
+                              discountText = `Giảm ${(v.discount_value! / 1000).toLocaleString("vi-VN")}K`;
+                            }
+                            return (
+                              <span key={idx} className="font-medium">
+                                • Voucher {v.package.name}: {discountText}
+                              </span>
+                            );
+                          })}
                         </li>
                       )}
                     </ul>
                   )}
 
                   {/* Footer */}
-                  <div className="border-t border-border pt-3">
-                    <div className="flex justify-end">
+                  <div className="border-t border-border pt-3 space-y-1.5">
+                    <div className="flex justify-between items-center gap-2 text-[13px] text-muted-foreground">
+                      <span>Tổng tiền:</span>
+                      <span>{(order.subtotal_vnd / 1000).toLocaleString("vi-VN")}K</span>
+                    </div>
+                    {order.shipping_fee_vnd > 0 && (
+                      <div className="flex justify-between items-center gap-2 text-[13px] text-muted-foreground">
+                        <span>Tiền ship:</span>
+                        <span>{(order.shipping_fee_vnd / 1000).toLocaleString("vi-VN")}K</span>
+                      </div>
+                    )}
+                    {(() => {
+                      const itemDiscount = order.items.reduce((sum: number, it: any) => sum + (it.total_discount_vnd || 0), 0);
+                      const totalDiscount = (order.total_voucher_discount_vnd || 0) + (order.freeship_discount_vnd || 0) + itemDiscount;
+                      if (totalDiscount <= 0) return null;
+                      return (
+                        <div className="flex justify-between items-center gap-2 text-[13px] text-green-600">
+                          <span>Voucher giảm:</span>
+                          <span>-{(totalDiscount / 1000).toLocaleString("vi-VN")}K</span>
+                        </div>
+                      );
+                    })()}
+                    <div className="flex justify-between items-center gap-2 pt-1.5 border-t border-border/50">
+                      <span className="text-sm font-medium">Tiền khách trả:</span>
                       <span className="font-bold text-primary text-base">
-                        {(order.total_vnd / 1000).toLocaleString("vi-VN")}K
+                        {((order.grand_total_vnd || order.total_vnd) / 1000).toLocaleString("vi-VN")}K
                       </span>
                     </div>
                     <div className="flex items-center justify-between mt-1.5">
