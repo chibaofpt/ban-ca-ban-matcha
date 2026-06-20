@@ -9,7 +9,6 @@ import { calcLattePrice, calcFusionPrice, resolveGram } from '@/src/utils/pricin
 
 interface MenuCardProps {
   item: MenuItem;
-  index: number;
   onClick: () => void;
 }
 
@@ -19,7 +18,7 @@ const SIZE_CARD_LABELS: Record<string, string> = {
   XL: "Cá Lớn",
 };
 
-const MenuCard: React.FC<MenuCardProps> = ({ item, index, onClick }) => {
+const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
   const sizes = item.sizes.filter((s) => s.base_price_vnd != null);
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
@@ -65,6 +64,7 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, index, onClick }) => {
           <img
             src={item.image_url}
             alt={item.name}
+            loading="lazy"
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
           />
         ) : (
@@ -115,4 +115,4 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, index, onClick }) => {
   );
 };
 
-export default MenuCard;
+export default React.memo(MenuCard);

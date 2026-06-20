@@ -284,6 +284,15 @@ export async function POST(req: NextRequest) {
           );
         }
       }
+      if (dv!.min_order_vnd !== null && subtotal_vnd < dv!.min_order_vnd) {
+        return NextResponse.json(
+          { 
+            error: `Đơn hàng tối thiểu ${(dv!.min_order_vnd / 1000).toLocaleString("vi-VN")}k để sử dụng voucher giảm giá này`, 
+            code: "MIN_ORDER_NOT_MET" 
+          },
+          { status: 400 }
+        );
+      }
       validatedDiscountVouchers.push({
         id: dv!.id,
         discount_type: dv!.discount_type,

@@ -325,6 +325,9 @@ describe("POST /api/profile/vouchers/refund", () => {
     voucher_type: "PRODUCT",
     status: "ACTIVE",
     menu_item_id: MENU_ITEM_ID,
+    // size + matcha_powder_id required by refund route L101-L112
+    size: "M",
+    matcha_powder_id: null,
     package: { points_cost: 5 },
   };
 
@@ -398,7 +401,15 @@ describe("POST /api/profile/vouchers/refund", () => {
 
   it("returns 409 when menu item is still available (cannot refund)", async () => {
     mockVoucherFindUnique.mockResolvedValue(productVoucher);
-    mockMenuItemFindUnique.mockResolvedValue({ is_available: true, name: "Trà Xanh" });
+    mockMenuItemFindUnique.mockResolvedValue({
+      is_available: true,
+      name: "Trà Xanh",
+      category: "latte",
+      default_powder_id: null,
+      // sizes + fusionAllowedPowders required by refund route L101-L112
+      sizes: [{ size: "M", base_price_vnd: 45000 }],
+      fusionAllowedPowders: [],
+    });
     const res = await refundPOST(makeRefundReq(refundPayload));
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe("CONFLICT");

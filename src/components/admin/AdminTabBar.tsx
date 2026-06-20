@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ClipboardList, QrCode, Package, Gift, Receipt, Leaf, Settings, Bug } from "lucide-react";
+import { ClipboardList, Package, Gift, Receipt, Settings } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { Role } from "@/src/lib/types/user";
 import * as authService from "@/src/services/authService";
@@ -21,12 +21,9 @@ interface Tab {
 const TABS: Tab[] = [
   { to: "/staff/orders", label: "Tạo Order", icon: ClipboardList, roles: ["ADMIN", "STAFF"] },
   { to: "/staff/orders-list", label: "Đơn hàng", icon: Receipt, roles: ["STAFF"] },
-  { to: "/admin/orders", label: "All Đơn", icon: Receipt, roles: ["ADMIN"] },
-  { to: "/staff/scan", label: "Quét QR", icon: QrCode, roles: ["ADMIN", "STAFF"] },
-  { to: "/admin/menu", label: "Sản phẩm", icon: Package, roles: ["ADMIN"] },
-  { to: "/admin/powders", label: "Bột Matcha", icon: Leaf, roles: ["ADMIN"] },
+  { to: "/admin/orders", label: "Đơn hàng", icon: Receipt, roles: ["ADMIN"] },
+  { to: "/admin/menu", label: "Menu", icon: Package, roles: ["ADMIN"] },
   { to: "/admin/voucher-packages", label: "Điểm & Voucher", icon: Gift, roles: ["ADMIN"] },
-  { to: "/admin/logs", label: "System Logs", icon: Bug, roles: ["ADMIN"] },
 ];
 
 interface AdminTabBarProps {

@@ -451,6 +451,7 @@ export default function AdminVoucherPackagesPage() {
                         <span>
                           Giảm {pkg.discount_value}
                           {pkg.discount_type === "PERCENT" ? "%" : "đ"}
+                          {pkg.min_order_vnd ? ` (Đơn từ ${(pkg.min_order_vnd / 1000).toLocaleString()}k)` : ""}
                         </span>
                       )}
                       {pkg.voucher_type === "PRODUCT" && (
@@ -613,7 +614,10 @@ export default function AdminVoucherPackagesPage() {
                 <div><span className="text-muted-foreground">Loại Voucher:</span> {form.voucher_type === "DISCOUNT" ? "Giảm giá" : form.voucher_type === "PRODUCT" ? "Sản phẩm" : form.voucher_type === "ADDON" ? "Topping Addon" : "Freeship"}</div>
                 
                 {form.voucher_type === "DISCOUNT" && (
-                  <div><span className="text-muted-foreground">Mức giảm:</span> {form.discount_value}{form.discount_type === "PERCENT" ? "%" : "đ"}</div>
+                  <>
+                    <div><span className="text-muted-foreground">Mức giảm:</span> {form.discount_value}{form.discount_type === "PERCENT" ? "%" : "đ"}</div>
+                    {form.min_order_vnd && <div><span className="text-muted-foreground">Đơn tối thiểu:</span> {form.min_order_vnd.toLocaleString()}đ</div>}
+                  </>
                 )}
                 
                 {form.voucher_type === "PRODUCT" && (
@@ -626,6 +630,13 @@ export default function AdminVoucherPackagesPage() {
 
                 {form.voucher_type === "ADDON" && (
                   <div><span className="text-muted-foreground">Addon:</span> {uniqueAddonOptions.find(a => a.id === form.addon_option_id)?.label}</div>
+                )}
+
+                {form.voucher_type === "FREESHIP" && (
+                  <>
+                    <div><span className="text-muted-foreground">Phí giao hàng được bao:</span> {form.covered_delivery_fee_vnd}đ</div>
+                    {form.min_order_vnd && <div><span className="text-muted-foreground">Đơn tối thiểu:</span> {form.min_order_vnd.toLocaleString()}đ</div>}
+                  </>
                 )}
               </div>
             ) : (
@@ -685,6 +696,26 @@ export default function AdminVoucherPackagesPage() {
                   </div>
                 )}
 
+                {(form.voucher_type === "DISCOUNT" || form.voucher_type === "FREESHIP") && (
+                  <div>
+                    <label className="text-sm font-medium text-foreground">Đơn tối thiểu (VND) — Để trống = không yêu cầu</label>
+                    <input
+                      type="number"
+                      min={1000}
+                      step={1000}
+                      value={form.min_order_vnd}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          min_order_vnd: e.target.value === "" ? "" : Number(e.target.value),
+                        })
+                      }
+                      placeholder="Ví dụ: 100000 (đơn từ 100k)"
+                      className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1"
+                    />
+                  </div>
+                )}
+
                 {form.voucher_type === "PRODUCT" && (
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
@@ -724,7 +755,13 @@ export default function AdminVoucherPackagesPage() {
                           className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full mt-1"
                         >
                           <option value="">-- Mặc định của sản phẩm --</option>
-                          {powders.map((p) => (
+                          {powders
+                            .filter((p) => {
+                              const item = menuItems.find(i => i.id === form.menu_item_id);
+                              const allowed = (item as any)?.allowed_powder_ids || [];
+                              return allowed.includes(p.id);
+                            })
+                            .map((p) => (
                             <option key={p.id} value={p.id}>
                               {p.name}
                             </option>
@@ -786,23 +823,6 @@ export default function AdminVoucherPackagesPage() {
                           })
                         }
                         placeholder="Ví dụ: 30000"
-                        className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-foreground">Đơn tối thiểu (VND) — Để trống = không yêu cầu</label>
-                      <input
-                        type="number"
-                        min={1000}
-                        step={1000}
-                        value={form.min_order_vnd}
-                        onChange={(e) =>
-                          setForm({
-                            ...form,
-                            min_order_vnd: e.target.value === "" ? "" : Number(e.target.value),
-                          })
-                        }
-                        placeholder="Ví dụ: 100000 (đơn từ 100k)"
                         className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1"
                       />
                     </div>

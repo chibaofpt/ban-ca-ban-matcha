@@ -37,6 +37,7 @@ const createPackageSchema = z.discriminatedUnion("voucher_type", [
     points_cost: z.number().int().min(1),
     discount_type: z.enum(["PERCENT", "FIXED"]),
     discount_value: z.number().int().min(1),
+    min_order_vnd: z.number().int().min(1000).optional().nullable(),
     ...quantityFields,
   }),
   // PRODUCT package — server auto-calculates covered_price_vnd from pricing engine
@@ -342,6 +343,7 @@ export async function POST(req: NextRequest) {
         max_per_user: data.max_per_user ?? 1,
         discount_type: data.discount_type,
         discount_value: data.discount_value,
+        min_order_vnd: data.min_order_vnd ?? null,
       },
     });
 

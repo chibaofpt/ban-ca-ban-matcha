@@ -45,17 +45,31 @@ const FUSION_ITEM_ID = "item-fusion-ddd";
 const ADDON_KEM_ID = "addon-kem-eee";
 const ADDON_EXTRA_MATCHA_ID = "addon-extra-fff";
 
-/** Minimal PricingContext với 1 powder + 1 milk */
+// ── Fusion powder IDs — khai báo sớm để dùng trong basePricingCtx ──────────
+const FUSION_DEFAULT_POWDER = "powder-default-fusion";
+const FUSION_ALLOWED_POWDER = "powder-allowed-fusion";
+
+/** Minimal PricingContext — bao gồm tất cả powders dùng trong tests */
 const basePricingCtx = {
   defaultSizeConfigs: [
     { size: "M" as const, milk_ml: 130, powder_gram: 3.5 },
     { size: "L" as const, milk_ml: 200, powder_gram: 4.5 },
     { size: "XL" as const, milk_ml: 300, powder_gram: 8.0 },
   ],
-  powderPriceMap: { [POWDER_ID]: 6000 },
+  powderPriceMap: {
+    [POWDER_ID]: 6000,
+    [FUSION_DEFAULT_POWDER]: 5000,
+    [FUSION_ALLOWED_POWDER]: 7000,
+  },
   powderSizeConfigMap: {},
   defaultMilkPricePerMl: 40,
   milkPriceMap: { [MILK_ID]: 40 },
+  // Required by fusion fallback logic in lib/orders.ts L219
+  availablePowders: [
+    { id: POWDER_ID, name: "Meyumi" },
+    { id: FUSION_DEFAULT_POWDER, name: "Fusion Default" },
+    { id: FUSION_ALLOWED_POWDER, name: "Fusion Allowed" },
+  ],
 };
 
 /** Tạo mock tx object — override từng method cho từng test */
@@ -93,8 +107,6 @@ const latteMenuItem = {
 };
 
 /** Fusion menu item mẫu */
-const FUSION_DEFAULT_POWDER = "powder-default-fusion";
-const FUSION_ALLOWED_POWDER = "powder-allowed-fusion";
 const fusionMenuItem = {
   id: FUSION_ITEM_ID,
   name: "Matcha Cam",
@@ -103,7 +115,10 @@ const fusionMenuItem = {
   matcha_powder_id: null,
   default_powder_id: FUSION_DEFAULT_POWDER,
   custom_powder_grams: null,
-  fusionAllowedPowders: [{ powder_id: FUSION_ALLOWED_POWDER }],
+  // matchaPowder.is_available required by fusion powder filter in lib/orders.ts L238
+  fusionAllowedPowders: [
+    { powder_id: FUSION_ALLOWED_POWDER, matchaPowder: { is_available: true } },
+  ],
   sizes: [
     { size: "M", base_price_vnd: 50000 },
     { size: "L", base_price_vnd: 60000 },

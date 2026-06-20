@@ -197,7 +197,6 @@ export default function MenuPage() {
                         <MenuCard
                           key={item.id}
                           item={item}
-                          index={idx}
                           onClick={() => setSelectedItem(item)}
                         />
                       ))

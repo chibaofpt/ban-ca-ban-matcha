@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef, Profiler } from "react";
+import { onRenderCallback } from "@/src/utils/dev/renderProfiler";
 import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls, animate } from "framer-motion";
 import { X, Trash2, ShoppingBag, CheckCircle2, AlertTriangle, RefreshCcw, Minus, Plus, Ticket, ChevronRight, Clock, ArrowLeft, MapPin } from "lucide-react";
 import { useCartStore, useCartTotalPrice } from "@/src/lib/store/cartStore";
@@ -374,6 +375,7 @@ const CartDrawer = () => {
   };
 
   return (
+    <Profiler id="CartDrawer" onRender={onRenderCallback}>
     <>
     <AnimatePresence mode="wait">
       {isCartOpen && (
@@ -1329,6 +1331,7 @@ const CartDrawer = () => {
       );
     })()}
     </>
+    </Profiler>
   );
 };
 

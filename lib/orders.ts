@@ -176,7 +176,12 @@ async function resolveOneItem(
 
   const menuItem = await (client as PrismaClient).menuItem.findUnique({
     where: { id: item.menu_item_id },
-    include: { sizes: true, fusionAllowedPowders: true },
+    include: { 
+      sizes: true, 
+      fusionAllowedPowders: {
+        include: { matchaPowder: { select: { is_available: true } } }
+      }
+    },
   });
 
   if (!menuItem || !menuItem.is_available) {
@@ -210,21 +215,43 @@ async function resolveOneItem(
     powder_id = menuItem.matcha_powder_id;
   } else {
     // Fusion: validate selected_powder_id against allowed list + default
-    const resolvedDefault = menuItem.default_powder_id ?? "";
-    const allowedIds = (menuItem.fusionAllowedPowders ?? []).map((p) => p.powder_id);
-    const sentPowderId = item.selected_powder_id ?? resolvedDefault;
+    let resolvedDefault = menuItem.default_powder_id;
+    if (resolvedDefault && !pricingCtx.availablePowders.some(p => p.id === resolvedDefault)) {
+      resolvedDefault = null;
+    }
+    if (!resolvedDefault) {
+      const FALLBACK_NAMES = ["Meyumi", "Hana", "MH-3"];
+      for (const name of FALLBACK_NAMES) {
+        const found = pricingCtx.availablePowders.find((p) => p.name === name);
+        if (found) {
+          resolvedDefault = found.id;
+          break;
+        }
+      }
+      if (!resolvedDefault && pricingCtx.availablePowders.length > 0) {
+        resolvedDefault = pricingCtx.availablePowders[0].id;
+      }
+    }
 
-    const isDefaultPowder = sentPowderId === resolvedDefault;
+    const safeResolvedDefault = resolvedDefault ?? "";
+
+    const allowedIds = (menuItem.fusionAllowedPowders ?? [])
+      .filter((p) => p.matchaPowder?.is_available)
+      .map((p) => p.powder_id);
+      
+    const sentPowderId = item.selected_powder_id ?? safeResolvedDefault;
+
+    const isDefaultPowder = sentPowderId === safeResolvedDefault;
     const isInAllowedList = allowedIds.includes(sentPowderId);
 
     if (!isDefaultPowder && !isInAllowedList) {
       throw new OrderValidationError(
         "VALIDATION_ERROR",
-        `Powder ${sentPowderId} is not allowed for fusion item: ${menuItem.name}`
+        `Powder ${sentPowderId} is not allowed or unavailable for fusion item: ${menuItem.name}`
       );
     }
 
-    powder_id = sentPowderId || resolvedDefault;
+    powder_id = sentPowderId || safeResolvedDefault;
 
     // Compute Premium_Latte if a non-default powder was selected
     if (powder_id && resolvedDefault && powder_id !== resolvedDefault) {

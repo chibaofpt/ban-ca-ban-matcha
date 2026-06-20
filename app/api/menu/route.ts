@@ -69,7 +69,10 @@ export async function GET(): Promise<NextResponse> {
     function resolveFusionDefaultPowderId(
       defaultPowderId: string | null
     ): string | null {
-      if (defaultPowderId) return defaultPowderId;
+      // Check if explicitly set default powder is still available
+      if (defaultPowderId && powders.some(p => p.id === defaultPowderId)) {
+        return defaultPowderId;
+      }
       for (const name of FALLBACK_NAMES) {
         const found = powders.find((p) => p.name === name);
         if (found) return found.id;

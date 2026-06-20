@@ -123,3 +123,8 @@ html {
 body {
   overflow-x: hidden;
 }
+
+.dismissable-sheet {
+  will-change: transform;
+  transform: translateZ(0);
+}

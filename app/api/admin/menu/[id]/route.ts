@@ -290,6 +290,24 @@ export async function PUT(
           }
         }
 
+        // Cascade: sync powder anchor cùng trạng thái khi latte thay đổi is_available
+        if (
+          existing.category === "latte" &&
+          validData.is_available !== undefined &&
+          validData.is_available !== existing.is_available
+        ) {
+          const referencingPowder = await tx.matchaPowder.findFirst({
+            where: { reference_latte_item_id: id },
+            select: { id: true },
+          });
+          if (referencingPowder) {
+            await tx.matchaPowder.update({
+              where: { id: referencingPowder.id },
+              data: { is_available: validData.is_available },
+            });
+          }
+        }
+
         return tx.menuItem.findUniqueOrThrow({ where: { id }, include: INCLUDE });
       }, { maxWait: 10000, timeout: 15000 }),
       prisma.defaultSizeConfig.findMany(),

@@ -20,11 +20,26 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       if (typeof raw.is_available !== "boolean") {
         return NextResponse.json({ error: "is_available must be a boolean", code: "VALIDATION_ERROR" }, { status: 400 });
       }
-      
-      const updated = await prisma.matchaPowder.update({
-        where: { id },
-        data: { is_available: raw.is_available },
-        include: { powderSizeConfigs: true },
+
+      let disabledLatteId: string | undefined;
+
+      const updated = await prisma.$transaction(async (tx) => {
+        const powder = await tx.matchaPowder.update({
+          where: { id },
+          data: { is_available: raw.is_available },
+          include: { powderSizeConfigs: true },
+        });
+
+        // Cascade: sync latte anchor cùng trạng thái với powder
+        if (powder.reference_latte_item_id) {
+          await tx.menuItem.update({
+            where: { id: powder.reference_latte_item_id },
+            data: { is_available: raw.is_available, updated_at: new Date() },
+          });
+          if (!raw.is_available) disabledLatteId = powder.reference_latte_item_id;
+        }
+
+        return powder;
       });
 
       const mappedUpdated = {
@@ -34,6 +49,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           grams: Number(c.grams),
         })),
         powderSizeConfigs: undefined,
+        ...(disabledLatteId !== undefined && { disabled_latte_id: disabledLatteId }),
       };
 
       return NextResponse.json({ data: mappedUpdated });
@@ -137,12 +153,34 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
   try {
     const { id } = await params;
-    // Soft delete
-    const updated = await prisma.matchaPowder.update({
-      where: { id },
-      data: { is_available: false },
+
+    let disabledLatteId: string | undefined;
+
+    // Soft delete + cascade
+    const updated = await prisma.$transaction(async (tx) => {
+      const powder = await tx.matchaPowder.update({
+        where: { id },
+        data: { is_available: false },
+      });
+
+      // Cascade: inactive latte anchor khi powder bị xoá mềm
+      if (powder.reference_latte_item_id) {
+        await tx.menuItem.update({
+          where: { id: powder.reference_latte_item_id },
+          data: { is_available: false, updated_at: new Date() },
+        });
+        disabledLatteId = powder.reference_latte_item_id;
+      }
+
+      return powder;
     });
-    return NextResponse.json({ data: updated });
+
+    return NextResponse.json({
+      data: {
+        ...updated,
+        ...(disabledLatteId !== undefined && { disabled_latte_id: disabledLatteId }),
+      },
+    });
   } catch (error: any) {
     console.error("[DELETE /api/admin/powders/[id]] Error:", error.message);
     if (error.code === "P2025") {

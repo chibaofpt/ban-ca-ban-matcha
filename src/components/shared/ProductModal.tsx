@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
-import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls, animate } from "framer-motion";
+import React, { useState, useEffect, useMemo, useRef, Profiler } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { onRenderCallback } from "@/src/utils/dev/renderProfiler";
+import { DismissableSheet } from "@/src/components/ui/DismissableSheet";
 import { X, Minus, Plus, ShoppingBag, Ticket, CheckCircle2 } from "lucide-react";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { filterUsableVouchers } from "@/src/utils/voucherMatchUtils";
@@ -10,8 +12,15 @@ import type { IceOption, CartItem } from "@/src/lib/types/cart";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { cn } from "@/src/utils/cn";
-import { calcLattePrice, calcFusionPrice, resolveGram, ceilTo1000 } from "@/src/utils/pricing";
-import { SWEETNESS_OPTIONS, ICE_OPTIONS, SIZE_LABELS } from "@/src/constants/orderOptions";
+import { ceilTo1000 } from "@/src/utils/pricing";
+import { SWEETNESS_OPTIONS, ICE_OPTIONS } from "@/src/constants/orderOptions";
+import { usePriceMap } from "./product-modal/usePriceMap";
+import { SizeSelector } from "./product-modal/SizeSelector";
+import { MilkSelector } from "./product-modal/MilkSelector";
+import { PowderSelector } from "./product-modal/PowderSelector";
+import { ModalBottomCTA } from "./product-modal/ModalBottomCTA";
+import { SectionLabel } from "./product-modal/SectionLabel";
+import { OptionCard } from "./product-modal/OptionCard";
 
 interface ProductModalProps {
   item: MenuItem;
@@ -26,40 +35,7 @@ interface ProductModalProps {
   availableVouchers?: MyVoucher[];
 }
 
-// Reusable card-style option button
-function OptionCard({
-  label, sub, isActive, onClick,
-}: { label: string; sub?: string; isActive: boolean; onClick: () => void }) {
-  const isPriceAddition = sub?.startsWith("+");
-  const isSizePrice = sub && sub.endsWith("k") && !sub.startsWith("+") && !sub.startsWith("-");
-
-  return (
-    <motion.button
-      onClick={onClick}
-      whileTap={{ scale: 0.92 }}
-      className={cn(
-        "flex flex-col items-center justify-center rounded-2xl border-2 py-3 px-2 text-center transition-all min-w-0 h-full",
-        isActive ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-white hover:border-primary/30"
-      )}
-    >
-      <span className={cn("text-xs font-bold leading-tight", isActive ? "text-primary" : "text-primary/70")}>{label}</span>
-      {sub && (
-        <span
-          className={cn(
-            "text-[10px] mt-0.5",
-            isSizePrice
-              ? "text-xs text-black"
-              : isPriceAddition
-                ? "text-[#df5e5e] font-semibold"
-                : cn("font-medium", isActive ? "text-primary/60" : "text-primary/40")
-          )}
-        >
-          {sub}
-        </span>
-      )}
-    </motion.button>
-  );
-}
+// Extracted OptionCard, SizeSelector, MilkSelector, PowderSelector are imported
 
 const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, editingItem, onConfirm, freeVoucherId, freeVoucherCoveredPriceVnd, availableVouchers }) => {
   const { addItem, updateItem } = useCartStore();
@@ -159,89 +135,21 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
     : [];
 
   // ── Pricing ──────────────────────────────────────────────────────────────
-  const getPriceForContext = (targetSize: Size, targetPowderId: string, milkId?: string) => {
-    const sizeObj = item.sizes.find((s) => s.size === targetSize);
-    const base_price_vnd = sizeObj?.base_price_vnd ?? 0;
-    const pwd = powders.find((p) => p.id === targetPowderId);
-    const pwd_price_per_gram = pwd?.price_per_gram ?? 0;
-    const gram = resolveGram(targetSize, item.custom_powder_grams, pwd?.size_config ?? [], defaultPowderGrams);
+  const {
+    getPriceForContext,
+    currentPriceContext,
+    finalUnitPrice,
+    finalAddonsCost,
+    totalCost,
+    effectiveFreeVoucherId,
+    effectiveFreeCoveredPrice
+  } = usePriceMap({
+    item, latteItems, powders, defaultPowderGrams, selectedSize, activePowderId,
+    selectedMilkId, quantityMap, selectedOptionIds, selectedAddonVoucherIds,
+    availableVouchers, selectedProductVoucherId, freeVoucherId, freeVoucherCoveredPriceVnd, quantity
+  });
 
-    let baseDrinkPrice = 0;
-    if (isLatte) {
-      const milk_ml = sizeObj?.milk_ml ?? 0;
-      const milk = item.milk_types?.find((m) => m.id === (milkId ?? selectedMilkId));
-      const milk_price_per_ml = milk?.price_per_ml ?? 40;
-      baseDrinkPrice = calcLattePrice({ base_price_vnd, gram, powder_price_per_gram: pwd_price_per_gram, milk_ml, milk_price_per_ml });
-    } else {
-      let premium_latte = 0;
-      const defaultPowder = powders.find((p) => p.id === item.resolved_default_powder_id);
-      if (pwd?.reference_latte_item_id && defaultPowder?.reference_latte_item_id) {
-        const selBase = latteItems.find((i) => i.id === pwd.reference_latte_item_id)?.sizes.find((s) => s.size === targetSize)?.base_price_vnd ?? 0;
-        const defBase = latteItems.find((i) => i.id === defaultPowder.reference_latte_item_id)?.sizes.find((s) => s.size === targetSize)?.base_price_vnd ?? 0;
-        premium_latte = selBase - defBase;
-      }
-      baseDrinkPrice = calcFusionPrice({ base_price_vnd, gram, powder_price_per_gram: pwd_price_per_gram, premium_latte });
-    }
-
-    let addonsCost = 0;
-    const addonPricesMap: Record<string, number> = {};
-
-    for (const g of item.addon_groups) {
-      if (g.type === "QUANTITY") {
-        const qty = quantityMap[g.id] ?? 0;
-        const opt = g.options[0];
-        if (qty > 0 && opt) {
-          const rawCost = qty * (opt.gram_value != null ? opt.gram_value * pwd_price_per_gram : opt.price_vnd);
-          const lineCost = ceilTo1000(rawCost);
-          addonsCost += lineCost;
-          // Store unit price for addon voucher deduction
-          addonPricesMap[opt.id] = ceilTo1000(opt.gram_value != null ? opt.gram_value * pwd_price_per_gram : opt.price_vnd);
-        }
-      } else {
-        for (const opt of g.options) {
-          if (selectedOptionIds.includes(opt.id)) {
-            const rawCost = opt.gram_value != null ? opt.gram_value * pwd_price_per_gram : opt.price_vnd;
-            const lineCost = ceilTo1000(rawCost);
-            addonsCost += lineCost;
-            addonPricesMap[opt.id] = lineCost;
-          }
-        }
-      }
-    }
-    return { baseDrinkPrice, addonsCost, unitPrice: baseDrinkPrice + addonsCost, addonPricesMap };
-  };
-
-  const currentPriceContext = getPriceForContext(selectedSize, activePowderId);
   const defaultPowderPriceCtx = getPriceForContext(selectedSize, item.resolved_default_powder_id ?? "");
-
-  let finalUnitPrice = currentPriceContext.unitPrice;
-  let finalAddonsCost = currentPriceContext.addonsCost;
-
-  // 1. Apply Addon Vouchers deduction
-  for (const vid of selectedAddonVoucherIds) {
-      const v = availableVouchers?.find(av => av.id === vid);
-      if (v && v.addon_option_id) {
-          const addonPrice = currentPriceContext.addonPricesMap[v.addon_option_id] ?? 0;
-          finalAddonsCost = Math.max(0, finalAddonsCost - addonPrice);
-          finalUnitPrice = Math.max(0, finalUnitPrice - addonPrice);
-      }
-  }
-
-  // 2. Apply Product Voucher deduction
-  const activeProductVoucher = availableVouchers?.find(v => v.id === selectedProductVoucherId);
-  const effectiveFreeVoucherId = freeVoucherId || selectedProductVoucherId;
-  const effectiveFreeCoveredPrice = freeVoucherCoveredPriceVnd ?? activeProductVoucher?.covered_price_vnd ?? undefined;
-
-  if (effectiveFreeVoucherId && effectiveFreeCoveredPrice !== undefined) {
-    const baseDrinkPrice = finalUnitPrice - finalAddonsCost;
-    const drinkAfterCredit = Math.max(0, baseDrinkPrice - effectiveFreeCoveredPrice);
-    const remainingCredit = Math.max(0, effectiveFreeCoveredPrice - baseDrinkPrice);
-    const addonsAfterCredit = Math.max(0, finalAddonsCost - remainingCredit);
-    finalUnitPrice = drinkAfterCredit + addonsAfterCredit;
-    finalAddonsCost = addonsAfterCredit;
-  }
-
-  const totalCost = finalUnitPrice * quantity;
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleSelectorToggle = (groupId: string, optionId: string, defaultOptId?: string) => {
@@ -266,66 +174,9 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
 
   const [isOpen, setIsOpen] = useState(true);
 
-  // --- Pull-to-dismiss logic ---
-  const y = useMotionValue<number | string>(0);
-  const scale = useTransform(y, (latest) => {
-    if (typeof latest === "string") return 1;
-    if (latest < 0) return 1;
-    if (latest > 300) return 0.9;
-    return 1 - (latest / 300) * 0.1;
-  });
-  const dragControls = useDragControls();
+  // Pull-to-dismiss logic is handled by DismissableSheet.
+  // Body scroll lock is handled by DismissableSheet.
 
-  const contentRef = useRef<HTMLDivElement>(null);
-  const touchStartY = useRef(0);
-  const isPulling = useRef(false);
-
-  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    touchStartY.current = e.touches[0].clientY;
-    isPulling.current = false;
-  };
-
-  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!contentRef.current) return;
-    const scrollTop = contentRef.current.scrollTop;
-    const currentY = e.touches[0].clientY;
-
-    if (scrollTop <= 0) {
-      if (!isPulling.current) {
-        touchStartY.current = currentY;
-        isPulling.current = true;
-      }
-      const deltaY = currentY - touchStartY.current;
-      if (deltaY > 0) {
-        y.set(deltaY);
-      } else {
-        y.set(0);
-      }
-    } else {
-      isPulling.current = false;
-      if (typeof y.get() === "number" && (y.get() as number) > 0) y.set(0);
-    }
-  };
-
-  const handleTouchEnd = () => {
-    isPulling.current = false;
-    if (typeof y.get() === "number" && (y.get() as number) > 100) {
-      handleClose();
-    } else if (typeof y.get() === "number" && (y.get() as number) > 0) {
-      animate(y, 0, { type: "spring", stiffness: 300, damping: 28 });
-    }
-  };
-
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [isOpen]);
 
   const handleClose = () => {
     setIsOpen(false);
@@ -379,48 +230,33 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
   };
 
   const sweetnessIdx = SWEETNESS_OPTIONS.findIndex((o) => o.value === sweetness);
-  const SectionLabel = ({ text }: { text: string }) => (
-    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-primary/40 mb-3">{text}</p>
-  );
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <React.Fragment>
-          <motion.div
-            key="pm-backdrop"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm"
-            onClick={handleClose}
-          />
-      <motion.div
-        key="pm-sheet"
-        initial={isDesktop ? { opacity: 0, scale: 0.9, x: "-50%", y: "-50%" } : { y: "100%" }}
-        animate={isDesktop ? { opacity: 1, scale: 1, x: "-50%", y: "-50%" } : { y: 0 }}
-        exit={isDesktop ? { opacity: 0, scale: 0.9, x: "-50%", y: "-50%" } : { y: "100%" }}
-        transition={{ type: "spring", damping: 30, stiffness: 300 }}
-        style={isDesktop ? {} : { y, scale, touchAction: "pan-y" }}
-        drag={isDesktop ? false : "y"}
-        dragListener={false}
-        dragControls={dragControls}
-        dragConstraints={{ top: 0, bottom: 0 }}
-        dragElastic={0.2}
-        onDragEnd={(e, info) => {
-          if (info.offset.y > 100 || info.velocity.y > 300) handleClose();
-        }}
-        className="fixed inset-x-0 bottom-0 z-[101] flex flex-col max-h-[92vh] overflow-hidden rounded-t-[2.5rem] bg-[#fdfcf7] shadow-2xl md:bottom-auto md:top-1/2 md:left-1/2 md:w-[90vw] md:max-w-4xl md:h-[80vh] md:max-h-[85vh] md:rounded-[2.5rem] md:grid md:grid-cols-2 md:pb-0"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Drag Handle (Mobile only) */}
-        {!isDesktop && (
-          <div 
-            onPointerDown={(e) => dragControls.start(e)}
-            className="absolute top-0 left-0 right-0 h-10 z-10 flex items-start justify-center pt-3 touch-none"
-          >
+    <Profiler id="ProductModal" onRender={onRenderCallback}>
+    <DismissableSheet
+      open={isOpen}
+      onClose={handleClose}
+      springDamping={30}
+      springStiffness={300}
+      initialAnimation={isDesktop ? { opacity: 0, scale: 0.9, x: "-50%", y: "-50%" } : { y: "100%" }}
+      animateAnimation={isDesktop ? { opacity: 1, scale: 1, x: "-50%", y: "-50%" } : { y: 0 }}
+      exitAnimation={isDesktop ? { opacity: 0, scale: 0.9, x: "-50%", y: "-50%" } : { y: "100%" }}
+      backdropClassName="bg-black/40 backdrop-blur-sm"
+      zIndexBackdrop={100}
+      zIndexSheet={101}
+      disableDrag={isDesktop}
+      sheetClassName="fixed inset-x-0 bottom-0 flex flex-col max-h-[92vh] overflow-hidden rounded-t-[2.5rem] bg-[#fdfcf7] shadow-2xl md:bottom-auto md:top-1/2 md:left-1/2 md:w-[90vw] md:max-w-4xl md:h-[80vh] md:max-h-[85vh] md:rounded-[2.5rem] md:grid md:grid-cols-2 md:pb-0"
+      dragHandleContent={
+        !isDesktop ? (
+          <div className="absolute top-0 left-0 right-0 h-10 z-10 flex items-start justify-center pt-3">
             <div className="w-12 h-1.5 bg-border rounded-full" />
           </div>
-        )}
-        {/* Left Column (Desktop only) */}
+        ) : undefined
+      }
+    >
+      {({ onTouchStart, onTouchMove, onTouchEnd, ref: contentRef }) => (
+        <>
+          {/* Left Column (Desktop only) */}
         <div className="hidden md:flex flex-col bg-[#d9e4d4]/30 border-r border-border/40 p-8 justify-between relative h-full">
           {item.image_url ? (
             <div className="w-full aspect-square rounded-3xl overflow-hidden shadow-md bg-white flex items-center justify-center mb-6">
@@ -445,16 +281,15 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
           <X className="w-5 h-5 text-primary" />
         </button>
 
-        <div 
+        <div
           ref={contentRef}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
           className="flex flex-col flex-1 min-h-0 h-full overflow-y-auto overscroll-contain px-5 md:px-8 pt-7 pb-44 md:pb-40 md:pt-0"
         >
-          <div 
-            onPointerDown={(e) => dragControls.start(e)}
-            className="pt-7 pb-5 border-b border-border/40 md:hidden touch-none"
+          <div
+            className="pt-7 pb-5 border-b border-border/40 md:hidden"
           >
             <h2 className="font-serif text-2xl font-bold text-primary">{item.name}</h2>
             {item.description && <p className="text-sm text-primary/55 mt-1.5 leading-relaxed">{item.description}</p>}
@@ -464,20 +299,13 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
           {item.sizes.length > 0 && (
             <div className="mt-7">
               <SectionLabel text="Chọn size *" />
-              <div className="grid grid-cols-3 gap-2.5">
-                {item.sizes.map((s) => {
-                  const sizePrice = getPriceForContext(s.size, activePowderId).unitPrice;
-                  return (
-                    <OptionCard
-                      key={s.size}
-                      label={SIZE_LABELS[s.size]}
-                      sub={`${sizePrice / 1000} ká`}
-                      isActive={selectedSize === s.size}
-                      onClick={() => setSelectedSize(s.size)}
-                    />
-                  );
-                })}
-              </div>
+              <SizeSelector
+                sizes={item.sizes}
+                selectedSize={selectedSize}
+                onChange={setSelectedSize}
+                getPriceForContext={getPriceForContext}
+                activePowderId={activePowderId}
+              />
             </div>
           )}
 
@@ -538,23 +366,15 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
           {isLatte && item.milk_types.length > 0 && (
             <div className="mt-7">
               <SectionLabel text="Loại sữa" />
-              <div className="grid grid-cols-3 gap-2">
-                {item.milk_types.map((milk) => {
-                  const isDefault = milk.id === defaultMilkId;
-                  const milkPrice = getPriceForContext(selectedSize, activePowderId, milk.id).baseDrinkPrice;
-                  const defMilkPrice = getPriceForContext(selectedSize, activePowderId, defaultMilkId).baseDrinkPrice;
-                  const diff = milkPrice - defMilkPrice;
-                  return (
-                    <OptionCard
-                      key={milk.id}
-                      label={milk.name}
-                      sub={isDefault ? "Mặc định" : diff > 0 ? `+${diff / 1000} ká` : diff < 0 ? `${diff / 1000} ká` : "Cùng giá"}
-                      isActive={selectedMilkId === milk.id}
-                      onClick={() => setSelectedMilkId(milk.id)}
-                    />
-                  );
-                })}
-              </div>
+              <MilkSelector
+                milkTypes={item.milk_types}
+                selectedMilkId={selectedMilkId}
+                defaultMilkId={defaultMilkId}
+                onChange={setSelectedMilkId}
+                getPriceForContext={getPriceForContext}
+                selectedSize={selectedSize}
+                activePowderId={activePowderId}
+              />
             </div>
           )}
 
@@ -562,24 +382,16 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
           {powderList.length > 0 && (
             <div className="mt-7">
               <SectionLabel text="Loại bột matcha" />
-              <div className="grid grid-cols-3 gap-2">
-                {powderList.map((pid) => {
-                  const pwd = powders.find((p) => p.id === pid);
-                  if (!pwd) return null;
-                  const isDefault = pid === item.resolved_default_powder_id;
-                  const priceCtx = getPriceForContext(selectedSize, pid);
-                  const diff = priceCtx.unitPrice - defaultPowderPriceCtx.unitPrice;
-                  return (
-                    <OptionCard
-                      key={pid}
-                      label={pwd.name}
-                      sub={isDefault ? "Mặc định" : diff !== 0 ? `${diff > 0 ? "+" : ""}${diff / 1000} ká` : "Cùng giá"}
-                      isActive={selectedPowderId === pid}
-                      onClick={() => setSelectedPowderId(pid)}
-                    />
-                  );
-                })}
-              </div>
+              <PowderSelector
+                powderList={powderList}
+                powders={powders}
+                selectedPowderId={selectedPowderId}
+                defaultPowderId={item.resolved_default_powder_id ?? null}
+                onChange={setSelectedPowderId}
+                getPriceForContext={getPriceForContext}
+                defaultPowderPriceCtx={defaultPowderPriceCtx}
+                selectedSize={selectedSize}
+              />
             </div>
           )}
 
@@ -798,45 +610,18 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
         </div>
 
         {/* BOTTOM CTA */}
-        <div className="fixed md:absolute bottom-0 left-0 md:left-auto right-0 z-[110] w-full md:w-1/2 bg-[#fdfcf7]/95 backdrop-blur-md border-t border-border/60 shadow-[0_-8px_30px_rgba(0,0,0,0.04)] px-5 py-4 pb-8 md:pb-6 md:rounded-br-[2.5rem]">
-          <div className="flex items-center justify-between gap-3">
-            {/* Total price */}
-            <div className="flex flex-col items-start justify-center flex-1 min-w-0">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-primary/45">Tổng tiền</span>
-              <span className="font-serif font-bold text-lg md:text-xl text-primary leading-none mt-0.5 whitespace-nowrap">
-                {totalCost / 1000} ká
-              </span>
-            </div>
-
-            {/* Quantity Adjuster */}
-            {!hideQuantityPicker && (
-              <div className="flex items-center bg-[#d9e4d4] rounded-2xl overflow-hidden shrink-0">
-                <button
-                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                  className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 transition-colors text-primary font-bold text-lg"
-                >−</button>
-                <span className="text-sm font-bold w-6 text-center text-primary">{quantity}</span>
-                <button
-                  onClick={() => setQuantity(quantity + 1)}
-                  className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 transition-colors text-primary font-bold text-lg"
-                >+</button>
-              </div>
-            )}
-
-            {/* Add to Cart Button */}
-            <button
-              onClick={handleAddToCart}
-              className="bg-primary text-white rounded-2xl h-11 px-4 md:px-5 font-bold text-sm shadow-lg active:scale-[0.98] transition-all flex items-center gap-2 shrink-0"
-            >
-              <ShoppingBag className="w-4 h-4" />
-              <span>{editingItem ? 'Cập nhật' : 'Bỏ giỏ cá'}</span>
-            </button>
-          </div>
-        </div>
-      </motion.div>
-        </React.Fragment>
+        <ModalBottomCTA
+          totalCost={totalCost}
+          quantity={quantity}
+          setQuantity={setQuantity}
+          hideQuantityPicker={hideQuantityPicker}
+          handleAddToCart={handleAddToCart}
+          isEditing={!!editingItem}
+        />
+        </>
       )}
-    </AnimatePresence>
+    </DismissableSheet>
+    </Profiler>
   );
 };
 

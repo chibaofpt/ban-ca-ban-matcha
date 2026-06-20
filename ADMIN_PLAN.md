@@ -25,8 +25,11 @@
 
 | Role | Tabs |
 |---|---|
-| STAFF | Tạo Order / Quét QR / Đơn hàng |
-| ADMIN | Tạo Order / Quét QR / Đơn hàng / Sản phẩm / Điểm & Voucher |
+| STAFF | Tạo Order / Đơn hàng |
+| ADMIN | Tạo Order / Đơn hàng / Menu / Điểm & Voucher |
+
+> Quét QR: button có sẵn trong trang Tạo Order, không có tab riêng.
+> System Logs: truy cập qua URL `/admin/logs`, không hiển thị trên navbar.
 
 ---
 
@@ -85,6 +88,17 @@ Calls `GET /api/staff/scan?token=xxx`:
 ---
 
 ## 6. Admin — Menu Management (`/admin/menu`)
+
+> Tab "Menu" trên navbar chứa 4 sub-tabs nằm ngang: **Sản phẩm** | **Bột** | **Addons** | **Sữa**.
+> Sub-tabs được render bởi `MenuSubTabs.tsx` qua `app/(admin-shell)/admin/menu/layout.tsx`.
+
+### Routes
+| Sub-tab | Route |
+|---|---|
+| Sản phẩm | `/admin/menu` |
+| Bột | `/admin/menu/powders` |
+| Addons | `/admin/menu/addons` (placeholder) |
+| Sữa | `/admin/menu/milk-types` (placeholder) |
 
 ### Overview
 - Routes used: `GET/POST /api/admin/menu`, `PUT/DELETE /api/admin/menu/[id]`
@@ -149,7 +163,7 @@ Calls `GET /api/staff/scan?token=xxx`:
 
 ## 7. Admin — Matcha Powder Management
 
-> Managed within `/admin/menu` or as a sub-section. Uses `PowderForm.tsx`.
+> Managed at `/admin/menu/powders` (sub-tab "Bột" under Menu). Uses `PowderForm.tsx`.
 
 ### Routes
 | Action | Endpoint |

@@ -40,6 +40,8 @@ export interface PricingContext {
   defaultMilkPricePerMl: number;
   /** { [milk_type_id]: number } price_per_ml */
   milkPriceMap: Record<string, number>;
+  /** List of all currently available powders (used for Fusion fallback logic) */
+  availablePowders: { id: string; name: string }[];
 }
 
 /**
@@ -82,6 +84,7 @@ export async function buildPricingContext(client: PrismaTransactionClient = pris
     powderPriceMap,
     defaultMilkPricePerMl: defaultMilk?.price_per_ml ?? 40,
     milkPriceMap,
+    availablePowders: allPowders.map((p) => ({ id: p.id, name: p.name })),
   };
 }
 

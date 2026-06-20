@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { Trash2, User, UserX, Ticket, ArrowLeft, CheckCircle2, ChevronRight, X } from "lucide-react";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
@@ -14,11 +14,13 @@ import {
   estimateMultiDiscountSavings,
   filterUsableVouchers,
 } from "@/src/utils/voucherMatchUtils";
-import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls, animate } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { DismissableSheet } from "@/src/components/ui/DismissableSheet";
 import { useQuery } from "@tanstack/react-query";
 import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
 import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
+import StaffCartItemCard from "./cart/StaffCartItemCard";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -96,77 +98,9 @@ export function StaffCartDrawer({
   const [activeItemForVoucher, setActiveItemForVoucher] = useState<string | null>(null);
   const [isDiscountPickerOpen, setIsDiscountPickerOpen] = useState(false);
 
-  // --- Pull-to-dismiss logic ---
-  const y = useMotionValue<number | string>(0);
-  const scale = useTransform(y, (latest) => {
-    if (typeof latest === "string") return 1;
-    if (latest < 0) return 1;
-    if (latest > 300) return 0.9;
-    return 1 - (latest / 300) * 0.1;
-  });
-  const dragControls = useDragControls();
+  // Pull-to-dismiss logic is handled by DismissableSheet.
+  // Body scroll lock is handled by DismissableSheet.
 
-  const contentRef = useRef<HTMLDivElement>(null);
-  const touchStartY = useRef(0);
-  const isPulling = useRef(false);
-
-  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    touchStartY.current = e.touches[0].clientY;
-    isPulling.current = false;
-  };
-
-  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!contentRef.current) return;
-    const scrollTop = contentRef.current.scrollTop;
-    const currentY = e.touches[0].clientY;
-
-    if (scrollTop <= 0) {
-      if (!isPulling.current) {
-        touchStartY.current = currentY;
-        isPulling.current = true;
-      }
-      const deltaY = currentY - touchStartY.current;
-      if (deltaY > 0) {
-        y.set(deltaY);
-      } else {
-        y.set(0);
-      }
-    } else {
-      isPulling.current = false;
-      if (typeof y.get() === "number" && (y.get() as number) > 0) y.set(0);
-    }
-  };
-
-  const handleTouchEnd = () => {
-    isPulling.current = false;
-    if (typeof y.get() === "number" && (y.get() as number) > 100) {
-      onClose();
-    } else if (typeof y.get() === "number" && (y.get() as number) > 0) {
-      animate(y, 0, { type: "spring", stiffness: 300, damping: 28 });
-    }
-  };
-
-  useEffect(() => {
-    if (!isOpen) {
-      const timer = setTimeout(() => {
-        setActiveItemForVoucher(null);
-        setIsDiscountPickerOpen(false);
-        y.set(0);
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "unset";
-    }
-    return () => {
-      document.body.style.overflow = "unset";
-    };
-  }, [isOpen]);
 
   // Subtotal (already reflects PRODUCT voucher credit if applied)
   const subtotalPrice = cart.reduce((s, c) => s + c.clientPriceVnd * c.quantity, 0);
@@ -198,56 +132,51 @@ export function StaffCartDrawer({
 
   const activeItem = cart.find(i => i.cartId === activeItemForVoucher);
 
+  const handleClose = () => {
+    onClose();
+    // Reset sub-overlay state after close animation
+    setTimeout(() => {
+      setActiveItemForVoucher(null);
+      setIsDiscountPickerOpen(false);
+    }, 300);
+  };
+
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <div className="fixed inset-0 z-50">
-          <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/40" onClick={onClose} 
-          />
-          
-          <motion.div 
-            initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            style={{ y, scale, touchAction: "pan-y" }}
-            drag="y"
-            dragListener={false}
-            dragControls={dragControls}
-            dragConstraints={{ top: 0, bottom: 0 }}
-            dragElastic={0.2}
-            onDragEnd={(_, info) => {
-              if (info.offset.y > 100 || info.velocity.y > 300) {
-                onClose();
-              }
-            }}
-            className="absolute bottom-0 left-0 right-0 bg-card rounded-t-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
-          >
-            {/* Mobile Drag Handle */}
-            <div 
-              onPointerDown={(e) => dragControls.start(e)}
-              className="flex justify-center pt-3 pb-1 w-full shrink-0 touch-none"
+    <DismissableSheet
+      open={isOpen}
+      onClose={handleClose}
+      springDamping={25}
+      springStiffness={300}
+      snapBackDamping={28}
+      snapBackStiffness={300}
+      initialAnimation={{ y: "100%" }}
+      animateAnimation={{ y: 0 }}
+      exitAnimation={{ y: "100%" }}
+      backdropClassName="bg-black/40"
+      zIndexBackdrop={50}
+      zIndexSheet={50}
+      sheetClassName="absolute bottom-0 left-0 right-0 bg-card rounded-t-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
+      dragHandleContent={
+        <>
+          <div className="flex justify-center pt-3 pb-1 w-full shrink-0">
+            <div className="w-12 h-1.5 bg-border rounded-full" />
+          </div>
+          <div className="flex items-center justify-between px-4 pt-2 pb-3 shrink-0 border-b border-border/40">
+            <h2 className="font-serif text-lg font-bold flex items-center gap-2">
+              Giỏ hàng <span className="bg-primary/10 text-primary text-xs px-2 py-0.5 rounded-full">{cart.reduce((sum, c) => sum + c.quantity, 0)}</span>
+            </h2>
+            <button
+              onClick={handleClose}
+              className="w-8 h-8 rounded-full bg-secondary/50 flex items-center justify-center hover:bg-secondary transition"
             >
-              <div className="w-12 h-1.5 bg-border rounded-full" />
-            </div>
-
-            {/* Header */}
-            <div 
-              onPointerDown={(e) => dragControls.start(e)}
-              className="flex items-center justify-between px-4 pt-2 pb-3 shrink-0 border-b border-border/40 touch-none"
-            >
-              <h2 className="font-serif text-lg font-bold flex items-center gap-2">
-                Giỏ hàng <span className="bg-primary/10 text-primary text-xs px-2 py-0.5 rounded-full">{cart.reduce((sum, c) => sum + c.quantity, 0)}</span>
-              </h2>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 rounded-full bg-secondary/50 flex items-center justify-center hover:bg-secondary transition"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-        {/* Customer Section */}
+              <X size={16} />
+            </button>
+          </div>
+        </>
+      }
+    >
+      {({ onTouchStart, onTouchMove, onTouchEnd, ref: contentRef }) => (
+        <>
         <div className="px-4 py-3 shrink-0 border-b border-border/30">
           <div className="bg-secondary/20 rounded-2xl p-3 border border-border flex items-center justify-between">
             <div className="flex items-center gap-3 min-w-0">
@@ -285,11 +214,11 @@ export function StaffCartDrawer({
         </div>
 
         {/* Item list */}
-        <div 
+        <div
           ref={contentRef}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
           className="overflow-y-auto overscroll-contain flex-1 min-h-0 p-4 space-y-4"
         >
           {cart.length === 0 ? (
@@ -316,139 +245,24 @@ export function StaffCartDrawer({
               const noteText = c.note || null;
 
               return (
-                <div 
-                  key={c.cartId} 
-                  onClick={() => onEditItem?.(c)}
-                  className={cn(
-                    "bg-white dark:bg-secondary/20 rounded-2xl p-3.5 flex gap-3 shadow-sm border border-border/50 transition-colors cursor-pointer hover:border-border/80",
-                    !menuItem && "opacity-50 pointer-events-none"
-                  )}
-                >
-                  {/* Thumbnail & Stepper */}
-                  <div className="flex flex-col items-center gap-2 shrink-0">
-                    <div className="w-16 h-16 rounded-xl overflow-hidden bg-secondary/40 flex items-center justify-center text-3xl">
-                      {c.imageUrl ? (
-                        <img src={c.imageUrl} alt={c.name} className="w-full h-full object-cover" />
-                      ) : (
-                        "🍵"
-                      )}
-                    </div>
-                    {/* Stepper */}
-                    <div 
-                      className="flex items-center gap-1.5 bg-secondary/30 rounded-full px-1.5 py-1"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => onChangeQuantity(c.cartId, c.quantity - 1)}
-                        disabled={c.quantity <= 1 || !!appliedProductVoucherId}
-                        className="w-5 h-5 rounded-full bg-background flex items-center justify-center text-[10px] shadow-sm disabled:opacity-30"
-                      >
-                        −
-                      </motion.button>
-                      <span className="text-xs font-bold w-4 text-center">{c.quantity}</span>
-                      <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => onChangeQuantity(c.cartId, c.quantity + 1)}
-                        disabled={!!appliedProductVoucherId}
-                        className="w-5 h-5 rounded-full bg-background flex items-center justify-center text-[10px] shadow-sm disabled:opacity-30"
-                      >
-                        +
-                      </motion.button>
-                    </div>
-                  </div>
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0 flex flex-col">
-                    <div className="flex items-start justify-between gap-2">
-                      <h4 className="font-bold text-sm leading-tight text-primary truncate w-4/5 pr-2">
-                        {c.name} {c.category === "fusion" && powderData?.data?.find(p => p.id === c.selectedPowderId)?.name && `- ${powderData?.data?.find(p => p.id === c.selectedPowderId)?.name}`}
-                      </h4>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); onRemove(c.cartId); }} 
-                        className="text-muted-foreground hover:text-red-500 transition shrink-0 p-1 w-1/5 flex justify-end"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-
-                    {/* Customize (full line) */}
-                    <div className="mt-1.5 flex flex-col gap-1 w-full">
-                      {/* Line 1 — Size + Milk/Powder */}
-                      {line1Chips.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {line1Chips.map((chip, idx) => (
-                            <span key={idx} className="text-[10px] font-medium bg-primary/10 text-primary px-1.5 py-0.5 rounded">{chip}</span>
-                          ))}
-                        </div>
-                      )}
-                      {/* Line 2 — Sweetness + Ice + Coldwhisk */}
-                      {line2Chips.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {line2Chips.map((chip, idx) => (
-                            <span key={idx} className="text-[10px] font-medium bg-secondary text-secondary-foreground px-1.5 py-0.5 rounded">{chip}</span>
-                          ))}
-                        </div>
-                      )}
-                      {/* Line 3 — Addons + Đá dừa + Extra matcha */}
-                      {addonChips.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {addonChips.map((chip, idx) => (
-                            <span key={idx} className="text-[10px] font-medium bg-secondary text-secondary-foreground/90 px-1.5 py-0.5 rounded">{chip}</span>
-                          ))}
-                        </div>
-                      )}
-                      {/* Line 4 — Note */}
-                      {noteText && (
-                        <span className="text-[10px] font-medium bg-primary/5 text-primary/80 px-1.5 py-0.5 rounded italic inline-block w-fit">📝 {noteText}</span>
-                      )}
-                    </div>
-
-                    <div className="mt-auto pt-3 flex items-end justify-between gap-2">
-                      {/* Vouchers area */}
-                      <div className="flex flex-wrap gap-1.5 flex-1">
-                        {appliedProductVoucherId && (() => {
-                          const pv = customerVouchers.find(v => v.id === appliedProductVoucherId);
-                          return (
-                            <div className="text-[10px] font-bold bg-orange-50 border border-orange-200 text-orange-700 dark:bg-orange-900/30 dark:border-orange-500/30 dark:text-orange-400 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-                              <Ticket size={12} className="text-orange-500" /> {pv?.package?.name || "Free món"}
-                              <button onClick={(e) => { e.stopPropagation(); onRemoveProduct!(c.cartId); }} className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-orange-200 text-orange-500 hover:text-orange-700 transition-colors ml-0.5"><X size={12} strokeWidth={2.5} /></button>
-                            </div>
-                          )
-                        })()}
-                        {appliedAddonVouchers.map((av, idx) => {
-                          const voucherInfo = customerVouchers.find(v => v.id === av.voucherId);
-                          return (
-                            <div key={`${av.voucherId}-${idx}`} className="text-[10px] font-bold bg-green-50 border border-green-200 text-green-700 dark:bg-green-900/30 dark:border-green-500/30 dark:text-green-400 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-                              <Ticket size={12} className="text-green-600" /> Free {voucherInfo?.addonOption?.label || "Topping"}
-                              <button onClick={(e) => { e.stopPropagation(); onRemoveAddon!(c.cartId, av.voucherId); }} className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-green-200 text-green-600 hover:text-green-800 transition-colors ml-0.5"><X size={12} strokeWidth={2.5} /></button>
-                            </div>
-                          )
-                        })}
-                        {hasAvailableVouchers && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setActiveItemForVoucher(c.cartId); setIsDiscountPickerOpen(false); }}
-                            className="text-[10px] font-bold bg-white border border-dashed border-orange-300 text-orange-600 px-3 py-1.5 rounded-full flex items-center gap-1 hover:bg-orange-50 hover:border-solid transition-all shadow-sm"
-                          >
-                            <Ticket size={12} /> Ưu đãi ({productVouchersForItem.length + addonVouchersForItem.length})
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Price */}
-                      <div className="flex flex-col items-end shrink-0">
-                        {appliedProductVoucherId && c.originalClientPriceVnd !== c.clientPriceVnd && (
-                          <span className="text-[10px] text-muted-foreground line-through">
-                            {(c.originalClientPriceVnd * c.quantity) / 1000}k
-                          </span>
-                        )}
-                        <span className="font-bold text-sm text-primary">
-                          {(c.clientPriceVnd * c.quantity) / 1000}k
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <StaffCartItemCard
+                  key={c.cartId}
+                  item={c}
+                  menuItem={menuItem}
+                  powderData={powderData}
+                  customerVouchers={customerVouchers}
+                  applicableProductVouchers={productVouchersForItem}
+                  applicableAddonVouchers={addonVouchersForItem}
+                  onEdit={onEditItem!}
+                  onRemove={onRemove}
+                  onChangeQuantity={onChangeQuantity}
+                  onRemoveProduct={onRemoveProduct}
+                  onRemoveAddon={onRemoveAddon}
+                  onOpenVoucherPicker={(cartId) => {
+                    setActiveItemForVoucher(cartId);
+                    setIsDiscountPickerOpen(false);
+                  }}
+                />
               );
             })
           )}
@@ -727,10 +541,8 @@ export function StaffCartDrawer({
             </motion.div>
           )}
         </AnimatePresence>
-
-          </motion.div>
-        </div>
+        </>
       )}
-    </AnimatePresence>
+    </DismissableSheet>
   );
 }

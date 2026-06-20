@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence, useMotionValue, useTransform, useDragControls, animate } from "framer-motion";
+import { useState, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { DismissableSheet } from "@/src/components/ui/DismissableSheet";
 import { X, QrCode, Star, Clock, Loader2, Ticket, Gift } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/src/utils/cn";
@@ -240,66 +241,21 @@ export default function VoucherModal() {
   const [qrVoucher, setQrVoucher] = useState<MyVoucher | null>(null);
   const [activeTab, setActiveTab] = useState<"my_vouchers" | "packages">("my_vouchers");
 
-  // --- Pull-to-dismiss logic ---
-  const y = useMotionValue<number | string>(0);
-  const scale = useTransform(y, (latest) => {
-    if (typeof latest === "string") return 1;
-    if (latest < 0) return 1;
-    if (latest > 300) return 0.9;
-    return 1 - (latest / 300) * 0.1;
-  });
-  const dragControls = useDragControls();
-
-  const contentRef = useRef<HTMLDivElement>(null);
-  const touchStartY = useRef(0);
+  // Pull-to-dismiss + horizontal-swipe logic.
+  // Vertical pull-to-dismiss: DismissableSheet handles via contentHandlers.
+  // Horizontal swipe (tab switching): wrapped in handleContentTouchEnd below.
   const touchStartX = useRef(0);
-  const isPulling = useRef(false);
+  const touchStartY = useRef(0);
 
-  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    touchStartY.current = e.touches[0].clientY;
-    touchStartX.current = e.touches[0].clientX;
-    isPulling.current = false;
-  };
-
-  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!contentRef.current) return;
-    const scrollTop = contentRef.current.scrollTop;
-    const currentY = e.touches[0].clientY;
-
-    if (scrollTop <= 0) {
-      if (!isPulling.current) {
-        touchStartY.current = currentY;
-        isPulling.current = true;
-      }
-      const deltaY = currentY - touchStartY.current;
-      if (deltaY > 0) {
-        y.set(deltaY);
-      } else {
-        y.set(0);
-      }
-    } else {
-      isPulling.current = false;
-      if (typeof y.get() === "number" && (y.get() as number) > 0) y.set(0);
-    }
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
-    isPulling.current = false;
-    
-    // Check vertical pull
-    if (typeof y.get() === "number" && (y.get() as number) > 100) {
-      close();
-    } else if (typeof y.get() === "number" && (y.get() as number) > 0) {
-      animate(y, 0, { type: "spring", stiffness: 300, damping: 28 });
-    }
-
-    // Check horizontal swipe
+  /** Extended onTouchEnd: wraps DismissableSheet's handler to also detect horizontal swipe (QA R8). */
+  const buildTouchEndHandler = (
+    baseOnTouchEnd: (e: React.TouchEvent<HTMLDivElement>) => void
+  ) => (e: React.TouchEvent<HTMLDivElement>) => {
+    baseOnTouchEnd(e);
     const currentX = e.changedTouches[0].clientX;
     const currentY = e.changedTouches[0].clientY;
     const deltaX = currentX - touchStartX.current;
     const deltaY = currentY - touchStartY.current;
-    
-    // Only trigger swipe if horizontal movement is greater than vertical movement
     if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY)) {
       if (deltaX < 0 && activeTab === "my_vouchers") {
         setActiveTab("packages");
@@ -307,6 +263,15 @@ export default function VoucherModal() {
         setActiveTab("my_vouchers");
       }
     }
+  };
+
+  /** Capture touch start X/Y for horizontal swipe detection. */
+  const handleContentTouchStart = (
+    baseOnTouchStart: (e: React.TouchEvent<HTMLDivElement>) => void
+  ) => (e: React.TouchEvent<HTMLDivElement>) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+    baseOnTouchStart(e);
   };
 
   async function handleExchange(pkg: VoucherPackage) {
@@ -326,17 +291,8 @@ export default function VoucherModal() {
   const filteredVouchers = filterModalVouchers(vouchers);
   const filteredPackages = filterModalPackages(packages);
 
-  useEffect(() => {
-    if (open) {
-      document.body.style.overflow = "hidden";
-      // Reset tab when modal opens if needed
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [open]);
+  // Body scroll lock is handled by DismissableSheet.
+
 
   // Framer motion variants for tab switching
   const tabVariants = {
@@ -358,167 +314,144 @@ export default function VoucherModal() {
   const direction = activeTab === "my_vouchers" ? -1 : 1;
 
   return (
-    <AnimatePresence>
-      {open && (
+    <DismissableSheet
+      open={open}
+      onClose={close}
+      springDamping={28}
+      springStiffness={300}
+      initialAnimation={{ opacity: 0, y: 40 }}
+      animateAnimation={{ opacity: 1, y: 0 }}
+      exitAnimation={{ opacity: 0, y: 40 }}
+      backdropClassName="bg-black/50 backdrop-blur-sm"
+      zIndexBackdrop={40}
+      zIndexSheet={50}
+      sheetClassName="fixed inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center p-0 md:p-4"
+      dragHandleContent={
+        <div className="w-full flex justify-center pt-3 pb-1 md:hidden">
+          <div className="w-12 h-1.5 bg-border/60 rounded-full" />
+        </div>
+      }
+    >
+      {({ onTouchStart, onTouchMove, onTouchEnd, ref: contentRef }) => (
         <>
-          {/* Backdrop */}
-          <motion.div
-            key="voucher-modal-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
-            onClick={close}
-          />
+          <div className="relative bg-background w-full md:max-w-2xl md:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col h-[85vh] md:max-h-[85vh]">
 
-          {/* Modal container */}
-          <motion.div
-            key="voucher-modal"
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 40 }}
-            transition={{ type: "spring", damping: 28, stiffness: 300 }}
-            style={{ y, scale, touchAction: "pan-y" }}
-            drag="y"
-            dragListener={false}
-            dragControls={dragControls}
-            dragConstraints={{ top: 0, bottom: 0 }}
-            dragElastic={0.2}
-            onDragEnd={(e, info) => {
-              if (info.offset.y > 100 || info.velocity.y > 300) close();
-            }}
-            className="fixed inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center z-50 p-0 md:p-4"
-          >
-            <div className="relative bg-background w-full md:max-w-2xl md:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col h-[85vh] md:max-h-[85vh]">
-
-              {/* Mobile Drag Handle */}
-              <div 
-                onPointerDown={(e) => dragControls.start(e)}
-                className="w-full flex justify-center pt-3 pb-1 md:hidden touch-none"
-              >
-                <div className="w-12 h-1.5 bg-border/60 rounded-full" />
+            {/* ── Sticky Header ── */}
+            <div className="bg-background md:rounded-t-2xl z-10 px-4 pt-2 md:pt-4 pb-3">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-serif text-lg font-bold text-primary">Ví Voucher 🎁</h2>
+                <button
+                  onClick={close}
+                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-secondary/60 transition text-muted-foreground"
+                  aria-label="Đóng"
+                >
+                  <X size={18} />
+                </button>
               </div>
-
-              {/* ── Sticky Header ── */}
-              <div 
-                onPointerDown={(e) => dragControls.start(e)}
-                className="bg-background md:rounded-t-2xl z-10 px-4 pt-2 md:pt-4 pb-3 touch-none"
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="font-serif text-lg font-bold text-primary">Ví Voucher 🎁</h2>
-                  <button
-                    onClick={close}
-                    className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-secondary/60 transition text-muted-foreground"
-                    aria-label="Đóng"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-                {/* Points badge */}
-                <div className="inline-flex items-center gap-1.5 bg-primary/5 border border-primary/20 rounded-full px-3 py-1.5 text-sm font-bold text-primary">
-                  <Star size={14} className="text-amber-500" />
-                  <span>Điểm của bạn: {(points ?? 0).toLocaleString("vi-VN")} 🐟</span>
-                </div>
-              </div>
-
-              {/* ── Text Tabs ── */}
-              <div className="px-4 border-b border-border/50">
-                <div className="flex gap-6">
-                  <button
-                    onClick={() => setActiveTab("my_vouchers")}
-                    className={cn(
-                      "pb-3 text-sm font-bold transition-all border-b-2 relative -mb-[1px]",
-                      activeTab === "my_vouchers" 
-                        ? "border-primary text-primary" 
-                        : "border-transparent text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    Voucher của tôi {filteredVouchers.length > 0 && `(${filteredVouchers.length})`}
-                  </button>
-                  <button
-                    onClick={() => setActiveTab("packages")}
-                    className={cn(
-                      "pb-3 text-sm font-bold transition-all border-b-2 relative -mb-[1px]",
-                      activeTab === "packages" 
-                        ? "border-primary text-primary" 
-                        : "border-transparent text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    Đổi thưởng
-                  </button>
-                </div>
-              </div>
-
-              {/* ── Scrollable Body ── */}
-              <div 
-                ref={contentRef}
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-                className="overflow-y-auto overscroll-contain flex-1 relative"
-              >
-                {loading ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-                    <Loader2 size={28} className="animate-spin text-primary" />
-                    <p className="text-sm">Đang tải...</p>
-                  </div>
-                ) : (
-                  <AnimatePresence mode="wait" custom={direction}>
-                    <motion.div
-                      key={activeTab}
-                      custom={direction}
-                      variants={tabVariants}
-                      initial="initial"
-                      animate="animate"
-                      exit="exit"
-                      className="absolute inset-0 px-4 py-4 h-max"
-                    >
-                      {activeTab === "my_vouchers" ? (
-                        /* Section 1: My Vouchers */
-                        <div>
-                          {filteredVouchers.length === 0 ? (
-                            <div className="rounded-2xl border border-dashed border-border/60 bg-secondary/10 py-16 flex flex-col items-center gap-2 text-center mt-4">
-                              <Ticket size={32} className="text-primary/30" />
-                              <p className="text-sm font-bold text-primary/60">Bạn chưa có voucher nào</p>
-                              <p className="text-xs text-muted-foreground">Qua tab Đổi thưởng để lấy voucher nhé!</p>
-                            </div>
-                          ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-8">
-                              {filteredVouchers.map((v) => (
-                                <VoucherCard key={v.id} voucher={v} onShowQr={setQrVoucher} />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        /* Section 2: Exchange Packages */
-                        <div>
-                          {filteredPackages.length === 0 ? (
-                            <div className="rounded-2xl border border-dashed border-border/60 bg-secondary/10 py-16 flex flex-col items-center gap-2 text-center mt-4">
-                              <Gift size={32} className="text-primary/30" />
-                              <p className="text-sm font-bold text-primary/60">Chưa có gói đổi thưởng nào</p>
-                            </div>
-                          ) : (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-8">
-                              {filteredPackages.map((pkg) => (
-                                <PackageCard
-                                  key={pkg.id}
-                                  pkg={pkg}
-                                  userBalance={points ?? 0}
-                                  onExchange={handleExchange}
-                                  isExchanging={exchangingId === pkg.id}
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </motion.div>
-                  </AnimatePresence>
-                )}
+              {/* Points badge */}
+              <div className="inline-flex items-center gap-1.5 bg-primary/5 border border-primary/20 rounded-full px-3 py-1.5 text-sm font-bold text-primary">
+                <Star size={14} className="text-amber-500" />
+                <span>Điểm của bạn: {(points ?? 0).toLocaleString("vi-VN")} 🐟</span>
               </div>
             </div>
-          </motion.div>
+
+            {/* ── Text Tabs ── */}
+            <div className="px-4 border-b border-border/50">
+              <div className="flex gap-6">
+                <button
+                  onClick={() => setActiveTab("my_vouchers")}
+                  className={cn(
+                    "pb-3 text-sm font-bold transition-all border-b-2 relative -mb-[1px]",
+                    activeTab === "my_vouchers"
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Voucher của tôi {filteredVouchers.length > 0 && `(${filteredVouchers.length})`}
+                </button>
+                <button
+                  onClick={() => setActiveTab("packages")}
+                  className={cn(
+                    "pb-3 text-sm font-bold transition-all border-b-2 relative -mb-[1px]",
+                    activeTab === "packages"
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  Đổi thưởng
+                </button>
+              </div>
+            </div>
+
+            {/* ── Scrollable Body — touch handlers extended for horizontal swipe ── */}
+            <div
+              ref={contentRef}
+              onTouchStart={handleContentTouchStart(onTouchStart)}
+              onTouchMove={onTouchMove}
+              onTouchEnd={buildTouchEndHandler(onTouchEnd)}
+              className="overflow-y-auto overscroll-contain flex-1 relative"
+            >
+              {loading ? (
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+                  <Loader2 size={28} className="animate-spin text-primary" />
+                  <p className="text-sm">Đang tải...</p>
+                </div>
+              ) : (
+                <AnimatePresence mode="wait" custom={direction}>
+                  <motion.div
+                    key={activeTab}
+                    custom={direction}
+                    variants={tabVariants}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    className="absolute inset-0 px-4 py-4 h-max"
+                  >
+                    {activeTab === "my_vouchers" ? (
+                      /* Section 1: My Vouchers */
+                      <div>
+                        {filteredVouchers.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-border/60 bg-secondary/10 py-16 flex flex-col items-center gap-2 text-center mt-4">
+                            <Ticket size={32} className="text-primary/30" />
+                            <p className="text-sm font-bold text-primary/60">Bạn chưa có voucher nào</p>
+                            <p className="text-xs text-muted-foreground">Qua tab Đổi thưởng để lấy voucher nhé!</p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-8">
+                            {filteredVouchers.map((v) => (
+                              <VoucherCard key={v.id} voucher={v} onShowQr={setQrVoucher} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      /* Section 2: Exchange Packages */
+                      <div>
+                        {filteredPackages.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-border/60 bg-secondary/10 py-16 flex flex-col items-center gap-2 text-center mt-4">
+                            <Gift size={32} className="text-primary/30" />
+                            <p className="text-sm font-bold text-primary/60">Chưa có gói đổi thưởng</p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-8">
+                            {filteredPackages.map((pkg) => (
+                              <PackageCard
+                                key={pkg.id}
+                                pkg={pkg}
+                                userBalance={points ?? 0}
+                                onExchange={handleExchange}
+                                isExchanging={exchangingId === pkg.id}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+              )}
+            </div>
+          </div>
 
           {/* QR Modal — stacked on top */}
           <AnimatePresence>
@@ -528,6 +461,6 @@ export default function VoucherModal() {
           </AnimatePresence>
         </>
       )}
-    </AnimatePresence>
+    </DismissableSheet>
   );
 }

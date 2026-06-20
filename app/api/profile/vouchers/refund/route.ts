@@ -84,15 +84,43 @@ export async function POST(req: NextRequest) {
 
     const menuItem = await prisma.menuItem.findUnique({
       where: { id: voucher.menu_item_id },
-      select: { is_available: true, name: true },
+      include: { 
+        sizes: true,
+        fusionAllowedPowders: true
+      },
     });
 
+    let canRefund = false;
+
     if (!menuItem) {
-      // Item deleted entirely — refund is allowed
-    } else if (menuItem.is_available) {
+      canRefund = true;
+    } else if (!menuItem.is_available) {
+      canRefund = true;
+    } else {
+      // Item is available. Check size and powder.
+      const sizeRow = menuItem.sizes.find(s => s.size === voucher.size);
+      if (!sizeRow || sizeRow.base_price_vnd === null) {
+        canRefund = true;
+      } else if (voucher.matcha_powder_id) {
+        const powder = await prisma.matchaPowder.findUnique({
+          where: { id: voucher.matcha_powder_id }
+        });
+        
+        if (!powder || !powder.is_available) {
+          canRefund = true;
+        } else if (menuItem.category === "fusion" && voucher.matcha_powder_id !== menuItem.default_powder_id) {
+          const allowedIds = menuItem.fusionAllowedPowders.map((p) => p.powder_id);
+          if (!allowedIds.includes(voucher.matcha_powder_id)) {
+            canRefund = true;
+          }
+        }
+      }
+    }
+
+    if (!canRefund) {
       return NextResponse.json(
         {
-          error: `Item "${menuItem.name}" is still available. Refund only allowed when item is no longer sold.`,
+          error: `Item "${menuItem?.name || 'Unknown'}" and its configuration are still available. Refund only allowed when the item is no longer sold.`,
           code: "CONFLICT",
         },
         { status: 409 }

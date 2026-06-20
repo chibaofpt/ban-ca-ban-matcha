@@ -30,7 +30,12 @@ app/                              # Next.js App Router — entry points only, ze
   (admin-shell)/
     layout.tsx                    # Shared shell: top bar + bottom tab bar
     admin/                        # ADMIN only
-      menu/page.tsx               # → src/views/admin/AdminMenuPage
+      menu/
+        layout.tsx                # MenuSubTabs wrapper (renders sub-tab bar)
+        page.tsx                  # → src/views/admin/AdminMenuPage
+        powders/page.tsx          # → src/views/admin/AdminPowderPage
+        addons/page.tsx           # Placeholder — Addon Groups CRUD (future)
+        milk-types/page.tsx       # Placeholder — Milk Types CRUD (future)
       voucher-packages/page.tsx   # → src/views/admin/AdminVoucherPackagesPage
       points-log/page.tsx         # → src/views/admin/AdminPointsLogPage
     staff/                        # STAFF or ADMIN
@@ -117,8 +122,10 @@ src/                              # Frontend — never import lib/ from here
       PhoneInput.tsx
       PasswordInput.tsx
     admin/
-      MenuItemForm.tsx
+      AdminMenuPage.tsx
       MenuItemCard.tsx
+      MenuItemModal.tsx
+      MenuSubTabs.tsx             # Horizontal sub-tab bar for /admin/menu/*
       VoucherPackageForm.tsx
       PointsLogTable.tsx
       PowderForm.tsx

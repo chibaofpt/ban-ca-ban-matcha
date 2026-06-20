@@ -6,6 +6,7 @@ import AuthGuardProvider from "@/src/components/common/AuthGuardProvider";
 import StoreStatusBanner from "@/src/components/common/StoreStatusBanner";
 import ReactQueryProvider from "@/src/components/common/ReactQueryProvider";
 import { Toaster } from "sonner";
+import { RenderStatsOverlay } from "@/src/components/dev/RenderStatsOverlay";
 import "./globals.css";
 
 export const viewport: Viewport = {
@@ -94,6 +95,9 @@ export default function RootLayout({
               {children}
             </main>
             <Toaster richColors position="top-center" />
+            {process.env.NODE_ENV === "development" && (
+              <RenderStatsOverlay componentIds={["CartDrawer", "ProductModal"]} />
+            )}
           </AuthGuardProvider>
         </ReactQueryProvider>
       </body>
