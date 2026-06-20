@@ -148,17 +148,17 @@ export default function MenuPage() {
 
           <h1 className="font-serif text-2xl md:text-3xl font-bold text-primary">Menu</h1>
 
-          {isLoggedIn ? (
-            <button
-              onClick={openVoucherModal}
-              className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-amber-500 to-orange-500 shadow-sm shadow-orange-500/20 px-3.5 py-2.5 rounded-xl hover:scale-105 transition-transform"
-            >
-              <Gift size={14} />
-              <span>Đổi quà {points !== null && `(${points} cá)`}</span>
-            </button>
-          ) : (
-            <div className="w-10" />
-          )}
+          <button
+            onClick={openVoucherModal}
+            className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-amber-500 to-orange-500 shadow-sm shadow-orange-500/20 px-3.5 py-2.5 rounded-xl hover:scale-105 transition-transform cursor-pointer"
+          >
+            <Gift size={14} />
+            <span>
+              {isLoggedIn
+                ? `Đổi quà${points !== null ? ` (${points} cá)` : ''}`
+                : 'Ưu đãi'}
+            </span>
+          </button>
         </div>
 
         {/* Sync drag position down to TabBar */}

@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DismissableSheet } from "@/src/components/ui/DismissableSheet";
-import { X, QrCode, Star, Clock, Loader2, Ticket, Gift } from "lucide-react";
+import { X, QrCode, Star, Clock, Loader2, Ticket, Gift, LogIn } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/src/utils/cn";
 
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
 import { useIsLoggedIn } from "@/src/lib/store/authStore";
+import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
 import { useCustomerVouchers } from "@/src/hooks/useCustomerVouchers";
 import { useVoucherPackages } from "@/src/hooks/useVoucherPackages";
@@ -230,16 +231,28 @@ function PackageCard({
 export default function VoucherModal() {
   const { open, close } = useVoucherModalStore();
   const isLoggedIn = useIsLoggedIn();
+  const openLogin = useAuthModalStore((s) => s.openLogin);
   const { data: points } = useCustomerPoints();
 
+  // Vouchers: only for logged-in users
   const { data: vouchers = [], isLoading: vLoading } = useCustomerVouchers({ enabled: open && isLoggedIn });
-  const { data: packages = [], isLoading: pLoading } = useVoucherPackages({ enabled: open && isLoggedIn });
+  // Packages: always fetch when open — public API, works for guests too
+  const { data: packages = [], isLoading: pLoading } = useVoucherPackages({ enabled: open });
   const exchangeMutation = useExchangeVoucher();
 
-  const loading = vLoading || pLoading;
+  const loading = isLoggedIn ? (vLoading || pLoading) : pLoading;
   const [exchangingId, setExchangingId] = useState<string | null>(null);
   const [qrVoucher, setQrVoucher] = useState<MyVoucher | null>(null);
+
+  // Guests default to "packages" tab; logged-in users default to "my_vouchers"
   const [activeTab, setActiveTab] = useState<"my_vouchers" | "packages">("my_vouchers");
+
+  // When modal opens, set the correct default tab based on login state
+  useEffect(() => {
+    if (open) {
+      setActiveTab(isLoggedIn ? "my_vouchers" : "packages");
+    }
+  }, [open, isLoggedIn]);
 
   // Pull-to-dismiss + horizontal-swipe logic.
   // Vertical pull-to-dismiss: DismissableSheet handles via contentHandlers.
@@ -275,6 +288,12 @@ export default function VoucherModal() {
   };
 
   async function handleExchange(pkg: VoucherPackage) {
+    // Guest: prompt login instead of exchanging
+    if (!isLoggedIn) {
+      close();
+      openLogin();
+      return;
+    }
     setExchangingId(pkg.id);
     try {
       await exchangeMutation.mutateAsync(pkg.id);
@@ -292,7 +311,6 @@ export default function VoucherModal() {
   const filteredPackages = filterModalPackages(packages);
 
   // Body scroll lock is handled by DismissableSheet.
-
 
   // Framer motion variants for tab switching
   const tabVariants = {
@@ -339,7 +357,7 @@ export default function VoucherModal() {
             {/* ── Sticky Header ── */}
             <div className="bg-background md:rounded-t-2xl z-10 px-4 pt-2 md:pt-4 pb-3">
               <div className="flex items-center justify-between mb-3">
-                <h2 className="font-serif text-lg font-bold text-primary">Ví Voucher 🎁</h2>
+                <h2 className="font-serif text-lg font-bold text-primary">Ưu đãi 🎁</h2>
                 <button
                   onClick={close}
                   className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-secondary/60 transition text-muted-foreground"
@@ -348,27 +366,32 @@ export default function VoucherModal() {
                   <X size={18} />
                 </button>
               </div>
-              {/* Points badge */}
-              <div className="inline-flex items-center gap-1.5 bg-primary/5 border border-primary/20 rounded-full px-3 py-1.5 text-sm font-bold text-primary">
-                <Star size={14} className="text-amber-500" />
-                <span>Điểm của bạn: {(points ?? 0).toLocaleString("vi-VN")} 🐟</span>
-              </div>
+              {/* Points badge — logged-in only */}
+              {isLoggedIn && (
+                <div className="inline-flex items-center gap-1.5 bg-primary/5 border border-primary/20 rounded-full px-3 py-1.5 text-sm font-bold text-primary">
+                  <Star size={14} className="text-amber-500" />
+                  <span>Điểm của bạn: {(points ?? 0).toLocaleString("vi-VN")} 🐟</span>
+                </div>
+              )}
             </div>
 
             {/* ── Text Tabs ── */}
             <div className="px-4 border-b border-border/50">
               <div className="flex gap-6">
-                <button
-                  onClick={() => setActiveTab("my_vouchers")}
-                  className={cn(
-                    "pb-3 text-sm font-bold transition-all border-b-2 relative -mb-[1px]",
-                    activeTab === "my_vouchers"
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  Voucher của tôi {filteredVouchers.length > 0 && `(${filteredVouchers.length})`}
-                </button>
+                {/* "Voucher của tôi" tab hidden for guests */}
+                {isLoggedIn && (
+                  <button
+                    onClick={() => setActiveTab("my_vouchers")}
+                    className={cn(
+                      "pb-3 text-sm font-bold transition-all border-b-2 relative -mb-[1px]",
+                      activeTab === "my_vouchers"
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Voucher của tôi {filteredVouchers.length > 0 && `(${filteredVouchers.length})`}
+                  </button>
+                )}
                 <button
                   onClick={() => setActiveTab("packages")}
                   className={cn(
@@ -407,8 +430,8 @@ export default function VoucherModal() {
                     exit="exit"
                     className="absolute inset-0 px-4 py-4 h-max"
                   >
-                    {activeTab === "my_vouchers" ? (
-                      /* Section 1: My Vouchers */
+                    {activeTab === "my_vouchers" && isLoggedIn ? (
+                      /* Section 1: My Vouchers (logged-in only) */
                       <div>
                         {filteredVouchers.length === 0 ? (
                           <div className="rounded-2xl border border-dashed border-border/60 bg-secondary/10 py-16 flex flex-col items-center gap-2 text-center mt-4">
@@ -425,8 +448,24 @@ export default function VoucherModal() {
                         )}
                       </div>
                     ) : (
-                      /* Section 2: Exchange Packages */
+                      /* Section 2: Exchange Packages (public) */
                       <div>
+                        {/* Guest login prompt at the top of packages tab */}
+                        {!isLoggedIn && (
+                          <div className="rounded-2xl bg-primary/5 border border-primary/15 px-4 py-3 flex items-center gap-3 mb-4">
+                            <LogIn size={18} className="text-primary shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-primary leading-tight">Đăng nhập để đổi quà</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">Tích điểm mỗi đơn, đổi voucher bất cứ lúc nào</p>
+                            </div>
+                            <button
+                              onClick={() => { close(); openLogin(); }}
+                              className="shrink-0 text-xs font-bold bg-primary text-white px-3 py-1.5 rounded-lg hover:bg-primary/90 transition cursor-pointer"
+                            >
+                              Đăng nhập
+                            </button>
+                          </div>
+                        )}
                         {filteredPackages.length === 0 ? (
                           <div className="rounded-2xl border border-dashed border-border/60 bg-secondary/10 py-16 flex flex-col items-center gap-2 text-center mt-4">
                             <Gift size={32} className="text-primary/30" />
