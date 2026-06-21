@@ -12,7 +12,7 @@ interface PointsResponse {
  * Tự động cache 5 phút. Để update lại điểm sau khi đặt hàng hoặc đổi voucher,
  * sử dụng: queryClient.invalidateQueries({ queryKey: ["customer", "points"] })
  */
-export function useCustomerPoints() {
+export function useCustomerPoints(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["customer", "points"],
     queryFn: async () => {
@@ -20,5 +20,6 @@ export function useCustomerPoints() {
       return res.data.data.points_balance;
     },
     staleTime: 5 * 60 * 1000,
+    enabled: options?.enabled,
   });
 }

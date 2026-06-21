@@ -576,12 +576,11 @@ const CartDrawer = () => {
             confirmLabel="Đặt hàng"
             isDestructive={false}
           />
+          {/* Product Modal overlay for edit */}
+          <EditModalOverlay menuItems={menuItems} latteItems={menuData?.latte ?? []} allVouchers={allVouchers} />
         </Drawer.Content>
       </Drawer.Portal>
     </Drawer.Root>
-
-    {/* Product Modal overlay for edit */}
-    <EditModalOverlay menuItems={menuItems} latteItems={menuData?.latte ?? []} allVouchers={allVouchers} />
     </>
     </Profiler>
   );

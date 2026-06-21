@@ -2,10 +2,17 @@
 
 import React from "react";
 import { motion } from "framer-motion";
+import { usePathname } from "next/navigation";
 
 const Footer: React.FC = () => {
+  const pathname = usePathname();
+
+  if (pathname.startsWith("/admin") || pathname.startsWith("/staff") || pathname.startsWith("/profile")) {
+    return null;
+  }
+
   return (
-    <footer className="py-24 px-6 bg-[#fdfcf7] border-t border-border">
+    <footer className="py-24 px-6 bg-[#fdfcf7] border-t border-border snap-end snap-always">
       <div className="max-w-6xl mx-auto flex flex-col items-center">
         <motion.div
            initial={{ opacity: 0, y: 20 }}

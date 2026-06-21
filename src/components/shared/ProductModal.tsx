@@ -86,28 +86,43 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
   const [selectedProductVoucherId, setSelectedProductVoucherId] = useState<string | null>(() => editingItem?.productVoucherId ?? null);
   const [selectedAddonVoucherIds, setSelectedAddonVoucherIds] = useState<string[]>(() => editingItem?.addonVouchers?.map(v => v.voucherId) ?? []);
 
+  const cartItems = useCartStore(s => s.items);
+
+  const usedVoucherIds = useMemo(() => {
+    const used = new Set<string>();
+    cartItems.forEach(cartItem => {
+      if (cartItem.cartId === editingItem?.cartId) return; // Skip current item
+      if (cartItem.productVoucherId) used.add(cartItem.productVoucherId);
+      if (cartItem.addonVouchers) {
+        cartItem.addonVouchers.forEach(v => used.add(v.voucherId));
+      }
+    });
+    return used;
+  }, [cartItems, editingItem?.cartId]);
+
   const applicableProductVouchers = useMemo(() => {
-    return filterUsableVouchers(availableVouchers ?? [], "PRODUCT").filter(v => v.menu_item_id === item.id);
-  }, [availableVouchers, item.id]);
+    return filterUsableVouchers(availableVouchers ?? [], "PRODUCT").filter(v => v.menu_item_id === item.id && !usedVoucherIds.has(v.id));
+  }, [availableVouchers, item.id, usedVoucherIds]);
 
   const applicableAddonVouchers = useMemo(() => {
     const currentAddonIds = new Set([
       ...selectedOptionIds,
       ...item.addon_groups.filter(g => g.type === "QUANTITY" && (quantityMap[g.id] ?? 0) > 0).map(g => g.options[0]?.id).filter(Boolean)
     ]);
-    return filterUsableVouchers(availableVouchers ?? [], "ADDON").filter(v => v.addon_option_id !== null && currentAddonIds.has(v.addon_option_id));
-  }, [availableVouchers, selectedOptionIds, quantityMap, item.addon_groups]);
+    return filterUsableVouchers(availableVouchers ?? [], "ADDON").filter(v => v.addon_option_id !== null && currentAddonIds.has(v.addon_option_id) && !usedVoucherIds.has(v.id));
+  }, [availableVouchers, selectedOptionIds, quantityMap, item.addon_groups, usedVoucherIds]);
 
   const isProductVoucherApplied = selectedProductVoucherId !== null || freeVoucherId !== undefined;
+  const isVoucherApplied = isProductVoucherApplied || selectedAddonVoucherIds.length > 0;
   
   useEffect(() => {
-    if (isProductVoucherApplied && quantity !== 1) {
+    if (isVoucherApplied && quantity !== 1) {
       setQuantity(1);
     }
-  }, [isProductVoucherApplied, quantity]);
+  }, [isVoucherApplied, quantity]);
 
   // ── Edit Validation ──────────────────────────────────────────────────────
-  const hideQuantityPicker = isProductVoucherApplied || selectedAddonVoucherIds.length > 0;
+  const lockQuantity = isVoucherApplied;
   
   useEffect(() => {
     if (!editingItem) return;
@@ -210,14 +225,15 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
 
     const cartItemData = {
       menuItemId: item.id, name: item.name, category: item.category, imageUrl: item.image_url,
-      size: selectedSize, unitPrice: finalUnitPrice, quantity, sweetness, iceOption, coldwhisk,
+      size: selectedSize, unitPrice: currentPriceContext.unitPrice, quantity, sweetness, iceOption, coldwhisk,
       note, selectedOptionIds, quantityMap, addonsPrice: currentPriceContext.addonsCost, addonPrices: currentPriceContext.addonPricesMap, quantityAddonOptions,
       selectedPowderId: isLatte ? undefined : selectedPowderId,
       selectedMilkTypeId: isLatte ? selectedMilkId : undefined,
       clientPriceVnd: finalUnitPrice,
       originalClientPriceVnd: currentPriceContext.unitPrice,
       addonVouchers: finalAddonVouchers,
-      ...(effectiveFreeVoucherId ? { productVoucherId: effectiveFreeVoucherId, productVoucherDiscountVnd: effectiveFreeCoveredPrice } : {}),
+      productVoucherId: effectiveFreeVoucherId || undefined,
+      productVoucherDiscountVnd: effectiveFreeVoucherId ? effectiveFreeCoveredPrice : undefined,
     };
 
     if (onConfirm) {
@@ -228,7 +244,24 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
       } as CartItem);
     } else if (editingItem) {
       // Customer Edit mode
-      updateItem(editingItem.cartId, cartItemData);
+      const isVoucherApplied = effectiveFreeVoucherId !== undefined || finalAddonVouchers.length > 0;
+      if (editingItem.quantity > 1 && isVoucherApplied) {
+        // Split item: 1 item with voucher, remainder without voucher
+        updateItem(editingItem.cartId, { ...cartItemData, quantity: 1 });
+        const remainderData = {
+          ...cartItemData,
+          cartId: crypto.randomUUID(),
+          quantity: editingItem.quantity - 1,
+          unitPrice: currentPriceContext.unitPrice,
+          clientPriceVnd: currentPriceContext.unitPrice,
+          productVoucherId: undefined,
+          productVoucherDiscountVnd: undefined,
+          addonVouchers: [],
+        };
+        addItem(remainderData as any);
+      } else {
+        updateItem(editingItem.cartId, cartItemData);
+      }
     } else {
       // Customer Add mode
       addItem(cartItemData as any);
@@ -560,9 +593,6 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
                         <p className="font-bold text-sm flex items-center gap-2 text-primary">
                           <Ticket size={14} className="text-orange-500" /> {v.package.name}
                         </p>
-                        {v.covered_price_vnd && (
-                          <p className="text-[11px] text-orange-600/80 mt-1 font-medium">Giảm tối đa {(v.covered_price_vnd / 1000).toLocaleString('vi-VN')}k</p>
-                        )}
                       </div>
                       {isSelected && <CheckCircle2 size={18} className="text-orange-500 shrink-0 ml-2" />}
                     </button>
@@ -581,7 +611,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
                     >
                       <div>
                         <p className="font-bold text-sm flex items-center gap-2 text-primary">
-                          <Ticket size={14} className="text-green-600" /> Free {v.addonOption?.label || "Topping"}
+                          <Ticket size={14} className="text-green-600" /> {v.package?.name || `Free ${v.addonOption?.label || "Topping"}`}
                         </p>
                       </div>
                       {isSelected && <CheckCircle2 size={18} className="text-green-600 shrink-0 ml-2" />}
@@ -598,7 +628,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
           totalCost={totalCost}
           quantity={quantity}
           setQuantity={setQuantity}
-          hideQuantityPicker={hideQuantityPicker}
+          hideQuantityPicker={lockQuantity}
           handleAddToCart={handleAddToCart}
           isEditing={!!editingItem}
         />

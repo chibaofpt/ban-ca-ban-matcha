@@ -1,5 +1,6 @@
 import React from "react";
 import { ShoppingBag } from "lucide-react";
+import { cn } from "@/src/utils/cn";
 
 interface ModalBottomCTAProps {
   totalCost: number;
@@ -30,19 +31,19 @@ export function ModalBottomCTA({
         </div>
 
         {/* Quantity Adjuster */}
-        {!hideQuantityPicker && (
-          <div className="flex items-center bg-[#d9e4d4] rounded-2xl overflow-hidden shrink-0">
-            <button
-              onClick={() => setQuantity(Math.max(1, quantity - 1))}
-              className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 transition-colors text-primary font-bold text-lg"
-            >−</button>
-            <span className="text-sm font-bold w-6 text-center text-primary">{quantity}</span>
-            <button
-              onClick={() => setQuantity(quantity + 1)}
-              className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 transition-colors text-primary font-bold text-lg"
-            >+</button>
-          </div>
-        )}
+        <div className={cn("flex items-center bg-[#d9e4d4] rounded-2xl overflow-hidden shrink-0", hideQuantityPicker ? "opacity-60" : "")}>
+          <button
+            onClick={() => setQuantity(Math.max(1, quantity - 1))}
+            disabled={hideQuantityPicker}
+            className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 disabled:active:bg-transparent transition-colors text-primary font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+          >−</button>
+          <span className="text-sm font-bold w-6 text-center text-primary">{quantity}</span>
+          <button
+            onClick={() => setQuantity(quantity + 1)}
+            disabled={hideQuantityPicker}
+            className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 disabled:active:bg-transparent transition-colors text-primary font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+          >+</button>
+        </div>
 
         {/* Add to Cart Button */}
         <button

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
 import Navbar from "@/src/components/common/Navbar";
+import Footer from "@/src/components/common/Footer";
 import AuthModal from "@/src/components/common/AuthModal";
 import AuthGuardProvider from "@/src/components/common/AuthGuardProvider";
 import StoreStatusBanner from "@/src/components/common/StoreStatusBanner";
@@ -82,10 +83,10 @@ export default function RootLayout({
   return (
     <html
       lang="vi"
-      className={`${inter.variable} ${playfair.variable} h-full antialiased scroll-smooth`}
+      className={`${inter.variable} ${playfair.variable} h-full antialiased scroll-smooth scroll-pt-16 overflow-x-hidden`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-paper text-foreground font-sans overflow-x-hidden border-border transition-colors duration-300 text-ink">
+      <body className="min-h-full flex flex-col bg-paper text-foreground font-sans border-border transition-colors duration-300 text-ink">
         <ReactQueryProvider>
           <AuthGuardProvider>
             <Navbar />
@@ -94,6 +95,7 @@ export default function RootLayout({
               <StoreStatusBanner />
               {children}
             </main>
+            <Footer />
             <Toaster richColors position="top-center" />
             {process.env.NODE_ENV === "development" && (
               <RenderStatsOverlay componentIds={["CartDrawer", "ProductModal"]} />

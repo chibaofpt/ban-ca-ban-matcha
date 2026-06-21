@@ -22,6 +22,7 @@ import VoucherModal from '@/src/components/shared/VoucherModal';
 import { useVoucherModalStore } from '@/src/lib/store/voucherModalStore';
 import { useIsLoggedIn } from '@/src/lib/store/authStore';
 import { useCustomerPoints } from '@/src/hooks/useCustomerPoints';
+import { useVoucherPackages } from '@/src/hooks/useVoucherPackages';
 import { listMyVouchers } from '@/src/services/customerVoucherService';
 
 const swipeConfidenceThreshold = 10000;
@@ -40,8 +41,6 @@ export default function MenuPage() {
   const isLoggedIn = useIsLoggedIn();
   const openVoucherModal = useVoucherModalStore((s) => s.openModal);
   
-  const { data: points } = useCustomerPoints();
-
   const { data: menuRes, isLoading: menuLoading, isError: menuError } = useQuery({
     queryKey: ['menu'],
     queryFn: fetchMenu,
@@ -52,10 +51,17 @@ export default function MenuPage() {
     queryFn: fetchPowders,
   });
 
+  const isMenuLoaded = !!menuRes && !!powderRes;
+  const { data: packagesRes } = useVoucherPackages({ enabled: isMenuLoaded });
+
+  const isPackagesLoaded = !!packagesRes;
+
+  const { data: points } = useCustomerPoints({ enabled: isPackagesLoaded && isLoggedIn });
+
   const { data: vouchersData } = useQuery({
     queryKey: ['my_vouchers'],
     queryFn: listMyVouchers,
-    enabled: isLoggedIn,
+    enabled: isPackagesLoaded && isLoggedIn,
   });
 
   const loading = menuLoading || powderLoading;
@@ -169,7 +175,7 @@ export default function MenuPage() {
         <TabBar activeTab={activeTab} setActiveTab={handleTabChange} carouselX={carouselX} />
 
         {/* High-Performance Swipe Area (True Carousel without whileInView) */}
-        <div ref={containerRef} className="mt-2 flex-1 relative w-full overflow-hidden min-h-[500px]">
+        <div ref={containerRef} className="mt-2 flex-1 relative w-full overflow-hidden">
           {loading ? (
             <div className="flex flex-col gap-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-8 w-full">
               {[1, 2, 3, 4, 5, 6].map(i => (
@@ -184,12 +190,17 @@ export default function MenuPage() {
               dragConstraints={{ left: containerRef.current ? -containerRef.current.offsetWidth * 2 : -2000, right: 0 }}
               dragElastic={0.2}
               onDragEnd={handleDragEnd}
-              className="flex w-full touch-pan-y items-start"
+              className="relative w-full touch-pan-y"
             >
-              {tabsConfig.map((tab) => {
+              {tabsConfig.map((tab, idx) => {
                 const tabItems = getItemsForTab(tab.id);
+                const isActive = activeTab === tab.id;
                 return (
-                  <div key={tab.id} className="w-full flex-shrink-0 flex flex-col gap-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-8 pb-8 px-0.5">
+                  <div 
+                    key={tab.id} 
+                    className={`w-full pb-8 px-0.5 ${isActive ? "relative" : "absolute top-0"}`}
+                    style={{ left: `${idx * 100}%` }}
+                  >
                     {tabItems.length === 0 ? (
                       <div className="py-24 text-center text-primary/40 space-y-4 col-span-full">
                         <span className="text-6xl">🍲</span>
@@ -197,13 +208,15 @@ export default function MenuPage() {
                         <p className="text-sm">Thử tìm tên khác nhé</p>
                       </div>
                     ) : (
-                      tabItems.map((item, idx) => (
-                        <MenuCard
-                          key={item.id}
-                          item={item}
-                          onClick={handleItemClick}
-                        />
-                      ))
+                      <div className="flex flex-col gap-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-8">
+                        {tabItems.map((item) => (
+                          <MenuCard
+                            key={item.id}
+                            item={item}
+                            onClick={handleItemClick}
+                          />
+                        ))}
+                      </div>
                     )}
                   </div>
                 );
