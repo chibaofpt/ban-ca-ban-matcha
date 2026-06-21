@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useScroll, useMotionValueEvent } from "framer-motion";
 import {
   ShoppingBag,
   Menu,
@@ -23,12 +23,23 @@ import { logout as serverLogout } from "@/src/services/authService";
 
 /**
  * Navbar — fixed top bar with desktop links and mobile drawer.
- * Auth state and modal control come from Zustand stores (no Provider needed).
+ * Auto-hides on scroll down, shows on scroll up.
  */
 const Navbar = () => {
   const [open, setOpen] = useState(false);
+  const [hidden, setHidden] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+
+  const { scrollY } = useScroll();
+  useMotionValueEvent(scrollY, "change", (latest) => {
+    const previous = scrollY.getPrevious() || 0;
+    if (latest > previous && latest > 150) {
+      setHidden(true);
+    } else {
+      setHidden(false);
+    }
+  });
 
   // Auth
   const isLoggedIn = useAuthStore((s) => s.user !== null);
@@ -44,10 +55,8 @@ const Navbar = () => {
   }
 
   const handleLogout = async () => {
-    // Best-effort server-side logout — destroys session in DB and clears httpOnly cookies.
-    // Swallowed so a network error never blocks the UI.
     try { await serverLogout(); } catch { /* best-effort */ }
-    logout(); // clear Zustand + localStorage
+    logout();
     setOpen(false);
     router.push("/");
   };
@@ -64,9 +73,14 @@ const Navbar = () => {
   };
 
   return (
+    <>
     <motion.nav
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
+      variants={{
+        visible: { y: 0 },
+        hidden: { y: "-100%" },
+      }}
+      animate={hidden ? "hidden" : "visible"}
+      transition={{ duration: 0.3, ease: "easeInOut" }}
       className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-border/40"
     >
       <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-16">
@@ -196,20 +210,6 @@ const Navbar = () => {
         </div>
       </div>
 
-      {/* ── Mobile drawer overlay ── */}
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 top-16 z-40 bg-black/20 md:hidden"
-            onClick={close}
-          />
-        )}
-      </AnimatePresence>
-
       {/* ── Mobile drawer ── */}
       <AnimatePresence>
         {open && (
@@ -295,6 +295,21 @@ const Navbar = () => {
         )}
       </AnimatePresence>
     </motion.nav>
+
+    {/* ── Mobile drawer overlay ── */}
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 top-16 z-40 bg-black/20 md:hidden"
+          onClick={close}
+        />
+      )}
+    </AnimatePresence>
+    </>
   );
 };
 

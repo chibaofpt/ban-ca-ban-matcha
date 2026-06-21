@@ -21,6 +21,8 @@ import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
 import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
 import StaffCartItemCard from "./cart/StaffCartItemCard";
+import { VoucherCard, PackageCard } from "@/src/components/shared/VoucherCards";
+import type { VoucherPackage } from "@/src/services/customerVoucherService";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -58,24 +60,22 @@ interface StaffCartDrawerProps {
   onRemoveProduct?: (cartId: string) => void;
   onApplyAddon?: (cartId: string, voucher: MyVoucher) => void;
   onRemoveAddon?: (cartId: string, voucherId: string) => void;
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function discountLabel(v: MyVoucher): string {
-  if (v.discount_type === "PERCENT") return `Giảm ${v.discount_value}%`;
-  if (v.discount_type === "FIXED") return `Giảm 🐟 ${(v.discount_value ?? 0) / 1000} cá`;
-  return v.package.name;
+  productModalNode?: React.ReactNode;
+  onClearCart?: () => void;
+  availableVoucherPackages?: VoucherPackage[];
+  onExchangeVoucher?: (packageId: string) => void;
+  isExchanging?: boolean;
+  preventCloseOutside?: boolean;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export const StaffCartDrawer = React.memo(function StaffCartDrawer({
+export function StaffCartDrawer({
   isOpen,
   cart,
   discountVoucher,
   customerInfo,
-  isSubmitting,
+  isSubmitting = false,
   onClose,
   onRemove,
   onEditItem,
@@ -90,6 +90,12 @@ export const StaffCartDrawer = React.memo(function StaffCartDrawer({
   onRemoveProduct,
   onApplyAddon,
   onRemoveAddon,
+  productModalNode,
+  onClearCart,
+  availableVoucherPackages = [],
+  onExchangeVoucher,
+  isExchanging = false,
+  preventCloseOutside = false,
 }: StaffCartDrawerProps) {
   const { data: menuData } = useQuery({ queryKey: ["staff", "menu"], queryFn: fetchMenu });
   const { data: powderData } = useQuery({ queryKey: ["staff", "powders"], queryFn: fetchPowders });
@@ -150,20 +156,41 @@ export const StaffCartDrawer = React.memo(function StaffCartDrawer({
   return (
     <Drawer.Root 
       open={isOpen} 
+      dismissible={!preventCloseOutside}
       onOpenChange={(open) => {
         if (!open) handleClose();
       }}
     >
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <Drawer.Content className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl outline-none">
+        <Drawer.Content 
+          onInteractOutside={(e) => {
+            const target = e.target as HTMLElement;
+            // Prevent closing if the clicked element was removed from the DOM (e.g. clicking a button inside a modal that unmounts)
+            if (target && !document.contains(target)) {
+              e.preventDefault();
+              return;
+            }
+
+            if (
+              preventCloseOutside ||
+              document.querySelector('[data-confirm-modal="true"]') ||
+              document.querySelector('[data-prevent-drawer-close="true"]')
+            ) {
+              e.preventDefault();
+            }
+          }}
+          className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl outline-none"
+        >
           <div className="flex justify-center pt-3 pb-1 w-full shrink-0">
             <div className="w-12 h-1.5 bg-border rounded-full" />
           </div>
           <div className="flex items-center justify-between px-4 pt-2 pb-3 shrink-0 border-b border-border/40">
-            <h2 className="font-serif text-lg font-bold flex items-center gap-2">
-              Giỏ hàng <span className="bg-primary/10 text-primary text-xs px-2 py-0.5 rounded-full">{cart.reduce((sum, c) => sum + c.quantity, 0)}</span>
-            </h2>
+            <div className="flex items-center gap-3">
+              <h2 className="font-serif text-lg font-bold flex items-center gap-2">
+                Giỏ hàng <span className="bg-primary/10 text-primary text-xs px-2 py-0.5 rounded-full">{cart.reduce((sum, c) => sum + c.quantity, 0)}</span>
+              </h2>
+            </div>
             <button
               onClick={handleClose}
               className="w-8 h-8 rounded-full bg-secondary/50 flex items-center justify-center hover:bg-secondary transition"
@@ -218,7 +245,7 @@ export const StaffCartDrawer = React.memo(function StaffCartDrawer({
                <p className="font-medium text-sm">Giỏ hàng đang trống</p>
              </div>
           ) : (
-            cart.map((c) => {
+            [...cart].reverse().map((c) => {
               const productVouchersForItem = applicableProductVouchers.get(c.menuItemId) || [];
               const addonVouchersForItem = applicableAddonVouchersMap.get(c.cartId) || [];
               const hasMoreProductVouchers = !c.productVoucherId && productVouchersForItem.length > 0;
@@ -321,21 +348,36 @@ export const StaffCartDrawer = React.memo(function StaffCartDrawer({
               </div>
             </div>
 
-            <motion.button
-              whileTap={{ scale: 0.98 }}
-              onClick={onCheckout}
-              disabled={isSubmitting}
-              className="w-full bg-primary text-primary-foreground rounded-2xl h-12 font-bold text-sm shadow-md transition mt-4 flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="w-4 h-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" />
-                  Đang tạo đơn...
-                </>
-              ) : (
-                "Chốt đơn"
+            <div className="flex gap-3 mt-4">
+              {onClearCart && (
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  onClick={onClearCart}
+                  className="w-[30%] bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 rounded-2xl h-12 font-bold text-sm shadow-sm transition flex items-center justify-center shrink-0"
+                >
+                  Xoá tất cả
+                </motion.button>
               )}
-            </motion.button>
+              
+              <motion.button
+                whileTap={{ scale: 0.98 }}
+                onClick={onCheckout}
+                disabled={isSubmitting}
+                className={cn(
+                  "bg-primary text-primary-foreground rounded-2xl h-12 font-bold text-sm shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none shrink-0",
+                  onClearCart ? "w-[70%]" : "w-full"
+                )}
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="w-4 h-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" />
+                    Đang tạo...
+                  </>
+                ) : (
+                  "Chốt đơn"
+                )}
+              </motion.button>
+            </div>
           </div>
         )}
 
@@ -382,33 +424,25 @@ export const StaffCartDrawer = React.memo(function StaffCartDrawer({
                         const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && c.productVoucherId === v.id);
                         
                         return (
-                          <button
-                            key={v.id}
-                            disabled={isAlreadyUsed}
+                          <VoucherCard 
+                            key={v.id} 
+                            voucher={v}
+                            isDisabled={isAlreadyUsed}
+                            disabledReason={isAlreadyUsed ? "Đã dùng ở ly khác" : undefined}
                             onClick={() => {
                               if (isAlreadyUsed) return;
-                              if (isSelected) onRemoveProduct(activeItem.cartId);
-                              else onApplyProduct(activeItem.cartId, v);
+                              if (isSelected && onRemoveProduct) onRemoveProduct(activeItem.cartId);
+                              else if (!isSelected && onApplyProduct) onApplyProduct(activeItem.cartId, v);
                               setActiveItemForVoucher(null);
                             }}
-                            className={cn(
-                              "w-full flex items-center justify-between p-3.5 rounded-xl border text-left transition-colors",
-                              isSelected ? "bg-orange-50 border-orange-200" : isAlreadyUsed ? "opacity-40 bg-secondary/30 border-transparent cursor-not-allowed" : "bg-card border-border hover:bg-orange-50/30"
-                            )}
-                          >
-                            <div>
-                              <p className="font-bold text-sm flex items-center gap-2">
-                                <Ticket size={14} className="text-orange-500" /> {v.package.name}
-                              </p>
-                              {savings > 0 && !isAlreadyUsed && (
-                                <p className="text-xs text-orange-600 mt-1 font-medium">Giảm {(savings / 1000).toLocaleString('vi-VN')}k</p>
-                              )}
-                              {isAlreadyUsed && (
-                                <p className="text-[10px] text-muted-foreground mt-1 italic">Đã dùng ở ly khác</p>
-                              )}
-                            </div>
-                            {isSelected && <CheckCircle2 size={18} className="text-orange-500" />}
-                          </button>
+                            actionNode={
+                              isSelected ? (
+                                <CheckCircle2 className="w-5 h-5 text-orange-500 shrink-0 ml-2" />
+                              ) : (
+                                <div className="w-5 h-5 rounded-full border border-border/60 shrink-0 ml-2" />
+                              )
+                            }
+                          />
                         );
                       })}
                     </div>
@@ -425,30 +459,25 @@ export const StaffCartDrawer = React.memo(function StaffCartDrawer({
                         const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && c.addonVouchers?.some(av => av.voucherId === v.id));
                         
                         return (
-                          <button
-                            key={v.id}
-                            disabled={isAlreadyUsed}
+                          <VoucherCard 
+                            key={v.id} 
+                            voucher={v}
+                            isDisabled={isAlreadyUsed}
+                            disabledReason={isAlreadyUsed ? "Đã dùng ở ly khác" : undefined}
                             onClick={() => {
                               if (isAlreadyUsed) return;
-                              if (isSelected) onRemoveAddon(activeItem.cartId, v.id);
-                              else onApplyAddon(activeItem.cartId, v);
+                              if (isSelected && onRemoveAddon) onRemoveAddon(activeItem.cartId, v.id);
+                              else if (!isSelected && onApplyAddon) onApplyAddon(activeItem.cartId, v);
                               setActiveItemForVoucher(null);
                             }}
-                            className={cn(
-                              "w-full flex items-center justify-between p-3.5 rounded-xl border text-left transition-colors",
-                              isSelected ? "bg-green-50 border-green-200" : isAlreadyUsed ? "opacity-40 bg-secondary/30 border-transparent cursor-not-allowed" : "bg-card border-border hover:bg-green-50/30"
-                            )}
-                          >
-                            <div>
-                              <p className="font-bold text-sm flex items-center gap-2">
-                                <Ticket size={14} className="text-green-600" /> Free {v.addonOption?.label || "Topping"}
-                              </p>
-                              {isAlreadyUsed && (
-                                <p className="text-[10px] text-muted-foreground mt-1 italic">Đã dùng ở ly khác</p>
-                              )}
-                            </div>
-                            {isSelected && <CheckCircle2 size={18} className="text-green-600" />}
-                          </button>
+                            actionNode={
+                              isSelected ? (
+                                <CheckCircle2 className="w-5 h-5 text-orange-500 shrink-0 ml-2" />
+                              ) : (
+                                <div className="w-5 h-5 rounded-full border border-border/60 shrink-0 ml-2" />
+                              )
+                            }
+                          />
                         )
                       })}
                     </div>
@@ -484,41 +513,53 @@ export const StaffCartDrawer = React.memo(function StaffCartDrawer({
                   <p className="text-center text-sm text-muted-foreground mt-10">Không có mã giảm giá nào</p>
                 )}
                 {discountVouchers.map(v => {
-                  const isSelected = selectedDiscountIds.includes(v.id);
-                  const hasPercent = selectedDiscountIds.some(id => {
+                  const isSelected = selectedDiscountIds?.includes(v.id) ?? false;
+                  const hasPercent = (discountVoucher?.discount_type === "PERCENT") || (selectedDiscountIds?.some(id => {
                     const found = discountVouchers.find(dv => dv.id === id);
                     return found?.discount_type === "PERCENT";
-                  });
+                  }) ?? false);
                   // Disable if trying to add a second PERCENT voucher
                   const isDisabled = !isSelected && v.discount_type === "PERCENT" && hasPercent;
 
                   return (
-                    <button
-                      key={v.id}
-                      onClick={() => !isDisabled && onToggleDiscount(v.id)}
-                      disabled={isDisabled}
-                      className={cn(
-                        "w-full flex items-center justify-between p-3.5 rounded-xl border text-left transition-colors",
-                        isSelected ? "bg-orange-50 border-orange-200" : isDisabled ? "opacity-50 cursor-not-allowed bg-secondary/30" : "bg-card border-border hover:bg-orange-50/30"
-                      )}
-                    >
-                      <div>
-                        <p className="font-bold text-sm text-primary flex items-center gap-2">
-                          <Ticket size={14} className="text-orange-500" /> {discountLabel(v)}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{v.package.description}</p>
-                      </div>
-                      <div className="shrink-0 ml-3">
-                        <div className={cn(
-                          "w-5 h-5 rounded-full border-2 flex items-center justify-center",
-                          isSelected ? "border-orange-500 bg-orange-500" : "border-muted-foreground"
-                        )}>
-                          {isSelected && <CheckCircle2 size={14} className="text-white" strokeWidth={3} />}
-                        </div>
-                      </div>
-                    </button>
+                    <VoucherCard 
+                      key={v.id} 
+                      voucher={v}
+                      isDisabled={isDisabled}
+                      disabledReason={isDisabled ? "Đã chọn 1 mã giảm %" : undefined}
+                      onClick={() => !isDisabled && onToggleDiscount && onToggleDiscount(v.id)}
+                      actionNode={
+                        isSelected ? (
+                          <CheckCircle2 className="w-5 h-5 text-orange-500 shrink-0 ml-2" />
+                        ) : (
+                          <div className="w-5 h-5 rounded-full border border-border/60 shrink-0 ml-2" />
+                        )
+                      }
+                    />
                   );
                 })}
+
+                {/* Section 2: Đổi điểm lấy ưu đãi (only for Admin) */}
+                {availableVoucherPackages.length > 0 && customerInfo?.type === "existing" && (
+                  <div className="mt-6">
+                    <div className="flex items-center gap-2 mb-3">
+                      <h4 className="font-bold text-primary text-sm">Đổi điểm lấy ưu đãi</h4>
+                      <span className="bg-yellow-100 text-yellow-800 text-[9px] px-1.5 py-0.5 rounded-sm font-bold uppercase tracking-wider">Cho khách</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 gap-3">
+                      {availableVoucherPackages.map((p) => (
+                        <PackageCard 
+                          key={p.id}
+                          pkg={p}
+                          userBalance={customerInfo.data.points_balance}
+                          onExchange={() => onExchangeVoucher && onExchangeVoucher(p.id)}
+                          isExchanging={isExchanging}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="p-4 border-t border-border shrink-0 bg-card">
@@ -532,9 +573,13 @@ export const StaffCartDrawer = React.memo(function StaffCartDrawer({
             </motion.div>
           )}
         </AnimatePresence>
+        
+        {/* Product Modal Node for Staff */}
+        {productModalNode}
+        
         </>
         </Drawer.Content>
       </Drawer.Portal>
     </Drawer.Root>
   );
-});
+}

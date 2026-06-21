@@ -36,11 +36,15 @@ interface ProductModalProps {
   availableVouchers?: MyVoucher[];
   // ── Drawer UI ──
   nested?: boolean;
+  currentCartItems?: CartItem[];
 }
 
 // Extracted OptionCard, SizeSelector, MilkSelector, PowderSelector are imported
 
-const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, editingItem, onConfirm, freeVoucherId, freeVoucherCoveredPriceVnd, availableVouchers, nested = false }) => {
+const BaseModal: React.FC<ProductModalProps> = ({ 
+  item, latteItems, onClose, editingItem, onConfirm, freeVoucherId, 
+  freeVoucherCoveredPriceVnd, availableVouchers, nested = false, currentCartItems 
+}) => {
   const [isOpen, setIsOpen] = useState(true);
   // Global state
   const addItem = useCartStore(s => s.addItem);
@@ -86,7 +90,8 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
   const [selectedProductVoucherId, setSelectedProductVoucherId] = useState<string | null>(() => editingItem?.productVoucherId ?? null);
   const [selectedAddonVoucherIds, setSelectedAddonVoucherIds] = useState<string[]>(() => editingItem?.addonVouchers?.map(v => v.voucherId) ?? []);
 
-  const cartItems = useCartStore(s => s.items);
+  const storeCartItems = useCartStore(s => s.items);
+  const cartItems = currentCartItems ?? storeCartItems;
 
   const usedVoucherIds = useMemo(() => {
     const used = new Set<string>();
@@ -649,7 +654,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
           </Dialog.Portal>
         </Dialog.Root>
       ) : (
-        <Drawer.Root open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }} nested={nested}>
+        <Drawer.Root open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }} nested={nested} repositionInputs={false}>
           <Drawer.Portal>
             <Drawer.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]" />
             <Drawer.Content 

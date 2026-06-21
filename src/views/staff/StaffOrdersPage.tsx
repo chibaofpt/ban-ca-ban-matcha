@@ -7,10 +7,13 @@ import { toast } from "sonner";
 import { cn } from "@/src/utils/cn";
 import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
-import { fetchCustomerVouchers, type MyVoucher } from "@/src/services/staffVoucherService";
+import { fetchCustomerVouchers, exchangeCustomerVoucher, type MyVoucher } from "@/src/services/staffVoucherService";
+import { listActiveVoucherPackages } from "@/src/services/customerVoucherService";
 import { computeFinalClientPrice } from "@/src/lib/store/cartStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { calcLattePrice, calcFusionPrice, resolveGram } from "@/src/utils/pricing";
+import { useStaffCartStore, useStaffCartTotalPrice } from "@/src/lib/store/staffCartStore";
+import type { DiscountVoucher } from "@/src/lib/store/staffCartStore";
 import ProductModal from "@/src/components/shared/ProductModal";
 import { StaffCartDrawer } from "@/src/components/staff/StaffCartDrawer";
 import { CustomerSelectModal } from "@/src/components/staff/CustomerSelectModal";
@@ -43,7 +46,10 @@ function buildOrderItems(
       ...(c.note ? { note: c.note } : {}),
       addon_option_ids: [
         ...c.selectedOptionIds.map((id) => ({ option_id: id, quantity: 1 })),
-        ...c.quantityAddonOptions,
+        ...c.quantityAddonOptions.map((opt) => ({
+          option_id: opt.option_id,
+          quantity: opt.quantity,
+        })),
       ],
       ...(productVoucherId ? { product_voucher_id: productVoucherId } : {}),
       ...(addonVouchers.length > 0
@@ -71,18 +77,10 @@ const SIZE_CARD_LABELS: Record<string, string> = {
   XL: "Cá Lớn",
 };
 
-interface DiscountVoucher {
-  id: string;
-  discount_type: "PERCENT" | "FIXED";
-  discount_value: number;
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 /** Staff POS page — menu grid, cart drawer, checkout form, QR scanner. */
 export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "STAFF" | "ADMIN" }) {
-  // ── Server data ───────────────────────────────────────────────────────
-
   // ── Server data ───────────────────────────────────────────────────────
   const queryClient = useQueryClient();
 
@@ -146,26 +144,38 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   const [scanOpen, setScanOpen] = useState(false);
   const [confirmCheckoutOpen, setConfirmCheckoutOpen] = useState(false);
   const [qrVerifyOpen, setQrVerifyOpen] = useState(false);
+  const [itemToRemove, setItemToRemove] = useState<string | null>(null);
+  const [clearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
 
-  // ── QR scan & Customer state ──────────────────────────────────────────
+  // ── QR scan state ──────────────────────────────────────────
 
   const [initialSearchQuery, setInitialSearchQuery] = useState("");
-  const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
   const [scannedProductVoucher, setScannedProductVoucher] = useState<{ id: string; covered_price_vnd: number } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
 
-  // ── Cart ──────────────────────────────────────────────────────────────
-
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [discountVoucher, setDiscountVoucher] = useState<DiscountVoucher | null>(null);
+  // ── Cart & Zustand ──────────────────────────────────────────────────────────────
+  const cart = useStaffCartStore((s) => s.items);
+  const customerInfo = useStaffCartStore((s) => s.customerInfo);
+  const setCustomerInfo = useStaffCartStore((s) => s.setCustomerInfo);
+  const discountVoucher = useStaffCartStore((s) => s.discountVoucher);
+  const setDiscountVoucher = useStaffCartStore((s) => s.setDiscountVoucher);
+  const selectedDiscountIds = useStaffCartStore((s) => s.selectedDiscountIds);
+  const toggleDiscountId = useStaffCartStore((s) => s.toggleDiscountId);
+  const addItem = useStaffCartStore((s) => s.addItem);
+  const insertItemAfter = useStaffCartStore((s) => s.insertItemAfter);
+  const updateItem = useStaffCartStore((s) => s.updateItem);
+  const removeItem = useStaffCartStore((s) => s.removeItem);
+  const updateQuantity = useStaffCartStore((s) => s.updateQuantity);
+  const clearCart = useStaffCartStore((s) => s.clearCart);
+  const applyProductVoucher = useStaffCartStore((s) => s.applyProductVoucher);
+  const removeProductVoucher = useStaffCartStore((s) => s.removeProductVoucher);
+  const applyAddonVoucher = useStaffCartStore((s) => s.applyAddonVoucher);
+  const removeAddonVoucher = useStaffCartStore((s) => s.removeAddonVoucher);
 
   // ── Voucher state (list-based) ────────────────────────────────────────
 
   const [customerVouchers, setCustomerVouchers] = useState<MyVoucher[]>([]);
-  const [selectedDiscountIds, setSelectedDiscountIds] = useState<string[]>([]);
-  // We removed selectedProductVouchers and selectedAddonVouchers states. 
-  // Cart items directly maintain their applied vouchers (c.productVoucherId, c.addonVouchers).
 
   // ── Category filter ───────────────────────────────────────────────────
 
@@ -189,15 +199,48 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     } else {
       setCustomerVouchers([]);
     }
-    // Clear all voucher selections when customer changes
-    setSelectedDiscountIds([]);
-    // Remove applied vouchers from existing cart
-    setCart(prev => prev.map(c => {
-      const next = { ...c, productVoucherId: undefined, productVoucherDiscountVnd: undefined, addonVouchers: undefined };
-      next.clientPriceVnd = computeFinalClientPrice(next);
-      return next;
-    }));
   }, [customerInfo]);
+
+  const { data: voucherPackages } = useQuery({
+    queryKey: ["staff", "voucherPackages"],
+    queryFn: listActiveVoucherPackages,
+    enabled: userRole === "ADMIN",
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const availableVoucherPackages = useMemo(() => {
+    if (userRole !== "ADMIN" || !voucherPackages) return [];
+    return voucherPackages.filter(p => p.voucher_type === "DISCOUNT");
+  }, [userRole, voucherPackages]);
+
+  const exchangeMutation = useMutation({
+    mutationFn: (packageId: string) => {
+      if (customerInfo?.type !== "existing") throw new Error("Invalid customer");
+      return exchangeCustomerVoucher(customerInfo.data.id, packageId);
+    }
+  });
+
+  const handleExchangeVoucher = async (packageId: string) => {
+    if (customerInfo?.type !== "existing" || userRole !== "ADMIN") return;
+    try {
+      await exchangeMutation.mutateAsync(packageId);
+      toast.success("Đổi ưu đãi thành công!");
+      
+      const pkg = availableVoucherPackages.find(p => p.id === packageId);
+      if (pkg && customerInfo?.type === "existing") {
+        setCustomerInfo({
+          type: "existing",
+          data: { ...customerInfo.data, points_balance: customerInfo.data.points_balance - pkg.points_cost }
+        });
+      }
+      
+      fetchCustomerVouchers(customerInfo.data.id)
+        .then(setCustomerVouchers)
+        .catch(() => setCustomerVouchers([]));
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || "Không thể đổi ưu đãi.");
+    }
+  };
 
   // ── Derived ───────────────────────────────────────────────────────────
 
@@ -214,24 +257,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     [menuItems, activeCategory]
   );
 
-  const subtotal = useMemo(() => cart.reduce((s, c) => s + c.clientPriceVnd * c.quantity, 0), [cart]);
-  
-  const discount = useMemo(() => {
-    return discountVoucher
-      ? discountVoucher.discount_type === "PERCENT"
-        ? Math.floor((subtotal * discountVoucher.discount_value) / 100)
-        : discountVoucher.discount_value
-      : 0;
-  }, [discountVoucher, subtotal]);
-
-  const memoizedDiscountVoucher = useMemo(() => {
-    return discountVoucher
-      ? {
-          discount_type: discountVoucher.discount_type,
-          discount_value: discountVoucher.discount_value,
-        }
-      : null;
-  }, [discountVoucher]);
+  const subtotal = useStaffCartTotalPrice();
 
   /** Returns true if any voucher is applied (either scan-based or list-based). */
   const hasAnyVoucher = useMemo(() => 
@@ -244,9 +270,26 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
 
   const handleAddToCart = (item: CartItem) => {
     if (editingCartItem) {
-      setCart(prev => prev.map(c => c.cartId === item.cartId ? item : c));
+      const isVoucherApplied = item.productVoucherId !== undefined || (item.addonVouchers && item.addonVouchers.length > 0);
+      if (editingCartItem.quantity > 1 && isVoucherApplied) {
+        // Split logic: the edited item keeps the voucher but gets qty 1
+        updateItem(editingCartItem.cartId, { ...item, quantity: 1 });
+        // The remainder loses vouchers and gets the original price
+        const remainderData = {
+          ...item,
+          quantity: editingCartItem.quantity - 1,
+          clientPriceVnd: item.originalClientPriceVnd || item.unitPrice,
+          unitPrice: item.originalClientPriceVnd || item.unitPrice,
+          productVoucherId: undefined,
+          productVoucherDiscountVnd: undefined,
+          addonVouchers: [],
+        };
+        insertItemAfter(editingCartItem.cartId, remainderData);
+      } else {
+        updateItem(editingCartItem.cartId, item);
+      }
     } else {
-      setCart((prev) => [...prev, item]);
+      addItem(item);
     }
     setSelectedItem(null);
     setEditingCartItem(null);
@@ -262,23 +305,21 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   };
 
   const handleRemove = (cartId: string) => {
-    setCart((prev) => prev.filter((c) => c.cartId !== cartId));
+    setItemToRemove(cartId);
   };
 
-  const handleChangeQuantity = (cartId: string, newQty: number) =>
-    setCart((prev) =>
-      prev.map((c) =>
-        c.cartId === cartId ? { ...c, quantity: Math.max(1, newQty) } : c
-      )
-    );
+  const handleChangeQuantity = (cartId: string, newQty: number) => {
+    if (newQty === 0) {
+      setItemToRemove(cartId);
+    } else {
+      updateQuantity(cartId, newQty);
+    }
+  };
 
   const handleSuccess = () => {
-    setCart([]);
-    setDiscountVoucher(null);
-    setCustomerInfo(null);
+    clearCart();
     setInitialSearchQuery("");
     setCustomerVouchers([]);
-    setSelectedDiscountIds([]);
     setCartOpen(false);
     toast.success("Đã tạo đơn hàng thành công!");
   };
@@ -409,127 +450,18 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     setScanOpen(false);
   };
 
-  // ── Voucher list handlers ─────────────────────────────────────────────
+  // ── Voucher wrappers ──────────────────────────────────────────────────
 
-  const handleToggleDiscount = (voucherId: string) => {
-    setSelectedDiscountIds((prev) =>
-      prev.includes(voucherId)
-        ? prev.filter((id) => id !== voucherId)
-        : [...prev, voucherId]
-    );
+  const handleApplyProduct = (cartId: string, voucher: import("@/src/services/staffVoucherService").MyVoucher) => {
+    if (voucher.covered_price_vnd) {
+      applyProductVoucher(cartId, voucher.id, voucher.covered_price_vnd);
+    }
   };
 
-  const handleApplyProduct = (cartId: string, voucher: MyVoucher) => {
-    if (!voucher.covered_price_vnd) return;
-    setCart((prev) => {
-      let currentItems = prev.map((i) => {
-        if (i.productVoucherId === voucher.id) {
-          const nextI = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined };
-          nextI.clientPriceVnd = computeFinalClientPrice(nextI);
-          return nextI;
-        }
-        return i;
-      });
-
-      const itemIndex = currentItems.findIndex((c) => c.cartId === cartId);
-      if (itemIndex === -1) return prev;
-
-      const item = currentItems[itemIndex];
-      const nextItem = { 
-        ...item, 
-        productVoucherId: voucher.id, 
-        productVoucherDiscountVnd: voucher.covered_price_vnd ?? undefined 
-      };
-      nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
-
-      if (item.quantity === 1) {
-        currentItems[itemIndex] = nextItem;
-        return currentItems;
-      }
-
-      // Split if quantity > 1
-      const newCartId = crypto.randomUUID();
-      const splitItem = { ...nextItem, cartId: newCartId, quantity: 1 };
-      currentItems[itemIndex] = { ...item, quantity: item.quantity - 1 };
-      currentItems.splice(itemIndex + 1, 0, splitItem);
-      
-      return currentItems;
-    });
-  };
-
-  const handleRemoveProduct = (cartId: string) => {
-    setCart((prev) =>
-      prev.map((c) => {
-        if (c.cartId !== cartId) return c;
-        const nextItem = {
-          ...c,
-          productVoucherId: undefined,
-          productVoucherDiscountVnd: undefined,
-        };
-        nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
-        return nextItem;
-      })
-    );
-  };
-
-  const handleApplyAddon = (cartId: string, voucher: MyVoucher) => {
-    const addonOptionId = voucher.addon_option_id;
-    if (!addonOptionId) return;
-    
-    setCart((prev) => {
-      let currentItems = prev.map((i) => {
-        if (i.addonVouchers?.some(v => v.voucherId === voucher.id)) {
-          const nextI = { ...i, addonVouchers: i.addonVouchers.filter(v => v.voucherId !== voucher.id) };
-          nextI.clientPriceVnd = computeFinalClientPrice(nextI);
-          return nextI;
-        }
-        return i;
-      });
-
-      const itemIndex = currentItems.findIndex((c) => c.cartId === cartId);
-      if (itemIndex === -1) return prev;
-
-      const item = currentItems[itemIndex];
-      const newAddonVouchers = item.addonVouchers ? [...item.addonVouchers] : [];
-
-      const existingIdx = newAddonVouchers.findIndex(v => v.addonOptionId === addonOptionId);
-      const toppingPrice = item.addonPrices?.[addonOptionId] ?? 0;
-      const newVoucher = { voucherId: voucher.id, addonOptionId: addonOptionId, discountVnd: toppingPrice };
-
-      if (existingIdx !== -1) {
-        newAddonVouchers[existingIdx] = newVoucher;
-      } else {
-        newAddonVouchers.push(newVoucher);
-      }
-
-      const nextItem = { ...item, addonVouchers: newAddonVouchers };
-      nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
-
-      if (item.quantity === 1) {
-        currentItems[itemIndex] = nextItem;
-        return currentItems;
-      }
-
-      // Split
-      const newCartId = crypto.randomUUID();
-      const splitItem = { ...nextItem, cartId: newCartId, quantity: 1 };
-      currentItems[itemIndex] = { ...item, quantity: item.quantity - 1 };
-      currentItems.splice(itemIndex + 1, 0, splitItem);
-      
-      return currentItems;
-    });
-  };
-
-  const handleRemoveAddon = (cartId: string, voucherId: string) => {
-    setCart((prev) =>
-      prev.map((c) => {
-        if (c.cartId !== cartId) return c;
-        if (!c.addonVouchers) return c;
-        const nextItem = { ...c, addonVouchers: c.addonVouchers.filter(v => v.voucherId !== voucherId) };
-        nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
-        return nextItem;
-      })
-    );
+  const handleApplyAddon = (cartId: string, voucher: import("@/src/services/staffVoucherService").MyVoucher) => {
+    if (voucher.addon_option_id) {
+      applyAddonVoucher(cartId, voucher.id, voucher.addon_option_id);
+    }
   };
 
   // ── QR verify success (STAFF role) ────────────────────────────────────
@@ -634,31 +566,11 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         </button>
       )}
 
-      {/* Addon Modal -> ProductModal for staff add */}
-      {selectedItem && (
-        <ProductModal
-          key="staff-add-modal"
-          item={selectedItem}
-          latteItems={menuData?.latte ?? []}
-          editingItem={editingCartItem || undefined}
-          freeVoucherId={scannedProductVoucher?.id}
-          freeVoucherCoveredPriceVnd={scannedProductVoucher?.covered_price_vnd}
-          availableVouchers={customerVouchers}
-          onClose={() => {
-            setSelectedItem(null);
-            setEditingCartItem(null);
-            setScannedProductVoucher(null);
-          }}
-          onConfirm={handleAddToCart}
-          nested={!!editingCartItem}
-        />
-      )}
-
       {/* StaffCartDrawer */}
       <StaffCartDrawer
         isOpen={cartOpen}
         cart={cart}
-        discountVoucher={memoizedDiscountVoucher}
+        discountVoucher={discountVoucher}
         customerInfo={customerInfo}
         isSubmitting={isSubmitting}
         onClose={() => setCartOpen(false)}
@@ -670,12 +582,57 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         onClearCustomer={() => setCustomerInfo(null)}
         customerVouchers={customerVouchers}
         selectedDiscountIds={selectedDiscountIds}
-        onToggleDiscount={handleToggleDiscount}
+        onToggleDiscount={toggleDiscountId}
+        availableVoucherPackages={availableVoucherPackages}
+        onExchangeVoucher={handleExchangeVoucher}
+        isExchanging={exchangeMutation.isPending}
+        preventCloseOutside={customerSelectOpen || confirmCheckoutOpen || qrVerifyOpen || !!itemToRemove || clearCartConfirmOpen}
         onApplyProduct={handleApplyProduct}
-        onRemoveProduct={handleRemoveProduct}
+        onRemoveProduct={removeProductVoucher}
         onApplyAddon={handleApplyAddon}
-        onRemoveAddon={handleRemoveAddon}
+        onRemoveAddon={removeAddonVoucher}
+        onClearCart={() => setClearCartConfirmOpen(true)}
+        productModalNode={
+          selectedItem && editingCartItem && (
+            <ProductModal
+              key="staff-edit-modal"
+              item={selectedItem}
+              latteItems={menuData?.latte ?? []}
+              editingItem={editingCartItem || undefined}
+              freeVoucherId={scannedProductVoucher?.id}
+              freeVoucherCoveredPriceVnd={scannedProductVoucher?.covered_price_vnd}
+              availableVouchers={customerVouchers}
+              onClose={() => {
+                setSelectedItem(null);
+                setEditingCartItem(null);
+                setScannedProductVoucher(null);
+              }}
+              onConfirm={handleAddToCart}
+              nested={true}
+              currentCartItems={cart}
+            />
+          )
+        }
       />
+
+      {/* ProductModal for adding a NEW item (rendered outside the drawer) */}
+      {selectedItem && !editingCartItem && (
+        <ProductModal
+          key="staff-add-modal"
+          item={selectedItem}
+          latteItems={menuData?.latte ?? []}
+          freeVoucherId={scannedProductVoucher?.id}
+          freeVoucherCoveredPriceVnd={scannedProductVoucher?.covered_price_vnd}
+          availableVouchers={customerVouchers}
+          onClose={() => {
+            setSelectedItem(null);
+            setScannedProductVoucher(null);
+          }}
+          onConfirm={handleAddToCart}
+          nested={false}
+          currentCartItems={cart}
+        />
+      )}
 
       {/* CustomerSelectModal */}
       {customerSelectOpen && (
@@ -710,6 +667,40 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
           onClose={() => setQrVerifyOpen(false)}
         />
       )}
+
+      {/* Confirm Remove Item Modal */}
+      <ConfirmModal
+        isOpen={!!itemToRemove}
+        title="Xoá sản phẩm"
+        message="Bạn có chắc chắn muốn xoá sản phẩm này khỏi giỏ hàng?"
+        confirmLabel="Xoá"
+        cancelLabel="Huỷ"
+        onConfirm={() => {
+          if (itemToRemove) {
+            removeItem(itemToRemove);
+            if (cart.length <= 1) {
+              setCartOpen(false);
+            }
+          }
+          setItemToRemove(null);
+        }}
+        onCancel={() => setItemToRemove(null)}
+      />
+
+      {/* Confirm Clear Cart Modal */}
+      <ConfirmModal
+        isOpen={clearCartConfirmOpen}
+        title="Xoá toàn bộ giỏ hàng"
+        message="Bạn có chắc chắn muốn xoá toàn bộ sản phẩm trong giỏ hàng?"
+        confirmLabel="Xoá tất cả"
+        cancelLabel="Huỷ"
+        onConfirm={() => {
+          clearCart();
+          setCartOpen(false);
+          setClearCartConfirmOpen(false);
+        }}
+        onCancel={() => setClearCartConfirmOpen(false)}
+      />
 
       {/* QRScannerModal */}
       {scanOpen && (

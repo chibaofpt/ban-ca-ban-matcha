@@ -101,8 +101,8 @@ export function CustomerSelectModal({
   return (
     <Dialog.Root open={true} onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/40 z-[100]" />
-        <Dialog.Content className="fixed z-[101] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card rounded-2xl p-6 w-[90vw] max-w-sm shadow-xl space-y-4 focus:outline-none">
+        <Dialog.Overlay data-prevent-drawer-close="true" className="fixed inset-0 bg-black/40 z-[100]" />
+        <Dialog.Content data-prevent-drawer-close="true" className="fixed z-[101] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card rounded-2xl p-6 w-[90vw] max-w-sm shadow-xl space-y-4 focus:outline-none">
           <h2 className="font-serif text-lg font-semibold">
           {step === "search" ? "Tìm khách hàng" : "Thêm khách mới"}
         </h2>

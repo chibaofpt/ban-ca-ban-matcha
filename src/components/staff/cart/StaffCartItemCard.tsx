@@ -135,47 +135,63 @@ const StaffCartItemCard = ({
           )}
         </div>
 
-        <div className="mt-auto pt-3 flex items-end justify-between gap-2">
-          {/* Vouchers */}
-          <div className="flex flex-wrap gap-1.5 flex-1">
-            {appliedProductVoucherId && (() => {
-              const pv = customerVouchers.find(v => v.id === appliedProductVoucherId);
-              return (
-                <div className="text-[10px] font-bold bg-orange-50 border border-orange-200 text-orange-700 dark:bg-orange-900/30 dark:border-orange-500/30 dark:text-orange-400 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-                  <Ticket size={12} className="text-orange-500" /> {pv?.package?.name || "Free món"}
-                  <button onClick={(e) => { e.stopPropagation(); onRemoveProduct?.(c.cartId); }} className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-orange-200 text-orange-500 hover:text-orange-700 transition-colors ml-0.5"><X size={12} strokeWidth={2.5} /></button>
-                </div>
-              )
-            })()}
-            {appliedAddonVouchers.map((av, idx) => {
-              const voucherInfo = customerVouchers.find(v => v.id === av.voucherId);
-              return (
-                <div key={`${av.voucherId}-${idx}`} className="text-[10px] font-bold bg-green-50 border border-green-200 text-green-700 dark:bg-green-900/30 dark:border-green-500/30 dark:text-green-400 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-                  <Ticket size={12} className="text-green-600" /> Free {voucherInfo?.addonOption?.label || "Topping"}
-                  <button onClick={(e) => { e.stopPropagation(); onRemoveAddon?.(c.cartId, av.voucherId); }} className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-green-200 text-green-600 hover:text-green-800 transition-colors ml-0.5"><X size={12} strokeWidth={2.5} /></button>
-                </div>
-              )
-            })}
-            {hasAvailableVouchers && (
+        <div className="mt-2 flex flex-col gap-2">
+          {/* Vouchers (Separate Line) */}
+          {(appliedProductVoucherId || appliedAddonVouchers.length > 0) && (
+            <div className="flex flex-col gap-1.5 w-full">
+              {appliedProductVoucherId && (() => {
+                const pv = customerVouchers.find(v => v.id === appliedProductVoucherId);
+                return (
+                  <div className="text-[11px] font-medium bg-orange-50 border border-orange-200 text-orange-700 dark:bg-orange-900/20 dark:border-orange-500/30 dark:text-orange-400 px-2.5 py-1.5 rounded-lg flex items-center justify-between w-full shadow-sm">
+                    <span className="flex items-center gap-1.5 truncate pr-2">
+                      <Ticket size={14} className="text-orange-500 shrink-0" />
+                      <span className="truncate">{pv?.package?.name || "Free món"}</span>
+                    </span>
+                    <button onClick={(e) => { e.stopPropagation(); onRemoveProduct?.(c.cartId); }} className="shrink-0 p-1 bg-white/50 hover:bg-orange-200 rounded-md text-orange-600 transition-colors">
+                      <X size={12} strokeWidth={2.5} />
+                    </button>
+                  </div>
+                )
+              })()}
+              {appliedAddonVouchers.map((av, idx) => {
+                const voucherInfo = customerVouchers.find(v => v.id === av.voucherId);
+                return (
+                  <div key={`${av.voucherId}-${idx}`} className="text-[11px] font-medium bg-green-50 border border-green-200 text-green-700 dark:bg-green-900/20 dark:border-green-500/30 dark:text-green-400 px-2.5 py-1.5 rounded-lg flex items-center justify-between w-full shadow-sm">
+                    <span className="flex items-center gap-1.5 truncate pr-2">
+                      <Ticket size={14} className="text-green-600 shrink-0" />
+                      <span className="truncate">Free {voucherInfo?.addonOption?.label || "Topping"}</span>
+                    </span>
+                    <button onClick={(e) => { e.stopPropagation(); onRemoveAddon?.(c.cartId, av.voucherId); }} className="shrink-0 p-1 bg-white/50 hover:bg-green-200 rounded-md text-green-700 transition-colors">
+                      <X size={12} strokeWidth={2.5} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Bottom Row: Voucher Button & Price */}
+          <div className="flex items-end justify-between mt-auto pt-1">
+            {hasAvailableVouchers ? (
               <button
                 onClick={(e) => { e.stopPropagation(); onOpenVoucherPicker(c.cartId); }}
-                className="text-[10px] font-bold bg-white border border-dashed border-orange-300 text-orange-600 px-3 py-1.5 rounded-full flex items-center gap-1 hover:bg-orange-50 hover:border-solid transition-all shadow-sm"
+                className="text-[10px] font-bold bg-white border border-dashed border-orange-300 text-orange-600 px-3 py-1.5 rounded-full flex items-center gap-1.5 hover:bg-orange-50 hover:border-solid transition-all shadow-sm"
               >
                 <Ticket size={12} /> Ưu đãi ({applicableProductVouchers.length + applicableAddonVouchers.length})
               </button>
-            )}
-          </div>
+            ) : <div />}
 
-          {/* Price */}
-          <div className="flex flex-col items-end shrink-0">
-            {appliedProductVoucherId && c.originalClientPriceVnd !== c.clientPriceVnd && (
-              <span className="text-[10px] text-muted-foreground line-through">
-                {(c.originalClientPriceVnd * c.quantity) / 1000}k
+            {/* Price */}
+            <div className="flex flex-col items-end shrink-0">
+              {appliedProductVoucherId && c.originalClientPriceVnd !== c.clientPriceVnd && (
+                <span className="text-[10px] text-muted-foreground line-through">
+                  {(c.originalClientPriceVnd * c.quantity) / 1000}k
+                </span>
+              )}
+              <span className="font-bold text-sm text-primary">
+                {(c.clientPriceVnd * c.quantity) / 1000}k
               </span>
-            )}
-            <span className="font-bold text-sm text-primary">
-              {(c.clientPriceVnd * c.quantity) / 1000}k
-            </span>
+            </div>
           </div>
         </div>
       </div>

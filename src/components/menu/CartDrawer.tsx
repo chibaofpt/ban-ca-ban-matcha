@@ -15,7 +15,7 @@ import { useStoreStatusStore } from "@/src/lib/store/storeStore";
 import { useEditModalStore } from "@/src/lib/store/editModalStore";
 import { cn } from "@/src/utils/cn";
 import { useRouter } from "next/navigation";
-import { listMyVouchers, type MyVoucher } from "@/src/services/customerVoucherService";
+import { listMyVouchers, listActiveVoucherPackages, type MyVoucher, type VoucherPackage } from "@/src/services/customerVoucherService";
 import { filterUsableVouchers, buildAddonVoucherMap, buildProductVoucherMap, estimateProductSavings, estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { DeliverySection } from "@/src/components/delivery/DeliverySection";
@@ -30,6 +30,7 @@ import CartItemCard from "./cart/CartItemCard";
 import { CartItemVoucherPicker } from "./cart/CartItemVoucherPicker";
 import { CartDiscountPicker } from "./cart/CartDiscountPicker";
 import { CartFooter } from "./cart/CartFooter";
+import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -90,6 +91,7 @@ const CartDrawer = () => {
 
   // ── Voucher state ──
   const [allVouchers, setAllVouchers] = useState<MyVoucher[]>([]);
+  const [availableVoucherPackages, setAvailableVoucherPackages] = useState<VoucherPackage[]>([]);
   /** IDs of selected DISCOUNT vouchers. Server rule: max 1 PERCENT + unlimited FIXED. */
   const [selectedVoucherIds, setSelectedVoucherIds] = useState<string[]>([]);
 
@@ -109,6 +111,9 @@ const CartDrawer = () => {
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const [isFetchingAddress, setIsFetchingAddress] = useState(false);
   const [isVouchersLoading, setIsVouchersLoading] = useState(false);
+
+  // ── Points state ──
+  const { data: pointsBalance = 0 } = useCustomerPoints({ enabled: isLoggedIn && isCartOpen });
 
   const checkoutMutation = useCheckout();
 
@@ -185,13 +190,19 @@ const CartDrawer = () => {
   useEffect(() => {
     if (!isCartOpen || !isLoggedIn) {
       setAllVouchers([]);
+      setAvailableVoucherPackages([]);
       setSelectedVoucherIds([]);
       return;
     }
     setIsVouchersLoading(true);
-    listMyVouchers()
-      .then(setAllVouchers)
-      .catch(() => {}) // silently fail — non-critical
+    Promise.all([
+      listMyVouchers().catch(() => [] as MyVoucher[]),
+      listActiveVoucherPackages().catch(() => [] as VoucherPackage[])
+    ])
+      .then(([vouchers, packages]) => {
+        setAllVouchers(vouchers);
+        setAvailableVoucherPackages(packages.filter(p => p.voucher_type === "DISCOUNT" || p.voucher_type === "FREESHIP"));
+      })
       .finally(() => setIsVouchersLoading(false));
   }, [isCartOpen, isLoggedIn]);
 
@@ -471,7 +482,7 @@ const CartDrawer = () => {
                         <p className="text-sm">Thêm đồ uống vào giỏ nhé</p>
                       </div>
                     ) : (
-                      items.map((item) => (
+                      [...items].reverse().map((item) => (
                         <CartItemCard
                           key={item.cartId}
                           item={item}
@@ -516,6 +527,7 @@ const CartDrawer = () => {
               deliveryError={deliveryError}
               shippingFee={shippingFee}
               setIsAddressPickerOpen={setIsAddressPickerOpen}
+              setIsDiscountPickerOpen={setIsDiscountPickerOpen}
               productVouchersCount={items.reduce((sum, item) => sum + (applicableProductVouchers.get(item.menuItemId)?.length || 0), 0)}
               addonVouchersCount={items.reduce((sum, item) => sum + (applicableAddonVouchersMap.get(item.cartId)?.length || 0), 0)}
               subtotalK={subtotalK}
@@ -552,6 +564,8 @@ const CartDrawer = () => {
               <CartDiscountPicker
                 discountVouchers={discountVouchers}
                 freeshipVouchers={freeshipVouchers}
+                availableVoucherPackages={availableVoucherPackages}
+                pointsBalance={pointsBalance}
                 selectedVoucherIds={selectedVoucherIds}
                 selectedDiscountVouchers={selectedDiscountVouchers}
                 selectedFreeshipVouchers={selectedFreeshipVouchers}
@@ -560,6 +574,9 @@ const CartDrawer = () => {
                 shippingFee={shippingFee}
                 onClose={() => setIsDiscountPickerOpen(false)}
                 onUpdateSelectedVouchers={setSelectedVoucherIds}
+                onRefreshVouchers={() => {
+                  listMyVouchers().then(setAllVouchers).catch(() => {});
+                }}
               />
             )}
           </AnimatePresence>

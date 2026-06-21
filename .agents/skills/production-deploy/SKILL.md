@@ -17,21 +17,30 @@ The project uses a standard Git flow connected to Vercel auto-deployments. When 
 
 Follow this exact terminal execution sequence:
 
-1. **Commit and Push to `dev`**:
+1. **Mandatory QA/QC Review (Before Deployment)**:
+   - Run `git diff` (or review uncommitted/recently committed changes) to inspect what has changed since the last stable state.
+   - Act as a QA/QC engineer: Look for latent bugs, unhandled edge cases, critical logic changes, or massive UI/style/layout modifications.
+   - **CRITICAL**: If you detect *any* potential risks, silent bugs, or massive UI changes, **DO NOT PROCEED with deployment**. Instead, STOP and list your findings clearly to the user. Wait for the user's explicit permission to deploy, or wait for the user to ask you to fix the issues first.
+   - Only proceed to step 2 if the changes are completely safe or the user explicitly bypasses the review.
+
+2. **Commit and Push to `dev`**:
    ```powershell
    git add .
    git commit -m "chore: prepare production deployment"
    git push origin dev
    ```
-2. **Verify Pre-Deployment Checklist**: Run the steps in Section 2 below. Proceed to step 3 **ONLY** if zero errors occur.
-3. **Merge `dev` into `main` and Push**:
+
+3. **Verify Pre-Deployment Checklist**: Run the steps in Section 2 below. Proceed to step 4 **ONLY** if zero errors occur.
+
+4. **Merge `dev` into `main` and Push**:
    ```powershell
    git checkout main
    git merge dev
    git push origin main
    git checkout dev
    ```
-4. **Vercel Auto-Deployment**: Pushing to `main` will automatically trigger the production build on Vercel. Notify the user that the code has been successfully merged and deployed.
+
+5. **Vercel Auto-Deployment**: Pushing to `main` will automatically trigger the production build on Vercel. Notify the user that the code has been successfully merged and deployed.
 
 ---
 

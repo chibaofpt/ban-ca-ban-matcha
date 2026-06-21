@@ -34,6 +34,7 @@ interface CartFooterProps {
   deliveryError: string | null;
   shippingFee: number | null;
   setIsAddressPickerOpen: (open: boolean) => void;
+  setIsDiscountPickerOpen: (open: boolean) => void;
 
   // Voucher / Pricing state
   productVouchersCount: number;
@@ -68,6 +69,7 @@ export const CartFooter = memo(function CartFooter({
   deliveryError,
   shippingFee,
   setIsAddressPickerOpen,
+  setIsDiscountPickerOpen,
   productVouchersCount,
   addonVouchersCount,
   subtotalK,
@@ -181,6 +183,31 @@ export const CartFooter = memo(function CartFooter({
           dragElastic={0.15}
           onDragEnd={handleToggleDragEnd}
         >
+          {/* Apply Voucher trigger */}
+          <button
+            onClick={() => {
+              if (isLoggedIn) {
+                setIsDiscountPickerOpen(true);
+              } else {
+                openLogin();
+              }
+            }}
+            className="flex items-center justify-between bg-orange-50 border border-orange-100 hover:bg-orange-100/80 transition-colors rounded-xl px-2 py-2 text-left shrink-0"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="bg-orange-100 p-1 rounded-md text-orange-600 shrink-0">
+                <Ticket size={13} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-orange-800 leading-tight">Mã ưu đãi</p>
+                <p className="text-[10px] text-orange-600/80 leading-tight truncate">
+                  {totalDiscountK > 0 ? `Đã áp dụng giảm ${totalDiscountK.toLocaleString("vi-VN")}k` : "Chọn mã ưu đãi"}
+                </p>
+              </div>
+            </div>
+            <ChevronRight size={13} className="text-orange-400 shrink-0 ml-1" />
+          </button>
+
           {/* Delivery address trigger (only when DELIVERY) */}
           {orderType === "DELIVERY" && (
             <>
@@ -216,30 +243,30 @@ export const CartFooter = memo(function CartFooter({
         <div className="flex flex-col justify-end flex-1 gap-0.5">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-medium text-primary/50">Tạm tính</span>
-            <span className="text-[11px] font-bold text-primary/50">{subtotalK} kđ</span>
+            <span className="text-[11px] font-bold text-primary/50">{subtotalK} k</span>
           </div>
 
           {orderType === "DELIVERY" && shippingFee !== null ? (
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-medium text-primary/50">Phí ship</span>
-              <span className="text-[11px] font-bold text-primary/50">{shippingK} kđ</span>
+              <span className="text-[11px] font-bold text-primary/50">{shippingK} k</span>
             </div>
           ) : (
             <div className="flex items-center justify-between invisible">
               <span className="text-[10px] font-medium text-primary/50">Phí ship</span>
-              <span className="text-[11px] font-bold text-primary/50">0 kđ</span>
+              <span className="text-[11px] font-bold text-primary/50">0 k</span>
             </div>
           )}
 
           {totalDiscountK > 0 ? (
             <div className="flex items-center justify-between text-orange-600">
               <span className="text-[10px] font-medium">Giảm giá</span>
-              <span className="text-[11px] font-bold">-{totalDiscountK.toLocaleString("vi-VN")} kđ</span>
+              <span className="text-[11px] font-bold">-{totalDiscountK.toLocaleString("vi-VN")} k</span>
             </div>
           ) : (
             <div className="flex items-center justify-between invisible">
               <span className="text-[10px] font-medium">Giảm giá</span>
-              <span className="text-[11px] font-bold">0 kđ</span>
+              <span className="text-[11px] font-bold">0 k</span>
             </div>
           )}
           
@@ -249,7 +276,7 @@ export const CartFooter = memo(function CartFooter({
             <span className="text-[9px] font-bold text-primary/40 uppercase tracking-widest leading-none">Tổng tiền</span>
             <div className="flex flex-col items-end">
               <span className="font-serif text-xl font-bold text-primary leading-none">
-                {grandTotalK} kđ
+                {grandTotalK} k
               </span>
               {isLoggedIn && finalPrice >= 10000 && (
                 <span className="text-[9px] font-bold text-teal-700 bg-teal-50 px-1 py-0.5 rounded-sm mt-0.5">

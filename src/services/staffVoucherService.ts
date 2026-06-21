@@ -7,10 +7,10 @@
 
 import { apiClient } from "@/src/lib/api/client";
 import type { ApiResponse } from "@/src/lib/types/api";
-import type { MyVoucher } from "./customerVoucherService";
+import type { MyVoucher, ExchangedVoucher } from "./customerVoucherService";
 
 // Re-export for convenience
-export type { MyVoucher } from "./customerVoucherService";
+export type { MyVoucher, ExchangedVoucher } from "./customerVoucherService";
 
 // ── API Calls ─────────────────────────────────────────────────────────────────
 
@@ -21,6 +21,18 @@ export type { MyVoucher } from "./customerVoucherService";
 export async function fetchCustomerVouchers(userId: string): Promise<MyVoucher[]> {
   const res = await apiClient.get<ApiResponse<MyVoucher[]>>(
     `/api/staff/users/${userId}/vouchers`
+  );
+  return res.data.data;
+}
+
+/**
+ * Spends a customer's points to redeem a VoucherPackage on their behalf.
+ * Calls POST /api/staff/users/[id]/vouchers/exchange (requires ADMIN auth).
+ */
+export async function exchangeCustomerVoucher(userId: string, packageId: string): Promise<ExchangedVoucher> {
+  const res = await apiClient.post<ApiResponse<ExchangedVoucher>>(
+    `/api/staff/users/${userId}/vouchers/exchange`,
+    { package_id: packageId }
   );
   return res.data.data;
 }

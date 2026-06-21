@@ -10,7 +10,7 @@ export default function Hero() {
   const router = useRouter();
 
   return (
-    <section className="relative w-full h-[calc(100svh-4rem)] overflow-hidden bg-paper flex flex-col justify-end pt-5 md:pt-12 pb-8 md:pb-14 px-4 md:px-8">
+    <section className="relative w-full min-h-[100svh] overflow-hidden bg-paper flex flex-col justify-end pt-5 md:pt-12 pb-8 md:pb-14 px-4 md:px-8">
 
       {/* Background Image */}
       <img

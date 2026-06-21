@@ -35,197 +35,7 @@ import {
 } from "@/src/lib/utils/voucherModalHelpers";
 import { QrModal } from "./QrModal";
 
-// ── VoucherCard (Section 1 - Ticket Layout) ───────────────────────────────────
-
-function VoucherCard({
-  voucher,
-  onShowQr,
-}: {
-  voucher: MyVoucher;
-  onShowQr: (v: MyVoucher) => void;
-}) {
-  const isInteractable = canInteract(voucher);
-  const typeConfig = VOUCHER_TYPE_CONFIG[voucher.voucher_type];
-  const highlight = getTicketHighlightText(voucher.voucher_type, voucher.discount_type, voucher.discount_value);
-
-  const isExpired = voucher.status === "EXPIRED";
-  const isRedeemed = voucher.status === "REDEEMED";
-  const isReserved = voucher.status === "RESERVED";
-  const isDimmed = isExpired || isRedeemed;
-
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className={cn(
-        "rounded-xl bg-card shadow-sm border overflow-hidden flex relative",
-        isDimmed && "opacity-60 grayscale-[40%]"
-      )}
-    >
-      {/* Left side: Highlight Ticket */}
-      <div className={cn(
-        "w-[32%] flex flex-col items-center justify-center p-3 border-r-2 border-dashed border-border/60",
-        isDimmed ? "bg-muted/50 text-muted-foreground" : "bg-primary/5 text-primary"
-      )}>
-        <span className="font-black text-xl lg:text-2xl tracking-tighter leading-none text-center">{highlight.text}</span>
-        <span className="text-[10px] font-bold uppercase tracking-wider opacity-80 mt-1">{highlight.subtext}</span>
-      </div>
-
-      {/* Right side: Info */}
-      <div className="flex-1 min-w-0 p-3 flex flex-col justify-center bg-card z-10">
-        <div className="flex items-center gap-1.5 flex-wrap mb-1">
-          <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold", typeConfig.badgeCls)}>
-            {typeConfig.label}
-          </span>
-          {isReserved && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-yellow-100 text-yellow-700">
-              Đang dùng
-            </span>
-          )}
-          {isExpired && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-muted-foreground/20 text-muted-foreground">
-              Hết hạn
-            </span>
-          )}
-          {isRedeemed && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-muted-foreground/20 text-muted-foreground">
-              Đã dùng
-            </span>
-          )}
-        </div>
-        
-        <p className="font-bold text-sm text-foreground leading-tight line-clamp-1">
-          {voucher.package.name}
-        </p>
-        <p className="text-xs text-primary font-medium mt-0.5 line-clamp-1">
-          {getVoucherBenefitText(voucher)}
-        </p>
-
-        <div className="mt-2 flex items-center justify-between">
-          <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-            <Clock size={10} />
-            {isRedeemed ? formatRedeemedDate(voucher.redeemed_at) : formatVoucherExpiry(voucher.expires_at)}
-          </p>
-          
-          {isInteractable && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onShowQr(voucher); }}
-              className="bg-primary/10 text-primary p-1.5 rounded-md hover:bg-primary/20 transition-colors"
-            >
-              <QrCode size={16} />
-            </button>
-          )}
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-// ── PackageCard (Section 2 - Ticket Layout) ───────────────────────────────────
-
-function PackageCard({
-  pkg,
-  userBalance,
-  onExchange,
-  isExchanging,
-}: {
-  pkg: VoucherPackage;
-  userBalance: number;
-  onExchange: (pkg: VoucherPackage) => void;
-  isExchanging: boolean;
-}) {
-  const { ok, reason } = canExchange(pkg, userBalance, pkg.user_redeemed_count ?? 0);
-  const typeConfig = VOUCHER_TYPE_CONFIG[pkg.voucher_type] ?? VOUCHER_TYPE_CONFIG.DISCOUNT;
-  const highlight = getTicketHighlightText(pkg.voucher_type, pkg.discount_type, pkg.discount_value);
-
-  // Calculate progress for insufficient points
-  const progressPercent = Math.min(100, Math.round((userBalance / pkg.points_cost) * 100));
-
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="rounded-xl bg-card shadow-sm border overflow-hidden flex relative"
-    >
-      {/* Progress background if insufficient points */}
-      {!ok && reason === "insufficient_points" && (
-        <div 
-          className="absolute left-0 bottom-0 top-0 bg-primary/5 transition-all duration-500 ease-out z-0"
-          style={{ width: `${progressPercent}%` }}
-        />
-      )}
-
-      {/* Left side: Highlight Ticket */}
-      <div className="w-[32%] flex flex-col items-center justify-center p-3 border-r-2 border-dashed border-border/60 bg-primary/5 text-primary z-10">
-        <span className="font-black text-xl lg:text-2xl tracking-tighter leading-none text-center">{highlight.text}</span>
-        <span className="text-[10px] font-bold uppercase tracking-wider opacity-80 mt-1">{highlight.subtext}</span>
-      </div>
-
-      {/* Right side: Info */}
-      <div className="flex-1 min-w-0 p-3 flex flex-col justify-center z-10 bg-card/80 backdrop-blur-sm">
-        <div className="flex items-center gap-1.5 flex-wrap mb-1">
-          <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold", typeConfig.badgeCls)}>
-            {typeConfig.label}
-          </span>
-          {pkg.quantity !== null && pkg.quantity <= 10 && pkg.quantity > 0 && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-700">
-              Còn {pkg.quantity}
-            </span>
-          )}
-        </div>
-
-        <p className="font-bold text-sm text-foreground leading-tight line-clamp-1">{pkg.name}</p>
-        <p className="text-xs text-primary font-medium mt-0.5 line-clamp-1">{getPackageBenefitText(pkg)}</p>
-
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-          {pkg.expires_after_days !== null ? (
-            <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-              <Clock size={10} />
-              Hạn: {formatExpiryLabel(pkg.expires_after_days)}
-            </p>
-          ) : <div />}
-
-          <div className="flex-shrink-0">
-            {(() => {
-              if (isExchanging) {
-                return (
-                  <div className="flex items-center justify-center h-7 w-20 bg-primary/10 text-primary rounded-md">
-                    <Loader2 size={14} className="animate-spin" />
-                  </div>
-                );
-              }
-              if (reason === "sold_out") {
-                return <span className="text-[10px] font-bold text-muted-foreground bg-secondary px-2 py-1 rounded-md">Hết hàng</span>;
-              }
-              if (reason === "limit_reached") {
-                return <span className="text-[10px] font-bold text-muted-foreground bg-secondary px-2 py-1 rounded-md">Đã đủ giới hạn</span>;
-              }
-              if (reason === "insufficient_points") {
-                return (
-                  <div className="flex flex-col items-end leading-tight">
-                    <span className="text-[10px] font-bold text-muted-foreground whitespace-nowrap">
-                      {userBalance} / {pkg.points_cost} 🐟
-                    </span>
-                  </div>
-                );
-              }
-              return (
-                <button
-                  onClick={() => onExchange(pkg)}
-                  className="bg-primary text-primary-foreground text-[10px] font-bold px-3 py-1.5 rounded-md hover:bg-primary/90 transition shadow-sm whitespace-nowrap"
-                >
-                  Đổi {pkg.points_cost} 🐟
-                </button>
-              );
-            })()}
-          </div>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
+import { VoucherCard, PackageCard } from "./VoucherCards";
 
 // ── VoucherModal (Main) ───────────────────────────────────────────────────────
 
@@ -428,7 +238,18 @@ export default function VoucherModal() {
                         ) : (
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-8">
                             {filteredVouchers.map((v) => (
-                              <VoucherCard key={v.id} voucher={v} onShowQr={setQrVoucher} />
+                              <VoucherCard 
+                                key={v.id} 
+                                voucher={v} 
+                                actionNode={
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setQrVoucher(v); }}
+                                    className="bg-primary/10 text-primary p-1.5 rounded-md hover:bg-primary/20 transition-colors"
+                                  >
+                                    <QrCode size={16} />
+                                  </button>
+                                }
+                              />
                             ))}
                           </div>
                         )}
