@@ -15,6 +15,8 @@ interface PowderModalProps {
   onSuccess: (item: Powder) => void;
 }
 
+import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
+
 export default function PowderModal({
   mode,
   item,
@@ -22,6 +24,7 @@ export default function PowderModal({
   onClose,
   onSuccess,
 }: PowderModalProps) {
+  useBodyScrollLock(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -70,7 +73,7 @@ export default function PowderModal({
           </button>
         </div>
 
-        <div className="overflow-y-auto px-5 py-4 flex-1">
+        <div className="overflow-y-auto overscroll-contain px-5 py-4 flex-1">
           {errorMsg && (
             <div className="mb-4 rounded-xl bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
               {errorMsg}

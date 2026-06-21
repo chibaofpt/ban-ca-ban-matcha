@@ -16,6 +16,8 @@ interface MenuItemModalProps {
   onSuccess: (item: AdminMenuItem, powderName?: string) => void;
 }
 
+import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
+
 /** Unified modal cho tạo mới và sửa menu item. */
 export default function MenuItemModal({
   mode,
@@ -24,6 +26,7 @@ export default function MenuItemModal({
   onClose,
   onSuccess,
 }: MenuItemModalProps) {
+  useBodyScrollLock(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 

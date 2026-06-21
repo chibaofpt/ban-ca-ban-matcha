@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Search, User, Phone } from "lucide-react";
+import * as Dialog from "@radix-ui/react-dialog";
 import * as staffOrderService from "@/src/services/staffOrderService";
 import type { CustomerSearchResult } from "@/src/services/staffOrderService";
 
@@ -98,10 +99,11 @@ export function CustomerSelectModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-card rounded-2xl p-6 w-full max-w-sm mx-4 shadow-xl space-y-4">
-        <h2 className="font-serif text-lg font-semibold">
+    <Dialog.Root open={true} onOpenChange={(open) => !open && onClose()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/40 z-[100]" />
+        <Dialog.Content className="fixed z-[101] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card rounded-2xl p-6 w-[90vw] max-w-sm shadow-xl space-y-4 focus:outline-none">
+          <h2 className="font-serif text-lg font-semibold">
           {step === "search" ? "Tìm khách hàng" : "Thêm khách mới"}
         </h2>
 
@@ -236,7 +238,8 @@ export function CustomerSelectModal({
             </div>
           </>
         )}
-      </div>
-    </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

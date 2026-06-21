@@ -49,7 +49,7 @@ export const CartItemVoucherPicker = ({
         <h3 className="font-bold text-primary">Ưu đãi cho món này</h3>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-6">
+      <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-6">
         {/* Item info */}
         <div className="flex items-center gap-3 p-3 bg-white border border-border/40 rounded-2xl shadow-sm">
           <div className="w-12 h-12 shrink-0 rounded-xl overflow-hidden bg-secondary/10 relative">

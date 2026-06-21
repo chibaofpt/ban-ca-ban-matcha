@@ -103,10 +103,6 @@ const RegisterForm = () => {
       };
       const user = await registerRequest(payload);
 
-      login(user.phone_number, user.name);
-      resetForceLogout(); // Allow force-logout to fire again after re-register (BUG-3)
-      close();
-
       const from = new URLSearchParams(window.location.search).get("from");
       if (from) {
         router.push(from);
@@ -114,6 +110,10 @@ const RegisterForm = () => {
         router.push("/menu");
       }
       router.refresh();
+
+      login(user.phone_number, user.name);
+      resetForceLogout(); // Allow force-logout to fire again after re-register (BUG-3)
+      close();
     } catch (error) {
       const axiosError = error as { response?: { data?: { error?: string } } };
       setServerError(

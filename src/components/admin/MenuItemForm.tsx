@@ -288,7 +288,7 @@ export default function MenuItemForm({
 
   return (
     <form onSubmit={handleSubmit(onFormSubmit)} className="flex flex-col h-full overflow-hidden">
-      <div className="flex-1 overflow-y-auto px-6 py-6 custom-scrollbar space-y-6">
+      <div className="flex-1 overflow-y-auto overscroll-contain px-6 py-6 custom-scrollbar space-y-6">
         {formError && (
           <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
             {formError}

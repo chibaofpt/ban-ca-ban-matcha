@@ -64,7 +64,7 @@ export default function PushSubscriptionManager() {
 
   // Floating button at bottom left (above mobile tab bar)
   return (
-    <div className="fixed bottom-24 md:bottom-8 left-4 z-50">
+    <div className="fixed bottom-24 md:bottom-8 left-4 z-30">
       <button
         onClick={handleToggle}
         disabled={loading || permission === "denied"}

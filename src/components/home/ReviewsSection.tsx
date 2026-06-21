@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Star, X, ExternalLink } from "lucide-react";
 import rawReviews from "@/src/data/reviews.json";
-import { DismissableSheet } from "@/src/components/ui/DismissableSheet";
+import { Drawer } from "vaul";
+import * as Dialog from "@radix-ui/react-dialog";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -45,10 +46,8 @@ function StarRating({ rating }: { rating: number }) {
 }
 
 function ReviewCard({ review, colorCls, truncate = true }: { review: Review; colorCls: string; truncate?: boolean }) {
-  const formattedDate = new Date(review.date).toLocaleDateString("vi-VN", {
-    month: "long",
-    year: "numeric",
-  });
+  const dateObj = new Date(review.date);
+  const formattedDate = `tháng ${dateObj.getMonth() + 1} năm ${dateObj.getFullYear()}`;
 
   return (
     <div className="bg-white/60 backdrop-blur-xs rounded-2xl p-5 shadow-paper border border-primary/10 flex flex-col gap-3 h-full">
@@ -76,84 +75,93 @@ function ReviewCard({ review, colorCls, truncate = true }: { review: Review; col
 // ── Reviews Bottom Sheet ───────────────────────────────────────────────────────
 
 function ReviewsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 768px)");
+    setIsDesktop(media.matches);
+    const listener = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    media.addEventListener("change", listener);
+    return () => media.removeEventListener("change", listener);
+  }, []);
+
   const avgRating = useMemo(
     () => (REVIEWS.reduce((s, r) => s + r.rating, 0) / REVIEWS.length).toFixed(1),
     []
   );
 
-  return (
-    <DismissableSheet
-      open={open}
-      onClose={onClose}
-      springDamping={28}
-      springStiffness={300}
-      initialAnimation={{ opacity: 0, y: 40 }}
-      animateAnimation={{ opacity: 1, y: 0 }}
-      exitAnimation={{ opacity: 0, y: 40 }}
-      backdropClassName="bg-black/50 backdrop-blur-sm"
-      zIndexBackdrop={40}
-      zIndexSheet={50}
-      sheetClassName="fixed inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center p-0 md:p-4"
-      dragHandleContent={
-        <div className="w-full flex justify-center pt-3 pb-1 md:hidden">
-          <div className="w-12 h-1.5 bg-border/60 rounded-full" />
-        </div>
-      }
-    >
-      {({ onTouchStart, onTouchMove, onTouchEnd, ref: contentRef }) => (
-        <div className="relative bg-background w-full md:max-w-2xl md:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col h-[85vh] md:max-h-[85vh]">
-          {/* Header */}
-          <div className="bg-background md:rounded-t-2xl z-10 px-4 pt-2 md:pt-4 pb-3 border-b border-border/50 shrink-0">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-serif text-lg font-bold text-primary">Đánh giá từ khách hàng</h2>
-                <div className="flex items-center gap-2 mt-1">
-                  <StarRating rating={5} />
-                  <span className="text-sm font-bold text-foreground">{avgRating}</span>
-                  <span className="text-sm text-muted-foreground">/ 5 · {REVIEWS.length} đánh giá</span>
-                </div>
-              </div>
-              <button
-                onClick={onClose}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-secondary/60 transition text-muted-foreground"
-                aria-label="Đóng"
-              >
-                <X size={18} />
-              </button>
+  const modalContent = (
+    <div className="relative bg-background w-full md:max-w-2xl md:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col h-[85vh] md:max-h-[85vh]">
+      {/* Header */}
+      <div className="bg-background md:rounded-t-2xl z-10 px-4 pt-2 md:pt-4 pb-3 border-b border-border/50 shrink-0">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-serif text-lg font-bold text-primary">Đánh giá từ khách hàng</h2>
+            <div className="flex items-center gap-2 mt-1">
+              <StarRating rating={5} />
+              <span className="text-sm font-bold text-foreground">{avgRating}</span>
+              <span className="text-sm text-muted-foreground">/ 5 · {REVIEWS.length} đánh giá</span>
             </div>
           </div>
-
-          {/* Scrollable list */}
-          <div
-            ref={contentRef}
-            onTouchStart={onTouchStart}
-            onTouchMove={onTouchMove}
-            onTouchEnd={onTouchEnd}
-            className="overflow-y-auto overscroll-contain flex-1 px-4 py-4 flex flex-col gap-3"
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-secondary/60 transition text-muted-foreground"
+            aria-label="Đóng"
           >
-            {REVIEWS.map((review, i) => (
-              <ReviewCard
-                key={i}
-                review={review}
-                colorCls={AVATAR_COLORS[i % AVATAR_COLORS.length]}
-                truncate={false}
-              />
-            ))}
-
-            {/* Google Maps CTA */}
-            <a
-              href={GOOGLE_MAPS_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 mt-4 mb-6 text-sm font-bold text-primary border border-primary/25 rounded-full py-3 bg-white/60 hover:bg-white transition-colors"
-            >
-              <span>Xem tất cả trên Google Maps</span>
-              <ExternalLink size={15} />
-            </a>
-          </div>
+            <X size={18} />
+          </button>
         </div>
+      </div>
+
+      {/* Scrollable list */}
+      <div className="overflow-y-auto overscroll-contain flex-1 px-4 py-4 flex flex-col gap-3">
+        {REVIEWS.map((review, i) => (
+          <ReviewCard
+            key={i}
+            review={review}
+            colorCls={AVATAR_COLORS[i % AVATAR_COLORS.length]}
+            truncate={false}
+          />
+        ))}
+
+        {/* Google Maps CTA */}
+        <a
+          href={GOOGLE_MAPS_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 mt-4 mb-6 text-sm font-bold text-primary border border-primary/25 rounded-full py-3 bg-white/60 hover:bg-white transition-colors"
+        >
+          <span>Xem tất cả trên Google Maps</span>
+          <ExternalLink size={15} />
+        </a>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      {isDesktop ? (
+        <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+          <Dialog.Portal>
+            <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[40]" />
+            <Dialog.Content className="fixed z-[50] outline-none top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl h-[85vh] max-h-[85vh] flex items-center justify-center p-4">
+              {modalContent}
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
+      ) : (
+        <Drawer.Root open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+          <Drawer.Portal>
+            <Drawer.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[40]" />
+            <Drawer.Content className="fixed bottom-0 left-0 right-0 z-[50] outline-none bg-background rounded-t-2xl shadow-2xl flex flex-col h-[85vh] max-h-[85vh]">
+              <div className="absolute top-0 left-0 right-0 h-10 z-10 flex items-start justify-center pt-3 bg-transparent">
+                <div className="w-12 h-1.5 bg-border/60 rounded-full" />
+              </div>
+              {modalContent}
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
       )}
-    </DismissableSheet>
+    </>
   );
 }
 
@@ -165,10 +173,9 @@ const AVERAGE_RATING = (REVIEWS.reduce((s, r) => s + r.rating, 0) / REVIEWS.leng
 export default function ReviewsSection() {
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  // Pick 3 random reviews on mount — stable via useMemo
+  // Use first 3 reviews statically to prevent hydration mismatch (SSR vs Client)
   const featured = useMemo(() => {
-    const shuffled = [...REVIEWS].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, 3);
+    return REVIEWS.slice(0, 3);
   }, []);
 
   return (

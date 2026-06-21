@@ -1,5 +1,5 @@
 import React from "react";
-import { OptionCard } from "./OptionCard";
+import OptionCard from "./OptionCard";
 import { SIZE_LABELS } from "@/src/constants/orderOptions";
 import type { Size } from "@/src/lib/types/menu";
 

@@ -74,12 +74,15 @@ function SkeletonCard() {
 // Main Component
 // ---------------------------------------------------------------------------
 
+import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
+
 /** Full-screen report modal for staff (summary only) and admin (full report) */
 export function DailyReportModal({
   isOpen,
   onClose,
   userRole,
 }: DailyReportModalProps) {
+  useBodyScrollLock(isOpen);
   const today = getTodayStr();
 
   const [startDate, setStartDate] = useState(today);
@@ -254,7 +257,7 @@ export function DailyReportModal({
       </div>
 
       {/* ---- Scrollable Content ---- */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 max-w-3xl mx-auto w-full space-y-4 pb-8">
+      <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 max-w-3xl mx-auto w-full space-y-4 pb-8">
         {isLoading ? (
           <>
             <SkeletonCard />

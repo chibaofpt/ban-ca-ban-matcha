@@ -62,7 +62,7 @@ export const CartDiscountPicker = ({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-3">
+      <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-3">
         {[...discountVouchers, ...freeshipVouchers].map((v) => {
           const isSelected = selectedVoucherIds.includes(v.id);
           const hasSelectedPercent = selectedVoucherIds.some(id => discountVouchers.find(d => d.id === id)?.discount_type === "PERCENT");

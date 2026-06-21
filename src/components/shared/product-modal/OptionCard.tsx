@@ -9,7 +9,7 @@ interface OptionCardProps {
   onClick: () => void;
 }
 
-export function OptionCard({ label, sub, isActive, onClick }: OptionCardProps) {
+function OptionCard({ label, sub, isActive, onClick }: OptionCardProps) {
   const isPriceAddition = sub?.startsWith("+");
   const isSizePrice = sub && sub.endsWith("k") && !sub.startsWith("+") && !sub.startsWith("-");
 
@@ -40,3 +40,4 @@ export function OptionCard({ label, sub, isActive, onClick }: OptionCardProps) {
     </motion.button>
   );
 }
+export default React.memo(OptionCard);

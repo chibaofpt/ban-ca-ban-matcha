@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
+import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
 import LoginForm from "./LoginForm";
 import RegisterForm from "./RegisterForm";
 
@@ -15,6 +16,8 @@ const AuthModal = () => {
   const open = useAuthModalStore((s) => s.open);
   const mode = useAuthModalStore((s) => s.mode);
   const close = useAuthModalStore((s) => s.close);
+
+  useBodyScrollLock(open);
 
   return (
     <AnimatePresence>

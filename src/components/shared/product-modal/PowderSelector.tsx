@@ -1,5 +1,5 @@
 import React from "react";
-import { OptionCard } from "./OptionCard";
+import OptionCard from "./OptionCard";
 import type { Powder } from "@/src/lib/types/powder";
 import type { Size } from "@/src/lib/types/menu";
 

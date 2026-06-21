@@ -45,18 +45,21 @@ const LoginForm = () => {
       };
       const user = await loginRequest(payload);
 
-      login(user.phone_number, user.name);
-      resetForceLogout(); // Allow force-logout to fire again after re-login (BUG-3)
-      close();
-
-      // Redirect based on role — all roles share this single form.
+      // Thực hiện điều hướng TRƯỚC KHI đóng modal để tránh lỗi component bị unmount làm hủy lệnh router
       if (user.role === "ADMIN" || user.role === "STAFF") {
-        router.replace("/staff/orders");
+        // Đối với Staff/Admin, dùng window.location.href để chuyển hẳn sang phân hệ quản lý
+        // Đảm bảo không bị kẹt layout hay navbar của Customer.
+        window.location.href = "/staff/orders";
       } else {
-        // Theo yêu cầu: luôn set /menu là trang mặc định sau khi customer đăng nhập
+        // Đối với Customer, giữ nguyên trải nghiệm SPA mượt mà
         router.push("/menu");
         router.refresh();
       }
+
+      // Cập nhật state và đóng modal sau
+      login(user.phone_number, user.name);
+      resetForceLogout(); // Allow force-logout to fire again after re-login (BUG-3)
+      close();
     } catch (error) {
       const axiosError = error as { response?: { data?: { error?: string } } };
       setServerError(

@@ -85,9 +85,12 @@ function VoucherTypeBadge({ type }: { type: VoucherPackage["voucher_type"] }) {
   );
 }
 
+import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
+
 export default function AdminVoucherPackagesPage() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  useBodyScrollLock(open);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<VoucherPackageForm>(emptyForm);
 
@@ -523,7 +526,7 @@ export default function AdminVoucherPackagesPage() {
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
-          <div className="relative bg-card rounded-2xl p-6 w-full max-w-sm md:max-w-md mx-4 shadow-xl space-y-3 max-h-[90vh] overflow-y-auto">
+          <div className="relative bg-card rounded-2xl p-6 w-full max-w-sm md:max-w-md mx-4 shadow-xl space-y-3 max-h-[90vh] overflow-y-auto overscroll-contain">
             <h2 className="font-serif text-lg font-semibold">
               {editingId ? "Sửa gói voucher" : "Thêm gói voucher"}
             </h2>

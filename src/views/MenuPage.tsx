@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, PanInfo, useMotionValue, animate, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Gift } from 'lucide-react';
 import Link from 'next/link';
@@ -61,7 +61,7 @@ export default function MenuPage() {
   const loading = menuLoading || powderLoading;
   const data = menuRes ?? null;
 
-  useEffect(() => {}, [isLoggedIn]);
+
 
   useEffect(() => {
     if (powderRes) {
@@ -75,33 +75,33 @@ export default function MenuPage() {
     }
   }, [menuError, powderError]);
 
-  const getItemsForTab = (tabId: TabId): MenuItem[] => {
+  const getItemsForTab = useCallback((tabId: TabId): MenuItem[] => {
     if (!data) return [];
     if (tabId === 'seasonal') {
       const allItems = [...(data.latte || []), ...(data.fusion || [])];
       return allItems.filter(item => item.is_seasonal);
     }
     return data[tabId as Category] ?? [];
-  };
+  }, [data]);
 
   const tabsList = tabsConfig.map(t => t.id);
   const currentIndex = tabsList.indexOf(activeTab);
 
-  const snapCarousel = (index: number) => {
+  const snapCarousel = useCallback((index: number) => {
     if (containerRef.current) {
       const W = containerRef.current.offsetWidth;
       animate(carouselX, -index * W, { type: 'spring', stiffness: 300, damping: 30 });
     }
-  };
+  }, [carouselX]);
 
-  const handleTabChange = (newTab: TabId) => {
+  const handleTabChange = useCallback((newTab: TabId) => {
     setActiveTab(newTab);
-  };
+  }, []);
 
   // Sync carousel position when activeTab changes (e.g. from clicks)
   useEffect(() => {
     snapCarousel(currentIndex);
-  }, [currentIndex]);
+  }, [currentIndex, snapCarousel]);
 
   // Handle window resize to keep snapped
   useEffect(() => {
@@ -115,7 +115,7 @@ export default function MenuPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, [currentIndex, carouselX]);
 
-  const handleDragEnd = (e: any, { offset, velocity }: PanInfo) => {
+  const handleDragEnd = useCallback((e: any, { offset, velocity }: PanInfo) => {
     const swipe = swipePower(offset.x, velocity.x);
     const draggedFarLeft = offset.x < -100;
     const draggedFarRight = offset.x > 100;
@@ -131,7 +131,11 @@ export default function MenuPage() {
     } else {
       snapCarousel(currentIndex);
     }
-  };
+  }, [currentIndex, tabsList, snapCarousel]);
+
+  const handleItemClick = useCallback((item: MenuItem) => {
+    setSelectedItem(item);
+  }, []);
 
   return (
     <main className="min-h-screen bg-[#fdfcf7] text-foreground font-sans pt-4 pb-24 px-6">
@@ -197,7 +201,7 @@ export default function MenuPage() {
                         <MenuCard
                           key={item.id}
                           item={item}
-                          onClick={() => setSelectedItem(item)}
+                          onClick={handleItemClick}
                         />
                       ))
                     )}

@@ -8,6 +8,7 @@ import {
   openStore,
 } from "@/src/services/adminStoreService";
 import type { DaySchedule } from "@/src/services/adminStoreService";
+import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
 
 const DAY_NAMES = ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
 
@@ -183,11 +184,13 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
     }
   };
 
+  useBodyScrollLock(isOpen);
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="bg-card w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl border border-border">
+      <div className="bg-card w-full max-w-lg max-h-[90vh] overflow-y-auto overscroll-contain rounded-2xl shadow-2xl border border-border">
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 bg-card border-b border-border rounded-t-2xl">
           <h2 className="text-lg font-semibold text-foreground">⚙️ Cài đặt cửa hàng</h2>

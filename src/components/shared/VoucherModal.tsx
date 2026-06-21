@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { DismissableSheet } from "@/src/components/ui/DismissableSheet";
+import { Drawer } from "vaul";
+import * as Dialog from "@radix-ui/react-dialog";
 import { X, QrCode, Star, Clock, Loader2, Ticket, Gift, LogIn } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/src/utils/cn";
@@ -228,11 +229,23 @@ function PackageCard({
 
 // ── VoucherModal (Main) ───────────────────────────────────────────────────────
 
+import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
+
 export default function VoucherModal() {
   const { open, close } = useVoucherModalStore();
+  useBodyScrollLock(open);
   const isLoggedIn = useIsLoggedIn();
   const openLogin = useAuthModalStore((s) => s.openLogin);
   const { data: points } = useCustomerPoints();
+
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 768px)");
+    setIsDesktop(media.matches);
+    const listener = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    media.addEventListener("change", listener);
+    return () => media.removeEventListener("change", listener);
+  }, []);
 
   // Vouchers: only for logged-in users
   const { data: vouchers = [], isLoading: vLoading } = useCustomerVouchers({ enabled: open && isLoggedIn });
@@ -260,11 +273,8 @@ export default function VoucherModal() {
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
 
-  /** Extended onTouchEnd: wraps DismissableSheet's handler to also detect horizontal swipe (QA R8). */
-  const buildTouchEndHandler = (
-    baseOnTouchEnd: (e: React.TouchEvent<HTMLDivElement>) => void
-  ) => (e: React.TouchEvent<HTMLDivElement>) => {
-    baseOnTouchEnd(e);
+  /** Extended onTouchEnd: detects horizontal swipe (QA R8). */
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
     const currentX = e.changedTouches[0].clientX;
     const currentY = e.changedTouches[0].clientY;
     const deltaX = currentX - touchStartX.current;
@@ -279,12 +289,9 @@ export default function VoucherModal() {
   };
 
   /** Capture touch start X/Y for horizontal swipe detection. */
-  const handleContentTouchStart = (
-    baseOnTouchStart: (e: React.TouchEvent<HTMLDivElement>) => void
-  ) => (e: React.TouchEvent<HTMLDivElement>) => {
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     touchStartX.current = e.touches[0].clientX;
     touchStartY.current = e.touches[0].clientY;
-    baseOnTouchStart(e);
   };
 
   async function handleExchange(pkg: VoucherPackage) {
@@ -331,28 +338,9 @@ export default function VoucherModal() {
   };
   const direction = activeTab === "my_vouchers" ? -1 : 1;
 
-  return (
-    <DismissableSheet
-      open={open}
-      onClose={close}
-      springDamping={28}
-      springStiffness={300}
-      initialAnimation={{ opacity: 0, y: 40 }}
-      animateAnimation={{ opacity: 1, y: 0 }}
-      exitAnimation={{ opacity: 0, y: 40 }}
-      backdropClassName="bg-black/50 backdrop-blur-sm"
-      zIndexBackdrop={40}
-      zIndexSheet={50}
-      sheetClassName="fixed inset-x-0 bottom-0 md:inset-0 md:flex md:items-center md:justify-center p-0 md:p-4"
-      dragHandleContent={
-        <div className="w-full flex justify-center pt-3 pb-1 md:hidden">
-          <div className="w-12 h-1.5 bg-border/60 rounded-full" />
-        </div>
-      }
-    >
-      {({ onTouchStart, onTouchMove, onTouchEnd, ref: contentRef }) => (
-        <>
-          <div className="relative bg-background w-full md:max-w-2xl md:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col h-[85vh] md:max-h-[85vh]">
+  const modalContent = (
+    <>
+    <div className="relative bg-background w-full md:max-w-2xl md:rounded-[2.5rem] rounded-t-[2.5rem] shadow-2xl flex flex-col h-[85vh] md:max-h-[85vh] overflow-hidden">
 
             {/* ── Sticky Header ── */}
             <div className="bg-background md:rounded-t-2xl z-10 px-4 pt-2 md:pt-4 pb-3">
@@ -408,10 +396,8 @@ export default function VoucherModal() {
 
             {/* ── Scrollable Body — touch handlers extended for horizontal swipe ── */}
             <div
-              ref={contentRef}
-              onTouchStart={handleContentTouchStart(onTouchStart)}
-              onTouchMove={onTouchMove}
-              onTouchEnd={buildTouchEndHandler(onTouchEnd)}
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
               className="overflow-y-auto overscroll-contain flex-1 relative"
             >
               {loading ? (
@@ -498,8 +484,33 @@ export default function VoucherModal() {
               <QrModal voucher={qrVoucher} onClose={() => setQrVoucher(null)} />
             )}
           </AnimatePresence>
-        </>
+    </>
+  );
+
+  return (
+    <>
+      {isDesktop ? (
+        <Dialog.Root open={open} onOpenChange={(o) => { if (!o) close(); }}>
+          <Dialog.Portal>
+            <Dialog.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[40]" />
+            <Dialog.Content className="fixed z-[50] outline-none top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl h-[85vh] max-h-[85vh] flex items-center justify-center p-4">
+              {modalContent}
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
+      ) : (
+        <Drawer.Root open={open} onOpenChange={(o) => { if (!o) close(); }}>
+          <Drawer.Portal>
+            <Drawer.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[40]" />
+            <Drawer.Content className="fixed bottom-0 left-0 right-0 z-[50] outline-none bg-background rounded-t-[2.5rem] shadow-2xl flex flex-col h-[85vh] max-h-[85vh]">
+              <div className="absolute top-0 left-0 right-0 h-10 z-10 flex items-start justify-center pt-3 bg-transparent">
+                <div className="w-12 h-1.5 bg-border/60 rounded-full" />
+              </div>
+              {modalContent}
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
       )}
-    </DismissableSheet>
+    </>
   );
 }

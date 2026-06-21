@@ -48,7 +48,11 @@ function getBannerConfig(
 
 export default function StoreStatusBanner() {
   const pathname = usePathname();
-  const { is_open, reason, closure_note, isLoaded, setStoreStatus } = useStoreStatusStore();
+  const is_open = useStoreStatusStore((s) => s.is_open);
+  const reason = useStoreStatusStore((s) => s.reason);
+  const closure_note = useStoreStatusStore((s) => s.closure_note);
+  const isLoaded = useStoreStatusStore((s) => s.isLoaded);
+  const setStoreStatus = useStoreStatusStore((s) => s.setStoreStatus);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [todayFirstOpen, setTodayFirstOpen] = useState<string | undefined>(undefined);
   const [todayLastClose, setTodayLastClose] = useState<string | undefined>(undefined);

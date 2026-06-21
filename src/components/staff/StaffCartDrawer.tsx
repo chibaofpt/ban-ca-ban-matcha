@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { Trash2, User, UserX, Ticket, ArrowLeft, CheckCircle2, ChevronRight, X } from "lucide-react";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
@@ -15,7 +15,7 @@ import {
   filterUsableVouchers,
 } from "@/src/utils/voucherMatchUtils";
 import { motion, AnimatePresence } from "framer-motion";
-import { DismissableSheet } from "@/src/components/ui/DismissableSheet";
+import { Drawer } from "vaul";
 import { useQuery } from "@tanstack/react-query";
 import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
@@ -70,7 +70,7 @@ function discountLabel(v: MyVoucher): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function StaffCartDrawer({
+export const StaffCartDrawer = React.memo(function StaffCartDrawer({
   isOpen,
   cart,
   discountVoucher,
@@ -103,61 +103,60 @@ export function StaffCartDrawer({
 
 
   // Subtotal (already reflects PRODUCT voucher credit if applied)
-  const subtotalPrice = cart.reduce((s, c) => s + c.clientPriceVnd * c.quantity, 0);
+  const subtotalPrice = useMemo(() => cart.reduce((s, c) => s + c.clientPriceVnd * c.quantity, 0), [cart]);
 
   // Vouchers
-  const discountVouchers = filterUsableVouchers(customerVouchers, "DISCOUNT");
-  const applicableProductVouchers = buildProductVoucherMap(customerVouchers, cart);
-  const applicableAddonVouchersMap = buildAddonVoucherMap(customerVouchers, cart);
+  const discountVouchers = useMemo(() => filterUsableVouchers(customerVouchers, "DISCOUNT"), [customerVouchers]);
+  const applicableProductVouchers = useMemo(() => buildProductVoucherMap(customerVouchers, cart), [customerVouchers, cart]);
+  const applicableAddonVouchersMap = useMemo(() => buildAddonVoucherMap(customerVouchers, cart), [customerVouchers, cart]);
 
   // Discounts
-  const selectedDiscountVouchersList = discountVouchers.filter(v => selectedDiscountIds.includes(v.id));
-  const listDiscount = estimateMultiDiscountSavings(selectedDiscountVouchersList, subtotalPrice);
+  const selectedDiscountVouchersList = useMemo(() => discountVouchers.filter(v => selectedDiscountIds.includes(v.id)), [discountVouchers, selectedDiscountIds]);
+  const listDiscount = useMemo(() => estimateMultiDiscountSavings(selectedDiscountVouchersList, subtotalPrice), [selectedDiscountVouchersList, subtotalPrice]);
   
-  const scanDiscount = discountVoucher
+  const scanDiscount = useMemo(() => discountVoucher
     ? discountVoucher.discount_type === "PERCENT"
       ? Math.floor((subtotalPrice * discountVoucher.discount_value) / 100)
       : discountVoucher.discount_value
-    : 0;
+    : 0, [discountVoucher, subtotalPrice]);
 
   const rawDiscountAmount = listDiscount || scanDiscount;
 
   // Apply rounding rules to match Customer Cart
-  const subtotalK = Math.ceil(subtotalPrice / 1000);
-  const discountK = Math.floor(rawDiscountAmount / 1000); // Conservative discount display
-  const finalK = Math.max(0, subtotalK - discountK);
-
-  const discountAmount = discountK * 1000;
-  const total = finalK * 1000;
+  const { subtotalK, finalK, discountK, discountAmount, total } = useMemo(() => {
+    const subtotalK = Math.ceil(subtotalPrice / 1000);
+    const discountK = Math.floor(rawDiscountAmount / 1000); // Conservative discount display
+    const finalK = Math.max(0, subtotalK - discountK);
+    return {
+      subtotalK,
+      finalK,
+      discountK,
+      discountAmount: discountK * 1000,
+      total: finalK * 1000
+    };
+  }, [subtotalPrice, rawDiscountAmount]);
 
   const activeItem = cart.find(i => i.cartId === activeItemForVoucher);
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     onClose();
     // Reset sub-overlay state after close animation
     setTimeout(() => {
       setActiveItemForVoucher(null);
       setIsDiscountPickerOpen(false);
     }, 300);
-  };
+  }, [onClose]);
 
   return (
-    <DismissableSheet
-      open={isOpen}
-      onClose={handleClose}
-      springDamping={25}
-      springStiffness={300}
-      snapBackDamping={28}
-      snapBackStiffness={300}
-      initialAnimation={{ y: "100%" }}
-      animateAnimation={{ y: 0 }}
-      exitAnimation={{ y: "100%" }}
-      backdropClassName="bg-black/40"
-      zIndexBackdrop={50}
-      zIndexSheet={50}
-      sheetClassName="absolute bottom-0 left-0 right-0 bg-card rounded-t-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
-      dragHandleContent={
-        <>
+    <Drawer.Root 
+      open={isOpen} 
+      onOpenChange={(open) => {
+        if (!open) handleClose();
+      }}
+    >
+      <Drawer.Portal>
+        <Drawer.Overlay className="fixed inset-0 z-50 bg-black/40" />
+        <Drawer.Content className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl outline-none">
           <div className="flex justify-center pt-3 pb-1 w-full shrink-0">
             <div className="w-12 h-1.5 bg-border rounded-full" />
           </div>
@@ -172,10 +171,6 @@ export function StaffCartDrawer({
               <X size={16} />
             </button>
           </div>
-        </>
-      }
-    >
-      {({ onTouchStart, onTouchMove, onTouchEnd, ref: contentRef }) => (
         <>
         <div className="px-4 py-3 shrink-0 border-b border-border/30">
           <div className="bg-secondary/20 rounded-2xl p-3 border border-border flex items-center justify-between">
@@ -215,10 +210,6 @@ export function StaffCartDrawer({
 
         {/* Item list */}
         <div
-          ref={contentRef}
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
           className="overflow-y-auto overscroll-contain flex-1 min-h-0 p-4 space-y-4"
         >
           {cart.length === 0 ? (
@@ -368,7 +359,7 @@ export function StaffCartDrawer({
                 <h3 className="font-bold text-primary">Ưu đãi cho món</h3>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-6">
+              <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-6">
                 {/* Item context */}
                 <div className="flex items-center gap-3 p-3 bg-secondary/20 border border-border/50 rounded-2xl">
                   <div className="w-12 h-12 rounded-xl overflow-hidden bg-secondary/40">
@@ -488,7 +479,7 @@ export function StaffCartDrawer({
                 <h3 className="font-bold text-primary">Mã giảm giá đơn hàng</h3>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-3">
                 {discountVouchers.length === 0 && (
                   <p className="text-center text-sm text-muted-foreground mt-10">Không có mã giảm giá nào</p>
                 )}
@@ -542,7 +533,8 @@ export function StaffCartDrawer({
           )}
         </AnimatePresence>
         </>
-      )}
-    </DismissableSheet>
+        </Drawer.Content>
+      </Drawer.Portal>
+    </Drawer.Root>
   );
-}
+});

@@ -1,5 +1,5 @@
 import React from "react";
-import { OptionCard } from "./OptionCard";
+import OptionCard from "./OptionCard";
 import type { MilkTypeOption, Size } from "@/src/lib/types/menu";
 
 interface MilkSelectorProps {

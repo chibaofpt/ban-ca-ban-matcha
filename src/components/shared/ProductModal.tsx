@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef, Profiler } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef, Profiler } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { onRenderCallback } from "@/src/utils/dev/renderProfiler";
-import { DismissableSheet } from "@/src/components/ui/DismissableSheet";
+import { Drawer } from "vaul";
+import * as Dialog from "@radix-ui/react-dialog";
 import { X, Minus, Plus, ShoppingBag, Ticket, CheckCircle2 } from "lucide-react";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { filterUsableVouchers } from "@/src/utils/voucherMatchUtils";
@@ -20,7 +21,7 @@ import { MilkSelector } from "./product-modal/MilkSelector";
 import { PowderSelector } from "./product-modal/PowderSelector";
 import { ModalBottomCTA } from "./product-modal/ModalBottomCTA";
 import { SectionLabel } from "./product-modal/SectionLabel";
-import { OptionCard } from "./product-modal/OptionCard";
+import OptionCard from "./product-modal/OptionCard";
 
 interface ProductModalProps {
   item: MenuItem;
@@ -33,12 +34,17 @@ interface ProductModalProps {
   freeVoucherId?: string;
   freeVoucherCoveredPriceVnd?: number;
   availableVouchers?: MyVoucher[];
+  // ── Drawer UI ──
+  nested?: boolean;
 }
 
 // Extracted OptionCard, SizeSelector, MilkSelector, PowderSelector are imported
 
-const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, editingItem, onConfirm, freeVoucherId, freeVoucherCoveredPriceVnd, availableVouchers }) => {
-  const { addItem, updateItem } = useCartStore();
+const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, editingItem, onConfirm, freeVoucherId, freeVoucherCoveredPriceVnd, availableVouchers, nested = false }) => {
+  const [isOpen, setIsOpen] = useState(true);
+  // Global state
+  const addItem = useCartStore(s => s.addItem);
+  const updateItem = useCartStore(s => s.updateItem);
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
 
@@ -119,7 +125,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
   // ── Derived ──────────────────────────────────────────────────────────────
   const isLatte = item.category === "latte";
   const activePowderId = isLatte ? (item.powder?.id ?? "") : selectedPowderId;
-  const activePowder = powders.find((p) => p.id === activePowderId);
+  const activePowder = useMemo(() => powders.find((p) => p.id === activePowderId), [powders, activePowderId]);
   const activePowderPricePerGram = activePowder?.price_per_gram ?? 0;
 
   const quantityGroups = useMemo(() => item.addon_groups.filter((g) => g.type === "QUANTITY"), [item.addon_groups]);
@@ -128,11 +134,13 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
 
   const matchaSelectorGroups = useMemo(() => selectorGroups.filter(g => g.name.toLowerCase().includes("matcha")), [selectorGroups]);
   const otherSelectorGroups = useMemo(() => selectorGroups.filter(g => !g.name.toLowerCase().includes("matcha")), [selectorGroups]);
-  const defaultMilkId = item.milk_types?.find(m => m.is_default)?.id ?? "";
+  const defaultMilkId = useMemo(() => item.milk_types?.find(m => m.is_default)?.id ?? "", [item.milk_types]);
 
-  const powderList = !isLatte && item.allowed_powder_ids.length > 0
-    ? [item.resolved_default_powder_id!, ...item.allowed_powder_ids.filter(id => id !== item.resolved_default_powder_id)]
-    : [];
+  const powderList = useMemo(() => {
+    return !isLatte && item.allowed_powder_ids.length > 0
+      ? [item.resolved_default_powder_id!, ...item.allowed_powder_ids.filter(id => id !== item.resolved_default_powder_id)]
+      : [];
+  }, [isLatte, item.allowed_powder_ids, item.resolved_default_powder_id]);
 
   // ── Pricing ──────────────────────────────────────────────────────────────
   const {
@@ -152,7 +160,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
   const defaultPowderPriceCtx = getPriceForContext(selectedSize, item.resolved_default_powder_id ?? "");
 
   // ── Handlers ─────────────────────────────────────────────────────────────
-  const handleSelectorToggle = (groupId: string, optionId: string, defaultOptId?: string) => {
+  const handleSelectorToggle = useCallback((groupId: string, optionId: string, defaultOptId?: string) => {
     const group = item.addon_groups.find(g => g.id === groupId);
     if (!group) return;
     const groupOptionIds = group.options.map((o) => o.id);
@@ -164,26 +172,26 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
       }
       return [...prev.filter((id) => !groupOptionIds.includes(id)), optionId];
     });
-  };
+  }, [item.addon_groups]);
 
-  const handleToggleChange = (optionId: string) => {
+  const handleToggleChange = useCallback((optionId: string) => {
     setSelectedOptionIds((prev) =>
       prev.includes(optionId) ? prev.filter((id) => id !== optionId) : [...prev, optionId]
     );
-  };
+  }, []);
 
-  const [isOpen, setIsOpen] = useState(true);
+
 
   // Pull-to-dismiss logic is handled by DismissableSheet.
   // Body scroll lock is handled by DismissableSheet.
 
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     setIsOpen(false);
     setTimeout(onClose, 300); // wait for exit animation
-  };
+  }, [onClose]);
 
-  const handleAddToCart = () => {
+  const handleAddToCart = useCallback(() => {
     const quantityAddonOptions = item.addon_groups
       .filter((g) => g.type === "QUANTITY")
       .flatMap((g) => {
@@ -227,36 +235,18 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
     }
     
     handleClose();
-  };
+  }, [
+    item, quantityMap, selectedAddonVoucherIds, availableVouchers, currentPriceContext,
+    selectedSize, finalUnitPrice, quantity, sweetness, iceOption, coldwhisk, note,
+    selectedOptionIds, isLatte, selectedPowderId, selectedMilkId, effectiveFreeVoucherId,
+    effectiveFreeCoveredPrice, onConfirm, editingItem, updateItem, addItem, handleClose
+  ]);
 
-  const sweetnessIdx = SWEETNESS_OPTIONS.findIndex((o) => o.value === sweetness);
+  const sweetnessIdx = useMemo(() => SWEETNESS_OPTIONS.findIndex((o) => o.value === sweetness), [sweetness]);
 
-  return (
-    <Profiler id="ProductModal" onRender={onRenderCallback}>
-    <DismissableSheet
-      open={isOpen}
-      onClose={handleClose}
-      springDamping={30}
-      springStiffness={300}
-      initialAnimation={isDesktop ? { opacity: 0, scale: 0.9, x: "-50%", y: "-50%" } : { y: "100%" }}
-      animateAnimation={isDesktop ? { opacity: 1, scale: 1, x: "-50%", y: "-50%" } : { y: 0 }}
-      exitAnimation={isDesktop ? { opacity: 0, scale: 0.9, x: "-50%", y: "-50%" } : { y: "100%" }}
-      backdropClassName="bg-black/40 backdrop-blur-sm"
-      zIndexBackdrop={100}
-      zIndexSheet={101}
-      disableDrag={isDesktop}
-      sheetClassName="fixed inset-x-0 bottom-0 flex flex-col max-h-[92vh] overflow-hidden rounded-t-[2.5rem] bg-[#fdfcf7] shadow-2xl md:bottom-auto md:top-1/2 md:left-1/2 md:w-[90vw] md:max-w-4xl md:h-[80vh] md:max-h-[85vh] md:rounded-[2.5rem] md:grid md:grid-cols-2 md:pb-0"
-      dragHandleContent={
-        !isDesktop ? (
-          <div className="absolute top-0 left-0 right-0 h-10 z-10 flex items-start justify-center pt-3">
-            <div className="w-12 h-1.5 bg-border rounded-full" />
-          </div>
-        ) : undefined
-      }
-    >
-      {({ onTouchStart, onTouchMove, onTouchEnd, ref: contentRef }) => (
-        <>
-          {/* Left Column (Desktop only) */}
+  const modalContent = (
+    <>
+      {/* Left Column (Desktop only) */}
         <div className="hidden md:flex flex-col bg-[#d9e4d4]/30 border-r border-border/40 p-8 justify-between relative h-full">
           {item.image_url ? (
             <div className="w-full aspect-square rounded-3xl overflow-hidden shadow-md bg-white flex items-center justify-center mb-6">
@@ -281,13 +271,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
           <X className="w-5 h-5 text-primary" />
         </button>
 
-        <div
-          ref={contentRef}
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-          className="flex flex-col flex-1 min-h-0 h-full overflow-y-auto overscroll-contain px-5 md:px-8 pt-7 pb-44 md:pb-40 md:pt-0"
-        >
+        <div className="flex flex-col flex-1 min-h-0 h-full overflow-y-auto overscroll-contain px-5 md:px-8 pt-7 pb-44 md:pb-40 md:pt-0">
           <div
             className="pt-7 pb-5 border-b border-border/40 md:hidden"
           >
@@ -618,9 +602,37 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose, edi
           handleAddToCart={handleAddToCart}
           isEditing={!!editingItem}
         />
-        </>
+    </>
+  );
+
+  return (
+    <Profiler id="ProductModal" onRender={onRenderCallback}>
+      {isDesktop ? (
+        <Dialog.Root open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
+          <Dialog.Portal>
+            <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]" />
+            <Dialog.Content 
+              className="fixed z-[101] outline-none bg-[#fdfcf7] shadow-2xl overflow-hidden top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-4xl h-[80vh] max-h-[85vh] rounded-[2.5rem] grid grid-cols-2 pb-0"
+            >
+              {modalContent}
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
+      ) : (
+        <Drawer.Root open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }} nested={nested}>
+          <Drawer.Portal>
+            <Drawer.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]" />
+            <Drawer.Content 
+              className="fixed bottom-0 left-0 right-0 z-[101] outline-none bg-[#fdfcf7] shadow-2xl overflow-hidden flex flex-col max-h-[92vh] rounded-t-[2.5rem]"
+            >
+              <div className="absolute top-0 left-0 right-0 h-10 z-10 flex items-start justify-center pt-3 bg-transparent">
+                <div className="w-12 h-1.5 bg-border rounded-full" />
+              </div>
+              {modalContent}
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
       )}
-    </DismissableSheet>
     </Profiler>
   );
 };

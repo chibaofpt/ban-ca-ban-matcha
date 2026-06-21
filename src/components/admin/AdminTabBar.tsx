@@ -137,7 +137,7 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
       {children}
 
       {/* Bottom tab bar */}
-      <nav className="md:hidden sticky bottom-0 w-full z-40 bg-card border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.05)] mt-auto pb-[env(safe-area-inset-bottom)]">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)]">
         <div
           className={cn(
             "grid",

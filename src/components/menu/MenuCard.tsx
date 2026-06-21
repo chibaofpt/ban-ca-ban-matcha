@@ -9,7 +9,7 @@ import { calcLattePrice, calcFusionPrice, resolveGram } from '@/src/utils/pricin
 
 interface MenuCardProps {
   item: MenuItem;
-  onClick: () => void;
+  onClick: (item: MenuItem) => void;
 }
 
 const SIZE_CARD_LABELS: Record<string, string> = {
@@ -54,7 +54,7 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
 
   return (
     <motion.div
-      onClick={onClick}
+      onClick={() => onClick(item)}
       whileTap={{ scale: 0.96 }}
       className="group flex flex-row items-center justify-between gap-4 md:gap-5 w-full h-[130px] md:h-[150px] border-b border-dashed border-primary/20 last:border-0 transition-all duration-300 cursor-pointer bg-transparent"
     >

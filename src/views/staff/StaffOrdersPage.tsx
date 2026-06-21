@@ -14,6 +14,7 @@ import { calcLattePrice, calcFusionPrice, resolveGram } from "@/src/utils/pricin
 import ProductModal from "@/src/components/shared/ProductModal";
 import { StaffCartDrawer } from "@/src/components/staff/StaffCartDrawer";
 import { CustomerSelectModal } from "@/src/components/staff/CustomerSelectModal";
+import { StaffProductGrid } from "@/src/components/staff/StaffProductGrid";
 import { QRScannerModal } from "@/src/components/staff/QRScannerModal";
 import { VoucherQRVerifyModal } from "@/src/components/staff/VoucherQRVerifyModal";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
@@ -95,7 +96,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     queryFn: fetchPowders,
   });
 
-  const menuItems = menuData ? [...menuData.latte, ...menuData.fusion] : [];
+  const menuItems = useMemo(() => menuData ? [...menuData.latte, ...menuData.fusion] : [], [menuData]);
   const status: LoadStatus = isMenuLoading || isPowderLoading ? "loading" : (menuData && pData) ? "success" : "error";
   
   const loadMenu = () => {
@@ -107,7 +108,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
 
-  const getDisplayPrice = (item: MenuItem, sizeObj: MenuItem["sizes"][0]) => {
+  const getDisplayPrice = useCallback((item: MenuItem, sizeObj: MenuItem["sizes"][0]) => {
     const isLatte = item.category === "latte";
     const defaultPowderId = isLatte ? item.powder?.id : item.resolved_default_powder_id;
     const defaultMilk = item.milk_types?.find((m) => m.is_default) ?? item.milk_types?.[0];
@@ -134,7 +135,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         premium_latte: 0,
       });
     }
-  };
+  }, [powders, defaultPowderGrams]);
 
   // ── Modal control — only one open at a time ────────────────────────────
 
@@ -213,18 +214,31 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     [menuItems, activeCategory]
   );
 
-  const subtotal = cart.reduce((s, c) => s + c.clientPriceVnd * c.quantity, 0);
-  const discount = discountVoucher
-    ? discountVoucher.discount_type === "PERCENT"
-      ? Math.floor((subtotal * discountVoucher.discount_value) / 100)
-      : discountVoucher.discount_value
-    : 0;
+  const subtotal = useMemo(() => cart.reduce((s, c) => s + c.clientPriceVnd * c.quantity, 0), [cart]);
+  
+  const discount = useMemo(() => {
+    return discountVoucher
+      ? discountVoucher.discount_type === "PERCENT"
+        ? Math.floor((subtotal * discountVoucher.discount_value) / 100)
+        : discountVoucher.discount_value
+      : 0;
+  }, [discountVoucher, subtotal]);
+
+  const memoizedDiscountVoucher = useMemo(() => {
+    return discountVoucher
+      ? {
+          discount_type: discountVoucher.discount_type,
+          discount_value: discountVoucher.discount_value,
+        }
+      : null;
+  }, [discountVoucher]);
 
   /** Returns true if any voucher is applied (either scan-based or list-based). */
-  const hasAnyVoucher =
+  const hasAnyVoucher = useMemo(() => 
     !!discountVoucher ||
     selectedDiscountIds.length > 0 ||
-    cart.some(c => !!c.productVoucherId || (c.addonVouchers && c.addonVouchers.length > 0));
+    cart.some(c => !!c.productVoucherId || (c.addonVouchers && c.addonVouchers.length > 0)),
+  [discountVoucher, selectedDiscountIds, cart]);
 
   // ── Cart handlers ─────────────────────────────────────────────────────
 
@@ -599,62 +613,11 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         )}
 
         {/* Menu grid */}
-        {status === "success" && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
-            {visibleItems.map((item) => {
-              return (
-                <button
-                  key={item.id}
-                  id={`menu-item-${item.id}`}
-                  onClick={() => setSelectedItem(item)}
-                  className="bg-card rounded-2xl border border-border p-3 flex flex-col text-left shadow-sm hover:shadow-md transition active:scale-[0.98] w-full"
-                >
-                  {/* Image */}
-                  <div className="aspect-square w-full rounded-xl bg-secondary/40 flex items-center justify-center text-5xl mb-2 overflow-hidden">
-                    {item.image_url ? (
-                      <img
-                        src={item.image_url}
-                        alt={item.name}
-                        className="w-full h-full object-cover rounded-xl"
-                      />
-                    ) : (
-                      <span>🍵</span>
-                    )}
-                  </div>
-
-                  <h3 className="font-medium text-sm leading-tight line-clamp-1">
-                    {item.name}
-                  </h3>
-                  <p className="text-[11px] text-muted-foreground line-clamp-1 capitalize mb-2">
-                    {item.category}
-                  </p>
-
-                  {/* Size prices row */}
-                  <div className="mt-auto pt-2 border-t border-border/50 w-full">
-                    <div className="flex items-end justify-between gap-1">
-                      {item.sizes.filter((s) => s.base_price_vnd != null).map((s) => (
-                        <div key={s.size} className="flex flex-col items-center gap-0.5 flex-1">
-                          <span className="text-[8px] font-bold text-primary/50 uppercase tracking-wide whitespace-nowrap">
-                            {SIZE_CARD_LABELS[s.size] ?? s.size}
-                          </span>
-                          <span className="text-[11px] font-bold text-primary">
-                            {getDisplayPrice(item, s) / 1000}k
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-
-            {visibleItems.length === 0 && (
-              <p className="col-span-full text-sm text-muted-foreground text-center py-8">
-                Không có món nào trong danh mục này.
-              </p>
-            )}
-          </div>
-        )}
+        <StaffProductGrid 
+          items={visibleItems} 
+          onItemClick={setSelectedItem} 
+          getDisplayPrice={getDisplayPrice} 
+        />
       </div>
 
       {/* Floating cart button */}
@@ -687,6 +650,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
             setScannedProductVoucher(null);
           }}
           onConfirm={handleAddToCart}
+          nested={!!editingCartItem}
         />
       )}
 
@@ -694,14 +658,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
       <StaffCartDrawer
         isOpen={cartOpen}
         cart={cart}
-        discountVoucher={
-          discountVoucher
-            ? {
-                discount_type: discountVoucher.discount_type,
-                discount_value: discountVoucher.discount_value,
-              }
-            : null
-        }
+        discountVoucher={memoizedDiscountVoucher}
         customerInfo={customerInfo}
         isSubmitting={isSubmitting}
         onClose={() => setCartOpen(false)}
