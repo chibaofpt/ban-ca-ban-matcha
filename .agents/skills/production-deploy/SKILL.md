@@ -20,7 +20,7 @@ Follow this exact terminal execution sequence:
 1. **Mandatory QA/QC Review (Before Deployment)**:
    - Run `git diff` (or review uncommitted/recently committed changes) to inspect what has changed since the last stable state.
    - Act as a QA/QC engineer: Look for latent bugs, unhandled edge cases, critical logic changes, or massive UI/style/layout modifications.
-   - **CRITICAL**: If you detect *any* potential risks, silent bugs, or massive UI changes, **DO NOT PROCEED with deployment**. Instead, STOP and list your findings clearly to the user. Wait for the user's explicit permission to deploy, or wait for the user to ask you to fix the issues first.
+   - **CRITICAL**: If you detect *any* potential risks, silent bugs, or massive UI changes, **DO NOT PROCEED with deployment**. Instead, STOP and list your findings clearly to the user. **You MUST present your QA/QC report and findings entirely in Vietnamese.** Wait for the user's explicit permission to deploy, or wait for the user to ask you to fix the issues first.
    - Only proceed to step 2 if the changes are completely safe or the user explicitly bypasses the review.
 
 2. **Commit and Push to `dev`**:
