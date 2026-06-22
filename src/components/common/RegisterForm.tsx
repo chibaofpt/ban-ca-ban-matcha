@@ -203,6 +203,7 @@ const RegisterForm = () => {
                       // Clear server-side "phone taken" error when user edits the number
                       setPhoneTakenError(null);
                     },
+                    onBlur: () => window.scrollTo(0, 0)
                   })}
                   className={`w-full h-11 pl-9 pr-4 rounded-xl border bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring ${errors1.phone_number ? "border-red-500 focus:ring-red-500" : "border-input"
                     }`}
@@ -227,7 +228,9 @@ const RegisterForm = () => {
                   id="register-password"
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
-                  {...reg1("password")}
+                  {...reg1("password", {
+                    onBlur: () => window.scrollTo(0, 0)
+                  })}
                   className={`w-full h-11 pl-9 pr-10 rounded-xl border bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring ${errors1.password ? "border-red-500 focus:ring-red-500" : "border-input"
                     }`}
                 />
@@ -281,7 +284,9 @@ const RegisterForm = () => {
                   id="register-name"
                   type="text"
                   placeholder="Bạn cá bán matchaaa"
-                  {...reg2("name")}
+                  {...reg2("name", {
+                    onBlur: () => window.scrollTo(0, 0)
+                  })}
                   disabled={isSubmitting}
                   className={`w-full h-11 pl-9 pr-4 rounded-xl border bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 ${errors2.name ? "border-red-500 focus:ring-red-500" : "border-input"
                     }`}

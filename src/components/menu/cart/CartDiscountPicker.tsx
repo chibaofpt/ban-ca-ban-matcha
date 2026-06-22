@@ -109,21 +109,9 @@ export const CartDiscountPicker = ({
             <div className="grid grid-cols-1 gap-3">
               {myVouchers.map((v) => {
                 const isSelected = selectedVoucherIds.includes(v.id);
-                const hasSelectedPercent = selectedVoucherIds.some(id => discountVouchers.find(d => d.id === id)?.discount_type === "PERCENT");
-                const hasSelectedFreeship = selectedVoucherIds.some(id => freeshipVouchers.find(f => f.id === id));
                 
                 let isDisabled = false;
                 let disabledReason = "";
-                
-                if (!isSelected) {
-                  if (v.voucher_type === "DISCOUNT" && v.discount_type === "PERCENT" && hasSelectedPercent) {
-                    isDisabled = true;
-                    disabledReason = "Đã chọn 1 mã giảm %";
-                  } else if (v.voucher_type === "FREESHIP" && hasSelectedFreeship) {
-                    isDisabled = true;
-                    disabledReason = "Đã chọn 1 mã freeship";
-                  }
-                }
 
                 return (
                   <VoucherCard 
@@ -131,10 +119,24 @@ export const CartDiscountPicker = ({
                     voucher={v} 
                     isDisabled={isDisabled}
                     disabledReason={disabledReason}
+                    isSelected={isSelected}
                     onClick={() => {
-                      onUpdateSelectedVouchers((prev: string[]) =>
-                        isSelected ? prev.filter((id) => id !== v.id) : [...prev, v.id]
-                      );
+                      onUpdateSelectedVouchers((prev: string[]) => {
+                        if (isSelected) {
+                          return prev.filter((id) => id !== v.id);
+                        }
+                        let newSelected = [...prev];
+                        if (v.voucher_type === "DISCOUNT" && v.discount_type === "PERCENT") {
+                          newSelected = newSelected.filter(id => {
+                            const existingV = discountVouchers.find(d => d.id === id);
+                            return !(existingV && existingV.discount_type === "PERCENT");
+                          });
+                        }
+                        if (v.voucher_type === "FREESHIP") {
+                          newSelected = newSelected.filter(id => !freeshipVouchers.find(f => f.id === id));
+                        }
+                        return [...newSelected, v.id];
+                      });
                     }}
                     actionNode={
                       isSelected ? (

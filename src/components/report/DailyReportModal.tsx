@@ -195,6 +195,7 @@ export function DailyReportModal({
                 value={startDate}
                 max={endDate || today}
                 onChange={(e) => setStartDate(e.target.value)}
+                onBlur={() => window.scrollTo(0, 0)}
                 className="w-full h-10 px-3 rounded-xl border bg-background text-sm focus:ring-2 focus:ring-primary outline-none"
               />
             </div>
@@ -208,6 +209,7 @@ export function DailyReportModal({
                 min={startDate}
                 max={today}
                 onChange={(e) => setEndDate(e.target.value)}
+                onBlur={() => window.scrollTo(0, 0)}
                 className="w-full h-10 px-3 rounded-xl border bg-background text-sm focus:ring-2 focus:ring-primary outline-none"
               />
             </div>

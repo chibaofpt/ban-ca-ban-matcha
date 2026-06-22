@@ -230,6 +230,7 @@ export function VoucherQRVerifyModal({
                 maxLength={6}
                 value={manualCode}
                 onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+                onBlur={() => window.scrollTo(0, 0)}
                 placeholder="VD: A3F9B2"
                 className="flex-1 rounded-xl border border-input bg-background px-3 py-2 text-sm uppercase text-center font-mono tracking-widest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 disabled={processing}

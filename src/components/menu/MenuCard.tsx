@@ -1,10 +1,11 @@
 "use client";
 
 import React from 'react';
-import { Coffee } from 'lucide-react';
+import { Coffee, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { MenuItem } from '@/src/lib/types/menu';
 import { usePowderStore } from '@/src/lib/store/powderStore';
+import { useCartStore } from '@/src/lib/store/cartStore';
 import { calcLattePrice, calcFusionPrice, resolveGram } from '@/src/utils/pricing';
 
 interface MenuCardProps {
@@ -52,6 +53,85 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
     }
   };
 
+  const addItem = useCartStore((s) => s.addItem);
+
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    const sizeObj = sizes.find(s => s.size === 'L') ?? sizes[0];
+    if (!sizeObj) return;
+    
+    const size = sizeObj.size;
+    const basePrice = sizeObj.base_price_vnd ?? 0;
+    
+    const pwd = powders.find(p => p.id === defaultPowderId);
+    const pwdPrice = pwd?.price_per_gram ?? 0;
+    const gram = resolveGram(size, item.custom_powder_grams, pwd?.size_config ?? [], defaultPowderGrams);
+
+    let unitPrice = 0;
+    let addonsCost = 0;
+    
+    if (isLatte) {
+      unitPrice = calcLattePrice({
+        base_price_vnd: basePrice,
+        gram,
+        powder_price_per_gram: pwdPrice,
+        milk_ml: sizeObj.milk_ml ?? 0,
+        milk_price_per_ml: defaultMilk?.price_per_ml ?? 40
+      });
+    } else {
+      unitPrice = calcFusionPrice({
+        base_price_vnd: basePrice,
+        gram,
+        powder_price_per_gram: pwdPrice,
+        premium_latte: 0
+      });
+    }
+    
+    const defaultOptionIds = item.addon_groups.flatMap((g) => g.options.filter((o) => o.is_default).map((o) => o.id));
+    const addonPricesMap: Record<string, number> = {};
+    item.addon_groups.forEach(g => {
+        g.options.forEach(opt => {
+            if (defaultOptionIds.includes(opt.id)) {
+                const price = opt.gram_value != null ? opt.gram_value * pwdPrice : opt.price_vnd;
+                addonPricesMap[opt.id] = price;
+                addonsCost += price;
+            }
+        });
+    });
+
+    const clientPriceVnd = unitPrice + addonsCost;
+
+    const cartItemData = {
+      cartId: crypto.randomUUID(),
+      menuItemId: item.id,
+      name: item.name,
+      category: item.category,
+      imageUrl: item.image_url,
+      size: size,
+      unitPrice: unitPrice,
+      quantity: 1,
+      sweetness: "HALF" as const,
+      iceOption: "NORMAL" as const,
+      coldwhisk: false,
+      note: "",
+      selectedOptionIds: defaultOptionIds,
+      quantityMap: {},
+      addonsPrice: addonsCost,
+      addonPrices: addonPricesMap,
+      quantityAddonOptions: [],
+      selectedPowderId: isLatte ? undefined : defaultPowderId,
+      selectedMilkTypeId: isLatte ? defaultMilk?.id : undefined,
+      clientPriceVnd: clientPriceVnd,
+      originalClientPriceVnd: unitPrice,
+      addonVouchers: [],
+      productVoucherId: undefined,
+      productVoucherDiscountVnd: undefined,
+    };
+
+    addItem(cartItemData as any);
+  };
+
   return (
     <motion.div
       onClick={() => onClick(item)}
@@ -93,7 +173,7 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
         </div>
 
         {/* Sizes & Prices */}
-        <div className="mt-auto pt-2 flex items-end gap-6 w-full justify-center">
+        <div className="mt-auto pt-2 flex items-end gap-6 w-full justify-center relative">
           {sizes.map((s) => {
             const isDefault = s.size === 'L';
             const price = getDisplayPrice(s) / 1000;
@@ -109,6 +189,14 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
               </div>
             );
           })}
+          
+          <button 
+            onClick={handleAddToCart}
+            className="absolute right-0 bottom-0 w-7 h-7 bg-[#5b9a2b] rounded-full flex items-center justify-center text-[#fdfcf7] hover:scale-110 active:scale-95 transition-transform"
+            aria-label="Thêm vào giỏ"
+          >
+            <Plus size={16} strokeWidth={3} />
+          </button>
         </div>
       </div>
     </motion.div>

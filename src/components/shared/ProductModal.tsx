@@ -573,6 +573,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
+              onBlur={() => window.scrollTo(0, 0)}
               placeholder="Dặn dò thêm cho quán..."
               className="w-full rounded-2xl border-2 border-border bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 min-h-[72px] resize-none"
             />
@@ -608,7 +609,16 @@ const BaseModal: React.FC<ProductModalProps> = ({
                   return (
                     <button
                       key={v.id}
-                      onClick={() => setSelectedAddonVoucherIds(prev => isSelected ? prev.filter(id => id !== v.id) : [...prev, v.id])}
+                      onClick={() => {
+                        if (isSelected) {
+                          setSelectedAddonVoucherIds(prev => prev.filter(id => id !== v.id));
+                        } else {
+                          const otherIdsToRemove = applicableAddonVouchers
+                            .filter(av => av.addon_option_id === v.addon_option_id && av.id !== v.id)
+                            .map(av => av.id);
+                          setSelectedAddonVoucherIds(prev => [...prev.filter(id => !otherIdsToRemove.includes(id)), v.id]);
+                        }
+                      }}
                       className={cn(
                         "w-full flex items-center justify-between p-3.5 rounded-xl border-2 text-left transition-colors",
                         isSelected ? "bg-green-50 border-green-200" : "bg-card border-border hover:bg-green-50/30"

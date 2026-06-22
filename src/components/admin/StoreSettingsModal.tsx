@@ -240,6 +240,7 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
                       id="closure-note-input"
                       value={closureInput}
                       onChange={(e) => setClosureInput(e.target.value)}
+                      onBlur={() => window.scrollTo(0, 0)}
                       placeholder="Ghi chú cho khách (không bắt buộc)... vd: Hôm nay có việc đột xuất, quay lại lúc 3h"
                       className="w-full text-sm rounded-lg border border-border bg-background px-3 py-2 resize-none h-16 focus:outline-none focus:ring-2 focus:ring-red-400/50"
                       maxLength={200}
@@ -325,6 +326,7 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
                                 onChange={(e) =>
                                   handleSlotChange(day.day_of_week, slotIdx, "open_time", e.target.value)
                                 }
+                                onBlur={() => window.scrollTo(0, 0)}
                                 className="flex-1 text-sm border border-border rounded-lg px-2 py-1 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
                               />
                               <span className="text-xs text-muted-foreground">→</span>
@@ -335,6 +337,7 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
                                 onChange={(e) =>
                                   handleSlotChange(day.day_of_week, slotIdx, "close_time", e.target.value)
                                 }
+                                onBlur={() => window.scrollTo(0, 0)}
                                 className="flex-1 text-sm border border-border rounded-lg px-2 py-1 bg-background focus:outline-none focus:ring-2 focus:ring-primary/40"
                               />
                               {day.slots.length > 1 && (

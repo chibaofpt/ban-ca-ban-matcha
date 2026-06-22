@@ -87,6 +87,7 @@ export function MapSearchBar({ onSelect }: Props) {
           type="text"
           value={input}
           onChange={handleInputChange}
+          onBlur={() => window.scrollTo(0, 0)}
           onFocus={() => input.trim() && setIsOpen(true)}
           className="block w-full pl-9 pr-9 py-2.5 bg-white border border-gray-200 rounded-xl text-sm shadow-lg transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
           placeholder="Tìm đường, địa điểm..."

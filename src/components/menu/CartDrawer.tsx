@@ -93,7 +93,8 @@ const CartDrawer = () => {
   const [allVouchers, setAllVouchers] = useState<MyVoucher[]>([]);
   const [availableVoucherPackages, setAvailableVoucherPackages] = useState<VoucherPackage[]>([]);
   /** IDs of selected DISCOUNT vouchers. Server rule: max 1 PERCENT + unlimited FIXED. */
-  const [selectedVoucherIds, setSelectedVoucherIds] = useState<string[]>([]);
+  const selectedVoucherIds = useCartStore((s) => s.selectedVoucherIds);
+  const setSelectedVoucherIds = useCartStore((s) => s.setSelectedVoucherIds);
 
   // ── UI overlay state ──
     const [isDiscountPickerOpen, setIsDiscountPickerOpen] = useState(false);
@@ -104,7 +105,7 @@ const CartDrawer = () => {
   const openEdit = useEditModalStore((s) => s.openEdit);
 
   // ── Delivery state ──
-  const [orderType, setOrderType] = useState<"PICKUP" | "DELIVERY">("PICKUP");
+  const [orderType, setOrderType] = useState<"PICKUP" | "DELIVERY">("DELIVERY");
   const [deliveryAddress, setDeliveryAddress] = useState<Address | null>(null);
   const [shippingFee, setShippingFee] = useState<number | null>(null);
   const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number | null>(null);
@@ -138,12 +139,12 @@ const CartDrawer = () => {
   const discountK = Math.floor(rawDiscountAmount / 1000); // Conservative discount display
   const finalK = Math.max(0, subtotalK - discountK);
   
-  const shippingK = orderType === "DELIVERY" && shippingFee !== null ? Math.floor(shippingFee / 1000) : 0;
+  const shippingK = orderType === "DELIVERY" && shippingFee !== null ? Math.ceil(shippingFee / 1000) : 0;
   
   let freeshipDiscountK = 0;
   let appliedFreeshipId: string | null = null;
   // total after discount (before shipping) = finalK * 1000
-  const totalAfterDiscount = finalK * 1000;
+  const totalAfterDiscountVnd = finalK * 1000;
   const selectedFreeshipVouchers = freeshipVouchers.filter(v => selectedVoucherIds.includes(v.id));
   if (orderType === "DELIVERY" && shippingFee !== null && selectedFreeshipVouchers.length > 0) {
     const bestVoucher = selectedFreeshipVouchers[0];
@@ -534,7 +535,7 @@ const CartDrawer = () => {
               shippingK={shippingK}
               totalDiscountK={totalDiscountK}
               grandTotalK={grandTotalK}
-              finalPrice={finalPrice}
+              totalAfterDiscountVnd={totalAfterDiscountVnd}
               checkout={checkout}
               handleCheckout={handleCheckout}
               setShowClearConfirm={setShowClearConfirm}
@@ -578,6 +579,42 @@ const CartDrawer = () => {
                   listMyVouchers().then(setAllVouchers).catch(() => {});
                 }}
               />
+            )}
+          </AnimatePresence>
+
+          {/* ── Overlay: Address Picker ────────────────────────────────────── */}
+          <AnimatePresence>
+            {isAddressPickerOpen && (
+              <motion.div
+                initial={{ x: "100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                className="absolute inset-0 z-10 bg-[#fdfcf7] flex flex-col"
+              >
+                <div className="flex items-center gap-3 px-5 py-4 border-b border-border/40 shrink-0 bg-white shadow-sm z-10">
+                  <button
+                    onClick={() => setIsAddressPickerOpen(false)}
+                    className="w-8 h-8 rounded-full bg-primary/5 flex items-center justify-center hover:bg-primary/10 transition-colors"
+                  >
+                    <ArrowLeft className="w-4 h-4 text-primary" />
+                  </button>
+                  <h3 className="font-bold text-primary leading-tight">Chọn địa chỉ giao hàng</h3>
+                </div>
+                <div className="flex-1 overflow-y-auto overscroll-contain p-4">
+                  <DeliverySection
+                    selectedAddressId={deliveryAddress?.id ?? null}
+                    onAddressSelect={(addr, dist, fee) => {
+                      setDeliveryAddress(addr);
+                      setDeliveryDistanceKm(dist);
+                      setShippingFee(fee);
+                      setDeliveryError(null);
+                      if (addr && dist !== null && fee !== null) setIsAddressPickerOpen(false);
+                    }}
+                    onError={(err) => setDeliveryError(err)}
+                  />
+                </div>
+              </motion.div>
             )}
           </AnimatePresence>
 

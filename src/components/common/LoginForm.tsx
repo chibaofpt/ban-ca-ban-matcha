@@ -110,6 +110,7 @@ const LoginForm = () => {
                   const cleaned = e.target.value.replace(/\s+/g, "");
                   setValue("phone_number", cleaned, { shouldValidate: true });
                 },
+                onBlur: () => window.scrollTo(0, 0)
               })}
               disabled={isSubmitting}
               className={`w-full h-11 pl-9 pr-4 rounded-xl border bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 ${
@@ -133,7 +134,9 @@ const LoginForm = () => {
               id="login-password"
               type={showPassword ? "text" : "password"}
               placeholder="••••••••"
-              {...register("password")}
+              {...register("password", {
+                onBlur: () => window.scrollTo(0, 0)
+              })}
               disabled={isSubmitting}
               className={`w-full h-11 pl-9 pr-10 rounded-xl border bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 ${
                 errors.password ? "border-red-500 focus:ring-red-500" : "border-input"

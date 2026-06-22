@@ -40,6 +40,8 @@ interface CartState {
   removeProductVoucher: (cartId: string) => void;
   applyAddonVoucher: (cartId: string, voucherId: string, addonOptionId: string) => void;
   removeAddonVoucher: (cartId: string, voucherId: string) => void;
+  selectedVoucherIds: string[];
+  setSelectedVoucherIds: (ids: string[]) => void;
 }
 
 /**
@@ -51,7 +53,9 @@ export const useCartStore = create<CartState>()(
     (set, get) => ({
       items: [],
       isCartOpen: false,
+      selectedVoucherIds: [],
       setCartOpen: (open) => set({ isCartOpen: open }),
+      setSelectedVoucherIds: (ids) => set({ selectedVoucherIds: ids }),
 
       addItem: (newItem) => {
         const { items } = get();

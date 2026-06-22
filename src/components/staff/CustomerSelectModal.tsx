@@ -118,6 +118,7 @@ export function CustomerSelectModal({
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onBlur={() => window.scrollTo(0, 0)}
                 placeholder="Tên hoặc 4 số cuối SĐT…"
                 className="w-full pl-9 pr-4 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                 autoFocus
@@ -200,6 +201,7 @@ export function CustomerSelectModal({
                     setNewPhone(e.target.value);
                     setError(null);
                   }}
+                  onBlur={() => window.scrollTo(0, 0)}
                   placeholder="09xxxxxxxx"
                   className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                   autoFocus
@@ -213,6 +215,7 @@ export function CustomerSelectModal({
                     setNewName(e.target.value);
                     setError(null);
                   }}
+                  onBlur={() => window.scrollTo(0, 0)}
                   onKeyDown={(e) => e.key === "Enter" && handleConfirmNewCustomer()}
                   placeholder="Ví dụ: Linh Cá Heo"
                   className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"

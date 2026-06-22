@@ -126,6 +126,7 @@ export function AddressForm({ initialData, onSubmit, onCancel, isLoading }: Prop
             type="text"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
+            onBlur={() => window.scrollTo(0, 0)}
             className="block w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
             placeholder="Ví dụ: Nhà, Công ty..."
           />
@@ -141,6 +142,7 @@ export function AddressForm({ initialData, onSubmit, onCancel, isLoading }: Prop
               type="text"
               value={receiverName}
               onChange={(e) => setReceiverName(e.target.value)}
+              onBlur={() => window.scrollTo(0, 0)}
               className="block w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
               placeholder="Ví dụ: Nguyễn Văn A"
             />
@@ -153,6 +155,7 @@ export function AddressForm({ initialData, onSubmit, onCancel, isLoading }: Prop
               type="tel"
               value={receiverPhone}
               onChange={(e) => setReceiverPhone(e.target.value)}
+              onBlur={() => window.scrollTo(0, 0)}
               className="block w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
               placeholder="Ví dụ: 0912345678"
             />

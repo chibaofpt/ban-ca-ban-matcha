@@ -43,7 +43,7 @@ interface CartFooterProps {
   shippingK: number;
   totalDiscountK: number;
   grandTotalK: number;
-  finalPrice: number;
+  totalAfterDiscountVnd: number;
 
   checkout: CheckoutState;
   handleCheckout: () => void;
@@ -76,7 +76,7 @@ export const CartFooter = memo(function CartFooter({
   shippingK,
   totalDiscountK,
   grandTotalK,
-  finalPrice,
+  totalAfterDiscountVnd,
   checkout,
   handleCheckout,
   setShowClearConfirm,
@@ -85,16 +85,7 @@ export const CartFooter = memo(function CartFooter({
 
   return (
     <div className="border-t border-border/40 bg-white px-4 pb-2 pt-2.5 shrink-0 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.06)] space-y-2 flex flex-col touch-none">
-      {/* Guest Voucher Teaser */}
-      {!isLoggedIn && (
-        <div className="mb-1 p-2 bg-orange-50 border border-orange-200 rounded-lg flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <Ticket className="w-3.5 h-3.5 text-orange-500" />
-            <span className="text-[10px] font-medium text-orange-800">Đăng nhập để xem & áp dụng voucher</span>
-          </div>
-          <button onClick={openLogin} className="text-[10px] px-2.5 py-1 rounded-full font-bold text-white bg-orange-500 hover:bg-orange-600 transition-colors">Đăng nhập</button>
-        </div>
-      )}
+
 
       {/* Store closed notice */}
       {isStoreClosed && (
@@ -160,6 +151,7 @@ export const CartFooter = memo(function CartFooter({
                 setPickupTime(e.target.value);
                 setIsTimeCustom(true);
               }}
+              onBlur={() => window.scrollTo(0, 0)}
               className={cn(
                 "bg-transparent text-xs font-bold focus:outline-none w-16 text-right cursor-pointer",
                 pickupTime && pickupTime < minTimeStr ? "text-red-500" : "text-primary"
@@ -201,7 +193,7 @@ export const CartFooter = memo(function CartFooter({
               <div className="min-w-0">
                 <p className="text-[11px] font-bold text-orange-800 leading-tight">Mã ưu đãi</p>
                 <p className="text-[10px] text-orange-600/80 leading-tight truncate">
-                  {totalDiscountK > 0 ? `Đã áp dụng giảm ${totalDiscountK.toLocaleString("vi-VN")}k` : "Chọn mã ưu đãi"}
+                  {!isLoggedIn ? "Đăng nhập để xem ưu đãi" : (totalDiscountK > 0 ? `Đã áp dụng giảm ${totalDiscountK.toLocaleString("vi-VN")}k` : "Chọn mã ưu đãi")}
                 </p>
               </div>
             </div>
@@ -212,7 +204,13 @@ export const CartFooter = memo(function CartFooter({
           {orderType === "DELIVERY" && (
             <>
               <button
-                onClick={() => setIsAddressPickerOpen(true)}
+                onClick={() => {
+                  if (!isLoggedIn) {
+                    openLogin();
+                  } else {
+                    setIsAddressPickerOpen(true);
+                  }
+                }}
                 className="flex items-center justify-between bg-green-50 border border-green-100 hover:bg-green-100/80 transition-colors rounded-xl px-2 py-2 text-left"
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -278,9 +276,9 @@ export const CartFooter = memo(function CartFooter({
               <span className="font-serif text-xl font-bold text-primary leading-none">
                 {grandTotalK} k
               </span>
-              {isLoggedIn && finalPrice >= 10000 && (
+              {isLoggedIn && totalAfterDiscountVnd >= 10000 && (
                 <span className="text-[9px] font-bold text-teal-700 bg-teal-50 px-1 py-0.5 rounded-sm mt-0.5">
-                  +{Math.floor(finalPrice / 10000)} điểm
+                  +{Math.floor(totalAfterDiscountVnd / 10000)} điểm
                 </span>
               )}
             </div>

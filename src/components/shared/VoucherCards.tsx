@@ -27,12 +27,14 @@ export function VoucherCard({
   actionNode,
   isDisabled,
   disabledReason,
+  isSelected,
   onClick
 }: {
   voucher: MyVoucher;
   actionNode?: React.ReactNode;
   isDisabled?: boolean;
   disabledReason?: string;
+  isSelected?: boolean;
   onClick?: () => void;
 }) {
   const isInteractable = canInteract(voucher) && !isDisabled;
@@ -51,22 +53,24 @@ export function VoucherCard({
       animate={{ opacity: 1, scale: 1 }}
       onClick={isInteractable ? onClick : undefined}
       className={cn(
-        "rounded-xl bg-card shadow-sm border overflow-hidden flex relative",
+        "rounded-xl shadow-sm border overflow-hidden flex relative transition-colors",
+        isSelected ? "bg-[#f2f7ed] border-[#8ab275] hover:border-[#8ab275]" : "bg-card",
         isDimmed && "opacity-60 grayscale-[40%]",
-        isInteractable && onClick && "cursor-pointer hover:border-primary/50 transition-colors"
+        isInteractable && onClick && !isSelected && "cursor-pointer hover:border-primary/50"
       )}
     >
       {/* Left side: Highlight Ticket */}
       <div className={cn(
-        "w-[32%] flex flex-col items-center justify-center p-3 border-r-2 border-dashed border-border/60",
-        isDimmed ? "bg-muted/50 text-muted-foreground" : "bg-primary/5 text-primary"
+        "w-[32%] flex flex-col items-center justify-center p-3 border-r-2 border-dashed",
+        isDimmed ? "bg-muted/50 text-muted-foreground border-border/60" : 
+        isSelected ? "bg-[#e6f0de] text-[#4d7338] border-[#8ab275]/40" : "bg-primary/5 text-primary border-border/60"
       )}>
         <span className="font-black text-xl lg:text-2xl tracking-tighter leading-none text-center">{highlight.text}</span>
         <span className="text-[10px] font-bold uppercase tracking-wider opacity-80 mt-1">{highlight.subtext}</span>
       </div>
 
       {/* Right side: Info */}
-      <div className="flex-1 min-w-0 p-3 flex flex-col justify-center bg-card z-10">
+      <div className={cn("flex-1 min-w-0 p-3 flex flex-col justify-center z-10", isSelected ? "bg-transparent" : "bg-card")}>
         <div className="flex items-center gap-1.5 flex-wrap mb-1">
           <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold", typeConfig.badgeCls)}>
             {typeConfig.label}
