@@ -157,6 +157,7 @@ export function StaffCartDrawer({
     <Drawer.Root 
       open={isOpen} 
       dismissible={!preventCloseOutside}
+      repositionInputs={false}
       onOpenChange={(open) => {
         if (!open) handleClose();
       }}

@@ -173,15 +173,20 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
         </div>
 
         {/* Sizes & Prices */}
-        <div className="mt-auto pt-2 flex items-end gap-6 w-full justify-center relative">
-          {sizes.map((s) => {
-            const isDefault = s.size === 'L';
-            const price = getDisplayPrice(s) / 1000;
+        <div className="mt-auto pt-2 grid grid-cols-4 items-end w-full">
+          {['M', 'L', 'XL'].map((sizeKey) => {
+            const s = sizes.find(s => s.size === sizeKey);
+            const isDefault = sizeKey === 'L';
             
+            if (!s) {
+              return <div key={sizeKey}></div>;
+            }
+
+            const price = getDisplayPrice(s) / 1000;
             return (
-              <div key={s.size} className="flex flex-col items-center gap-0.5 min-w-[36px]">
+              <div key={sizeKey} className="flex flex-col items-center gap-0.5">
                 <span className={`uppercase tracking-wide whitespace-nowrap ${isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
-                  {SIZE_CARD_LABELS[s.size] ?? s.size}
+                  {SIZE_CARD_LABELS[sizeKey] ?? sizeKey}
                 </span>
                 <span className={`${isDefault ? 'text-base font-bold text-[#5b9a2b]' : 'text-sm font-semibold text-primary/50'}`}>
                   {price} ká
@@ -190,13 +195,15 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
             );
           })}
           
-          <button 
-            onClick={handleAddToCart}
-            className="absolute right-0 bottom-0 w-7 h-7 bg-[#5b9a2b] rounded-full flex items-center justify-center text-[#fdfcf7] hover:scale-110 active:scale-95 transition-transform"
-            aria-label="Thêm vào giỏ"
-          >
-            <Plus size={16} strokeWidth={3} />
-          </button>
+          <div className="flex justify-end pb-0.5">
+            <button 
+              onClick={handleAddToCart}
+              className="w-7 h-7 bg-[#5b9a2b] rounded-full flex items-center justify-center text-[#fdfcf7] hover:scale-110 active:scale-95 transition-transform"
+              aria-label="Thêm vào giỏ"
+            >
+              <Plus size={16} strokeWidth={3} />
+            </button>
+          </div>
         </div>
       </div>
     </motion.div>

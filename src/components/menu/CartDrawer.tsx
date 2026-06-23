@@ -361,6 +361,7 @@ const CartDrawer = () => {
     <>
     <Drawer.Root 
       open={isCartOpen} 
+      repositionInputs={false}
       onOpenChange={(open) => {
         if (!open) handleClose();
         else setCartOpen(true);

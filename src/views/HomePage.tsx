@@ -13,7 +13,8 @@ export default function HomePage() {
     <main className="w-full bg-transparent -mt-16">
       <style>{`
         html {
-          scroll-snap-type: y proximity;
+          scroll-snap-type: y mandatory;
+          scroll-behavior: smooth;
         }
       `}</style>
       <h1 className="sr-only">Bạn Cá Bán Matcha — Quán Matcha Chuẩn Nhật Đầu Tiên Tại Thủ Dầu Một, Bình Dương</h1>

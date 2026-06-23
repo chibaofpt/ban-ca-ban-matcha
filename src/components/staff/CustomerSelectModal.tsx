@@ -45,19 +45,28 @@ export function CustomerSelectModal({
     }
 
     setSearching(true);
+    let isActive = true;
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
         const results = await staffOrderService.searchCustomers(query);
-        setSearchResults(results);
+        if (isActive) {
+          setSearchResults(results);
+        }
       } catch {
-        setSearchResults([]);
+        if (isActive) {
+          setSearchResults([]);
+        }
       } finally {
-        setSearching(false);
+        if (isActive) {
+          setSearching(false);
+        }
       }
     }, 300);
 
     return () => {
+      isActive = false;
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [query]);

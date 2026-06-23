@@ -320,7 +320,7 @@ export default function VoucherModal() {
           </Dialog.Portal>
         </Dialog.Root>
       ) : (
-        <Drawer.Root open={open} onOpenChange={(o) => { if (!o) close(); }}>
+        <Drawer.Root open={open} repositionInputs={false} onOpenChange={(o) => { if (!o) close(); }}>
           <Drawer.Portal>
             <Drawer.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[40]" />
             <Drawer.Content className="fixed bottom-0 left-0 right-0 z-[50] outline-none bg-background rounded-t-[2.5rem] shadow-2xl flex flex-col h-[85vh] max-h-[85vh]">
