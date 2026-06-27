@@ -83,7 +83,7 @@ export default function RootLayout({
   return (
     <html
       lang="vi"
-      className={`${inter.variable} ${playfair.variable} antialiased scroll-smooth scroll-pt-16 overflow-x-hidden`}
+      className={`${inter.variable} ${playfair.variable} antialiased scroll-smooth scroll-pt-16`}
       suppressHydrationWarning
     >
       <body className="min-h-screen flex flex-col bg-paper text-foreground font-sans border-border transition-colors duration-300 text-ink">

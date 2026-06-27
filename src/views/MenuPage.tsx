@@ -209,11 +209,12 @@ export default function MenuPage() {
                       </div>
                     ) : (
                       <div className="flex flex-col gap-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-8">
-                        {tabItems.map((item) => (
+                        {tabItems.map((item, index) => (
                           <MenuCard
                             key={item.id}
                             item={item}
                             onClick={handleItemClick}
+                            priority={index < 4}
                           />
                         ))}
                       </div>

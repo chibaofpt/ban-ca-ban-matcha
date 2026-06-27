@@ -155,11 +155,12 @@ export default function MenuVoucherTabs() {
                 </div>
               ) : activeTab === "menu" ? (
                 <div className="flex flex-col md:grid md:grid-cols-2 md:gap-x-8">
-                  {menuItems.map((item) => (
+                  {menuItems.map((item, index) => (
                     <MenuCard
                       key={item.id}
                       item={item}
                       onClick={() => router.push("/menu")}
+                      priority={index < 4}
                     />
                   ))}
                 </div>

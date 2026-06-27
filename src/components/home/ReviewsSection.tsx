@@ -152,7 +152,7 @@ function ReviewsSheet({ open, onClose }: { open: boolean; onClose: () => void })
         <Drawer.Root open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
           <Drawer.Portal>
             <Drawer.Overlay className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[40]" />
-            <Drawer.Content className="fixed bottom-0 left-0 right-0 z-[50] outline-none bg-background rounded-t-2xl shadow-2xl flex flex-col h-[85vh] max-h-[85vh]">
+            <Drawer.Content className="fixed bottom-0 left-0 right-0 z-[50] outline-none bg-background rounded-t-2xl shadow-2xl flex flex-col h-[85vh] max-h-[85vh] after:content-[''] after:absolute after:inset-x-0 after:top-full after:h-[50vh] after:bg-inherit">
               <div className="absolute top-0 left-0 right-0 h-10 z-10 flex items-start justify-center pt-3 bg-transparent">
                 <div className="w-12 h-1.5 bg-border/60 rounded-full" />
               </div>

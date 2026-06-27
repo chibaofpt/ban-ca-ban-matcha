@@ -53,7 +53,7 @@ export default function Hero() {
           </button>
 
           {/* Secondary */}
-          <button
+          {/* <button
             onClick={() => router.push("/about")}
             className="inline-flex items-center justify-center bg-paper text-primary border border-primary/25 font-bold rounded-full shadow-paper card-handmade
               px-4 py-2.5 text-[13px] whitespace-nowrap
@@ -62,7 +62,7 @@ export default function Hero() {
               rotate-1 hover:rotate-0 hover:-translate-y-1 active:translate-y-0.5 hover:shadow-xl transition-all duration-300 cursor-pointer text-ink"
           >
             <span>Câu chuyện tiệm</span>
-          </button>
+          </button> */}
         </motion.div>
       </div>
 

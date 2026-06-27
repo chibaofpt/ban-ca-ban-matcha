@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo, useRef, Profiler } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { onRenderCallback } from "@/src/utils/dev/renderProfiler";
 import { Drawer } from "vaul";
@@ -288,7 +289,16 @@ const BaseModal: React.FC<ProductModalProps> = ({
         <div className="hidden md:flex flex-col bg-[#d9e4d4]/30 border-r border-border/40 p-8 justify-between relative h-full">
           {item.image_url ? (
             <div className="w-full aspect-square rounded-3xl overflow-hidden shadow-md bg-white flex items-center justify-center mb-6">
-              <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+              <Image
+                src={item.image_url}
+                alt={item.name}
+                fill
+                sizes="(max-width: 768px) 100vw, 50vw"
+                className="object-cover"
+                quality={85}
+                placeholder="blur"
+                blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+              />
             </div>
           ) : (
             <div className="w-full aspect-square rounded-3xl bg-primary/5 flex items-center justify-center mb-6">
@@ -668,7 +678,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
           <Drawer.Portal>
             <Drawer.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]" />
             <Drawer.Content 
-              className="fixed bottom-0 left-0 right-0 z-[101] outline-none bg-[#fdfcf7] shadow-2xl overflow-hidden flex flex-col max-h-[92vh] rounded-t-[2.5rem]"
+              className="fixed bottom-0 left-0 right-0 z-[101] outline-none bg-[#fdfcf7] shadow-2xl flex flex-col max-h-[92vh] rounded-t-[2.5rem] after:content-[''] after:absolute after:inset-x-0 after:top-full after:h-[50vh] after:bg-inherit"
             >
               <div className="absolute top-0 left-0 right-0 h-10 z-10 flex items-start justify-center pt-3 bg-transparent">
                 <div className="w-12 h-1.5 bg-border rounded-full" />

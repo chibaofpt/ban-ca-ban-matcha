@@ -369,7 +369,7 @@ const CartDrawer = () => {
     >
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-70 bg-foreground/40 backdrop-blur-sm touch-none" />
-        <Drawer.Content className="fixed bottom-0 left-0 right-0 h-[100dvh] mx-auto z-71 w-full max-w-md bg-[#fdfcf7] shadow-2xl flex flex-col overflow-hidden outline-none">
+        <Drawer.Content className="fixed bottom-0 left-0 right-0 h-[100dvh] mx-auto z-71 w-full max-w-md bg-[#fdfcf7] shadow-2xl flex flex-col outline-none after:content-[''] after:absolute after:inset-x-0 after:top-full after:h-[50vh] after:bg-inherit">
           {/* ── Main cart view ───────────────────────────────────────────── */}
           <div className="flex-1 flex flex-col overflow-hidden relative">
 

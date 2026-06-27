@@ -1,5 +1,6 @@
 "use client";
 
+import Image from 'next/image';
 import { Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { AdminMenuItem } from "@/src/lib/types/menu";
@@ -34,10 +35,13 @@ export default function MenuItemCard({
       {/* Image */}
       <div className="relative h-40 bg-secondary/30 flex items-center justify-center overflow-hidden">
         {item.image_url ? (
-          <img
+          <Image
             src={item.image_url}
             alt={item.name}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            fill
+            sizes="(max-width: 640px) 100vw, 50vw"
+            className="object-cover transition-transform duration-500 group-hover:scale-105"
+            quality={60}
           />
         ) : (
           <span className="text-4xl select-none opacity-50 group-hover:scale-110 transition-transform duration-500">🍵</span>

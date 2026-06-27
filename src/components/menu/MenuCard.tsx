@@ -1,6 +1,7 @@
 "use client";
 
 import React from 'react';
+import Image from 'next/image';
 import { Coffee, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { MenuItem } from '@/src/lib/types/menu';
@@ -11,6 +12,7 @@ import { calcLattePrice, calcFusionPrice, resolveGram } from '@/src/utils/pricin
 interface MenuCardProps {
   item: MenuItem;
   onClick: (item: MenuItem) => void;
+  priority?: boolean;
 }
 
 const SIZE_CARD_LABELS: Record<string, string> = {
@@ -19,7 +21,7 @@ const SIZE_CARD_LABELS: Record<string, string> = {
   XL: "Cá Lớn",
 };
 
-const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
+const MenuCard: React.FC<MenuCardProps> = ({ item, onClick, priority }) => {
   const sizes = item.sizes.filter((s) => s.base_price_vnd != null);
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
@@ -141,11 +143,16 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
       {/* Image Area - 4/5 height */}
       <div className="h-[80%] aspect-square bg-[#eef1eb] relative overflow-hidden flex-shrink-0 rounded-2xl">
         {item.image_url ? (
-          <img
+          <Image
             src={item.image_url}
             alt={item.name}
-            loading="lazy"
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+            fill
+            sizes="(max-width: 640px) 50vw, 33vw"
+            className="object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+            quality={75}
+            priority={priority}
+            placeholder="blur"
+            blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
