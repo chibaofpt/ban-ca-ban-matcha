@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { invalidateVoucherCaches } from "@/lib/cacheInvalidation";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,7 @@ export async function PUT(
       },
     });
 
+    await invalidateVoucherCaches();
     return NextResponse.json({ data: updated });
   } catch (err) {
     console.error("[PUT /api/admin/voucher-packages/[id]]", err);
@@ -99,6 +101,7 @@ export async function DELETE(
       data: { is_active: false },
     });
 
+    await invalidateVoucherCaches();
     return NextResponse.json({ data: { id, is_active: false } });
   } catch (err) {
     console.error("[DELETE /api/admin/voucher-packages/[id]]", err);

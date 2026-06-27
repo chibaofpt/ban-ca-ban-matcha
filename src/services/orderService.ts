@@ -11,7 +11,7 @@ export interface CreateOrderPayload {
     menu_item_id: string;
     quantity: number;
     size: "M" | "L" | "XL";
-    sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL";
+    sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL" | "EXTRA";
     ice_option: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
     coldwhisk: boolean;
     note?: string;

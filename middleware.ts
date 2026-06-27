@@ -1,32 +1,14 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify, SignJWT } from 'jose';
-import { findSessionWithUser, deleteSession, createSession, updateSessionGracePeriod } from '@/lib/middleware-auth';
+import { findSessionWithUser, deleteSession, createSession, updateSessionGracePeriod, evictSessionCache } from '@/lib/middleware-auth';
+import { checkDistributedRateLimit } from '@/lib/rateLimit';
 
 const secretStr = process.env.JWT_SECRET;
 if (!secretStr) {
   throw new Error("JWT_SECRET environment variable is required");
 }
 const JWT_SECRET = new TextEncoder().encode(secretStr);
-
-// In-memory rate limiting map for Edge (best-effort on serverless)
-const rateLimitMap = new Map<string, { count: number; expiresAt: number }>();
-const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
-const MAX_REQUESTS_PER_WINDOW = 10;
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const record = rateLimitMap.get(ip);
-  if (!record || record.expiresAt < now) {
-    rateLimitMap.set(ip, { count: 1, expiresAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-  if (record.count >= MAX_REQUESTS_PER_WINDOW) {
-    return false;
-  }
-  record.count++;
-  return true;
-}
 
 /** Result of resolveSession — user context + optional new cookies to set. */
 interface ResolvedSession {
@@ -83,13 +65,14 @@ async function resolveSession(request: NextRequest): Promise<ResolvedSession> {
     if (!session || new Date(session.expires_at) < new Date()) {
       // Session missing or expired — clean up if needed (fire-and-forget)
       if (session) {
-        void deleteSession(session.id);
+        void deleteSession(session.id, refreshToken);
       }
       return { user: null, cookieUpdates: null };
     }
 
     try {
-      // Rotate: truncate old session lifetime (30s grace period), create new one
+      // Rotate: evict old session cache, truncate lifetime (30s grace), create new one
+      await evictSessionCache(refreshToken);  // BUG-1 fix: must evict BEFORE grace period
       await updateSessionGracePeriod(session.id);
       const newSession = await createSession(session.user_id);
       const newAccessToken = await signAccessToken({
@@ -172,7 +155,8 @@ export async function middleware(request: NextRequest) {
       request.headers.get('x-forwarded-for') ??
       request.headers.get('x-real-ip') ??
       'unknown';
-    if (!checkRateLimit(ip)) {
+    const { allowed } = await checkDistributedRateLimit(ip);
+    if (!allowed) {
       return NextResponse.json(
         { error: 'Too many requests, please try again later.', code: 'TOO_MANY_REQUESTS' },
         { status: 429 }

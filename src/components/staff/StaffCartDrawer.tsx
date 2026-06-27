@@ -32,6 +32,7 @@ const SWEETNESS_LABEL: Record<SweetnessLevel, string> = {
   HALF: "Vừa",
   THREE_QUARTER: "Ngọt",
   FULL: "Rất ngọt",
+  EXTRA: "Cực ngọt",
 };
 
 // ── Props ────────────────────────────────────────────────────────────────────

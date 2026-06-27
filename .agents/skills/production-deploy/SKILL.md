@@ -1,129 +1,88 @@
 ---
 name: production-deploy
 description: >
-  Standardizes production deployment audits and resolves Next.js 16 + Supabase + Prisma Vercel serverless integration bugs.
-  Trigger on: "deploy", "production", "release", "merge main", "build vercel", "vercel error", "prisma cache", "check production", "ready for prod".
+  Kiểm tra staging sau khi tester xác nhận ổn để tiến hành merge branch dev vào main.
+  Trigger on: "deploy", "production", "release", "merge main", "build vercel", "vercel error", "check production", "ready for prod".
 ---
 
-# Production Deployment Readiness Skill
+# Production Deploy (Merge to Main)
 
-> This skill outlines critical verification workflows, database synchronization rules, and known serverless/caching deployment pitfalls to audit before merging to `main` for Vercel auto-deployment.
+> Skill này thực thi quy trình đẩy code lên production (merge nhánh `dev` vào `main`).
+> **ĐIỀU KIỆN TIÊN QUYẾT**: Tester đã kiểm thử kỹ trên staging và xác nhận ok.
 
----
+## Section 1 — Migration Safety Gate
 
-## 1. Git & Deployment Workflow
+Sử dụng lệnh `npx prisma migrate diff --from-url $DIRECT_URL --to-schema-datamodel prisma/schema.prisma --script` để generate mã SQL chứa thay đổi cấu trúc trước khi apply lên Production.
+Đọc file SQL diff vừa sinh ra để scan tìm các lệnh nguy hiểm (destructive):
+- `DROP`
+- `TRUNCATE`
+- `ALTER COLUMN ... TYPE`
+- `RENAME`
+- `DELETE FROM`
 
-The project uses a standard Git flow connected to Vercel auto-deployments. When the user asks to deploy to production, the agent MUST explicitly execute the git commands to push the code to GitHub if the Pre-Deployment Execution Checklist passes without issues.
+- Dựa vào `prisma/schema.prisma` thực tế, kiểm tra có enum nào (ví dụ `Role`, `VoucherType`, `OrderStatus`, `OrderType`, `Size`, `SweetnessLevel`, `IceOption`, `PowderType`) bị sửa không.
+- Nếu có: cảnh báo về data compatibility.
+- Nếu tìm thấy lệnh destructive → **BLOCK**, yêu cầu developer xác nhận tay.
 
-Follow this exact terminal execution sequence:
+> **Ví dụ output mẫu:**
+> Migration safe ✅ (Không phát hiện lệnh destructive) / ❌ (Phát hiện DROP TABLE users)
 
-1. **Mandatory QA/QC Review (Before Deployment)**:
-   - Run `git diff` (or review uncommitted/recently committed changes) to inspect what has changed since the last stable state.
-   - Act as a QA/QC engineer: Look for latent bugs, unhandled edge cases, critical logic changes, or massive UI/style/layout modifications.
-   - **CRITICAL**: If you detect *any* potential risks, silent bugs, or massive UI changes, **DO NOT PROCEED with deployment**. Instead, STOP and list your findings clearly to the user. **You MUST present your QA/QC report and findings entirely in Vietnamese.** Wait for the user's explicit permission to deploy, or wait for the user to ask you to fix the issues first.
-   - Only proceed to step 2 if the changes are completely safe or the user explicitly bypasses the review.
+## Section 2 — Staging Stability Check
 
-2. **Commit and Push to `dev`**:
-   ```powershell
-   git add .
-   git commit -m "chore: prepare production deployment"
-   git push origin dev
-   ```
+- Dùng Vercel MCP → Get runtime logs của Preview environment (branch `dev`) trong 30 phút gần nhất, filter `level=error`.
+- Dựa vào danh sách API thực tế, liệt kê và đảm bảo các critical routes sau không có lỗi: `app/api/auth`, `app/api/orders`, `app/api/menu`, `app/api/delivery`, `app/api/voucher-packages`, `app/api/staff`.
 
-3. **Verify Pre-Deployment Checklist**: Run the steps in Section 2 below. Proceed to step 4 **ONLY** if zero errors occur.
+> **Ví dụ output mẫu:**
+> Staging stable ✅ (Không có error trong 30 phút qua) / ❌ (Có lỗi tại route app/api/orders)
 
-4. **Merge `dev` into `main` and Push**:
-   ```powershell
-   git checkout main
-   git merge dev
-   git push origin main
-   git checkout dev
-   ```
+## Section 3 — Env Vars Check
 
-5. **Vercel Auto-Deployment**: Pushing to `main` will automatically trigger the production build on Vercel. Notify the user that the code has been successfully merged and deployed.
+Đọc code diff giữa nhánh `dev` và `main`. Tìm tất cả biến `process.env.*` được sử dụng trong code mới.
+Dựa vào danh sách biến môi trường thực tế (từ `.env` / `.env.local.example`):
+`DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET`, `ESMS_API_KEY`, `ESMS_SECRET_KEY`, `ESMS_SANDBOX`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SENTRY_DSN`, `BANK_ID`, `BANK_ACCOUNT`, `BANK_ACCOUNT_NAME`, `CRON_SECRET`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `GOONG_API_KEY`, `NEXT_PUBLIC_GOONG_MAPTILES_KEY`, `STORE_LAT`, `STORE_LNG`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`.
 
----
+Nếu xuất hiện biến `process.env.*` nào là biến mới toanh, chưa có trong danh sách production → **BLOCK**, yêu cầu developer setup trên Vercel Production trước.
 
-## 2. Pre-Deployment Execution Checklist
+> **Ví dụ output mẫu:**
+> Env vars ✅ (Không có biến mới) / ❌ [Liệt kê: thiếu biến NEW_PAYMENT_KEY]
 
-Before requesting a merge, the agent MUST run the following steps to ensure compilation and logical safety:
+## Section 4 — Rollback Plan
 
-1. **Strict Type-Checking**:
-   ```bash
-   npx tsc --noEmit
-   ```
-   *Must yield zero errors.*
-2. **Unit & Integration Test Suite**:
-   ```bash
-   npm run test
-   ```
-   *All Vitest suites must pass.*
-3. **Local Production Build Simulation**:
-   ```bash
-   npx prisma generate && npx next build
-   ```
-   *Verifies page metadata generation, dynamic routes, and dynamic rendering builds cleanly without runtime crashes.*
+- Nếu có sự thay đổi DB → Dùng `npx prisma migrate diff --from-schema-datamodel prisma/schema.prisma --to-url $DIRECT_URL --script > ROLLBACK_[timestamp].sql` để generate SQL rollback và lưu tại root.
+- Nếu không có thay đổi DB → Ghi N/A.
 
----
+> **Ví dụ output mẫu:**
+> Rollback plan ✅ FILE: ROLLBACK_1719500000.sql / N/A
 
-## 3. Resolved Production Fallbacks & Bug Dictionary
+## Section 5 — Merge to main
 
-Ensure all code changes comply with these strict fixes for previously encountered Vercel-specific deployment crashes:
+**CHỈ THỰC HIỆN** khi Section 1, 2, 3 đều PASS.
+Thực thi các lệnh Git sau:
+```powershell
+git checkout main
+git merge dev
+git push origin main
+git checkout dev
+```
+Sau push: Thông báo Vercel đang auto-deploy production.
 
-### Image Hostname Errors (`next/image`)
-* **Pitfall**: Crashes with `Invalid src prop on next/image, hostname is not configured`.
-* **Fix**: Any new external image hosting domain must be explicitly added to `remotePatterns` in `next.config.ts`. (The main Supabase storage hostname `*.supabase.co` is already configured).
+## Section 6 — Final Report
 
-### SSL/TLS Alert in Serverless (`Keep-Alive` Conflict)
-* **Pitfall**: Backend routes using intermediate Axios calls to upload/download large media fail with `sslv3 alert bad record mac`.
-* **Fix**: **Never** use intermediate Axios clients on the backend to upload files to Supabase Storage. Use the official `@supabase/supabase-js` SDK directly to perform robust, handshake-friendly uploads.
+Xuất báo cáo cuối cùng theo đúng format:
+```
+=== PRODUCTION GATE REPORT ===
+Migration safety:  ✅ / ❌
+Staging stability: ✅ / ❌
+Env vars:          ✅ / ❌ [liệt kê nếu thiếu]
+Rollback plan:     ✅ FILE: ROLLBACK_xxx.sql / N/A
 
-### Native Binary Sharp Crash
-* **Pitfall**: Vercel Serverless AWS Lambda crashes when trying to import `sharp` synchronously for image processing.
-* **Fix**: Do not import or depend on `sharp` in backend routes. Upload raw images directly to Supabase Storage and let client-side optimization or Supabase Image Transformation handle sizing.
-
-### Outdated Prisma Client Cache
-* **Pitfall**: Vercel build-caching locks old `node_modules` leading to `PrismaClientInitializationError`.
-* **Fix**: 
-  1. Always keep `"postinstall": "prisma generate"` in `package.json` to force recreation after dependency installation.
-  2. Build command must be `"build": "prisma generate && next build"`.
-  3. If version mismatches persist, redeploy on Vercel with **"Use existing Build Cache" UNCHECKED**.
-
-### Next.js 15+ Async Dynamic Route Params
-* **Pitfall**: Compilation failure: `Property 'id' is missing in type 'Promise<{ id: string }>'`.
-* **Fix**: Since Next.js 15+, dynamic route `params` are Promises. Always declare as `Promise<{ id: string }>` and use `const { id } = await params`.
-  ```typescript
-  export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-    const { id } = await params;
-  }
-  ```
-
-### Temp/Scratch Compilation Pollution
-* **Pitfall**: Local scripts in `/scratch/...` fail the global Next.js compiler due to missing imports or manual scripts.
-* **Fix**: Verify that `"scratch"` is excluded from the TypeScript compiler inside `tsconfig.json` (`"exclude": ["node_modules", "reference", "scratch"]`).
+VERDICT: APPROVED / BLOCKED — [lý do nếu blocked]
+```
 
 ---
 
-## 4. Potential Future Production Risks
-
-Proactively check for these edge cases during code generation:
-
-### Dynamic Functions at Build-Time
-* Next.js attempts static generation for all pages. If a page uses `cookies()`, `headers()`, or dynamic search parameters without being marked dynamic, the build will fail.
-* **Fix**: Explicitly define `export const dynamic = "force-dynamic";` on any route or page fetching active runtime cookies/session data.
-
-### Database Connection Pool Exhaustion
-* Serverless scaling can quickly exceed PostgreSQL connection limits.
-* **Fix**: Always instantiate Prisma client as a global singleton (`prisma = globalThis.prisma || new PrismaClient()`). Use `DATABASE_URL="...&pgbouncer=true&connection_limit=1"` for the application server runtime, and `DIRECT_URL` for migration scripts.
-
-### Hydration Mismatch
-* Showing dates formatted via standard locale formatting (`Date.toLocaleDateString()`) creates client vs server rendering mismatches if server timezone differs from customer's browser.
-* **Fix**: Render dynamic dates strictly inside `useEffect` / client-side only state, or format them into ISO strings on the server.
-
-### Case Mismatch in Zod vs DB Enums
-* User input for constants (e.g. `less_ice`) failing Zod or DB write because DB expects uppercase (`LESS_ICE`).
-* **Fix**: Add `.toUpperCase()` transformations on Zod schemas before database inserts.
-
-### Public Supabase Storage Permissions
-* **Pitfall**: Images uploaded successfully return `403 Forbidden` on render.
-* **Fix**: Bucket `menu-images` in Supabase dashboard must be marked as **Public** with standard `SELECT` policies enabled.
+**Hard rules**:
+- **Không merge** nếu bất kỳ Section 1/2/3 nào FAIL.
+- **Không bỏ qua** bước nào dù developer yêu cầu.
+- Nếu không đủ tool access để tự động verify (vd không có MCP để check Vercel logs) → ghi `Cannot verify: [lý do]` thay vì assume là OK.
+- Vercel rollback **không rollback DB** → luôn nhắc developer điều này trong report.

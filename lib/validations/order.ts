@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const sweetnessEnum = z.enum(["NONE", "QUARTER", "HALF", "THREE_QUARTER", "FULL"]);
+const sweetnessEnum = z.enum(["NONE", "QUARTER", "HALF", "THREE_QUARTER", "FULL", "EXTRA"]);
 const sizeEnum = z.enum(["M", "L", "XL"]);
 const iceOptionEnum = z.enum(["NORMAL", "LESS_ICE", "NO_ICE", "SEPARATE_ICE"]);
 
@@ -10,7 +10,7 @@ export const orderItemSchema = z.object({
   quantity: z.number().int().min(1),
   /** Required for all items — server validates base_price_vnd IS NOT NULL for this size. */
   size: sizeEnum,
-  sweetness: sweetnessEnum.default("HALF"),
+  sweetness: sweetnessEnum.default("FULL"),
   ice_option: iceOptionEnum.default("NORMAL"),
   coldwhisk: z.boolean().default(false),
   note: z.string().max(500).optional(),

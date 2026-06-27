@@ -124,7 +124,7 @@ Counter orders:   COMPLETED (immediate — no intermediate states)
 
 - `sweetness`, `ice_option`, `coldwhisk` are columns on `order_items`, **not** in `addon_groups`.
 - These options currently have **no price**. If any ever needs a price, a schema change is required — see `NOTES.md`.
-- Defaults: `sweetness = HALF`, `ice_option = NORMAL` (hidden in UI), `coldwhisk = false`.
+- Defaults: `sweetness = FULL`, `ice_option = NORMAL` (hidden in UI), `coldwhisk = false`.
 - Constants defined in `src/constants/orderOptions.ts` — not fetched from API.
 
 ---

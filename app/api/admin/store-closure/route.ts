@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { toggleStoreClosureSchema } from "@/lib/validations/storeSchedule";
+import { invalidateStoreCaches } from "@/lib/cacheInvalidation";
 
 /** POST /api/admin/store-closure — ADMIN only. Opens or temporarily closes the store. */
 export async function POST(req: NextRequest) {
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      await invalidateStoreCaches();
       return NextResponse.json({
         data: {
           is_active: closure.is_active,
@@ -85,6 +87,7 @@ export async function POST(req: NextRequest) {
         data: { is_active: false, opened_at: new Date() },
       });
 
+      await invalidateStoreCaches();
       return NextResponse.json({ data: { is_active: false } });
     }
   } catch {

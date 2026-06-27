@@ -32,7 +32,7 @@
 | `OrderStatus` | `PENDING`, `ADMIN_CONFIRMED`, `STAFF_DONE`, `COMPLETED`, `CANCELLED` |
 | `OrderType` | `COUNTER`, `PICKUP`, `DELIVERY` |
 | `AddonType` | `SELECTOR`, `TOGGLE`, `QUANTITY` |
-| `SweetnessLevel` | `NONE`, `QUARTER`, `HALF`, `THREE_QUARTER`, `FULL` |
+| `SweetnessLevel` | `NONE`, `QUARTER`, `HALF`, `THREE_QUARTER`, `FULL`, `EXTRA` |
 | `Size` | `M`, `L`, `XL` |
 | `PowderType` | `RECOMMEND`, `NEW`, `SEASONAL`, `NONE` |
 | `IceOption` | `NORMAL`, `LESS_ICE`, `NO_ICE`, `SEPARATE_ICE` |
@@ -45,9 +45,10 @@
 |---|---|---|
 | 0% | `NONE` | |
 | 25% | `QUARTER` | |
-| 50% | `HALF` | ✅ |
+| 50% | `HALF` | |
 | 75% | `THREE_QUARTER` | |
-| 100% | `FULL` | |
+| 100% | `FULL` | ✅ |
+| 120% | `EXTRA` | |
 
 ## Ice Option Mapping
 
@@ -266,7 +267,7 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `selected_milk_type_id` uuid FK nullable → milk_type — Latte only
 - `ice_option` IceOption — default `NORMAL`
 - `coldwhisk` bool — default false
-- `sweetness` SweetnessLevel — default `HALF`
+- `sweetness` SweetnessLevel — default `FULL`
 - `product_voucher_id` uuid FK nullable → vouchers
 - `addon_voucher_id` uuid FK nullable → vouchers — Applied to specific topping
 - `note` string nullable

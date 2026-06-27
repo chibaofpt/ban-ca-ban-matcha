@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getWeeklySchedule } from "@/lib/storeSchedule";
 import { updateStoreScheduleSchema } from "@/lib/validations/storeSchedule";
+import { invalidateStoreCaches } from "@/lib/cacheInvalidation";
 
 /** GET /api/admin/store-schedule — ADMIN only. Returns all schedule rows grouped by day. */
 export async function GET(req: NextRequest) {
@@ -92,6 +93,7 @@ export async function PUT(req: NextRequest) {
     });
 
     const updated = await getWeeklySchedule();
+    await invalidateStoreCaches();
     return NextResponse.json({ data: updated });
   } catch {
     return NextResponse.json(

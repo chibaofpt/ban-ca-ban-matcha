@@ -4,7 +4,13 @@
  * This module replaces the self-fetch anti-pattern in middleware.ts.
  * Prisma does not work in Edge Runtime — PostgREST is zero-dependency
  * and works with the existing NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY.
+ *
+ * Redis session caching: findSessionWithUser caches the PostgREST result for
+ * CACHE_TTL.SESSION seconds (900s = 15 min). On token rotation, old cache key
+ * is deleted by deleteSession.
  */
+
+import { cacheGet, cacheSet, cacheDelete } from './redis';
 
 /** Session row joined with user data — returned by findSessionWithUser. */
 export interface SessionWithUser {
@@ -49,9 +55,18 @@ function getSupabaseConfig(): { baseUrl: string; headers: Record<string, string>
 
 /**
  * Finds a session by refresh_token and joins the user row.
+ * Checks Redis cache first — PostgREST query only on cache miss.
  * Returns null if not found, expired, or on network error.
  */
 export async function findSessionWithUser(refreshToken: string): Promise<SessionWithUser | null> {
+  const SESSION_CACHE_TTL = 900; // 15 minutes — matches access token TTL
+  const cacheKey = `session:${refreshToken}`;
+
+  // 1. Try Redis cache first (avoids PostgREST round-trip on most rotations)
+  const cached = await cacheGet<SessionWithUser>(cacheKey);
+  if (cached !== null) return cached;
+
+  // 2. Cache miss — fetch from PostgREST
   try {
     const { baseUrl, headers } = getSupabaseConfig();
     const url = new URL(`${baseUrl}/sessions`);
@@ -64,24 +79,50 @@ export async function findSessionWithUser(refreshToken: string): Promise<Session
     if (!res.ok) return null;
 
     const rows = (await res.json()) as SessionWithUser[];
-    return rows.length > 0 ? rows[0] : null;
+    const session = rows.length > 0 ? rows[0] : null;
+
+    // 3. Warm cache (awaited — Edge Runtime cannot guarantee fire-and-forget completes)
+    if (session) {
+      await cacheSet(cacheKey, session, SESSION_CACHE_TTL);
+    }
+
+    return session;
   } catch {
     return null;
   }
 }
 
 /**
- * Deletes a session by id. Fire-and-forget — never throws.
+ * Deletes a session by id. Also removes from Redis cache.
+ * Fire-and-forget — never throws.
  */
-export async function deleteSession(sessionId: string): Promise<void> {
+export async function deleteSession(sessionId: string, refreshToken?: string): Promise<void> {
   try {
     const { baseUrl, headers } = getSupabaseConfig();
     const url = new URL(`${baseUrl}/sessions`);
     url.searchParams.set("id", `eq.${sessionId}`);
 
     await fetch(url.toString(), { method: "DELETE", headers });
+
+    // Also evict from Redis cache if caller passes the refreshToken (awaited — Edge Runtime)
+    if (refreshToken) {
+      await cacheDelete(`session:${refreshToken}`);
+    }
   } catch {
     // Best-effort — failure here should not block the auth flow
+  }
+}
+
+/**
+ * Evicts the session cache for a given refresh token.
+ * Call this immediately after token rotation to prevent replay of the old token.
+ * Fire-and-forget — never throws.
+ */
+export async function evictSessionCache(refreshToken: string): Promise<void> {
+  try {
+    await cacheDelete(`session:${refreshToken}`);
+  } catch {
+    // Best-effort
   }
 }
 

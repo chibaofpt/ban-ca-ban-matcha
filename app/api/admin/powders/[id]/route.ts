@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { updatePowderSchema } from "@/lib/validations/powder";
+import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         ...(disabledLatteId !== undefined && { disabled_latte_id: disabledLatteId }),
       };
 
+      await invalidateMenuCaches();
       return NextResponse.json({ data: mappedUpdated });
     }
 
@@ -129,6 +131,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       powderSizeConfigs: undefined,
     };
 
+    await invalidateMenuCaches();
     return NextResponse.json({ data: mappedResult });
   } catch (error: any) {
     console.error("[PUT /api/admin/powders/[id]] Error:", error.message);
@@ -175,6 +178,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       return powder;
     });
 
+    await invalidateMenuCaches();
     return NextResponse.json({
       data: {
         ...updated,

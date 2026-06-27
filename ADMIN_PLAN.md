@@ -19,9 +19,11 @@
 ## 2. Layout Shell — `(admin-shell)/layout.tsx`
 
 - Primary device: **mobile**
-- Top bar: logo + username + logout button
+- Top bar: logo + username + logout button + **icon ⚙️ (ADMIN only)** opening `StoreSettingsModal` (2 sections: weekly schedule + temporary closure with optional customer note)
 - Bottom tab bar: tabs by role (see table below)
 - Content area in between, full scroll. No sidebar.
+
+> **Store Closure Impact**: When `is_open = false` (via StoreSettingsModal), the homepage displays an amber, dismissible customer banner indicating the closure.
 
 | Role | Tabs |
 |---|---|

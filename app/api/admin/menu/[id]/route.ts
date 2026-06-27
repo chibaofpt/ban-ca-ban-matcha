@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { updateMenuSchema } from "@/lib/validations/menu";
 import { uploadMenuImage } from "@/lib/storage";
 import type { Prisma } from "@prisma/client";
+import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
 
 export const dynamic = "force-dynamic";
 
@@ -316,6 +317,7 @@ export async function PUT(
     const milkMlMap: Record<string, number> = {};
     for (const c of defaultSizeConfigs) milkMlMap[c.size] = c.milk_ml;
 
+    await invalidateMenuCaches();
     return NextResponse.json({ data: formatAdminMenuItem(updatedItem, milkMlMap) });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -380,6 +382,7 @@ export async function DELETE(
       }
     });
 
+    await invalidateMenuCaches();
     return NextResponse.json({
       data: {
         id,

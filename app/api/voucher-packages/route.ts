@@ -2,24 +2,24 @@
  * GET /api/voucher-packages — Public route, no auth required.
  * Returns all VoucherPackage rows with is_active = true,
  * ordered by created_at asc (oldest first for stable listing).
+ *
+ * Caching: base package list cached in Redis (TTL 5 min).
+ * User-specific redeemed counts are always fetched live and merged client-side.
  */
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-
-export const dynamic = "force-dynamic";
+import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
 
 export async function GET() {
   try {
-    const packages = await prisma.voucherPackage.findMany({
-      where: { is_active: true },
-      orderBy: { created_at: "asc" },
-      include: {
-        menuItem: { select: { name: true, is_available: true } },
-        addonOption: { select: { label: true } },
-      },
-    });
+    // Cache the base package list (no user-specific data)
+    const packages = await withCache(
+      CACHE_KEYS.VOUCHER_PACKAGES,
+      CACHE_TTL.VOUCHER_PACKAGES,
+      fetchVoucherPackages,
+    );
 
     const session = await getSession();
 
@@ -29,6 +29,7 @@ export async function GET() {
       });
     }
 
+    // User-specific redeemed counts — always live (never cached)
     const packageIds = packages.map((p) => p.id);
     const redeemedCounts = await prisma.voucher.groupBy({
       by: ["package_id"],
@@ -57,3 +58,16 @@ export async function GET() {
     );
   }
 }
+
+/** Fetches active voucher packages from DB. Called by withCache on cache miss. */
+async function fetchVoucherPackages() {
+  return prisma.voucherPackage.findMany({
+    where: { is_active: true },
+    orderBy: { created_at: "asc" },
+    include: {
+      menuItem: { select: { name: true, is_available: true } },
+      addonOption: { select: { label: true } },
+    },
+  });
+}
+

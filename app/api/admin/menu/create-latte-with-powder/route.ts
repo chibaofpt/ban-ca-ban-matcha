@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { createLatteWithPowderSchema } from "@/lib/validations/createLatteWithPowder";
 import { uploadMenuImage } from "@/lib/storage";
 import type { Prisma } from "@prisma/client";
+import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
 
 export const dynamic = "force-dynamic";
 
@@ -281,6 +282,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       { maxWait: 10000, timeout: 15000 }
     );
 
+    await invalidateMenuCaches();
     return NextResponse.json(
       {
         data: {

@@ -8,7 +8,8 @@ export type SweetnessLevel =
   | "QUARTER"
   | "HALF"
   | "THREE_QUARTER"
-  | "FULL";
+  | "FULL"
+  | "EXTRA";
 
 // ── Addon types ────────────────────────────────────────────────────────────────
 

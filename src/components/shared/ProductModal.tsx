@@ -68,7 +68,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
     const available = item.sizes ?? [];
     return (available.find((s) => s.size === "L") ?? available[0])?.size ?? "M";
   });
-  const [sweetness, setSweetness] = useState<SweetnessLevel>(() => editingItem?.sweetness ?? "HALF");
+  const [sweetness, setSweetness] = useState<SweetnessLevel>(() => editingItem?.sweetness ?? "FULL");
   const [iceOption, setIceOption] = useState<IceOption>(() => editingItem?.iceOption ?? "NORMAL");
   const [coldwhisk, setColdwhisk] = useState(() => editingItem?.coldwhisk ?? false);
   const [selectedPowderId, setSelectedPowderId] = useState<string>(() => editingItem?.selectedPowderId ?? item.resolved_default_powder_id ?? "");

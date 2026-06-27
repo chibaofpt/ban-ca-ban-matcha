@@ -95,6 +95,7 @@
 - No Redis, no OTP, no Zalo ZNS until Phase 5
 - 1 🐟 = 1,000 VND — DB stores integer VND only
 - Timing-safe: always run bcrypt compare even if user not found
+- **Adapter/Wrapper Pattern**: All external services (Supabase Storage, Realtime, etc.) MUST be isolated using wrappers (e.g., pure TS functions in `lib/` or custom hooks in `hooks/`). Never import `@supabase/supabase-js` or other 3rd-party SDKs directly into UI components.
 
 ---
 

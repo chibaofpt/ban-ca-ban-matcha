@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { createMenuSchema } from "@/lib/validations/menu";
 import { uploadMenuImage } from "@/lib/storage";
 import type { Prisma } from "@prisma/client";
+import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
 
 export const dynamic = "force-dynamic";
 
@@ -267,6 +268,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     const milkMlMap: Record<string, number> = {};
     for (const c of defaultSizeConfigs) milkMlMap[c.size] = c.milk_ml;
 
+    await invalidateMenuCaches();
     return NextResponse.json({ data: formatAdminMenuItem(createdItem, milkMlMap) }, { status: 201 });
   } catch (err) {
     console.error("[POST /api/admin/menu]", err);

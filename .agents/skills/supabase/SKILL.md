@@ -42,6 +42,9 @@ When working on any Supabase task that touches auth, RLS, views, storage, or use
 - **Storage access control**
    - **Storage upsert requires INSERT + SELECT + UPDATE.** Granting only INSERT allows new uploads but file replacement (upsert) silently fails. You need all three.
 
+**6. Adapter / Wrapper Pattern for Client Integration.**
+When implementing Supabase Realtime, Storage, or any client-side SDK features, NEVER import `@supabase/supabase-js` directly into UI components (e.g., `app/.../page.tsx` or `components/...`). Instead, isolate the Supabase logic inside a custom hook (e.g., `hooks/useOrderRealtime.ts`) or an adapter file (e.g., `lib/storage.ts`). The UI component should only call the hook/function and remain completely unaware of the underlying Supabase implementation. This mitigates vendor lock-in and allows easy swapping (e.g., to Pusher or Cloudflare) if billing limits are exceeded.
+
 For any security concern not covered above, fetch the Supabase product security index: `https://supabase.com/docs/guides/security/product-security.md`
 
 ## Supabase CLI

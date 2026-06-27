@@ -1,13 +1,14 @@
 import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
 
-/** Sweetness picker options. Default is HALF. */
+/** Sweetness picker options. Default is FULL. */
 export const SWEETNESS_OPTIONS: { label: string; value: SweetnessLevel }[] = [
   { label: "0%", value: "NONE" },
   { label: "25%", value: "QUARTER" },
   { label: "50%", value: "HALF" },
   { label: "75%", value: "THREE_QUARTER" },
   { label: "100%", value: "FULL" },
+  { label: "120%", value: "EXTRA" },
 ];
 
 /**

@@ -1,10 +1,24 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { MenuData, MenuItem, MenuItemSize, MilkTypeOption, AddonGroup, AddonOption, MenuItemPowder } from "@/src/lib/types/menu";
+import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
 
 /** GET /api/menu — public, no auth required. */
 export async function GET(): Promise<NextResponse> {
   try {
+    const menuData = await withCache<MenuData>(CACHE_KEYS.MENU, CACHE_TTL.MENU, fetchMenuData);
+    return NextResponse.json({ data: menuData });
+  } catch (err) {
+    console.error("[GET /api/menu]", err);
+    return NextResponse.json(
+      { error: "Internal server error", code: "INTERNAL_ERROR" },
+      { status: 500 }
+    );
+  }
+}
+
+/** Fetches and builds the full menu data from DB. Called by withCache on cache miss. */
+async function fetchMenuData(): Promise<MenuData> {
     // ── Parallel data fetch ──────────────────────────────────────────────────
     const [items, addonGroups, milkTypes, defaultSizeConfigs, powders] =
       await Promise.all([
@@ -150,19 +164,10 @@ export async function GET(): Promise<NextResponse> {
     const allItems = [...latte, ...fusion];
     const seasonal = allItems.filter(item => item.is_seasonal);
 
-    const menuData: any = {
+    return {
       updated_at: maxUpdatedAt.toISOString(),
       latte,
       fusion,
       seasonal,
-    };
-
-    return NextResponse.json({ data: menuData });
-  } catch (err) {
-    console.error("[GET /api/menu]", err);
-    return NextResponse.json(
-      { error: "Internal server error", code: "INTERNAL_ERROR" },
-      { status: 500 }
-    );
-  }
+    } as unknown as MenuData;
 }

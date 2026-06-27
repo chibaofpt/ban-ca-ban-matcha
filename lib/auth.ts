@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { prisma } from "./prisma";
+import { cacheDelete } from './redis';
 
 // The secret must be converted to a Uint8Array
 const secretStr = process.env.JWT_SECRET;
@@ -114,9 +115,17 @@ export async function setAuthCookies(accessToken: string, refreshToken: string, 
 
 /**
  * Clears the auth cookies upon logout.
+ * Also evicts the Redis session cache for the outgoing refresh_token.
  */
 export async function clearAuthCookies() {
   const cookieStore = await cookies();
+  const refreshToken = cookieStore.get("refresh_token")?.value;
+
+  // Evict Redis session cache immediately so the session is truly invalid
+  if (refreshToken) {
+    void cacheDelete(`session:${refreshToken}`);
+  }
+
   cookieStore.delete("access_token");
   cookieStore.delete("refresh_token");
 }
@@ -168,6 +177,8 @@ export async function getSessionOrRefresh(): Promise<{
     if (!dbSession || dbSession.expires_at < new Date()) {
       if (dbSession) {
         await prisma.session.delete({ where: { id: dbSession.id } });
+        // BUG-2 fix: evict stale cache so this token cannot be replayed
+        void cacheDelete(`session:${refreshToken}`);
       }
       await clearAuthCookies();
       return null;
@@ -175,6 +186,8 @@ export async function getSessionOrRefresh(): Promise<{
 
     // 3. Rotate: delete old session, issue new tokens
     await prisma.session.delete({ where: { id: dbSession.id } });
+    // BUG-2 fix: evict old token's cache so it cannot be replayed
+    void cacheDelete(`session:${refreshToken}`);
     const newRefreshToken = await createSession(dbSession.user_id, dbSession.user.role);
     const newAccessToken = await signJwt({
       id: dbSession.user_id,

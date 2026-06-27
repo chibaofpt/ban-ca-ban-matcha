@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createPowderSchema } from "@/lib/validations/powder";
+import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +100,7 @@ export async function POST(req: Request) {
       powderSizeConfigs: undefined,
     };
 
+    await invalidateMenuCaches();
     return NextResponse.json({ data: mappedResult }, { status: 201 });
   } catch (error: any) {
     console.error("[POST /api/admin/powders] Error:", error.message);

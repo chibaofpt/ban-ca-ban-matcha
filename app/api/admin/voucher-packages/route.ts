@@ -12,6 +12,7 @@ import {
   resolveOrderItemPrice,
   resolveOrderItemPremiumLatte,
 } from "@/lib/pricing";
+import { invalidateVoucherCaches } from "@/lib/cacheInvalidation";
 
 export const dynamic = "force-dynamic";
 
@@ -170,6 +171,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      await invalidateVoucherCaches();
       return NextResponse.json({ data: pkg }, { status: 201 });
     }
 
@@ -307,6 +309,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      await invalidateVoucherCaches();
       return NextResponse.json({ data: pkg }, { status: 201 });
     }
 
@@ -327,6 +330,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
+      await invalidateVoucherCaches();
       return NextResponse.json({ data: pkg }, { status: 201 });
     }
 
@@ -347,6 +351,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    await invalidateVoucherCaches();
     return NextResponse.json({ data: pkg }, { status: 201 });
   } catch (err) {
     console.error("[POST /api/admin/voucher-packages]", err);

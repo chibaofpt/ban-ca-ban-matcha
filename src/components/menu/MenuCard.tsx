@@ -111,7 +111,7 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
       size: size,
       unitPrice: unitPrice,
       quantity: 1,
-      sweetness: "HALF" as const,
+      sweetness: "FULL" as const,
       iceOption: "NORMAL" as const,
       coldwhisk: false,
       note: "",
