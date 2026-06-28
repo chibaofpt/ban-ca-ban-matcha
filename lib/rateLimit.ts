@@ -85,12 +85,10 @@ export async function checkLoginFailLimit(
 
   try {
     const key = `login:fail:${ip}`;
-    // incr returns current count after increment — used as a read+write in one command
-    const count = await (client as unknown as { incr: (k: string) => Promise<number> }).incr(key);
-    // Set TTL on every call so the window resets from the last attempt
-    await (client as unknown as { expire: (k: string, s: number) => Promise<number> }).expire(key, LOGIN_FAIL_TTL);
-    const allowed = count < IP_LOGIN_FAIL_LIMIT;
-    return { allowed, remaining: allowed ? IP_LOGIN_FAIL_LIMIT - count : 0 };
+    const count = await (client as unknown as { get: (k: string) => Promise<number | null> }).get(key);
+    const num = count ? Number(count) : 0;
+    const allowed = num < IP_LOGIN_FAIL_LIMIT;
+    return { allowed, remaining: allowed ? IP_LOGIN_FAIL_LIMIT - num : 0 };
   } catch (err) {
     console.error('[RateLimit] checkLoginFailLimit failed, failing open:', err);
     return { allowed: true, remaining: -1 };
@@ -142,9 +140,9 @@ export async function checkPhoneFloodGuard(
 
   try {
     const key = `login:phone:${phone}`;
-    const count = await (client as unknown as { incr: (k: string) => Promise<number> }).incr(key);
-    await (client as unknown as { expire: (k: string, s: number) => Promise<number> }).expire(key, LOGIN_FAIL_TTL);
-    return { allowed: count < PHONE_FLOOD_LIMIT };
+    const count = await (client as unknown as { get: (k: string) => Promise<number | null> }).get(key);
+    const num = count ? Number(count) : 0;
+    return { allowed: num < PHONE_FLOOD_LIMIT };
   } catch (err) {
     console.error('[RateLimit] checkPhoneFloodGuard failed, failing open:', err);
     return { allowed: true };

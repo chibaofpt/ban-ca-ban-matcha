@@ -14,12 +14,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mocks (khai báo TRƯỚC import) ──────────────────────────────────────────────
 
+const mockGet = vi.fn();
 const mockIncr = vi.fn();
 const mockExpire = vi.fn();
 const mockDel = vi.fn();
 
 /** Reusable fake Redis client */
 const fakeRedis = {
+  get: (...args: unknown[]) => mockGet(...args),
   incr: (...args: unknown[]) => mockIncr(...args),
   expire: (...args: unknown[]) => mockExpire(...args),
   del: (...args: unknown[]) => mockDel(...args),
@@ -53,7 +55,8 @@ describe("checkLoginFailLimit — kiểm tra IP fail counter", () => {
   });
 
   it("trả { allowed: true } khi counter chưa đạt ngưỡng", async () => {
-    mockIncr.mockResolvedValueOnce(3); // 3 < 5
+    mockGetRedisClient.mockReturnValue(fakeRedis);
+    mockGet.mockResolvedValueOnce(3); // 3 < 5
 
     const result = await checkLoginFailLimit("1.2.3.4");
 
@@ -62,7 +65,8 @@ describe("checkLoginFailLimit — kiểm tra IP fail counter", () => {
   });
 
   it("trả { allowed: false } khi counter đạt đúng 5", async () => {
-    mockIncr.mockResolvedValueOnce(5);
+    mockGetRedisClient.mockReturnValue(fakeRedis);
+    mockGet.mockResolvedValueOnce(5);
 
     const result = await checkLoginFailLimit("1.2.3.4");
 
@@ -71,7 +75,8 @@ describe("checkLoginFailLimit — kiểm tra IP fail counter", () => {
   });
 
   it("trả { allowed: false } khi counter vượt quá 5", async () => {
-    mockIncr.mockResolvedValueOnce(9);
+    mockGetRedisClient.mockReturnValue(fakeRedis);
+    mockGet.mockResolvedValueOnce(6);
 
     const result = await checkLoginFailLimit("1.2.3.4");
 
@@ -100,7 +105,8 @@ describe("checkPhoneFloodGuard — kiểm tra phone flood counter", () => {
   });
 
   it("trả { allowed: true } khi counter chưa đạt ngưỡng", async () => {
-    mockIncr.mockResolvedValueOnce(7); // 7 < 10
+    mockGetRedisClient.mockReturnValue(fakeRedis);
+    mockGet.mockResolvedValueOnce(9); // 9 < 10
 
     const result = await checkPhoneFloodGuard("+84912345678");
 
@@ -108,7 +114,8 @@ describe("checkPhoneFloodGuard — kiểm tra phone flood counter", () => {
   });
 
   it("trả { allowed: false } khi counter đạt đúng 10", async () => {
-    mockIncr.mockResolvedValueOnce(10);
+    mockGetRedisClient.mockReturnValue(fakeRedis);
+    mockGet.mockResolvedValueOnce(10);
 
     const result = await checkPhoneFloodGuard("+84912345678");
 
@@ -116,7 +123,8 @@ describe("checkPhoneFloodGuard — kiểm tra phone flood counter", () => {
   });
 
   it("trả { allowed: false } khi counter vượt quá 10", async () => {
-    mockIncr.mockResolvedValueOnce(15);
+    mockGetRedisClient.mockReturnValue(fakeRedis);
+    mockGet.mockResolvedValueOnce(12);
 
     const result = await checkPhoneFloodGuard("+84912345678");
 
