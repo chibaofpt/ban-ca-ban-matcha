@@ -34,8 +34,11 @@
 
 - Do not open browser or run `npm run dev` / `npm run build` after changes
 - After completing a task: write code, save file, stop
-- DB sync: `npx prisma db push; npx prisma generate` — agent may run this automatically
-- Do not use `migrate dev` — incompatible with pgBouncer
+- Daily dev: `npm run migrate:dev` — agent may run automatically
+- Do not use `db push` — it breaks Prisma migration history.
+- Pre-release: Commit `prisma/migrations` folder to git.
+- Production deploy: `prisma migrate deploy` (in Vercel build command) — reads committed migration files.
+- Env structure: `.env` / `.env.staging` / `.env.prod` / `.env.local` are gitignored. Use `.env.local.example` as template.
 - When modifying business logic: check if the relevant skill needs updating
 
 ---

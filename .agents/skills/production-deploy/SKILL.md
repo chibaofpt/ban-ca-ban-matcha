@@ -10,10 +10,18 @@ description: >
 > Skill này thực thi quy trình đẩy code lên production (merge nhánh `dev` vào `main`).
 > **ĐIỀU KIỆN TIÊN QUYẾT**: Tester đã kiểm thử kỹ trên staging và xác nhận ok.
 
+## Section 0 — Pre-flight Env Vars Check
+
+- Nhắc developer kiểm tra và xác nhận Vercel Environment Variables đã được config tách biệt (Production vs Preview) trên dashboard.
+- Đặc biệt nhấn mạnh: `DATABASE_URL` và `DIRECT_URL` của Production env phải trỏ vào Production DB.
+
+> **Ví dụ output mẫu:**
+> Vercel config confirmed ✅ (Developer đã xác nhận Vercel Production/Preview env vars đã setup đúng)
+
 ## Section 1 — Migration Safety Gate
 
-Sử dụng lệnh `npx prisma migrate diff --from-url $DIRECT_URL --to-schema-datamodel prisma/schema.prisma --script` để generate mã SQL chứa thay đổi cấu trúc trước khi apply lên Production.
-Đọc file SQL diff vừa sinh ra để scan tìm các lệnh nguy hiểm (destructive):
+Kiểm tra thư mục `prisma/migrations/`: liệt kê migration files mới (những file có trong branch dev mà không có trên main).
+Đọc file SQL migration mới để scan tìm các lệnh nguy hiểm (destructive):
 - `DROP`
 - `TRUNCATE`
 - `ALTER COLUMN ... TYPE`
@@ -38,8 +46,9 @@ Sử dụng lệnh `npx prisma migrate diff --from-url $DIRECT_URL --to-schema-d
 ## Section 3 — Env Vars Check
 
 Đọc code diff giữa nhánh `dev` và `main`. Tìm tất cả biến `process.env.*` được sử dụng trong code mới.
-Dựa vào danh sách biến môi trường thực tế (từ `.env` / `.env.local.example`):
-`DATABASE_URL`, `DIRECT_URL`, `JWT_SECRET`, `ESMS_API_KEY`, `ESMS_SECRET_KEY`, `ESMS_SANDBOX`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SENTRY_DSN`, `BANK_ID`, `BANK_ACCOUNT`, `BANK_ACCOUNT_NAME`, `CRON_SECRET`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `GOONG_API_KEY`, `NEXT_PUBLIC_GOONG_MAPTILES_KEY`, `STORE_LAT`, `STORE_LNG`, `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`.
+Dựa vào 3-tier env structure, kiểm tra xem có biến mới chưa được khai báo không:
+- **Shared (local .env.local.example)**: STORE_LAT, STORE_LNG, BANK_ID, BANK_ACCOUNT, BANK_ACCOUNT_NAME, NEXT_PUBLIC_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, GOONG_API_KEY, NEXT_PUBLIC_GOONG_MAPTILES_KEY.
+- **Per-env (Trên Vercel)**: DATABASE_URL, DIRECT_URL, JWT_SECRET, CRON_SECRET, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, ESMS_API_KEY, ESMS_SECRET_KEY, ESMS_SANDBOX.
 
 Nếu xuất hiện biến `process.env.*` nào là biến mới toanh, chưa có trong danh sách production → **BLOCK**, yêu cầu developer setup trên Vercel Production trước.
 
@@ -48,7 +57,7 @@ Nếu xuất hiện biến `process.env.*` nào là biến mới toanh, chưa c�
 
 ## Section 4 — Rollback Plan
 
-- Nếu có sự thay đổi DB → Dùng `npx prisma migrate diff --from-schema-datamodel prisma/schema.prisma --to-url $DIRECT_URL --script > ROLLBACK_[timestamp].sql` để generate SQL rollback và lưu tại root.
+- Nếu có migration mới trong `prisma/migrations/`: Dùng `npx prisma migrate diff --from-schema-datamodel prisma/schema.prisma --to-migrations prisma/migrations --script > ROLLBACK_$(Get-Date -Format 'yyyyMMddHHmmss').sql` để generate SQL rollback từ local và lưu tại root.
 - Nếu không có thay đổi DB → Ghi N/A.
 
 > **Ví dụ output mẫu:**

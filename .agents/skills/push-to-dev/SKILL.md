@@ -15,23 +15,27 @@ Chạy lệnh `git diff` (hoặc kiểm tra các thay đổi gần đây) để 
 Đóng vai trò QA/QC Engineer, kiểm tra an toàn hệ thống:
 - **Type errors**: `npx tsc --noEmit`
 - **Test suite**: `npm run test` (Vitest)
-- **Build simulation**: `npx prisma generate && npx next build`
+- **Build simulation**: `npm run build:staging`
 
 Dựa trên Context dự án để phân tích thay đổi:
-- **Database Schema**: Kiểm tra nếu có bất kỳ thay đổi nào trong `prisma/schema.prisma` (ví dụ: bảng `users`, `orders`, `vouchers`, `menu_items`, `matcha_powder`, `points_log`, `voucher_packages`... hay các enums `OrderStatus`, `OrderType`, `Size`, `VoucherType`...). Nếu có thay đổi, **nhắc developer phải chạy** đồng bộ DB thay vì dùng `migrate dev` (vì migrate dev không tương thích với pgBouncer). Có thể tạo migration SQL bằng `prisma migrate diff` hoặc tiện lợi nhất là gợi ý developer dùng lệnh PowerShell nội tuyến trỏ vào Staging: `$env:DATABASE_URL="<staging_url>"; $env:DIRECT_URL="<staging_direct_url>"; npx prisma db push --accept-data-loss`.
+- **Database Schema**: Kiểm tra nếu có bất kỳ thay đổi nào trong `prisma/schema.prisma` (ví dụ: bảng `users`, `orders`, `vouchers`, `menu_items`, `matcha_powder`, `points_log`, `voucher_packages`... hay các enums `OrderStatus`, `OrderType`, `Size`, `VoucherType`...). Nếu có thay đổi:
+  1. Yêu cầu developer chạy `npm run migrate:dev -- --name "mô_tả_thay_đổi"` để tạo file migration.
+  2. Review file SQL sinh ra trong thư mục `prisma/migrations/`.
+  3. Đảm bảo file migration được commit cùng code change.
 - **Critical API Routes**: Kiểm tra xem thay đổi có tác động tới các route cốt lõi trong `app/api/` hay không, như `app/api/auth`, `app/api/orders`, `app/api/delivery`, `app/api/menu`, `app/api/staff`, `app/api/voucher-packages`.
 - **Known pitfalls**: 
   - Image hostname: remotePatterns hiện tại cover *.supabase.co (staging: mnklsbzkefuefpqvghrr, production: nqwfbmghziubdhvtgyao). Nếu dùng hostname ngoài 2 domains này → phải add thủ công vào next.config.ts
   - SSL/TLS: Không dùng axios trên backend để upload file lên Supabase. Dùng client `supabase-js`.
   - Sharp crash: Không import thư viện `sharp` trên backend.
-  - Prisma cache: Luôn giữ build config là `prisma generate && next build`.
+  - Prisma cache: Build config = `prisma generate && prisma migrate deploy && next build`.
+  - Env files: Mọi file `.env` bị ignore. Đảm bảo Vercel Preview đã được set đủ các biến per-env.
   - Async Params Next.js 15+: Dynamic route `params` luôn là Promise (`Promise<{ id: string }>`).
   - Scratch pollution: Đảm bảo code nháp bỏ trong folder `scratch/` đã được exclude ở `tsconfig.json`.
 
 > **Ví dụ output mẫu báo cáo QA/QC:**
 > Báo cáo đánh giá QA/QC:
 > - [x] Type/Test/Build: PASS
-> - [ ] Cảnh báo Schema: Phát hiện thay đổi tại bảng `users` (thêm trường `otp_enabled`), yêu cầu chạy `npx prisma db push` hoặc generate SQL migration.
+> - [ ] Cảnh báo Schema: Phát hiện thay đổi tại bảng `users` (thêm trường `otp_enabled`), yêu cầu chạy `npm run migrate:dev -- --name "add_otp"` và commit file SQL.
 > - [ ] API ảnh hưởng: `app/api/orders/route.ts` thay đổi logic `total_vnd`.
 > Kết luận: PHÁT HIỆN RỦI RO DỪNG. Chờ xác nhận từ Developer.
 
@@ -40,7 +44,7 @@ Dựa trên Context dự án để phân tích thay đổi:
 ## Section 2 — Push to dev
 
 **Chỉ thực hiện** khi Section 1 QA/QC PASS hoặc user xác nhận bỏ qua.
-- Thực hiện đồng bộ DB (nếu có thay đổi schema) bằng `npx prisma db push` (có thể dùng biến môi trường `$env:DATABASE_URL="..."` để trỏ thẳng vào Staging DB) hoặc apply file SQL được sinh từ `migrate diff` trước khi push.
+- Đảm bảo database đã được migrate lên Staging (nếu có schema change) bằng `npm run migrate:dev` và có file SQL được sinh ra trong `prisma/migrations/`.
 - Thực thi các lệnh Git:
 ```powershell
 git add .
@@ -63,7 +67,6 @@ git push origin dev
 
 **Hard rules**:
 - **KHÔNG** merge vào nhánh `main`.
-- **KHÔNG** chạy lệnh `prisma migrate dev` trên môi trường dự án vì nó không tương thích với pgBouncer.
-- **KHÔNG** chạy lệnh `db push` thẳng lên production DB.
+- **KHÔNG** chạy lệnh `db push` thẳng lên production DB. Luôn dùng `migrate dev` để tạo file sql chuẩn cho Vercel chạy `migrate deploy`.
 - Báo cáo QA/QC **PHẢI** viết hoàn toàn bằng tiếng Việt.
 - Mỗi bước (Section) phải được confirm kết quả trước khi sang bước tiếp.
