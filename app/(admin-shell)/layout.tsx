@@ -1,14 +1,19 @@
 import type { ReactNode } from "react";
 import AdminTabBar from "@/src/components/admin/AdminTabBar";
 import type { Role } from "@/src/lib/types/user";
-import { getSessionOrRefresh } from "@/lib/auth";
+import { getSessionFromHeaders } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import PushSubscriptionManager from "@/src/components/admin/PushSubscriptionManager";
 
-/** Layout shell for all admin and staff pages — top bar + bottom tab bar. */
+/**
+ * Layout shell for all admin and staff pages — top bar + bottom tab bar.
+ *
+ * Reads user identity from middleware-injected headers instead of
+ * doing its own cookie/session resolution to avoid double-rotation.
+ */
 export default async function AdminShellLayout({ children }: { children: ReactNode }) {
-  const session = await getSessionOrRefresh();
+  const session = await getSessionFromHeaders();
 
   if (!session || (session.role !== "ADMIN" && session.role !== "STAFF")) {
     redirect("/?auth=login");
@@ -20,7 +25,7 @@ export default async function AdminShellLayout({ children }: { children: ReactNo
     select: { name: true },
   });
 
-  const userName = user?.name || session.phone_number;
+  const userName = user?.name || session.phone_number || "User";
   const userRole = session.role as Role;
 
   return (

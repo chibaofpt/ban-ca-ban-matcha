@@ -20,7 +20,7 @@ import CartButton from '@/src/components/menu/CartButton';
 import CartDrawer from '@/src/components/menu/CartDrawer';
 import VoucherModal from '@/src/components/shared/VoucherModal';
 import { useVoucherModalStore } from '@/src/lib/store/voucherModalStore';
-import { useIsLoggedIn } from '@/src/lib/store/authStore';
+import { useIsLoggedIn, useIsLoggedInSynced } from '@/src/lib/store/authStore';
 import { useCustomerPoints } from '@/src/hooks/useCustomerPoints';
 import { useVoucherPackages } from '@/src/hooks/useVoucherPackages';
 import { listMyVouchers } from '@/src/services/customerVoucherService';
@@ -38,7 +38,8 @@ export default function MenuPage() {
   const carouselX = useMotionValue(0);
 
   const setPowderData = usePowderStore((s) => s.setPowderData);
-  const isLoggedIn = useIsLoggedIn();
+  const isLoggedIn = useIsLoggedIn();         // UI display — fast, reads from memory
+  const isLoggedInSynced = useIsLoggedInSynced(); // API guard — checks has_session cookie
   const openVoucherModal = useVoucherModalStore((s) => s.openModal);
   
   const { data: menuRes, isLoading: menuLoading, isError: menuError } = useQuery({
@@ -56,12 +57,12 @@ export default function MenuPage() {
 
   const isPackagesLoaded = !!packagesRes;
 
-  const { data: points } = useCustomerPoints({ enabled: isPackagesLoaded && isLoggedIn });
+  const { data: points } = useCustomerPoints({ enabled: isPackagesLoaded && isLoggedInSynced });
 
   const { data: vouchersData } = useQuery({
     queryKey: ['my_vouchers'],
     queryFn: listMyVouchers,
-    enabled: isPackagesLoaded && isLoggedIn,
+    enabled: isPackagesLoaded && isLoggedInSynced,
   });
 
   const loading = menuLoading || powderLoading;

@@ -44,12 +44,4 @@ export async function logout(): Promise<void> {
   await apiClient.post(URL.logout);
 }
 
-/**
- * Returns the current user's role from the access_token cookie.
- * Throws (Axios 401) if there is no valid session.
- * No DB query — purely verifies the JWT.
- */
-export async function getMe(): Promise<{ id: string; role: string }> {
-  const res = await apiClient.get<ApiResponse<{ id: string; role: string }>>(URL.me);
-  return res.data.data;
-}
+

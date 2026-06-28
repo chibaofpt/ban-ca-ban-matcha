@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { onForceLogout } from "@/src/lib/api/client";
@@ -28,12 +28,18 @@ export default function AuthGuardProvider({ children }: { children: ReactNode })
   const logout = useAuthStore((s) => s.logout);
   const openLogin = useAuthModalStore((s) => s.openLogin);
 
+  // Keep a ref so the force-logout callback always reads the latest user value.
+  // Without this, the closure registered in useEffect captures a stale user
+  // snapshot and may incorrectly bail out when user has already been set to null.
+  const userRef = useRef(user);
+  userRef.current = user;
+
   // ── Auto-open login modal on ?auth=login ────────────────────────────────────
   // Server layouts and middleware set this param when redirecting unauthenticated
   // users to /. We open the modal and clean the URL so refresh doesn't reopen it.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("auth") === "login" && !user) {
+    if (params.get("auth") === "login" && !userRef.current) {
       openLogin();
       window.history.replaceState({}, "", window.location.pathname);
     }
@@ -41,10 +47,13 @@ export default function AuthGuardProvider({ children }: { children: ReactNode })
   }, []);
 
   // ── Force-logout listener ───────────────────────────────────────────────────
+  // Register once (empty deps) — the callback always reads fresh values via refs.
+  // Re-registering on every pathname/user change was unnecessary and could cause
+  // the listener to briefly de-register between render and re-registration.
   useEffect(() => {
     onForceLogout(() => {
       // Only act when the client state indicates a user was logged in.
-      if (!user) return;
+      if (!userRef.current) return;
 
       // 1. Clear client-side auth state (localStorage)
       logout();
@@ -56,10 +65,8 @@ export default function AuthGuardProvider({ children }: { children: ReactNode })
       router.replace("/");
       setTimeout(() => openLogin(), 300);
     });
-  // Re-register whenever pathname or user changes so the closure stays current.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, user]);
+  }, []);
 
   return <>{children}</>;
 }
-

@@ -180,3 +180,47 @@ export async function createSession(userId: string): Promise<NewSession> {
 
   return rows[0];
 }
+
+/**
+ * Atomically acquires a rotation lock on a session row via PostgREST.
+ *
+ * Uses an optimistic-locking PATCH:
+ *   UPDATE sessions SET rotating_at = NOW()
+ *   WHERE id = $id AND (rotating_at IS NULL OR rotating_at < NOW() - 30s)
+ *
+ * Returns true  → lock acquired — caller should proceed with rotation.
+ * Returns false → another request holds the lock — caller should skip rotation
+ *                 (the winning request will set the new cookies on its response).
+ *
+ * Stale locks older than 30 seconds are automatically overridden to handle
+ * the edge case where a rotation process crashed mid-flight.
+ */
+export async function markSessionRotating(sessionId: string): Promise<boolean> {
+  try {
+    const { baseUrl, headers } = getSupabaseConfig();
+    const staleThreshold = new Date(Date.now() - 30_000).toISOString();
+
+    // PostgREST filter: id=eq.{id} AND (rotating_at IS NULL OR rotating_at < staleThreshold)
+    const url = new URL(`${baseUrl}/sessions`);
+    url.searchParams.set("id", `eq.${sessionId}`);
+    url.searchParams.set("or", `(rotating_at.is.null,rotating_at.lt.${staleThreshold})`);
+
+    const res = await fetch(url.toString(), {
+      method: "PATCH",
+      headers: {
+        ...headers,
+        "Prefer": "return=representation",
+      },
+      body: JSON.stringify({ rotating_at: new Date().toISOString() }),
+    });
+
+    if (!res.ok) return false;
+    const rows = (await res.json()) as unknown[];
+    // If 0 rows updated → another request holds a fresh lock
+    return Array.isArray(rows) && rows.length > 0;
+  } catch {
+    // On network error, allow rotation to proceed (fail-open for availability)
+    return true;
+  }
+}
+

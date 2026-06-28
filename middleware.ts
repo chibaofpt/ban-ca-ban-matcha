@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify, SignJWT } from 'jose';
-import { findSessionWithUser, deleteSession, createSession, updateSessionGracePeriod, evictSessionCache } from '@/lib/middleware-auth';
+import {
+  findSessionWithUser,
+  deleteSession,
+  createSession,
+  updateSessionGracePeriod,
+  evictSessionCache,
+  markSessionRotating,
+} from '@/lib/middleware-auth';
 import { checkDistributedRateLimit } from '@/lib/rateLimit';
 
 const secretStr = process.env.JWT_SECRET;
@@ -10,9 +17,16 @@ if (!secretStr) {
 }
 const JWT_SECRET = new TextEncoder().encode(secretStr);
 
-/** Result of resolveSession — user context + optional new cookies to set. */
+/** User identity extracted from a verified JWT or session lookup. */
+interface UserPayload {
+  id: string;
+  role: string;
+  phone_number: string;
+}
+
+/** Result of resolveSessionFull — user context + optional new cookies to set. */
 interface ResolvedSession {
-  user: { id: string; role: string; phone_number: string } | null;
+  user: UserPayload | null;
   /** Non-null when the session was refreshed inline — caller must set these cookies. */
   cookieUpdates: { accessToken: string; refreshToken: string } | null;
 }
@@ -21,8 +35,8 @@ interface ResolvedSession {
  * Signs a new access JWT. Used for inline token rotation in middleware.
  * 15-minute TTL, same as lib/auth.ts signJwt.
  */
-async function signAccessToken(payload: { id: string; role: string; phone_number: string }): Promise<string> {
-  return new SignJWT(payload)
+async function signAccessToken(payload: UserPayload): Promise<string> {
+  return new SignJWT({ id: payload.id, role: payload.role, phone_number: payload.phone_number })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
     .setExpirationTime('15m')
@@ -30,14 +44,40 @@ async function signAccessToken(payload: { id: string; role: string; phone_number
 }
 
 /**
- * Central session resolver — handles all token states in one place:
- *  1. Valid access token → return user immediately (no DB hit)
- *  2. Expired access token + valid refresh token → inline rotation via PostgREST
- *  3. No tokens / dead refresh token → return null
- *
- * Eliminates the 3 duplicate self-fetch blocks that existed before.
+ * Verify-only: checks the access_token JWT without any DB/network call.
+ * Returns the user payload if valid, null if missing/expired/invalid.
+ * Used for API paths — rotation is handled by /api/auth/refresh (client interceptor).
  */
-async function resolveSession(request: NextRequest): Promise<ResolvedSession> {
+async function verifyAccessToken(request: NextRequest): Promise<UserPayload | null> {
+  const accessToken = request.cookies.get('access_token')?.value;
+  if (!accessToken) return null;
+  try {
+    const { payload } = await jwtVerify(accessToken, JWT_SECRET);
+    return {
+      id: payload.id as string,
+      role: payload.role as string,
+      phone_number: payload.phone_number as string,
+    };
+  } catch {
+    return null; // expired or invalid
+  }
+}
+
+/**
+ * Full session resolver — verify access_token first (fast path), then rotate
+ * via refresh_token if needed (with rotation lock to prevent double-rotation).
+ *
+ * Used ONLY for page navigations (not API paths).
+ *
+ * Lock behaviour when another request holds the rotation lock:
+ *   - We still return the user info (read from the session lookup, which found
+ *     a valid session row), but cookieUpdates = null.
+ *   - The "winning" rotation request will set the new cookies on its own response.
+ *   - This means the page renders correctly for the current request even though
+ *     we didn't rotate — the browser will pick up the new cookies from whichever
+ *     response arrives.
+ */
+async function resolveSessionFull(request: NextRequest): Promise<ResolvedSession> {
   const accessToken = request.cookies.get('access_token')?.value;
   const refreshToken = request.cookies.get('refresh_token')?.value;
 
@@ -59,59 +99,88 @@ async function resolveSession(request: NextRequest): Promise<ResolvedSession> {
   }
 
   // 2. Try inline refresh via PostgREST (no self-fetch)
-  if (refreshToken) {
-    const session = await findSessionWithUser(refreshToken);
+  if (!refreshToken) return { user: null, cookieUpdates: null };
 
-    if (!session || new Date(session.expires_at) < new Date()) {
-      // Session missing or expired — clean up if needed (fire-and-forget)
-      if (session) {
-        void deleteSession(session.id, refreshToken);
-      }
-      return { user: null, cookieUpdates: null };
-    }
+  const session = await findSessionWithUser(refreshToken);
 
-    try {
-      // Rotate: evict old session cache, truncate lifetime (30s grace), create new one
-      await evictSessionCache(refreshToken);  // BUG-1 fix: must evict BEFORE grace period
-      await updateSessionGracePeriod(session.id);
-      const newSession = await createSession(session.user_id);
-      const newAccessToken = await signAccessToken({
-        id: session.user_id,
-        role: session.user.role,
-        phone_number: session.user.phone_number,
-      });
-
-      return {
-        user: {
-          id: session.user_id,
-          role: session.user.role,
-          phone_number: session.user.phone_number,
-        },
-        cookieUpdates: {
-          accessToken: newAccessToken,
-          refreshToken: newSession.refresh_token,
-        },
-      };
-    } catch {
-      // Rotation failed — treat as logged-out
-      return { user: null, cookieUpdates: null };
-    }
+  if (!session || new Date(session.expires_at) < new Date()) {
+    if (session) void deleteSession(session.id, refreshToken);
+    return { user: null, cookieUpdates: null };
   }
 
-  return { user: null, cookieUpdates: null };
+  // We know user identity from the session row regardless of lock outcome
+  const sessionUser: UserPayload = {
+    id: session.user_id,
+    role: session.user.role,
+    phone_number: session.user.phone_number,
+  };
+
+  // 3. Acquire rotation lock — prevents concurrent requests from double-rotating
+  const lockAcquired = await markSessionRotating(session.id);
+
+  if (!lockAcquired) {
+    // Another request is already rotating this session.
+    // Return user info (page renders correctly) but don't rotate ourselves.
+    // The winning request will deliver new cookies via its own Set-Cookie.
+    return { user: sessionUser, cookieUpdates: null };
+  }
+
+  // 4. Lock acquired — perform the rotation
+  try {
+    await evictSessionCache(refreshToken);       // Invalidate Redis cache for old token
+    await updateSessionGracePeriod(session.id);  // 30s grace so old token stays usable briefly
+    const newSession = await createSession(session.user_id);
+    const newAccessToken = await signAccessToken(sessionUser);
+
+    return {
+      user: sessionUser,
+      cookieUpdates: {
+        accessToken: newAccessToken,
+        refreshToken: newSession.refresh_token,
+      },
+    };
+  } catch {
+    // Rotation failed (network/DB error) — treat as logged-out
+    return { user: null, cookieUpdates: null };
+  }
+}
+
+/**
+ * Injects user identity into request headers so server layouts can read them
+ * without doing their own session resolution.
+ * Also applies refreshed cookies to the response if token was rotated.
+ */
+function buildAuthenticatedResponse(
+  request: NextRequest,
+  user: UserPayload,
+  cookieUpdates: { accessToken: string; refreshToken: string } | null,
+  isProduction: boolean,
+): NextResponse {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-user-id', user.id);
+  requestHeaders.set('x-user-role', user.role);
+  requestHeaders.set('x-user-phone', user.phone_number);
+
+  const res = NextResponse.next({ request: { headers: requestHeaders } });
+  if (cookieUpdates) {
+    applyCookieUpdates(res, cookieUpdates, isProduction);
+  }
+  return res;
 }
 
 /**
  * Applies new auth cookies to a NextResponse.
  * Used when inline token rotation happened during middleware.
+ * Also sets the non-httpOnly has_session signal cookie for client-side sync.
  */
 function applyCookieUpdates(
   response: NextResponse,
   updates: { accessToken: string; refreshToken: string },
-  isProduction: boolean
+  isProduction: boolean,
 ): NextResponse {
   const secure = isProduction;
   const sameSite = 'strict';
+  const refreshMaxAge = 7 * 24 * 60 * 60;
 
   response.cookies.set('access_token', updates.accessToken, {
     httpOnly: true,
@@ -124,7 +193,15 @@ function applyCookieUpdates(
     httpOnly: true,
     secure,
     sameSite,
-    maxAge: 7 * 24 * 60 * 60,
+    maxAge: refreshMaxAge,
+    path: '/',
+  });
+  // Non-httpOnly signal for Zustand sync — tells client JS an active session exists.
+  response.cookies.set('has_session', '1', {
+    httpOnly: false,
+    secure,
+    sameSite,
+    maxAge: refreshMaxAge,
     path: '/',
   });
 
@@ -134,16 +211,24 @@ function applyCookieUpdates(
 /**
  * Middleware for protecting routes based on roles and JWT session.
  *
- * Flow:
- *  1. Rate-limit /api/auth/* endpoints.
- *  2. Resolve session (inline refresh — no self-fetch anti-pattern).
- *  3. Customer-facing paths (/, /menu/*, /profile, /history, /orders):
- *     — Admin/Staff are redirected to /staff/orders.
- *     — Protected customer paths require auth; unauthenticated → redirect / with ?auth=login.
- *  4. Protected internal paths (/admin/*, /staff/*, /api/orders/*, /api/profile/*, etc.):
- *     — Role guards enforced.
- *     — API routes now also benefit from inline refresh (BUG-5 fixed).
- *     — x-user-id / x-user-role injected into request headers for downstream handlers.
+ * Architecture (two distinct paths):
+ *
+ *  PAGE NAVIGATIONS (/, /menu, /profile, /staff, /admin, ...):
+ *    - Full session resolution: verify access_token OR rotate via refresh_token.
+ *    - Rotation uses an optimistic lock (rotating_at column) to prevent double-rotation.
+ *    - On success: injects x-user-id/x-user-role/x-user-phone headers so layouts
+ *      can read user identity WITHOUT doing their own session resolution.
+ *    - This is the ONLY place rotation happens for page requests.
+ *
+ *  API PATHS (/api/orders, /api/profile, /api/staff, /api/admin, ...):
+ *    - Verify-only: checks access_token JWT, NO rotation.
+ *    - If expired → 401. Client Axios interceptor calls /api/auth/refresh to rotate.
+ *    - /api/auth/* is rate-limited only (auth routes handle their own logic).
+ *
+ *  ROLE GUARDS:
+ *    - Customer paths: Admin/Staff redirected to /staff/orders.
+ *    - /staff paths: CUSTOMER role → 401/redirect.
+ *    - /admin paths: STAFF role → redirect to /staff/orders.
  */
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -165,7 +250,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // ── 2. Resolve session (single call covers all paths below) ──────────────
+  // ── 2. Classify path ──────────────────────────────────────────────────────
   const isCustomerFacingPath =
     pathname === '/' ||
     pathname.startsWith('/menu') ||
@@ -173,22 +258,58 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/history') ||
     pathname.startsWith('/orders');
 
-  const isProtectedPath =
+  const isProtectedApiPath =
     pathname.startsWith('/api/orders') ||
     pathname.startsWith('/api/profile') ||
     pathname.startsWith('/api/staff') ||
+    pathname.startsWith('/api/admin');
+
+  const isProtectedPagePath =
     pathname.startsWith('/staff') ||
-    pathname.startsWith('/api/admin') ||
     pathname.startsWith('/admin');
 
   // Skip unmatched paths early
-  if (!isCustomerFacingPath && !isProtectedPath) {
+  if (!isCustomerFacingPath && !isProtectedApiPath && !isProtectedPagePath) {
     return NextResponse.next();
   }
 
-  const { user, cookieUpdates } = await resolveSession(request);
+  // ── 3. API paths — verify-only, no rotation ───────────────────────────────
+  // Rotation for API calls is handled by /api/auth/refresh (client interceptor).
+  if (isProtectedApiPath) {
+    const user = await verifyAccessToken(request);
 
-  // ── 3. Customer-facing paths ──────────────────────────────────────────────
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Phiên đăng nhập không hợp lệ', code: 'UNAUTHORIZED' },
+        { status: 401, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
+      );
+    }
+
+    // Role guards for API paths
+    if (
+      (pathname.startsWith('/api/staff') || pathname.startsWith('/api/admin')) &&
+      !['STAFF', 'ADMIN'].includes(user.role)
+    ) {
+      return NextResponse.json(
+        { error: 'Không có quyền truy cập', code: 'FORBIDDEN' },
+        { status: 403 }
+      );
+    }
+
+    if (pathname.startsWith('/api/admin') && user.role !== 'ADMIN') {
+      return NextResponse.json(
+        { error: 'Chỉ dành cho quản trị viên', code: 'FORBIDDEN' },
+        { status: 403 }
+      );
+    }
+
+    return buildAuthenticatedResponse(request, user, null, isProduction);
+  }
+
+  // ── 4. Page paths — full session resolution with rotation ─────────────────
+  const { user, cookieUpdates } = await resolveSessionFull(request);
+
+  // ── 5. Customer-facing paths ──────────────────────────────────────────────
   if (isCustomerFacingPath) {
     if (user) {
       // Admin/Staff must never see the customer UI
@@ -199,12 +320,8 @@ export async function middleware(request: NextRequest) {
         if (cookieUpdates) applyCookieUpdates(res, cookieUpdates, isProduction);
         return res;
       }
-      // CUSTOMER — let through, apply refreshed cookies if any
-      if (cookieUpdates) {
-        const res = NextResponse.next();
-        return applyCookieUpdates(res, cookieUpdates, isProduction);
-      }
-      return NextResponse.next();
+      // Authenticated CUSTOMER — inject headers + apply refreshed cookies
+      return buildAuthenticatedResponse(request, user, cookieUpdates, isProduction);
     }
 
     // No valid session — check if this is a protected customer path
@@ -214,96 +331,38 @@ export async function middleware(request: NextRequest) {
       pathname.startsWith('/orders');
 
     if (isCustomerProtectedPath) {
-      // Redirect to home with ?auth=login so AuthGuardProvider opens the modal
       const url = request.nextUrl.clone();
       url.pathname = '/';
       url.searchParams.set('auth', 'login');
       return NextResponse.redirect(url);
     }
 
-    // Public customer path (/, /menu) with no session — let through
+    // Public paths (/, /menu) with no session — let through
     return NextResponse.next();
   }
 
-  // ── 4. Protected internal paths ───────────────────────────────────────────
-
+  // ── 6. Protected page paths (/staff/*, /admin/*) ──────────────────────────
   if (!user) {
-    // No valid session (access token dead, refresh token dead/missing)
-    if (pathname.startsWith('/api/')) {
-      return NextResponse.json(
-        { error: 'Phiên đăng nhập không hợp lệ', code: 'UNAUTHORIZED' },
-        { status: 401, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
-      );
-    }
-    // Page navigation — redirect to home with login modal trigger
     const url = request.nextUrl.clone();
     url.pathname = '/';
     url.searchParams.set('auth', 'login');
     return NextResponse.redirect(url);
   }
 
-  // Role guards
-  if (
-    (pathname.startsWith('/api/staff') || pathname.startsWith('/staff')) &&
-    !['STAFF', 'ADMIN'].includes(user.role)
-  ) {
-    return redirectOrUnauthorized(request, 'Không có quyền truy cập', 'FORBIDDEN', 403, user.role);
-  }
-
-  if (
-    (pathname.startsWith('/api/admin') || pathname.startsWith('/admin')) &&
-    user.role !== 'ADMIN'
-  ) {
-    return redirectOrUnauthorized(request, 'Chỉ dành cho quản trị viên', 'FORBIDDEN', 403, user.role);
-  }
-
-  // Inject user context into request headers for downstream handlers
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set('x-user-id', user.id);
-  requestHeaders.set('x-user-role', user.role);
-
-  const res = NextResponse.next({ request: { headers: requestHeaders } });
-  // Apply refreshed cookies if token was rotated mid-request
-  if (cookieUpdates) applyCookieUpdates(res, cookieUpdates, isProduction);
-  return res;
-}
-
-/**
- * Returns a JSON error for API routes, or a redirect for page routes.
- * All unauthenticated page redirects go to / (no separate /admin/login page).
- */
-function redirectOrUnauthorized(
-  request: NextRequest,
-  error: string,
-  code: string,
-  status: number,
-  userRole?: string
-) {
-  const { pathname } = request.nextUrl;
-
-  if (pathname.startsWith('/api/')) {
-    return NextResponse.json(
-      { error, code },
-      { status, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate' } }
-    );
-  }
-
-  const url = request.nextUrl.clone();
-
-  // 403 — wrong role: staff trying /admin → go to their own dashboard
-  if (status === 403) {
-    if (userRole === 'STAFF' && pathname.startsWith('/admin')) {
-      url.pathname = '/staff/orders';
-      return NextResponse.redirect(url);
-    }
+  // Role guards for page paths
+  if (pathname.startsWith('/staff') && !['STAFF', 'ADMIN'].includes(user.role)) {
+    const url = request.nextUrl.clone();
     url.pathname = '/';
     return NextResponse.redirect(url);
   }
 
-  // 401 — not logged in: redirect to / with login modal trigger
-  url.pathname = '/';
-  url.searchParams.set('auth', 'login');
-  return NextResponse.redirect(url);
+  if (pathname.startsWith('/admin') && user.role !== 'ADMIN') {
+    const url = request.nextUrl.clone();
+    url.pathname = user.role === 'STAFF' ? '/staff/orders' : '/';
+    return NextResponse.redirect(url);
+  }
+
+  return buildAuthenticatedResponse(request, user, cookieUpdates, isProduction);
 }
 
 /**

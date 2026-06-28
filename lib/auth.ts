@@ -1,5 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { prisma } from "./prisma";
 import { cacheDelete } from './redis';
 
@@ -63,13 +63,13 @@ export async function verifyJwt(token: string) {
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
     return payload as { id: string; role: string; phone_number: string };
-  } catch (error) {
+  } catch {
     return null;
   }
 }
 
 /** Refresh token TTL in seconds: 7 days for all roles. */
-function refreshTtlSeconds(role: string): number {
+function refreshTtlSeconds(_role: string): number {
   return 7 * 24 * 60 * 60;   // 7 days
 }
 
@@ -90,15 +90,18 @@ export async function createSession(userId: string, role: string): Promise<strin
 }
 
 /**
- * Sets access_token and refresh_token in httpOnly cookies.
+ * Sets access_token, refresh_token, and has_session cookies.
+ * has_session is NOT httpOnly so client JS can read it to sync Zustand state.
  */
 export async function setAuthCookies(accessToken: string, refreshToken: string, role: string = "CUSTOMER") {
   const cookieStore = await cookies();
-  const accessMaxAge = 15 * 60; // 15 mins for all roles
+  const isProduction = process.env.NODE_ENV === "production";
+  const accessMaxAge = 15 * 60; // 15 mins
+  const refreshMaxAge = refreshTtlSeconds(role); // 7 days
 
   cookieStore.set("access_token", accessToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: isProduction,
     sameSite: "strict",
     maxAge: accessMaxAge,
     path: "/",
@@ -106,15 +109,25 @@ export async function setAuthCookies(accessToken: string, refreshToken: string, 
 
   cookieStore.set("refresh_token", refreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: isProduction,
     sameSite: "strict",
-    maxAge: refreshTtlSeconds(role), // 7 days for all roles
+    maxAge: refreshMaxAge,
+    path: "/",
+  });
+
+  // Non-httpOnly signal cookie — allows client JS to detect active session
+  // without reading auth credentials. Used to sync Zustand with cookie state.
+  cookieStore.set("has_session", "1", {
+    httpOnly: false,
+    secure: isProduction,
+    sameSite: "strict",
+    maxAge: refreshMaxAge,
     path: "/",
   });
 }
 
 /**
- * Clears the auth cookies upon logout.
+ * Clears all auth cookies upon logout.
  * Also evicts the Redis session cache for the outgoing refresh_token.
  */
 export async function clearAuthCookies() {
@@ -128,6 +141,7 @@ export async function clearAuthCookies() {
 
   cookieStore.delete("access_token");
   cookieStore.delete("refresh_token");
+  cookieStore.delete("has_session");
 }
 
 /**
@@ -140,7 +154,8 @@ export async function getRefreshTokenCookie(): Promise<string | null> {
 }
 
 /**
- * Helper to get user session data from request.
+ * Reads user session from the access_token cookie (JWT verify only — no DB hit).
+ * Returns null if token is missing or expired/invalid.
  */
 export async function getSession() {
   const cookieStore = await cookies();
@@ -150,59 +165,24 @@ export async function getSession() {
 }
 
 /**
- * Attempts getSession(). If access_token is expired but refresh_token
- * is still valid, performs server-side token rotation and returns the
- * refreshed session. Returns null only when both tokens are dead.
- * Use this in server-side layout guards for customer pages.
+ * Reads the user session from middleware-injected request headers.
+ *
+ * Middleware resolves and rotates sessions for all page navigations, then
+ * injects x-user-id / x-user-role / x-user-phone into the request headers.
+ * Server layouts call this function instead of doing their own cookie checks,
+ * which eliminates double-rotation within the same request cycle.
+ *
+ * Returns null if the user is not authenticated (middleware didn't inject headers).
  */
-export async function getSessionOrRefresh(): Promise<{
+export async function getSessionFromHeaders(): Promise<{
   id: string;
   role: string;
   phone_number: string;
 } | null> {
-  // 1. Try normal session first
-  const session = await getSession();
-  if (session) return session;
-
-  // 2. Access token dead — attempt refresh via refresh_token
-  const refreshToken = await getRefreshTokenCookie();
-  if (!refreshToken) return null;
-
-  try {
-    const dbSession = await prisma.session.findUnique({
-      where: { refresh_token: refreshToken },
-      include: { user: true },
-    });
-
-    if (!dbSession || dbSession.expires_at < new Date()) {
-      if (dbSession) {
-        await prisma.session.delete({ where: { id: dbSession.id } });
-        // BUG-2 fix: evict stale cache so this token cannot be replayed
-        void cacheDelete(`session:${refreshToken}`);
-      }
-      await clearAuthCookies();
-      return null;
-    }
-
-    // 3. Rotate: delete old session, issue new tokens
-    await prisma.session.delete({ where: { id: dbSession.id } });
-    // BUG-2 fix: evict old token's cache so it cannot be replayed
-    void cacheDelete(`session:${refreshToken}`);
-    const newRefreshToken = await createSession(dbSession.user_id, dbSession.user.role);
-    const newAccessToken = await signJwt({
-      id: dbSession.user_id,
-      role: dbSession.user.role,
-      phone_number: dbSession.user.phone_number,
-    });
-    await setAuthCookies(newAccessToken, newRefreshToken, dbSession.user.role);
-
-    return {
-      id: dbSession.user_id,
-      role: dbSession.user.role,
-      phone_number: dbSession.user.phone_number,
-    };
-  } catch {
-    // DB error — fail safe: return null, do not crash layout
-    return null;
-  }
+  const h = await headers();
+  const id = h.get("x-user-id");
+  const role = h.get("x-user-role");
+  const phone = h.get("x-user-phone");
+  if (!id || !role) return null;
+  return { id, role, phone_number: phone ?? "" };
 }
