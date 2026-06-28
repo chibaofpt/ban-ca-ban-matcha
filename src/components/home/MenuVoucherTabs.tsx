@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { ArrowRight, Clock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -95,14 +95,6 @@ export default function MenuVoucherTabs() {
 
   const packages = useMemo<VoucherPackage[]>(() => packagesRaw.slice(0, 4), [packagesRaw]);
 
-  const tabVariants = {
-    initial: (dir: number) => ({ opacity: 0, x: dir > 0 ? 30 : -30 }),
-    animate: { opacity: 1, x: 0, transition: { duration: 0.22, ease: "easeOut" as const } },
-    exit: (dir: number) => ({ opacity: 0, x: dir < 0 ? 30 : -30, transition: { duration: 0.18 } }),
-  };
-  const direction = activeTab === "menu" ? -1 : 1;
-
-  const isLoading = activeTab === "menu" ? menuLoading : pkgLoading;
 
   return (
     <section className="py-20 px-4 md:px-6 bg-transparent border-t border-primary/10 relative">
@@ -136,49 +128,72 @@ export default function MenuVoucherTabs() {
           </div>
         </div>
 
-        {/* Tab content */}
-        <div className="relative min-h-[320px]">
-          <AnimatePresence mode="wait" custom={direction}>
-            <motion.div
-              key={activeTab}
-              custom={direction}
-              variants={tabVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-            >
-              {isLoading ? (
-                <div className="flex flex-col gap-0 md:grid md:grid-cols-2 md:gap-4">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="h-[130px] bg-primary/5 animate-pulse rounded-2xl mb-4 md:mb-0" />
-                  ))}
-                </div>
-              ) : activeTab === "menu" ? (
-                <div className="flex flex-col md:grid md:grid-cols-2 md:gap-x-8">
-                  {menuItems.map((item, index) => (
-                    <MenuCard
-                      key={item.id}
-                      item={item}
-                      onClick={() => router.push("/menu")}
-                      priority={index < 4}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {packages.length === 0 ? (
-                    <div className="col-span-2 py-16 text-center text-primary/40">
-                      <p className="text-lg font-bold">Chưa có ưu đãi nào</p>
-                    </div>
-                  ) : (
-                    packages.map((pkg) => (
-                      <MiniPackageCard key={pkg.id} pkg={pkg} />
-                    ))
-                  )}
-                </div>
-              )}
-            </motion.div>
-          </AnimatePresence>
+        {/* Tab content - Render both simultaneously to avoid image unmounting/reloading */}
+        <div className="relative min-h-[320px] overflow-hidden">
+          {/* Menu Tab */}
+          <motion.div
+            initial={false}
+            animate={{
+              opacity: activeTab === "menu" ? 1 : 0,
+              x: activeTab === "menu" ? 0 : -30,
+              pointerEvents: activeTab === "menu" ? "auto" : "none",
+              visibility: activeTab === "menu" ? "visible" : "hidden"
+            }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className={cn("w-full", activeTab === "menu" ? "relative" : "absolute inset-x-0 top-0")}
+          >
+            {menuLoading ? (
+              <div className="flex flex-col gap-0 md:grid md:grid-cols-2 md:gap-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="h-[130px] bg-primary/5 animate-pulse rounded-2xl mb-4 md:mb-0" />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col md:grid md:grid-cols-2 md:gap-x-8">
+                {menuItems.map((item, index) => (
+                  <MenuCard
+                    key={item.id}
+                    item={item}
+                    onClick={() => router.push("/menu")}
+                    priority={index < 4}
+                  />
+                ))}
+              </div>
+            )}
+          </motion.div>
+
+          {/* Vouchers Tab */}
+          <motion.div
+            initial={false}
+            animate={{
+              opacity: activeTab === "uu-dai" ? 1 : 0,
+              x: activeTab === "uu-dai" ? 0 : 30,
+              pointerEvents: activeTab === "uu-dai" ? "auto" : "none",
+              visibility: activeTab === "uu-dai" ? "visible" : "hidden"
+            }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className={cn("w-full", activeTab === "uu-dai" ? "relative" : "absolute inset-x-0 top-0")}
+          >
+            {pkgLoading ? (
+              <div className="flex flex-col gap-0 md:grid md:grid-cols-2 md:gap-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="h-[130px] bg-primary/5 animate-pulse rounded-2xl mb-4 md:mb-0" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {packages.length === 0 ? (
+                  <div className="col-span-2 py-16 text-center text-primary/40">
+                    <p className="text-lg font-bold">Chưa có ưu đãi nào</p>
+                  </div>
+                ) : (
+                  packages.map((pkg) => (
+                    <MiniPackageCard key={pkg.id} pkg={pkg} />
+                  ))
+                )}
+              </div>
+            )}
+          </motion.div>
         </div>
 
         {/* See more CTA */}

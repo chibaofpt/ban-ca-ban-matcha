@@ -2,6 +2,14 @@ import { NextResponse } from "next/server";
 import { LoginSchema } from "@/lib/validations/auth";
 import { prisma } from "@/lib/prisma";
 import { normalizePhone, signJwt, createSession, setAuthCookies } from "@/lib/auth";
+import {
+  checkLoginFailLimit,
+  checkPhoneFloodGuard,
+  recordLoginFail,
+  recordPhoneFloodAttempt,
+  resetLoginFail,
+  resetPhoneFlood,
+} from "@/lib/rateLimit";
 import bcrypt from "bcryptjs";
 
 // Dummy hash to prevent timing attacks. It corresponds to an empty string with cost 12.
@@ -12,6 +20,8 @@ const MAX_ACTIVE_SESSIONS = 5;
 
 /**
  * Handle POST request for user login.
+ * Rate limiting: IP-based fail counter (5/15min) + phone flood guard (10/15min).
+ * Both counters only increment on wrong password — correct password resets them.
  */
 export async function POST(req: Request) {
   try {
@@ -29,16 +39,35 @@ export async function POST(req: Request) {
     const { phone_number, password } = parsedParams.data;
     const normalizedPhone = normalizePhone(phone_number);
 
-    const user = await prisma.user.findUnique({
-      where: { phone_number: normalizedPhone },
-    });
+    // Extract IP for rate limiting (x-forwarded-for set by Vercel/proxy)
+    const ip =
+      req.headers instanceof Headers
+        ? (req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown")
+        : "unknown";
 
-    if (user && user.locked_until && user.locked_until > new Date()) {
+    // ── Layer 2: IP-based fail counter ────────────────────────────────────────
+    // Checked BEFORE DB lookup to short-circuit early and save a DB query.
+    const ipCheck = await checkLoginFailLimit(ip);
+    if (!ipCheck.allowed) {
       return NextResponse.json(
-        { error: "Tài khoản bị khoá tạm thời. Vui lòng thử lại sau 15 phút.", code: "ACCOUNT_LOCKED" },
+        { error: "Quá nhiều lần thử. Vui lòng thử lại sau 15 phút.", code: "IP_BLOCKED" },
         { status: 429 }
       );
     }
+
+    // ── Layer 3: Phone flood guard ─────────────────────────────────────────────
+    // Catches distributed attacks where many IPs target the same phone number.
+    const phoneCheck = await checkPhoneFloodGuard(normalizedPhone);
+    if (!phoneCheck.allowed) {
+      return NextResponse.json(
+        { error: "Quá nhiều yêu cầu cho số điện thoại này. Vui lòng thử lại sau 15 phút.", code: "PHONE_FLOOD" },
+        { status: 429 }
+      );
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { phone_number: normalizedPhone },
+    });
 
     // EDGE-3: Ghost user guard — must run bcrypt for timing-safety, then reject clearly.
     // Ghost users have never set a password; they should register, not login.
@@ -57,32 +86,25 @@ export async function POST(req: Request) {
     );
 
     if (!user || !isValidPassword) {
-      if (user) {
-        const newAttempts = user.failed_login_attempts + 1;
-        let lockedUntil = null;
-        if (newAttempts >= 5) {
-          lockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
-        }
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            failed_login_attempts: newAttempts,
-            locked_until: lockedUntil,
-          },
-        });
-      }
-      return NextResponse.json({ error: "Số điện thoại hoặc mật khẩu không chính xác", code: "INVALID_CREDENTIALS" }, { status: 401 });
+      // Record failed attempt — both counters increment only on wrong password.
+      // Run in parallel to minimize latency impact.
+      await Promise.all([
+        recordLoginFail(ip),
+        recordPhoneFloodAttempt(normalizedPhone),
+      ]);
+
+      return NextResponse.json(
+        { error: "Số điện thoại hoặc mật khẩu không chính xác", code: "INVALID_CREDENTIALS" },
+        { status: 401 }
+      );
     }
 
-    if (user.failed_login_attempts > 0 || user.locked_until !== null) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          failed_login_attempts: 0,
-          locked_until: null,
-        },
-      });
-    }
+    // Correct password — reset both counters so legitimate users never hit their own limit.
+    // Run in parallel to minimize latency impact.
+    await Promise.all([
+      resetLoginFail(ip),
+      resetPhoneFlood(normalizedPhone),
+    ]);
 
     // EDGE-4: Session limit — keep at most MAX_ACTIVE_SESSIONS-1 existing sessions
     // so the new one makes exactly MAX_ACTIVE_SESSIONS total.

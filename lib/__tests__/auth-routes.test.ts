@@ -19,6 +19,14 @@ const mockSignJwt = vi.fn();
 const mockCreateSession = vi.fn();
 const mockNormalizePhone = vi.fn();
 
+// Rate limit mocks
+const mockCheckLoginFailLimit = vi.fn();
+const mockRecordLoginFail = vi.fn();
+const mockResetLoginFail = vi.fn();
+const mockCheckPhoneFloodGuard = vi.fn();
+const mockRecordPhoneFloodAttempt = vi.fn();
+const mockResetPhoneFlood = vi.fn();
+
 const mockUserFindUnique = vi.fn();
 const mockUserCreate = vi.fn();
 const mockUserUpdate = vi.fn();
@@ -41,6 +49,18 @@ vi.mock("@/lib/auth", () => ({
   createSession: (...args: unknown[]) => mockCreateSession(...args),
   normalizePhone: (phone: string) => mockNormalizePhone(phone),
   getRefreshTokenCookie: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("@/lib/rateLimit", () => ({
+  checkLoginFailLimit: (...args: unknown[]) => mockCheckLoginFailLimit(...args),
+  recordLoginFail: (...args: unknown[]) => mockRecordLoginFail(...args),
+  resetLoginFail: (...args: unknown[]) => mockResetLoginFail(...args),
+  checkPhoneFloodGuard: (...args: unknown[]) => mockCheckPhoneFloodGuard(...args),
+  recordPhoneFloodAttempt: (...args: unknown[]) => mockRecordPhoneFloodAttempt(...args),
+  resetPhoneFlood: (...args: unknown[]) => mockResetPhoneFlood(...args),
+  // Keep existing export so middleware tests don't break
+  checkDistributedRateLimit: vi.fn().mockResolvedValue({ allowed: true, remaining: 9 }),
+  getAuthRateLimit: vi.fn().mockReturnValue(null),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -114,7 +134,7 @@ const GHOST_USER = {
 
 describe("POST /api/auth/check-phone — ghost user exclusion", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockNormalizePhone.mockImplementation((p: string) =>
       p.startsWith("0") ? `+84${p.slice(1)}` : p
     );
@@ -171,13 +191,20 @@ describe("POST /api/auth/check-phone — ghost user exclusion", () => {
 
 describe("POST /api/auth/login — ghost user guard", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockNormalizePhone.mockImplementation((p: string) =>
       p.startsWith("0") ? `+84${p.slice(1)}` : p
     );
     mockSignJwt.mockResolvedValue("access-token-xyz");
     mockCreateSession.mockResolvedValue("refresh-token-xyz");
     mockSetAuthCookies.mockResolvedValue(undefined);
+    // Default: rate limits allow through
+    mockCheckLoginFailLimit.mockResolvedValue({ allowed: true, remaining: 4 });
+    mockCheckPhoneFloodGuard.mockResolvedValue({ allowed: true });
+    mockRecordLoginFail.mockResolvedValue(undefined);
+    mockRecordPhoneFloodAttempt.mockResolvedValue(undefined);
+    mockResetLoginFail.mockResolvedValue(undefined);
+    mockResetPhoneFlood.mockResolvedValue(undefined);
   });
 
   it("trả về 401 NOT_REGISTERED khi đăng nhập với số điện thoại của ghost user", async () => {
@@ -215,17 +242,6 @@ describe("POST /api/auth/login — ghost user guard", () => {
     expect(mockSetAuthCookies).toHaveBeenCalledOnce();
   });
 
-  it("trả về 401 ACCOUNT_LOCKED khi tài khoản đang bị khóa", async () => {
-    const lockedUser = { ...REAL_USER, locked_until: new Date(Date.now() + 10 * 60 * 1000) };
-    mockUserFindUnique.mockResolvedValueOnce(lockedUser);
-
-    const res = await loginPOST(makeRequest({ phone_number: "0912345678", password: "password123" }));
-    const body = await res.json();
-
-    expect(res.status).toBe(429);
-    expect(body.code).toBe("ACCOUNT_LOCKED");
-  });
-
   it("trả về 401 INVALID_CREDENTIALS khi sai mật khẩu", async () => {
     mockUserFindUnique.mockResolvedValueOnce(REAL_USER);
     mockBcryptCompare.mockResolvedValueOnce(false);
@@ -252,7 +268,7 @@ describe("POST /api/auth/login — ghost user guard", () => {
 
 describe("POST /api/auth/login — session limit (max 5)", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockNormalizePhone.mockImplementation((p: string) =>
       p.startsWith("0") ? `+84${p.slice(1)}` : p
     );
@@ -261,6 +277,13 @@ describe("POST /api/auth/login — session limit (max 5)", () => {
     mockCreateSession.mockResolvedValue("refresh-token");
     mockSetAuthCookies.mockResolvedValue(undefined);
     mockSessionDeleteMany.mockResolvedValue({ count: 0 });
+    // Default: rate limits allow through
+    mockCheckLoginFailLimit.mockResolvedValue({ allowed: true, remaining: 4 });
+    mockCheckPhoneFloodGuard.mockResolvedValue({ allowed: true });
+    mockRecordLoginFail.mockResolvedValue(undefined);
+    mockRecordPhoneFloodAttempt.mockResolvedValue(undefined);
+    mockResetLoginFail.mockResolvedValue(undefined);
+    mockResetPhoneFlood.mockResolvedValue(undefined);
   });
 
   it("không xóa session cũ khi số lượng session < 5", async () => {
@@ -309,12 +332,182 @@ describe("POST /api/auth/login — session limit (max 5)", () => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
+// POST /api/auth/login — IP rate limit và phone flood guard
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("POST /api/auth/login — IP rate limit và phone flood guard", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockNormalizePhone.mockImplementation((p: string) =>
+      p.startsWith("0") ? `+84${p.slice(1)}` : p
+    );
+    mockRecordLoginFail.mockResolvedValue(undefined);
+    mockRecordPhoneFloodAttempt.mockResolvedValue(undefined);
+    mockResetLoginFail.mockResolvedValue(undefined);
+    mockResetPhoneFlood.mockResolvedValue(undefined);
+  });
+
+  it("trả 429 IP_BLOCKED khi IP đã vượt fail limit", async () => {
+    mockCheckLoginFailLimit.mockResolvedValueOnce({ allowed: false, remaining: 0 });
+
+    const res = await loginPOST(makeRequest({ phone_number: "0912345678", password: "password123" }));
+    const body = await res.json();
+
+    expect(res.status).toBe(429);
+    expect(body.code).toBe("IP_BLOCKED");
+    // Phone flood không được gọi nếu IP đã bị block
+    expect(mockCheckPhoneFloodGuard).not.toHaveBeenCalled();
+  });
+
+  it("trả 429 PHONE_FLOOD khi phone đã bị flood", async () => {
+    mockCheckLoginFailLimit.mockResolvedValueOnce({ allowed: true, remaining: 3 });
+    mockCheckPhoneFloodGuard.mockResolvedValueOnce({ allowed: false });
+
+    const res = await loginPOST(makeRequest({ phone_number: "0912345678", password: "password123" }));
+    const body = await res.json();
+
+    expect(res.status).toBe(429);
+    expect(body.code).toBe("PHONE_FLOOD");
+  });
+
+  it("IP check chạy trước phone check", async () => {
+    mockCheckLoginFailLimit.mockResolvedValueOnce({ allowed: false, remaining: 0 });
+    mockCheckPhoneFloodGuard.mockResolvedValueOnce({ allowed: false });
+
+    const res = await loginPOST(makeRequest({ phone_number: "0912345678", password: "password123" }));
+    const body = await res.json();
+
+    // Phải trả IP_BLOCKED, không phải PHONE_FLOOD
+    expect(body.code).toBe("IP_BLOCKED");
+    expect(mockCheckPhoneFloodGuard).not.toHaveBeenCalled();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// POST /api/auth/login — ghi nhận thất bại và reset khi đúng
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("POST /api/auth/login — ghi nhận thất bại", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockNormalizePhone.mockImplementation((p: string) =>
+      p.startsWith("0") ? `+84${p.slice(1)}` : p
+    );
+    mockCheckLoginFailLimit.mockResolvedValue({ allowed: true, remaining: 4 });
+    mockCheckPhoneFloodGuard.mockResolvedValue({ allowed: true });
+    mockRecordLoginFail.mockResolvedValue(undefined);
+    mockRecordPhoneFloodAttempt.mockResolvedValue(undefined);
+    mockResetLoginFail.mockResolvedValue(undefined);
+    mockResetPhoneFlood.mockResolvedValue(undefined);
+  });
+
+  it("login sai mật khẩu → gọi recordLoginFail và recordPhoneFloodAttempt", async () => {
+    mockUserFindUnique.mockResolvedValueOnce(REAL_USER);
+    mockBcryptCompare.mockResolvedValueOnce(false);
+
+    await loginPOST(makeRequest({ phone_number: "0912345678", password: "wrongpass" }));
+
+    expect(mockRecordLoginFail).toHaveBeenCalledOnce();
+    expect(mockRecordPhoneFloodAttempt).toHaveBeenCalledOnce();
+  });
+
+  it("user không tồn tại → gọi recordLoginFail và recordPhoneFloodAttempt", async () => {
+    mockUserFindUnique.mockResolvedValueOnce(null);
+    mockBcryptCompare.mockResolvedValueOnce(false);
+
+    await loginPOST(makeRequest({ phone_number: "0999999999", password: "password123" }));
+
+    expect(mockRecordLoginFail).toHaveBeenCalledOnce();
+    expect(mockRecordPhoneFloodAttempt).toHaveBeenCalledOnce();
+  });
+
+  it("ghost user → KHÔNG gọi recordLoginFail / recordPhoneFloodAttempt", async () => {
+    mockUserFindUnique.mockResolvedValueOnce(GHOST_USER);
+    mockBcryptCompare.mockResolvedValueOnce(false);
+
+    await loginPOST(makeRequest({ phone_number: "0912345678", password: "password123" }));
+
+    expect(mockRecordLoginFail).not.toHaveBeenCalled();
+    expect(mockRecordPhoneFloodAttempt).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/auth/login — reset khi đúng", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockNormalizePhone.mockImplementation((p: string) =>
+      p.startsWith("0") ? `+84${p.slice(1)}` : p
+    );
+    mockCheckLoginFailLimit.mockResolvedValue({ allowed: true, remaining: 4 });
+    mockCheckPhoneFloodGuard.mockResolvedValue({ allowed: true });
+    mockSignJwt.mockResolvedValue("access-token");
+    mockCreateSession.mockResolvedValue("refresh-token");
+    mockSetAuthCookies.mockResolvedValue(undefined);
+    mockRecordLoginFail.mockResolvedValue(undefined);
+    mockRecordPhoneFloodAttempt.mockResolvedValue(undefined);
+    mockResetLoginFail.mockResolvedValue(undefined);
+    mockResetPhoneFlood.mockResolvedValue(undefined);
+  });
+
+  it("login đúng → gọi resetLoginFail và resetPhoneFlood", async () => {
+    mockUserFindUnique.mockResolvedValueOnce(REAL_USER);
+    mockBcryptCompare.mockResolvedValueOnce(true);
+    mockSessionFindMany.mockResolvedValueOnce([]);
+
+    await loginPOST(makeRequest({ phone_number: "0912345678", password: "password123" }));
+
+    expect(mockResetLoginFail).toHaveBeenCalledOnce();
+    expect(mockResetPhoneFlood).toHaveBeenCalledOnce();
+  });
+
+  it("login đúng → KHÔNG gọi record fail functions", async () => {
+    mockUserFindUnique.mockResolvedValueOnce(REAL_USER);
+    mockBcryptCompare.mockResolvedValueOnce(true);
+    mockSessionFindMany.mockResolvedValueOnce([]);
+
+    await loginPOST(makeRequest({ phone_number: "0912345678", password: "password123" }));
+
+    expect(mockRecordLoginFail).not.toHaveBeenCalled();
+    expect(mockRecordPhoneFloodAttempt).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/auth/login — fail-open khi Redis down", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mockNormalizePhone.mockImplementation((p: string) =>
+      p.startsWith("0") ? `+84${p.slice(1)}` : p
+    );
+    mockSignJwt.mockResolvedValue("access-token");
+    mockCreateSession.mockResolvedValue("refresh-token");
+    mockSetAuthCookies.mockResolvedValue(undefined);
+    mockResetLoginFail.mockResolvedValue(undefined);
+    mockResetPhoneFlood.mockResolvedValue(undefined);
+    mockRecordLoginFail.mockResolvedValue(undefined);
+    mockRecordPhoneFloodAttempt.mockResolvedValue(undefined);
+  });
+
+  it("checkLoginFailLimit trả allowed:true khi Redis down → login vẫn tiếp tục", async () => {
+    // Redis down → fail-open
+    mockCheckLoginFailLimit.mockResolvedValueOnce({ allowed: true, remaining: -1 });
+    mockCheckPhoneFloodGuard.mockResolvedValueOnce({ allowed: true });
+    mockUserFindUnique.mockResolvedValueOnce(REAL_USER);
+    mockBcryptCompare.mockResolvedValueOnce(true);
+    mockSessionFindMany.mockResolvedValueOnce([]);
+
+    const res = await loginPOST(makeRequest({ phone_number: "0912345678", password: "password123" }));
+
+    expect(res.status).toBe(200);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
 // POST /api/auth/register — session limit
 // ══════════════════════════════════════════════════════════════════════════════
 
 describe("POST /api/auth/register — session limit và ghost user conversion", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockNormalizePhone.mockImplementation((p: string) =>
       p.startsWith("0") ? `+84${p.slice(1)}` : p
     );
@@ -445,7 +638,7 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
 
 describe("GET /api/auth/me — trả thông tin session hiện tại", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it("trả về id và role khi có session hợp lệ", async () => {
