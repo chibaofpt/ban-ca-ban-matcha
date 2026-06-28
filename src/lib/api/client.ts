@@ -51,6 +51,8 @@ function triggerForceLogout(): void {
 
 /** Shared promise so concurrent 401s share a single refresh request. */
 let refreshPromise: Promise<void> | null = null;
+/** Cooldown timestamp to prevent hammering the refresh endpoint if it recently failed. */
+let _lastRefreshFailedAt = 0;
 
 apiClient.interceptors.response.use(
   (res) => res,
@@ -64,6 +66,10 @@ apiClient.interceptors.response.use(
     }
 
     if (error.response?.status === 401 && !original?._retry) {
+      if (Date.now() - _lastRefreshFailedAt < 10000) {
+        // Prevent hammering the refresh endpoint if a recent refresh attempt failed
+        return Promise.reject(error);
+      }
       original._retry = true;
 
       try {
@@ -88,6 +94,7 @@ apiClient.interceptors.response.use(
         return apiClient(original);
       } catch {
         // Refresh also failed — session is truly dead.
+        _lastRefreshFailedAt = Date.now();
         triggerForceLogout();
         return Promise.reject(error);
       }
