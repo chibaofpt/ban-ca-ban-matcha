@@ -5,4 +5,4 @@
 
 */
 -- AlterTable
-ALTER TABLE "User" DROP COLUMN "insta_name";
+ALTER TABLE "users" DROP COLUMN "insta_name";
