@@ -34,9 +34,9 @@ app/                              # Next.js App Router — entry points only, ze
         layout.tsx                # MenuSubTabs wrapper (renders sub-tab bar)
         page.tsx                  # → src/views/admin/AdminMenuPage
         powders/page.tsx          # → src/views/admin/AdminPowderPage
-        addons/page.tsx           # Placeholder — Addon Groups CRUD (future)
-        milk-types/page.tsx       # Placeholder — Milk Types CRUD (future)
-      voucher-packages/page.tsx   # → src/views/admin/AdminVoucherPackagesPage
+        addons/page.tsx           # → src/views/admin/AdminAddonsPage
+        milk-types/page.tsx       # → src/views/admin/AdminMilkTypesPage
+        voucher-packages/page.tsx # → src/views/admin/AdminVoucherPackagesPage
       points-log/page.tsx         # → src/views/admin/AdminPointsLogPage
     staff/                        # STAFF or ADMIN
       orders/page.tsx             # → src/views/staff/StaffOrdersPage
@@ -98,6 +98,8 @@ src/                              # Frontend — never import lib/ from here
       AdminMenuPage.tsx
       AdminVoucherPackagesPage.tsx
       AdminPointsLogPage.tsx
+      AdminMilkTypesPage.tsx
+      AdminAddonsPage.tsx
     staff/
       StaffOrdersPage.tsx
       StaffOrdersListPage.tsx
@@ -130,6 +132,11 @@ src/                              # Frontend — never import lib/ from here
       PointsLogTable.tsx
       PowderForm.tsx
       MilkTypeForm.tsx
+      MilkTypeCard.tsx
+      MilkTypeModal.tsx
+      AddonGroupForm.tsx
+      AddonGroupCard.tsx
+      AddonGroupModal.tsx
       SizeConfigForm.tsx
       StoreSettingsModal.tsx          # Admin modal: weekly schedule + temporary closure
     staff/
@@ -149,6 +156,7 @@ src/                              # Frontend — never import lib/ from here
     adminMenuService.ts
     adminPowderService.ts         # CRUD /api/admin/matcha-powders
     adminMilkTypeService.ts       # CRUD /api/admin/milk-types
+    adminAddonService.ts          # CRUD /api/admin/addon-groups
     adminSizeConfigService.ts     # GET/PUT /api/admin/default-size-config
     adminVoucherService.ts
     adminStoreService.ts          # GET/PUT schedule, POST closure toggle

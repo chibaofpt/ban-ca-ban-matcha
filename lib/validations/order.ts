@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const sweetnessEnum = z.enum(["NONE", "QUARTER", "HALF", "THREE_QUARTER", "FULL", "EXTRA"]);
-const sizeEnum = z.enum(["M", "L", "XL"]);
+const sizeEnum = z.enum(["SMALL", "MEDIUM", "LARGE"]);
 const iceOptionEnum = z.enum(["NORMAL", "LESS_ICE", "NO_ICE", "SEPARATE_ICE"]);
 
 /** Schema for a single item line in a staff or customer order. */

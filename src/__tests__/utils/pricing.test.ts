@@ -21,15 +21,15 @@ import {
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const DEFAULT_SIZE_CONFIGS: DefaultSizeConfigEntry[] = [
-  { size: "M", milk_ml: 130, powder_gram: 3.5 },
-  { size: "L", milk_ml: 200, powder_gram: 4.5 },
-  { size: "XL", milk_ml: 300, powder_gram: 8.0 },
+  { size: "SMALL", milk_ml: 130, powder_gram: 3.5 },
+  { size: "MEDIUM", milk_ml: 200, powder_gram: 4.5 },
+  { size: "LARGE", milk_ml: 300, powder_gram: 8.0 },
 ];
 
 const POWDER_SIZE_CONFIGS: PowderSizeConfigEntry[] = [
-  { size: "M", grams: 4.0 },
-  { size: "L", grams: 6.0 },
-  // XL not defined — should fall back to default
+  { size: "SMALL", grams: 4.0 },
+  { size: "MEDIUM", grams: 6.0 },
+  // LARGE not defined — should fall back to default
 ];
 
 // ── ceilTo1000 ────────────────────────────────────────────────────────────────
@@ -67,48 +67,48 @@ describe("ceilTo1000", () => {
 describe("resolveGram", () => {
   // Level 3: default size config (system fallback)
   it("dùng default_size_config khi không có custom hay powder config", () => {
-    expect(resolveGram("M", null, [], DEFAULT_SIZE_CONFIGS)).toBe(3.5);
-    expect(resolveGram("L", null, [], DEFAULT_SIZE_CONFIGS)).toBe(4.5);
-    expect(resolveGram("XL", null, [], DEFAULT_SIZE_CONFIGS)).toBe(8.0);
+    expect(resolveGram("SMALL", null, [], DEFAULT_SIZE_CONFIGS)).toBe(3.5);
+    expect(resolveGram("MEDIUM", null, [], DEFAULT_SIZE_CONFIGS)).toBe(4.5);
+    expect(resolveGram("LARGE", null, [], DEFAULT_SIZE_CONFIGS)).toBe(8.0);
   });
 
   // Level 2: powder size config
   it("dùng powder_size_config khi có — override default", () => {
-    expect(resolveGram("M", null, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(4.0);
-    expect(resolveGram("L", null, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(6.0);
+    expect(resolveGram("SMALL", null, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(4.0);
+    expect(resolveGram("MEDIUM", null, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(6.0);
   });
 
-  it("powder_size_config thiếu XL → fallback sang default (8.0)", () => {
-    expect(resolveGram("XL", null, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(8.0);
+  it("powder_size_config thiếu LARGE → fallback sang default (8.0)", () => {
+    expect(resolveGram("LARGE", null, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(8.0);
   });
 
   // Level 1: custom_powder_grams (highest priority)
   it("custom_powder_grams override cả 2 nguồn khác", () => {
-    const custom: CustomPowderGrams = { M: 5.0, L: 7.0, XL: 10.0 };
-    expect(resolveGram("M", custom, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(5.0);
-    expect(resolveGram("L", custom, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(7.0);
-    expect(resolveGram("XL", custom, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(10.0);
+    const custom: CustomPowderGrams = { SMALL: 5.0, MEDIUM: 7.0, LARGE: 10.0 };
+    expect(resolveGram("SMALL", custom, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(5.0);
+    expect(resolveGram("MEDIUM", custom, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(7.0);
+    expect(resolveGram("LARGE", custom, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(10.0);
   });
 
-  it("custom_powder_grams partial — chỉ có M → L fallback sang powder config, XL fallback sang default", () => {
-    const custom: CustomPowderGrams = { M: 5.0 };
-    expect(resolveGram("M", custom, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(5.0);
-    expect(resolveGram("L", custom, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(6.0); // powder config
-    expect(resolveGram("XL", custom, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(8.0); // default
+  it("custom_powder_grams partial — chỉ có SMALL → MEDIUM fallback sang powder config, LARGE fallback sang default", () => {
+    const custom: CustomPowderGrams = { SMALL: 5.0 };
+    expect(resolveGram("SMALL", custom, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(5.0);
+    expect(resolveGram("MEDIUM", custom, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(6.0); // powder config
+    expect(resolveGram("LARGE", custom, POWDER_SIZE_CONFIGS, DEFAULT_SIZE_CONFIGS)).toBe(8.0); // default
   });
 
   it("custom_powder_grams = undefined / null → skip Level 1", () => {
-    expect(resolveGram("M", undefined, [], DEFAULT_SIZE_CONFIGS)).toBe(3.5);
-    expect(resolveGram("M", null, [], DEFAULT_SIZE_CONFIGS)).toBe(3.5);
+    expect(resolveGram("SMALL", undefined, [], DEFAULT_SIZE_CONFIGS)).toBe(3.5);
+    expect(resolveGram("SMALL", null, [], DEFAULT_SIZE_CONFIGS)).toBe(3.5);
   });
 
   it("không có config nào cho size → trả 0", () => {
-    expect(resolveGram("XL", null, [], [])).toBe(0);
+    expect(resolveGram("LARGE", null, [], [])).toBe(0);
   });
 
   it("default config dùng field `grams` thay vì `powder_gram` (backward compat)", () => {
-    const altDefaults = [{ size: "M" as Size, milk_ml: 130, grams: 3.5 }];
-    expect(resolveGram("M", null, [], altDefaults)).toBe(3.5);
+    const altDefaults = [{ size: "SMALL" as Size, milk_ml: 130, grams: 3.5 }];
+    expect(resolveGram("SMALL", null, [], altDefaults)).toBe(3.5);
   });
 });
 

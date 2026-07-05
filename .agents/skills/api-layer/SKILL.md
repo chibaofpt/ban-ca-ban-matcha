@@ -154,7 +154,7 @@ export const registerSchema = z.object({
 | 403 | `FORBIDDEN` | Insufficient role |
 | 404 | `NOT_FOUND` | Resource does not exist |
 | 409 | `CONFLICT` | Duplicate (phone, token, ...) |
-| 422 | Domain Specific Codes | `INSUFFICIENT_POINTS`, `VOUCHER_EXPIRED`, `PRICE_CHANGED`, etc. |
+| 422 | `BUSINESS_RULE_VIOLATION` | Insufficient points, expired voucher, ... |
 | 500 | `INTERNAL_ERROR` | Unexpected server error |
 
 ---

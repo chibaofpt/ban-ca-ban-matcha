@@ -10,7 +10,7 @@ export interface VoucherPackage {
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
   menu_item_id: string | null;
-  size: "M" | "L" | "XL" | null;
+  size: "SMALL" | "MEDIUM" | "LARGE" | null;
   matcha_powder_id: string | null;
   milk_type_id: string | null;
   included_addon_option_ids: string[];
@@ -52,7 +52,7 @@ export type CreateVoucherPackageInput =
       description?: string;
       points_cost: number;
       menu_item_id: string;
-      size: "M" | "L" | "XL";
+      size: "SMALL" | "MEDIUM" | "LARGE";
       matcha_powder_id?: string | null;
       milk_type_id?: string | null;
       included_addon_option_ids?: string[];

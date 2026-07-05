@@ -22,21 +22,21 @@ const milkTypes = [
 ];
 
 const defaultSizeEntries = [
-  { size: "M" as const, milk_ml: 200, powder_gram: 4 },
-  { size: "L" as const, milk_ml: 280, powder_gram: 5 },
-  { size: "XL" as const, milk_ml: 360, powder_gram: 6 },
+  { size: "SMALL" as const, milk_ml: 200, powder_gram: 4 },
+  { size: "MEDIUM" as const, milk_ml: 280, powder_gram: 5 },
+  { size: "LARGE" as const, milk_ml: 360, powder_gram: 6 },
 ];
 
 const powderSizeEntries = [
-  { powder_id: "powder-meyumi", size: "M" as const, grams: 3.5 },
-  { powder_id: "powder-meyumi", size: "L" as const, grams: 4.5 },
-  { powder_id: "powder-meyumi", size: "XL" as const, grams: 5.5 },
+  { powder_id: "powder-meyumi", size: "SMALL" as const, grams: 3.5 },
+  { powder_id: "powder-meyumi", size: "MEDIUM" as const, grams: 4.5 },
+  { powder_id: "powder-meyumi", size: "LARGE" as const, grams: 5.5 },
 ];
 
 /** Helper: create a minimal latte RawOrder */
 function makeLatteOrder(overrides: {
   total_vnd?: number;
-  size?: "M" | "L" | "XL";
+  size?: "SMALL" | "MEDIUM" | "LARGE";
   quantity?: number;
   powderId?: string;
   milkId?: string;
@@ -49,7 +49,7 @@ function makeLatteOrder(overrides: {
       {
         menu_item_id: overrides.menuItemId ?? "item-latte-1",
         quantity: overrides.quantity ?? 1,
-        size: overrides.size ?? "M",
+        size: overrides.size ?? "SMALL",
         selected_powder_id: null,
         selected_milk_type_id: overrides.milkId ?? "milk-bo",
         menuItem: {
@@ -67,7 +67,7 @@ function makeLatteOrder(overrides: {
 /** Helper: create a minimal fusion RawOrder */
 function makeFusionOrder(overrides: {
   total_vnd?: number;
-  size?: "M" | "L" | "XL";
+  size?: "SMALL" | "MEDIUM" | "LARGE";
   quantity?: number;
   powderId?: string;
   menuItemId?: string;
@@ -79,7 +79,7 @@ function makeFusionOrder(overrides: {
       {
         menu_item_id: overrides.menuItemId ?? "item-fusion-1",
         quantity: overrides.quantity ?? 1,
-        size: overrides.size ?? "M",
+        size: overrides.size ?? "SMALL",
         selected_powder_id: overrides.powderId ?? "powder-meyumi",
         selected_milk_type_id: null,
         menuItem: {
@@ -113,7 +113,7 @@ describe("buildReport — kết quả tổng hợp cơ bản", () => {
   });
 
   it("tính powder_usage đúng — dùng powder_size_config khi có", () => {
-    const orders = [makeLatteOrder({ size: "M", quantity: 1 })]; // Meyumi M = 3.5g
+    const orders = [makeLatteOrder({ size: "SMALL", quantity: 1 })]; // Meyumi SMALL = 3.5g
 
     const result = buildReport(orders, powders, milkTypes, powderSizeEntries, defaultSizeEntries);
 
@@ -123,7 +123,7 @@ describe("buildReport — kết quả tổng hợp cơ bản", () => {
   });
 
   it("tính milk_usage đúng — dùng default_size_config.milk_ml", () => {
-    const orders = [makeLatteOrder({ size: "M", quantity: 2, milkId: "milk-bo" })]; // M = 200ml
+    const orders = [makeLatteOrder({ size: "SMALL", quantity: 2, milkId: "milk-bo" })]; // SMALL = 200ml
 
     const result = buildReport(orders, powders, milkTypes, powderSizeEntries, defaultSizeEntries);
 
@@ -134,20 +134,20 @@ describe("buildReport — kết quả tổng hợp cơ bản", () => {
 
   it("phân loại latte_sales và fusion_sales đúng", () => {
     const orders = [
-      makeLatteOrder({ menuItemId: "item-latte-1", menuItemName: "Premium Matcha Latte", quantity: 3, size: "L" }),
-      makeFusionOrder({ menuItemId: "item-fusion-1", menuItemName: "Matcha Kem Dừa", quantity: 2, size: "XL" }),
+      makeLatteOrder({ menuItemId: "item-latte-1", menuItemName: "Premium Matcha Latte", quantity: 3, size: "MEDIUM" }),
+      makeFusionOrder({ menuItemId: "item-fusion-1", menuItemName: "Matcha Kem Dừa", quantity: 2, size: "LARGE" }),
     ];
 
     const result = buildReport(orders, powders, milkTypes, powderSizeEntries, defaultSizeEntries);
 
     expect(result.latte_sales).toHaveLength(1);
     expect(result.latte_sales[0].name).toBe("Premium Matcha Latte");
-    expect(result.latte_sales[0].sizes.L).toBe(3);
+    expect(result.latte_sales[0].sizes.MEDIUM).toBe(3);
     expect(result.latte_sales[0].total_cups).toBe(3);
 
     expect(result.fusion_sales).toHaveLength(1);
     expect(result.fusion_sales[0].name).toBe("Matcha Kem Dừa");
-    expect(result.fusion_sales[0].sizes.XL).toBe(2);
+    expect(result.fusion_sales[0].sizes.LARGE).toBe(2);
   });
 
   it("trả về mảng rỗng khi không có đơn", () => {
@@ -179,7 +179,7 @@ describe("buildAdminReport — Admin extras (addon_usage, revenue_by_type, top_p
           {
             menu_item_id: "item-latte-1",
             quantity: 1,
-            size: "M" as const,
+            size: "SMALL" as const,
             selected_powder_id: null,
             selected_milk_type_id: "milk-bo",
             menuItem: {
@@ -210,7 +210,7 @@ describe("buildAdminReport — Admin extras (addon_usage, revenue_by_type, top_p
           {
             menu_item_id: "item-fusion-1",
             quantity: 1,
-            size: "M" as const,
+            size: "SMALL" as const,
             selected_powder_id: "powder-meyumi",
             selected_milk_type_id: null,
             menuItem: {
@@ -281,7 +281,7 @@ describe("buildAdminReport — Admin extras (addon_usage, revenue_by_type, top_p
           {
             menu_item_id: "item-latte-1",
             quantity: 5,
-            size: "M" as const,
+            size: "SMALL" as const,
             selected_powder_id: null,
             selected_milk_type_id: "milk-bo",
             menuItem: { name: "Latte A", category: "latte", matcha_powder_id: "powder-meyumi", custom_powder_grams: null },
@@ -290,7 +290,7 @@ describe("buildAdminReport — Admin extras (addon_usage, revenue_by_type, top_p
           {
             menu_item_id: "item-fusion-1",
             quantity: 2,
-            size: "L" as const,
+            size: "MEDIUM" as const,
             selected_powder_id: "powder-meyumi",
             selected_milk_type_id: null,
             menuItem: { name: "Fusion B", category: "fusion", matcha_powder_id: null, custom_powder_grams: null },
@@ -299,7 +299,7 @@ describe("buildAdminReport — Admin extras (addon_usage, revenue_by_type, top_p
           {
             menu_item_id: "item-latte-2",
             quantity: 8,
-            size: "XL" as const,
+            size: "LARGE" as const,
             selected_powder_id: null,
             selected_milk_type_id: "milk-oat",
             menuItem: { name: "Latte C", category: "latte", matcha_powder_id: "powder-hana", custom_powder_grams: null },
@@ -332,7 +332,7 @@ describe("buildAdminReport — Admin extras (addon_usage, revenue_by_type, top_p
           {
             menu_item_id: "item-latte-1",
             quantity: 1,
-            size: "M" as const,
+            size: "SMALL" as const,
             selected_powder_id: null,
             selected_milk_type_id: "milk-bo",
             menuItem: { name: "Latte", category: "latte", matcha_powder_id: "powder-meyumi", custom_powder_grams: null },

@@ -219,9 +219,9 @@ export default function MenuItemForm({
     fd.append(
       "sizes",
       JSON.stringify([
-        { size: "M", base_price_vnd: sizeM != null ? sizeM * 1000 : null },
-        { size: "L", base_price_vnd: sizeL != null ? sizeL * 1000 : null },
-        { size: "XL", base_price_vnd: sizeXL != null ? sizeXL * 1000 : null },
+        { size: "SMALL", base_price_vnd: sizeM != null ? sizeM * 1000 : null },
+        { size: "MEDIUM", base_price_vnd: sizeL != null ? sizeL * 1000 : null },
+        { size: "LARGE", base_price_vnd: sizeXL != null ? sizeXL * 1000 : null },
       ])
     );
 
@@ -235,9 +235,9 @@ export default function MenuItemForm({
         const newPowderGmL = parseGrams(values.new_powder_grams_l);
         const newPowderGmXL = parseGrams(values.new_powder_grams_xl);
         const powderSizeConfig = [];
-        if (newPowderGmM != null) powderSizeConfig.push({ size: "M", grams: newPowderGmM });
-        if (newPowderGmL != null) powderSizeConfig.push({ size: "L", grams: newPowderGmL });
-        if (newPowderGmXL != null) powderSizeConfig.push({ size: "XL", grams: newPowderGmXL });
+        if (newPowderGmM != null) powderSizeConfig.push({ size: "SMALL", grams: newPowderGmM });
+        if (newPowderGmL != null) powderSizeConfig.push({ size: "MEDIUM", grams: newPowderGmL });
+        if (newPowderGmXL != null) powderSizeConfig.push({ size: "LARGE", grams: newPowderGmXL });
         
         if (powderSizeConfig.length > 0) {
           fd.append("new_powder_size_config", JSON.stringify(powderSizeConfig));
@@ -389,8 +389,9 @@ export default function MenuItemForm({
             <span className="text-muted-foreground font-normal ml-2 text-xs opacity-80">— Bỏ trống nếu không bán size tương ứng</span>
           </label>
           <div className="grid grid-cols-3 gap-4 mt-2">
-            {(["M", "L", "XL"] as const).map((size) => {
-              const field = `size_${size.toLowerCase()}` as "size_m" | "size_l" | "size_xl";
+            {(["SMALL", "MEDIUM", "LARGE"] as const).map((size) => {
+              const sizeFieldMap = { SMALL: "size_m", MEDIUM: "size_l", LARGE: "size_xl" } as const;
+              const field = sizeFieldMap[size];
               return (
                 <div key={size} className="relative">
                   <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
@@ -615,8 +616,9 @@ export default function MenuItemForm({
                 </label>
                 <p className="text-[10px] text-muted-foreground mt-0.5 mb-2">Bỏ trống sẽ dùng cấu hình mặc định của hệ thống.</p>
                 <div className="grid grid-cols-3 gap-4">
-                  {(["M", "L", "XL"] as const).map((size) => {
-                    const field = `grams_${size.toLowerCase()}` as "grams_m" | "grams_l" | "grams_xl";
+                  {(["SMALL", "MEDIUM", "LARGE"] as const).map((size) => {
+                    const gramsFieldMap = { SMALL: "grams_m", MEDIUM: "grams_l", LARGE: "grams_xl" } as const;
+                    const field = gramsFieldMap[size];
                     return (
                       <div key={size} className="relative">
                         <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
@@ -644,8 +646,9 @@ export default function MenuItemForm({
                   </label>
                   <p className="text-[10px] text-muted-foreground mt-0.5 mb-2">Ghi đè cấu hình hệ thống cho riêng loại bột này.</p>
                   <div className="grid grid-cols-3 gap-4">
-                    {(["M", "L", "XL"] as const).map((size) => {
-                      const field = `new_powder_grams_${size.toLowerCase()}` as "new_powder_grams_m" | "new_powder_grams_l" | "new_powder_grams_xl";
+                    {(["SMALL", "MEDIUM", "LARGE"] as const).map((size) => {
+                      const npGramsFieldMap = { SMALL: "new_powder_grams_m", MEDIUM: "new_powder_grams_l", LARGE: "new_powder_grams_xl" } as const;
+                      const field = npGramsFieldMap[size];
                       return (
                         <div key={size} className="relative">
                           <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">

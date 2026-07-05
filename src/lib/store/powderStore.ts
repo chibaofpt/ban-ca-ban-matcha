@@ -3,7 +3,7 @@ import type { Powder, PowderApiResponse } from "@/src/lib/types/powder";
 
 interface PowderState {
   data: Powder[];
-  defaultPowderGram: { size: "M" | "L" | "XL"; grams: number }[];
+  defaultPowderGram: { size: "SMALL" | "MEDIUM" | "LARGE"; grams: number }[];
   isLoaded: boolean;
   setPowderData: (res: PowderApiResponse) => void;
 }

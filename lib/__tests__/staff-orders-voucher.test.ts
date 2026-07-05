@@ -33,9 +33,9 @@ vi.mock("@/lib/storeSchedule", () => ({
 vi.mock("@/lib/pricing", () => ({
   buildPricingContext: vi.fn().mockResolvedValue({
     defaultSizeConfigs: [
-      { size: "M" as const, milk_ml: 130, powder_gram: 3.5 },
-      { size: "L" as const, milk_ml: 200, powder_gram: 4.5 },
-      { size: "XL" as const, milk_ml: 300, powder_gram: 8.0 },
+      { size: "SMALL" as const, milk_ml: 130, powder_gram: 3.5 },
+      { size: "MEDIUM" as const, milk_ml: 200, powder_gram: 4.5 },
+      { size: "LARGE" as const, milk_ml: 300, powder_gram: 8.0 },
     ],
     powderPriceMap: {},
     powderSizeConfigMap: {},
@@ -99,7 +99,7 @@ const latteMenuItem = {
   default_powder_id: null,
   custom_powder_grams: null,
   fusionAllowedPowders: [],
-  sizes: [{ size: "L", base_price_vnd: 55000 }],
+  sizes: [{ size: "MEDIUM", base_price_vnd: 55000 }],
 };
 
 const existingCustomer = { id: USER_ID };
@@ -116,7 +116,7 @@ const discountVoucher = {
 const baseItem = {
   menu_item_id: ITEM_ID,
   quantity: 1,
-  size: "L",
+  size: "MEDIUM",
   sweetness: "HALF",
   addon_option_ids: [],
   client_price_vnd: 69000,
@@ -198,9 +198,9 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
 
     vi.mocked(buildPricingContext).mockResolvedValue({
       defaultSizeConfigs: [
-        { size: "M" as const, milk_ml: 130, powder_gram: 3.5 },
-        { size: "L" as const, milk_ml: 200, powder_gram: 4.5 },
-        { size: "XL" as const, milk_ml: 300, powder_gram: 8.0 },
+        { size: "SMALL" as const, milk_ml: 130, powder_gram: 3.5 },
+        { size: "MEDIUM" as const, milk_ml: 200, powder_gram: 4.5 },
+        { size: "LARGE" as const, milk_ml: 300, powder_gram: 8.0 },
       ],
       powderPriceMap: {},
       powderSizeConfigMap: {},

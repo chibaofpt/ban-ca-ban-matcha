@@ -6,12 +6,12 @@
 
 import { DELIVERY_CONFIG } from "@/src/constants/delivery";
 
-export type Size = "M" | "L" | "XL";
+export type Size = "SMALL" | "MEDIUM" | "LARGE";
 
 export interface CustomPowderGrams {
-  M?: number;
-  L?: number;
-  XL?: number;
+  SMALL?: number;
+  MEDIUM?: number;
+  LARGE?: number;
 }
 
 export interface PowderSizeConfigEntry {

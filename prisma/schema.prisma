@@ -544,9 +544,9 @@ enum SweetnessLevel {
 }
 
 enum Size {
-  M
-  L
-  XL
+  SMALL
+  MEDIUM
+  LARGE
 }
 
 enum IceOption {

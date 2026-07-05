@@ -6,7 +6,7 @@ import type { MenuItem, AddonGroup } from "@/src/lib/types/menu";
 /** Mirror calcUnitPrice logic từ AddonModal */
 function calcUnitPrice(
   item: MenuItem,
-  selectedSize: "M" | "L" | "XL",
+  selectedSize: "SMALL" | "MEDIUM" | "LARGE",
   selectedOptionIds: string[],
   quantityMap: Record<string, number>
 ): number {
@@ -77,9 +77,9 @@ const latteItem: MenuItem = {
   allowed_powder_ids: [],
   milk_types: [],
   sizes: [
-    { size: "M", base_price_vnd: 45000, milk_ml: 180 },
-    { size: "L", base_price_vnd: 55000, milk_ml: 220 },
-    { size: "XL", base_price_vnd: 65000, milk_ml: 260 },
+    { size: "SMALL", base_price_vnd: 45000, milk_ml: 180 },
+    { size: "MEDIUM", base_price_vnd: 55000, milk_ml: 220 },
+    { size: "LARGE", base_price_vnd: 65000, milk_ml: 260 },
   ],
   addon_groups: [selectorGroup, quantityGroup],
 };
@@ -99,9 +99,9 @@ const fusionItem: MenuItem = {
   allowed_powder_ids: [],
   milk_types: [],
   sizes: [
-    { size: "M", base_price_vnd: 55000, milk_ml: 0 },
-    { size: "L", base_price_vnd: 65000, milk_ml: 0 },
-    { size: "XL", base_price_vnd: 75000, milk_ml: 0 },
+    { size: "SMALL", base_price_vnd: 55000, milk_ml: 0 },
+    { size: "MEDIUM", base_price_vnd: 65000, milk_ml: 0 },
+    { size: "LARGE", base_price_vnd: 75000, milk_ml: 0 },
   ],
   addon_groups: [selectorGroup],
 };
@@ -109,61 +109,61 @@ const fusionItem: MenuItem = {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe("calcUnitPrice — latte item", () => {
-  it("default size L, không addon → 55000", () => {
-    expect(calcUnitPrice(latteItem, "L", ["opt-cow"], {})).toBe(55000);
+  it("default size MEDIUM, không addon → 55000", () => {
+    expect(calcUnitPrice(latteItem, "MEDIUM", ["opt-cow"], {})).toBe(55000);
   });
 
-  it("size M → 45000", () => {
-    expect(calcUnitPrice(latteItem, "M", ["opt-cow"], {})).toBe(45000);
+  it("size SMALL → 45000", () => {
+    expect(calcUnitPrice(latteItem, "SMALL", ["opt-cow"], {})).toBe(45000);
   });
 
-  it("size XL + sữa Oat → 65000 + 10000 = 75000", () => {
-    expect(calcUnitPrice(latteItem, "XL", ["opt-oat"], {})).toBe(75000);
+  it("size LARGE + sữa Oat → 65000 + 10000 = 75000", () => {
+    expect(calcUnitPrice(latteItem, "LARGE", ["opt-oat"], {})).toBe(75000);
   });
 
-  it("size L + 2g bột → 55000 + 2×5000 = 65000", () => {
-    expect(calcUnitPrice(latteItem, "L", ["opt-cow"], { "grp-powder": 2 })).toBe(65000);
+  it("size MEDIUM + 2g bột → 55000 + 2×5000 = 65000", () => {
+    expect(calcUnitPrice(latteItem, "MEDIUM", ["opt-cow"], { "grp-powder": 2 })).toBe(65000);
   });
 
-  it("size L + 3g bột (max) + sữa Oat → 55000 + 15000 + 10000 = 80000", () => {
-    expect(calcUnitPrice(latteItem, "L", ["opt-oat"], { "grp-powder": 3 })).toBe(80000);
+  it("size MEDIUM + 3g bột (max) + sữa Oat → 55000 + 15000 + 10000 = 80000", () => {
+    expect(calcUnitPrice(latteItem, "MEDIUM", ["opt-oat"], { "grp-powder": 3 })).toBe(80000);
   });
 
   it("bột qty = 0 → không tính addon cost", () => {
-    expect(calcUnitPrice(latteItem, "L", ["opt-cow"], { "grp-powder": 0 })).toBe(55000);
+    expect(calcUnitPrice(latteItem, "MEDIUM", ["opt-cow"], { "grp-powder": 0 })).toBe(55000);
   });
 });
 
 describe("calcUnitPrice — fusion item", () => {
-  it("không addon → 65000 (L)", () => {
-    expect(calcUnitPrice(fusionItem, "L", ["opt-cow"], {})).toBe(65000);
+  it("không addon → 65000 (MEDIUM)", () => {
+    expect(calcUnitPrice(fusionItem, "MEDIUM", ["opt-cow"], {})).toBe(65000);
   });
 
   it("sữa Oat → 65000 + 10000 = 75000", () => {
-    expect(calcUnitPrice(fusionItem, "L", ["opt-oat"], {})).toBe(75000);
+    expect(calcUnitPrice(fusionItem, "MEDIUM", ["opt-oat"], {})).toBe(75000);
   });
 
-  it("size M fusion → 55000", () => {
-    expect(calcUnitPrice(fusionItem, "M", ["opt-cow"], {})).toBe(55000);
+  it("size SMALL fusion → 55000", () => {
+    expect(calcUnitPrice(fusionItem, "SMALL", ["opt-cow"], {})).toBe(55000);
   });
 });
 
 describe("QUANTITY addon logic", () => {
   it("chỉ tính qty > 0", () => {
-    const withZero = calcUnitPrice(latteItem, "L", ["opt-cow"], { "grp-powder": 0 });
-    const withOne = calcUnitPrice(latteItem, "L", ["opt-cow"], { "grp-powder": 1 });
+    const withZero = calcUnitPrice(latteItem, "MEDIUM", ["opt-cow"], { "grp-powder": 0 });
+    const withOne = calcUnitPrice(latteItem, "MEDIUM", ["opt-cow"], { "grp-powder": 1 });
     expect(withOne - withZero).toBe(5000);
   });
 
   it("group không có trong quantityMap → bỏ qua (không crash)", () => {
-    expect(() => calcUnitPrice(latteItem, "L", ["opt-cow"], {})).not.toThrow();
+    expect(() => calcUnitPrice(latteItem, "MEDIUM", ["opt-cow"], {})).not.toThrow();
   });
 });
 
 describe("SELECTOR addon logic", () => {
   it("chọn sữa Oat thay sữa bò → chỉ tính 1 option", () => {
-    const priceWithOat = calcUnitPrice(latteItem, "L", ["opt-oat"], {});
-    const priceWithCow = calcUnitPrice(latteItem, "L", ["opt-cow"], {});
+    const priceWithOat = calcUnitPrice(latteItem, "MEDIUM", ["opt-oat"], {});
+    const priceWithCow = calcUnitPrice(latteItem, "MEDIUM", ["opt-cow"], {});
     expect(priceWithOat - priceWithCow).toBe(10000);
   });
 });

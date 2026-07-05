@@ -113,7 +113,7 @@ export function useAddVoucherToCart() {
         }
 
         // Use voucher's size config (soft match: item must support this size)
-        const voucherSize = (voucher.size ?? "M") as Size;
+        const voucherSize = (voucher.size ?? "SMALL") as Size;
         const sizeObj = menuItem.sizes.find((s) => s.size === voucherSize);
         if (!sizeObj || sizeObj.base_price_vnd == null) {
           return { ok: false, reason: "size_unavailable" };

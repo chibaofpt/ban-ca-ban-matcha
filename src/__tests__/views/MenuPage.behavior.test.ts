@@ -52,7 +52,7 @@ const mockMenuData = {
       resolved_default_powder_id: null,
       allowed_powder_ids: [],
       milk_types: [],
-      sizes: [{ size: "M", base_price_vnd: 45000, milk_ml: 180 }],
+      sizes: [{ size: "SMALL", base_price_vnd: 45000, milk_ml: 180 }],
       addon_groups: [],
     },
   ],

@@ -10,7 +10,7 @@ export interface CartItem {
   name: string;
   category: "latte" | "fusion";
   imageUrl: string | null;
-  /** Always required — all items have M/L/XL. */
+  /** Always required — all items have SMALL/MEDIUM/LARGE. */
   size: Size;
   /** Snapshot of computed final price at add time (post-ceil, post-milk, post-powder). */
   unitPrice: number;

@@ -24,7 +24,7 @@ interface MyVoucher {
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
   menu_item_id: string | null;
-  size: "M" | "L" | "XL" | null;
+  size: "SMALL" | "MEDIUM" | "LARGE" | null;
   addon_option_id: string | null;
   covered_price_vnd: number | null;
   status: VoucherStatus;
@@ -120,7 +120,7 @@ function makeCartItem(overrides: Partial<CartItem> = {}): CartItem {
     name: "Trà Xanh Sữa",
     category: "latte",
     imageUrl: null,
-    size: "L",
+    size: "MEDIUM",
     unitPrice: 55000,
     quantity: 1,
     sweetness: "QUARTER",

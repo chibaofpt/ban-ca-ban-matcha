@@ -51,7 +51,7 @@ function makeCartItem(overrides: Partial<CartItem> = {}): CartItem {
     name: "Meyumi Matcha Latte",
     category: "latte",
     imageUrl: null,
-    size: "M",
+    size: "SMALL",
     unitPrice: 55_000,
     quantity: 1,
     sweetness: "QUARTER",
@@ -296,7 +296,7 @@ function buildOrderPayloadMultiVoucher(
 
 describe("matchProductVouchers", () => {
   it("trả về voucher PRODUCT khớp menu_item_id", () => {
-    const item = makeCartItem({ menuItemId: "item-meyumi", size: "L" });
+    const item = makeCartItem({ menuItemId: "item-meyumi", size: "MEDIUM" });
     const pv = makeProductVoucher({ menu_item_id: "item-meyumi" });
 
     const result = matchProductVouchers(item, [pv]);
@@ -306,7 +306,7 @@ describe("matchProductVouchers", () => {
 
   it("chỉ cần khớp menu_item_id — size khác nhau vẫn match", () => {
     // Voucher chỉ quy định menu_item_id, không quan tâm size
-    const itemL = makeCartItem({ menuItemId: "item-meyumi", size: "L" });
+    const itemL = makeCartItem({ menuItemId: "item-meyumi", size: "MEDIUM" });
     const pv = makeProductVoucher({ menu_item_id: "item-meyumi" }); // voucher không có size constraint
 
     const result = matchProductVouchers(itemL, [pv]);

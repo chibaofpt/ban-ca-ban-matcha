@@ -132,7 +132,7 @@ Per-powder gram exceptions. Only powders with grams differing from `default_size
 ---
 
 ### default_size_config
-System-wide fallback. Always exactly 3 rows (M, L, XL). Admin-editable.
+System-wide fallback. Always exactly 3 rows (SMALL, MEDIUM, LARGE). Admin-editable.
 ⚠️ Changes apply immediately to all computed prices across all items.
 
 - `size` Size PK
@@ -179,7 +179,7 @@ Global milk options. Applies to all Latte items automatically — no junction ta
 ---
 
 ### menu_item_sizes
-Always 3 rows per item (M, L, XL), in same transaction as parent. NULL = size not sold.
+Always 3 rows per item (SMALL, MEDIUM, LARGE), in same transaction as parent. NULL = size not sold.
 
 - `id` uuid PK
 - `menu_item_id` uuid FK → menu_items (cascade delete)

@@ -40,7 +40,7 @@ function makeCartItem(overrides: Partial<CartItem> = {}): CartItem {
     name: "Meyumi Matcha Latte",
     category: "latte",
     imageUrl: null,
-    size: "M",
+    size: "SMALL",
     unitPrice: 55_000,
     quantity: 1,
     sweetness: "QUARTER",
@@ -289,7 +289,7 @@ describe("createOrder — error handling (không thay đổi)", () => {
               {
                 menu_item_id: "item-meyumi",
                 name: "Meyumi",
-                size: "M",
+                size: "SMALL",
                 client_price_vnd: 55_000,
                 server_price_vnd: 60_000,
               },

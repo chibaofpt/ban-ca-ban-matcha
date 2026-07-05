@@ -40,10 +40,10 @@ Dựa trên Context dự án để phân tích thay đổi:
 > Kết luận: PHÁT HIỆN RỦI RO DỪNG. Chờ xác nhận từ Developer.
 
 **Nếu phát hiện rủi ro**: DỪNG lập tức, báo cáo hoàn toàn bằng tiếng Việt và chờ xác nhận.
-
+**Nếu KHÔNG phát hiện rủi ro (PASS toàn bộ)**: Tự động chuyển sang thực hiện Section 2 (Push to dev) mà không cần hỏi hay chờ xác nhận từ user.
 ## Section 2 — Push to dev
 
-**Chỉ thực hiện** khi Section 1 QA/QC PASS hoặc user xác nhận bỏ qua.
+**Chỉ thực hiện** khi Section 1 QA/QC PASS (tự động) hoặc user xác nhận bỏ qua rủi ro.
 - Đảm bảo database đã được migrate lên Staging (nếu có schema change) bằng `npm run migrate:dev` và có file SQL được sinh ra trong `prisma/migrations/`.
 - Thực thi các lệnh Git:
 ```powershell
@@ -69,4 +69,4 @@ git push origin dev
 - **KHÔNG** merge vào nhánh `main`.
 - **KHÔNG** chạy lệnh `db push` thẳng lên production DB. Luôn dùng `migrate dev` để tạo file sql chuẩn cho Vercel chạy `migrate deploy`.
 - Báo cáo QA/QC **PHẢI** viết hoàn toàn bằng tiếng Việt.
-- Mỗi bước (Section) phải được confirm kết quả trước khi sang bước tiếp.
+- Nếu có rủi ro, phải dừng và chờ confirm. Nếu PASS 100%, tự động push lên dev không cần hỏi.

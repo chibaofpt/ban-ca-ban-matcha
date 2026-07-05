@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const powderTypeEnum = z.enum(["RECOMMEND", "NEW", "SEASONAL", "NONE"]);
-const sizeEnum = z.enum(["M", "L", "XL"]);
+const sizeEnum = z.enum(["SMALL", "MEDIUM", "LARGE"]);
 
 const sizeConfigSchema = z.object({
   size: sizeEnum,

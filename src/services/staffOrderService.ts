@@ -11,8 +11,8 @@ export interface CreateStaffOrderPayload {
   items: {
     menu_item_id: string;
     quantity: number;
-    /** Required — all items have M/L/XL. */
-    size: "M" | "L" | "XL";
+    /** Required — all items have SMALL/MEDIUM/LARGE. */
+    size: "SMALL" | "MEDIUM" | "LARGE";
     sweetness: SweetnessLevel;
     /** Defaults to NORMAL on server if omitted; explicit here for correctness. */
     ice_option: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";

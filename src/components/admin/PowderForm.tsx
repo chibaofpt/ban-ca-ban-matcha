@@ -139,9 +139,9 @@ export default function PowderForm({
     const gM = parseNum(values.grams_m);
     const gL = parseNum(values.grams_l);
     const gXL = parseNum(values.grams_xl);
-    if (gM != null && gM > 0) size_config.push({ size: "M", grams: gM });
-    if (gL != null && gL > 0) size_config.push({ size: "L", grams: gL });
-    if (gXL != null && gXL > 0) size_config.push({ size: "XL", grams: gXL });
+    if (gM != null && gM > 0) size_config.push({ size: "SMALL", grams: gM });
+    if (gL != null && gL > 0) size_config.push({ size: "MEDIUM", grams: gL });
+    if (gXL != null && gXL > 0) size_config.push({ size: "LARGE", grams: gXL });
     
     payload.size_config = size_config;
 
@@ -242,8 +242,9 @@ export default function PowderForm({
           </span>
         </label>
         <div className="grid grid-cols-3 gap-3 mt-1">
-          {(["M", "L", "XL"] as const).map((size) => {
-            const field = `grams_${size.toLowerCase()}` as "grams_m" | "grams_l" | "grams_xl";
+          {(["SMALL", "MEDIUM", "LARGE"] as const).map((size) => {
+            const gramsFieldMap = { SMALL: "grams_m", MEDIUM: "grams_l", LARGE: "grams_xl" } as const;
+            const field = gramsFieldMap[size];
             return (
               <div key={size}>
                 <label className="text-xs text-muted-foreground">Size {size}</label>

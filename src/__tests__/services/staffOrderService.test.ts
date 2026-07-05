@@ -61,7 +61,7 @@ describe("createStaffOrder", () => {
         {
           menu_item_id: "item-1",
           quantity: 2,
-          size: "L" as const,
+          size: "MEDIUM" as const,
           sweetness: "QUARTER" as const,
           ice_option: "NORMAL" as const,
           coldwhisk: false,
@@ -85,7 +85,7 @@ describe("createStaffOrder", () => {
         {
           menu_item_id: "item-daily",
           quantity: 1,
-          size: "M" as const,
+          size: "SMALL" as const,
           sweetness: "NONE" as const,
           ice_option: "LESS_ICE" as const,
           coldwhisk: true,
@@ -98,7 +98,7 @@ describe("createStaffOrder", () => {
     await createStaffOrder(payload);
 
     const sent = vi.mocked(apiClient.post).mock.calls[0][1] as typeof payload;
-    expect(sent.items[0].size).toBe("M");
+    expect(sent.items[0].size).toBe("SMALL");
     expect(sent.items[0].ice_option).toBe("LESS_ICE");
     expect(sent.items[0].coldwhisk).toBe(true);
     expect(sent.items[0].client_price_vnd).toBe(45000);
@@ -113,7 +113,7 @@ describe("createStaffOrder", () => {
         {
           menu_item_id: "item-fusion",
           quantity: 1,
-          size: "L" as const,
+          size: "MEDIUM" as const,
           sweetness: "QUARTER" as const,
           ice_option: "NORMAL" as const,
           coldwhisk: false,

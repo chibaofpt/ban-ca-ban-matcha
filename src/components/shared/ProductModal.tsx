@@ -67,7 +67,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const [selectedSize, setSelectedSize] = useState<Size>(() => {
     if (editingItem) return editingItem.size;
     const available = item.sizes ?? [];
-    return (available.find((s) => s.size === "L") ?? available[0])?.size ?? "M";
+    return (available.find((s) => s.size === "MEDIUM") ?? available[0])?.size ?? "SMALL";
   });
   const [sweetness, setSweetness] = useState<SweetnessLevel>(() => editingItem?.sweetness ?? "FULL");
   const [iceOption, setIceOption] = useState<IceOption>(() => editingItem?.iceOption ?? "NORMAL");

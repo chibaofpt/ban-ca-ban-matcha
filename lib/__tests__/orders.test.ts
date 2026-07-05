@@ -1,14 +1,14 @@
 /**
- * Unit tests for lib/orders.ts — processOrderItems core logic.
+ * Unit tests for lib/orders.ts â€” processOrderItems core logic.
  *
- * Strategy: mock lib/pricing và lib/prisma để test thuần JS,
- * không cần kết nối DB thật.
+ * Strategy: mock lib/pricing vÃ  lib/prisma Ä‘á»ƒ test thuáº§n JS,
+ * khÃ´ng cáº§n káº¿t ná»‘i DB tháº­t.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Decimal } from "@prisma/client/runtime/library";
 
-// ── Mock lib/prisma (prevent PrismaClient instantiation) ─────────────────────
+// â”€â”€ Mock lib/prisma (prevent PrismaClient instantiation) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     $transaction: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-// ── Mock lib/pricing — return controlled values ───────────────────────────────
+// â”€â”€ Mock lib/pricing â€” return controlled values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const mockBuildPricingContext = vi.fn();
 const mockResolveOrderItemPrice = vi.fn();
 const mockResolveOrderItemPremiumLatte = vi.fn();
@@ -28,7 +28,7 @@ vi.mock("@/lib/pricing", () => ({
   resolveOrderItemPremiumLatte: (...args: unknown[]) => mockResolveOrderItemPremiumLatte(...args),
 }));
 
-// ── Import after mocks ────────────────────────────────────────────────────────
+// â”€â”€ Import after mocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 import {
   processOrderItems,
   OrderValidationError,
@@ -36,7 +36,7 @@ import {
   type OrderItemInput,
 } from "@/lib/orders";
 
-// ── Shared fixtures ───────────────────────────────────────────────────────────
+// â”€â”€ Shared fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const POWDER_ID = "powder-aaa";
 const MILK_ID = "milk-bbb";
@@ -45,16 +45,16 @@ const FUSION_ITEM_ID = "item-fusion-ddd";
 const ADDON_KEM_ID = "addon-kem-eee";
 const ADDON_EXTRA_MATCHA_ID = "addon-extra-fff";
 
-// ── Fusion powder IDs — khai báo sớm để dùng trong basePricingCtx ──────────
+// â”€â”€ Fusion powder IDs â€” khai bÃ¡o sá»›m Ä‘á»ƒ dÃ¹ng trong basePricingCtx â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const FUSION_DEFAULT_POWDER = "powder-default-fusion";
 const FUSION_ALLOWED_POWDER = "powder-allowed-fusion";
 
-/** Minimal PricingContext — bao gồm tất cả powders dùng trong tests */
+/** Minimal PricingContext â€” bao gá»“m táº¥t cáº£ powders dÃ¹ng trong tests */
 const basePricingCtx = {
   defaultSizeConfigs: [
-    { size: "M" as const, milk_ml: 130, powder_gram: 3.5 },
-    { size: "L" as const, milk_ml: 200, powder_gram: 4.5 },
-    { size: "XL" as const, milk_ml: 300, powder_gram: 8.0 },
+    { size: "SMALL" as const, milk_ml: 130, powder_gram: 3.5 },
+    { size: "MEDIUM" as const, milk_ml: 200, powder_gram: 4.5 },
+    { size: "LARGE" as const, milk_ml: 300, powder_gram: 8.0 },
   ],
   powderPriceMap: {
     [POWDER_ID]: 6000,
@@ -72,7 +72,7 @@ const basePricingCtx = {
   ],
 };
 
-/** Tạo mock tx object — override từng method cho từng test */
+/** Táº¡o mock tx object â€” override tá»«ng method cho tá»«ng test */
 function makeTx(overrides: {
   menuItemResult?: object | null;
   addonResults?: Record<string, object | null>;
@@ -89,10 +89,10 @@ function makeTx(overrides: {
   };
 }
 
-/** Latte menu item mẫu */
+/** Latte menu item máº«u */
 const latteMenuItem = {
   id: MENU_ITEM_ID,
-  name: "Trà Xanh Sữa",
+  name: "TrÃ  Xanh Sá»¯a",
   category: "latte",
   is_available: true,
   matcha_powder_id: POWDER_ID,
@@ -100,13 +100,13 @@ const latteMenuItem = {
   custom_powder_grams: null,
   fusionAllowedPowders: [],
   sizes: [
-    { size: "M", base_price_vnd: 45000 },
-    { size: "L", base_price_vnd: 55000 },
-    { size: "XL", base_price_vnd: 65000 },
+    { size: "SMALL", base_price_vnd: 45000 },
+    { size: "MEDIUM", base_price_vnd: 55000 },
+    { size: "LARGE", base_price_vnd: 65000 },
   ],
 };
 
-/** Fusion menu item mẫu */
+/** Fusion menu item máº«u */
 const fusionMenuItem = {
   id: FUSION_ITEM_ID,
   name: "Matcha Cam",
@@ -120,12 +120,12 @@ const fusionMenuItem = {
     { powder_id: FUSION_ALLOWED_POWDER, matchaPowder: { is_available: true } },
   ],
   sizes: [
-    { size: "M", base_price_vnd: 50000 },
-    { size: "L", base_price_vnd: 60000 },
+    { size: "SMALL", base_price_vnd: 50000 },
+    { size: "MEDIUM", base_price_vnd: 60000 },
   ],
 };
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 describe("processOrderItems", () => {
   beforeEach(() => {
@@ -134,7 +134,7 @@ describe("processOrderItems", () => {
     mockResolveOrderItemPremiumLatte.mockResolvedValue(0);
   });
 
-  // ── Happy path ─────────────────────────────────────────────────────────────
+  // â”€â”€ Happy path â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   it("returns processed item when price matches (Latte, no addons)", async () => {
     const SERVER_PRICE = 69000;
@@ -145,7 +145,7 @@ describe("processOrderItems", () => {
       {
         menu_item_id: MENU_ITEM_ID,
         quantity: 2,
-        size: "L",
+        size: "MEDIUM",
         sweetness: "QUARTER",
         addon_option_ids: [],
         client_price_vnd: SERVER_PRICE,
@@ -174,7 +174,7 @@ describe("processOrderItems", () => {
         {
           menu_item_id: MENU_ITEM_ID,
           quantity: 1,
-          size: "M",
+          size: "SMALL",
           sweetness: "HALF",
           ice_option: "LESS_ICE",
           coldwhisk: true,
@@ -198,7 +198,7 @@ describe("processOrderItems", () => {
         {
           menu_item_id: MENU_ITEM_ID,
           quantity: 1,
-          size: "L",
+          size: "MEDIUM",
           sweetness: "QUARTER",
           selected_powder_id: "some-other-powder-client-sent",
           addon_option_ids: [],
@@ -212,9 +212,9 @@ describe("processOrderItems", () => {
     expect(result[0].selected_powder_id).toBe(POWDER_ID);
   });
 
-  // ── Addon pricing ──────────────────────────────────────────────────────────
+  // â”€â”€ Addon pricing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  it("prices regular addons (kem, đá dừa) using price_vnd", async () => {
+  it("prices regular addons (kem, Ä‘Ã¡ dá»«a) using price_vnd", async () => {
     mockResolveOrderItemPrice.mockReturnValue(69000);
     const tx = makeTx({
       menuItemResult: latteMenuItem,
@@ -232,7 +232,7 @@ describe("processOrderItems", () => {
         {
           menu_item_id: MENU_ITEM_ID,
           quantity: 1,
-          size: "L",
+          size: "MEDIUM",
           sweetness: "QUARTER",
           addon_option_ids: [{ option_id: ADDON_KEM_ID, quantity: 1 }],
           client_price_vnd: 77000, // 69000 + 8000
@@ -248,9 +248,9 @@ describe("processOrderItems", () => {
     expect(result[0].line_total).toBe((69000 + 8000) * 1);
   });
 
-  it("prices extra matcha using gram_value × price_per_gram (NOT price_vnd=0)", async () => {
+  it("prices extra matcha using gram_value Ã— price_per_gram (NOT price_vnd=0)", async () => {
     // This is the bug fix: extra matcha price_vnd=0 but gram_value=2, price_per_gram=6000
-    // Expected: 2 × 6000 = 12000, NOT 0
+    // Expected: 2 Ã— 6000 = 12000, NOT 0
     mockResolveOrderItemPrice.mockReturnValue(69000);
     const tx = makeTx({
       menuItemResult: latteMenuItem,
@@ -268,7 +268,7 @@ describe("processOrderItems", () => {
         {
           menu_item_id: MENU_ITEM_ID,
           quantity: 1,
-          size: "L",
+          size: "MEDIUM",
           sweetness: "QUARTER",
           addon_option_ids: [{ option_id: ADDON_EXTRA_MATCHA_ID, quantity: 1 }],
           client_price_vnd: 81000, // 69000 + 12000
@@ -278,11 +278,11 @@ describe("processOrderItems", () => {
     );
 
     // POWDER_ID has price_per_gram = 6000 in basePricingCtx
-    expect(result[0].resolvedAddons[0].unit_price_vnd).toBe(12000); // 2g × 6000
+    expect(result[0].resolvedAddons[0].unit_price_vnd).toBe(12000); // 2g Ã— 6000
     expect(result[0].addons_price_vnd).toBe(12000);
   });
 
-  it("extra matcha with gram_value=0 (option 'không thêm') → price = 0", async () => {
+  it("extra matcha with gram_value=0 (option 'khÃ´ng thÃªm') â†’ price = 0", async () => {
     mockResolveOrderItemPrice.mockReturnValue(69000);
     const tx = makeTx({
       menuItemResult: latteMenuItem,
@@ -290,7 +290,7 @@ describe("processOrderItems", () => {
         [ADDON_EXTRA_MATCHA_ID]: {
           id: ADDON_EXTRA_MATCHA_ID,
           price_vnd: 0,
-          gram_value: new Decimal("0"), // 0g — default option
+          gram_value: new Decimal("0"), // 0g â€” default option
         },
       },
     });
@@ -300,7 +300,7 @@ describe("processOrderItems", () => {
         {
           menu_item_id: MENU_ITEM_ID,
           quantity: 1,
-          size: "L",
+          size: "MEDIUM",
           sweetness: "QUARTER",
           addon_option_ids: [{ option_id: ADDON_EXTRA_MATCHA_ID, quantity: 1 }],
           client_price_vnd: 69000,
@@ -315,7 +315,7 @@ describe("processOrderItems", () => {
     expect(result[0].total_discount_vnd).toBe(0);
   });
 
-  it("PRODUCT voucher → drink discount applied, customer pays diff, addons still charged", async () => {
+  it("PRODUCT voucher â†’ drink discount applied, customer pays diff, addons still charged", async () => {
     mockResolveOrderItemPrice.mockReturnValue(69000);
     const tx = makeTx({
       menuItemResult: latteMenuItem,
@@ -334,7 +334,7 @@ describe("processOrderItems", () => {
         {
           menu_item_id: MENU_ITEM_ID,
           quantity: 1,
-          size: "L",
+          size: "MEDIUM",
           sweetness: "QUARTER",
           addon_option_ids: [{ option_id: ADDON_KEM_ID, quantity: 1 }],
           product_voucher_id: "voucher-xyz",
@@ -352,7 +352,7 @@ describe("processOrderItems", () => {
     expect(result[0].line_total).toBe(69000 + 8000);
   });
 
-  it("PRODUCT voucher → partial coverage: customer pays size upgrade diff", async () => {
+  it("PRODUCT voucher â†’ partial coverage: customer pays size upgrade diff", async () => {
     mockResolveOrderItemPrice.mockReturnValue(90000); // XL more expensive
     const tx = makeTx({
       menuItemResult: latteMenuItem,
@@ -369,7 +369,7 @@ describe("processOrderItems", () => {
         {
           menu_item_id: MENU_ITEM_ID,
           quantity: 1,
-          size: "XL",
+          size: "LARGE",
           sweetness: "QUARTER",
           addon_option_ids: [],
           product_voucher_id: "voucher-xyz",
@@ -388,7 +388,7 @@ describe("processOrderItems", () => {
 
 
 
-  it("ADDON voucher → exact addon discount applied", async () => {
+  it("ADDON voucher â†’ exact addon discount applied", async () => {
     mockResolveOrderItemPrice.mockReturnValue(69000);
     const tx = makeTx({
       menuItemResult: latteMenuItem,
@@ -406,7 +406,7 @@ describe("processOrderItems", () => {
         {
           menu_item_id: MENU_ITEM_ID,
           quantity: 1,
-          size: "L",
+          size: "MEDIUM",
           sweetness: "QUARTER",
           addon_option_ids: [{ option_id: ADDON_KEM_ID, quantity: 1 }],
           addon_voucher_ids: [{ voucher_id: "addon-voucher-123", addon_option_id: ADDON_KEM_ID }],
@@ -426,7 +426,7 @@ describe("processOrderItems", () => {
     expect(result[0].line_total).toBe(69000 + 8000);
   });
 
-  // ── Fusion powder validation ───────────────────────────────────────────────
+  // â”€â”€ Fusion powder validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   it("Fusion: accepts default powder without error", async () => {
     mockResolveOrderItemPrice.mockReturnValue(72000);
@@ -446,7 +446,7 @@ describe("processOrderItems", () => {
         {
           menu_item_id: FUSION_ITEM_ID,
           quantity: 1,
-          size: "M",
+          size: "SMALL",
           sweetness: "QUARTER",
           selected_powder_id: FUSION_DEFAULT_POWDER,
           addon_option_ids: [],
@@ -478,7 +478,7 @@ describe("processOrderItems", () => {
         {
           menu_item_id: FUSION_ITEM_ID,
           quantity: 1,
-          size: "M",
+          size: "SMALL",
           sweetness: "QUARTER",
           selected_powder_id: FUSION_ALLOWED_POWDER,
           addon_option_ids: [],
@@ -492,12 +492,12 @@ describe("processOrderItems", () => {
     expect(mockResolveOrderItemPremiumLatte).toHaveBeenCalledWith(
       FUSION_ALLOWED_POWDER,
       FUSION_DEFAULT_POWDER,
-      "M",
+      "SMALL",
       tx
     );
   });
 
-  it("Fusion: rejects powder not in allowed list → OrderValidationError", async () => {
+  it("Fusion: rejects powder not in allowed list â†’ OrderValidationError", async () => {
     const fusionCtx = {
       ...basePricingCtx,
       powderPriceMap: { [FUSION_DEFAULT_POWDER]: 5000 },
@@ -512,7 +512,7 @@ describe("processOrderItems", () => {
           {
             menu_item_id: FUSION_ITEM_ID,
             quantity: 1,
-            size: "M",
+            size: "SMALL",
             sweetness: "QUARTER",
             selected_powder_id: "powder-not-allowed",
             addon_option_ids: [],
@@ -524,7 +524,7 @@ describe("processOrderItems", () => {
     ).rejects.toThrow(OrderValidationError);
   });
 
-  // ── PRICE_CHANGED ──────────────────────────────────────────────────────────
+  // â”€â”€ PRICE_CHANGED â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   it("throws PriceChangedError when client_price_vnd != server price", async () => {
     mockResolveOrderItemPrice.mockReturnValue(69000);
@@ -535,10 +535,10 @@ describe("processOrderItems", () => {
         {
           menu_item_id: MENU_ITEM_ID,
           quantity: 1,
-          size: "L",
+          size: "MEDIUM",
           sweetness: "QUARTER",
           addon_option_ids: [],
-          client_price_vnd: 65000, // wrong — should be 69000
+          client_price_vnd: 65000, // wrong â€” should be 69000
         },
       ],
       tx as never
@@ -567,7 +567,7 @@ describe("processOrderItems", () => {
         {
           menu_item_id: MENU_ITEM_ID,
           quantity: 1,
-          size: "L",
+          size: "MEDIUM",
           sweetness: "QUARTER",
           addon_option_ids: [],
           client_price_vnd: 60000, // wrong
@@ -575,7 +575,7 @@ describe("processOrderItems", () => {
         {
           menu_item_id: MENU_ITEM_ID,
           quantity: 2,
-          size: "M",
+          size: "SMALL",
           sweetness: "NONE",
           addon_option_ids: [],
           client_price_vnd: 50000, // also wrong
@@ -588,7 +588,7 @@ describe("processOrderItems", () => {
     expect(err.conflicts).toHaveLength(2);
   });
 
-  // ── Validation errors ──────────────────────────────────────────────────────
+  // â”€â”€ Validation errors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   it("throws OrderValidationError (VALIDATION_ERROR) when item with voucher has quantity > 1", async () => {
     const tx = makeTx({ menuItemResult: latteMenuItem });
@@ -599,7 +599,7 @@ describe("processOrderItems", () => {
           {
             menu_item_id: MENU_ITEM_ID,
             quantity: 2,
-            size: "L",
+            size: "MEDIUM",
             sweetness: "QUARTER",
             addon_option_ids: [],
             product_voucher_id: "voucher-123",
@@ -624,7 +624,7 @@ describe("processOrderItems", () => {
           {
             menu_item_id: "nonexistent-id",
             quantity: 1,
-            size: "L",
+            size: "MEDIUM",
             sweetness: "QUARTER",
             addon_option_ids: [],
             client_price_vnd: 69000,
@@ -646,7 +646,7 @@ describe("processOrderItems", () => {
           {
             menu_item_id: MENU_ITEM_ID,
             quantity: 1,
-            size: "L",
+            size: "MEDIUM",
             sweetness: "QUARTER",
             addon_option_ids: [],
             client_price_vnd: 69000,
@@ -661,8 +661,8 @@ describe("processOrderItems", () => {
     const itemWithNullSize = {
       ...latteMenuItem,
       sizes: [
-        { size: "M", base_price_vnd: null }, // null = not sold
-        { size: "L", base_price_vnd: 55000 },
+        { size: "SMALL", base_price_vnd: null }, // null = not sold
+        { size: "MEDIUM", base_price_vnd: 55000 },
       ],
     };
     const tx = makeTx({ menuItemResult: itemWithNullSize });
@@ -673,7 +673,7 @@ describe("processOrderItems", () => {
           {
             menu_item_id: MENU_ITEM_ID,
             quantity: 1,
-            size: "M", // this size not sold
+            size: "SMALL", // this size not sold
             sweetness: "QUARTER",
             addon_option_ids: [],
             client_price_vnd: 45000,
@@ -688,7 +688,7 @@ describe("processOrderItems", () => {
     mockResolveOrderItemPrice.mockReturnValue(69000);
     const tx = makeTx({
       menuItemResult: latteMenuItem,
-      addonResults: {}, // no addon results → all return null
+      addonResults: {}, // no addon results â†’ all return null
     });
 
     await expect(
@@ -697,7 +697,7 @@ describe("processOrderItems", () => {
           {
             menu_item_id: MENU_ITEM_ID,
             quantity: 1,
-            size: "L",
+            size: "MEDIUM",
             sweetness: "QUARTER",
             addon_option_ids: [{ option_id: "nonexistent-addon", quantity: 1 }],
             client_price_vnd: 69000,

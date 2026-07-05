@@ -70,9 +70,9 @@ Implemented **once** in `src/utils/pricing.ts`. All other files call this functi
 
 For each item + size, resolve grams in this order:
 
-1. `menu_item.custom_powder_grams[size]` — per-item override (JSON field, keys: "M" | "L" | "XL")
+1. `menu_item.custom_powder_grams[size]` — per-item override (JSON field, keys: `"SMALL" | "MEDIUM" | "LARGE"`)
 2. `powder_size_config[powder_id][size]` — per-powder exception (currently Meyumi + Hana = 6 rows)
-3. `default_size_config[size].powder_gram` — system-wide fallback (3 rows: M/L/XL, admin-editable)
+3. `default_size_config[size].powder_gram` — system-wide fallback (3 rows: SMALL/MEDIUM/LARGE, admin-editable)
 
 > First non-null wins. If (1) is set, skip (2) and (3).
 
@@ -121,7 +121,7 @@ For each item + size, resolve grams in this order:
   "code": "PRICE_CHANGED",
   "details": {
     "conflicts": [
-      { "menu_item_id": "...", "name": "...", "size": "M", "client_price_vnd": 45000, "server_price_vnd": 46000 }
+      { "menu_item_id": "...", "name": "...", "size": "SMALL", "client_price_vnd": 45000, "server_price_vnd": 46000 }
     ]
   }
 }
@@ -131,6 +131,6 @@ For each item + size, resolve grams in this order:
 
 ## System Config
 
-- `default_size_config`: always exactly 3 rows (M, L, XL). Admin-editable.
+- `default_size_config`: always exactly 3 rows (SMALL, MEDIUM, LARGE). Admin-editable.
 - ⚠️ Changes apply **globally and immediately** to all computed prices across all items.
-- Seed values: M=3.5g/130ml, L=4.5g/200ml, XL=8.0g/300ml.
+- Seed values: SMALL=3.5g/130ml, MEDIUM=4.5g/200ml, LARGE=8.0g/300ml.

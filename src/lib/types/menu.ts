@@ -1,7 +1,7 @@
 /** All menu categories — exactly 2 in Phase 2. */
 export type Category = "latte" | "fusion";
 
-export type Size = "M" | "L" | "XL";
+export type Size = "SMALL" | "MEDIUM" | "LARGE";
 
 export type SweetnessLevel =
   | "NONE"
@@ -78,9 +78,9 @@ export interface MenuItem {
   base_liquid_note: string | null;
 
   custom_powder_grams: {
-    M?: number;
-    L?: number;
-    XL?: number;
+    SMALL?: number;
+    MEDIUM?: number;
+    LARGE?: number;
   } | null;
 
   /** Latte only — the fixed powder for this item. */

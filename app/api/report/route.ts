@@ -113,7 +113,7 @@ export async function GET(req: NextRequest) {
 
     // 8. Convert Prisma Decimal → number at the boundary
     const defaultSizeEntries: DefaultSizeEntry[] = defaultSizeConfigs.map(
-      (d: { size: "M" | "L" | "XL"; milk_ml: number; powder_gram: { toNumber(): number } }) => ({
+      (d: { size: "SMALL" | "MEDIUM" | "LARGE"; milk_ml: number; powder_gram: { toNumber(): number } }) => ({
         size: d.size,
         milk_ml: d.milk_ml,
         powder_gram: Number(d.powder_gram),
@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
     );
 
     const powderSizeEntries: PowderSizeEntry[] = powderSizeConfigs.map(
-      (p: { powder_id: string; size: "M" | "L" | "XL"; grams: { toNumber(): number } }) => ({
+      (p: { powder_id: string; size: "SMALL" | "MEDIUM" | "LARGE"; grams: { toNumber(): number } }) => ({
         powder_id: p.powder_id,
         size: p.size,
         grams: Number(p.grams),
@@ -134,7 +134,7 @@ export async function GET(req: NextRequest) {
       items: Array<{
         menu_item_id: string;
         quantity: number;
-        size: "M" | "L" | "XL";
+        size: "SMALL" | "MEDIUM" | "LARGE";
         selected_powder_id: string | null;
         selected_milk_type_id: string | null;
         menuItem: {

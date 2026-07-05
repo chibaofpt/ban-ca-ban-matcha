@@ -206,7 +206,28 @@ export const useCartStore = create<CartState>()(
         });
       },
     }),
-    { name: "bcbm-cart" }
+    {
+      name: "bcbm-cart",
+      version: 2,
+      /**
+       * Auto-migrate old localStorage cart data:
+       * Size M → SMALL, L → MEDIUM, XL → LARGE (Big-Bang strategy).
+       * Runs once when version upgrades from <2 to 2.
+       */
+      migrate: (persistedState: unknown, fromVersion: number) => {
+        if (fromVersion < 2) {
+          const sizeMap: Record<string, string> = { M: "SMALL", L: "MEDIUM", XL: "LARGE" };
+          const old = persistedState as Partial<CartState>;
+          if (old.items) {
+            old.items = old.items.map((item) => ({
+              ...item,
+            size: (sizeMap[item.size] ?? "SMALL") as import("@/src/lib/types/menu").Size,
+            }));
+          }
+        }
+        return persistedState as CartState;
+      },
+    }
   )
 );
 

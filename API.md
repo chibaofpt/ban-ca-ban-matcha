@@ -1,4 +1,4 @@
-# Bạn Cá Bán Matcha — API Routes
+﻿# Bạn Cá Bán Matcha — API Routes
 
 > Read this file when implementing or modifying any API route.
 
@@ -161,8 +161,8 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 | `/api/admin/milk-types` | POST | Create milk type |
 | `/api/admin/milk-types/[id]` | PUT | Update milk type |
 | `/api/admin/milk-types/[id]` | DELETE | Deactivate (`is_active = false`) |
-| `/api/admin/default-size-config` | GET | Get M/L/XL system config |
-| `/api/admin/default-size-config` | PUT | Update M/L/XL config (affects all prices immediately) |
+| `/api/admin/default-size-config` | GET | Get SMALL/MEDIUM/LARGE system config |
+| `/api/admin/default-size-config` | PUT | Update SMALL/MEDIUM/LARGE config (affects all prices immediately) |
 | `/api/admin/fusion-powders` | POST | Attach powder to Fusion item's allowed list |
 | `/api/admin/fusion-powders` | DELETE | Detach powder from Fusion item's allowed list |
 | `/api/admin/store-schedule` | GET | Get weekly opening hours (0–14 rows grouped by day) |
@@ -197,13 +197,13 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
     color: number | null
     is_available: boolean
     size_config: {                // powder_size_config — COALESCE level 2
-      size: "M" | "L" | "XL"
+      size: "SMALL" | "MEDIUM" | "LARGE"
       grams: number
     }[]
   }[]
   // COALESCE level 3 fallback — system-wide, same for all powders without size_config
   default_powder_gram: {
-    size: "M" | "L" | "XL"
+    size: "SMALL" | "MEDIUM" | "LARGE"
     grams: number
   }[]
 }
@@ -251,7 +251,7 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
   }[]
 
   sizes: {
-    size: "M" | "L" | "XL"
+    size: "SMALL" | "MEDIUM" | "LARGE"
     base_price_vnd: number            // null sizes excluded entirely
     milk_ml: number                   // from default_size_config — frontend uses for milk swap recalculation
   }[]
@@ -296,9 +296,9 @@ Same shape as `GET /api/menu` but:
   matcha_powder_id?: string           // Latte only
   default_powder_id?: string          // Fusion only
   base_liquid_note?: string           // Fusion only
-  custom_powder_grams?: { M?: number, L?: number, XL?: number }
+  custom_powder_grams?: { SMALL?: number, MEDIUM?: number, LARGE?: number }
   sizes: {
-    size: "M" | "L" | "XL"
+    size: "SMALL" | "MEDIUM" | "LARGE"
     base_price_vnd: number | null
   }[]
 }
@@ -319,9 +319,9 @@ Same shape as `GET /api/menu` but:
   matcha_powder_id?: string
   default_powder_id?: string
   base_liquid_note?: string
-  custom_powder_grams?: { M?: number, L?: number, XL?: number } | null
+  custom_powder_grams?: { SMALL?: number, MEDIUM?: number, LARGE?: number } | null
   sizes?: {
-    size: "M" | "L" | "XL"
+    size: "SMALL" | "MEDIUM" | "LARGE"
     base_price_vnd: number | null
   }[]                                 // upsert on (menu_item_id, size)
 }
@@ -334,7 +334,7 @@ Same shape as `GET /api/menu` but:
   items: {
     menu_item_id: string
     quantity: number
-    size: "M" | "L" | "XL"
+    size: "SMALL" | "MEDIUM" | "LARGE"
     sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL" | "EXTRA"
     ice_option?: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE"
     coldwhisk?: boolean
@@ -377,7 +377,7 @@ Same shape as `GET /api/menu` but:
   items: {
     menu_item_id: string
     quantity: number
-    size: "M" | "L" | "XL"
+    size: "SMALL" | "MEDIUM" | "LARGE"
     sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL" | "EXTRA"
     ice_option?: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE"
     coldwhisk?: boolean
@@ -403,7 +403,7 @@ Same shape as `GET /api/menu` but:
     conflicts: {
       menu_item_id: string
       name: string
-      size: "M" | "L" | "XL"
+      size: "SMALL" | "MEDIUM" | "LARGE"
       client_price_vnd: number
       server_price_vnd: number
     }[]
@@ -423,12 +423,12 @@ Same shape as `GET /api/menu` but:
 
 ### `GET /api/admin/default-size-config`
 ```ts
-{ data: { size: "M" | "L" | "XL", milk_ml: number, powder_gram: number }[] }
+{ data: { size: "SMALL" | "MEDIUM" | "LARGE", milk_ml: number, powder_gram: number }[] }
 ```
 
 ### `PUT /api/admin/default-size-config`
 ```ts
-{ sizes: { size: "M" | "L" | "XL", milk_ml?: number, powder_gram?: number }[] }
+{ sizes: { size: "SMALL" | "MEDIUM" | "LARGE", milk_ml?: number, powder_gram?: number }[] }
 ```
 
 ### `POST /api/profile/vouchers/redeem`
