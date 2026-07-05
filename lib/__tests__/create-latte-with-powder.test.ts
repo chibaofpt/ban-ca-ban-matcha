@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Unit tests for POST /api/admin/menu/create-latte-with-powder
  *
  * Strategy: mock lib/prisma, lib/auth, lib/storage.
@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-// ── Mocks declared BEFORE imports ─────────────────────────────────────────────
+// â”€â”€ Mocks declared BEFORE imports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const mockGetSession = vi.fn();
 const mockMatchaPowderCreate = vi.fn();
@@ -39,11 +39,11 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-// ── Import AFTER mocks ─────────────────────────────────────────────────────────
+// â”€â”€ Import AFTER mocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import { POST } from "@/app/api/admin/menu/create-latte-with-powder/route";
 
-// ── Test Constants ─────────────────────────────────────────────────────────────
+// â”€â”€ Test Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const ADMIN_SESSION = { id: "admin-001", role: "ADMIN" };
 const STAFF_SESSION = { id: "staff-001", role: "STAFF" };
@@ -84,9 +84,9 @@ const mockMenuItem = {
   description: null,
   updated_at: new Date(),
   sizes: [
-    { size: "M", base_price_vnd: 55000, milk_ml: 130 },
-    { size: "L", base_price_vnd: 65000, milk_ml: 200 },
-    { size: "XL", base_price_vnd: 75000, milk_ml: 300 },
+    { size: "SMALL", base_price_vnd: 55000, milk_ml: 130 },
+    { size: "MEDIUM", base_price_vnd: 65000, milk_ml: 200 },
+    { size: "LARGE", base_price_vnd: 75000, milk_ml: 300 },
   ],
   matchaPowder: { id: POWDER_ID, name: "Meyumi", type: "NONE" },
   defaultPowder: null,
@@ -94,9 +94,9 @@ const mockMenuItem = {
 };
 
 const defaultSizeConfigs = [
-  { size: "M", milk_ml: 130, powder_gram: 3.5 },
-  { size: "L", milk_ml: 200, powder_gram: 4.5 },
-  { size: "XL", milk_ml: 300, powder_gram: 8.0 },
+  { size: "SMALL", milk_ml: 130, powder_gram: 3.5 },
+  { size: "MEDIUM", milk_ml: 200, powder_gram: 4.5 },
+  { size: "LARGE", milk_ml: 300, powder_gram: 8.0 },
 ];
 
 /** Build a multipart/form-data NextRequest from plain object. */
@@ -119,9 +119,9 @@ function validFormData(overrides: Record<string, string> = {}): Record<string, s
     is_seasonal: "false",
     sort_order: "0",
     sizes: JSON.stringify([
-      { size: "M", base_price_vnd: 55000 },
-      { size: "L", base_price_vnd: 65000 },
-      { size: "XL", base_price_vnd: 75000 },
+      { size: "SMALL", base_price_vnd: 55000 },
+      { size: "MEDIUM", base_price_vnd: 65000 },
+      { size: "LARGE", base_price_vnd: 75000 },
     ]),
     new_powder_name: "Meyumi",
     new_powder_price_per_gram: "6000",
@@ -129,7 +129,7 @@ function validFormData(overrides: Record<string, string> = {}): Record<string, s
   };
 }
 
-/** Setup standard transaction mock — executes callback with a controlled tx object. */
+/** Setup standard transaction mock â€” executes callback with a controlled tx object. */
 function setupTx(overrides: {
   powderCreate?: object;
   menuItemCreate?: object;
@@ -165,7 +165,7 @@ function setupTx(overrides: {
   });
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────────────
+// â”€â”€ Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 describe("POST /api/admin/menu/create-latte-with-powder", () => {
   beforeEach(() => {
@@ -174,55 +174,55 @@ describe("POST /api/admin/menu/create-latte-with-powder", () => {
     mockUploadMenuImage.mockResolvedValue("https://example.com/image.jpg");
   });
 
-  // ── Auth & Role ─────────────────────────────────────────────────────────────
+  // â”€â”€ Auth & Role â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  it("trả 401 khi chưa đăng nhập", async () => {
+  it("tráº£ 401 khi chÆ°a Ä‘Äƒng nháº­p", async () => {
     mockGetSession.mockResolvedValue(null);
     const res = await POST(makeFormDataReq(validFormData()));
     expect(res.status).toBe(401);
     expect((await res.json()).code).toBe("UNAUTHORIZED");
   });
 
-  it("trả 403 khi role là STAFF", async () => {
+  it("tráº£ 403 khi role lÃ  STAFF", async () => {
     mockGetSession.mockResolvedValue(STAFF_SESSION);
     const res = await POST(makeFormDataReq(validFormData()));
     expect(res.status).toBe(403);
     expect((await res.json()).code).toBe("FORBIDDEN");
   });
 
-  it("trả 403 khi role là CUSTOMER", async () => {
+  it("tráº£ 403 khi role lÃ  CUSTOMER", async () => {
     mockGetSession.mockResolvedValue({ id: "c-001", role: "CUSTOMER" });
     const res = await POST(makeFormDataReq(validFormData()));
     expect(res.status).toBe(403);
     expect((await res.json()).code).toBe("FORBIDDEN");
   });
 
-  // ── Validation ──────────────────────────────────────────────────────────────
+  // â”€â”€ Validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  it("trả 400 khi thiếu tên món", async () => {
+  it("tráº£ 400 khi thiáº¿u tÃªn mÃ³n", async () => {
     const res = await POST(makeFormDataReq(validFormData({ name: "" })));
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe("VALIDATION_ERROR");
   });
 
-  it("trả 400 khi thiếu sizes", async () => {
+  it("tráº£ 400 khi thiáº¿u sizes", async () => {
     const { sizes: _, ...noSizes } = validFormData();
     const res = await POST(makeFormDataReq(noSizes));
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe("VALIDATION_ERROR");
   });
 
-  it("trả 400 khi sizes JSON không hợp lệ", async () => {
+  it("tráº£ 400 khi sizes JSON khÃ´ng há»£p lá»‡", async () => {
     const res = await POST(makeFormDataReq(validFormData({ sizes: "not-json" })));
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe("VALIDATION_ERROR");
   });
 
-  it("trả 400 khi sizes không đủ 3 size M/L/XL", async () => {
+  it("tráº£ 400 khi sizes khÃ´ng Ä‘á»§ 3 size M/L/XL", async () => {
     const res = await POST(
       makeFormDataReq(
         validFormData({
-          sizes: JSON.stringify([{ size: "M", base_price_vnd: 55000 }]),
+          sizes: JSON.stringify([{ size: "SMALL", base_price_vnd: 55000 }]),
         })
       )
     );
@@ -230,27 +230,27 @@ describe("POST /api/admin/menu/create-latte-with-powder", () => {
     expect((await res.json()).code).toBe("VALIDATION_ERROR");
   });
 
-  it("trả 400 khi thiếu tên bột mới", async () => {
+  it("tráº£ 400 khi thiáº¿u tÃªn bá»™t má»›i", async () => {
     const res = await POST(makeFormDataReq(validFormData({ new_powder_name: "" })));
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe("VALIDATION_ERROR");
   });
 
-  it("trả 400 khi giá bột không hợp lệ (âm)", async () => {
+  it("tráº£ 400 khi giÃ¡ bá»™t khÃ´ng há»£p lá»‡ (Ã¢m)", async () => {
     const res = await POST(makeFormDataReq(validFormData({ new_powder_price_per_gram: "-100" })));
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe("VALIDATION_ERROR");
   });
 
-  it("trả 400 khi giá bột không phải số", async () => {
+  it("tráº£ 400 khi giÃ¡ bá»™t khÃ´ng pháº£i sá»‘", async () => {
     const res = await POST(makeFormDataReq(validFormData({ new_powder_price_per_gram: "abc" })));
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe("VALIDATION_ERROR");
   });
 
-  // ── Happy path: tạo bột mới inline ─────────────────────────────────────────
+  // â”€â”€ Happy path: táº¡o bá»™t má»›i inline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  it("tạo thành công — trả 201 với menu_item và powder_name", async () => {
+  it("táº¡o thÃ nh cÃ´ng â€” tráº£ 201 vá»›i menu_item vÃ  powder_name", async () => {
     setupTx();
     const res = await POST(makeFormDataReq(validFormData()));
     expect(res.status).toBe(201);
@@ -259,7 +259,7 @@ describe("POST /api/admin/menu/create-latte-with-powder", () => {
     expect(json.data.powder_name).toBe("Meyumi");
   });
 
-  it("tạo powder TRƯỚC trong transaction (Step 1)", async () => {
+  it("táº¡o powder TRÆ¯á»šC trong transaction (Step 1)", async () => {
     setupTx();
     await POST(makeFormDataReq(validFormData()));
     expect(mockMatchaPowderCreate).toHaveBeenCalledWith(
@@ -269,13 +269,13 @@ describe("POST /api/admin/menu/create-latte-with-powder", () => {
           price_per_gram: 6000,
           type: "NONE",
           is_available: true,
-          reference_latte_item_id: null, // chưa có latte ID lúc này
+          reference_latte_item_id: null, // chÆ°a cÃ³ latte ID lÃºc nÃ y
         }),
       })
     );
   });
 
-  it("tạo menu item với matcha_powder_id từ bột vừa tạo (Step 3)", async () => {
+  it("táº¡o menu item vá»›i matcha_powder_id tá»« bá»™t vá»«a táº¡o (Step 3)", async () => {
     setupTx();
     await POST(makeFormDataReq(validFormData()));
     expect(mockMenuItemCreate).toHaveBeenCalledWith(
@@ -283,40 +283,40 @@ describe("POST /api/admin/menu/create-latte-with-powder", () => {
         data: expect.objectContaining({
           name: "Matcha Latte",
           category: "latte",
-          matcha_powder_id: POWDER_ID, // powder.id từ Step 1
+          matcha_powder_id: POWDER_ID, // powder.id tá»« Step 1
         }),
       })
     );
   });
 
-  it("tạo đúng 3 MenuItemSize rows (Step 4)", async () => {
+  it("táº¡o Ä‘Ãºng 3 MenuItemSize rows (Step 4)", async () => {
     setupTx();
     await POST(makeFormDataReq(validFormData()));
     expect(mockMenuItemSizeCreateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.arrayContaining([
-          expect.objectContaining({ size: "M", base_price_vnd: 55000 }),
-          expect.objectContaining({ size: "L", base_price_vnd: 65000 }),
-          expect.objectContaining({ size: "XL", base_price_vnd: 75000 }),
+          expect.objectContaining({ size: "SMALL", base_price_vnd: 55000 }),
+          expect.objectContaining({ size: "MEDIUM", base_price_vnd: 65000 }),
+          expect.objectContaining({ size: "LARGE", base_price_vnd: 75000 }),
         ]),
       })
     );
   });
 
-  it("update powder với reference_latte_item_id sau khi tạo latte (Step 5)", async () => {
+  it("update powder vá»›i reference_latte_item_id sau khi táº¡o latte (Step 5)", async () => {
     setupTx();
     await POST(makeFormDataReq(validFormData()));
     expect(mockMatchaPowderUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: POWDER_ID },
         data: expect.objectContaining({
-          reference_latte_item_id: ITEM_ID, // latte.id từ Step 3
+          reference_latte_item_id: ITEM_ID, // latte.id tá»« Step 3
         }),
       })
     );
   });
 
-  it("powder_name trong response khớp với tên bột vừa tạo", async () => {
+  it("powder_name trong response khá»›p vá»›i tÃªn bá»™t vá»«a táº¡o", async () => {
     const customPowder = { ...mockPowder, id: POWDER_ID, name: "Hana Premium" };
     setupTx({ powderCreate: customPowder });
     const res = await POST(makeFormDataReq(validFormData({ new_powder_name: "Hana Premium" })));
@@ -325,13 +325,13 @@ describe("POST /api/admin/menu/create-latte-with-powder", () => {
     expect(json.data.powder_name).toBe("Hana Premium");
   });
 
-  // ── Happy path: với size_config riêng cho bột ───────────────────────────────
+  // â”€â”€ Happy path: vá»›i size_config riÃªng cho bá»™t â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  it("tạo PowderSizeConfig khi có new_powder_size_config", async () => {
+  it("táº¡o PowderSizeConfig khi cÃ³ new_powder_size_config", async () => {
     setupTx();
     const sizeConfig = JSON.stringify([
-      { size: "M", grams: 4.0 },
-      { size: "L", grams: 6.0 },
+      { size: "SMALL", grams: 4.0 },
+      { size: "MEDIUM", grams: 6.0 },
     ]);
     const res = await POST(
       makeFormDataReq(validFormData({ new_powder_size_config: sizeConfig }))
@@ -340,31 +340,31 @@ describe("POST /api/admin/menu/create-latte-with-powder", () => {
     expect(mockPowderSizeConfigCreateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.arrayContaining([
-          expect.objectContaining({ size: "M", grams: 4.0 }),
-          expect.objectContaining({ size: "L", grams: 6.0 }),
+          expect.objectContaining({ size: "SMALL", grams: 4.0 }),
+          expect.objectContaining({ size: "MEDIUM", grams: 6.0 }),
         ]),
       })
     );
   });
 
-  it("không gọi createMany PowderSizeConfig khi không có size_config", async () => {
+  it("khÃ´ng gá»i createMany PowderSizeConfig khi khÃ´ng cÃ³ size_config", async () => {
     setupTx();
     const res = await POST(makeFormDataReq(validFormData()));
     expect(res.status).toBe(201);
     expect(mockPowderSizeConfigCreateMany).not.toHaveBeenCalled();
   });
 
-  // ── Happy path: null sizes (size không bán) ─────────────────────────────────
+  // â”€â”€ Happy path: null sizes (size khÃ´ng bÃ¡n) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  it("chấp nhận base_price_vnd = null (size không bán)", async () => {
+  it("cháº¥p nháº­n base_price_vnd = null (size khÃ´ng bÃ¡n)", async () => {
     setupTx();
     const res = await POST(
       makeFormDataReq(
         validFormData({
           sizes: JSON.stringify([
-            { size: "M", base_price_vnd: 55000 },
-            { size: "L", base_price_vnd: null },
-            { size: "XL", base_price_vnd: null },
+            { size: "SMALL", base_price_vnd: 55000 },
+            { size: "MEDIUM", base_price_vnd: null },
+            { size: "LARGE", base_price_vnd: null },
           ]),
         })
       )
@@ -372,9 +372,9 @@ describe("POST /api/admin/menu/create-latte-with-powder", () => {
     expect(res.status).toBe(201);
   });
 
-  // ── Transaction rollback ────────────────────────────────────────────────────
+  // â”€â”€ Transaction rollback â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  it("trả 500 khi transaction thất bại (rollback toàn bộ)", async () => {
+  it("tráº£ 500 khi transaction tháº¥t báº¡i (rollback toÃ n bá»™)", async () => {
     mockDefaultSizeConfigFindMany.mockResolvedValue(defaultSizeConfigs);
     mockTransaction.mockRejectedValue(new Error("DB connection lost"));
     const res = await POST(makeFormDataReq(validFormData()));
@@ -382,7 +382,7 @@ describe("POST /api/admin/menu/create-latte-with-powder", () => {
     expect((await res.json()).code).toBe("INTERNAL_ERROR");
   });
 
-  it("trả 400 khi bột đã được gán cho Latte khác (P2002 unique constraint)", async () => {
+  it("tráº£ 400 khi bá»™t Ä‘Ã£ Ä‘Æ°á»£c gÃ¡n cho Latte khÃ¡c (P2002 unique constraint)", async () => {
     mockDefaultSizeConfigFindMany.mockResolvedValue(defaultSizeConfigs);
     const prismaError = Object.assign(new Error("Unique constraint"), {
       code: "P2002",
@@ -394,15 +394,15 @@ describe("POST /api/admin/menu/create-latte-with-powder", () => {
     expect((await res.json()).code).toBe("VALIDATION_ERROR");
   });
 
-  // ── Upload ảnh ─────────────────────────────────────────────────────────────
+  // â”€â”€ Upload áº£nh â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  it("không gọi uploadMenuImage khi không có ảnh", async () => {
+  it("khÃ´ng gá»i uploadMenuImage khi khÃ´ng cÃ³ áº£nh", async () => {
     setupTx();
     await POST(makeFormDataReq(validFormData()));
     expect(mockUploadMenuImage).not.toHaveBeenCalled();
   });
 
-  it("response menu_item có đủ các field cần thiết", async () => {
+  it("response menu_item cÃ³ Ä‘á»§ cÃ¡c field cáº§n thiáº¿t", async () => {
     setupTx();
     const res = await POST(makeFormDataReq(validFormData()));
     const json = await res.json();

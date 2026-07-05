@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Unit tests for admin voucher-packages API routes.
  * GET + POST /api/admin/voucher-packages
  * PUT + DELETE /api/admin/voucher-packages/[id]
@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-// ── Mocks ──────────────────────────────────────────────────────────────────────
+// â”€â”€ Mocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const mockGetSession = vi.fn();
 vi.mock("@/lib/auth", () => ({ getSession: () => mockGetSession() }));
@@ -38,7 +38,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-// Mock the pricing engine — auto-calc covered_price_vnd calls buildPricingContext + resolveOrderItemPrice
+// Mock the pricing engine â€” auto-calc covered_price_vnd calls buildPricingContext + resolveOrderItemPrice
 const mockBuildPricingContext = vi.fn();
 const mockResolveOrderItemPrice = vi.fn();
 const mockResolveOrderItemPremiumLatte = vi.fn();
@@ -52,7 +52,7 @@ vi.mock("@/lib/pricing", () => ({
 import { GET, POST } from "@/app/api/admin/voucher-packages/route";
 import { PUT, DELETE } from "@/app/api/admin/voucher-packages/[id]/route";
 
-// ── Fixtures ──────────────────────────────────────────────────────────────────
+// â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const ADMIN_SESSION = { id: "admin-001", role: "ADMIN" };
 const STAFF_SESSION = { id: "staff-001", role: "STAFF" };
@@ -65,7 +65,7 @@ const POWDER_ID = "550e8400-e29b-41d4-a716-446655440005";
 
 const existingPkg = {
   id: PKG_ID,
-  name: "Free Trà Xanh M",
+  name: "Free TrÃ  Xanh M",
   voucher_type: "PRODUCT",
   points_cost: 5,
   is_active: true,
@@ -81,9 +81,9 @@ const latteMenuItem = {
   custom_powder_grams: null,
   fusionAllowedPowders: [],
   sizes: [
-    { size: "M", base_price_vnd: 33000, milk_ml: 200 },
-    { size: "L", base_price_vnd: 38000, milk_ml: 250 },
-    { size: "XL", base_price_vnd: 63000, milk_ml: 350 },
+    { size: "SMALL", base_price_vnd: 33000, milk_ml: 200 },
+    { size: "MEDIUM", base_price_vnd: 38000, milk_ml: 250 },
+    { size: "LARGE", base_price_vnd: 63000, milk_ml: 350 },
   ],
 };
 
@@ -105,9 +105,9 @@ function makeReq(body: unknown, url = "http://localhost/api/admin/voucher-packag
 
 const idParams = Promise.resolve({ id: PKG_ID });
 
-// ══════════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // GET /api/admin/voucher-packages
-// ══════════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 describe("GET /api/admin/voucher-packages", () => {
   beforeEach(() => {
@@ -143,9 +143,9 @@ describe("GET /api/admin/voucher-packages", () => {
   });
 });
 
-// ══════════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // POST /api/admin/voucher-packages
-// ══════════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 describe("POST /api/admin/voucher-packages", () => {
   beforeEach(() => {
@@ -195,12 +195,12 @@ describe("POST /api/admin/voucher-packages", () => {
     const res = await POST(
       makeReq({
         voucher_type: "PRODUCT",
-        name: "Free M Trà Xanh",
+        name: "Free M TrÃ  Xanh",
         points_cost: 5,
         menu_item_id: MENU_ITEM_ID,
-        size: "M",
+        size: "SMALL",
         included_addon_option_ids: [],
-        // No covered_price_vnd — server auto-calculates it
+        // No covered_price_vnd â€” server auto-calculates it
       })
     );
 
@@ -225,7 +225,7 @@ describe("POST /api/admin/voucher-packages", () => {
         name: "Invalid",
         points_cost: 5,
         menu_item_id: MENU_ITEM_ID,
-        size: "M",
+        size: "SMALL",
         included_addon_option_ids: [],
       })
     );
@@ -244,7 +244,7 @@ describe("POST /api/admin/voucher-packages", () => {
         name: "Free Kem",
         points_cost: 2,
         addon_option_id: ADDON_ID,
-        // No covered_price_vnd — server auto-calculates from addon.price_vnd
+        // No covered_price_vnd â€” server auto-calculates from addon.price_vnd
       })
     );
 
@@ -308,7 +308,7 @@ describe("POST /api/admin/voucher-packages", () => {
         name: "Free Item",
         points_cost: 5,
         menu_item_id: MENU_ITEM_ID,
-        size: "L",
+        size: "MEDIUM",
         included_addon_option_ids: [],
       })
     );
@@ -342,7 +342,7 @@ describe("POST /api/admin/voucher-packages", () => {
         name: "X",
         points_cost: 1,
         menu_item_id: MENU_ITEM_ID,
-        size: "M",
+        size: "SMALL",
         included_addon_option_ids: [],
       })
     );
@@ -351,9 +351,9 @@ describe("POST /api/admin/voucher-packages", () => {
   });
 });
 
-// ══════════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // PUT /api/admin/voucher-packages/[id]
-// ══════════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 describe("PUT /api/admin/voucher-packages/[id]", () => {
   beforeEach(() => {
@@ -401,9 +401,9 @@ describe("PUT /api/admin/voucher-packages/[id]", () => {
   });
 });
 
-// ══════════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // DELETE /api/admin/voucher-packages/[id]
-// ══════════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 describe("DELETE /api/admin/voucher-packages/[id]", () => {
   beforeEach(() => {

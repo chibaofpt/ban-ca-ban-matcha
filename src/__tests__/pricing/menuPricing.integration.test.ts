@@ -130,12 +130,12 @@ describe.skip("Menu Pricing Integration", () => {
 
   describe("Fusion items", () => {
 
-    it("Yuzu Matcha Latte size L, swap to MH-3, + nửa viên kem → 80,000 VND", async () => {
+    it("Yuzu Matcha Latte size MEDIUM, swap to MH-3, + nửa viên kem → 80,000 VND", async () => {
       const item = findItem(menuData.fusion, "Yuzu");
       const mh3  = powderData.data.find((p) => p.name.includes("MH-3") || p.name.includes("MH3"));
       if (!mh3) throw new Error("MH-3 powder not found");
 
-      const size: Size = "L";
+      const size: Size = "MEDIUM";
       const sizeData = item.sizes.find((s) => s.size === size);
       expect(sizeData).toBeDefined();
 
@@ -160,9 +160,9 @@ describe.skip("Menu Pricing Integration", () => {
       expect(total).toBe(80_000);
     });
 
-    it("Usucha size M → 50,000 VND", async () => {
+    it("Usucha size SMALL → 50,000 VND", async () => {
       const item = findItem(menuData.fusion, "Usucha");
-      const size: Size = "M";
+      const size: Size = "SMALL";
       const sizeData = item.sizes.find((s) => s.size === size);
       expect(sizeData).toBeDefined();
 
@@ -189,11 +189,11 @@ describe.skip("Menu Pricing Integration", () => {
 
   describe("Latte items", () => {
 
-    it("Shiro Latte size XL → 90,000 VND", () => {
+    it("Shiro Latte size LARGE → 90,000 VND", () => {
       const item = findItem(menuData.latte, "Shiro");
       expect(item.powder).not.toBeNull();
 
-      const size: Size = "XL";
+      const size: Size = "LARGE";
       const sizeData = item.sizes.find((s) => s.size === size);
       expect(sizeData).toBeDefined();
 
@@ -216,11 +216,11 @@ describe.skip("Menu Pricing Integration", () => {
       expect(price).toBe(90_000);
     });
 
-    it("Meyumi size L + 1 cục kem + đá dừa → 83,000 VND", () => {
+    it("Meyumi size MEDIUM + 1 cục kem + đá dừa → 83,000 VND", () => {
       const item = findItem(menuData.latte, "Meyumi");
       expect(item.powder).not.toBeNull();
 
-      const size: Size = "L";
+      const size: Size = "MEDIUM";
       const sizeData = item.sizes.find((s) => s.size === size);
       expect(sizeData).toBeDefined();
 

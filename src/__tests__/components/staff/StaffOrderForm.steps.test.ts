@@ -48,7 +48,7 @@ function makeCartItem(overrides: Partial<CartItem> = {}): CartItem {
     name: "Trà Xanh Sữa",
     category: "latte",
     imageUrl: null,
-    size: "L",
+    size: "MEDIUM",
     unitPrice: 69000,
     quantity: 1,
     sweetness: "QUARTER",
@@ -113,7 +113,7 @@ describe("buildOrderItems", () => {
     const cart = [makeCartItem({ iceOption: "LESS_ICE", coldwhisk: true, clientPriceVnd: 75000 })];
     const result = buildOrderItems(cart);
 
-    expect(result[0].size).toBe("L");
+    expect(result[0].size).toBe("MEDIUM");
     expect(result[0].ice_option).toBe("LESS_ICE");
     expect(result[0].coldwhisk).toBe(true);
     expect(result[0].client_price_vnd).toBe(75000);

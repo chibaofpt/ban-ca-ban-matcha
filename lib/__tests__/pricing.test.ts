@@ -34,9 +34,9 @@ const MILK_PREMIUM = "milk-premium";
 /** Minimal PricingContext — seed values from pricing skill */
 const basePricingCtx: PricingContext = {
   defaultSizeConfigs: [
-    { size: "M" as const, milk_ml: 130, powder_gram: 3.5 },
-    { size: "L" as const, milk_ml: 200, powder_gram: 4.5 },
-    { size: "XL" as const, milk_ml: 300, powder_gram: 8.0 },
+    { size: "SMALL" as const, milk_ml: 130, powder_gram: 3.5 },
+    { size: "MEDIUM" as const, milk_ml: 200, powder_gram: 4.5 },
+    { size: "LARGE" as const, milk_ml: 300, powder_gram: 8.0 },
   ],
   powderSizeConfigMap: {},
   powderPriceMap: {
@@ -62,7 +62,7 @@ describe("resolveOrderItemPrice", () => {
       const price = resolveOrderItemPrice(
         {
           category: "latte",
-          size: "M",
+          size: "SMALL",
           base_price_vnd: 45000,
           custom_powder_grams: null,
           powder_id: POWDER_MEYUMI,
@@ -78,7 +78,7 @@ describe("resolveOrderItemPrice", () => {
       const price = resolveOrderItemPrice(
         {
           category: "latte",
-          size: "L",
+          size: "MEDIUM",
           base_price_vnd: 55000,
           custom_powder_grams: null,
           powder_id: POWDER_MEYUMI,
@@ -94,7 +94,7 @@ describe("resolveOrderItemPrice", () => {
       const price = resolveOrderItemPrice(
         {
           category: "latte",
-          size: "XL",
+          size: "LARGE",
           base_price_vnd: 65000,
           custom_powder_grams: null,
           powder_id: POWDER_MEYUMI,
@@ -110,7 +110,7 @@ describe("resolveOrderItemPrice", () => {
       const price = resolveOrderItemPrice(
         {
           category: "latte",
-          size: "L",
+          size: "MEDIUM",
           base_price_vnd: 55000,
           custom_powder_grams: null,
           powder_id: POWDER_MEYUMI,
@@ -126,7 +126,7 @@ describe("resolveOrderItemPrice", () => {
       const price = resolveOrderItemPrice(
         {
           category: "latte",
-          size: "L",
+          size: "MEDIUM",
           base_price_vnd: 55000,
           custom_powder_grams: null,
           powder_id: POWDER_MEYUMI,
@@ -142,7 +142,7 @@ describe("resolveOrderItemPrice", () => {
       const price = resolveOrderItemPrice(
         {
           category: "latte",
-          size: "L",
+          size: "MEDIUM",
           base_price_vnd: 55000,
           custom_powder_grams: null,
           powder_id: "powder-unknown",
@@ -158,9 +158,9 @@ describe("resolveOrderItemPrice", () => {
       const price = resolveOrderItemPrice(
         {
           category: "latte",
-          size: "L",
+          size: "MEDIUM",
           base_price_vnd: 55000,
-          custom_powder_grams: { L: 7.0 },
+          custom_powder_grams: { MEDIUM: 7.0 },
           powder_id: POWDER_MEYUMI,
           milk_type_id: null,
         },
@@ -176,7 +176,7 @@ describe("resolveOrderItemPrice", () => {
       const price = resolveOrderItemPrice(
         {
           category: "fusion",
-          size: "M",
+          size: "SMALL",
           base_price_vnd: 50000,
           custom_powder_grams: null,
           powder_id: POWDER_MEYUMI,
@@ -192,7 +192,7 @@ describe("resolveOrderItemPrice", () => {
       const price = resolveOrderItemPrice(
         {
           category: "fusion",
-          size: "L",
+          size: "MEDIUM",
           base_price_vnd: 60000,
           custom_powder_grams: null,
           powder_id: POWDER_HANA,
@@ -208,7 +208,7 @@ describe("resolveOrderItemPrice", () => {
       const price = resolveOrderItemPrice(
         {
           category: "fusion",
-          size: "M",
+          size: "SMALL",
           base_price_vnd: 50000,
           custom_powder_grams: null,
           powder_id: POWDER_MEYUMI,
@@ -225,7 +225,7 @@ describe("resolveOrderItemPrice", () => {
       const price = resolveOrderItemPrice(
         {
           category: "fusion",
-          size: "M",
+          size: "SMALL",
           base_price_vnd: 50000,
           custom_powder_grams: null,
           powder_id: POWDER_MEYUMI,
@@ -244,15 +244,15 @@ describe("resolveOrderItemPrice", () => {
         ...basePricingCtx,
         powderSizeConfigMap: {
           [POWDER_MEYUMI]: [
-            { size: "M" as const, grams: 4.0 },
-            { size: "L" as const, grams: 6.0 },
+            { size: "SMALL" as const, grams: 4.0 },
+            { size: "MEDIUM" as const, grams: 6.0 },
           ],
         },
       };
       const price = resolveOrderItemPrice(
         {
           category: "latte",
-          size: "M",
+          size: "SMALL",
           base_price_vnd: 45000,
           custom_powder_grams: null,
           powder_id: POWDER_MEYUMI,
@@ -331,7 +331,7 @@ describe("resolveOrderItemPremiumLatte", () => {
     const result = await resolveOrderItemPremiumLatte(
       "selected-powder",
       "default-powder",
-      "L",
+      "MEDIUM",
       client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
     );
 
@@ -349,7 +349,7 @@ describe("resolveOrderItemPremiumLatte", () => {
     const result = await resolveOrderItemPremiumLatte(
       "selected-powder",
       "default-powder",
-      "L",
+      "MEDIUM",
       client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
     );
 
@@ -365,7 +365,7 @@ describe("resolveOrderItemPremiumLatte", () => {
     const result = await resolveOrderItemPremiumLatte(
       "selected-powder",
       "default-powder",
-      "L",
+      "MEDIUM",
       client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
     );
 
@@ -381,7 +381,7 @@ describe("resolveOrderItemPremiumLatte", () => {
     const result = await resolveOrderItemPremiumLatte(
       "selected-powder",
       "default-powder",
-      "L",
+      "MEDIUM",
       client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
     );
 
@@ -397,7 +397,7 @@ describe("resolveOrderItemPremiumLatte", () => {
     const result = await resolveOrderItemPremiumLatte(
       "selected-powder",
       "default-powder",
-      "L",
+      "MEDIUM",
       client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
     );
 
@@ -415,7 +415,7 @@ describe("resolveOrderItemPremiumLatte", () => {
     const result = await resolveOrderItemPremiumLatte(
       "selected-powder",
       "default-powder",
-      "XL",
+      "LARGE",
       client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
     );
 
@@ -434,7 +434,7 @@ describe("resolveOrderItemPremiumLatte", () => {
     const result = await resolveOrderItemPremiumLatte(
       "selected-powder",
       "default-powder",
-      "L",
+      "MEDIUM",
       client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
     );
 

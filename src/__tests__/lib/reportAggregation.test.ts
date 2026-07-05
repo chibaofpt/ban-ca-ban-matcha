@@ -14,9 +14,9 @@ import {
 // ---------------------------------------------------------------------------
 
 const defaultSizes: DefaultSizeEntry[] = [
-  { size: "M", milk_ml: 130, powder_gram: 3.5 },
-  { size: "L", milk_ml: 200, powder_gram: 4.5 },
-  { size: "XL", milk_ml: 300, powder_gram: 8.0 },
+  { size: "SMALL", milk_ml: 130, powder_gram: 3.5 },
+  { size: "MEDIUM", milk_ml: 200, powder_gram: 4.5 },
+  { size: "LARGE", milk_ml: 300, powder_gram: 8.0 },
 ];
 
 const powders: PowderConfig[] = [
@@ -32,10 +32,10 @@ const milkTypes: MilkConfig[] = [
 /** No per-powder size overrides */
 const noPowderSizes: PowderSizeEntry[] = [];
 
-/** Meyumi has a custom 5g for M, 6g for L */
+/** Meyumi has a custom 5g for SMALL, 6g for MEDIUM */
 const meyumiPowderSizes: PowderSizeEntry[] = [
-  { powder_id: "powder-meyumi", size: "M", grams: 5 },
-  { powder_id: "powder-meyumi", size: "L", grams: 6 },
+  { powder_id: "powder-meyumi", size: "SMALL", grams: 5 },
+  { powder_id: "powder-meyumi", size: "MEDIUM", grams: 6 },
 ];
 
 // ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ describe("resolveEffectiveGram", () => {
   describe("Level 3 — default_size_config fallback", () => {
     it("returns default powder_gram when no custom_powder_grams and no powder_size_config", () => {
       const item = {
-        size: "M" as const,
+        size: "SMALL" as const,
         selected_powder_id: "powder-meyumi",
         menuItem: {
           name: "Test Latte",
@@ -61,7 +61,7 @@ describe("resolveEffectiveGram", () => {
 
     it("returns correct default for size L", () => {
       const item = {
-        size: "L" as const,
+        size: "MEDIUM" as const,
         selected_powder_id: "powder-meyumi",
         menuItem: {
           name: "Test Latte",
@@ -76,7 +76,7 @@ describe("resolveEffectiveGram", () => {
 
     it("returns correct default for size XL", () => {
       const item = {
-        size: "XL" as const,
+        size: "LARGE" as const,
         selected_powder_id: "powder-meyumi",
         menuItem: {
           name: "Test Latte",
@@ -93,7 +93,7 @@ describe("resolveEffectiveGram", () => {
   describe("Level 2 — powder_size_config override", () => {
     it("uses powder_size_config when available, overriding default", () => {
       const item = {
-        size: "M" as const,
+        size: "SMALL" as const,
         selected_powder_id: "powder-meyumi",
         menuItem: {
           name: "Test Latte",
@@ -108,7 +108,7 @@ describe("resolveEffectiveGram", () => {
 
     it("falls back to default when powder_size_config exists for other powder but not this one", () => {
       const item = {
-        size: "M" as const,
+        size: "SMALL" as const,
         selected_powder_id: "powder-hana",
         menuItem: {
           name: "Test Latte",
@@ -123,7 +123,7 @@ describe("resolveEffectiveGram", () => {
 
     it("falls back to default for size XL even when powder has M/L overrides", () => {
       const item = {
-        size: "XL" as const,
+        size: "LARGE" as const,
         selected_powder_id: "powder-meyumi",
         menuItem: {
           name: "Test Latte",
@@ -141,13 +141,13 @@ describe("resolveEffectiveGram", () => {
   describe("Level 1 — custom_powder_grams (highest priority)", () => {
     it("uses custom_powder_grams when present, overriding both level 2 and 3", () => {
       const item = {
-        size: "M" as const,
+        size: "SMALL" as const,
         selected_powder_id: "powder-meyumi",
         menuItem: {
           name: "Test Latte",
           category: "latte",
           matcha_powder_id: "powder-meyumi",
-          custom_powder_grams: { M: 7, L: 9, XL: 12 },
+          custom_powder_grams: { SMALL: 7, MEDIUM: 9, LARGE: 12 },
         },
       };
       const result = resolveEffectiveGram(item, meyumiPowderSizes, defaultSizes);
@@ -156,13 +156,13 @@ describe("resolveEffectiveGram", () => {
 
     it("uses custom_powder_grams for L size", () => {
       const item = {
-        size: "L" as const,
+        size: "MEDIUM" as const,
         selected_powder_id: "powder-meyumi",
         menuItem: {
           name: "Test Latte",
           category: "latte",
           matcha_powder_id: "powder-meyumi",
-          custom_powder_grams: { M: 7, L: 9, XL: 12 },
+          custom_powder_grams: { SMALL: 7, MEDIUM: 9, LARGE: 12 },
         },
       };
       const result = resolveEffectiveGram(item, meyumiPowderSizes, defaultSizes);
@@ -171,13 +171,13 @@ describe("resolveEffectiveGram", () => {
 
     it("falls through to level 2 if custom_powder_grams exists but missing the size", () => {
       const item = {
-        size: "XL" as const,
+        size: "LARGE" as const,
         selected_powder_id: "powder-meyumi",
         menuItem: {
           name: "Test Latte",
           category: "latte",
           matcha_powder_id: "powder-meyumi",
-          custom_powder_grams: { M: 7 }, // only M defined
+          custom_powder_grams: { SMALL: 7 }, // only SMALL defined
         },
       };
       const result = resolveEffectiveGram(item, meyumiPowderSizes, defaultSizes);
@@ -190,7 +190,7 @@ describe("resolveEffectiveGram", () => {
     it("uses selected_powder_id when set (fusion scenario)", () => {
       // Fusion item: selected_powder_id may differ from matcha_powder_id
       const item = {
-        size: "M" as const,
+        size: "SMALL" as const,
         selected_powder_id: "powder-meyumi", // customer chose meyumi
         menuItem: {
           name: "Test Fusion",
@@ -206,7 +206,7 @@ describe("resolveEffectiveGram", () => {
     it("falls back to matcha_powder_id when selected_powder_id is null", () => {
       // Latte item: selected_powder_id is null, use matcha_powder_id
       const item = {
-        size: "M" as const,
+        size: "SMALL" as const,
         selected_powder_id: null,
         menuItem: {
           name: "Test Latte",
@@ -221,7 +221,7 @@ describe("resolveEffectiveGram", () => {
 
     it("returns 0 when both selected_powder_id and matcha_powder_id are null", () => {
       const item = {
-        size: "M" as const,
+        size: "SMALL" as const,
         selected_powder_id: null,
         menuItem: {
           name: "No Powder Item",
@@ -248,7 +248,7 @@ describe("buildReport", () => {
       {
         menu_item_id: "item-latte-1",
         quantity: 1,
-        size: "M",
+        size: "SMALL",
         selected_powder_id: null, // latte: server resolves, null here
         selected_milk_type_id: "milk-bo",
         menuItem: {
@@ -293,7 +293,7 @@ describe("buildReport", () => {
           {
             menu_item_id: "item-latte-1",
             quantity: 3, // 3 cups
-            size: "M",
+            size: "SMALL",
             selected_powder_id: null,
             selected_milk_type_id: "milk-bo",
             menuItem: {
@@ -339,7 +339,7 @@ describe("buildReport", () => {
           {
             menu_item_id: "item-latte-1",
             quantity: 2,
-            size: "M",
+            size: "SMALL",
             selected_powder_id: null,
             selected_milk_type_id: "milk-bo",
             menuItem: {
@@ -376,7 +376,7 @@ describe("buildReport", () => {
           {
             menu_item_id: "item-latte-2",
             quantity: 1,
-            size: "L",
+            size: "MEDIUM",
             selected_powder_id: null,
             selected_milk_type_id: "milk-bo",
             menuItem: {
@@ -409,7 +409,7 @@ describe("buildReport", () => {
           {
             menu_item_id: "item-latte-1",
             quantity: 1,
-            size: "M",
+            size: "SMALL",
             selected_powder_id: null,
             selected_milk_type_id: "milk-bo",
             menuItem: {
@@ -448,7 +448,7 @@ describe("buildReport", () => {
           {
             menu_item_id: "item-latte-1",
             quantity: 1,
-            size: "M",
+            size: "SMALL",
             selected_powder_id: null,
             selected_milk_type_id: "milk-bo",
             menuItem: {
@@ -481,10 +481,10 @@ describe("buildReport", () => {
 
     it("uses powder_size_config override when available", () => {
       const report = buildReport(
-        [singleLatteMOrder], // M size, meyumi
+        [singleLatteMOrder], // SMALL size, meyumi
         powders,
         milkTypes,
-        meyumiPowderSizes, // meyumi M = 5g
+        meyumiPowderSizes, // meyumi SMALL = 5g
         defaultSizes
       );
       const meyumi = report.powder_usage.find((p) => p.powder_name === "Meyumi");
@@ -508,14 +508,14 @@ describe("buildReport", () => {
   describe("milk_usage", () => {
     it("aggregates ml for latte items using default_size_config milk_ml", () => {
       const report = buildReport(
-        [singleLatteMOrder], // latte, M, milk-bo, qty=1
+        [singleLatteMOrder], // latte, SMALL, milk-bo, qty=1
         powders,
         milkTypes,
         noPowderSizes,
         defaultSizes
       );
       const bo = report.milk_usage.find((m) => m.milk_name === "Sữa bò");
-      expect(bo?.total_ml).toBe(130); // default M milk_ml = 130
+      expect(bo?.total_ml).toBe(130); // default SMALL milk_ml = 130
     });
 
     it("multiplies milk_ml by quantity", () => {
@@ -525,7 +525,7 @@ describe("buildReport", () => {
           {
             menu_item_id: "item-latte-1",
             quantity: 3,
-            size: "L",
+            size: "MEDIUM",
             selected_powder_id: null,
             selected_milk_type_id: "milk-bo",
             menuItem: {
@@ -550,7 +550,7 @@ describe("buildReport", () => {
           {
             menu_item_id: "item-latte-1",
             quantity: 1,
-            size: "M",
+            size: "SMALL",
             selected_powder_id: null,
             selected_milk_type_id: "milk-oat",
             menuItem: {
@@ -583,7 +583,7 @@ describe("buildReport", () => {
           {
             menu_item_id: "item-fusion-1",
             quantity: 2,
-            size: "L",
+            size: "MEDIUM",
             selected_powder_id: "powder-meyumi",
             selected_milk_type_id: null, // fusion: no milk
             menuItem: {
@@ -607,7 +607,7 @@ describe("buildReport", () => {
           {
             menu_item_id: "item-latte-1",
             quantity: 1,
-            size: "M",
+            size: "SMALL",
             selected_powder_id: null,
             selected_milk_type_id: null, // edge case
             menuItem: {
@@ -648,9 +648,9 @@ describe("buildReport", () => {
       );
       const latte = report.latte_sales[0];
       expect(latte.name).toBe("Premium Matcha Latte");
-      expect(latte.sizes.M).toBe(1);
-      expect(latte.sizes.L).toBe(0);
-      expect(latte.sizes.XL).toBe(0);
+      expect(latte.sizes.SMALL).toBe(1);
+      expect(latte.sizes.MEDIUM).toBe(0);
+      expect(latte.sizes.LARGE).toBe(0);
       expect(latte.total_cups).toBe(1);
     });
 
@@ -661,7 +661,7 @@ describe("buildReport", () => {
           {
             menu_item_id: "item-latte-1",
             quantity: 2,
-            size: "L",
+            size: "MEDIUM",
             selected_powder_id: null,
             selected_milk_type_id: "milk-bo",
             menuItem: {
@@ -682,8 +682,8 @@ describe("buildReport", () => {
         defaultSizes
       );
       const latte = report.latte_sales[0];
-      expect(latte.sizes.M).toBe(1);
-      expect(latte.sizes.L).toBe(2);
+      expect(latte.sizes.SMALL).toBe(1);
+      expect(latte.sizes.MEDIUM).toBe(2);
       expect(latte.total_cups).toBe(3);
     });
 
@@ -694,7 +694,7 @@ describe("buildReport", () => {
           {
             menu_item_id: "item-latte-2",
             quantity: 1,
-            size: "XL",
+            size: "LARGE",
             selected_powder_id: null,
             selected_milk_type_id: "milk-bo",
             menuItem: {
@@ -728,7 +728,7 @@ describe("buildReport", () => {
         {
           menu_item_id: "item-fusion-1",
           quantity: 2,
-          size: "M",
+          size: "SMALL",
           selected_powder_id: "powder-meyumi",
           selected_milk_type_id: null,
           menuItem: {
@@ -764,9 +764,9 @@ describe("buildReport", () => {
       );
       const fusion = report.fusion_sales[0];
       expect(fusion.name).toBe("Matcha Kem Dừa");
-      expect(fusion.sizes.M).toBe(2);
-      expect(fusion.sizes.L).toBe(0);
-      expect(fusion.sizes.XL).toBe(0);
+      expect(fusion.sizes.SMALL).toBe(2);
+      expect(fusion.sizes.MEDIUM).toBe(0);
+      expect(fusion.sizes.LARGE).toBe(0);
       expect(fusion.total_cups).toBe(2);
     });
   });
@@ -779,7 +779,7 @@ describe("buildReport", () => {
           {
             menu_item_id: "item-latte-1",
             quantity: 1,
-            size: "M",
+            size: "SMALL",
             selected_powder_id: null,
             selected_milk_type_id: "milk-bo",
             menuItem: {
@@ -793,7 +793,7 @@ describe("buildReport", () => {
           {
             menu_item_id: "item-fusion-1",
             quantity: 1,
-            size: "L",
+            size: "MEDIUM",
             selected_powder_id: "powder-meyumi",
             selected_milk_type_id: null,
             menuItem: {

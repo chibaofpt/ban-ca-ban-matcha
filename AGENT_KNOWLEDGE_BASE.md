@@ -45,8 +45,11 @@ Read this document entirely before starting any work.
 
 - Do not open browser or run `npm run dev` / `npm run build` after changes
 - After completing a task: write code, save file, stop
-- DB sync: `npx prisma db push; npx prisma generate` — agent may run this automatically
-- Do not use `migrate dev` — incompatible with pgBouncer
+- Daily dev: `npm run migrate:dev` — agent may run automatically
+- Do not use `db push` — it breaks Prisma migration history.
+- Pre-release: Commit `prisma/migrations` folder to git.
+- Production deploy: `prisma migrate deploy` (in Vercel build command) — reads committed migration files.
+- Env structure: `.env` / `.env.staging` / `.env.prod` / `.env.local` are gitignored. Use `.env.local.example` as template.
 - When modifying business logic: check if the relevant skill needs updating
 
 ---
@@ -106,6 +109,7 @@ Read this document entirely before starting any work.
 - No Redis, no OTP, no Zalo ZNS until Phase 5
 - 1 🐟 = 1,000 VND — DB stores integer VND only
 - Timing-safe: always run bcrypt compare even if user not found
+- **Adapter/Wrapper Pattern**: All external services (Supabase Storage, Realtime, etc.) MUST be isolated using wrappers (e.g., pure TS functions in `lib/` or custom hooks in `hooks/`). Never import `@supabase/supabase-js` or other 3rd-party SDKs directly into UI components.
 
 ---
 
@@ -127,6 +131,85 @@ Read this document entirely before starting any work.
 # Bạn Cá Bán Matcha — Database Schema
 
 > Read this file for any Prisma schema, migration, or DB-level task.
+> All schema design decisions are in the Decision Log in `AGENTS.md` — do not re-litigate here.
+
+---
+
+## Currency & Units
+
+| Unit | Value | Notes |
+|---|---|---|
+| 1 🐟 | 1,000 VND | Frontend display unit |
+| 1 point | 10,000 VND | Loyalty unit |
+| Points formula | `floor(total_vnd / 10000)` | Earned on COMPLETED |
+| Manual add cap | 100 points/action | ADMIN only |
+| Gram quantities | Prisma `Decimal` | Never use Float for grams |
+
+> All money stored as **integers in VND. Never floats.**
+> Grams stored as **Prisma Decimal** — not money, not Float.
+
+---
+
+## Enums
+
+| Enum | Values |
+|---|---|
+| `Role` | `CUSTOMER`, `STAFF`, `ADMIN` |
+| `VoucherType` | `DISCOUNT`, `PRODUCT`, `ADDON`, `FREESHIP` |
+| `DiscountType` | `PERCENT`, `FIXED` |
+| `VoucherStatus` | `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, `REFUNDED` |
+| `UsedChannel` | `ONLINE`, `OFFLINE` |
+| `OrderStatus` | `PENDING`, `ADMIN_CONFIRMED`, `STAFF_DONE`, `COMPLETED`, `CANCELLED` |
+| `OrderType` | `COUNTER`, `PICKUP`, `DELIVERY` |
+| `AddonType` | `SELECTOR`, `TOGGLE`, `QUANTITY` |
+| `SweetnessLevel` | `NONE`, `QUARTER`, `HALF`, `THREE_QUARTER`, `FULL`, `EXTRA` |
+| `Size` | `M`, `L`, `XL` |
+| `PowderType` | `RECOMMEND`, `NEW`, `SEASONAL`, `NONE` |
+| `IceOption` | `NORMAL`, `LESS_ICE`, `NO_ICE`, `SEPARATE_ICE` |
+
+---
+
+## Sweetness Mapping
+
+| Display Label | Enum Value | Default |
+|---|---|---|
+| 0% | `NONE` | |
+| 25% | `QUARTER` | |
+| 50% | `HALF` | |
+| 75% | `THREE_QUARTER` | |
+| 100% | `FULL` | ✅ |
+| 120% | `EXTRA` | |
+
+## Ice Option Mapping
+
+`NORMAL` is the default — not shown in UI selector.
+
+| Display Label | Enum Value | Default |
+|---|---|---|
+| (có đá — ẩn) | `NORMAL` | ✅ |
+| Ít đá | `LESS_ICE` | |
+| Không đá | `NO_ICE` | |
+| Đá riêng | `SEPARATE_ICE` | |
+
+---
+
+## Tables (19 total — 2 are Phase 5 only)
+
+---
+
+### users
+- `id` uuid PK
+- `name` string
+- `phone_number` string UK — normalized to +84 before storage
+- `password_hash` string — bcryptjs cost 12. Ghost user = `"GHOST_USER_NO_PASSWORD"`
+- `role` Role — default `CUSTOMER`
+- `points_balance` int — default 0
+- `qr_token` string UK — UUID, encoded in QR, NEVER expose `id`
+- `otp_enabled` bool — default false, Phase 5
+- `created_at` timestamp
+- `updated_at` timestamp
+
+---
 
 ### sessions
 - `id` uuid PK
@@ -524,9 +607,9 @@ app/                              # Next.js App Router — entry points only, ze
         layout.tsx                # MenuSubTabs wrapper (renders sub-tab bar)
         page.tsx                  # → src/views/admin/AdminMenuPage
         powders/page.tsx          # → src/views/admin/AdminPowderPage
-        addons/page.tsx           # Placeholder — Addon Groups CRUD (future)
-        milk-types/page.tsx       # Placeholder — Milk Types CRUD (future)
-      voucher-packages/page.tsx   # → src/views/admin/AdminVoucherPackagesPage
+        addons/page.tsx           # → src/views/admin/AdminAddonsPage
+        milk-types/page.tsx       # → src/views/admin/AdminMilkTypesPage
+        voucher-packages/page.tsx # → src/views/admin/AdminVoucherPackagesPage
       points-log/page.tsx         # → src/views/admin/AdminPointsLogPage
     staff/                        # STAFF or ADMIN
       orders/page.tsx             # → src/views/staff/StaffOrdersPage
@@ -588,6 +671,8 @@ src/                              # Frontend — never import lib/ from here
       AdminMenuPage.tsx
       AdminVoucherPackagesPage.tsx
       AdminPointsLogPage.tsx
+      AdminMilkTypesPage.tsx
+      AdminAddonsPage.tsx
     staff/
       StaffOrdersPage.tsx
       StaffOrdersListPage.tsx
@@ -620,6 +705,11 @@ src/                              # Frontend — never import lib/ from here
       PointsLogTable.tsx
       PowderForm.tsx
       MilkTypeForm.tsx
+      MilkTypeCard.tsx
+      MilkTypeModal.tsx
+      AddonGroupForm.tsx
+      AddonGroupCard.tsx
+      AddonGroupModal.tsx
       SizeConfigForm.tsx
       StoreSettingsModal.tsx          # Admin modal: weekly schedule + temporary closure
     staff/
@@ -639,6 +729,7 @@ src/                              # Frontend — never import lib/ from here
     adminMenuService.ts
     adminPowderService.ts         # CRUD /api/admin/matcha-powders
     adminMilkTypeService.ts       # CRUD /api/admin/milk-types
+    adminAddonService.ts          # CRUD /api/admin/addon-groups
     adminSizeConfigService.ts     # GET/PUT /api/admin/default-size-config
     adminVoucherService.ts
     adminStoreService.ts          # GET/PUT schedule, POST closure toggle
@@ -1803,6 +1894,10 @@ Counter orders:   COMPLETED (immediate — no intermediate states)
 - COUNTER orders **bypass** the store-closed check.
 - Schedule edits: `PUT /api/admin/store-schedule` sends full week, server does `deleteMany + createMany` in one transaction.
 
+### Store Settings UI Specs
+- **Admin modal**: icon ⚙️ in top bar (ADMIN only) → `StoreSettingsModal` — 2 sections: weekly schedule + temporary closure with optional customer note.
+- **Customer banner on homepage**: amber banner, dismissible, shown when `is_open = false`.
+
 
 ## ==========================================================
 ## CONTENT FROM: .agents/skills/pricing-logic/SKILL.md
@@ -1866,6 +1961,7 @@ Premium_Latte[size] = BaseLatte[selected_powder][size] − BaseLatte[default_pow
 ```
 - Looked up via `matcha_powder.reference_latte_item_id` → the Latte item that anchors this powder's price.
 - If `reference_latte_item_id IS NULL` → `Premium_Latte = 0` (safe fallback, favors customer).
+  - **Important Database Rule**: The schema uses `SET NULL` on hard delete of the referenced item. However, since we strictly soft-delete Latte items, soft-deleting a Latte item **does NOT** set `reference_latte_item_id` to NULL. The reference remains intact.
 - Preload all referenced Latte item sizes upfront to avoid N+1.
 
 ### Rounding
@@ -1901,6 +1997,7 @@ For each item + size, resolve grams in this order:
 ## Addon Pricing
 
 - `addon_options.price_vnd` is global — changing it affects all items immediately.
+- **No Per-Item Addon Override**: If addon behavior or availability needs to differ per item (e.g., "Item A doesn't allow Extra Matcha"), do NOT create junction tables or flag columns. The correct pattern is to **create a new addon group** and assign it to the item.
 - **Extra matcha** is special:
   - `price_vnd = 0` in DB (placeholder).
   - Actual price = `addon_option.gram_value × selected_powder.price_per_gram`.

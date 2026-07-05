@@ -198,12 +198,12 @@ describe("getVoucherBenefitText", () => {
   it("PRODUCT với menuItem → tên sản phẩm + size", () => {
     const v = makeVoucher({
       voucher_type: "PRODUCT",
-      size: "L",
+      size: "MEDIUM",
       menuItem: { name: "Trà Xanh Sữa", is_available: true },
     });
     const text = getVoucherBenefitText(v);
     expect(text).toContain("Trà Xanh Sữa");
-    expect(text).toContain("L");
+    expect(text).toContain("MEDIUM");
     expect(text).toContain("miễn phí");
   });
 

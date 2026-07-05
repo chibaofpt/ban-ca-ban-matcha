@@ -21,7 +21,7 @@ export interface VoucherPackage {
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
   menu_item_id: string | null;
-  size: "M" | "L" | "XL" | null;
+  size: "SMALL" | "MEDIUM" | "LARGE" | null;
   matcha_powder_id: string | null;
   milk_type_id: string | null;
   included_addon_option_ids: string[];
@@ -48,7 +48,7 @@ export interface MyVoucher {
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
   menu_item_id: string | null;
-  size: "M" | "L" | "XL" | null;
+  size: "SMALL" | "MEDIUM" | "LARGE" | null;
   /** For PRODUCT vouchers — the powder used in the snapshot config. */
   matcha_powder_id: string | null;
   /** For PRODUCT vouchers — the milk type used in the snapshot config. */

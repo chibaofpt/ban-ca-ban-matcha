@@ -11,7 +11,7 @@ const inlinePowderSchema = z.object({
   size_config: z
     .array(
       z.object({
-        size: z.enum(["M", "L", "XL"]),
+        size: z.enum(["SMALL", "MEDIUM", "LARGE"]),
         grams: z.number().positive(),
       })
     )
@@ -20,7 +20,7 @@ const inlinePowderSchema = z.object({
 });
 
 const sizeRowSchema = z.object({
-  size: z.enum(["M", "L", "XL"]),
+  size: z.enum(["SMALL", "MEDIUM", "LARGE"]),
   base_price_vnd: z.number().int().min(0).nullable(),
 });
 
@@ -30,16 +30,16 @@ const sizesSchema = z
   .refine(
     (sizes) => {
       const keys = new Set(sizes.map((s) => s.size));
-      return keys.has("M") && keys.has("L") && keys.has("XL");
+      return keys.has("SMALL") && keys.has("MEDIUM") && keys.has("LARGE");
     },
-    { message: "Phải có đủ 3 size M, L, XL" }
+    { message: "Phải có đủ 3 size SMALL, MEDIUM, LARGE" }
   );
 
 const customPowderGramsSchema = z
   .object({
-    M: z.number().positive().optional(),
-    L: z.number().positive().optional(),
-    XL: z.number().positive().optional(),
+    SMALL: z.number().positive().optional(),
+    MEDIUM: z.number().positive().optional(),
+    LARGE: z.number().positive().optional(),
   })
   .nullable()
   .optional();

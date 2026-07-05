@@ -26,9 +26,9 @@ const mockLatteItem: MenuItem = {
   allowed_powder_ids: [],
   milk_types: [],
   sizes: [
-    { size: "M", base_price_vnd: 45000, milk_ml: 180 },
-    { size: "L", base_price_vnd: 55000, milk_ml: 220 },
-    { size: "XL", base_price_vnd: 65000, milk_ml: 260 },
+    { size: "SMALL", base_price_vnd: 45000, milk_ml: 180 },
+    { size: "MEDIUM", base_price_vnd: 55000, milk_ml: 220 },
+    { size: "LARGE", base_price_vnd: 65000, milk_ml: 260 },
   ],
   addon_groups: [],
 };
@@ -48,9 +48,9 @@ const mockFusionItem: MenuItem = {
   allowed_powder_ids: ["powder-1", "powder-2"],
   milk_types: [],
   sizes: [
-    { size: "M", base_price_vnd: 50000, milk_ml: 0 },
-    { size: "L", base_price_vnd: 60000, milk_ml: 0 },
-    { size: "XL", base_price_vnd: 70000, milk_ml: 0 },
+    { size: "SMALL", base_price_vnd: 50000, milk_ml: 0 },
+    { size: "MEDIUM", base_price_vnd: 60000, milk_ml: 0 },
+    { size: "LARGE", base_price_vnd: 70000, milk_ml: 0 },
   ],
   addon_groups: [],
 };
@@ -112,7 +112,7 @@ describe("fetchMenuItems", () => {
 
     expect(latte).toBeDefined();
     expect(latte!.sizes).toHaveLength(3);
-    expect(latte!.sizes.map((s) => s.size)).toEqual(["M", "L", "XL"]);
+    expect(latte!.sizes.map((s) => s.size)).toEqual(["SMALL", "MEDIUM", "LARGE"]);
     expect(latte!.sizes[1].base_price_vnd).toBe(55000);
     expect(latte!.sizes[1].milk_ml).toBe(220);
   });

@@ -30,7 +30,7 @@ interface VoucherPackageForm {
   discount_value: number | "";
   // PRODUCT fields
   menu_item_id: string;
-  size: "M" | "L" | "XL";
+  size: "SMALL" | "MEDIUM" | "LARGE";
   matcha_powder_id: string;
   milk_type_id: string;
   // ADDON fields
@@ -52,7 +52,7 @@ const emptyForm: VoucherPackageForm = {
   discount_type: "PERCENT",
   discount_value: "",
   menu_item_id: "",
-  size: "M",
+  size: "SMALL",
   matcha_powder_id: "",
   milk_type_id: "",
   addon_option_id: "",
@@ -189,7 +189,7 @@ export default function AdminVoucherPackagesPage() {
       discount_type: pkg.discount_type || "PERCENT",
       discount_value: pkg.discount_value ?? "",
       menu_item_id: pkg.menu_item_id || menuItems[0]?.id || "",
-      size: pkg.size || "M",
+      size: pkg.size || "SMALL",
       matcha_powder_id: pkg.matcha_powder_id || "",
       milk_type_id: pkg.milk_type_id || "",
       addon_option_id: pkg.addon_option_id || uniqueAddonOptions[0]?.id || "",
@@ -740,12 +740,12 @@ export default function AdminVoucherPackagesPage() {
                         <label className="text-sm font-medium text-foreground">Chọn Size</label>
                         <select
                           value={form.size}
-                          onChange={(e) => setForm({ ...form, size: e.target.value as "M" | "L" | "XL" })}
+                          onChange={(e) => setForm({ ...form, size: e.target.value as "SMALL" | "MEDIUM" | "LARGE" })}
                           className="rounded-xl border border-border bg-background px-3 py-2 text-sm w-full mt-1"
                         >
-                          <option value="M">Size M</option>
-                          <option value="L">Size L</option>
-                          <option value="XL">Size XL</option>
+                          <option value="SMALL">Size SMALL</option>
+                          <option value="MEDIUM">Size MEDIUM</option>
+                          <option value="LARGE">Size LARGE</option>
                         </select>
                       </div>
                     </div>

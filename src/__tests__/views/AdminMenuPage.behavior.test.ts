@@ -38,9 +38,9 @@ const mockLatteItem: AdminMenuItem = {
   resolved_default_powder_id: null,
   allowed_powder_ids: [],
   sizes: [
-    { size: "M", base_price_vnd: 45000, milk_ml: 180 },
-    { size: "L", base_price_vnd: 55000, milk_ml: 220 },
-    { size: "XL", base_price_vnd: 65000, milk_ml: 260 },
+    { size: "SMALL", base_price_vnd: 45000, milk_ml: 180 },
+    { size: "MEDIUM", base_price_vnd: 55000, milk_ml: 220 },
+    { size: "LARGE", base_price_vnd: 65000, milk_ml: 260 },
   ],
 } as any;
 

@@ -8,7 +8,7 @@ export function line1ItemDetails(item: CartItem, menuItem?: MenuItem, powders?: 
   const chips: string[] = [];
   
   // Size
-  const sizeLabel = item.size === "M" ? "cá nhỏ (360ml)" : item.size === "L" ? "cá vừa (500ml)" : "cá lớn (1000ml)";
+  const sizeLabel = item.size === "SMALL" ? "cá nhỏ (360ml)" : item.size === "MEDIUM" ? "cá vừa (500ml)" : "cá lớn (1000ml)";
   chips.push(sizeLabel);
 
   if (!menuItem) return chips;

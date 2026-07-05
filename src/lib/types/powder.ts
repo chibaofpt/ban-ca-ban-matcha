@@ -1,6 +1,6 @@
 /** Full powder entry — used by GET /api/powders and powderStore. */
 export interface PowderSizeConfigEntry {
-  size: "M" | "L" | "XL";
+  size: "SMALL" | "MEDIUM" | "LARGE";
   grams: number;
 }
 
@@ -25,9 +25,9 @@ export interface Powder {
   size_config: PowderSizeConfigEntry[];
 }
 
-/** System-wide size fallback (COALESCE level 3). Always 3 entries: M, L, XL. */
+/** System-wide size fallback (COALESCE level 3). Always 3 entries: SMALL, MEDIUM, LARGE. */
 export interface DefaultPowderGram {
-  size: "M" | "L" | "XL";
+  size: "SMALL" | "MEDIUM" | "LARGE";
   grams: number;
 }
 

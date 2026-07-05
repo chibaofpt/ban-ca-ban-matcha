@@ -8,7 +8,7 @@ export interface RawOrderItem {
   /** FK to menu_items.id */
   menu_item_id: string;
   quantity: number;
-  size: "M" | "L" | "XL";
+  size: "SMALL" | "MEDIUM" | "LARGE";
   /** null for Latte items (server resolves to matcha_powder_id) */
   selected_powder_id: string | null;
   /** null for Fusion items */
@@ -43,12 +43,12 @@ export interface PowderConfig {
 
 export interface PowderSizeEntry {
   powder_id: string;
-  size: "M" | "L" | "XL";
+  size: "SMALL" | "MEDIUM" | "LARGE";
   grams: number;
 }
 
 export interface DefaultSizeEntry {
-  size: "M" | "L" | "XL";
+  size: "SMALL" | "MEDIUM" | "LARGE";
   milk_ml: number;
   powder_gram: number;
 }
@@ -80,7 +80,7 @@ export interface MilkUsage {
 
 export interface ItemSales {
   name: string;
-  sizes: { M: number; L: number; XL: number };
+  sizes: { SMALL: number; MEDIUM: number; LARGE: number };
   total_cups: number;
 }
 
@@ -157,7 +157,7 @@ export function buildReport(
   /** menu_item_id → { name, category, sizes } */
   const salesMap = new Map<
     string,
-    { name: string; category: string; sizes: { M: number; L: number; XL: number } }
+    { name: string; category: string; sizes: { SMALL: number; MEDIUM: number; LARGE: number } }
   >();
 
   for (const order of orders) {
@@ -204,9 +204,9 @@ export function buildReport(
           name: item.menuItem.name,
           category: item.menuItem.category,
           sizes: {
-            M: item.size === "M" ? qty : 0,
-            L: item.size === "L" ? qty : 0,
-            XL: item.size === "XL" ? qty : 0,
+            SMALL: item.size === "SMALL" ? qty : 0,
+            MEDIUM: item.size === "MEDIUM" ? qty : 0,
+            LARGE: item.size === "LARGE" ? qty : 0,
           },
         });
       }
@@ -232,7 +232,7 @@ export function buildReport(
   const latteSales: ItemSales[] = [];
   const fusionSales: ItemSales[] = [];
   for (const [, { name, category, sizes }] of salesMap) {
-    const totalCupsItem = sizes.M + sizes.L + sizes.XL;
+    const totalCupsItem = sizes.SMALL + sizes.MEDIUM + sizes.LARGE;
     const entry: ItemSales = { name, sizes, total_cups: totalCupsItem };
     if (category === "latte") {
       latteSales.push(entry);

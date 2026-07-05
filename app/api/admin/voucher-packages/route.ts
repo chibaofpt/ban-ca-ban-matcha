@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 
 // ── Validation schema ─────────────────────────────────────────────────────────
 
-const sizeEnum = z.enum(["M", "L", "XL"]);
+const sizeEnum = z.enum(["SMALL", "MEDIUM", "LARGE"]);
 
 /** Common quantity/limit fields for all package types. */
 const quantityFields = {
@@ -241,7 +241,7 @@ export async function POST(req: NextRequest) {
 
         // Compute Premium_Latte for non-default powder
         if (default_powder_id && powder_id !== default_powder_id) {
-          premium_latte = await resolveOrderItemPremiumLatte(powder_id, default_powder_id, data.size as "M" | "L" | "XL");
+          premium_latte = await resolveOrderItemPremiumLatte(powder_id, default_powder_id, data.size);
         }
       }
 
@@ -250,7 +250,7 @@ export async function POST(req: NextRequest) {
       const drink_price = resolveOrderItemPrice(
         {
           category: menuItem.category as "latte" | "fusion",
-          size: data.size as "M" | "L" | "XL",
+          size: data.size,
           base_price_vnd: sizeRow.base_price_vnd,
           custom_powder_grams: menuItem.custom_powder_grams as Record<string, number> | null,
           powder_id,

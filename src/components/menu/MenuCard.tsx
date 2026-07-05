@@ -16,9 +16,9 @@ interface MenuCardProps {
 }
 
 const SIZE_CARD_LABELS: Record<string, string> = {
-  M: "Cá Con",
-  L: "Cá Vừa",
-  XL: "Cá Lớn",
+  SMALL: "Cá Con",
+  MEDIUM: "Cá Vừa",
+  LARGE: "Cá Lớn",
 };
 
 const MenuCard: React.FC<MenuCardProps> = ({ item, onClick, priority }) => {
@@ -60,7 +60,7 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick, priority }) => {
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation();
     
-    const sizeObj = sizes.find(s => s.size === 'L') ?? sizes[0];
+    const sizeObj = sizes.find(s => s.size === 'MEDIUM') ?? sizes[0];
     if (!sizeObj) return;
     
     const size = sizeObj.size;
@@ -181,9 +181,9 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick, priority }) => {
 
         {/* Sizes & Prices */}
         <div className="mt-auto pt-2 grid grid-cols-4 items-end w-full">
-          {['M', 'L', 'XL'].map((sizeKey) => {
+          {(['SMALL', 'MEDIUM', 'LARGE'] as const).map((sizeKey) => {
             const s = sizes.find(s => s.size === sizeKey);
-            const isDefault = sizeKey === 'L';
+            const isDefault = sizeKey === 'MEDIUM';
             
             if (!s) {
               return <div key={sizeKey}></div>;

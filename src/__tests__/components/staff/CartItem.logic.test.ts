@@ -27,7 +27,7 @@ function makeCartItem(overrides: Partial<CartItem> = {}): CartItem {
     name: "Matcha Latte",
     category: "latte",
     imageUrl: null,
-    size: "L",
+    size: "MEDIUM",
     unitPrice: 55000,
     quantity: 1,
     sweetness: "QUARTER",
@@ -55,12 +55,12 @@ describe("addToCart — không merge", () => {
   });
 
   it("add item khác config → 2 hàng riêng", () => {
-    const item1 = makeCartItem({ cartId: "c1", size: "M", unitPrice: 45000 });
-    const item2 = makeCartItem({ cartId: "c2", size: "L", unitPrice: 55000 });
+    const item1 = makeCartItem({ cartId: "c1", size: "SMALL", unitPrice: 45000 });
+    const item2 = makeCartItem({ cartId: "c2", size: "MEDIUM", unitPrice: 55000 });
     const cart = addToCart(addToCart([], item1), item2);
     expect(cart).toHaveLength(2);
-    expect(cart[0].size).toBe("M");
-    expect(cart[1].size).toBe("L");
+    expect(cart[0].size).toBe("SMALL");
+    expect(cart[1].size).toBe("MEDIUM");
   });
 });
 

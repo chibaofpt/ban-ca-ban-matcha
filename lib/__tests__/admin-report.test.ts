@@ -1,11 +1,11 @@
-/**
- * Tests for GET /api/admin/report — Admin-only full report endpoint.
+﻿/**
+ * Tests for GET /api/admin/report â€” Admin-only full report endpoint.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-// ── Mocks declared before imports ─────────────────────────────────────────
+// â”€â”€ Mocks declared before imports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const mockGetSession = vi.fn();
 
@@ -39,11 +39,11 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-// ── Import AFTER mocks ─────────────────────────────────────────────────────
+// â”€â”€ Import AFTER mocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import { GET } from "@/app/api/admin/report/route";
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function makeReq(params: Record<string, string>): NextRequest {
   const url = new URL("http://localhost/api/admin/report");
@@ -57,21 +57,21 @@ const staffSession = { id: "staff-id", role: "STAFF", name: "Staff" };
 // Common mock data
 const defaultParams = { startDate: "2026-06-01", endDate: "2026-06-20" };
 
-// ── Tests ──────────────────────────────────────────────────────────────────
+// â”€â”€ Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-describe("GET /api/admin/report — quyền truy cập", () => {
+describe("GET /api/admin/report â€” quyá»n truy cáº­p", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDefaultSizeConfigFindMany.mockResolvedValue([
-      { size: "M", milk_ml: 200, powder_gram: { toNumber: () => 4 } },
+      { size: "SMALL", milk_ml: 200, powder_gram: { toNumber: () => 4 } },
     ]);
     mockPowderSizeConfigFindMany.mockResolvedValue([]);
     mockMatchaPowderFindMany.mockResolvedValue([{ id: "p1", name: "Meyumi" }]);
-    mockMilkTypeFindMany.mockResolvedValue([{ id: "m1", name: "Sữa bò" }]);
+    mockMilkTypeFindMany.mockResolvedValue([{ id: "m1", name: "Sá»¯a bÃ²" }]);
     mockOrderFindMany.mockResolvedValue([]);
   });
 
-  it("trả 401 khi chưa đăng nhập", async () => {
+  it("tráº£ 401 khi chÆ°a Ä‘Äƒng nháº­p", async () => {
     mockGetSession.mockResolvedValue(null);
 
     const res = await GET(makeReq(defaultParams));
@@ -81,7 +81,7 @@ describe("GET /api/admin/report — quyền truy cập", () => {
     expect(body.code).toBe("UNAUTHORIZED");
   });
 
-  it("Staff gọi → 403 FORBIDDEN", async () => {
+  it("Staff gá»i â†’ 403 FORBIDDEN", async () => {
     mockGetSession.mockResolvedValue(staffSession);
 
     const res = await GET(makeReq(defaultParams));
@@ -91,7 +91,7 @@ describe("GET /api/admin/report — quyền truy cập", () => {
     expect(body.code).toBe("FORBIDDEN");
   });
 
-  it("trả 400 khi thiếu startDate", async () => {
+  it("tráº£ 400 khi thiáº¿u startDate", async () => {
     mockGetSession.mockResolvedValue(adminSession);
 
     const res = await GET(makeReq({ endDate: "2026-06-20" }));
@@ -101,7 +101,7 @@ describe("GET /api/admin/report — quyền truy cập", () => {
     expect(body.code).toBe("VALIDATION_ERROR");
   });
 
-  it("trả 400 khi thiếu endDate", async () => {
+  it("tráº£ 400 khi thiáº¿u endDate", async () => {
     mockGetSession.mockResolvedValue(adminSession);
 
     const res = await GET(makeReq({ startDate: "2026-06-01" }));
@@ -112,19 +112,19 @@ describe("GET /api/admin/report — quyền truy cập", () => {
   });
 });
 
-describe("GET /api/admin/report — Admin nhận full report", () => {
+describe("GET /api/admin/report â€” Admin nháº­n full report", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSession.mockResolvedValue(adminSession);
     mockDefaultSizeConfigFindMany.mockResolvedValue([
-      { size: "M", milk_ml: 200, powder_gram: { toNumber: () => 4 } },
+      { size: "SMALL", milk_ml: 200, powder_gram: { toNumber: () => 4 } },
     ]);
     mockPowderSizeConfigFindMany.mockResolvedValue([]);
     mockMatchaPowderFindMany.mockResolvedValue([{ id: "p1", name: "Meyumi" }]);
-    mockMilkTypeFindMany.mockResolvedValue([{ id: "m1", name: "Sữa bò" }]);
+    mockMilkTypeFindMany.mockResolvedValue([{ id: "m1", name: "Sá»¯a bÃ²" }]);
   });
 
-  it("Admin nhận full report — trả 200 với structure đúng (addon_usage, revenue_by_type, top_products)", async () => {
+  it("Admin nháº­n full report â€” tráº£ 200 vá»›i structure Ä‘Ãºng (addon_usage, revenue_by_type, top_products)", async () => {
     mockOrderFindMany.mockResolvedValue([
       {
         total_vnd: 69_000,
@@ -133,7 +133,7 @@ describe("GET /api/admin/report — Admin nhận full report", () => {
           {
             menu_item_id: "item-1",
             quantity: 1,
-            size: "M",
+            size: "SMALL",
             selected_powder_id: null,
             selected_milk_type_id: "m1",
             menuItem: {
@@ -146,7 +146,7 @@ describe("GET /api/admin/report — Admin nhận full report", () => {
               {
                 quantity: 1,
                 unit_price_vnd: 0,
-                addonOption: { label: "Nửa viên kem", group: { name: "Kem" }, gram_value: null },
+                addonOption: { label: "Ná»­a viÃªn kem", group: { name: "Kem" }, gram_value: null },
               },
             ],
           },
@@ -176,10 +176,10 @@ describe("GET /api/admin/report — Admin nhận full report", () => {
     expect(body.data.top_products).toBeInstanceOf(Array);
   });
 
-  it("Admin lọc theo staffId — truyền handled_by filter xuống prisma query", async () => {
+  it("Admin lá»c theo staffId â€” truyá»n handled_by filter xuá»‘ng prisma query", async () => {
     mockOrderFindMany.mockResolvedValue([]);
 
-    // staffId phải là UUID hợp lệ (Zod validation)
+    // staffId pháº£i lÃ  UUID há»£p lá»‡ (Zod validation)
     await GET(makeReq({ ...defaultParams, staffId: "550e8400-e29b-41d4-a716-446655440000" }));
 
     const findManyCall = mockOrderFindMany.mock.calls[0]?.[0];
@@ -187,7 +187,7 @@ describe("GET /api/admin/report — Admin nhận full report", () => {
   });
 
 
-  it("Admin không truyền staffId → không có handled_by filter", async () => {
+  it("Admin khÃ´ng truyá»n staffId â†’ khÃ´ng cÃ³ handled_by filter", async () => {
     mockOrderFindMany.mockResolvedValue([]);
 
     await GET(makeReq(defaultParams));
@@ -196,7 +196,7 @@ describe("GET /api/admin/report — Admin nhận full report", () => {
     expect(findManyCall?.where?.handled_by).toBeUndefined();
   });
 
-  it("trả về revenue_by_type với đúng COUNTER total", async () => {
+  it("tráº£ vá» revenue_by_type vá»›i Ä‘Ãºng COUNTER total", async () => {
     mockOrderFindMany.mockResolvedValue([
       { total_vnd: 69_000, order_type: "COUNTER", items: [] },
       { total_vnd: 55_000, order_type: "COUNTER", items: [] },
@@ -212,7 +212,7 @@ describe("GET /api/admin/report — Admin nhận full report", () => {
     expect(counter?.order_count).toBe(2);
   });
 
-  it("trả về top_products sorted descending theo số ly", async () => {
+  it("tráº£ vá» top_products sorted descending theo sá»‘ ly", async () => {
     mockOrderFindMany.mockResolvedValue([
       {
         total_vnd: 100_000,
@@ -221,19 +221,19 @@ describe("GET /api/admin/report — Admin nhận full report", () => {
           {
             menu_item_id: "item-a",
             quantity: 3,
-            size: "M",
+            size: "SMALL",
             selected_powder_id: null,
             selected_milk_type_id: "m1",
-            menuItem: { name: "Sản phẩm A", category: "latte", matcha_powder_id: "p1", custom_powder_grams: null },
+            menuItem: { name: "Sáº£n pháº©m A", category: "latte", matcha_powder_id: "p1", custom_powder_grams: null },
             addons: [],
           },
           {
             menu_item_id: "item-b",
             quantity: 10,
-            size: "L",
+            size: "MEDIUM",
             selected_powder_id: "p1",
             selected_milk_type_id: null,
-            menuItem: { name: "Sản phẩm B", category: "fusion", matcha_powder_id: null, custom_powder_grams: null },
+            menuItem: { name: "Sáº£n pháº©m B", category: "fusion", matcha_powder_id: null, custom_powder_grams: null },
             addons: [],
           },
         ],
@@ -243,9 +243,9 @@ describe("GET /api/admin/report — Admin nhận full report", () => {
     const res = await GET(makeReq(defaultParams));
     const body = await res.json();
 
-    expect(body.data.top_products[0].name).toBe("Sản phẩm B");
+    expect(body.data.top_products[0].name).toBe("Sáº£n pháº©m B");
     expect(body.data.top_products[0].total_cups).toBe(10);
-    expect(body.data.top_products[1].name).toBe("Sản phẩm A");
+    expect(body.data.top_products[1].name).toBe("Sáº£n pháº©m A");
     expect(body.data.top_products[1].total_cups).toBe(3);
   });
 });
