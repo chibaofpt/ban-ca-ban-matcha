@@ -145,22 +145,21 @@ export async function GET(req: NextRequest) {
       await Promise.all(
         expiredOrders.map(async (order) => {
           try {
-            await prisma.$transaction(
+            const wasCancelled = await prisma.$transaction(
               async (tx) => {
-                const check = await tx.order.findUnique({
-                  where: { id: order.id },
-                  select: { status: true },
-                });
-                if (check?.status !== "PENDING") return; // race-safe: already handled
-                await tx.order.update({
-                  where: { id: order.id },
+                const claim = await tx.order.updateMany({
+                  where: { id: order.id, status: "PENDING" },
                   data: { status: "CANCELLED" },
                 });
+                if (claim.count !== 1) return false;
                 await restoreVouchersOnCancel(tx, order.id);
+                return true;
               },
               { maxWait: 5000, timeout: 10000 }
             );
-            order.status = "CANCELLED"; // update in-memory for response
+            if (wasCancelled) {
+              order.status = "CANCELLED"; // update in-memory for response
+            }
           } catch (err) {
             console.error(`[GET /api/admin/orders lazy-cancel] Failed for order ${order.id}:`, err);
           }

@@ -154,7 +154,7 @@ describe.skip("Menu Pricing Integration", () => {
       });
 
       // Addon: nửa viên kem
-      const kemPrice = findAddonPrice(item.addon_groups, "kem", "nửa");
+      const kemPrice = findAddonPrice(menuData.addon_groups, "kem", "nửa");
 
       const total = basePrice + kemPrice;
       expect(total).toBe(80_000);
@@ -200,7 +200,7 @@ describe.skip("Menu Pricing Integration", () => {
       const powder = powderData.data.find((p) => p.id === item.powder!.id);
       expect(powder).toBeDefined();
 
-      const defaultMilk = item.milk_types.find((m) => m.is_default);
+      const defaultMilk = menuData.milk_types.find((milk) => milk.is_default);
       expect(defaultMilk).toBeDefined();
 
       const gram = resolveGram(size, null, getPowderSizeConfigs(powder!), defaultSizeConfigs);
@@ -227,7 +227,7 @@ describe.skip("Menu Pricing Integration", () => {
       const powder = powderData.data.find((p) => p.id === item.powder!.id);
       expect(powder).toBeDefined();
 
-      const defaultMilk = item.milk_types.find((m) => m.is_default);
+      const defaultMilk = menuData.milk_types.find((milk) => milk.is_default);
       expect(defaultMilk).toBeDefined();
 
       const gram = resolveGram(size, null, getPowderSizeConfigs(powder!), defaultSizeConfigs);
@@ -241,8 +241,8 @@ describe.skip("Menu Pricing Integration", () => {
       });
 
       // Addon: 1 cục kem + đá dừa (TOGGLE — toggled on means 1 option selected)
-      const kemPrice    = findAddonPrice(item.addon_groups, "kem", "1");
-      const daCuaPrice  = findAddonPrice(item.addon_groups, "đá dừa", "");
+      const kemPrice    = findAddonPrice(menuData.addon_groups, "kem", "1");
+      const daCuaPrice  = findAddonPrice(menuData.addon_groups, "đá dừa", "");
 
       const total = basePrice + kemPrice + daCuaPrice;
       expect(total).toBe(83_000);

@@ -4,13 +4,15 @@ import React from 'react';
 import Image from 'next/image';
 import { Coffee, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
-import type { MenuItem } from '@/src/lib/types/menu';
+import type { AddonGroup, MenuItem, MilkTypeOption } from '@/src/lib/types/menu';
 import { usePowderStore } from '@/src/lib/store/powderStore';
 import { useCartStore } from '@/src/lib/store/cartStore';
 import { calcLattePrice, calcFusionPrice, resolveGram } from '@/src/utils/pricing';
 
 interface MenuCardProps {
   item: MenuItem;
+  milkTypes: MilkTypeOption[];
+  addonGroups: AddonGroup[];
   onClick: (item: MenuItem) => void;
   priority?: boolean;
 }
@@ -21,14 +23,14 @@ const SIZE_CARD_LABELS: Record<string, string> = {
   LARGE: "Cá Lớn",
 };
 
-const MenuCard: React.FC<MenuCardProps> = ({ item, onClick, priority }) => {
+const MenuCard: React.FC<MenuCardProps> = ({ item, milkTypes, addonGroups, onClick, priority }) => {
   const sizes = item.sizes.filter((s) => s.base_price_vnd != null);
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
 
   const isLatte = item.category === "latte";
   const defaultPowderId = isLatte ? item.powder?.id : item.resolved_default_powder_id;
-  const defaultMilk = item.milk_types?.find(m => m.is_default) ?? item.milk_types?.[0];
+  const defaultMilk = milkTypes.find((milk) => milk.is_default) ?? milkTypes[0];
 
   const getDisplayPrice = (sizeObj: MenuItem["sizes"][0]) => {
     const s = sizeObj.size;
@@ -90,13 +92,15 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick, priority }) => {
       });
     }
     
-    const defaultOptionIds = item.addon_groups.flatMap((g) => g.options.filter((o) => o.is_default).map((o) => o.id));
+    const defaultOptionIds = addonGroups.flatMap((group) =>
+      group.options.filter((option) => option.is_default).map((option) => option.id)
+    );
     const addonPricesMap: Record<string, number> = {};
-    item.addon_groups.forEach(g => {
-        g.options.forEach(opt => {
-            if (defaultOptionIds.includes(opt.id)) {
-                const price = opt.gram_value != null ? opt.gram_value * pwdPrice : opt.price_vnd;
-                addonPricesMap[opt.id] = price;
+    addonGroups.forEach((group) => {
+        group.options.forEach((option) => {
+            if (defaultOptionIds.includes(option.id)) {
+                const price = option.gram_value != null ? option.gram_value * pwdPrice : option.price_vnd;
+                addonPricesMap[option.id] = price;
                 addonsCost += price;
             }
         });
@@ -105,13 +109,12 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick, priority }) => {
     const clientPriceVnd = unitPrice + addonsCost;
 
     const cartItemData = {
-      cartId: crypto.randomUUID(),
       menuItemId: item.id,
       name: item.name,
       category: item.category,
       imageUrl: item.image_url,
       size: size,
-      unitPrice: unitPrice,
+      unitPrice: clientPriceVnd,
       quantity: 1,
       sweetness: "FULL" as const,
       iceOption: "NORMAL" as const,
@@ -122,16 +125,16 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick, priority }) => {
       addonsPrice: addonsCost,
       addonPrices: addonPricesMap,
       quantityAddonOptions: [],
-      selectedPowderId: isLatte ? undefined : defaultPowderId,
+      selectedPowderId: isLatte ? undefined : (defaultPowderId ?? undefined),
       selectedMilkTypeId: isLatte ? defaultMilk?.id : undefined,
       clientPriceVnd: clientPriceVnd,
-      originalClientPriceVnd: unitPrice,
+      originalClientPriceVnd: clientPriceVnd,
       addonVouchers: [],
       productVoucherId: undefined,
       productVoucherDiscountVnd: undefined,
     };
 
-    addItem(cartItemData as any);
+    addItem(cartItemData);
   };
 
   return (

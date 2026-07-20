@@ -5,14 +5,17 @@ import { motion } from "framer-motion";
 import { Trash2, Ticket, X } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { CartItem } from "@/src/lib/types/cart";
-import type { MenuItem } from "@/src/lib/types/menu";
+import type { AddonGroup, MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
+import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { MyVoucher } from "@/src/services/staffVoucherService";
 import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
 
 interface StaffCartItemCardProps {
   item: CartItem;
   menuItem?: MenuItem;
-  powderData?: any;
+  powderData?: PowderApiResponse;
+  milkTypes: MilkTypeOption[];
+  addonGroups: AddonGroup[];
   customerVouchers: MyVoucher[];
   applicableProductVouchers: MyVoucher[];
   applicableAddonVouchers: MyVoucher[];
@@ -28,6 +31,8 @@ const StaffCartItemCard = ({
   item: c,
   menuItem,
   powderData,
+  milkTypes,
+  addonGroups,
   customerVouchers,
   applicableProductVouchers,
   applicableAddonVouchers,
@@ -45,9 +50,9 @@ const StaffCartItemCard = ({
   const appliedProductVoucherId = c.productVoucherId;
   const appliedAddonVouchers = c.addonVouchers ?? [];
 
-  const line1Chips = line1ItemDetails(c, menuItem, powderData?.data);
+  const line1Chips = line1ItemDetails(c, menuItem, milkTypes, powderData?.data);
   const line2Chips = line2ItemDetails(c, menuItem);
-  const addonChips = addonsDetails(c, menuItem, powderData?.data);
+  const addonChips = addonsDetails(c, menuItem, addonGroups, powderData?.data);
   
   const noteText = c.note || null;
 

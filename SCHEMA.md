@@ -1,7 +1,8 @@
 # Bạn Cá Bán Matcha — Database Schema
 
 > Read this file for any Prisma schema, migration, or DB-level task.
-> All schema design decisions are in the Decision Log in `AGENTS.md` — do not re-litigate here.
+> Read `AGENTS.md` for hard rules and the order/voucher/pricing skills for authoritative
+> business behavior. Do not infer business rules from legacy columns alone.
 
 ---
 
@@ -18,6 +19,37 @@
 > All money stored as **integers in VND. Never floats.**
 > Grams stored as **Prisma Decimal** — not money, not Float.
 
+## Canonical Order Totals
+
+Apply vouchers in this strict order: `PRODUCT → ADDON → DISCOUNT → FREESHIP`.
+
+```text
+subtotal_vnd = gross drinks + gross addons
+item_discount_vnd = PRODUCT reductions + ADDON reductions
+discountable_subtotal_vnd = max(0, subtotal_vnd - item_discount_vnd)
+total_vnd = max(0, discountable_subtotal_vnd - total_voucher_discount_vnd)
+grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
+```
+
+- Check DISCOUNT `min_order_vnd` on `discountable_subtotal_vnd`.
+- Check FREESHIP `min_order_vnd` on `total_vnd`, before shipping.
+- Calculate order points from `total_vnd`, excluding shipping.
+- Sum PRODUCT surplus VND across the whole order before converting once with
+  `floor(order_surplus_vnd / 10000)`.
+
+## Schema Change Gate
+
+- Inspect `prisma/schema.prisma`, committed migrations, relations, and existing snapshots before
+  proposing a new table or field.
+- Reuse existing columns and relations when the approved behavior can be calculated or persisted
+  correctly without schema expansion.
+- Do not add aliases, duplicate totals, or convenience fields for values already derivable from
+  immutable order/voucher snapshots.
+- Require an implementation plan to demonstrate why the existing schema is insufficient before
+  adding, renaming, or removing a field. Include data migration and rollback impact when a schema
+  change is genuinely required.
+- Do not rename existing fields merely to align terminology; document legacy names where needed.
+
 ---
 
 ## Enums
@@ -33,7 +65,7 @@
 | `OrderType` | `COUNTER`, `PICKUP`, `DELIVERY` |
 | `AddonType` | `SELECTOR`, `TOGGLE`, `QUANTITY` |
 | `SweetnessLevel` | `NONE`, `QUARTER`, `HALF`, `THREE_QUARTER`, `FULL`, `EXTRA` |
-| `Size` | `M`, `L`, `XL` |
+| `Size` | `SMALL`, `MEDIUM`, `LARGE` |
 | `PowderType` | `RECOMMEND`, `NEW`, `SEASONAL`, `NONE` |
 | `IceOption` | `NORMAL`, `LESS_ICE`, `NO_ICE`, `SEPARATE_ICE` |
 
@@ -63,7 +95,7 @@
 
 ---
 
-## Tables (19 total — 2 are Phase 5 only)
+## Tables
 
 ---
 
@@ -125,7 +157,7 @@ Powder catalogue. Pricing input for all items.
 Per-powder gram exceptions. Only powders with grams differing from `default_size_config` have rows here (currently Meyumi + Hana = 6 rows total).
 
 - `powder_id` uuid FK → matcha_powder (cascade delete)
-- `size` Size — M / L / XL
+- `size` Size — SMALL / MEDIUM / LARGE
 - `grams` Decimal
 - PK: (`powder_id`, `size`)
 
@@ -136,8 +168,8 @@ System-wide fallback. Always exactly 3 rows (SMALL, MEDIUM, LARGE). Admin-editab
 ⚠️ Changes apply immediately to all computed prices across all items.
 
 - `size` Size PK
-- `milk_ml` int — seed: M=130, L=200, XL=300
-- `powder_gram` Decimal — seed: M=3.5, L=4.5, XL=8.0
+- `milk_ml` int — seed: SMALL=130, MEDIUM=200, LARGE=300
+- `powder_gram` Decimal — seed: SMALL=3.5, MEDIUM=4.5, LARGE=8.0
 
 ---
 
@@ -168,7 +200,8 @@ Global milk options. Applies to all Latte items automatically — no junction ta
 - `is_seasonal` bool — default false
 - `matcha_powder_id` uuid FK nullable UK → matcha_powder — Latte only: the fixed powder. 1 powder can only belong to 1 Latte item.
 - `default_powder_id` uuid FK nullable → matcha_powder — Fusion only: default powder
-- `custom_powder_grams` Json nullable — `{"M": 4.5, "L": 8.0}`. Keys: "M" | "L" | "XL" only.
+- `custom_powder_grams` Json nullable — `{"MEDIUM": 4.5, "LARGE": 8.0}`.
+  Keys: "SMALL" | "MEDIUM" | "LARGE" only.
 - `base_liquid_note` string nullable — Fusion only, display text
 - `image_url` string nullable — Supabase Storage public URL
 - `is_available` bool — default true
@@ -236,22 +269,36 @@ Soft delete only — set `is_active = false`, never hard delete.
 
 ### orders
 - `id` uuid PK
-- `user_id` uuid FK → users
+- `user_id` uuid FK nullable → users — NULL for anonymous counter orders
 - `handled_by` uuid FK nullable → users — Staff who created or accepted this order. NULL if created by customer and not yet accepted.
 - `status` OrderStatus — customer default `PENDING`; staff = `COMPLETED` immediately
 - `order_type` OrderType — customer default `DELIVERY`; staff auto `COUNTER`
 - `order_code` string UK nullable — e.g. "BCBM-A3X7K2". Null for COUNTER orders.
-- `subtotal_vnd` int
-- `discount_vnd` int — default 0. If > subtotal → total_vnd = 0, no error.
-- `total_vnd` int — subtotal_vnd − discount_vnd (min 0)
+- `subtotal_vnd` int — gross drinks + addons before all vouchers, excluding shipping
+- `total_voucher_discount_vnd` int — order-level DISCOUNT reduction only
+- `total_vnd` int — merchandise after PRODUCT, ADDON, and DISCOUNT; excludes shipping
+- `shipping_fee_vnd` int — 0 for non-DELIVERY
+- `freeship_discount_vnd` int — FREESHIP reduction, capped at shipping fee
+- `grand_total_vnd` int — `total_vnd + shipping_fee_vnd - freeship_discount_vnd`
+- `freeship_voucher_id` uuid FK nullable → vouchers
 - `points_earned` int nullable — `floor(total_vnd / 10000)`, set when status → COMPLETED
 - `pickup_time` timestamp nullable — customer orders only
 - `auto_cancel_at` timestamp nullable — customer orders only (+20 mins from creation)
 - `payment_confirmed_at` timestamp nullable
 - `payment_confirmed_by` uuid FK nullable → users
+- `address_id` uuid FK nullable → addresses
 - `delivery_address` string nullable
+- `delivery_lat` float nullable
+- `delivery_lng` float nullable
+- `delivery_distance_km` float nullable
+- `delivery_receiver_name` string nullable
+- `delivery_receiver_phone` string nullable
 - `note` string nullable
 - `created_at` timestamp
+- `updated_at` timestamp
+
+> Use `grand_total_vnd` for VietQR and final DELIVERY payment displays. Use `total_vnd`
+> for loyalty points so shipping never earns points.
 
 ---
 
@@ -261,16 +308,20 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `menu_item_id` uuid FK → menu_items
 - `quantity` int
 - `size` Size — required. Server validates `base_price_vnd IS NOT NULL` for this size.
-- `unit_price_vnd` int — snapshot of computed final price (post-ceil, using sữa bò if no milk selected). 0 if PRODUCT voucher.
-- `addons_price_vnd` int — total addon cost for this line
+- `unit_price_vnd` int — original server-computed drink price before voucher credit
+- `addons_price_vnd` int — original addon total before voucher discounts
+- `product_voucher_discount_vnd` int — PRODUCT reduction limited to drink price
+- `total_discount_vnd` int — PRODUCT + ADDON reductions for this item
 - `selected_powder_id` uuid FK nullable → matcha_powder — snapshot at order time (both latte and fusion)
 - `selected_milk_type_id` uuid FK nullable → milk_type — Latte only
 - `ice_option` IceOption — default `NORMAL`
 - `coldwhisk` bool — default false
 - `sweetness` SweetnessLevel — default `FULL`
 - `product_voucher_id` uuid FK nullable → vouchers
-- `addon_voucher_id` uuid FK nullable → vouchers — Applied to specific topping
 - `note` string nullable
+
+> One PRODUCT voucher applies to one drink unit. Split a voucher-bearing unit into its own
+> line when the original cart line quantity is greater than one.
 
 ---
 
@@ -295,6 +346,20 @@ Extra matcha: `unit_price_vnd` = `gram_value × selected_powder.price_per_gram` 
 
 ---
 
+### order_item_addon_vouchers
+Junction table mapping multiple ADDON vouchers to an order item.
+
+- `order_item_id` uuid FK → order_items (cascade delete)
+- `voucher_id` uuid FK → vouchers (no action delete)
+- `addon_option_id` uuid FK → addon_options
+- `discount_applied_vnd` int — reduction for one addon unit
+- PK: (`order_item_id`, `voucher_id`)
+
+> Allow multiple rows for one order item only when their `addon_option_id` values differ.
+> Never create a row for Extra Matcha.
+
+---
+
 ### voucher_packages
 ⚠️ Do NOT add cascade delete on `menu_item_id`.
 
@@ -313,9 +378,17 @@ Extra matcha: `unit_price_vnd` = `gram_value × selected_powder.price_per_gram` 
 - `addon_option_id` uuid FK nullable → addon_options — ADDON type only
 - `covered_price_vnd` int nullable — snapshot price for PRODUCT and ADDON
 - `covered_delivery_fee_vnd` int nullable — snapshot max delivery fee for FREESHIP
+- `min_order_vnd` int nullable — minimum for DISCOUNT or FREESHIP
 - `is_active` bool — default true
 - `expires_after_days` int nullable
+- `quantity` int nullable — maximum total vouchers issued; NULL = unlimited
+- `max_per_user` int — maximum issued per customer, default 1
 - `created_at` timestamp
+
+> PRODUCT package fields such as size, powder, milk, and included addons remain snapshots for
+> package display and issuance. At order application time, PRODUCT eligibility matches
+> `menu_item_id` only and its credit applies to drink components only. Compute
+> `covered_price_vnd` from the selected drink configuration without addon prices.
 
 ---
 
@@ -335,12 +408,17 @@ Extra matcha: `unit_price_vnd` = `gram_value × selected_powder.price_per_gram` 
 - `addon_option_id` uuid FK nullable → addon_options — copied from package
 - `covered_price_vnd` int nullable — copied from package
 - `covered_delivery_fee_vnd` int nullable — copied from package
+- `min_order_vnd` int nullable — copied from package
 - `status` VoucherStatus — default `ACTIVE`
 - `used_channel` UsedChannel nullable
 - `expires_at` timestamp nullable
 - `redeemed_at` timestamp nullable
 - `redeemed_by` uuid FK nullable → users — STAFF or ADMIN only
 - `created_at` timestamp
+
+> `expires_at` is authoritative for eligibility. Lazy expiry moves only expired `ACTIVE`
+> vouchers to `EXPIRED`; never lazy-expire `RESERVED` vouchers. Cancelling an expired
+> reservation restores it to `EXPIRED`, not `ACTIVE`.
 
 ---
 
@@ -356,7 +434,11 @@ Immutable. Reversal = insert new negative-delta row.
 - `order_id` uuid FK nullable → orders
 - `voucher_id` uuid FK nullable → vouchers
 - `created_at` timestamp
-- NOTE: `order_id` and `voucher_id` are mutually exclusive
+
+> For aggregate PRODUCT surplus, create one `voucher_surplus` log associated with the order.
+> Do not create separately rounded surplus logs per PRODUCT voucher.
+> Calculate the amount from existing `order_items.unit_price_vnd`, `product_voucher_id`, and
+> linked `vouchers.covered_price_vnd`; do not add another surplus snapshot by default.
 
 **`reason` valid values:**
 
@@ -365,7 +447,9 @@ Immutable. Reversal = insert new negative-delta row.
 | `order_complete` | Order status → COMPLETED |
 | `manual_admin_adjustment` | Admin manually adds/deducts points |
 | `voucher_purchase` | Customer spends points to buy a voucher package |
-| `voucher_surplus` | Customer gets points back because actual item price was lower than covered_price_vnd |
+| `voucher_surplus` | Aggregate PRODUCT surplus awarded when order → COMPLETED |
+| `order_complete_reversed` | Reversal of an `order_complete` entry when a completed COUNTER order is cancelled |
+| `voucher_surplus_reversed` | Reversal of a `voucher_surplus` entry when a completed COUNTER order is cancelled |
 | `voucher_refund` | Customer gets full points back because item was soft-deleted |
 | `reversed_by_admin` | Admin reverses a manual adjustment |
 

@@ -4,14 +4,9 @@ import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowRight, Clock } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import { fetchMenu } from "@/src/services/menuService";
-import { listActiveVoucherPackages } from "@/src/services/customerVoucherService";
-import type { MenuItem } from "@/src/lib/types/menu";
+import type { MenuData, MenuItem } from "@/src/lib/types/menu";
 import type { VoucherPackage } from "@/src/services/customerVoucherService";
 import MenuCard from "@/src/components/menu/MenuCard";
-import { usePowderStore } from "@/src/lib/store/powderStore";
-import { fetchPowders } from "@/src/services/powderService";
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
 import {
   getTicketHighlightText,
@@ -60,40 +55,31 @@ function MiniPackageCard({ pkg }: { pkg: VoucherPackage }) {
 
 // ── MenuVoucherTabs ───────────────────────────────────────────────────────────
 
+interface MenuVoucherTabsProps {
+  menuData?: MenuData;
+  voucherPackages: VoucherPackage[];
+  menuLoading: boolean;
+  packageLoading: boolean;
+}
+
 /** Homepage tab section: preview of menu items and voucher packages. */
-export default function MenuVoucherTabs() {
+export default function MenuVoucherTabs({
+  menuData,
+  voucherPackages,
+  menuLoading,
+  packageLoading,
+}: MenuVoucherTabsProps) {
   const [activeTab, setActiveTab] = useState<HomeTab>("menu");
   const router = useRouter();
   const openVoucherModal = useVoucherModalStore((s) => s.openModal);
-  const setPowderData = usePowderStore((s) => s.setPowderData);
-
-  const { data: menuRes, isLoading: menuLoading } = useQuery({
-    queryKey: ["menu"],
-    queryFn: fetchMenu,
-  });
-
-  const { data: powderRes } = useQuery({
-    queryKey: ["powders"],
-    queryFn: fetchPowders,
-  });
-
-  const { data: packagesRaw = [], isLoading: pkgLoading } = useQuery({
-    queryKey: ["voucher_packages"],
-    queryFn: listActiveVoucherPackages,
-    staleTime: 10 * 60 * 1000,
-  });
-
-  React.useEffect(() => {
-    if (powderRes) setPowderData(powderRes);
-  }, [powderRes, setPowderData]);
 
   const menuItems = useMemo<MenuItem[]>(() => {
-    if (!menuRes) return [];
-    const all = [...(menuRes.latte ?? []), ...(menuRes.fusion ?? [])];
+    if (!menuData) return [];
+    const all = [...menuData.latte, ...menuData.fusion];
     return all.slice(0, 4);
-  }, [menuRes]);
+  }, [menuData]);
 
-  const packages = useMemo<VoucherPackage[]>(() => packagesRaw.slice(0, 4), [packagesRaw]);
+  const packages = useMemo<VoucherPackage[]>(() => voucherPackages.slice(0, 4), [voucherPackages]);
 
 
   return (
@@ -154,6 +140,8 @@ export default function MenuVoucherTabs() {
                   <MenuCard
                     key={item.id}
                     item={item}
+                    milkTypes={menuData?.milk_types ?? []}
+                    addonGroups={menuData?.addon_groups ?? []}
                     onClick={() => router.push("/menu")}
                     priority={index < 4}
                   />
@@ -174,7 +162,7 @@ export default function MenuVoucherTabs() {
             transition={{ duration: 0.22, ease: "easeOut" }}
             className={cn("w-full", activeTab === "uu-dai" ? "relative" : "absolute inset-x-0 top-0")}
           >
-            {pkgLoading ? (
+            {packageLoading ? (
               <div className="flex flex-col gap-0 md:grid md:grid-cols-2 md:gap-4">
                 {[1, 2, 3, 4].map((i) => (
                   <div key={i} className="h-[130px] bg-primary/5 animate-pulse rounded-2xl mb-4 md:mb-0" />

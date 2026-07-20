@@ -14,7 +14,7 @@ import {
   type VoucherPackage,
   type CreateVoucherPackageInput
 } from "@/src/services/adminVoucherService";
-import { fetchMenuItems } from "@/src/services/menuService";
+import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
 import type { MenuItem } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
@@ -113,10 +113,11 @@ export default function AdminVoucherPackagesPage() {
     queryFn: listVoucherPackages,
   });
 
-  const { data: menuItems = [], isLoading: isMenuLoading } = useQuery({
-    queryKey: ["admin", "menu", "flat"],
-    queryFn: fetchMenuItems,
+  const { data: menuData, isLoading: isMenuLoading } = useQuery({
+    queryKey: ["menu"],
+    queryFn: fetchMenu,
   });
+  const menuItems = menuData ? [...menuData.latte, ...menuData.fusion] : [];
 
   const { data: powdersData, isLoading: isPowdersLoading } = useQuery({
     queryKey: ["admin", "powders", "raw"],
@@ -126,25 +127,11 @@ export default function AdminVoucherPackagesPage() {
 
   const loading = isPkgsLoading || isMenuLoading || isPowdersLoading;
 
-  // Extract unique non-matcha addon options from all menu items
-  const uniqueAddonOptions = Array.from(
-    new Map(
-      menuItems
-        .flatMap((item) => item.addon_groups || [])
-        .flatMap((group) => group.options || [])
-        .filter((opt) => opt.gram_value === null || opt.gram_value <= 0)
-        .map((opt) => [opt.id, opt])
-    ).values()
-  );
+  const uniqueAddonOptions = (menuData?.addon_groups ?? [])
+    .flatMap((group) => group.options)
+    .filter((option) => option.gram_value === null || option.gram_value <= 0);
 
-  // Extract unique milk types from all menu items
-  const uniqueMilkTypes = Array.from(
-    new Map(
-      menuItems
-        .flatMap((item) => item.milk_types || [])
-        .map((opt) => [opt.id, opt])
-    ).values()
-  );
+  const uniqueMilkTypes = menuData?.milk_types ?? [];
 
   // Prepopulate select defaults if items are loaded
   useEffect(() => {

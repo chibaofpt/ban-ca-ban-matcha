@@ -50,12 +50,30 @@ export const CartDiscountPicker = ({
       onUpdateSelectedVouchers(prev => [...prev, newVoucher.id]);
       onRefreshVouchers();
       queryClient.invalidateQueries({ queryKey: ["customer", "points"] }); // refresh points
-    } catch (error: any) {
-      alert("Đổi điểm thất bại: " + (error?.message || "Đã có lỗi xảy ra."));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
+      alert("Đổi điểm thất bại: " + message);
     } finally {
       setIsRedeeming(null);
     }
   };
+
+  const selectedOrderDiscount = estimateMultiDiscountSavings(
+    selectedDiscountVouchers,
+    subtotalPrice
+  );
+  const selectedFreeshipVoucher = selectedFreeshipVouchers[0] ?? null;
+  const totalAfterSelectedDiscount = subtotalPrice - selectedOrderDiscount;
+  const selectedFreeshipDiscount =
+    orderType === "DELIVERY" &&
+    selectedFreeshipVoucher &&
+    (selectedFreeshipVoucher.min_order_vnd === null ||
+      totalAfterSelectedDiscount >= selectedFreeshipVoucher.min_order_vnd)
+      ? Math.min(
+          shippingFee ?? 0,
+          selectedFreeshipVoucher.covered_delivery_fee_vnd ?? 0
+        )
+      : 0;
 
   return (
     <motion.div
@@ -109,9 +127,52 @@ export const CartDiscountPicker = ({
             <div className="grid grid-cols-1 gap-3">
               {myVouchers.map((v) => {
                 const isSelected = selectedVoucherIds.includes(v.id);
-                
+                const selectedOrderDiscount = selectedDiscountVouchers;
+                const currentOrderDiscount = estimateMultiDiscountSavings(
+                  selectedOrderDiscount,
+                  subtotalPrice
+                );
+                const candidateOrderDiscount = v.voucher_type === "DISCOUNT"
+                  ? estimateMultiDiscountSavings(
+                      v.discount_type === "PERCENT"
+                        ? [
+                            ...selectedOrderDiscount.filter(
+                              (selected) => selected.discount_type !== "PERCENT"
+                            ),
+                            v,
+                          ]
+                        : [...selectedOrderDiscount, v],
+                      subtotalPrice
+                    )
+                  : currentOrderDiscount;
+                const amountBeforeShipping = subtotalPrice - currentOrderDiscount;
+
                 let isDisabled = false;
                 let disabledReason = "";
+                if (!isSelected && v.voucher_type === "DISCOUNT") {
+                  if (v.min_order_vnd !== null && subtotalPrice < v.min_order_vnd) {
+                    isDisabled = true;
+                    disabledReason = "Chưa đạt giá trị đơn tối thiểu";
+                  } else if (candidateOrderDiscount <= currentOrderDiscount) {
+                    isDisabled = true;
+                    disabledReason = "Voucher không tạo thêm ưu đãi cho đơn này";
+                  }
+                }
+                if (!isSelected && v.voucher_type === "FREESHIP") {
+                  if (orderType !== "DELIVERY" || (shippingFee ?? 0) <= 0) {
+                    isDisabled = true;
+                    disabledReason = "Chỉ áp dụng khi đơn giao hàng có phí ship";
+                  } else if (
+                    v.min_order_vnd !== null &&
+                    amountBeforeShipping < v.min_order_vnd
+                  ) {
+                    isDisabled = true;
+                    disabledReason = "Chưa đạt giá trị đơn tối thiểu sau giảm giá";
+                  } else if ((v.covered_delivery_fee_vnd ?? 0) <= 0) {
+                    isDisabled = true;
+                    disabledReason = "Voucher không tạo thêm ưu đãi cho đơn này";
+                  }
+                }
 
                 return (
                   <VoucherCard 
@@ -187,11 +248,11 @@ export const CartDiscountPicker = ({
                 </span>
               </div>
             )}
-            {selectedFreeshipVouchers.length > 0 && orderType === "DELIVERY" && (
+            {selectedFreeshipDiscount > 0 && (
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-primary/60">Giảm phí ship:</span>
                 <span className="text-xs font-bold text-teal-600">
-                  -{Math.floor(Math.min(shippingFee ?? 0, selectedFreeshipVouchers[0]?.covered_delivery_fee_vnd ?? 0) / 1000).toLocaleString('vi-VN')}k
+                  -{Math.floor(selectedFreeshipDiscount / 1000).toLocaleString('vi-VN')}k
                 </span>
               </div>
             )}
@@ -199,7 +260,7 @@ export const CartDiscountPicker = ({
             <div className="flex items-center justify-between">
               <span className="text-sm font-bold text-primary">Tổng cộng ({selectedVoucherIds.length} mã):</span>
               <span className="text-base font-bold text-red-500">
-                -{Math.floor((estimateMultiDiscountSavings(selectedDiscountVouchers, subtotalPrice) + (orderType === "DELIVERY" ? Math.min(shippingFee ?? 0, selectedFreeshipVouchers[0]?.covered_delivery_fee_vnd ?? 0) : 0)) / 1000).toLocaleString('vi-VN')}k
+                -{Math.floor((selectedOrderDiscount + selectedFreeshipDiscount) / 1000).toLocaleString('vi-VN')}k
               </span>
             </div>
           </div>

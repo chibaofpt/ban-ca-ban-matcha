@@ -3,15 +3,30 @@ name: api-layer
 description: >
   Standardizes the full API layer for Bạn Cá Bán Matcha — Next.js 16 App Router.
   Use this skill whenever creating a new API route, frontend service, route handler,
-  or reorganizing how API calls are made in views/components.
+  reorganizing how API calls are made in views/components, changing an API contract,
+  renaming an endpoint or payload field, or considering a schema change for an API feature.
   Trigger on: "write api", "create route", "call api", "fetch data", "service layer",
-  "api client", "organize api", or any request involving data flow between frontend
-  and backend in this project.
+  "api client", "organize api", "rename api", "change field", "add column",
+  or any request involving data flow between frontend and backend in this project.
 ---
 
 # API Layer Skill
 
 > Folder placement decisions → `STRUCTURE.md`. If conflict: STRUCTURE.md wins.
+
+## Contract and Schema Preservation
+
+- Inspect existing routes, services, shared types, tests, Prisma fields, and migrations before
+  designing a change.
+- Reuse an existing endpoint and payload shape when it can support the approved behavior.
+- Do not rename an API route, HTTP method, request field, response field, or feature solely for
+  naming consistency or refactoring convenience.
+- Prefer internal refactoring and backward-compatible extensions over breaking contract changes.
+- Reuse existing schema fields and relations before proposing a new table or column. Do not add
+  duplicate totals or convenience snapshots when existing immutable data can derive the value.
+- For any necessary breaking API or schema change, first document why the current contract cannot
+  work, affected consumers, migration/backward compatibility, and rollback; obtain explicit user
+  approval before implementation.
 
 ---
 
@@ -162,6 +177,7 @@ export const registerSchema = z.object({
 ## Commit Checklist
 
 **New backend route:**
+- [ ] Confirmed no existing route can support the feature without unnecessary duplication
 - [ ] Zod validates input before any DB access
 - [ ] `getSession()` called before business logic
 - [ ] Role checked explicitly
@@ -170,6 +186,7 @@ export const registerSchema = z.object({
 - [ ] No internal IDs exposed — `qr_token` only
 
 **New frontend service:**
+- [ ] Preserves existing endpoint paths and payload field names unless a breaking change was approved
 - [ ] File at `src/services/{domain}Service.ts`
 - [ ] Uses `apiClient` from `@/src/lib/api/client`
 - [ ] URLs in `const URL = { ... } as const`

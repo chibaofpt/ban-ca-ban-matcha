@@ -24,6 +24,9 @@ interface CustomerHistoryOrder {
   status: OrderStatus;
   order_type: string;
   total_vnd: number;
+  shipping_fee_vnd: number;
+  freeship_discount_vnd: number;
+  grand_total_vnd: number;
   subtotal_vnd: number;
   total_voucher_discount_vnd: number;
   created_at: string;
@@ -471,7 +474,7 @@ export default function HistoryPage() {
                               )}
                             </div>
                             <span className="font-bold text-primary text-base">
-                              {(order.total_vnd / 1000).toLocaleString("vi-VN")}K
+                              {(order.grand_total_vnd / 1000).toLocaleString("vi-VN")}K
                             </span>
                           </div>
                         </div>

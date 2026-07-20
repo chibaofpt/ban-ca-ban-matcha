@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
+import { redeemOrderVouchers, VoucherRedeemError } from "@/lib/redeemVouchers";
 import { after } from "next/server";
 import { sendPushToRoles } from "@/lib/push";
 
@@ -54,52 +55,59 @@ export async function PATCH(
     // Check if the order has already expired (auto-cancel window)
     if (order.auto_cancel_at && order.auto_cancel_at <= new Date()) {
       // Auto-cancel it inline and reject the confirmation attempt
-      await prisma.$transaction(
+      const cancelled = await prisma.$transaction(
         async (tx) => {
-          await tx.order.update({ where: { id }, data: { status: "CANCELLED" } });
+          const claim = await tx.order.updateMany({
+            where: { id, status: "PENDING" },
+            data: { status: "CANCELLED" },
+          });
+          if (claim.count !== 1) return false;
           await restoreVouchersOnCancel(tx, id);
+          return true;
         },
         { maxWait: 5000, timeout: 10000 }
       );
+      if (!cancelled) {
+        return NextResponse.json(
+          { error: "Order status changed concurrently", code: "STATUS_CONFLICT" },
+          { status: 409 }
+        );
+      }
       return NextResponse.json(
         { error: "Order has expired and was automatically cancelled", code: "ORDER_EXPIRED" },
         { status: 422 }
       );
     }
 
-    // Confirm payment — transition to ADMIN_CONFIRMED + redeem voucher
+    // Confirm payment — transition to ADMIN_CONFIRMED + redeem vouchers
     const updatedOrder = await prisma.$transaction(
       async (tx) => {
-        const result = await tx.order.update({
-          where: { id },
+        const confirmedAt = new Date();
+        const claimed = await tx.order.updateMany({
+          where: {
+            id,
+            status: "PENDING",
+            OR: [{ auto_cancel_at: null }, { auto_cancel_at: { gt: confirmedAt } }],
+          },
           data: {
             status: "ADMIN_CONFIRMED",
-            payment_confirmed_at: new Date(),
+            payment_confirmed_at: confirmedAt,
             payment_confirmed_by: session.id,
           },
-          include: {
-            user: { select: { name: true, phone_number: true } },
-          },
         });
+        if (claimed.count !== 1) {
+          throw Object.assign(new Error("Order status changed concurrently"), {
+            code: "STATUS_CONFLICT",
+          });
+        }
 
-        // ── Redeem all Vouchers ──
+        // ── Collect all voucher IDs linked to this order ──
 
         // 1. DISCOUNT vouchers
         const discountLinks = await tx.orderDiscountVoucher.findMany({
           where: { order_id: id },
           select: { voucher_id: true },
         });
-        for (const link of discountLinks) {
-          await tx.voucher.update({
-            where: { id: link.voucher_id },
-            data: {
-              status: "REDEEMED",
-              used_channel: "ONLINE",
-              redeemed_at: new Date(),
-              redeemed_by: session.id,
-            },
-          });
-        }
 
         // 2. PRODUCT & ADDON vouchers
         const voucherItems = await tx.orderItem.findMany({
@@ -115,63 +123,32 @@ export async function PATCH(
           select: { voucher_id: true }
         });
 
-        const uniqueItemVoucherIds = [
-          ...new Set([
-            ...voucherItems.map((i) => i.product_voucher_id).filter((id): id is string => id !== null),
-            ...addonVouchers.map((i) => i.voucher_id)
-          ]),
-        ];
+        // 3. Build unique set of all voucher IDs
+        const allVoucherIds = new Set<string>();
 
-        for (const vId of uniqueItemVoucherIds) {
-          await tx.voucher.update({
-            where: { id: vId },
-            data: {
-              status: "REDEEMED",
-              used_channel: "ONLINE",
-              redeemed_at: new Date(),
-              redeemed_by: session.id,
-            },
-          });
+        for (const link of discountLinks) {
+          allVoucherIds.add(link.voucher_id);
         }
-
-        // 3. FREESHIP voucher
+        for (const item of voucherItems) {
+          if (item.product_voucher_id) allVoucherIds.add(item.product_voucher_id);
+        }
+        for (const av of addonVouchers) {
+          allVoucherIds.add(av.voucher_id);
+        }
         if (order.freeship_voucher_id) {
-          await tx.voucher.update({
-            where: { id: order.freeship_voucher_id },
-            data: {
-              status: "REDEEMED",
-              used_channel: "ONLINE",
-              redeemed_at: new Date(),
-              redeemed_by: session.id,
-            },
-          });
+          allVoucherIds.add(order.freeship_voucher_id);
         }
 
-        // 4. Award deferred surplus points
-        if (result.user_id) {
-          const itemsWithSurplus = await tx.orderItem.findMany({
-            where: { order_id: id, surplus_points: { gt: 0 } },
-            select: { surplus_points: true, product_voucher_id: true }
-          });
-          for (const item of itemsWithSurplus) {
-            await tx.user.update({
-              where: { id: result.user_id },
-              data: { points_balance: { increment: item.surplus_points! } }
-            });
-            await tx.pointsLog.create({
-              data: {
-                user_id: result.user_id,
-                delta: item.surplus_points!,
-                reason: "voucher_surplus",
-                voucher_id: item.product_voucher_id,
-                order_id: id,
-                performed_by: session.id,
-              }
-            });
-          }
-        }
+        // ── Conditional batch redeem: RESERVED → REDEEMED ──
+        await redeemOrderVouchers(tx, Array.from(allVoucherIds), "ONLINE", session.id);
 
-        return result;
+        // NOTE: No order_complete or voucher_surplus points at ADMIN_CONFIRMED.
+        // Points are awarded only at COMPLETED in the generic PATCH endpoint.
+
+        return tx.order.findUniqueOrThrow({
+          where: { id },
+          include: { user: { select: { name: true, phone_number: true } } },
+        });
       },
       { maxWait: 5000, timeout: 10000 }
     );
@@ -194,6 +171,18 @@ export async function PATCH(
 
     return NextResponse.json({ data: updatedOrder });
   } catch (err) {
+    if (err instanceof VoucherRedeemError) {
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status: 409 }
+      );
+    }
+    if (err instanceof Error && (err as Error & { code?: string }).code === "STATUS_CONFLICT") {
+      return NextResponse.json(
+        { error: "Order status changed concurrently", code: "STATUS_CONFLICT" },
+        { status: 409 }
+      );
+    }
     console.error("[PATCH /api/admin/orders/[id]/confirm-payment]", err);
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },

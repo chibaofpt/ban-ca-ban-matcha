@@ -63,11 +63,15 @@ const mockOrderResult = {
   status: "PENDING",
   order_type: "PICKUP",
   subtotal_vnd: 55_000,
-  discount_vnd: 0,
+  total_voucher_discount_vnd: 0,
   total_vnd: 55_000,
+  shipping_fee_vnd: 0,
+  freeship_discount_vnd: 0,
+  grand_total_vnd: 55_000,
   pickup_time: null,
   auto_cancel_at: null,
   payment_qr_url: null,
+  skipped_vouchers: [],
 };
 
 // ── Basic payload shape (no vouchers) ────────────────────────────────────────

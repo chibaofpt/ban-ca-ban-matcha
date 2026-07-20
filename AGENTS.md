@@ -24,7 +24,9 @@
 | API route, request/response shape | `API.md` |
 | DB schema, Prisma, migration, enum | `SCHEMA.md` |
 | Deferred issues, unresolved decisions, env vars | `NOTES.md` |
-| Admin/staff UI, flows, form fields, roles | `ADMIN_PLAN.md` |
+| Order lifecycle, status, points | `.agents/skills/order-flow/SKILL.md` |
+| Voucher rules, stacking, lifecycle | `.agents/skills/voucher-flow/SKILL.md` |
+| Price formulas and rounding | `.agents/skills/pricing-logic/SKILL.md` |
 
 > Never skip reading the relevant file. Do not rely on memory alone.
 
@@ -75,6 +77,12 @@
 - Error responses with additional payload use `details` key, never `data`: `{ error: string, code: string, details: {...} }`
 - Never expose `users.id` or `vouchers.id` — always use `qr_token`
 - Multi-step DB writes → `prisma.$transaction()`
+- Before adding a table, column, enum value, or relation, audit the current Prisma schema and
+  migrations. Reuse existing fields and relations whenever they can represent the approved rule;
+  never add duplicate or merely convenient derived fields without explicit justification.
+- Do not rename an existing API route, HTTP method, request field, response field, or feature
+  solely for terminology or refactoring. Preserve the current contract unless the user explicitly
+  approves a necessary breaking change and migration path.
 - Server always re-fetches prices from DB — never trust client-sent prices
 - `points_log` rows are immutable — reversal = insert new negative-delta row
 - `"use client"` only when hooks or browser events are needed
@@ -85,6 +93,7 @@
 - Every page exports `metadata`. Dynamic pages use `generateMetadata`
 - Never import `lib/` inside `src/` — backend is server-only
 - Pricing: `src/utils/pricing.ts` (pure) → `lib/pricing.ts` (DB wrapper). Never duplicate.
+- Customer and staff order entry points must use the same order pricing and voucher calculator.
 - All final prices ceil to nearest 1,000 VND server-side
 - Never hard delete Latte `menu_item` — soft delete only. Check `reference_latte_item_id` first.
 - `menu_item_addons` junction table does not exist — do not create it

@@ -7,13 +7,13 @@ import { processOrderItems, OrderValidationError, PriceChangedError } from "@/li
 import type { ProductVoucherInfo } from "@/lib/orders";
 import {
   assertVoucherUsable,
-  calcMultiDiscountVouchers,
-  calcProductVoucherSurplusPoints,
   VoucherError,
 } from "@/lib/vouchers";
+import { calcOrderTotals } from "@/lib/orderCalculator";
+import type { CalcDiscountVoucher } from "@/lib/orderCalculator";
+import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
-import type { Prisma } from "@prisma/client";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 
 import { logSystemEvent } from "@/lib/logger";
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (isAnonymous && data.items.some((i: any) => i.addon_voucher_ids && i.addon_voucher_ids.length > 0)) {
+    if (isAnonymous && data.items.some((item) => item.addon_voucher_ids.length > 0)) {
       return NextResponse.json(
         { error: "Addon voucher cannot be applied to anonymous orders", code: "VALIDATION_ERROR" },
         { status: 400 }
@@ -99,6 +99,19 @@ export async function POST(req: NextRequest) {
       data.discount_voucher_ids.length > 0 ||
       data.items.some((i) => i.product_voucher_id || (i.addon_voucher_ids && i.addon_voucher_ids.length > 0))
     );
+
+    if (hasAnyVoucher && !existingUser) {
+      return NextResponse.json(
+        { error: "Voucher requires an existing customer account", code: "VALIDATION_ERROR" },
+        { status: 400 }
+      );
+    }
+
+    if (existingUser) {
+      // Expire every active voucher before validating any voucher type.
+      await lazyExpireVouchers(existingUser.id);
+    }
+    const voucherQrTokens = new Map<string, string>();
 
     if (hasAnyVoucher && existingUser) {
       if (session.role === "STAFF") {
@@ -158,6 +171,7 @@ export async function POST(req: NextRequest) {
             menu_item_id: pv!.menu_item_id,
             covered_price_vnd: pv!.covered_price_vnd,
           });
+          voucherQrTokens.set(pv!.id, pv!.qr_token);
         }
       }
     }
@@ -186,7 +200,9 @@ export async function POST(req: NextRequest) {
             }
             itemAddonOptionIds.add(av.addon_option_id);
 
-            const matchingAddonInput = item.addon_option_ids?.find((a: any) => a.option_id === av.addon_option_id);
+            const matchingAddonInput = item.addon_option_ids.find(
+              (addon) => addon.option_id === av.addon_option_id
+            );
             if (!matchingAddonInput) {
               return NextResponse.json(
                 { error: "Voucher áp dụng cho addon không có trong món nước", code: "VALIDATION_ERROR" },
@@ -212,6 +228,7 @@ export async function POST(req: NextRequest) {
             }
             addonVoucherMap.set(dbAv!.id, dbAv!.addon_option_id);
             addonVoucherIds.add(dbAv!.id);
+            voucherQrTokens.set(dbAv!.id, dbAv!.qr_token);
           }
         }
       }
@@ -220,12 +237,41 @@ export async function POST(req: NextRequest) {
     // Step 3: Validate + price-check all items (reads from DB, no writes)
     const resolvedItems = await processOrderItems(data.items, prisma, productVoucherMap, addonVoucherMap);
 
-    // Step 3: Calculate base subtotal
-    const subtotal_vnd = resolvedItems.reduce((sum, item) => sum + item.line_total, 0);
+    const calculatorItems = resolvedItems.map((item) => ({
+      menu_item_id: item.menu_item_id,
+      unit_price_vnd: item.unit_price_vnd,
+      addons_price_vnd: item.addons_price_vnd,
+      quantity: item.quantity,
+      line_total: item.line_total,
+      product_voucher_id: item.product_voucher_id,
+      product_voucher_covered_vnd: item.product_voucher_id
+        ? (productVoucherMap.get(item.product_voucher_id)?.covered_price_vnd ?? 0)
+        : 0,
+      addon_vouchers: item.addon_voucher_ids.map((voucher) => {
+        const addon = item.resolvedAddons.find(
+          (resolvedAddon) => resolvedAddon.addon_option_id === voucher.addon_option_id
+        );
+        return {
+          voucher_id: voucher.voucher_id,
+          addon_option_id: voucher.addon_option_id,
+          covered_price_vnd: addon?.unit_price_vnd ?? 0,
+          unit_price_vnd: addon?.unit_price_vnd ?? 0,
+          gram_value: addon?.gram_value ?? null,
+        };
+      }),
+    }));
+    const baseCalculation = calcOrderTotals({
+      items: calculatorItems,
+      discountVouchers: [],
+      freeshipVoucher: null,
+      shipping_fee_vnd: 0,
+    });
 
     // ── Validate DISCOUNT vouchers (multi) ──────────────────────────────
-    const validatedDiscountVouchers: { id: string; discount_type: import("@prisma/client").DiscountType | null; discount_value: number | null }[] = [];
+    const validatedDiscountVouchers: CalcDiscountVoucher[] = [];
     let percentVoucherCount = 0;
+
+    const discountable_subtotal_vnd = baseCalculation.discountable_subtotal_vnd;
 
     if (existingUser && data.discount_voucher_ids.length > 0) {
       const uniqueDiscountIds = Array.from(new Set(data.discount_voucher_ids));
@@ -249,36 +295,47 @@ export async function POST(req: NextRequest) {
             );
           }
         }
+        // Check min_order against discountable_subtotal (after PRODUCT/ADDON)
+        if (dv!.min_order_vnd !== null && discountable_subtotal_vnd < dv!.min_order_vnd) {
+          return NextResponse.json(
+            {
+              error: `Đơn hàng tối thiểu ${(dv!.min_order_vnd / 1000).toLocaleString("vi-VN")}k để sử dụng voucher giảm giá này`,
+              code: "MIN_ORDER_NOT_MET"
+            },
+            { status: 400 }
+          );
+        }
         validatedDiscountVouchers.push({
           id: dv!.id,
-          discount_type: dv!.discount_type,
-          discount_value: dv!.discount_value,
+          discount_type: dv!.discount_type as "FIXED" | "PERCENT",
+          discount_value: dv!.discount_value ?? 0,
+          min_order_vnd: dv!.min_order_vnd,
         });
+        voucherQrTokens.set(dv!.id, dv!.qr_token);
       }
     }
 
-    const total_voucher_discount_vnd = calcMultiDiscountVouchers(validatedDiscountVouchers, subtotal_vnd);
-    const items_discount_vnd = resolvedItems.reduce((sum, item) => sum + item.total_discount_vnd, 0);
-    const total_vnd = Math.max(0, subtotal_vnd - items_discount_vnd - total_voucher_discount_vnd);
+    const calculation = calcOrderTotals({
+      items: calculatorItems,
+      discountVouchers: validatedDiscountVouchers,
+      freeshipVoucher: null,
+      shipping_fee_vnd: 0,
+    });
+    const { subtotal_vnd, total_voucher_discount_vnd, total_vnd } = calculation;
+    const appliedVoucherIds = new Set(calculation.appliedVoucherIds);
+    const appliedDiscountVouchers = validatedDiscountVouchers.filter((voucher) =>
+      appliedVoucherIds.has(voucher.id)
+    );
+    const appliedAddonVoucherIds = Array.from(addonVoucherIds).filter((voucherId) =>
+      appliedVoucherIds.has(voucherId)
+    );
+    const appliedProductVoucherIds = Array.from(productVoucherMap.keys()).filter((voucherId) =>
+      appliedVoucherIds.has(voucherId)
+    );
     // Anonymous orders never earn points
     const points_earned = isAnonymous ? 0 : Math.floor(total_vnd / 10000);
 
-    // PRODUCT voucher surplus points (for linked user only)
-    const productVoucherSurplusMap: Map<string, number> = new Map();
-    if (existingUser) {
-      for (const item of resolvedItems) {
-        if (item.product_voucher_id) {
-          const pvInfo = productVoucherMap.get(item.product_voucher_id);
-          if (pvInfo) {
-            const actual_total = item.unit_price_vnd + item.addons_price_vnd - (item.total_discount_vnd - item.product_voucher_discount_vnd);
-            const surplus = calcProductVoucherSurplusPoints(pvInfo.covered_price_vnd, actual_total);
-            if (surplus > 0) {
-              productVoucherSurplusMap.set(item.product_voucher_id, surplus);
-            }
-          }
-        }
-      }
-    }
+
 
     // ── Phase 2: WRITES only (short transaction — pgBouncer compatible) ──────
     const order = await prisma.$transaction(
@@ -316,46 +373,42 @@ export async function POST(req: NextRequest) {
             pickup_time: null,
             note: null,
             items: {
-              create: resolvedItems.map((item) => ({
-                menu_item_id: item.menu_item_id,
-                quantity: item.quantity,
-                size: item.size,
-                unit_price_vnd: item.unit_price_vnd,
-                addons_price_vnd: item.addons_price_vnd,
-                product_voucher_discount_vnd: item.product_voucher_discount_vnd,
-                total_discount_vnd: item.total_discount_vnd,
-                sweetness: item.sweetness as SweetnessLevel,
-                ice_option: item.ice_option as IceOption,
-                coldwhisk: item.coldwhisk,
-                note: item.note,
-                product_voucher_id: item.product_voucher_id,
-                surplus_points: productVoucherSurplusMap.get(item.product_voucher_id ?? "") || null,
-                addonVouchers: {
-                  create: item.addon_voucher_ids.map((v: any) => {
-                    const matchingResolvedAddon = item.resolvedAddons.find(a => a.addon_option_id === v.addon_option_id);
-                    return {
-                      voucher_id: v.voucher_id,
-                      addon_option_id: v.addon_option_id,
-                      discount_applied_vnd: matchingResolvedAddon?.discount_applied_vnd || 0,
-                    };
-                  }),
-                },
-                selected_powder_id: item.selected_powder_id,
-                selected_milk_type_id: item.selected_milk_type_id,
-                addons: {
-                  create: item.resolvedAddons.map((a) => ({
-                    addon_option_id: a.addon_option_id,
-                    quantity: a.quantity,
-                    unit_price_vnd: a.unit_price_vnd,
-                  })),
-                },
-              })),
+              create: resolvedItems.map((item, index) => {
+                const itemCalculation = calculation.itemResults[index];
+                if (!itemCalculation) {
+                  throw new OrderValidationError("VALIDATION_ERROR", "Missing item voucher calculation.");
+                }
+                return {
+                  menu_item_id: item.menu_item_id,
+                  quantity: item.quantity,
+                  size: item.size,
+                  unit_price_vnd: item.unit_price_vnd,
+                  addons_price_vnd: item.addons_price_vnd,
+                  product_voucher_discount_vnd: itemCalculation.product_voucher_discount_vnd,
+                  total_discount_vnd: itemCalculation.total_discount_vnd,
+                  sweetness: item.sweetness as SweetnessLevel,
+                  ice_option: item.ice_option as IceOption,
+                  coldwhisk: item.coldwhisk,
+                  note: item.note,
+                  product_voucher_id: itemCalculation.product_voucher_id,
+                  addonVouchers: { create: itemCalculation.addon_vouchers },
+                  selected_powder_id: item.selected_powder_id,
+                  selected_milk_type_id: item.selected_milk_type_id,
+                  addons: {
+                    create: item.resolvedAddons.map((addon) => ({
+                      addon_option_id: addon.addon_option_id,
+                      quantity: addon.quantity,
+                      unit_price_vnd: addon.unit_price_vnd,
+                    })),
+                  },
+                };
+              }),
             },
           },
         });
 
         // Mark DISCOUNT vouchers as redeemed (OFFLINE for staff counter)
-        for (const dv of validatedDiscountVouchers) {
+        for (const dv of appliedDiscountVouchers) {
           const updated = await tx.voucher.updateMany({
             where: { id: dv.id, status: "ACTIVE" },
             data: {
@@ -374,7 +427,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Mark ADDON vouchers as redeemed (OFFLINE)
-        for (const avId of addonVoucherIds) {
+        for (const avId of appliedAddonVoucherIds) {
           const updated = await tx.voucher.updateMany({
             where: { id: avId, status: "ACTIVE" },
             data: {
@@ -390,7 +443,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Mark ALL PRODUCT vouchers as REDEEMED immediately (counter = COMPLETED)
-        for (const pvId of productVoucherMap.keys()) {
+        for (const pvId of appliedProductVoucherIds) {
           const updated = await tx.voucher.updateMany({
             where: { id: pvId, status: "ACTIVE" },
             data: {
@@ -424,9 +477,10 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        // Award PRODUCT voucher surplus points immediately
+        // Award PRODUCT voucher surplus points (aggregate)
         if (userId) {
-          for (const [pvId, surplusPoints] of productVoucherSurplusMap) {
+          const surplusPoints = Math.floor(calculation.order_surplus_vnd / 10000);
+          if (surplusPoints > 0) {
             await tx.user.update({
               where: { id: userId },
               data: { points_balance: { increment: surplusPoints } },
@@ -436,7 +490,7 @@ export async function POST(req: NextRequest) {
                 user_id: userId,
                 delta: surplusPoints,
                 reason: "voucher_surplus",
-                voucher_id: pvId,
+                voucher_id: null, // Aggregate — not per-item
                 performed_by: null,
                 order_id: createdOrder.id,
               },
@@ -448,6 +502,12 @@ export async function POST(req: NextRequest) {
       },
       { maxWait: 5000, timeout: 10000 }
     );
+    const skipped_vouchers = Array.from(new Set(calculation.skippedVoucherIds)).flatMap(
+      (voucherId) => {
+        const qrToken = voucherQrTokens.get(voucherId);
+        return qrToken ? [qrToken] : [];
+      }
+    );
 
     return NextResponse.json(
       {
@@ -456,6 +516,7 @@ export async function POST(req: NextRequest) {
           status: order.status,
           total_vnd: order.total_vnd,
           points_earned: order.points_earned,
+          skipped_vouchers,
         },
       },
       { status: 201 }
@@ -642,15 +703,22 @@ export async function GET(req: NextRequest) {
           expiredIds.map(async (orderId) => {
             const expired = orders.find((o) => o.id === orderId);
             if (!expired) return;
-            await prisma.$transaction(
+            const wasCancelled = await prisma.$transaction(
               async (tx) => {
-                await tx.order.update({ where: { id: orderId }, data: { status: 'CANCELLED' } });
+                const claim = await tx.order.updateMany({
+                  where: { id: orderId, status: 'PENDING' },
+                  data: { status: 'CANCELLED' },
+                });
+                if (claim.count !== 1) return false;
                 await restoreVouchersOnCancel(tx, orderId);
+                return true;
               },
               { maxWait: 5000, timeout: 10000 }
             );
             // Update in-memory for response
-            expired.status = 'CANCELLED';
+            if (wasCancelled) {
+              expired.status = 'CANCELLED';
+            }
           })
         );
       }

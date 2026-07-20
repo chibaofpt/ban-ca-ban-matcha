@@ -43,17 +43,19 @@ export async function GET(req: NextRequest) {
     await Promise.all(
       expiredOrders.map(async (order) => {
         try {
-          await prisma.$transaction(
+          const wasCancelled = await prisma.$transaction(
             async (tx) => {
-              await tx.order.update({
-                where: { id: order.id },
+              const claim = await tx.order.updateMany({
+                where: { id: order.id, status: "PENDING" },
                 data: { status: "CANCELLED" },
               });
+              if (claim.count !== 1) return false;
               await restoreVouchersOnCancel(tx, order.id);
+              return true;
             },
             { maxWait: 5000, timeout: 10000 }
           );
-          cancelledCount++;
+          if (wasCancelled) cancelledCount++;
         } catch (err) {
           // Log but do not throw — one failed cancel should not block others
           console.error(`[cron] Failed to cancel order ${order.id}:`, err);

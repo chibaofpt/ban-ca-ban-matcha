@@ -28,7 +28,10 @@ export const useCartPricing = ({
     const applicableProductVouchers = buildProductVoucherMap(allVouchers, items);
 
     // Calculate final display price using multi-voucher estimator
-    const selectedDiscountVouchers = discountVouchers.filter(v => selectedVoucherIds.includes(v.id));
+    const selectedDiscountVouchers = selectedVoucherIds.flatMap((id) => {
+      const voucher = discountVouchers.find((candidate) => candidate.id === id);
+      return voucher ? [voucher] : [];
+    });
     const rawDiscountAmount = estimateMultiDiscountSavings(selectedDiscountVouchers, subtotalPrice);
     
     // Apply rounding rules to avoid .5k decimals in UI
@@ -36,16 +39,27 @@ export const useCartPricing = ({
     const discountK = Math.floor(rawDiscountAmount / 1000); // Conservative discount display
     const finalK = Math.max(0, subtotalK - discountK);
     
-    const shippingK = orderType === "DELIVERY" && shippingFee !== null ? Math.floor(shippingFee / 1000) : 0;
+    const shippingK = orderType === "DELIVERY" && shippingFee !== null ? Math.ceil(shippingFee / 1000) : 0;
     
     let freeshipDiscountK = 0;
     let appliedFreeshipId: string | null = null;
     
-    const selectedFreeshipVouchers = freeshipVouchers.filter(v => selectedVoucherIds.includes(v.id));
+    const totalAfterDiscountVnd = Math.max(0, subtotalPrice - rawDiscountAmount);
+    const selectedFreeshipVouchers = selectedVoucherIds.flatMap((id) => {
+      const voucher = freeshipVouchers.find((candidate) => candidate.id === id);
+      return voucher ? [voucher] : [];
+    });
     if (orderType === "DELIVERY" && shippingFee !== null && selectedFreeshipVouchers.length > 0) {
       const bestVoucher = selectedFreeshipVouchers[0];
-      freeshipDiscountK = Math.floor(Math.min(shippingFee, bestVoucher.covered_delivery_fee_vnd ?? 0) / 1000);
-      appliedFreeshipId = bestVoucher.id;
+      const meetsMinimum =
+        bestVoucher.min_order_vnd === null ||
+        totalAfterDiscountVnd >= bestVoucher.min_order_vnd;
+      if (meetsMinimum && (bestVoucher.covered_delivery_fee_vnd ?? 0) > 0) {
+        freeshipDiscountK = Math.floor(
+          Math.min(shippingFee, bestVoucher.covered_delivery_fee_vnd ?? 0) / 1000
+        );
+        appliedFreeshipId = bestVoucher.id;
+      }
     }
 
     const totalDiscountK = discountK + freeshipDiscountK;

@@ -5,14 +5,17 @@ import Image from "next/image";
 import { Minus, Plus, Trash2, X, Ticket } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { CartItem } from "@/src/lib/types/cart";
-import type { MenuItem } from "@/src/lib/types/menu";
+import type { AddonGroup, MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
+import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
 
 interface CartItemCardProps {
   item: CartItem;
   menuItem?: MenuItem;
-  powderData?: any;
+  powderData?: PowderApiResponse;
+  milkTypes: MilkTypeOption[];
+  addonGroups: AddonGroup[];
   allVouchers: MyVoucher[];
   applicableProductVouchers: MyVoucher[];
   applicableAddonVouchers: MyVoucher[];
@@ -28,6 +31,8 @@ const CartItemCard = ({
   item,
   menuItem,
   powderData,
+  milkTypes,
+  addonGroups,
   allVouchers,
   applicableProductVouchers,
   applicableAddonVouchers,
@@ -43,9 +48,9 @@ const CartItemCard = ({
   const hasAvailableVouchers = hasMoreProductVouchers || hasMoreAddonVouchers;
   const hasAnyVoucher = !!item.productVoucherId || (item.addonVouchers && item.addonVouchers.length > 0);
 
-  const line1Chips = line1ItemDetails(item, menuItem, powderData?.data);
+  const line1Chips = line1ItemDetails(item, menuItem, milkTypes, powderData?.data);
   const line2Chips = line2ItemDetails(item, menuItem);
-  const addonChips = addonsDetails(item, menuItem, powderData?.data);
+  const addonChips = addonsDetails(item, menuItem, addonGroups, powderData?.data);
   
   const noteText = item.note || null;
   const isUnavailable = !menuItem;

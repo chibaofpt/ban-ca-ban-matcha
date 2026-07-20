@@ -69,7 +69,10 @@ export const CartItemVoucherPicker = ({
             <p className="text-xs font-bold text-primary/50 uppercase tracking-widest">Miễn phí món</p>
             <div className="space-y-2">
               {applicableProductVouchers.get(activeItem.menuItemId)?.map(v => {
-                const savings = estimateProductSavings(v, activeItem.originalClientPriceVnd);
+                const savings = estimateProductSavings(
+                  v,
+                  activeItem.originalClientPriceVnd - activeItem.addonsPrice
+                );
                 const isSelected = activeItem.productVoucherId === v.id;
                 const isAlreadyUsed = items.some(c => c.cartId !== activeItem.cartId && c.productVoucherId === v.id);
                 

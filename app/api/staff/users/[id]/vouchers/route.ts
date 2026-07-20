@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ export async function GET(
   const { id: userId } = await params;
 
   try {
+    await lazyExpireVouchers(userId);
     const vouchers = await prisma.voucher.findMany({
       where: {
         user_id: userId,

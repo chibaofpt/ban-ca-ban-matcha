@@ -3,7 +3,8 @@
 import React, { useState, useMemo, useCallback } from "react";
 import { Trash2, User, UserX, Ticket, ArrowLeft, CheckCircle2, ChevronRight, X } from "lucide-react";
 import type { CartItem } from "@/src/lib/types/cart";
-import type { SweetnessLevel } from "@/src/lib/types/menu";
+import type { MenuData, SweetnessLevel } from "@/src/lib/types/menu";
+import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { CustomerInfo } from "./CustomerSelectModal";
 import type { MyVoucher } from "@/src/services/staffVoucherService";
 import { cn } from "@/src/utils/cn";
@@ -16,13 +17,11 @@ import {
 } from "@/src/utils/voucherMatchUtils";
 import { motion, AnimatePresence } from "framer-motion";
 import { Drawer } from "vaul";
-import { useQuery } from "@tanstack/react-query";
-import { fetchMenu } from "@/src/services/menuService";
-import { fetchPowders } from "@/src/services/powderService";
 import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
 import StaffCartItemCard from "./cart/StaffCartItemCard";
 import { VoucherCard, PackageCard } from "@/src/components/shared/VoucherCards";
 import type { VoucherPackage } from "@/src/services/customerVoucherService";
+import type { DiscountVoucher } from "@/src/lib/store/staffCartStore";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -38,12 +37,11 @@ const SWEETNESS_LABEL: Record<SweetnessLevel, string> = {
 // ── Props ────────────────────────────────────────────────────────────────────
 
 interface StaffCartDrawerProps {
+  menuData?: MenuData;
+  powderData?: PowderApiResponse;
   isOpen: boolean;
   cart: CartItem[];
-  discountVoucher: {
-    discount_type: "PERCENT" | "FIXED";
-    discount_value: number;
-  } | null;
+  discountVoucher: DiscountVoucher | null;
   customerInfo: CustomerInfo | null;
   isSubmitting?: boolean;
   onClose: () => void;
@@ -72,6 +70,8 @@ interface StaffCartDrawerProps {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function StaffCartDrawer({
+  menuData,
+  powderData,
   isOpen,
   cart,
   discountVoucher,
@@ -98,8 +98,6 @@ export function StaffCartDrawer({
   isExchanging = false,
   preventCloseOutside = false,
 }: StaffCartDrawerProps) {
-  const { data: menuData } = useQuery({ queryKey: ["staff", "menu"], queryFn: fetchMenu });
-  const { data: powderData } = useQuery({ queryKey: ["staff", "powders"], queryFn: fetchPowders });
   const menuItems = menuData ? [...menuData.latte, ...menuData.fusion] : [];
 
   const [activeItemForVoucher, setActiveItemForVoucher] = useState<string | null>(null);
@@ -118,16 +116,30 @@ export function StaffCartDrawer({
   const applicableAddonVouchersMap = useMemo(() => buildAddonVoucherMap(customerVouchers, cart), [customerVouchers, cart]);
 
   // Discounts
-  const selectedDiscountVouchersList = useMemo(() => discountVouchers.filter(v => selectedDiscountIds.includes(v.id)), [discountVouchers, selectedDiscountIds]);
-  const listDiscount = useMemo(() => estimateMultiDiscountSavings(selectedDiscountVouchersList, subtotalPrice), [selectedDiscountVouchersList, subtotalPrice]);
-  
-  const scanDiscount = useMemo(() => discountVoucher
-    ? discountVoucher.discount_type === "PERCENT"
-      ? Math.floor((subtotalPrice * discountVoucher.discount_value) / 100)
-      : discountVoucher.discount_value
-    : 0, [discountVoucher, subtotalPrice]);
-
-  const rawDiscountAmount = listDiscount || scanDiscount;
+  const selectedDiscountVouchersList = useMemo(
+    () => selectedDiscountIds.flatMap((id) => {
+      const voucher = discountVouchers.find((candidate) => candidate.id === id);
+      return voucher ? [voucher] : [];
+    }),
+    [discountVouchers, selectedDiscountIds]
+  );
+  const previewDiscountVouchers = useMemo(
+    () => [
+      ...selectedDiscountVouchersList,
+      ...(discountVoucher && !selectedDiscountIds.includes(discountVoucher.id)
+        ? [discountVoucher]
+        : []),
+    ],
+    [discountVoucher, selectedDiscountIds, selectedDiscountVouchersList]
+  );
+  const rawDiscountAmount = useMemo(
+    () => estimateMultiDiscountSavings(previewDiscountVouchers, subtotalPrice),
+    [previewDiscountVouchers, subtotalPrice]
+  );
+  const scanDiscount = useMemo(
+    () => discountVoucher ? estimateMultiDiscountSavings([discountVoucher], subtotalPrice) : 0,
+    [discountVoucher, subtotalPrice]
+  );
 
   // Apply rounding rules to match Customer Cart
   const { subtotalK, finalK, discountK, discountAmount, total } = useMemo(() => {
@@ -258,9 +270,9 @@ export function StaffCartDrawer({
               const appliedAddonVouchers = c.addonVouchers ?? [];
 
               const menuItem = menuItems.find(m => m.id === c.menuItemId);
-              const line1Chips = line1ItemDetails(c, menuItem, powderData?.data);
+              const line1Chips = line1ItemDetails(c, menuItem, menuData?.milk_types ?? [], powderData?.data);
               const line2Chips = line2ItemDetails(c, menuItem);
-              const addonChips = addonsDetails(c, menuItem, powderData?.data);
+              const addonChips = addonsDetails(c, menuItem, menuData?.addon_groups ?? [], powderData?.data);
               
               const noteText = c.note || null;
 
@@ -270,6 +282,8 @@ export function StaffCartDrawer({
                   item={c}
                   menuItem={menuItem}
                   powderData={powderData}
+                  milkTypes={menuData?.milk_types ?? []}
+                  addonGroups={menuData?.addon_groups ?? []}
                   customerVouchers={customerVouchers}
                   applicableProductVouchers={productVouchersForItem}
                   applicableAddonVouchers={addonVouchersForItem}
@@ -315,7 +329,7 @@ export function StaffCartDrawer({
                 )}
                 
                 {/* Legacy discount from scanner */}
-                {discountVoucher && !listDiscount && (
+                {discountVoucher && !selectedDiscountIds.includes(discountVoucher.id) && (
                   <div className="flex items-center justify-between bg-green-50/50 border border-green-200/50 rounded-xl px-3 py-2">
                     <span className="text-xs font-bold text-green-700">🏷 Voucher quét mã</span>
                     <span className="text-xs font-bold text-green-700">-{scanDiscount / 1000}k</span>
@@ -421,7 +435,10 @@ export function StaffCartDrawer({
                     <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Miễn phí món</p>
                     <div className="space-y-2">
                       {applicableProductVouchers.get(activeItem.menuItemId)?.map(v => {
-                        const savings = estimateProductSavings(v, activeItem.originalClientPriceVnd);
+                        const savings = estimateProductSavings(
+                          v,
+                          activeItem.originalClientPriceVnd - activeItem.addonsPrice
+                        );
                         const isSelected = activeItem.productVoucherId === v.id;
                         const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && c.productVoucherId === v.id);
                         

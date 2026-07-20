@@ -3,8 +3,14 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import type { OrderStatus, OrderType, Prisma } from "@prisma/client";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
+import { redeemOrderVouchers, VoucherRedeemError } from "@/lib/redeemVouchers";
+import { z } from "zod";
 
 export const dynamic = "force-dynamic";
+
+const orderStatusPatchSchema = z.object({
+  status: z.enum(["ADMIN_CONFIRMED", "STAFF_DONE", "COMPLETED", "CANCELLED"]),
+});
 
 /**
  * Validates a status transition given the caller's role and order type.
@@ -68,12 +74,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   try {
     const { id } = await params;
-    const body = await req.json();
-    const { status } = body as { status: OrderStatus };
-
-    if (!status) {
-      return NextResponse.json({ error: "Status is required", code: "VALIDATION_ERROR" }, { status: 400 });
+    const body = await req.json().catch(() => null);
+    const parsed = orderStatusPatchSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid status", code: "VALIDATION_ERROR" },
+        { status: 400 }
+      );
     }
+    const { status } = parsed.data;
 
     // Wrap the entire update logic in a transaction
     const updatedOrder = await prisma.$transaction(async (tx) => {
@@ -83,7 +92,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           items: {
             select: { 
               product_voucher_id: true,
-              surplus_points: true,
+              unit_price_vnd: true,
+              productVoucher: { select: { covered_price_vnd: true } },
               addonVouchers: { select: { voucher_id: true } }
             }
           },
@@ -101,18 +111,71 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       );
       if (transitionError) throw Object.assign(new Error(transitionError), { code: "INVALID_TRANSITION" });
 
-      // Prepare update data
-      const dataToUpdate: Prisma.OrderUncheckedUpdateInput = { status };
-
-      // Auto-assign to current staff if not yet assigned (counter orders)
-      if (order.handled_by === null && session.role === "STAFF") {
-        dataToUpdate.handled_by = session.id;
+      if (
+        status === "ADMIN_CONFIRMED" &&
+        order.auto_cancel_at !== null &&
+        order.auto_cancel_at <= new Date()
+      ) {
+        throw Object.assign(new Error("Order has expired and cannot be confirmed"), {
+          code: "ORDER_EXPIRED",
+        });
       }
 
-      // Award points when → COMPLETED
+      // Claim the transition before side effects. The status predicate makes concurrent
+      // completion/cancellation attempts lose safely instead of awarding twice.
+      const claimData: Prisma.OrderUncheckedUpdateInput = { status };
+      if (order.handled_by === null && session.role === "STAFF") {
+        claimData.handled_by = session.id;
+      }
+      const claim = await tx.order.updateMany({
+        where:
+          status === "ADMIN_CONFIRMED"
+            ? {
+                id,
+                status: order.status,
+                OR: [{ auto_cancel_at: null }, { auto_cancel_at: { gt: new Date() } }],
+              }
+            : { id, status: order.status },
+        data: claimData,
+      });
+      if (claim.count !== 1) {
+        throw Object.assign(new Error("Order status changed concurrently"), {
+          code: "STATUS_CONFLICT",
+        });
+      }
+
+      // Remaining fields are written after all side effects succeed in this transaction.
+      const dataToUpdate: Prisma.OrderUncheckedUpdateInput = {};
+
+      // ── ADMIN_CONFIRMED: redeem vouchers (same logic as confirm-payment) ──
+      if (status === "ADMIN_CONFIRMED") {
+        const allVoucherIds = new Set<string>();
+        if (order.freeship_voucher_id) allVoucherIds.add(order.freeship_voucher_id);
+        for (const dv of order.discountVouchers) allVoucherIds.add(dv.voucher_id);
+        for (const item of order.items) {
+          if (item.product_voucher_id) allVoucherIds.add(item.product_voucher_id);
+          for (const av of item.addonVouchers) allVoucherIds.add(av.voucher_id);
+        }
+
+        await redeemOrderVouchers(
+          tx,
+          Array.from(allVoucherIds),
+          "ONLINE",
+          session.id
+        );
+
+        // Add payment metadata
+        dataToUpdate.payment_confirmed_at = new Date();
+        dataToUpdate.payment_confirmed_by = session.id;
+
+        // NOTE: No points at ADMIN_CONFIRMED — only at COMPLETED.
+      }
+
+      // ── COMPLETED: award points + surplus ──
       if (status === "COMPLETED" && order.points_earned === null) {
         if (order.user_id) {
-          const points_earned = Math.floor((order.grand_total_vnd ?? order.total_vnd) / 10000);
+          // Points from total_vnd (excludes shipping), NOT grand_total_vnd
+          const points_earned = Math.floor(order.total_vnd / 10000);
           dataToUpdate.points_earned = points_earned;
 
           if (points_earned > 0) {
@@ -130,14 +193,43 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               },
             });
           }
+
+          // Aggregate surplus: sum VND surplus first, then floor to points once
+          const itemsWithProduct = order.items.filter(
+            (item) => item.product_voucher_id && item.productVoucher?.covered_price_vnd != null
+          );
+          if (itemsWithProduct.length > 0) {
+            const totalSurplusVnd = itemsWithProduct.reduce((sum, item) => {
+              const coveredPrice = item.productVoucher?.covered_price_vnd ?? 0;
+              const surplus = Math.max(coveredPrice - item.unit_price_vnd, 0);
+              return sum + surplus;
+            }, 0);
+            const surplusPoints = Math.floor(totalSurplusVnd / 10000);
+
+            if (surplusPoints > 0) {
+              await tx.user.update({
+                where: { id: order.user_id },
+                data: { points_balance: { increment: surplusPoints } },
+              });
+              await tx.pointsLog.create({
+                data: {
+                  user_id: order.user_id,
+                  delta: surplusPoints,
+                  reason: "voucher_surplus",
+                  voucher_id: null, // Aggregate — not per-item
+                  order_id: order.id,
+                  performed_by: session.id,
+                },
+              });
+            }
+          }
         } else {
           // Anonymous order — zero points
           dataToUpdate.points_earned = 0;
         }
       }
 
-      // When cancelling: restore ALL vouchers to ACTIVE.
-      // For COMPLETED COUNTER orders, also reverse the order_complete points.
+      // ── CANCELLED: restore vouchers ──
       if (status === "CANCELLED") {
         const isCancellingCompleted = order.status === "COMPLETED";
         await restoreVouchersOnCancel(tx, id, {
@@ -150,56 +242,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       }
 
-      // When → COMPLETED: mark all vouchers as REDEEMED and award surplus points
-      if (status === "COMPLETED") {
-        const allVoucherIds = new Set<string>();
-        if (order.freeship_voucher_id) allVoucherIds.add(order.freeship_voucher_id);
-        
-        for (const dv of order.discountVouchers) {
-          allVoucherIds.add(dv.voucher_id);
-        }
-        
-        for (const item of order.items) {
-          if (item.product_voucher_id) allVoucherIds.add(item.product_voucher_id);
-          for (const av of item.addonVouchers) {
-            allVoucherIds.add(av.voucher_id);
-          }
-        }
-        
-        if (allVoucherIds.size > 0) {
-          await tx.voucher.updateMany({
-            where: { id: { in: Array.from(allVoucherIds) }, status: "RESERVED" },
-            data: {
-              status: "REDEEMED",
-              used_channel: "ONLINE",
-              redeemed_at: new Date(),
-              redeemed_by: session.id,
-            },
-          });
-        }
-
-        // Award PRODUCT voucher surplus points
-        if (order.user_id) {
-          for (const item of order.items) {
-            if (item.surplus_points && item.surplus_points > 0 && item.product_voucher_id) {
-              await tx.user.update({
-                where: { id: order.user_id },
-                data: { points_balance: { increment: item.surplus_points } },
-              });
-              await tx.pointsLog.create({
-                data: {
-                  user_id: order.user_id,
-                  delta: item.surplus_points,
-                  reason: "voucher_surplus",
-                  voucher_id: item.product_voucher_id,
-                  order_id: order.id,
-                  performed_by: session.id,
-                },
-              });
-            }
-          }
-        }
-      }
+      // NOTE: No voucher redeem at COMPLETED — already done at ADMIN_CONFIRMED.
 
       const result = await tx.order.update({
         where: { id },
@@ -223,6 +266,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const code = (err as Error & { code?: string }).code;
       if (code === "INVALID_TRANSITION") {
         return NextResponse.json({ error: err.message, code: "INVALID_TRANSITION" }, { status: 400 });
+      }
+      if (code === "ORDER_EXPIRED") {
+        return NextResponse.json({ error: err.message, code: "ORDER_EXPIRED" }, { status: 422 });
+      }
+      if (code === "STATUS_CONFLICT" || err instanceof VoucherRedeemError) {
+        return NextResponse.json(
+          { error: err.message, code: code ?? "VOUCHER_MISMATCH" },
+          { status: 409 }
+        );
       }
     }
     console.error("[PATCH /api/staff/orders/[id]]", err);

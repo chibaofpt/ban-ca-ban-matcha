@@ -45,16 +45,34 @@ export async function PATCH(
       );
     }
 
-    if (voucher.expires_at && new Date() > voucher.expires_at) {
+    const now = new Date();
+    if (voucher.expires_at && now >= voucher.expires_at) {
+      if (voucher.status === "ACTIVE") {
+        await prisma.voucher.updateMany({
+          where: { id: voucher.id, status: "ACTIVE", expires_at: { lte: now } },
+          data: { status: "EXPIRED" },
+        });
+      }
       return NextResponse.json(
         { error: "Voucher expired", code: "VOUCHER_EXPIRED" },
         { status: 409 }
       );
     }
 
+    if (voucher.status !== "ACTIVE") {
+      return NextResponse.json(
+        { error: "Voucher is not available for offline redemption", code: "CONFLICT" },
+        { status: 409 }
+      );
+    }
+
     // Mark as REDEEMED (offline flow, so no order id attached directly)
-    const updated = await prisma.voucher.update({
-      where: { id: voucher.id },
+    const updated = await prisma.voucher.updateMany({
+      where: {
+        id: voucher.id,
+        status: "ACTIVE",
+        OR: [{ expires_at: null }, { expires_at: { gt: now } }],
+      },
       data: {
         status: "REDEEMED",
         used_channel: "OFFLINE",
@@ -63,10 +81,17 @@ export async function PATCH(
       },
     });
 
+    if (updated.count !== 1) {
+      return NextResponse.json(
+        { error: "Voucher status changed concurrently", code: "CONFLICT" },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json({
       data: {
-        id: updated.qr_token,
-        status: updated.status,
+        id: voucher.qr_token,
+        status: "REDEEMED",
       },
     });
   } catch (error) {

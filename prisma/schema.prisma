@@ -343,7 +343,7 @@ model OrderItem {
   product_voucher_discount_vnd Int            @default(0)
   total_discount_vnd         Int              @default(0)
   product_voucher_id         String?          @db.Uuid
-  surplus_points        Int?
+
   note                  String?
   sweetness             SweetnessLevel   @default(FULL)
   size                  Size
@@ -378,7 +378,7 @@ model OrderItemAddon {
 model OrderDiscountVoucher {
   order_id            String  @db.Uuid
   voucher_id          String  @db.Uuid
-  discount_applied_vnd Int    @default(0)
+
   order               Order   @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   voucher    Voucher @relation("UsedAsDiscount", fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 

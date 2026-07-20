@@ -92,14 +92,8 @@ export interface MenuItem {
   /** Fusion only — powder ids that can be swapped. Empty = swap UI hidden. */
   allowed_powder_ids: string[];
 
-  /** Latte only — all active milk types. Empty for Fusion. */
-  milk_types: MilkTypeOption[];
-
   /** Sizes with base_price_vnd != null only (null sizes are excluded entirely). */
   sizes: MenuItemSize[];
-
-  /** All active addon_groups — attached globally (no per-item junction). */
-  addon_groups: AddonGroup[];
 }
 
 /** The complete menu structure returned by GET /api/menu. */
@@ -107,6 +101,10 @@ export interface MenuData {
   updated_at: string;
   latte: MenuItem[];
   fusion: MenuItem[];
+  /** All active milk types; consumers apply them to Latte items only. */
+  milk_types: MilkTypeOption[];
+  /** All active addon groups; applies globally to every menu item. */
+  addon_groups: AddonGroup[];
 }
 
 /** Admin-facing shape returned by GET /api/admin/menu. Includes unavailable items and all sizes (even null base_price_vnd). */

@@ -1,4 +1,4 @@
-﻿# Bạn Cá Bán Matcha — API Routes
+# Bạn Cá Bán Matcha — API Routes
 
 > Read this file when implementing or modifying any API route.
 
@@ -9,6 +9,18 @@
 - Success: `{ data: T }`
 - Error: `{ error: string, code: string }`
 - Error with payload: `{ error: string, code: string, details: {...} }` — used by `PRICE_CHANGED`
+
+## Contract Stability
+
+- Inventory the existing route, service callers, types, tests, and documentation before proposing
+  an API change.
+- Keep existing endpoint paths, HTTP methods, and request/response field names when the current
+  contract can support the approved behavior.
+- Do not rename an API or feature solely to improve terminology. Prefer an internal refactor or a
+  backward-compatible extension.
+- Propose a breaking rename only when the current contract cannot represent the requirement and
+  the user explicitly approves consumer migration, compatibility, and rollback handling.
+- Correcting documentation to match an already-existing route is not an API rename.
 
 ---
 
@@ -216,6 +228,8 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
     updated_at: string              // MAX(menu_items.updated_at) — ISO timestamp for cache invalidation
     latte: MenuItem[]
     fusion: MenuItem[]
+    milk_types: MilkType[]           // active global list; Latte only at display time
+    addon_groups: AddonGroup[]       // active global list; applies to every item
   }
 }
 
@@ -241,43 +255,43 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
   resolved_default_powder_id: string   // never null — server resolves fallback
   allowed_powder_ids: string[]         // fusion_allowed_powder WHERE is_available=true; empty = swap locked
 
-  // Latte only
-  milk_types: {
-    id: string
-    name: string
-    price_per_ml: number
-    is_default: boolean
-    display_order: number
-  }[]
-
   sizes: {
     size: "SMALL" | "MEDIUM" | "LARGE"
     base_price_vnd: number            // null sizes excluded entirely
     milk_ml: number                   // from default_size_config — frontend uses for milk swap recalculation
   }[]
+}
 
-  // All items — addon_groups WHERE is_active = true
-  addon_groups: {
+// MilkType — MenuData.milk_types is global, Latte only at display time
+type MilkType = {
+  id: string
+  name: string
+  price_per_ml: number
+  is_default: boolean
+  display_order: number
+}
+
+// AddonGroup — MenuData.addon_groups is global, applies to every item
+type AddonGroup = {
+  id: string
+  name: string
+  type: "SELECTOR" | "TOGGLE" | "QUANTITY"
+  is_required: boolean
+  min_quantity: number | null
+  max_quantity: number | null
+  options: {
     id: string
-    name: string
-    type: "SELECTOR" | "TOGGLE" | "QUANTITY"
-    is_required: boolean
-    min_quantity: number | null
-    max_quantity: number | null
-    options: {
-      id: string
-      label: string
-      price_vnd: number               // extra matcha: 0 — actual price = gram_value × powder.price_per_gram
-      gram_value: number | null       // extra matcha only: gram amount (0, 1, 2, 3, 4). null for others.
-      is_default: boolean
-      sort_order: number
-    }[]
+    label: string
+    price_vnd: number               // extra matcha: 0 — actual price = gram_value × powder.price_per_gram
+    gram_value: number | null       // extra matcha only: gram amount (0, 1, 2, 3, 4). null for others.
+    is_default: boolean
+    sort_order: number
   }[]
 }
 ```
 
 ### `GET /api/admin/menu`
-Same shape as `GET /api/menu` but:
+Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, but does not return the public global `milk_types` or `addon_groups` collections. It also:
 - Includes items with `is_available = false`
 - Includes `default_powder_id` (raw, may be null) alongside `resolved_default_powder_id`
 - Includes all 3 size rows including those with `base_price_vnd = null`
@@ -341,15 +355,25 @@ Same shape as `GET /api/menu` but:
     note?: string
     addon_option_ids: { option_id: string, quantity: number }[]
     product_voucher_id?: string
-    addon_voucher_id?: string
+    addon_voucher_ids?: {
+      voucher_id: string
+      addon_option_id: string
+    }[]
     selected_powder_id?: string       // Fusion only
     selected_milk_type_id?: string    // Latte only, optional (defaults to sữa bò)
     client_price_vnd: number          // REQUIRED — frontend computed price. Missing = VALIDATION_ERROR.
   }[]
   discount_voucher_ids?: string[]
+  freeship_voucher_id?: string       // DELIVERY only; max 1
   pickup_time?: string
   note?: string
   delivery_address?: string
+  address_id?: string
+  delivery_lat?: number
+  delivery_lng?: number
+  delivery_receiver_name?: string
+  delivery_receiver_phone?: string
+  client_shipping_fee_vnd?: number   // server recomputes and remains authoritative
 }
 
 // Response
@@ -360,11 +384,15 @@ Same shape as `GET /api/menu` but:
     status: "PENDING"
     order_type: "PICKUP" | "DELIVERY"
     subtotal_vnd: number
-    discount_vnd: number
+    total_voucher_discount_vnd: number
     total_vnd: number
+    shipping_fee_vnd: number
+    freeship_discount_vnd: number
+    grand_total_vnd: number
     pickup_time: string | null
     auto_cancel_at: string
     payment_qr_url: string
+    skipped_vouchers: string[]       // qr_token values; no benefit, therefore not consumed
   }
 }
 ```
@@ -384,12 +412,16 @@ Same shape as `GET /api/menu` but:
     note?: string
     addon_option_ids: { option_id: string, quantity: number }[]
     product_voucher_id?: string
-    addon_voucher_id?: string
+    addon_voucher_ids?: {
+      voucher_id: string
+      addon_option_id: string
+    }[]
     selected_powder_id?: string
     selected_milk_type_id?: string
     client_price_vnd: number          // REQUIRED
   }[]
   discount_voucher_ids?: string[]
+  customer_qr_token?: string          // required for STAFF when a known customer uses vouchers
 }
 ```
 
@@ -431,7 +463,7 @@ Same shape as `GET /api/menu` but:
 { sizes: { size: "SMALL" | "MEDIUM" | "LARGE", milk_ml?: number, powder_gram?: number }[] }
 ```
 
-### `POST /api/profile/vouchers/redeem`
+### `POST /api/profile/vouchers/exchange`
 ```ts
 { package_id: string }
 ```
@@ -450,10 +482,10 @@ Same shape as `GET /api/menu` but:
 ### `GET /api/staff/scan?token=xxx`
 ```ts
 // user
-{ data: { type: "user", data: { id: string, name: string, phone_number: string, points_balance: number } } }
+{ data: { type: "user", data: { qr_token: string, name: string, phone_number: string, points_balance: number } } }
 
 // voucher
-{ data: { type: "voucher", data: { id: string, voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, status: "ACTIVE" | "REDEEMED" | "EXPIRED", expires_at: string | null } } }
+{ data: { type: "voucher", data: { qr_token: string, voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED", expires_at: string | null } } }
 ```
 
 ### `PATCH /api/admin/orders/[id]/status`
@@ -466,7 +498,7 @@ Same shape as `GET /api/menu` but:
 ## Business Logic Notes
 
 ### Menu
-- `GET /api/menu`: query `menu_items WHERE is_available = true`, sizes `WHERE base_price_vnd IS NOT NULL`, `addon_groups WHERE is_active = true` (no junction join), `milk_types WHERE is_active = true` (attached only if `category = "latte"`).
+- `GET /api/menu`: query `menu_items WHERE is_available = true`, sizes `WHERE base_price_vnd IS NOT NULL`, `addon_groups WHERE is_active = true` (no junction join), and `milk_types WHERE is_active = true`. Addon groups and milk types are returned once at `data` level; consumers apply milk only when `category = "latte"`.
 - `updated_at` in response = `MAX(menu_items.updated_at)` across all items including unavailable ones.
 - Fusion `default_powder_id = NULL`: resolve fallback (Meyumi → Hana → MH-3 → cheapest `price_per_gram` WHERE `is_available = true`). Return `resolved_default_powder_id` — never NULL.
 - `allowed_powder_ids`: join `fusion_allowed_powder` + filter `matcha_powder.is_available = true`.
@@ -485,8 +517,13 @@ Same shape as `GET /api/menu` but:
 - Latte: server sets `selected_powder_id` from `menu_item.matcha_powder_id` — client must not send it.
 - Fusion: server validates `selected_powder_id` is either `resolved_default_powder_id` OR exists in `fusion_allowed_powder` for that item. Default powder is always accepted.
 - If `selected_milk_type_id` not sent for Latte → server uses `milk_type WHERE is_default = true` (sữa bò).
-- DISCOUNT voucher: if `discount_vnd > subtotal` → `total_vnd = 0`, no error.
-- Staff counter order: status = COMPLETED immediately, points awarded at creation.
+- Customer and staff routes must call the same server order/voucher calculator.
+- `subtotal_vnd` is gross merchandise before vouchers; `total_vnd` is merchandise after all
+  non-shipping vouchers; `grand_total_vnd` is the final amount including shipping and FREESHIP.
+- Use `grand_total_vnd` for VietQR and the final payable amount in customer history, admin,
+  and staff views. Do not display `total_vnd` as the final DELIVERY amount.
+- Staff counter order: status = COMPLETED immediately; redeem applied vouchers and award order
+  plus aggregate surplus points in the creation transaction.
 - **Anonymous orders** (`phone_number` omitted):
   - `orders.user_id = NULL`
   - `points_earned = 0` — no points awarded, no `points_log` entry
@@ -494,14 +531,31 @@ Same shape as `GET /api/menu` but:
   - Display as "Khách vãng lai" in all order list views
 
 ### Vouchers
-- Stacking: Orders can use 1 PRODUCT (per item), 1 ADDON (per item), and multiple DISCOUNT (order level) vouchers simultaneously. Order of application: PRODUCT -> ADDON -> DISCOUNT.
-- PRODUCT: Snapshot exact config. Server subtracts up to `covered_price_vnd` from drink price, remaining spills over to addons.
-- ADDON: Applies to the specific item containing the target `addon_option_id`. Does NOT apply to Extra Matcha.
-- DISCOUNT: Supports multiple FIXED vouchers and max 1 PERCENT voucher per order. FIXED applied first, then PERCENT on remaining.
-- Offline: mark REDEEMED + `used_channel = OFFLINE`. No order created.
+- Apply vouchers strictly in this order: `PRODUCT → ADDON → DISCOUNT → FREESHIP`.
+- PRODUCT: match `menu_item_id` only. Apply one voucher to one drink unit. Limit
+  `covered_price_vnd` to base + powder + milk + Premium Latte; never spill credit into addons.
+  Compute the package snapshot from those drink components only; included addon IDs are
+  descriptive and never expand coverage.
+- ADDON: apply to one unit of the exact `addon_option_id`. Allow multiple ADDON vouchers on one
+  item only when their addon IDs differ. Never apply to Extra Matcha.
+- DISCOUNT: check `min_order_vnd` after PRODUCT and ADDON. Apply multiple FIXED vouchers first
+  in selection order, then at most one PERCENT. FIXED values must be multiples of 1,000 VND;
+  round PERCENT reductions down to 1,000 VND.
+- FREESHIP: DELIVERY only, max one. Check `min_order_vnd` on `total_vnd` after all merchandise
+  vouchers and before shipping. Discount at most `covered_delivery_fee_vnd`.
+- Do not link, reserve, or redeem a voucher that creates zero incremental benefit.
+- Online: reserve applied vouchers at PENDING, redeem at ADMIN_CONFIRMED, and do not redeem again
+  at COMPLETED.
+- Treat `expires_at <= now` as unusable. Lazy expiry persists `ACTIVE → EXPIRED`; it never
+  changes `RESERVED` vouchers until their order is cancelled.
+- Do not fabricate `discount_applied_vnd` by dividing the order discount evenly across vouchers.
+- Offline COUNTER orders are created as `COMPLETED`, then applied vouchers are marked
+  `REDEEMED` with `used_channel = OFFLINE` in the same transaction.
 
 ### Points
-- Earn: `floor(total_vnd / 10000)` on COMPLETED.
+- Earn order points: `floor(total_vnd / 10000)` on COMPLETED; exclude shipping.
+- PRODUCT surplus: sum surplus VND across the whole order, then award
+  `floor(order_surplus_vnd / 10000)` once on COMPLETED.
 - Spend: deduct + create voucher in `prisma.$transaction()`.
 - Manual add: ADMIN only, max 100/action.
 - Reversal: insert new negative-delta row, `reason = "reversed_by_admin"`.
@@ -517,6 +571,8 @@ Same shape as `GET /api/menu` but:
 | `order_complete` | Order status → COMPLETED |
 | `manual_admin_adjustment` | Admin manually adds/deducts points |
 | `voucher_purchase` | Customer spends points to buy a voucher package |
-| `voucher_surplus` | Actual price < covered_price_vnd → refund difference as points |
+| `voucher_surplus` | Aggregate PRODUCT surplus awarded when order → COMPLETED |
+| `order_complete_reversed` | Reversal after a completed COUNTER order is cancelled |
+| `voucher_surplus_reversed` | Reversal of aggregate PRODUCT surplus after cancellation |
 | `voucher_refund` | Target item soft-deleted → full points refund |
 | `reversed_by_admin` | Admin reverses a manual adjustment |

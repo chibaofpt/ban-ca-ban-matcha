@@ -24,7 +24,7 @@ description: >
 | `lib/pricing.ts` | SERVER ONLY | Thin wrapper: fetch all pricing data from DB → call `src/utils/pricing.ts` |
 | `src/lib/store/powderStore.ts` | CLIENT | Caches `/api/powders` response for real-time price estimates |
 | `app/api/powders/route.ts` | SERVER | Public endpoint — includes `price_per_gram`, `powder_size_config`, `default_powder_gram` |
-| `app/api/menu/route.ts` | SERVER | Returns `sizes[].milk_ml` for frontend milk swap calculation |
+| `app/api/menu/route.ts` | SERVER | Returns `sizes[].milk_ml` plus global `milk_types` and `addon_groups` for frontend pricing |
 
 > Frontend needs 2 API calls on app load: `GET /api/menu` + `GET /api/powders`. Both cached in state, not refetched per interaction.
 
@@ -64,6 +64,30 @@ Math.ceil(x / 1000) * 1000
 ```
 Implemented **once** in `src/utils/pricing.ts`. All other files call this function.
 
+Use these separate voucher rounding rules:
+
+- Require FIXED DISCOUNT values to be integer multiples of 1,000 VND.
+- Round PERCENT DISCOUNT amounts down to the nearest 1,000 VND.
+- Do not apply price-ceiling rules to loyalty point conversion; use `Math.floor(vnd / 10000)`.
+
+## Price Component Boundaries for Vouchers
+
+Keep drink and addon prices separate when passing data to the order voucher calculator:
+
+```text
+drink_price_vnd = base + powder + milk + Premium_Latte (when applicable)
+addons_price_vnd = sum(addon unit price × quantity)
+```
+
+- Apply PRODUCT `covered_price_vnd` to `drink_price_vnd` only. Never spill PRODUCT credit
+  into `addons_price_vnd`.
+- When creating a PRODUCT voucher package, snapshot `covered_price_vnd` from the selected
+  drink configuration only; exclude all selected or included addons.
+- Apply an ADDON voucher to one unit of its matching addon only; never to Extra Matcha.
+- Preserve gross prices as order snapshots and store reductions separately.
+- Let one shared order calculator consume resolved drink/addon prices for both customer and
+  staff orders. Do not repeat voucher arithmetic in cart state or API routes.
+
 ---
 
 ## Gram Resolution — 3-Level COALESCE
@@ -82,6 +106,7 @@ For each item + size, resolve grams in this order:
 
 - `is_default = true` (sữa bò, 40 VND/ml): always included in Latte base price, hidden in UI selector.
 - `milk_ml` per size comes from `default_size_config` → embedded in `GET /api/menu` response as `sizes[].milk_ml`.
+- Active milk types are returned once as `MenuData.milk_types`, never duplicated inside each Latte item.
 - Frontend recalculates on milk swap: `(new_milk.price_per_ml - default_milk.price_per_ml) × milk_ml[size]`.
 - No pre-computed price field in API responses — frontend computes all prices client-side.
 - Milk applies to `latte` items only, determined by `category` at query time.
@@ -91,6 +116,7 @@ For each item + size, resolve grams in this order:
 ## Addon Pricing
 
 - `addon_options.price_vnd` is global — changing it affects all items immediately.
+- Active addon groups are returned once as `MenuData.addon_groups`, never duplicated inside each menu item.
 - **Extra matcha** is special:
   - `price_vnd = 0` in DB (placeholder).
   - Actual price = `addon_option.gram_value × selected_powder.price_per_gram`.

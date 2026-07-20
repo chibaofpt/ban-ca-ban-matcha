@@ -214,6 +214,8 @@ export default function MenuPage() {
                           <MenuCard
                             key={item.id}
                             item={item}
+                            milkTypes={data?.milk_types ?? []}
+                            addonGroups={data?.addon_groups ?? []}
                             onClick={handleItemClick}
                             priority={index < 4}
                           />
@@ -234,6 +236,8 @@ export default function MenuPage() {
             key="product-modal-root"
             item={selectedItem}
             latteItems={data?.latte ?? []}
+            milkTypes={data?.milk_types ?? []}
+            addonGroups={data?.addon_groups ?? []}
             onClose={() => setSelectedItem(null)}
             availableVouchers={vouchersData ?? []}
           />
@@ -242,7 +246,7 @@ export default function MenuPage() {
 
       <VoucherModal />
       <CartButton />
-      <CartDrawer />
+      {data && powderRes && <CartDrawer menuData={data} powderData={powderRes} />}
     </main>
   );
 }

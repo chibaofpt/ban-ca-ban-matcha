@@ -33,8 +33,10 @@ vi.mock("@/src/lib/store/powderStore", () => ({
 
 const mockMenuData = {
   updated_at: "2026-01-01T00:00:00Z",
-  latte: [{ id: "item-1", name: "Matcha Latte", category: "latte", sizes: [], addon_groups: [] }],
+  latte: [{ id: "item-1", name: "Matcha Latte", category: "latte", sizes: [] }],
   fusion: [],
+  milk_types: [],
+  addon_groups: [],
 };
 
 const mockPowderData = { powders: [], default_powder_gram: { M: 3, L: 4, XL: 5 } };

@@ -43,7 +43,7 @@ describe("POST /api/orders — DELIVERY flow", () => {
   it("Trả 400 nếu order_type = DELIVERY nhưng thiếu fields địa chỉ", async () => {
     const req = createRequest({
       order_type: "DELIVERY",
-      items: [{ menu_item_id: "e4d3f350-0012-4015-8df9-2ed3cc404c01", size: "M", quantity: 1, client_price_vnd: 50000 }],
+      items: [{ menu_item_id: "e4d3f350-0012-4015-8df9-2ed3cc404c01", size: "MEDIUM", quantity: 1, client_price_vnd: 50000 }],
       // missing address fields
     });
 
@@ -58,7 +58,7 @@ describe("POST /api/orders — DELIVERY flow", () => {
 
     const req = createRequest({
       order_type: "DELIVERY",
-      items: [{ menu_item_id: "e4d3f350-0012-4015-8df9-2ed3cc404c01", size: "M", quantity: 1, client_price_vnd: 50000 }],
+      items: [{ menu_item_id: "e4d3f350-0012-4015-8df9-2ed3cc404c01", size: "MEDIUM", quantity: 1, client_price_vnd: 50000 }],
       address_id: "e4d3f350-0012-4015-8df9-2ed3cc404c02",
       delivery_lat: 11,
       delivery_lng: 107,
@@ -80,7 +80,7 @@ describe("POST /api/orders — DELIVERY flow", () => {
 
     const req = createRequest({
       order_type: "DELIVERY",
-      items: [{ menu_item_id: "e4d3f350-0012-4015-8df9-2ed3cc404c01", size: "M", quantity: 1, client_price_vnd: 50000 }],
+      items: [{ menu_item_id: "e4d3f350-0012-4015-8df9-2ed3cc404c01", size: "MEDIUM", quantity: 1, client_price_vnd: 50000 }],
       address_id: "e4d3f350-0012-4015-8df9-2ed3cc404c02",
       delivery_lat: 11,
       delivery_lng: 107,

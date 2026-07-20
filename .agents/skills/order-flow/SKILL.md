@@ -55,9 +55,11 @@ Counter orders:   COMPLETED (immediate — no intermediate states)
 ```
 
 - `PENDING → ADMIN_CONFIRMED`: Admin confirms VietQR payment received.
+- At `ADMIN_CONFIRMED`, redeem all applied online vouchers exactly once.
 - `ADMIN_CONFIRMED → STAFF_DONE`: Staff finishes preparing the order.
 - `STAFF_DONE → COMPLETED`: Customer receives the order.
-- Points earned in **same transaction** as status → `COMPLETED`.
+- At `COMPLETED`, award order points and aggregate PRODUCT surplus in the same transaction.
+- Do not redeem vouchers again at `COMPLETED`.
 
 ---
 
@@ -80,11 +82,14 @@ Counter orders:   COMPLETED (immediate — no intermediate states)
      - If `selected_milk_type_id` not sent for Latte → use `milk_type WHERE is_default = true`
    - e. **Compute server prices** — see `pricing-logic` skill for formulas and COALESCE rules
    - f. Compare `client_price_vnd` vs server price per item. Mismatch → abort with `PRICE_CHANGED`
-   - g. **Apply vouchers** — see `voucher-flow` skill for stacking rules and reservation flow
-   - h. Compute `subtotal_vnd`, `discount_vnd`, `total_vnd` (min 0 — no negative totals)
+   - g. **Apply vouchers** using the shared calculator — see `voucher-flow`; strict order is
+     PRODUCT → ADDON → DISCOUNT → FREESHIP
+   - h. Compute gross `subtotal_vnd`, merchandise-only `total_vnd`, shipping,
+     `freeship_discount_vnd`, and payable `grand_total_vnd`
    - i. Create `order` + `order_items` + `order_item_addons`
    - j. For PICKUP/DELIVERY: generate `order_code`, set `auto_cancel_at` (+20 min)
-   - k. For COUNTER: set status = `COMPLETED`, award points immediately
+   - k. For COUNTER: set status = `COMPLETED`, redeem applied vouchers and award order plus
+     aggregate surplus points immediately in the same transaction
 5. **Return**: order with payment QR URL (customer) or completed order (staff)
 
 ---
@@ -92,9 +97,24 @@ Counter orders:   COMPLETED (immediate — no intermediate states)
 ## Points
 
 - Earned when status → `COMPLETED`: `floor(total_vnd / 10000)`, integers only.
+- `total_vnd` excludes shipping. Never calculate points from `grand_total_vnd`.
+- PRODUCT surplus is summed in VND across the entire order, then converted once with
+  `floor(order_surplus_vnd / 10000)` at `COMPLETED`.
 - Points log created in **same transaction** as status change.
 - Staff COUNTER orders: points awarded at creation (already COMPLETED).
 - Anonymous orders: `points_earned = 0`, no `points_log` entry.
+
+## Shared Order Calculator
+
+- Use the same server calculation function for customer and staff order creation.
+- Keep API routes responsible for auth, request validation, DB resolution, transactions, and
+  response mapping; keep price/voucher arithmetic out of route handlers.
+- Re-fetch price and voucher snapshots from DB before calculation; never trust client totals.
+- Return gross subtotal, PRODUCT discount, ADDON discount, discountable subtotal, order
+  DISCOUNT, merchandise total, shipping, FREESHIP, grand total, aggregate surplus, applied
+  voucher identifiers, and ignored no-benefit voucher identifiers.
+- Apply an item-level voucher to one unit only. Split a voucher-bearing unit into a separate
+  line when an original cart line has quantity greater than one.
 
 ---
 
@@ -111,7 +131,8 @@ Counter orders:   COMPLETED (immediate — no intermediate states)
 
 - `orders.user_id` is nullable — `NULL` = anonymous walk-in, no loyalty tracking.
 - `points_earned = 0` — no points awarded, no `points_log` entry.
-- Vouchers rejected: if `product_voucher_id`, `addon_voucher_id`, or `discount_voucher_ids` are sent → `VALIDATION_ERROR`.
+- Vouchers rejected: if `product_voucher_id`, `addon_voucher_ids`, `discount_voucher_ids`,
+  or `freeship_voucher_id` are sent → `VALIDATION_ERROR`.
 - Display as **"Khách vãng lai"** in all order list views.
 - Staff search customers: `GET /api/staff/users?q=xxx`:
   - All-digits → phone suffix match

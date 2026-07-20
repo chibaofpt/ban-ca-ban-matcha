@@ -109,7 +109,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   const getDisplayPrice = useCallback((item: MenuItem, sizeObj: MenuItem["sizes"][0]) => {
     const isLatte = item.category === "latte";
     const defaultPowderId = isLatte ? item.powder?.id : item.resolved_default_powder_id;
-    const defaultMilk = item.milk_types?.find((m) => m.is_default) ?? item.milk_types?.[0];
+    const defaultMilk = menuData?.milk_types.find((milk) => milk.is_default) ?? menuData?.milk_types[0];
 
     const s = sizeObj.size;
     const base = sizeObj.base_price_vnd ?? 0;
@@ -133,7 +133,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         premium_latte: 0,
       });
     }
-  }, [powders, defaultPowderGrams]);
+  }, [powders, defaultPowderGrams, menuData]);
 
   // ── Modal control — only one open at a time ────────────────────────────
 
@@ -568,6 +568,8 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
 
       {/* StaffCartDrawer */}
       <StaffCartDrawer
+        menuData={menuData}
+        powderData={pData}
         isOpen={cartOpen}
         cart={cart}
         discountVoucher={discountVoucher}
@@ -598,6 +600,8 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
               key="staff-edit-modal"
               item={selectedItem}
               latteItems={menuData?.latte ?? []}
+              milkTypes={menuData?.milk_types ?? []}
+              addonGroups={menuData?.addon_groups ?? []}
               editingItem={editingCartItem || undefined}
               freeVoucherId={scannedProductVoucher?.id}
               freeVoucherCoveredPriceVnd={scannedProductVoucher?.covered_price_vnd}
@@ -621,6 +625,8 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
           key="staff-add-modal"
           item={selectedItem}
           latteItems={menuData?.latte ?? []}
+          milkTypes={menuData?.milk_types ?? []}
+          addonGroups={menuData?.addon_groups ?? []}
           freeVoucherId={scannedProductVoucher?.id}
           freeVoucherCoveredPriceVnd={scannedProductVoucher?.covered_price_vnd}
           availableVouchers={customerVouchers}

@@ -33,7 +33,7 @@ type DbClient = Pick<
 export interface ProductVoucherInfo {
   /** The menu_item_id the voucher is locked to. Server rejects if item doesn't match. */
   menu_item_id: string;
-  /** The total covered amount (drink + configured addons). Acts as a credit against the item total. */
+  /** Fixed PRODUCT credit, capped at the server-computed drink price and never applied to addons. */
   covered_price_vnd: number;
 }
 
@@ -62,6 +62,8 @@ export interface ProcessedAddon {
   quantity: number;
   /** Snapshot original price at order time. Extra matcha: gram_value × price_per_gram. Others: price_vnd. */
   unit_price_vnd: number;
+  /** Present only for Extra Matcha options; ADDON vouchers cannot cover these options. */
+  gram_value: number | null;
   /** Exact amount of discount applied by an addon voucher (0 if none) */
   discount_applied_vnd: number;
 }
@@ -309,6 +311,7 @@ async function resolveOneItem(
       addon_option_id: option.id,
       quantity: addon.quantity,
       unit_price_vnd: addonUnitPrice,
+      gram_value: option.gram_value ? Number(option.gram_value) : null,
       discount_applied_vnd: 0,
     });
   }
@@ -324,6 +327,12 @@ async function resolveOneItem(
           (a) => a.addon_option_id === targetAddonOptionId
         );
         if (matchingAddon) {
+          if (matchingAddon.gram_value !== null && matchingAddon.gram_value > 0) {
+            throw new OrderValidationError(
+              "VALIDATION_ERROR",
+              "Voucher ADDON không áp dụng cho Extra Matcha."
+            );
+          }
           matchingAddon.discount_applied_vnd = matchingAddon.unit_price_vnd; // Fully discounts 1 qty
           total_addon_discount += matchingAddon.discount_applied_vnd;
           discountedAddons.add(targetAddonOptionId);
@@ -343,8 +352,8 @@ async function resolveOneItem(
           `Product voucher is not valid for this menu item`
         );
       }
-      const max_discount_possible = server_unit_price + original_addons_price_vnd - total_addon_discount;
-      product_voucher_discount_vnd = Math.min(max_discount_possible, pvInfo.covered_price_vnd);
+      // PRODUCT credit caps at drink price — never spills into addon
+      product_voucher_discount_vnd = Math.min(server_unit_price, pvInfo.covered_price_vnd);
     }
   }
 

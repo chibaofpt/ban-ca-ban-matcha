@@ -30,7 +30,6 @@ const quantityFields = {
 };
 
 const createPackageSchema = z.discriminatedUnion("voucher_type", [
-  // DISCOUNT package
   z.object({
     voucher_type: z.literal("DISCOUNT"),
     name: z.string().min(1).max(200),
@@ -40,6 +39,15 @@ const createPackageSchema = z.discriminatedUnion("voucher_type", [
     discount_value: z.number().int().min(1),
     min_order_vnd: z.number().int().min(1000).optional().nullable(),
     ...quantityFields,
+  }).superRefine((data, ctx) => {
+    // FIXED discount must be divisible by 1000 (VND rounding rule)
+    if (data.discount_type === "FIXED" && data.discount_value % 1000 !== 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "FIXED discount_value must be divisible by 1000 VND",
+        path: ["discount_value"],
+      });
+    }
   }),
   // PRODUCT package — server auto-calculates covered_price_vnd from pricing engine
   z.object({
@@ -287,8 +295,8 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // covered_price_vnd = drink price + included addon total
-      const covered_price_vnd = drink_price + total_addon_price;
+      // covered_price_vnd = drink price only (PRODUCT covers drink, not addons)
+      const covered_price_vnd = drink_price;
 
       const pkg = await prisma.voucherPackage.create({
         data: {

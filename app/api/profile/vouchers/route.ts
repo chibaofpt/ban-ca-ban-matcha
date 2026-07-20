@@ -7,6 +7,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,9 @@ export async function GET() {
   }
 
   try {
+    // Lazy-sync: mark expired vouchers before listing
+    await lazyExpireVouchers(session.id);
+
     const vouchers = await prisma.voucher.findMany({
       where: { user_id: session.id },
       orderBy: { created_at: "desc" },

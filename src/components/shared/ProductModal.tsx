@@ -9,7 +9,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X, Minus, Plus, ShoppingBag, Ticket, CheckCircle2 } from "lucide-react";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { filterUsableVouchers } from "@/src/utils/voucherMatchUtils";
-import type { MenuItem, SweetnessLevel, Size } from "@/src/lib/types/menu";
+import type { AddonGroup, MenuItem, MilkTypeOption, SweetnessLevel, Size } from "@/src/lib/types/menu";
 import type { IceOption, CartItem } from "@/src/lib/types/cart";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
@@ -27,6 +27,8 @@ import OptionCard from "./product-modal/OptionCard";
 interface ProductModalProps {
   item: MenuItem;
   latteItems: MenuItem[];
+  milkTypes: MilkTypeOption[];
+  addonGroups: AddonGroup[];
   onClose: () => void;
   // ── Edit mode ──
   editingItem?: CartItem;
@@ -43,7 +45,7 @@ interface ProductModalProps {
 // Extracted OptionCard, SizeSelector, MilkSelector, PowderSelector are imported
 
 const BaseModal: React.FC<ProductModalProps> = ({ 
-  item, latteItems, onClose, editingItem, onConfirm, freeVoucherId, 
+  item, latteItems, milkTypes, addonGroups, onClose, editingItem, onConfirm, freeVoucherId,
   freeVoucherCoveredPriceVnd, availableVouchers, nested = false, currentCartItems 
 }) => {
   const [isOpen, setIsOpen] = useState(true);
@@ -75,15 +77,17 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const [selectedPowderId, setSelectedPowderId] = useState<string>(() => editingItem?.selectedPowderId ?? item.resolved_default_powder_id ?? "");
   const [selectedMilkId, setSelectedMilkId] = useState<string>(() => {
     if (editingItem?.selectedMilkTypeId) return editingItem.selectedMilkTypeId;
-    return item.milk_types?.find(m => m.is_default)?.id ?? item.milk_types?.[0]?.id ?? "";
+    return milkTypes.find((milk) => milk.is_default)?.id ?? milkTypes[0]?.id ?? "";
   });
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>(() => {
     if (editingItem) return editingItem.selectedOptionIds;
-    return item.addon_groups.flatMap((g) => g.options.filter((o) => o.is_default).map((o) => o.id));
+    return addonGroups.flatMap((group) =>
+      group.options.filter((option) => option.is_default).map((option) => option.id)
+    );
   });
   const [quantityMap, setQuantityMap] = useState<Record<string, number>>(() => {
     if (editingItem) return editingItem.quantityMap;
-    return Object.fromEntries(item.addon_groups.filter((g) => g.type === "QUANTITY").map((g) => [g.id, 0]));
+    return Object.fromEntries(addonGroups.filter((group) => group.type === "QUANTITY").map((group) => [group.id, 0]));
   });
   const [quantity, setQuantity] = useState(() => editingItem?.quantity ?? 1);
   const [note, setNote] = useState(() => editingItem?.note ?? "");
@@ -113,10 +117,10 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const applicableAddonVouchers = useMemo(() => {
     const currentAddonIds = new Set([
       ...selectedOptionIds,
-      ...item.addon_groups.filter(g => g.type === "QUANTITY" && (quantityMap[g.id] ?? 0) > 0).map(g => g.options[0]?.id).filter(Boolean)
+      ...addonGroups.filter(group => group.type === "QUANTITY" && (quantityMap[group.id] ?? 0) > 0).map(group => group.options[0]?.id).filter(Boolean)
     ]);
     return filterUsableVouchers(availableVouchers ?? [], "ADDON").filter(v => v.addon_option_id !== null && currentAddonIds.has(v.addon_option_id) && !usedVoucherIds.has(v.id));
-  }, [availableVouchers, selectedOptionIds, quantityMap, item.addon_groups, usedVoucherIds]);
+  }, [availableVouchers, selectedOptionIds, quantityMap, addonGroups, usedVoucherIds]);
 
   const isProductVoucherApplied = selectedProductVoucherId !== null || freeVoucherId !== undefined;
   const isVoucherApplied = isProductVoucherApplied || selectedAddonVoucherIds.length > 0;
@@ -133,7 +137,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
   useEffect(() => {
     if (!editingItem) return;
     const allValidOptionIds = new Set(
-      item.addon_groups.flatMap(g => g.options.map(o => o.id))
+      addonGroups.flatMap(group => group.options.map(option => option.id))
     );
     const removedOptions = editingItem.selectedOptionIds.filter(
       id => !allValidOptionIds.has(id)
@@ -141,7 +145,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
     if (removedOptions.length > 0) {
       setSelectedOptionIds(prev => prev.filter(id => allValidOptionIds.has(id)));
     }
-  }, [editingItem, item.addon_groups]);
+  }, [editingItem, addonGroups]);
 
   // ── Derived ──────────────────────────────────────────────────────────────
   const isLatte = item.category === "latte";
@@ -149,13 +153,13 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const activePowder = useMemo(() => powders.find((p) => p.id === activePowderId), [powders, activePowderId]);
   const activePowderPricePerGram = activePowder?.price_per_gram ?? 0;
 
-  const quantityGroups = useMemo(() => item.addon_groups.filter((g) => g.type === "QUANTITY"), [item.addon_groups]);
-  const selectorGroups = useMemo(() => item.addon_groups.filter((g) => g.type === "SELECTOR"), [item.addon_groups]);
-  const toggleGroups = useMemo(() => item.addon_groups.filter((g) => g.type === "TOGGLE"), [item.addon_groups]);
+  const quantityGroups = useMemo(() => addonGroups.filter((group) => group.type === "QUANTITY"), [addonGroups]);
+  const selectorGroups = useMemo(() => addonGroups.filter((group) => group.type === "SELECTOR"), [addonGroups]);
+  const toggleGroups = useMemo(() => addonGroups.filter((group) => group.type === "TOGGLE"), [addonGroups]);
 
   const matchaSelectorGroups = useMemo(() => selectorGroups.filter(g => g.name.toLowerCase().includes("matcha")), [selectorGroups]);
   const otherSelectorGroups = useMemo(() => selectorGroups.filter(g => !g.name.toLowerCase().includes("matcha")), [selectorGroups]);
-  const defaultMilkId = useMemo(() => item.milk_types?.find(m => m.is_default)?.id ?? "", [item.milk_types]);
+  const defaultMilkId = useMemo(() => milkTypes.find((milk) => milk.is_default)?.id ?? "", [milkTypes]);
 
   const powderList = useMemo(() => {
     return !isLatte && item.allowed_powder_ids.length > 0
@@ -173,7 +177,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
     effectiveFreeVoucherId,
     effectiveFreeCoveredPrice
   } = usePriceMap({
-    item, latteItems, powders, defaultPowderGrams, selectedSize, activePowderId,
+    item, latteItems, milkTypes, addonGroups, powders, defaultPowderGrams, selectedSize, activePowderId,
     selectedMilkId, quantityMap, selectedOptionIds, selectedAddonVoucherIds,
     availableVouchers, selectedProductVoucherId, freeVoucherId, freeVoucherCoveredPriceVnd, quantity
   });
@@ -182,7 +186,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleSelectorToggle = useCallback((groupId: string, optionId: string, defaultOptId?: string) => {
-    const group = item.addon_groups.find(g => g.id === groupId);
+    const group = addonGroups.find(candidate => candidate.id === groupId);
     if (!group) return;
     const groupOptionIds = group.options.map((o) => o.id);
     setSelectedOptionIds((prev) => {
@@ -193,7 +197,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
       }
       return [...prev.filter((id) => !groupOptionIds.includes(id)), optionId];
     });
-  }, [item.addon_groups]);
+  }, [addonGroups]);
 
   const handleToggleChange = useCallback((optionId: string) => {
     setSelectedOptionIds((prev) =>
@@ -213,7 +217,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
   }, [onClose]);
 
   const handleAddToCart = useCallback(() => {
-    const quantityAddonOptions = item.addon_groups
+    const quantityAddonOptions = addonGroups
       .filter((g) => g.type === "QUANTITY")
       .flatMap((g) => {
         const qty = quantityMap[g.id] ?? 0;
@@ -395,11 +399,11 @@ const BaseModal: React.FC<ProductModalProps> = ({
           </div>
 
           {/* 3a. LATTE: Milk */}
-          {isLatte && item.milk_types.length > 0 && (
+          {isLatte && milkTypes.length > 0 && (
             <div className="mt-7">
               <SectionLabel text="Loại sữa" />
               <MilkSelector
-                milkTypes={item.milk_types}
+                milkTypes={milkTypes}
                 selectedMilkId={selectedMilkId}
                 defaultMilkId={defaultMilkId}
                 onChange={setSelectedMilkId}

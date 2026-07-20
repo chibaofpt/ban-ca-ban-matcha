@@ -8,13 +8,12 @@ export function computeFinalClientPrice(item: CartItem): number {
   const baseDrinkPrice = item.unitPrice - item.addonsPrice;
   const voucherCredit = item.productVoucherDiscountVnd ?? 0;
   
+  // PRODUCT credit caps at drink price — never spills into addon
   const drinkAfterCredit = Math.max(0, baseDrinkPrice - voucherCredit);
-  const remainingCredit = Math.max(0, voucherCredit - baseDrinkPrice);
   
-  const addonsAfterCredit = Math.max(0, item.addonsPrice - remainingCredit);
+  // ADDON voucher discounts apply independently
   const addonDiscount = item.addonVouchers?.reduce((sum, v) => sum + v.discountVnd, 0) ?? 0;
-  
-  const finalAddonsPrice = Math.max(0, addonsAfterCredit - addonDiscount);
+  const finalAddonsPrice = Math.max(0, item.addonsPrice - addonDiscount);
   
   return drinkAfterCredit + finalAddonsPrice;
 }
