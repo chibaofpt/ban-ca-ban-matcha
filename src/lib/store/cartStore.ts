@@ -96,7 +96,7 @@ export const useCartStore = create<CartState>()(
       clearCart: () => set({ items: [] }),
 
       applyProductVoucher: (cartId, voucherId, coveredPriceVnd) => {
-        let currentItems = get().items.map((i) => {
+        const currentItems = get().items.map((i) => {
           if (i.productVoucherId === voucherId) {
             const nextI = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined };
             nextI.clientPriceVnd = computeFinalClientPrice(nextI);
@@ -144,7 +144,7 @@ export const useCartStore = create<CartState>()(
       },
 
       applyAddonVoucher: (cartId, voucherId, addonOptionId) => {
-        let currentItems = get().items.map((i) => {
+        const currentItems = get().items.map((i) => {
           if (i.addonVouchers?.some(v => v.voucherId === voucherId)) {
             const nextI = { ...i, addonVouchers: i.addonVouchers.filter(v => v.voucherId !== voucherId) };
             nextI.clientPriceVnd = computeFinalClientPrice(nextI);
@@ -158,7 +158,7 @@ export const useCartStore = create<CartState>()(
 
         const item = currentItems[itemIndex];
         
-        let newAddonVouchers = item.addonVouchers ? [...item.addonVouchers] : [];
+        const newAddonVouchers = item.addonVouchers ? [...item.addonVouchers] : [];
         const existingIdx = newAddonVouchers.findIndex(v => v.addonOptionId === addonOptionId);
         
         const toppingPrice = item.addonPrices?.[addonOptionId] ?? 0;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cancelOrder, fetchCustomerOrders } from "@/src/services/orderService";
 import { listMyVouchers, type MyVoucher } from "@/src/services/customerVoucherService";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -181,11 +181,6 @@ export default function HistoryPage() {
   // Voucher history state is now managed by TanStack Query
   // The UI can use isVouchersLoading and vouchers directly
 
-  // Reset page when changing tabs (though vouchers tab currently has no pagination)
-  useEffect(() => {
-    setPage(1);
-  }, [activeTab]);
-
   // Points are automatically fetched by useCustomerPoints hook
   useEffect(() => {}, [isLoggedIn]);
 
@@ -256,7 +251,10 @@ export default function HistoryPage() {
       {/* Tabs */}
       <div className="grid grid-cols-2 bg-secondary/30 p-1 rounded-2xl">
         <button
-          onClick={() => setActiveTab("orders")}
+          onClick={() => {
+            setPage(1);
+            setActiveTab("orders");
+          }}
           className={`py-2.5 rounded-xl text-sm font-bold transition-all ${
             activeTab === "orders" ? "bg-card shadow-sm text-primary" : "text-primary/60 hover:text-primary"
           }`}
@@ -264,7 +262,10 @@ export default function HistoryPage() {
           Đơn hàng
         </button>
         <button
-          onClick={() => setActiveTab("vouchers")}
+          onClick={() => {
+            setPage(1);
+            setActiveTab("vouchers");
+          }}
           className={`py-2.5 rounded-xl text-sm font-bold transition-all ${
             activeTab === "vouchers" ? "bg-card shadow-sm text-primary" : "text-primary/60 hover:text-primary"
           }`}

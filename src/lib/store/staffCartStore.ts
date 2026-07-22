@@ -3,7 +3,6 @@ import { persist } from "zustand/middleware";
 import type { CartItem } from "@/src/lib/types/cart";
 import { computeFinalClientPrice } from "./cartStore";
 import type { CustomerInfo } from "@/src/components/staff/CustomerSelectModal";
-import type { MyVoucher } from "@/src/services/staffVoucherService";
 
 export interface DiscountVoucher {
   id: string;
@@ -118,7 +117,7 @@ export const useStaffCartStore = create<StaffCartState>()(
       clearCart: () => set({ items: [], discountVoucher: null, selectedDiscountIds: [], customerInfo: null }),
 
       applyProductVoucher: (cartId, voucherId, coveredPriceVnd) => {
-        let currentItems = get().items.map((i) => {
+        const currentItems = get().items.map((i) => {
           if (i.productVoucherId === voucherId) {
             const nextI = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined };
             nextI.clientPriceVnd = computeFinalClientPrice(nextI);
@@ -168,7 +167,7 @@ export const useStaffCartStore = create<StaffCartState>()(
       },
 
       applyAddonVoucher: (cartId, voucherId, addonOptionId) => {
-        let currentItems = get().items.map((i) => {
+        const currentItems = get().items.map((i) => {
           if (i.addonVouchers?.some(v => v.voucherId === voucherId)) {
             const nextI = { ...i, addonVouchers: i.addonVouchers.filter(v => v.voucherId !== voucherId) };
             nextI.clientPriceVnd = computeFinalClientPrice(nextI);

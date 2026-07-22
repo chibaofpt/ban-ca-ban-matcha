@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useCustomerAddresses, useCreateAddress } from "@/src/hooks/useCustomerAddresses";
 import { deliveryService } from "@/src/services/deliveryService";
-import type { Address } from "@/src/lib/types/address";
+import type { Address, AddressPayload } from "@/src/lib/types/address";
 import { AddressCard } from "@/src/components/address/AddressCard";
 import { AddressForm } from "@/src/components/address/AddressForm";
 import { MapPin, Plus, Loader2 } from "lucide-react";
@@ -53,20 +53,22 @@ export function DeliverySection({ selectedAddressId, onAddressSelect, onError }:
         onAddressSelect(address, estimate.distance_km, estimate.shipping_fee_vnd);
         setEstimating(false);
       }
-    } catch (err: any) {
+    } catch (unknownError: unknown) {
+      const err = unknownError instanceof Error ? unknownError : new Error();
       onAddressSelect(address, null, null);
       onError(err.message || "Không thể tính phí giao hàng");
       setEstimating(false);
     }
   };
 
-  const handleSaveNew = async (payload: any) => {
+  const handleSaveNew = async (payload: AddressPayload) => {
     try {
       setEstimating(true); // Treat as estimating state to show spinner
       const newAddr = await createAddressMutation.mutateAsync(payload);
       setIsFormOpen(false);
       handleSelectAddress(newAddr);
-    } catch (err: any) {
+    } catch (unknownError: unknown) {
+      const err = unknownError instanceof Error ? unknownError : new Error();
       onError(err.message || "Có lỗi xảy ra khi thêm địa chỉ");
     } finally {
       setEstimating(false);

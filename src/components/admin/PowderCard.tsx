@@ -1,6 +1,5 @@
 "use client";
 
-import { Pencil } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { Powder } from "@/src/lib/types/powder";
 

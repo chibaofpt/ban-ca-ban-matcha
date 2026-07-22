@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import { ChevronDown, ChevronUp, Phone, Clock, RefreshCw, CheckCircle2, XCircle, BarChart3 } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import { fetchOrdersList, type OrderRes } from "@/src/services/staffOrdersListService";
@@ -34,11 +34,6 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [showReportModal, setShowReportModal] = useState(false);
-
-  // Reset page when changing tabs
-  useEffect(() => {
-    setPage(1);
-  }, [activeTab]);
 
   const fetchOrdersFn = useCallback(async () => {
     let orderTypeParam = "";
@@ -167,7 +162,10 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
 
       <OrderTabs
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={(tab) => {
+          setPage(1);
+          setActiveTab(tab);
+        }}
         pendingCount={pendingCount}
         isAdmin={userRole === "ADMIN"}
       />
@@ -312,7 +310,10 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
                       </div>
                     )}
                     {(() => {
-                      const itemDiscount = order.items.reduce((sum: number, it: any) => sum + (it.total_discount_vnd || 0), 0);
+                      const itemDiscount = order.items.reduce(
+                        (sum, item) => sum + (item.total_discount_vnd || 0),
+                        0
+                      );
                       const totalDiscount = (order.total_voucher_discount_vnd || 0) + (order.freeship_discount_vnd || 0) + itemDiscount;
                       if (totalDiscount <= 0) return null;
                       return (

@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Step 2: Validate all PRODUCT vouchers BEFORE processOrderItems.
-    let existingUserForVoucher: { id: string } | null = existingUser;
+    const existingUserForVoucher: { id: string } | null = existingUser;
 
     // ── QR token verification — required for STAFF when order has any voucher ──
     const hasAnyVoucher = (

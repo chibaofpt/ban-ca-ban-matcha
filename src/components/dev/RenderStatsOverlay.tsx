@@ -34,7 +34,6 @@ export function RenderStatsOverlay({ componentIds, pollInterval = 1000 }: Overla
   const dragRef = useRef<{ startX: number; startY: number; posX: number; posY: number } | null>(null);
 
   const pollStats = useCallback(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const store = (window as unknown as Record<string, unknown>).__renderStore as Map<string, Array<{ actualDuration: number; phase: string }>> | undefined;
     if (!store) return;
 
@@ -60,8 +59,11 @@ export function RenderStatsOverlay({ componentIds, pollInterval = 1000 }: Overla
 
   useEffect(() => {
     const interval = setInterval(pollStats, pollInterval);
-    pollStats(); // initial poll
-    return () => clearInterval(interval);
+    const initialPoll = window.setTimeout(pollStats, 0);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(initialPoll);
+    };
   }, [pollStats, pollInterval]);
 
   /** Drag handlers */
@@ -180,7 +182,6 @@ export function RenderStatsOverlay({ componentIds, pollInterval = 1000 }: Overla
           <div style={{ marginTop: 6, display: "flex", gap: 6 }}>
             <button
               onClick={() => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const fn = (window as unknown as Record<string, unknown>).__clearRenderStats as ((id?: string) => void) | undefined;
                 fn?.();
                 pollStats();
@@ -199,7 +200,6 @@ export function RenderStatsOverlay({ componentIds, pollInterval = 1000 }: Overla
             </button>
             <button
               onClick={() => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const fn = (window as unknown as Record<string, unknown>).__logRenderStats as ((id?: string) => void) | undefined;
                 fn?.();
               }}

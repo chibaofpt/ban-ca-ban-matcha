@@ -11,7 +11,6 @@ import {
   calcAggregateSurplusPoints,
   findAddonVoucherDiscount,
   calcPointsEarned,
-  VoucherError,
   type ResolvedOrderItem,
 } from "@/lib/vouchers";
 import type { Voucher } from "@prisma/client";

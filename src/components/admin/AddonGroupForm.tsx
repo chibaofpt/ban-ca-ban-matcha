@@ -1,9 +1,9 @@
 "use client";
 
-import { useForm, useFieldArray, Controller } from "react-hook-form";
-import { Plus, X, GripVertical } from "lucide-react";
+import { useForm, useFieldArray, Controller, useWatch } from "react-hook-form";
+import { Plus, X } from "lucide-react";
 import { cn } from "@/src/utils/cn";
-import type { AdminAddonGroup, AdminAddonOption } from "@/src/lib/types/addonGroup";
+import type { AdminAddonGroup } from "@/src/lib/types/addonGroup";
 
 interface FormOption {
   id?: string;
@@ -25,10 +25,28 @@ interface FormFields {
   options: FormOption[];
 }
 
+export interface AddonGroupFormPayload {
+  name: string;
+  description: string | null;
+  type: FormFields["type"];
+  is_required: boolean;
+  min_quantity: number | null;
+  max_quantity: number | null;
+  is_active: boolean;
+  options: Array<{
+    id?: string;
+    label: string;
+    price_vnd: number;
+    is_default: boolean;
+    sort_order: number;
+    gram_value: number | null;
+  }>;
+}
+
 interface AddonGroupFormProps {
   mode: "create" | "edit";
   defaultValues?: Partial<FormFields>;
-  onSubmit: (data: any) => Promise<void>;
+  onSubmit: (data: AddonGroupFormPayload) => Promise<void>;
   isSubmitting: boolean;
 }
 
@@ -62,7 +80,6 @@ export default function AddonGroupForm({
     register,
     control,
     handleSubmit,
-    watch,
     formState: { errors },
   } = useForm<FormFields>({
     defaultValues: {
@@ -85,8 +102,9 @@ export default function AddonGroupForm({
     name: "options",
   });
 
-  const type = watch("type");
-  const isExtraMatcha = watch("name").toLowerCase().includes("extra matcha");
+  const type = useWatch({ control, name: "type" });
+  const groupName = useWatch({ control, name: "name" });
+  const isExtraMatcha = groupName.toLowerCase().includes("extra matcha");
 
   const onFormSubmit = async (values: FormFields) => {
     const payload = {

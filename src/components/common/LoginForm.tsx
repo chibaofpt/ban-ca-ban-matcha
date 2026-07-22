@@ -49,7 +49,7 @@ const LoginForm = () => {
       if (user.role === "ADMIN" || user.role === "STAFF") {
         // Đối với Staff/Admin, dùng window.location.href để chuyển hẳn sang phân hệ quản lý
         // Đảm bảo không bị kẹt layout hay navbar của Customer.
-        window.location.href = "/staff/orders";
+        window.location.assign("/staff/orders");
       } else {
         // Đối với Customer, giữ nguyên trải nghiệm SPA mượt mà
         router.push("/menu");

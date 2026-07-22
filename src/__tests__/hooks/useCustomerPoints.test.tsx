@@ -4,11 +4,11 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 import React from "react";
 
 // ── Khai báo mock trước import ──────────────────────────────────
-const mockGet = vi.fn();
+const { mockGet } = vi.hoisted(() => ({ mockGet: vi.fn() }));
 
 vi.mock("@/src/lib/api/client", () => ({
   apiClient: {
-    get: (...args: any[]) => mockGet(...args),
+    get: mockGet,
   },
 }));
 

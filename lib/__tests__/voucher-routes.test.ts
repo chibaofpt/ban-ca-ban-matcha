@@ -107,7 +107,17 @@ function makeRequest(body: unknown, url = "http://localhost/api/profile/vouchers
 // ── Helper: setup $transaction to run callback ────────────────────────────────
 
 function setupTransaction() {
-  mockTransaction.mockImplementation(async (fn: (tx: any) => unknown) => {
+  type TransactionMock = {
+    $queryRaw: ReturnType<typeof vi.fn>;
+    user: { update: ReturnType<typeof vi.fn> };
+    voucher: {
+      create: typeof mockVoucherCreate;
+      update: typeof mockVoucherUpdate;
+      count: typeof mockVoucherCount;
+    };
+    pointsLog: { create: typeof mockPointsLogCreate };
+  };
+  mockTransaction.mockImplementation(async (fn: (tx: TransactionMock) => unknown) => {
     const tx = {
       $queryRaw: vi.fn().mockResolvedValue([]),
       user: {

@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  applyProductVoucherCredit,
   ceilTo1000,
   resolveGram,
   calcLattePrice,
@@ -315,5 +316,23 @@ describe("formatMoney", () => {
 
   it("format 1000000 → '1.000.000'", () => {
     expect(formatMoney(1000000)).toBe("1.000.000");
+  });
+});
+
+describe("applyProductVoucherCredit", () => {
+  it("không dùng phần credit PRODUCT dư để trừ addon", () => {
+    expect(applyProductVoucherCredit(70_000, 20_000, 100_000)).toEqual({
+      drinkPayableVnd: 0,
+      addonsPayableVnd: 20_000,
+      totalVnd: 20_000,
+    });
+  });
+
+  it("chỉ trừ credit PRODUCT trên phần giá nước", () => {
+    expect(applyProductVoucherCredit(70_000, 20_000, 60_000)).toEqual({
+      drinkPayableVnd: 10_000,
+      addonsPayableVnd: 20_000,
+      totalVnd: 30_000,
+    });
   });
 });

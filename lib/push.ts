@@ -50,6 +50,11 @@ interface PushPayload {
   url: string;
 }
 
+function getPushStatusCode(error: unknown): number | undefined {
+  if (typeof error !== "object" || error === null || !("statusCode" in error)) return undefined;
+  return typeof error.statusCode === "number" ? error.statusCode : undefined;
+}
+
 /**
  * Send push notification to all active subscriptions of users with given roles.
  * Excludes the user who triggered the action (excludeUserId).
@@ -91,8 +96,9 @@ export async function sendPushToRoles(
             },
             payloadString
           );
-        } catch (error: any) {
-          if (error.statusCode === 410 || error.statusCode === 404) {
+        } catch (error: unknown) {
+          const statusCode = getPushStatusCode(error);
+          if (statusCode === 410 || statusCode === 404) {
             // Subscription has expired or is invalid, deactivate it
             await prisma.pushSubscription.update({
               where: { id: sub.id },
@@ -148,8 +154,9 @@ export async function sendPushToUser(
             payloadString
           );
           sentCount++;
-        } catch (error: any) {
-          if (error.statusCode === 410 || error.statusCode === 404) {
+        } catch (error: unknown) {
+          const statusCode = getPushStatusCode(error);
+          if (statusCode === 410 || statusCode === 404) {
             await prisma.pushSubscription.update({
               where: { id: sub.id },
               data: { is_active: false },

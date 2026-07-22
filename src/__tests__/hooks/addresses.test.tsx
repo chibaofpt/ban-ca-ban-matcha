@@ -4,13 +4,15 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 import React from "react";
 
 // ── Khai báo mock trước import ──────────────────────────────────
-const mockGetAddresses = vi.fn();
-const mockCreateAddress = vi.fn();
+const { mockGetAddresses, mockCreateAddress } = vi.hoisted(() => ({
+  mockGetAddresses: vi.fn(),
+  mockCreateAddress: vi.fn(),
+}));
 
 vi.mock("@/src/services/addressService", () => ({
   addressService: {
-    getAddresses: (...args: any[]) => mockGetAddresses(...args),
-    createAddress: (...args: any[]) => mockCreateAddress(...args),
+    getAddresses: mockGetAddresses,
+    createAddress: mockCreateAddress,
   }
 }));
 
@@ -59,11 +61,18 @@ describe("Address Hooks", () => {
 
       let response;
       await act(async () => {
-        response = await result.current.mutateAsync({ label: "Home" } as any);
+        response = await result.current.mutateAsync({
+          label: "Home",
+          full_address: "123 Test",
+          lat: 10,
+          lng: 106,
+          receiver_name: "Test",
+          receiver_phone: "+84901234567",
+        });
       });
 
       expect(response).toEqual({ id: "a2" });
-      expect(mockCreateAddress).toHaveBeenCalledWith({ label: "Home" });
+      expect(mockCreateAddress).toHaveBeenCalledWith(expect.objectContaining({ label: "Home" }));
       expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ["customer", "addresses"] });
     });
   });

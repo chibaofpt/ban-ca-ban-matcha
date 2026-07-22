@@ -1,7 +1,6 @@
 "use client";
 
 import { create } from "zustand";
-import { apiClient } from "@/src/lib/api/client";
 
 interface PointsState {
   points: number | null;

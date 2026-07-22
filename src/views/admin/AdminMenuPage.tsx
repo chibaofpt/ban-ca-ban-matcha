@@ -7,14 +7,13 @@ import MenuItemCard from "@/src/components/admin/MenuItemCard";
 import MenuItemModal from "@/src/components/admin/MenuItemModal";
 import {
   listAdminMenuItems,
-  deleteMenuItem,
   toggleMenuItemAvailability,
   type AdminMenuData,
 } from "@/src/services/adminMenuService";
 import { listAdminPowders } from "@/src/services/adminPowderService";
 import type { AdminMenuItem } from "@/src/lib/types/menu";
-import type { Powder } from "@/src/lib/types/powder";
 import { cn } from "@/src/utils/cn";
+import Image from "next/image";
 
 // ── Modal state ───────────────────────────────────────────────────────────────
 
@@ -59,6 +58,7 @@ function ConfirmDialog({ message, onConfirm, onCancel, isLoading }: ConfirmDialo
     </div>
   );
 }
+void ConfirmDialog;
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -334,7 +334,8 @@ export default function AdminMenuPage() {
                   const activeSizes = item.sizes.filter((s) => s.base_price_vnd != null);
                   const minPriceCa = activeSizes.length > 0
                     ? Math.min(...activeSizes.map((s) => Math.floor(s.base_price_vnd! / 1000)))
-                    : null;
+                        : null;
+                      void minPriceCa;
                   
                   return (
                     <tr
@@ -350,7 +351,7 @@ export default function AdminMenuPage() {
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-secondary/50 flex items-center justify-center overflow-hidden flex-shrink-0">
                             {item.image_url ? (
-                              <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                              <Image src={item.image_url} alt={item.name} width={40} height={40} unoptimized className="w-full h-full object-cover" />
                             ) : (
                               <span className="text-xl">🍵</span>
                             )}

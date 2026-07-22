@@ -1,5 +1,3 @@
-import { apiClient } from '@/src/lib/api/client';
-
 /** Fetch lịch sử điểm manual adjustment. */
 export async function fetchPointsLog() {}
 

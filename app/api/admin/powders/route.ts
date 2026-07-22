@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createPowderSchema } from "@/lib/validations/powder";
 import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
+import { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -30,8 +31,8 @@ export async function GET() {
     }));
 
     return NextResponse.json({ data: mapped });
-  } catch (error: any) {
-    console.error("[GET /api/admin/powders] Error:", error.message);
+  } catch (error: unknown) {
+    console.error("[GET /api/admin/powders] Error:", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: "Internal Server Error", code: "INTERNAL_ERROR" }, { status: 500 });
   }
 }
@@ -102,9 +103,10 @@ export async function POST(req: Request) {
 
     await invalidateMenuCaches();
     return NextResponse.json({ data: mappedResult }, { status: 201 });
-  } catch (error: any) {
-    console.error("[POST /api/admin/powders] Error:", error.message);
-    if (error.code === 'P2002' && error.meta?.target?.includes('reference_latte_item_id')) {
+  } catch (error: unknown) {
+    console.error("[POST /api/admin/powders] Error:", error instanceof Error ? error.message : error);
+    const target = error instanceof Prisma.PrismaClientKnownRequestError ? error.meta?.target : undefined;
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002" && Array.isArray(target) && target.includes("reference_latte_item_id")) {
         return NextResponse.json(
             { error: "Latte item này đã được gán cho một bột khác", code: "VALIDATION_ERROR" },
             { status: 400 }

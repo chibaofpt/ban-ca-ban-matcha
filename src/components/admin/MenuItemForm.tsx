@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useWatch } from "react-hook-form";
 import { cn } from "@/src/utils/cn";
 import type { AdminMenuItem } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
+import Image from "next/image";
 
 // ── Form field types (all strings for HTML inputs) ────────────────────────────
 // RHF works with raw string inputs; we parse manually on submit.
@@ -100,7 +101,6 @@ export default function MenuItemForm({
   const {
     register,
     handleSubmit,
-    watch,
     control,
     setValue,
     formState: { errors },
@@ -132,10 +132,11 @@ export default function MenuItemForm({
     },
   });
 
-  const category = watch("category");
-  const defaultPowderId = watch("default_powder_id");
-  const allowedPowderIds = watch("allowed_powder_ids");
-  const powderMode = watch("powder_mode");
+  const category = useWatch({ control, name: "category" });
+  const defaultPowderId = useWatch({ control, name: "default_powder_id" });
+  const allowedPowderIds = useWatch({ control, name: "allowed_powder_ids" });
+  const powderMode = useWatch({ control, name: "powder_mode" });
+  const matchaPowderId = useWatch({ control, name: "matcha_powder_id" });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -357,7 +358,7 @@ export default function MenuItemForm({
             <div className="relative group rounded-2xl border-2 border-dashed border-border hover:border-primary/50 transition-colors bg-secondary/10 aspect-video flex flex-col items-center justify-center overflow-hidden cursor-pointer">
               {imagePreview || (mode === "edit" && defaultValues?.name) ? (
                 imagePreview ? (
-                   <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
+                   <Image src={imagePreview} alt="Preview" fill unoptimized className="object-cover" />
                 ) : (
                   <div className="text-4xl">📷</div>
                 )
@@ -425,7 +426,7 @@ export default function MenuItemForm({
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-foreground">
-                      {sortedPowders.find(p => p.id === watch("matcha_powder_id"))?.name || "Đang tải..."}
+                      {sortedPowders.find(p => p.id === matchaPowderId)?.name || "Đang tải..."}
                     </p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">Bột không thể đổi sau khi tạo món để đảm bảo cấu trúc giá trị.</p>
                   </div>

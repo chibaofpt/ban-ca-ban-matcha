@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Drawer } from "vaul";
 import * as Dialog from "@radix-ui/react-dialog";
-import { X, QrCode, Star, Clock, Loader2, Ticket, Gift, LogIn } from "lucide-react";
+import { X, QrCode, Star, Loader2, Ticket, Gift, LogIn } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/src/utils/cn";
 
@@ -22,16 +22,7 @@ import {
 import {
   filterModalVouchers,
   filterModalPackages,
-  canInteract,
-  canExchange,
   getExchangeErrorMessage,
-  getVoucherBenefitText,
-  getPackageBenefitText,
-  formatExpiryLabel,
-  formatVoucherExpiry,
-  formatRedeemedDate,
-  getTicketHighlightText,
-  VOUCHER_TYPE_CONFIG,
 } from "@/src/lib/utils/voucherModalHelpers";
 import { QrModal } from "./QrModal";
 

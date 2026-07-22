@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { onForceLogout } from "@/src/lib/api/client";
 import { useAuthStore } from "@/src/lib/store/authStore";
@@ -22,7 +22,6 @@ import { useAuthModalStore } from "@/src/lib/store/authModalStore";
  *   - Redirects to / and opens the unified login modal
  */
 export default function AuthGuardProvider({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);

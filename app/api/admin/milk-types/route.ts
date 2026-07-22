@@ -18,8 +18,8 @@ export async function GET() {
     });
 
     return NextResponse.json({ data: milkTypes });
-  } catch (error: any) {
-    console.error("[GET /api/admin/milk-types] Error:", error.message);
+  } catch (error: unknown) {
+    console.error("[GET /api/admin/milk-types] Error:", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: "Internal Server Error", code: "INTERNAL_ERROR" }, { status: 500 });
   }
 }
@@ -72,8 +72,8 @@ export async function POST(req: Request) {
 
     await invalidateMenuCaches();
     return NextResponse.json({ data: result }, { status: 201 });
-  } catch (error: any) {
-    console.error("[POST /api/admin/milk-types] Error:", error.message);
+  } catch (error: unknown) {
+    console.error("[POST /api/admin/milk-types] Error:", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: "Internal Server Error", code: "INTERNAL_ERROR" }, { status: 500 });
   }
 }

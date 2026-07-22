@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useCallback } from "react";
-import { Trash2, User, UserX, Ticket, ArrowLeft, CheckCircle2, ChevronRight, X } from "lucide-react";
+import { User, UserX, Ticket, ArrowLeft, CheckCircle2, ChevronRight, X } from "lucide-react";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { MenuData, SweetnessLevel } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
@@ -11,17 +11,16 @@ import { cn } from "@/src/utils/cn";
 import {
   buildProductVoucherMap,
   buildAddonVoucherMap,
-  estimateProductSavings,
   estimateMultiDiscountSavings,
   filterUsableVouchers,
 } from "@/src/utils/voucherMatchUtils";
 import { motion, AnimatePresence } from "framer-motion";
 import { Drawer } from "vaul";
-import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
 import StaffCartItemCard from "./cart/StaffCartItemCard";
 import { VoucherCard, PackageCard } from "@/src/components/shared/VoucherCards";
 import type { VoucherPackage } from "@/src/services/customerVoucherService";
 import type { DiscountVoucher } from "@/src/lib/store/staffCartStore";
+import Image from "next/image";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -33,6 +32,7 @@ const SWEETNESS_LABEL: Record<SweetnessLevel, string> = {
   FULL: "Rất ngọt",
   EXTRA: "Cực ngọt",
 };
+void SWEETNESS_LABEL;
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -164,7 +164,7 @@ export function StaffCartDrawer({
       setActiveItemForVoucher(null);
       setIsDiscountPickerOpen(false);
     }, 300);
-  }, [onClose]);
+  }, [onClose, setActiveItemForVoucher, setIsDiscountPickerOpen]);
 
   return (
     <Drawer.Root 
@@ -262,19 +262,7 @@ export function StaffCartDrawer({
             [...cart].reverse().map((c) => {
               const productVouchersForItem = applicableProductVouchers.get(c.menuItemId) || [];
               const addonVouchersForItem = applicableAddonVouchersMap.get(c.cartId) || [];
-              const hasMoreProductVouchers = !c.productVoucherId && productVouchersForItem.length > 0;
-              const hasMoreAddonVouchers = addonVouchersForItem.length > 0;
-              const hasAvailableVouchers = hasMoreProductVouchers || hasMoreAddonVouchers;
-              
-              const appliedProductVoucherId = c.productVoucherId;
-              const appliedAddonVouchers = c.addonVouchers ?? [];
-
               const menuItem = menuItems.find(m => m.id === c.menuItemId);
-              const line1Chips = line1ItemDetails(c, menuItem, menuData?.milk_types ?? [], powderData?.data);
-              const line2Chips = line2ItemDetails(c, menuItem);
-              const addonChips = addonsDetails(c, menuItem, menuData?.addon_groups ?? [], powderData?.data);
-              
-              const noteText = c.note || null;
 
               return (
                 <StaffCartItemCard
@@ -421,7 +409,7 @@ export function StaffCartDrawer({
                 {/* Item context */}
                 <div className="flex items-center gap-3 p-3 bg-secondary/20 border border-border/50 rounded-2xl">
                   <div className="w-12 h-12 rounded-xl overflow-hidden bg-secondary/40">
-                     {activeItem.imageUrl ? <img src={activeItem.imageUrl} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-xl">🍵</div>}
+                     {activeItem.imageUrl ? <Image src={activeItem.imageUrl} alt={activeItem.name} width={48} height={48} unoptimized className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-xl">🍵</div>}
                   </div>
                   <div>
                     <p className="font-bold text-sm">{activeItem.name}</p>
@@ -435,10 +423,6 @@ export function StaffCartDrawer({
                     <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Miễn phí món</p>
                     <div className="space-y-2">
                       {applicableProductVouchers.get(activeItem.menuItemId)?.map(v => {
-                        const savings = estimateProductSavings(
-                          v,
-                          activeItem.originalClientPriceVnd - activeItem.addonsPrice
-                        );
                         const isSelected = activeItem.productVoucherId === v.id;
                         const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && c.productVoucherId === v.id);
                         

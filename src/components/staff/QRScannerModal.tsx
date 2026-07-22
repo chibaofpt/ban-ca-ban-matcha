@@ -120,11 +120,11 @@ export function QRScannerModal({
             .stop()
             .catch(() => undefined)
             .finally(() => {
-              try { scannerRef.current?.clear(); } catch (e) {}
+              try { scannerRef.current?.clear(); } catch {}
             });
         }
-      } catch (err) {
-        try { scannerRef.current?.clear(); } catch (e) {}
+      } catch {
+        try { scannerRef.current?.clear(); } catch {}
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -145,14 +145,14 @@ export function QRScannerModal({
           .stop()
           .catch(() => undefined)
           .finally(() => {
-            try { scannerRef.current?.clear(); } catch (e) {}
+            try { scannerRef.current?.clear(); } catch {}
             onClose();
           });
       } else {
         onClose();
       }
-    } catch (err) {
-      try { scannerRef.current?.clear(); } catch (e) {}
+    } catch {
+      try { scannerRef.current?.clear(); } catch {}
       onClose();
     }
   };

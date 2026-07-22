@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import type { Prisma } from "@prisma/client";
+import type { OrderType, Prisma } from "@prisma/client";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 
 export const dynamic = "force-dynamic";
@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
     // 5. Order Type filter (supports comma-separated values like PICKUP,DELIVERY)
     if (orderType) {
       const types = orderType.split(",").map((t) => t.trim());
-      where.order_type = { in: types as any[] };
+      where.order_type = { in: types as OrderType[] };
     }
 
 

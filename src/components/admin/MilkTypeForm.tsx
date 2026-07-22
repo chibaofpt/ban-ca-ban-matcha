@@ -11,10 +11,17 @@ interface FormFields {
   is_active: boolean;
 }
 
+export interface MilkTypeFormPayload {
+  name: string;
+  price_per_ml: number;
+  is_default: boolean;
+  is_active: boolean;
+}
+
 interface MilkTypeFormProps {
   mode: "create" | "edit";
   defaultValues?: Partial<FormFields>;
-  onSubmit: (data: any) => Promise<void>;
+  onSubmit: (data: MilkTypeFormPayload) => Promise<void>;
   isSubmitting: boolean;
 }
 

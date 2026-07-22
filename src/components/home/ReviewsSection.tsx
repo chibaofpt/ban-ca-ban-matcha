@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useSyncExternalStore } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Star, X, ExternalLink } from "lucide-react";
 import rawReviews from "@/src/data/reviews.json";
@@ -19,6 +19,16 @@ interface Review {
 
 const REVIEWS = rawReviews as Review[];
 const GOOGLE_MAPS_URL = "https://maps.google.com/?cid=ban-ca-ban-matcha";
+const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
+
+const subscribeToDesktopViewport = (onChange: () => void) => {
+  const media = window.matchMedia(DESKTOP_MEDIA_QUERY);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+};
+
+const getDesktopSnapshot = () => window.matchMedia(DESKTOP_MEDIA_QUERY).matches;
+const getDesktopServerSnapshot = () => false;
 
 // Pastel avatar colors cycling by index
 const AVATAR_COLORS = [
@@ -75,14 +85,11 @@ function ReviewCard({ review, colorCls, truncate = true }: { review: Review; col
 // ── Reviews Bottom Sheet ───────────────────────────────────────────────────────
 
 function ReviewsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [isDesktop, setIsDesktop] = useState(false);
-  useEffect(() => {
-    const media = window.matchMedia("(min-width: 768px)");
-    setIsDesktop(media.matches);
-    const listener = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
-    media.addEventListener("change", listener);
-    return () => media.removeEventListener("change", listener);
-  }, []);
+  const isDesktop = useSyncExternalStore(
+    subscribeToDesktopViewport,
+    getDesktopSnapshot,
+    getDesktopServerSnapshot
+  );
 
   const avgRating = useMemo(
     () => (REVIEWS.reduce((s, r) => s + r.rating, 0) / REVIEWS.length).toFixed(1),

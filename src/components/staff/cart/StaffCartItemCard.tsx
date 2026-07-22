@@ -9,6 +9,7 @@ import type { AddonGroup, MenuItem, MilkTypeOption } from "@/src/lib/types/menu"
 import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { MyVoucher } from "@/src/services/staffVoucherService";
 import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
+import Image from "next/image";
 
 interface StaffCartItemCardProps {
   item: CartItem;
@@ -51,7 +52,7 @@ const StaffCartItemCard = ({
   const appliedAddonVouchers = c.addonVouchers ?? [];
 
   const line1Chips = line1ItemDetails(c, menuItem, milkTypes, powderData?.data);
-  const line2Chips = line2ItemDetails(c, menuItem);
+  const line2Chips = line2ItemDetails(c);
   const addonChips = addonsDetails(c, menuItem, addonGroups, powderData?.data);
   
   const noteText = c.note || null;
@@ -68,7 +69,7 @@ const StaffCartItemCard = ({
       <div className="flex flex-col items-center gap-2 shrink-0">
         <div className="w-16 h-16 rounded-xl overflow-hidden bg-secondary/40 flex items-center justify-center text-3xl">
           {c.imageUrl ? (
-            <img src={c.imageUrl} alt={c.name} className="w-full h-full object-cover" />
+            <Image src={c.imageUrl} alt={c.name} width={64} height={64} unoptimized className="w-full h-full object-cover" />
           ) : (
             "🍵"
           )}
@@ -102,7 +103,7 @@ const StaffCartItemCard = ({
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="flex items-start justify-between gap-2">
           <h4 className="font-bold text-sm leading-tight text-primary truncate w-4/5 pr-2">
-            {c.name} {c.category === "fusion" && powderData?.data?.find((p: any) => p.id === c.selectedPowderId)?.name && `- ${powderData?.data?.find((p: any) => p.id === c.selectedPowderId)?.name}`}
+            {c.name} {c.category === "fusion" && powderData?.data?.find((p) => p.id === c.selectedPowderId)?.name && `- ${powderData?.data?.find((p) => p.id === c.selectedPowderId)?.name}`}
           </h4>
           <button 
             onClick={(e) => { e.stopPropagation(); onRemove(c.cartId); }} 

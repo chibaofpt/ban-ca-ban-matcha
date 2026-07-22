@@ -1,7 +1,6 @@
 import StaffOrdersPage from '@/src/views/staff/StaffOrdersPage';
 import type { Metadata } from 'next';
 import { getSession } from "@/lib/auth";
-import type { Role } from "@/src/lib/types/user";
 
 export const metadata: Metadata = {
   title: 'Tạo đơn — Bạn Cá Bán Matcha',

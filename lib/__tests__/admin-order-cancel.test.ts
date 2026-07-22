@@ -38,12 +38,6 @@ const mockTransactionCustomer = vi.fn();
 const mockOrderFindUniqueCustomer = vi.fn();
 const mockOrderUpdateCustomer = vi.fn();
 const mockOrderUpdateManyCustomer = vi.fn();
-const mockOrderItemFindManyCustomer = vi.fn();
-const mockVoucherFindUniqueCustomer = vi.fn();
-const mockVoucherUpdateCustomer = vi.fn();
-const mockUserUpdateCustomer = vi.fn();
-const mockPointsLogFindManyCustomer = vi.fn();
-const mockOrderDiscountVoucherFindManyCustomer = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),

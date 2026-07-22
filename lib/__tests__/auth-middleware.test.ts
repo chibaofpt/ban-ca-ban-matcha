@@ -4,7 +4,7 @@
  * Strategy: mock global fetch — verify correct PostgREST calls and token rotation.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -28,7 +28,6 @@ import {
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const FUTURE_DATE = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-const PAST_DATE = new Date(Date.now() - 1000).toISOString();
 
 const MOCK_SESSION = {
   id: "session-uuid-123",

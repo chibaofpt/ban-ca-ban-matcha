@@ -1,16 +1,18 @@
-import { renderHook, waitFor, act } from "@testing-library/react";
+import { renderHook, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import React from "react";
+import type { CartItem } from "@/src/lib/types/cart";
+import type { createOrder } from "@/src/services/orderService";
 
 // ── Khai báo mock trước import ──────────────────────────────────
-const mockCreateOrder = vi.fn();
+const { mockCreateOrder } = vi.hoisted(() => ({ mockCreateOrder: vi.fn() }));
 
 vi.mock("@/src/services/orderService", async (importOriginal) => {
-  const actual: any = await importOriginal();
+  const actual = await importOriginal<typeof import("@/src/services/orderService")>();
   return {
     ...actual,
-    createOrder: (...args: any[]) => mockCreateOrder(...args),
+    createOrder: mockCreateOrder,
   };
 });
 
@@ -44,12 +46,34 @@ describe("useCheckout Hook", () => {
       wrapper: ({ children }) => wrapper({ children, client: queryClient })
     });
 
-    const mockItems = [{ id: 1 }];
-    const mockOptions = { orderType: "PICKUP" };
+    const mockItems: CartItem[] = [{
+      cartId: "cart-1",
+      menuItemId: "item-1",
+      name: "Matcha Latte",
+      category: "latte",
+      imageUrl: null,
+      size: "MEDIUM",
+      unitPrice: 50_000,
+      quantity: 1,
+      sweetness: "FULL",
+      iceOption: "NORMAL",
+      coldwhisk: false,
+      note: "",
+      selectedOptionIds: [],
+      quantityMap: {},
+      addonsPrice: 0,
+      addonPrices: {},
+      quantityAddonOptions: [],
+      clientPriceVnd: 50_000,
+      originalClientPriceVnd: 50_000,
+    }];
+    const mockOptions: NonNullable<Parameters<typeof createOrder>[1]> = {
+      orderType: "PICKUP",
+    };
 
     let res;
     await act(async () => {
-      res = await result.current.mutateAsync({ items: mockItems as any, options: mockOptions as any });
+      res = await result.current.mutateAsync({ items: mockItems, options: mockOptions });
     });
 
     expect(res).toEqual({ success: true });
@@ -67,7 +91,7 @@ describe("useCheckout Hook", () => {
 
     await expect(
       act(async () => {
-        await result.current.mutateAsync({ items: [], options: {} as any });
+        await result.current.mutateAsync({ items: [], options: {} });
       })
     ).rejects.toThrow("Lỗi đặt hàng");
   });

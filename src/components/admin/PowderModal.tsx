@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
-import PowderForm, { buildPowderDefaultValues } from "@/src/components/admin/PowderForm";
+import PowderForm, {
+  buildPowderDefaultValues,
+  type PowderFormPayload,
+} from "@/src/components/admin/PowderForm";
 import { createPowder, updatePowder } from "@/src/services/adminPowderService";
 import type { Powder } from "@/src/lib/types/powder";
 import type { AdminMenuItem } from "@/src/lib/types/menu";
@@ -28,7 +31,7 @@ export default function PowderModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const handleSubmit = async (payload: any) => {
+  const handleSubmit = async (payload: PowderFormPayload) => {
     setIsSubmitting(true);
     setErrorMsg(null);
     try {

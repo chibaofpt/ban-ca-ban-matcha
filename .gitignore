@@ -58,3 +58,4 @@ next-env.d.ts
 
 # scratch scripts directory
 /scratch
+/scratch_*.js

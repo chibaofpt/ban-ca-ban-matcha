@@ -18,7 +18,7 @@ vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
   return {
     ...actual,
-    after: (fn: Function) => fn(),
+    after: (fn: () => void) => fn(),
   };
 });
 
@@ -94,7 +94,6 @@ function makeReq(body: unknown): NextRequest {
 const ITEM_ID   = "550e8400-e29b-41d4-a716-446655440001";
 const POWDER_ID = "550e8400-e29b-41d4-a716-446655440002";
 const USER_ID   = "550e8400-e29b-41d4-a716-446655440003";
-const ORDER_ID  = "550e8400-e29b-41d4-a716-446655440004";
 const V_PCT     = "550e8400-e29b-41d4-a716-446655440011";
 const V_FIX     = "550e8400-e29b-41d4-a716-446655440012";
 const V_MARK    = "550e8400-e29b-41d4-a716-446655440013";
@@ -200,7 +199,6 @@ function setupTx(overrides: {
     create: mockOrderCreate,
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(async (fn: (tx: unknown) => unknown) => {
     const tx = {
       menuItem: { findUnique: mockMenuItemFind },
@@ -550,7 +548,6 @@ describe("POST /api/orders", () => {
   });
 
   it("returns 500 on unexpected DB error", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (prisma.$transaction as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("connection timeout"));
     const res = await POST(makeReq(validPayload));
     expect(res.status).toBe(500);
@@ -758,19 +755,19 @@ describe("GET /api/orders", () => {
     mockSendPushToRoles.mockResolvedValue(undefined); // Prevent .catch() from crashing on undefined
 
     // Mock $transaction to resolve array of promises for GET route
-    (prisma.$transaction as any).mockImplementation(async (arg: unknown) => {
+    (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(async (arg: unknown) => {
       if (Array.isArray(arg)) {
         return Promise.all(arg);
       }
       return arg;
     });
 
-    (prisma.order as any) = {
+    Object.assign(prisma.order, {
       findUnique: vi.fn(),
       findMany: vi.fn().mockResolvedValue([]),
       count: vi.fn().mockResolvedValue(0),
       create: vi.fn(),
-    };
+    });
   });
 
   function makeGetReq(): NextRequest {
@@ -791,7 +788,7 @@ describe("GET /api/orders", () => {
       { id: "o1", user_id: USER_ID, created_at: "2026-05-01" },
       { id: "o2", user_id: USER_ID, created_at: "2026-05-02" },
     ];
-    (prisma.order.findMany as any) = vi.fn().mockResolvedValue(mockOrders);
+    Object.assign(prisma.order, { findMany: vi.fn().mockResolvedValue(mockOrders) });
 
     const res = await GET(makeGetReq());
     expect(res.status).toBe(200);
@@ -809,7 +806,9 @@ describe("GET /api/orders", () => {
   });
 
   it("returns 500 on database error", async () => {
-    (prisma.order.findMany as any) = vi.fn().mockRejectedValue(new Error("DB timeout"));
+    Object.assign(prisma.order, {
+      findMany: vi.fn().mockRejectedValue(new Error("DB timeout")),
+    });
     const res = await GET(makeGetReq());
     expect(res.status).toBe(500);
     expect((await res.json()).code).toBe("INTERNAL_ERROR");

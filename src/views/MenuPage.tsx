@@ -35,6 +35,7 @@ export default function MenuPage() {
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(1000);
   const carouselX = useMotionValue(0);
 
   const setPowderData = usePowderStore((s) => s.setPowderData);
@@ -122,7 +123,21 @@ export default function MenuPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, [currentIndex, carouselX]);
 
-  const handleDragEnd = useCallback((e: any, { offset, velocity }: PanInfo) => {
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setContainerWidth(entry.contentRect.width);
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  const handleDragEnd = useCallback((
+    event: MouseEvent | TouchEvent | PointerEvent,
+    { offset, velocity }: PanInfo
+  ) => {
+    void event;
     const swipe = swipePower(offset.x, velocity.x);
     const draggedFarLeft = offset.x < -100;
     const draggedFarRight = offset.x > 100;
@@ -188,7 +203,7 @@ export default function MenuPage() {
               style={{ x: carouselX }}
               drag="x"
               // Remove bounds constraints so we can rely purely on dragElastic and manual snap for smooth feel
-              dragConstraints={{ left: containerRef.current ? -containerRef.current.offsetWidth * 2 : -2000, right: 0 }}
+              dragConstraints={{ left: -containerWidth * 2, right: 0 }}
               dragElastic={0.2}
               onDragEnd={handleDragEnd}
               className="relative w-full touch-pan-y"

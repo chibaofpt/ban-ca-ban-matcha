@@ -27,7 +27,7 @@ vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
   return {
     ...actual,
-    after: (fn: Function) => fn(),
+    after: (fn: () => void) => fn(),
   };
 });
 const mockOrderFindUnique = vi.fn();

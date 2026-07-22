@@ -294,6 +294,7 @@ export async function POST(req: NextRequest) {
           }
         }
       }
+      void total_addon_price;
 
       // covered_price_vnd = drink price only (PRODUCT covers drink, not addons)
       const covered_price_vnd = drink_price;

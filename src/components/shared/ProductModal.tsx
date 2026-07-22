@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, useRef, Profiler } from "react";
+import React, { useState, useCallback, useMemo, Profiler, useSyncExternalStore } from "react";
 import Image from "next/image";
-import { motion, AnimatePresence } from "framer-motion";
 import { onRenderCallback } from "@/src/utils/dev/renderProfiler";
 import { Drawer } from "vaul";
 import * as Dialog from "@radix-ui/react-dialog";
-import { X, Minus, Plus, ShoppingBag, Ticket, CheckCircle2 } from "lucide-react";
+import { X, Minus, Plus, Ticket, CheckCircle2 } from "lucide-react";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { filterUsableVouchers } from "@/src/utils/voucherMatchUtils";
 import type { AddonGroup, MenuItem, MilkTypeOption, SweetnessLevel, Size } from "@/src/lib/types/menu";
@@ -42,6 +41,15 @@ interface ProductModalProps {
   currentCartItems?: CartItem[];
 }
 
+const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
+const subscribeToDesktopViewport = (onChange: () => void) => {
+  const media = window.matchMedia(DESKTOP_MEDIA_QUERY);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+};
+const getDesktopSnapshot = () => window.matchMedia(DESKTOP_MEDIA_QUERY).matches;
+const getDesktopServerSnapshot = () => false;
+
 // Extracted OptionCard, SizeSelector, MilkSelector, PowderSelector are imported
 
 const BaseModal: React.FC<ProductModalProps> = ({ 
@@ -56,14 +64,11 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
 
   // ── Desktop / Responsive Detection ──
-  const [isDesktop, setIsDesktop] = useState(false);
-  useEffect(() => {
-    const media = window.matchMedia("(min-width: 768px)");
-    setIsDesktop(media.matches);
-    const listener = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
-    media.addEventListener("change", listener);
-    return () => media.removeEventListener("change", listener);
-  }, []);
+  const isDesktop = useSyncExternalStore(
+    subscribeToDesktopViewport,
+    getDesktopSnapshot,
+    getDesktopServerSnapshot
+  );
 
   // ── State ────────────────────────────────────────────────────────────────
   const [selectedSize, setSelectedSize] = useState<Size>(() => {
@@ -80,7 +85,12 @@ const BaseModal: React.FC<ProductModalProps> = ({
     return milkTypes.find((milk) => milk.is_default)?.id ?? milkTypes[0]?.id ?? "";
   });
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>(() => {
-    if (editingItem) return editingItem.selectedOptionIds;
+    const validOptionIds = new Set(
+      addonGroups.flatMap((group) => group.options.map((option) => option.id))
+    );
+    if (editingItem) {
+      return editingItem.selectedOptionIds.filter((id) => validOptionIds.has(id));
+    }
     return addonGroups.flatMap((group) =>
       group.options.filter((option) => option.is_default).map((option) => option.id)
     );
@@ -89,7 +99,13 @@ const BaseModal: React.FC<ProductModalProps> = ({
     if (editingItem) return editingItem.quantityMap;
     return Object.fromEntries(addonGroups.filter((group) => group.type === "QUANTITY").map((group) => [group.id, 0]));
   });
-  const [quantity, setQuantity] = useState(() => editingItem?.quantity ?? 1);
+  const [quantity, setQuantity] = useState(() => {
+    const startsWithVoucher =
+      editingItem?.productVoucherId !== undefined ||
+      (editingItem?.addonVouchers?.length ?? 0) > 0 ||
+      freeVoucherId !== undefined;
+    return startsWithVoucher ? 1 : editingItem?.quantity ?? 1;
+  });
   const [note, setNote] = useState(() => editingItem?.note ?? "");
 
   const [selectedProductVoucherId, setSelectedProductVoucherId] = useState<string | null>(() => editingItem?.productVoucherId ?? null);
@@ -125,28 +141,9 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const isProductVoucherApplied = selectedProductVoucherId !== null || freeVoucherId !== undefined;
   const isVoucherApplied = isProductVoucherApplied || selectedAddonVoucherIds.length > 0;
   
-  useEffect(() => {
-    if (isVoucherApplied && quantity !== 1) {
-      setQuantity(1);
-    }
-  }, [isVoucherApplied, quantity]);
-
   // ── Edit Validation ──────────────────────────────────────────────────────
   const lockQuantity = isVoucherApplied;
   
-  useEffect(() => {
-    if (!editingItem) return;
-    const allValidOptionIds = new Set(
-      addonGroups.flatMap(group => group.options.map(option => option.id))
-    );
-    const removedOptions = editingItem.selectedOptionIds.filter(
-      id => !allValidOptionIds.has(id)
-    );
-    if (removedOptions.length > 0) {
-      setSelectedOptionIds(prev => prev.filter(id => allValidOptionIds.has(id)));
-    }
-  }, [editingItem, addonGroups]);
-
   // ── Derived ──────────────────────────────────────────────────────────────
   const isLatte = item.category === "latte";
   const activePowderId = isLatte ? (item.powder?.id ?? "") : selectedPowderId;
@@ -172,7 +169,6 @@ const BaseModal: React.FC<ProductModalProps> = ({
     getPriceForContext,
     currentPriceContext,
     finalUnitPrice,
-    finalAddonsCost,
     totalCost,
     effectiveFreeVoucherId,
     effectiveFreeCoveredPrice
@@ -233,7 +229,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
         } : null;
     }).filter((x): x is NonNullable<typeof x> => Boolean(x));
 
-    const cartItemData = {
+    const cartItemData: Omit<CartItem, "cartId"> = {
       menuItemId: item.id, name: item.name, category: item.category, imageUrl: item.image_url,
       size: selectedSize, unitPrice: currentPriceContext.unitPrice, quantity, sweetness, iceOption, coldwhisk,
       note, selectedOptionIds, quantityMap, addonsPrice: currentPriceContext.addonsCost, addonPrices: currentPriceContext.addonPricesMap, quantityAddonOptions,
@@ -260,7 +256,6 @@ const BaseModal: React.FC<ProductModalProps> = ({
         updateItem(editingItem.cartId, { ...cartItemData, quantity: 1 });
         const remainderData = {
           ...cartItemData,
-          cartId: crypto.randomUUID(),
           quantity: editingItem.quantity - 1,
           unitPrice: currentPriceContext.unitPrice,
           clientPriceVnd: currentPriceContext.unitPrice,
@@ -268,13 +263,13 @@ const BaseModal: React.FC<ProductModalProps> = ({
           productVoucherDiscountVnd: undefined,
           addonVouchers: [],
         };
-        addItem(remainderData as any);
+        addItem(remainderData);
       } else {
         updateItem(editingItem.cartId, cartItemData);
       }
     } else {
       // Customer Add mode
-      addItem(cartItemData as any);
+      addItem(cartItemData);
     }
     
     handleClose();
@@ -282,7 +277,8 @@ const BaseModal: React.FC<ProductModalProps> = ({
     item, quantityMap, selectedAddonVoucherIds, availableVouchers, currentPriceContext,
     selectedSize, finalUnitPrice, quantity, sweetness, iceOption, coldwhisk, note,
     selectedOptionIds, isLatte, selectedPowderId, selectedMilkId, effectiveFreeVoucherId,
-    effectiveFreeCoveredPrice, onConfirm, editingItem, updateItem, addItem, handleClose
+    effectiveFreeCoveredPrice, onConfirm, editingItem, updateItem, addItem, handleClose,
+    addonGroups
   ]);
 
   const sweetnessIdx = useMemo(() => SWEETNESS_OPTIONS.findIndex((o) => o.value === sweetness), [sweetness]);
@@ -603,7 +599,10 @@ const BaseModal: React.FC<ProductModalProps> = ({
                   return (
                     <button
                       key={v.id}
-                      onClick={() => setSelectedProductVoucherId(isSelected ? null : v.id)}
+                      onClick={() => {
+                        if (!isSelected) setQuantity(1);
+                        setSelectedProductVoucherId(isSelected ? null : v.id);
+                      }}
                       className={cn(
                         "w-full flex items-center justify-between p-3.5 rounded-xl border-2 text-left transition-colors",
                         isSelected ? "bg-orange-50 border-orange-200" : "bg-card border-border hover:bg-orange-50/30"
@@ -627,6 +626,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
                         if (isSelected) {
                           setSelectedAddonVoucherIds(prev => prev.filter(id => id !== v.id));
                         } else {
+                          setQuantity(1);
                           const otherIdsToRemove = applicableAddonVouchers
                             .filter(av => av.addon_option_id === v.addon_option_id && av.id !== v.id)
                             .map(av => av.id);

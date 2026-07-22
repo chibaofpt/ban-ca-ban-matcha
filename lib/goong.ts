@@ -2,6 +2,11 @@ import type { GoongPrediction } from "@/src/lib/types/address";
 
 const GOONG_BASE = "https://rsapi.goong.io";
 
+interface GoongAutocompleteResponse {
+  status: string;
+  predictions: GoongPrediction[];
+}
+
 function getApiKey(): string {
   const key = process.env.GOONG_API_KEY;
   if (!key) throw new Error("GOONG_API_KEY is missing");
@@ -40,14 +45,14 @@ export async function goongAutocomplete(
     throw new Error(`Goong API error: ${res.status}`);
   }
 
-  const data = await res.json();
+  const data = (await res.json()) as GoongAutocompleteResponse;
   if (data.status !== "OK") {
     // If no results, Goong might return ZERO_RESULTS
     if (data.status === "ZERO_RESULTS") return [];
     throw new Error(`Goong API returned status: ${data.status}`);
   }
 
-  return data.predictions.map((p: any) => ({
+  return data.predictions.map((p) => ({
     place_id: p.place_id,
     description: p.description,
     structured_formatting: {

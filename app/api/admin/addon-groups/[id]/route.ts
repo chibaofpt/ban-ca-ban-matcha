@@ -141,8 +141,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     await invalidateMenuCaches();
     return NextResponse.json({ data: mappedResult });
-  } catch (error: any) {
-    console.error("[PUT /api/admin/addon-groups/[id]] Error:", error.message);
+  } catch (error: unknown) {
+    console.error("[PUT /api/admin/addon-groups/[id]] Error:", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: "Internal Server Error", code: "INTERNAL_ERROR" }, { status: 500 });
   }
 }
@@ -169,8 +169,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
     await invalidateMenuCaches();
     return NextResponse.json({ data: updated });
-  } catch (error: any) {
-    console.error("[DELETE /api/admin/addon-groups/[id]] Error:", error.message);
+  } catch (error: unknown) {
+    console.error("[DELETE /api/admin/addon-groups/[id]] Error:", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: "Internal Server Error", code: "INTERNAL_ERROR" }, { status: 500 });
   }
 }

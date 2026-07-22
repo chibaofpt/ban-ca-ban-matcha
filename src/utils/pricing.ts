@@ -32,6 +32,28 @@ export function ceilTo1000(vnd: number): number {
   return Math.ceil(vnd / 1000) * 1000;
 }
 
+export interface ProductVoucherCreditResult {
+  drinkPayableVnd: number;
+  addonsPayableVnd: number;
+  totalVnd: number;
+}
+
+/** Applies a PRODUCT voucher credit to the drink price only, never to addons. */
+export function applyProductVoucherCredit(
+  drinkPriceVnd: number,
+  addonsPriceVnd: number,
+  coveredPriceVnd: number
+): ProductVoucherCreditResult {
+  const drinkPayableVnd = Math.max(0, drinkPriceVnd - coveredPriceVnd);
+  const addonsPayableVnd = Math.max(0, addonsPriceVnd);
+
+  return {
+    drinkPayableVnd,
+    addonsPayableVnd,
+    totalVnd: drinkPayableVnd + addonsPayableVnd,
+  };
+}
+
 // ── Gram resolution ───────────────────────────────────────────────────────────
 
 /**

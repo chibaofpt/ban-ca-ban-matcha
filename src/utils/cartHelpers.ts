@@ -35,7 +35,7 @@ export function line1ItemDetails(
   return chips;
 }
 
-export function line2ItemDetails(item: CartItem, menuItem?: MenuItem): string[] {
+export function line2ItemDetails(item: CartItem): string[] {
   const chips: string[] = [];
 
   // Sweetness

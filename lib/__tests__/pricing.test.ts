@@ -277,8 +277,9 @@ describe("resolveOrderItemPremiumLatte", () => {
     defaultPowder?: { reference_latte_item_id: string | null } | null;
     selectedSizePrice?: number | null;
     defaultSizePrice?: number | null;
-  }) {
-    return {
+  }): NonNullable<Parameters<typeof resolveOrderItemPremiumLatte>[3]> {
+    const client = {} as NonNullable<Parameters<typeof resolveOrderItemPremiumLatte>[3]>;
+    Object.assign(client, {
       defaultSizeConfig: { findMany: vi.fn() },
       powderSizeConfig: { findMany: vi.fn() },
       matchaPowder: {
@@ -313,7 +314,8 @@ describe("resolveOrderItemPremiumLatte", () => {
           return Promise.resolve(null);
         }),
       },
-    };
+    });
+    return client;
   }
 
   beforeEach(() => {
@@ -332,7 +334,7 @@ describe("resolveOrderItemPremiumLatte", () => {
       "selected-powder",
       "default-powder",
       "MEDIUM",
-      client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
+      client
     );
 
     expect(result).toBe(5000); // 90000 - 85000
@@ -350,7 +352,7 @@ describe("resolveOrderItemPremiumLatte", () => {
       "selected-powder",
       "default-powder",
       "MEDIUM",
-      client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
+      client
     );
 
     expect(result).toBe(-5000); // 80000 - 85000
@@ -366,7 +368,7 @@ describe("resolveOrderItemPremiumLatte", () => {
       "selected-powder",
       "default-powder",
       "MEDIUM",
-      client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
+      client
     );
 
     expect(result).toBe(0);
@@ -382,7 +384,7 @@ describe("resolveOrderItemPremiumLatte", () => {
       "selected-powder",
       "default-powder",
       "MEDIUM",
-      client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
+      client
     );
 
     expect(result).toBe(0);
@@ -398,7 +400,7 @@ describe("resolveOrderItemPremiumLatte", () => {
       "selected-powder",
       "default-powder",
       "MEDIUM",
-      client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
+      client
     );
 
     expect(result).toBe(0);
@@ -416,7 +418,7 @@ describe("resolveOrderItemPremiumLatte", () => {
       "selected-powder",
       "default-powder",
       "LARGE",
-      client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
+      client
     );
 
     // null fallback to 0: 0 - 85000 = -85000
@@ -435,7 +437,7 @@ describe("resolveOrderItemPremiumLatte", () => {
       "selected-powder",
       "default-powder",
       "MEDIUM",
-      client as any as Parameters<typeof resolveOrderItemPremiumLatte>[3]
+      client
     );
 
     expect(result).toBe(0);

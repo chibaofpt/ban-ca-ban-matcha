@@ -109,7 +109,11 @@ describe("sendPushToRoles — gửi push theo role", () => {
 
   it("loại trừ excludeUserId khỏi danh sách nhận", async () => {
     // Admin vừa confirm payment → không nhận push
-    mockPushSubscriptionFindMany.mockImplementation(({ where }: any) => {
+    mockPushSubscriptionFindMany.mockImplementation(({
+      where,
+    }: {
+      where?: { user_id?: { not?: string } };
+    }) => {
       if (where?.user_id?.not === ADMIN_ID) return Promise.resolve([staffSub]);
       return Promise.resolve([adminSub, staffSub]);
     });

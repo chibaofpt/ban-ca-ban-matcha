@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { X, BarChart3, Loader2, RefreshCw, TrendingUp, Package, Award } from "lucide-react";
+import { X, BarChart3, Loader2, RefreshCw, TrendingUp } from "lucide-react";
 import { getStaffReport, getAdminReport, getStaffList } from "@/src/services/reportService";
 import type { StaffReport, AdminReport, StaffMember } from "@/src/lib/types/report";
 import { toast } from "sonner";

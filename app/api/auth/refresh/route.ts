@@ -4,7 +4,7 @@ import { getRefreshTokenCookie, signJwt, createSession, setAuthCookies, clearAut
 import { cacheDelete } from "@/lib/redis";
 
 /** POST /api/auth/refresh — rotates the refresh token and issues a new access token. */
-export async function POST(_req: Request) {
+export async function POST() {
   const refreshToken = await getRefreshTokenCookie();
 
   if (!refreshToken) {

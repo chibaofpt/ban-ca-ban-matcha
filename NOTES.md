@@ -52,6 +52,67 @@ Do not preserve current behavior merely because it conflicts with these approved
 
 ## Deferred — Do Not Implement
 
+### Deferred Code-Size Remediation — Approved Temporary Exception (2026-07-22)
+
+The architect approved a staging-first exception for the lint remediation task:
+
+- Fix lint errors and warnings with the smallest behaviour-preserving changes needed to pass the
+  `push-to-dev` QA gate.
+- Do **not** split the files below during that task, even when a lint edit touches them.
+- Do not add new logic to these files or use this exception for feature work.
+- Refactor them in a dedicated follow-up with characterization tests, file-by-file review, and
+  staging regression testing.
+
+Line counts are the baseline captured on 2026-07-22 and may change slightly before the follow-up.
+
+#### Production UI
+
+| File | Baseline lines |
+|---|---:|
+| `src/views/admin/AdminVoucherPackagesPage.tsx` | 864 |
+| `src/components/admin/MenuItemForm.tsx` | 753 |
+| `src/views/staff/StaffOrdersPage.tsx` | 722 |
+| `src/components/shared/ProductModal.tsx` | 706 |
+| `src/components/menu/CartDrawer.tsx` | 687 |
+| `src/views/admin/AdminOrdersPage.tsx` | 645 |
+| `src/components/staff/StaffCartDrawer.tsx` | 604 |
+| `src/components/report/DailyReportModal.tsx` | 578 |
+| `src/views/customer/HistoryPage.tsx` | 554 |
+| `src/views/admin/AdminMenuPage.tsx` | 454 |
+| `src/components/delivery/MapPicker.tsx` | 423 |
+| `src/views/staff/StaffOrdersListPage.tsx` | 393 |
+| `src/components/admin/PowderForm.tsx` | 363 |
+| `src/components/menu/cart/CartFooter.tsx` | 340 |
+| `src/components/shared/VoucherModal.tsx` | 337 |
+| `src/views/admin/AdminMilkTypesPage.tsx` | 322 |
+
+#### Server/API
+
+| File | Baseline lines |
+|---|---:|
+| `app/api/staff/orders/route.ts` | 738 |
+| `lib/orders.ts` | 398 |
+| `app/api/admin/voucher-packages/route.ts` | 371 |
+
+#### Tests
+
+| File | Baseline lines |
+|---|---:|
+| `lib/__tests__/orders-route.test.ts` | 817 |
+| `lib/__tests__/order-voucher-unify.test.ts` | 773 |
+| `lib/__tests__/admin-order-cancel.test.ts` | 716 |
+| `lib/__tests__/voucher-routes.test.ts` | 489 |
+| `lib/__tests__/pricing.test.ts` | 443 |
+| `lib/__tests__/create-latte-with-powder.test.ts` | 417 |
+| `lib/__tests__/confirm-payment.test.ts` | 405 |
+| `src/__tests__/components/customer/voucherModal.logic.test.ts` | 356 |
+| `lib/__tests__/vouchers.test.ts` | 336 |
+
+#### Scratch
+
+`scratch/CartDrawerOriginal.tsx` is also over 300 lines, but `scratch/**` is local tooling and is
+outside the application, TypeScript, and lint scope. It does not require a production refactor.
+
 | Issue | Status | Action |
 |---|---|---|
 | Image cleanup (old Supabase Storage files orphaned on replace/delete) | Deferred | Acceptable for now |

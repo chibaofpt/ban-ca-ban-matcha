@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GET, POST } from "@/app/api/profile/addresses/route";
-import { DELETE, PUT } from "@/app/api/profile/addresses/[id]/route";
+import { DELETE } from "@/app/api/profile/addresses/[id]/route";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
+import type { Address as PrismaAddress } from "@prisma/client";
 
 vi.mock("@/lib/auth", () => ({
   getSession: vi.fn(),
@@ -36,13 +37,32 @@ vi.mock("@/lib/prisma", () => {
 
 describe("Address CRUD API", () => {
   const mockUserId = "user-123";
+  const makeAddress = (overrides: Partial<PrismaAddress> = {}): PrismaAddress => ({
+    id: "addr-1",
+    user_id: mockUserId,
+    label: "Nhà",
+    full_address: "123 Test",
+    lat: 10,
+    lng: 106,
+    receiver_name: "Test",
+    receiver_phone: "+84901234567",
+    is_default: false,
+    distance_km: null,
+    created_at: new Date(),
+    updated_at: new Date(),
+    ...overrides,
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (getSession as any).mockResolvedValue({ id: mockUserId, role: "CUSTOMER" });
+    vi.mocked(getSession).mockResolvedValue({
+      id: mockUserId,
+      role: "CUSTOMER",
+      phone_number: "+84901234567",
+    });
   });
 
-  function createRequest(method: string, body?: any, url = "http://localhost/api/profile/addresses") {
+  function createRequest(method: string, body?: unknown, url = "http://localhost/api/profile/addresses") {
     return new NextRequest(url, {
       method,
       body: body ? JSON.stringify(body) : undefined,
@@ -51,15 +71,21 @@ describe("Address CRUD API", () => {
 
   describe("GET /api/profile/addresses", () => {
     it("GET /api/profile/addresses: trả về danh sách của user", async () => {
-      const mockAddresses = [{ id: "1", label: "Nhà", is_default: true }];
-      (prisma.address.findMany as any).mockResolvedValue(mockAddresses);
+      const mockAddresses = [makeAddress({ id: "1", is_default: true })];
+      vi.mocked(prisma.address.findMany).mockResolvedValue(mockAddresses);
 
       const req = createRequest("GET");
       const res = await GET(req);
       const json = await res.json();
 
       expect(res.status).toBe(200);
-      expect(json.data).toEqual(mockAddresses);
+      expect(json.data).toEqual(
+        mockAddresses.map((address) => ({
+          ...address,
+          created_at: address.created_at.toISOString(),
+          updated_at: address.updated_at.toISOString(),
+        }))
+      );
       expect(prisma.address.findMany).toHaveBeenCalledWith({
         where: { user_id: mockUserId },
         orderBy: [{ is_default: "desc" }, { created_at: "desc" }],
@@ -69,7 +95,7 @@ describe("Address CRUD API", () => {
 
   describe("POST /api/profile/addresses", () => {
     it("POST /api/profile/addresses: quá 4 address -> báo lỗi MAX_ADDRESSES_REACHED", async () => {
-      (prisma.address.count as any).mockResolvedValue(4);
+      vi.mocked(prisma.address.count).mockResolvedValue(4);
 
       const req = createRequest("POST", {
         label: "Cty",
@@ -89,8 +115,10 @@ describe("Address CRUD API", () => {
     });
 
     it("POST /api/profile/addresses: address đầu tiên tự động thành default", async () => {
-      (prisma.address.count as any).mockResolvedValue(0);
-      (prisma.address.create as any).mockResolvedValue({ id: "1", is_default: true });
+      vi.mocked(prisma.address.count).mockResolvedValue(0);
+      vi.mocked(prisma.address.create).mockResolvedValue(
+        makeAddress({ id: "1", is_default: true })
+      );
 
       const req = createRequest("POST", {
         label: "Cty",
@@ -103,8 +131,6 @@ describe("Address CRUD API", () => {
       });
 
       const res = await POST(req);
-      const json = await res.json();
-
       expect(res.status).toBe(201);
       expect(prisma.address.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -117,18 +143,18 @@ describe("Address CRUD API", () => {
   describe("DELETE /api/profile/addresses/[id]", () => {
     it("DELETE /api/profile/addresses: xóa address default thì gán default cho address khác", async () => {
       // Mock existing address is default
-      (prisma.address.findUnique as any).mockResolvedValue({
+      vi.mocked(prisma.address.findUnique).mockResolvedValue(makeAddress({
         id: "addr-1",
         user_id: mockUserId,
         is_default: true,
-      });
+      }));
       // Mock finding remaining addresses
-      (prisma.address.findFirst as any).mockResolvedValue(
-        { id: "addr-2", created_at: new Date() }
+      vi.mocked(prisma.address.findFirst).mockResolvedValue(
+        makeAddress({ id: "addr-2", created_at: new Date() })
       );
 
       const req = createRequest("DELETE", undefined, "http://localhost/api/profile/addresses/addr-1");
-      const res = await DELETE(req, { params: Promise.resolve({ id: "addr-1" }) as any });
+      const res = await DELETE(req, { params: Promise.resolve({ id: "addr-1" }) });
 
       expect(res.status).toBe(200);
       expect(prisma.address.delete).toHaveBeenCalledWith({ where: { id: "addr-1" } });

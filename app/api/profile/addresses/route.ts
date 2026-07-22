@@ -8,6 +8,7 @@ import { getStoreLocation, goongDistanceMatrix } from "@/lib/goong";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
+  void req;
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });

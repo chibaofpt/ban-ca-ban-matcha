@@ -14,8 +14,6 @@ import { describe, it, expect } from "vitest";
 // ── Import the function under test (will be created in lib/orderCalculator.ts) ──
 import {
   calcOrderTotals,
-  type CalcOrderInput,
-  type CalcOrderResult,
 } from "@/lib/orderCalculator";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────

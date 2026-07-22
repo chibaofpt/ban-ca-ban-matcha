@@ -49,7 +49,7 @@ const CartItemCard = ({
   const hasAnyVoucher = !!item.productVoucherId || (item.addonVouchers && item.addonVouchers.length > 0);
 
   const line1Chips = line1ItemDetails(item, menuItem, milkTypes, powderData?.data);
-  const line2Chips = line2ItemDetails(item, menuItem);
+  const line2Chips = line2ItemDetails(item);
   const addonChips = addonsDetails(item, menuItem, addonGroups, powderData?.data);
   
   const noteText = item.note || null;
@@ -104,7 +104,7 @@ const CartItemCard = ({
         {/* Title + Delete */}
         <div className="flex items-start justify-between w-full">
           <h4 className="font-bold text-sm text-primary leading-tight truncate w-4/5 pr-2">
-            {item.name} {item.category === "fusion" && powderData?.data?.find((p: any) => p.id === item.selectedPowderId)?.name && `- ${powderData?.data?.find((p: any) => p.id === item.selectedPowderId)?.name}`}
+            {item.name} {item.category === "fusion" && powderData?.data?.find((p) => p.id === item.selectedPowderId)?.name && `- ${powderData?.data?.find((p) => p.id === item.selectedPowderId)?.name}`}
           </h4>
           <div className="w-1/5 flex justify-end">
             <button

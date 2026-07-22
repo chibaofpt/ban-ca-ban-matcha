@@ -4,16 +4,15 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { QrCode, ShoppingBag } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import axios from "axios";
 import { cn } from "@/src/utils/cn";
 import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
 import { fetchCustomerVouchers, exchangeCustomerVoucher, type MyVoucher } from "@/src/services/staffVoucherService";
 import { listActiveVoucherPackages } from "@/src/services/customerVoucherService";
-import { computeFinalClientPrice } from "@/src/lib/store/cartStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { calcLattePrice, calcFusionPrice, resolveGram } from "@/src/utils/pricing";
 import { useStaffCartStore, useStaffCartTotalPrice } from "@/src/lib/store/staffCartStore";
-import type { DiscountVoucher } from "@/src/lib/store/staffCartStore";
 import ProductModal from "@/src/components/shared/ProductModal";
 import { StaffCartDrawer } from "@/src/components/staff/StaffCartDrawer";
 import { CustomerSelectModal } from "@/src/components/staff/CustomerSelectModal";
@@ -23,9 +22,8 @@ import { VoucherQRVerifyModal } from "@/src/components/staff/VoucherQRVerifyModa
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import * as staffOrderService from "@/src/services/staffOrderService";
 import type { CreateStaffOrderPayload } from "@/src/services/staffOrderService";
-import type { MenuData, MenuItem } from "@/src/lib/types/menu";
+import type { MenuItem } from "@/src/lib/types/menu";
 import type { CartItem } from "@/src/lib/types/cart";
-import type { CustomerInfo } from "@/src/components/staff/CustomerSelectModal";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -76,6 +74,7 @@ const SIZE_CARD_LABELS: Record<string, string> = {
   L: "Cá Vừa",
   XL: "Cá Lớn",
 };
+void SIZE_CARD_LABELS;
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -196,8 +195,6 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
       fetchCustomerVouchers(customerInfo.data.id)
         .then(setCustomerVouchers)
         .catch(() => setCustomerVouchers([]));
-    } else {
-      setCustomerVouchers([]);
     }
   }, [customerInfo]);
 
@@ -237,8 +234,11 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
       fetchCustomerVouchers(customerInfo.data.id)
         .then(setCustomerVouchers)
         .catch(() => setCustomerVouchers([]));
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || "Không thể đổi ưu đãi.");
+    } catch (err: unknown) {
+      const apiMessage = axios.isAxiosError<{ error?: string }>(err)
+        ? err.response?.data?.error
+        : null;
+      toast.error(apiMessage || "Không thể đổi ưu đãi.");
     }
   };
 
@@ -581,7 +581,10 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         onChangeQuantity={handleChangeQuantity}
         onCheckout={handleCheckoutClick}
         onOpenCustomerSelect={() => setCustomerSelectOpen(true)}
-        onClearCustomer={() => setCustomerInfo(null)}
+        onClearCustomer={() => {
+          setCustomerVouchers([]);
+          setCustomerInfo(null);
+        }}
         customerVouchers={customerVouchers}
         selectedDiscountIds={selectedDiscountIds}
         onToggleDiscount={toggleDiscountId}
@@ -646,6 +649,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
           initialQuery={initialSearchQuery}
           onClose={() => setCustomerSelectOpen(false)}
           onSelect={(info) => {
+            if (info.type !== "existing") setCustomerVouchers([]);
             setCustomerInfo(info);
             setCustomerSelectOpen(false);
           }}

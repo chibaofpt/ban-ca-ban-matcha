@@ -19,7 +19,6 @@ import { redeemOrderVouchers, VoucherRedeemError } from "@/lib/redeemVouchers";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
-const ORDER_ID = "order-001";
 const STAFF_ID = "staff-001";
 
 function makeTx() {

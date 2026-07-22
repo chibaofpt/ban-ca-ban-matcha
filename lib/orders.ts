@@ -4,7 +4,6 @@
  * All writes must be called within a prisma.$transaction().
  */
 
-import { Decimal } from "@prisma/client/runtime/library";
 import {
   buildPricingContext,
   resolveOrderItemPrice,
@@ -13,8 +12,6 @@ import {
 } from "@/lib/pricing";
 import type { Size, SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
-import { prisma } from "@/lib/prisma";
-
 import type { PrismaClient } from "@prisma/client";
 
 /** Structural type satisfied by both PrismaClient and the Prisma transaction client. */

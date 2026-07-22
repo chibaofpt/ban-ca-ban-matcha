@@ -2,11 +2,10 @@
 
 import React, { useState, useCallback, useEffect, useRef, Profiler } from "react";
 import { onRenderCallback } from "@/src/utils/dev/renderProfiler";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, type PanInfo } from "framer-motion";
 import { Drawer } from "vaul";
-import { X, Trash2, ShoppingBag, CheckCircle2, AlertTriangle, RefreshCcw, Minus, Plus, Ticket, ChevronRight, Clock, ArrowLeft, MapPin } from "lucide-react";
+import { X, AlertTriangle, RefreshCcw, ArrowLeft } from "lucide-react";
 import { useCartStore, useCartTotalPrice } from "@/src/lib/store/cartStore";
-import Image from "next/image";
 import { useCheckout } from "@/src/hooks/useCheckout";
 import { PriceChangedError, type PriceConflict } from "@/src/services/orderService";
 import { useIsLoggedIn } from "@/src/lib/store/authStore";
@@ -20,9 +19,7 @@ import { filterUsableVouchers, buildAddonVoucherMap, buildProductVoucherMap, est
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { DeliverySection } from "@/src/components/delivery/DeliverySection";
 import type { Address } from "@/src/lib/types/address";
-import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
 import ProductModal from "@/src/components/shared/ProductModal";
-import type { CartItem } from "@/src/lib/types/cart";
 import CartItemCard from "./cart/CartItemCard";
 import { CartItemVoucherPicker } from "./cart/CartItemVoucherPicker";
 import { CartDiscountPicker } from "./cart/CartDiscountPicker";
@@ -112,6 +109,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
     const [isDiscountPickerOpen, setIsDiscountPickerOpen] = useState(false);
   const [activeItemForVoucher, setActiveItemForVoucher] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  void showClearConfirm;
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [isAddressPickerOpen, setIsAddressPickerOpen] = useState(false);
   const openEdit = useEditModalStore((s) => s.openEdit);
@@ -123,7 +121,6 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number | null>(null);
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const [isFetchingAddress, setIsFetchingAddress] = useState(false);
-  const [isVouchersLoading, setIsVouchersLoading] = useState(false);
 
   // ── Points state ──
   const { data: pointsBalance = 0 } = useCustomerPoints({ enabled: isLoggedIn && isCartOpen });
@@ -177,8 +174,6 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   const totalDiscountK = discountK + freeshipDiscountK;
   const grandTotalK = Math.max(0, finalK + shippingK - freeshipDiscountK);
   
-  const discountAmount = discountK * 1000;
-  const finalPrice = grandTotalK * 1000;
 
   useEffect(() => {
     const updateTimes = () => {
@@ -201,7 +196,11 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
 
   const resetCheckout = useCallback(() => setCheckout({ status: "idle" }), []);
 
-  const handleToggleDragEnd = (event: any, info: any) => {
+  const handleToggleDragEnd = (
+    event: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo
+  ) => {
+    void event;
     if (info.offset.x > 30) {
       setOrderType("PICKUP");
     } else if (info.offset.x < -30) {
@@ -217,7 +216,6 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
       setSelectedVoucherIds([]);
       return;
     }
-    setIsVouchersLoading(true);
     Promise.all([
       listMyVouchers().catch(() => [] as MyVoucher[]),
       listActiveVoucherPackages().catch(() => [] as VoucherPackage[])
@@ -226,8 +224,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
         setAllVouchers(vouchers);
         setAvailableVoucherPackages(packages.filter(p => p.voucher_type === "DISCOUNT" || p.voucher_type === "FREESHIP"));
       })
-      .finally(() => setIsVouchersLoading(false));
-  }, [isCartOpen, isLoggedIn]);
+  }, [isCartOpen, isLoggedIn, setSelectedVoucherIds]);
 
   // Auto-fetch default address when switching to DELIVERY
   useEffect(() => {
@@ -269,7 +266,8 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
                     setDeliveryError(null);
                   }
                 }
-              } catch (err: any) {
+              } catch (unknownError: unknown) {
+                const err = unknownError instanceof Error ? unknownError : new Error();
                 if (isMounted) {
                   setDeliveryDistanceKm(null);
                   setShippingFee(null);
@@ -319,7 +317,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
         finalPickupTime = new Date(minAllowedTime).toISOString();
       }
 
-      let payloadItems = [...items];
+      const payloadItems = [...items];
 
       if (orderType === "DELIVERY") {
         if (!deliveryAddress || shippingFee === null) {
@@ -328,7 +326,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
         }
       }
 
-      const result = await checkoutMutation.mutateAsync({
+      await checkoutMutation.mutateAsync({
         items: payloadItems,
         options: {
           orderType,
@@ -392,7 +390,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
     setOrderType("PICKUP");
     setDeliveryAddress(null);
     setShippingFee(null);
-  }, [setCartOpen, resetCheckout]);
+  }, [setCartOpen, resetCheckout, setSelectedVoucherIds]);
 
   /** The cart item currently being assigned a voucher. */
   const activeItem = items.find(i => i.cartId === activeItemForVoucher);
@@ -573,8 +571,6 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
               shippingFee={shippingFee}
               setIsAddressPickerOpen={setIsAddressPickerOpen}
               setIsDiscountPickerOpen={setIsDiscountPickerOpen}
-              productVouchersCount={items.reduce((sum, item) => sum + (applicableProductVouchers.get(item.menuItemId)?.length || 0), 0)}
-              addonVouchersCount={items.reduce((sum, item) => sum + (applicableAddonVouchersMap.get(item.cartId)?.length || 0), 0)}
               subtotalK={subtotalK}
               shippingK={shippingK}
               totalDiscountK={totalDiscountK}

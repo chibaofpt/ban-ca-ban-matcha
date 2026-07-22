@@ -8,6 +8,7 @@ import { STORE_LOCATION } from "@/src/constants/storeConfig";
 import { DELIVERY_CONFIG } from "@/src/constants/delivery";
 
 import { getDistanceKm } from "@/src/utils/distance";
+import type { GoongErrorEvent, Map as GoongMap } from "@goongmaps/goong-js";
 
 interface MapPickerProps {
   /** Called when user confirms a location */
@@ -22,7 +23,7 @@ interface MapPickerProps {
 /** Full-screen Grab-style map picker with fixed center pin */
 export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPickerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<unknown>(null);
+  const mapRef = useRef<GoongMap | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [address, setAddress] = useState<string>("");
@@ -50,11 +51,11 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
     } finally {
       setIsGeocoding(false);
     }
-  }, [getDistanceKm]);
+  }, []);
 
   // Initialize map
   useEffect(() => {
-    let map: unknown;
+    let map: GoongMap | undefined;
     let isMounted = true;
 
     // Intercept console.error and console.warn to silence Goong's missing source layer warnings 
@@ -104,11 +105,10 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
         });
 
         // Intercept Mapbox internal error events
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (mapInstance as any).on('error', (e: any) => {
+        mapInstance.on('error', (e: GoongErrorEvent) => {
           if (e && e.error && typeof e.error.message === 'string') {
             if (e.error.message.includes('poi-tree') || e.error.message.includes('composite')) {
-              e.preventDefault(); // Might not exist but good to try
+              e.preventDefault?.();
               return;
             }
           }
@@ -172,7 +172,7 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
 
           // If no initial position, try GPS
           if (!initialLat && !initialLng) {
-            requestGPS(mapInstance, goongjs.default);
+            requestGPS(mapInstance);
           } else {
             // Reverse geocode initial position
             reverseGeocodeCenter(initialLat!, initialLng!);
@@ -212,8 +212,7 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
       }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    function requestGPS(mapInstance: any, goongModule: any) {
+    function requestGPS(mapInstance: GoongMap) {
       if (!navigator.geolocation) return;
 
       setGpsLoading(true);
@@ -248,12 +247,9 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
       console.error = origError; // restore original console.error
       console.warn = origWarn; // restore original console.warn
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (map && typeof (map as any).remove === "function") {
-        (map as any).remove();
-      }
+      map?.remove();
     };
-  }, [initialLat, initialLng, reverseGeocodeCenter, getDistanceKm]);
+  }, [initialLat, initialLng, reverseGeocodeCenter]);
 
   // Handle GPS button press
   const handleGPS = () => {
@@ -263,8 +259,7 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (mapRef.current as any).flyTo({
+        mapRef.current?.flyTo({
           center: [longitude, latitude],
           zoom: 16,
           speed: 1.2,
@@ -282,10 +277,9 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
   };
 
   // Handle search result
-  const handleSearchSelect = (lat: number, lng: number, _address: string) => {
+  const handleSearchSelect = (lat: number, lng: number) => {
     if (!mapRef.current) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (mapRef.current as any).flyTo({
+    mapRef.current.flyTo({
       center: [lng, lat],
       zoom: 16,
       speed: 1.2,

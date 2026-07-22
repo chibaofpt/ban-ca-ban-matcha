@@ -50,8 +50,11 @@ describe("GET /api/voucher-packages", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
 
-    const pkg1 = json.data.find((p: any) => p.id === "pkg-1");
-    const pkg2 = json.data.find((p: any) => p.id === "pkg-2");
+    const packages = json.data as Array<{ id: string; user_redeemed_count: number }>;
+    const pkg1 = packages.find((pkg) => pkg.id === "pkg-1");
+    const pkg2 = packages.find((pkg) => pkg.id === "pkg-2");
+
+    if (!pkg1 || !pkg2) throw new Error("Expected voucher packages are missing");
 
     expect(pkg1.user_redeemed_count).toBe(2);
     expect(pkg2.user_redeemed_count).toBe(0);

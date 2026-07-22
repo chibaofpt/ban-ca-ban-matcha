@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, CheckCircle2, Loader2, TicketPercent, Truck, Coins } from "lucide-react";
-import { cn } from "@/src/utils/cn";
+import { ArrowLeft, CheckCircle2, Coins } from "lucide-react";
 import { estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
 import { exchangeVoucher, type MyVoucher, type VoucherPackage } from "@/src/services/customerVoucherService";
 import { useQueryClient } from "@tanstack/react-query";

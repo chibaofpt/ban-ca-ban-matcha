@@ -1,7 +1,7 @@
 "use client";
 
 import React, { memo } from "react";
-import { motion } from "framer-motion";
+import { motion, type PanInfo } from "framer-motion";
 import { Ticket, MapPin, ChevronRight, Trash2, ShoppingBag } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { Address } from "@/src/lib/types/address";
@@ -25,7 +25,10 @@ interface CartFooterProps {
   setPickupTime: (time: string) => void;
   minTimeStr: string;
   setIsTimeCustom: (custom: boolean) => void;
-  handleToggleDragEnd: (event: any, info: any) => void;
+  handleToggleDragEnd: (
+    event: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo
+  ) => void;
   
   // Delivery State
   isFetchingAddress: boolean;
@@ -37,8 +40,6 @@ interface CartFooterProps {
   setIsDiscountPickerOpen: (open: boolean) => void;
 
   // Voucher / Pricing state
-  productVouchersCount: number;
-  addonVouchersCount: number;
   subtotalK: number;
   shippingK: number;
   totalDiscountK: number;
@@ -70,8 +71,6 @@ export const CartFooter = memo(function CartFooter({
   shippingFee,
   setIsAddressPickerOpen,
   setIsDiscountPickerOpen,
-  productVouchersCount,
-  addonVouchersCount,
   subtotalK,
   shippingK,
   totalDiscountK,

@@ -14,7 +14,6 @@ import {
   type Size,
   type DefaultSizeConfigEntry,
   type PowderSizeConfigEntry,
-  type CustomPowderGrams,
 } from "@/src/utils/pricing";
 import type { MenuData, MenuItem, AddonGroup } from "@/src/lib/types/menu";
 import type { PowderApiResponse, Powder } from "@/src/lib/types/powder";
@@ -55,14 +54,6 @@ function findItem(items: MenuItem[], name: string): MenuItem {
   );
   if (!item) throw new Error(`Menu item not found: "${name}"`);
   return item;
-}
-
-function findPowder(name: string): Powder {
-  const powder = powderData.data.find((p) =>
-    p.name.toLowerCase().includes(name.toLowerCase())
-  );
-  if (!powder) throw new Error(`Powder not found: "${name}"`);
-  return powder;
 }
 
 function getPowderSizeConfigs(powder: Powder): PowderSizeConfigEntry[] {

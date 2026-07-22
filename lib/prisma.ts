@@ -4,7 +4,6 @@ import { PrismaClient } from '@prisma/client';
  * Global variable for caching PrismaClient in development string hot-reloads.
  */
 declare global {
-  // eslint-disable-next-line no-var
   var prisma: PrismaClient | undefined;
 }
 

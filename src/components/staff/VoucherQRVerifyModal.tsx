@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { QrCode, ScanLine } from "lucide-react";
 import { scanQrToken, scanFallback } from "@/src/services/staffOrderService";
 import type { CustomerInfo } from "./CustomerSelectModal";
+import axios from "axios";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -111,7 +112,7 @@ export function VoucherQRVerifyModal({
             .finally(() => {
               try {
                 scannerRef.current?.clear();
-              } catch (_) {
+              } catch {
                 // ignore
               }
             });
@@ -119,7 +120,7 @@ export function VoucherQRVerifyModal({
       } catch {
         try {
           scannerRef.current?.clear();
-        } catch (_) {
+        } catch {
           // ignore
         }
       }
@@ -144,7 +145,7 @@ export function VoucherQRVerifyModal({
           .finally(() => {
             try {
               scannerRef.current?.clear();
-            } catch (_) {
+            } catch {
               // ignore
             }
             onClose();
@@ -170,8 +171,11 @@ export function VoucherQRVerifyModal({
       }
       // Success — pass back the raw token
       onVerified(result.data.id);
-    } catch (err: any) {
-      setError(err.response?.data?.error || "Mã không đúng. Vui lòng thử lại.");
+    } catch (err: unknown) {
+      const responseError = axios.isAxiosError<{ error?: string }>(err)
+        ? err.response?.data?.error
+        : null;
+      setError(responseError || "Mã không đúng. Vui lòng thử lại.");
       setProcessing(false);
     }
   };

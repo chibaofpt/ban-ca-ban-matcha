@@ -150,6 +150,7 @@ export function useAddVoucherToCart() {
           ...addonDetails,
           "🎁 Voucher sản phẩm",
         ];
+        void details;
 
         // Determine selected option ids (use voucher config as selected)
         const defaultOptionIds = menuData.addon_groups

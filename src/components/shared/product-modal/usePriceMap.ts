@@ -2,7 +2,13 @@ import { useMemo } from "react";
 import type { AddonGroup, MenuItem, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import type { Powder, DefaultPowderGram } from "@/src/lib/types/powder";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
-import { calcLattePrice, calcFusionPrice, resolveGram, ceilTo1000 } from "@/src/utils/pricing";
+import {
+  applyProductVoucherCredit,
+  calcLattePrice,
+  calcFusionPrice,
+  resolveGram,
+  ceilTo1000,
+} from "@/src/utils/pricing";
 
 interface UsePriceMapProps {
   item: MenuItem;
@@ -121,11 +127,13 @@ export function usePriceMap({
 
     if (effectiveFreeVoucherId && effectiveFreeCoveredPrice !== undefined) {
       const baseDrinkPrice = finalUnitPrice - finalAddonsCost;
-      const drinkAfterCredit = Math.max(0, baseDrinkPrice - effectiveFreeCoveredPrice);
-      const remainingCredit = Math.max(0, effectiveFreeCoveredPrice - baseDrinkPrice);
-      const addonsAfterCredit = Math.max(0, finalAddonsCost - remainingCredit);
-      finalUnitPrice = drinkAfterCredit + addonsAfterCredit;
-      finalAddonsCost = addonsAfterCredit;
+      const priceAfterProductVoucher = applyProductVoucherCredit(
+        baseDrinkPrice,
+        finalAddonsCost,
+        effectiveFreeCoveredPrice
+      );
+      finalUnitPrice = priceAfterProductVoucher.totalVnd;
+      finalAddonsCost = priceAfterProductVoucher.addonsPayableVnd;
     }
 
     const totalCost = finalUnitPrice * quantity;

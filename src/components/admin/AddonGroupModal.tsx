@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
-import AddonGroupForm, { buildAddonGroupDefaultValues } from "@/src/components/admin/AddonGroupForm";
+import AddonGroupForm, {
+  buildAddonGroupDefaultValues,
+  type AddonGroupFormPayload,
+} from "@/src/components/admin/AddonGroupForm";
 import { createAddonGroup, updateAddonGroup } from "@/src/services/adminAddonService";
 import type { AdminAddonGroup } from "@/src/lib/types/addonGroup";
 import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
@@ -24,7 +27,7 @@ export default function AddonGroupModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const handleSubmit = async (payload: any) => {
+  const handleSubmit = async (payload: AddonGroupFormPayload) => {
     setIsSubmitting(true);
     setErrorMsg(null);
     try {

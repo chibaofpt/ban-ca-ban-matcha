@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { updatePowderSchema } from "@/lib/validations/powder";
 import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
+import { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -79,7 +80,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       }
 
       // Update powder details
-      const powder = await tx.matchaPowder.update({
+      await tx.matchaPowder.update({
         where: { id },
         data: {
           name: validData.name,
@@ -133,12 +134,13 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     await invalidateMenuCaches();
     return NextResponse.json({ data: mappedResult });
-  } catch (error: any) {
-    console.error("[PUT /api/admin/powders/[id]] Error:", error.message);
-    if (error.message === "NOT_FOUND") {
+  } catch (error: unknown) {
+    console.error("[PUT /api/admin/powders/[id]] Error:", error instanceof Error ? error.message : error);
+    if (error instanceof Error && error.message === "NOT_FOUND") {
       return NextResponse.json({ error: "Bột không tồn tại", code: "NOT_FOUND" }, { status: 404 });
     }
-    if (error.code === 'P2002' && error.meta?.target?.includes('reference_latte_item_id')) {
+    const target = error instanceof Prisma.PrismaClientKnownRequestError ? error.meta?.target : undefined;
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002" && Array.isArray(target) && target.includes("reference_latte_item_id")) {
         return NextResponse.json(
             { error: "Latte item này đã được gán cho một bột khác", code: "VALIDATION_ERROR" },
             { status: 400 }
@@ -185,9 +187,9 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
         ...(disabledLatteId !== undefined && { disabled_latte_id: disabledLatteId }),
       },
     });
-  } catch (error: any) {
-    console.error("[DELETE /api/admin/powders/[id]] Error:", error.message);
-    if (error.code === "P2025") {
+  } catch (error: unknown) {
+    console.error("[DELETE /api/admin/powders/[id]] Error:", error instanceof Error ? error.message : error);
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
       return NextResponse.json({ error: "Bột không tồn tại", code: "NOT_FOUND" }, { status: 404 });
     }
     return NextResponse.json({ error: "Internal Server Error", code: "INTERNAL_ERROR" }, { status: 500 });

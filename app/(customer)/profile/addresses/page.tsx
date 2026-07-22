@@ -14,7 +14,6 @@ export default function AddressesPage() {
   const updateAddressMutation = useUpdateAddress();
   const deleteAddressMutation = useDeleteAddress();
   const setDefaultAddressMutation = useSetDefaultAddress();
-  const [error, setError] = useState("");
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState<Address | null>(null);
@@ -86,12 +85,6 @@ export default function AddressesPage() {
           </button>
         )}
       </div>
-
-      {error && (
-        <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100">
-          {error}
-        </div>
-      )}
 
       {isFormOpen ? (
         <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">

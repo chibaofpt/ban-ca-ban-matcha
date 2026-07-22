@@ -4,7 +4,7 @@
  * Called inside prisma.$transaction() from order routes.
  */
 
-import type { Voucher, Prisma } from "@prisma/client";
+import type { Voucher } from "@prisma/client";
 
 // ── Minimal types ──────────────────────────────────────────────────────────────
 

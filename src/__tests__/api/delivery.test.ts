@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { POST } from "@/app/api/orders/route";
 import { getSession } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { goongDistanceMatrix } from "@/lib/goong";
 import { NextRequest } from "next/server";
 
@@ -30,10 +29,14 @@ describe("POST /api/orders — DELIVERY flow", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    (getSession as any).mockResolvedValue({ userId: mockUserId, role: "CUSTOMER" });
+    vi.mocked(getSession).mockResolvedValue({
+      id: mockUserId,
+      role: "CUSTOMER",
+      phone_number: "+84901234567",
+    });
   });
 
-  function createRequest(body: any) {
+  function createRequest(body: unknown) {
     return new NextRequest("http://localhost/api/orders", {
       method: "POST",
       body: JSON.stringify(body),
@@ -54,7 +57,7 @@ describe("POST /api/orders — DELIVERY flow", () => {
   });
 
   it("Trả 400 DELIVERY_OUT_OF_RANGE nếu khoảng cách > 15km", async () => {
-    (goongDistanceMatrix as any).mockResolvedValue({ distanceKm: 16, durationMinutes: 30 });
+    vi.mocked(goongDistanceMatrix).mockResolvedValue({ distanceKm: 16, durationMinutes: 30 });
 
     const req = createRequest({
       order_type: "DELIVERY",
@@ -76,7 +79,7 @@ describe("POST /api/orders — DELIVERY flow", () => {
 
   it("Trả 409 SHIPPING_FEE_CHANGED nếu client tính sai phí ship so với server", async () => {
     // 3km -> 2km(15k) + 1km(5.7k) = 20.7k -> 21k
-    (goongDistanceMatrix as any).mockResolvedValue({ distanceKm: 3, durationMinutes: 10 });
+    vi.mocked(goongDistanceMatrix).mockResolvedValue({ distanceKm: 3, durationMinutes: 10 });
 
     const req = createRequest({
       order_type: "DELIVERY",
