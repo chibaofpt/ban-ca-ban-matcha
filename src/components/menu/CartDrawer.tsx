@@ -27,6 +27,7 @@ import { CartFooter } from "./cart/CartFooter";
 import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
 import type { MenuData, MenuItem } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
+import { deriveCheckoutRewards } from "@/src/utils/customerUx";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -128,6 +129,9 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   const checkoutMutation = useCheckout();
 
   const menuItems = [...menuData.latte, ...menuData.fusion];
+  const hasUnavailableItems = items.some(
+    (item) => !menuItems.some((menuItem) => menuItem.id === item.menuItemId),
+  );
 
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -154,6 +158,18 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   let freeshipDiscountK = 0;
   let appliedFreeshipId: string | null = null;
   const totalAfterDiscountVnd = Math.max(0, subtotalPrice - rawDiscountAmount);
+  const productVoucherCoveredPrices = Object.fromEntries(
+    allVouchers.flatMap((voucher) =>
+      voucher.voucher_type === "PRODUCT" && voucher.covered_price_vnd !== null
+        ? [[voucher.id, voucher.covered_price_vnd] as const]
+        : [],
+    ),
+  );
+  const checkoutRewards = deriveCheckoutRewards(
+    items,
+    totalAfterDiscountVnd,
+    productVoucherCoveredPrices,
+  );
   const selectedFreeshipVouchers = selectedVoucherIds.flatMap((id) => {
     const voucher = freeshipVouchers.find((candidate) => candidate.id === id);
     return voucher ? [voucher] : [];
@@ -288,6 +304,13 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
 
   const executeCheckout = useCallback(async () => {
     if (items.length === 0) return;
+    if (hasUnavailableItems) {
+      setCheckout({
+        status: "error",
+        message: "Vui lòng xoá món không còn phục vụ trước khi đặt hàng.",
+      });
+      return;
+    }
 
     // Check authentication
     if (!isLoggedIn) {
@@ -306,15 +329,14 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
         const selectedDate = new Date();
         selectedDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
 
-        // Add 1 min buffer for slow submissions
-        if (selectedDate.getTime() < minAllowedTime - 60000) {
+        if (selectedDate.getTime() < minAllowedTime) {
           setCheckout({ status: "error", message: "Thời gian nhận món phải cách hiện tại ít nhất 10 phút." });
           return;
         }
         finalPickupTime = selectedDate.toISOString();
       } else {
-        // If not selected, send now + 10m
-        finalPickupTime = new Date(minAllowedTime).toISOString();
+        // Keep the default one minute beyond the 10-minute validation boundary.
+        finalPickupTime = new Date(Date.now() + 11 * 60 * 1000).toISOString();
       }
 
       const payloadItems = [...items];
@@ -378,6 +400,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
     setPickupTime,
     setIsTimeCustom,
     setSelectedVoucherIds,
+    hasUnavailableItems,
   ]);
 
   const handleClose = useCallback(() => {
@@ -576,6 +599,10 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
               totalDiscountK={totalDiscountK}
               grandTotalK={grandTotalK}
               totalAfterDiscountVnd={totalAfterDiscountVnd}
+              hasUnavailableItems={hasUnavailableItems}
+              orderPoints={checkoutRewards.orderPoints}
+              surplusPoints={checkoutRewards.surplusPoints}
+              totalPoints={checkoutRewards.totalPoints}
               checkout={checkout}
               handleCheckout={handleCheckout}
               setShowClearConfirm={setShowClearConfirm}

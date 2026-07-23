@@ -8,6 +8,7 @@ import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { CustomerInfo } from "./CustomerSelectModal";
 import type { MyVoucher } from "@/src/services/staffVoucherService";
 import { cn } from "@/src/utils/cn";
+import { formatKa, formatVietnamPhone } from "@/src/utils/display";
 import {
   buildProductVoucherMap,
   buildAddonVoucherMap,
@@ -225,7 +226,7 @@ export function StaffCartDrawer({
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
                   {customerInfo
-                    ? (customerInfo.type === "existing" ? `${customerInfo.data.phone_number} • 🐟 ${customerInfo.data.points_balance}` : customerInfo.phone_number)
+                    ? (customerInfo.type === "existing" ? `${formatVietnamPhone(customerInfo.data.phone_number)} • 🐟 ${customerInfo.data.points_balance}` : formatVietnamPhone(customerInfo.phone_number))
                     : "Không tích điểm"}
                 </p>
               </div>
@@ -320,7 +321,9 @@ export function StaffCartDrawer({
                 {discountVoucher && !selectedDiscountIds.includes(discountVoucher.id) && (
                   <div className="flex items-center justify-between bg-green-50/50 border border-green-200/50 rounded-xl px-3 py-2">
                     <span className="text-xs font-bold text-green-700">🏷 Voucher quét mã</span>
-                    <span className="text-xs font-bold text-green-700">-{scanDiscount / 1000}k</span>
+                    <span className="text-xs font-bold text-green-700">
+                      -{formatKa(scanDiscount, "floor")}
+                    </span>
                   </div>
                 )}
               </div>
@@ -329,19 +332,19 @@ export function StaffCartDrawer({
               <div className="w-[45%] flex flex-col justify-end gap-1 text-right">
                 <div className="flex justify-between items-center text-xs text-muted-foreground font-medium">
                   <span>Tạm tính</span>
-                  <span>{subtotalK}k</span>
+                  <span>{formatKa(subtotalK * 1000)}</span>
                 </div>
                 {discountAmount > 0 && (
                   <div className="flex justify-between items-center text-xs text-orange-600 font-bold">
                     <span>Giảm</span>
-                    <span>-{discountK.toLocaleString('vi-VN')}k</span>
+                    <span>-{formatKa(discountK * 1000, "floor")}</span>
                   </div>
                 )}
                 <div className="border-t border-dashed border-border/60 my-1" />
                 <div className="flex flex-col items-end">
                   <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none mb-1">Tổng</span>
                   <span className="font-serif text-2xl font-bold text-primary leading-none flex items-center gap-1">
-                    <span className="text-xl">🐟</span> {finalK}k
+                    <span className="text-xl">🐟</span> {formatKa(finalK * 1000, "ceil")}
                   </span>
                   {customerInfo && finalK >= 10 && (
                     <span className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-100 px-1.5 py-0.5 rounded-md mt-1.5">

@@ -14,6 +14,7 @@ import { useCartStore } from "@/src/lib/store/cartStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { cn } from "@/src/utils/cn";
 import { ceilTo1000 } from "@/src/utils/pricing";
+import { formatKa } from "@/src/utils/display";
 import { SWEETNESS_OPTIONS, ICE_OPTIONS } from "@/src/constants/orderOptions";
 import { usePriceMap } from "./product-modal/usePriceMap";
 import { SizeSelector } from "./product-modal/SizeSelector";
@@ -311,11 +312,29 @@ const BaseModal: React.FC<ProductModalProps> = ({
             </span>
             <h2 className="font-serif text-3xl font-bold text-primary leading-tight">{item.name}</h2>
             {item.description && <p className="text-sm text-primary/60 leading-relaxed font-medium">{item.description}</p>}
+            <div className="pt-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-primary/55">Giá theo lựa chọn</p>
+              <div className="mt-1 flex items-baseline gap-2">
+                {currentPriceContext.unitPrice > finalUnitPrice && (
+                  <span className="text-sm font-semibold text-primary/40 line-through">
+                    {formatKa(currentPriceContext.unitPrice, "ceil")}
+                  </span>
+                )}
+                <span className="font-serif text-[2rem] font-bold leading-none text-primary">
+                  {formatKa(finalUnitPrice, "ceil")}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Right Column (customization options + scrolled container) */}
-        <button onClick={handleClose} className="absolute top-5 right-5 w-9 h-9 rounded-full bg-primary/8 flex items-center justify-center hover:rotate-90 transition-transform z-10">
+        <button
+          type="button"
+          onClick={handleClose}
+          className="absolute top-5 right-5 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-primary/8 transition-transform hover:rotate-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          aria-label="Đóng"
+        >
           <X className="w-5 h-5 text-primary" />
         </button>
 
@@ -325,6 +344,19 @@ const BaseModal: React.FC<ProductModalProps> = ({
           >
             <h2 className="font-serif text-2xl font-bold text-primary">{item.name}</h2>
             {item.description && <p className="text-sm text-primary/55 mt-1.5 leading-relaxed">{item.description}</p>}
+            <div className="mt-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-primary/55">Giá theo lựa chọn</p>
+              <div className="mt-1 flex items-baseline gap-2">
+                {currentPriceContext.unitPrice > finalUnitPrice && (
+                  <span className="text-sm font-semibold text-primary/40 line-through">
+                    {formatKa(currentPriceContext.unitPrice, "ceil")}
+                  </span>
+                )}
+                <span className="font-serif text-[1.75rem] font-bold leading-none text-primary">
+                  {formatKa(finalUnitPrice, "ceil")}
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* 1. SIZE */}
@@ -432,22 +464,22 @@ const BaseModal: React.FC<ProductModalProps> = ({
             <SectionLabel text="Đánh lạnh (Coldwhisk)" />
             <div className="flex items-center justify-between bg-white rounded-2xl border-2 border-border px-5 py-4">
               <div>
-                <p className="text-xs font-bold text-primary">Coldwhisk</p>
-                <p className="text-[11px] text-primary/50 mt-0.5 font-medium">Foam matcha mịn màng</p>
+                <p className="text-sm font-bold text-primary">Coldwhisk</p>
+                <p className="mt-1 text-xs font-medium text-primary/65">Foam matcha mịn màng</p>
               </div>
               <button
                 onClick={() => {
                   setColdwhisk(!coldwhisk);
                 }}
                 className={cn(
-                  "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
+                  "relative inline-flex h-11 w-14 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                   coldwhisk ? "bg-primary" : "bg-primary/20"
                 )}
               >
                 <span
                   className={cn(
                     "inline-block h-5 w-5 transform rounded-full bg-white transition-transform shadow-sm",
-                    coldwhisk ? "translate-x-6" : "translate-x-1"
+                    coldwhisk ? "translate-x-8" : "translate-x-1"
                   )}
                 />
               </button>
@@ -473,7 +505,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
           {(otherSelectorGroups.length > 0 || toggleGroups.length > 0) && (
             <div className="mt-7">
               <SectionLabel text="Topping" />
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {otherSelectorGroups.map((group) =>
                   group.options.filter(o => !o.is_default).map((opt) => {
                     const defaultOpt = group.options.find(o => o.is_default);
@@ -481,7 +513,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
                       <OptionCard
                         key={opt.id}
                         label={opt.label}
-                        sub={opt.price_vnd > 0 ? `+${opt.price_vnd / 1000} ká` : undefined}
+                        sub={opt.price_vnd > 0 ? `+${formatKa(opt.price_vnd, "ceil")}` : undefined}
                         isActive={selectedOptionIds.includes(opt.id)}
                         onClick={() => handleSelectorToggle(group.id, opt.id, defaultOpt?.id)}
                       />
@@ -495,7 +527,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
                     <OptionCard
                       key={group.id}
                       label={group.name}
-                      sub={opt.price_vnd > 0 ? `+${opt.price_vnd / 1000} ká` : undefined}
+                      sub={opt.price_vnd > 0 ? `+${formatKa(opt.price_vnd, "ceil")}` : undefined}
                       isActive={selectedOptionIds.includes(opt.id)}
                       onClick={() => handleToggleChange(opt.id)}
                     />
@@ -517,7 +549,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
                     <OptionCard
                       key={opt.id}
                       label={opt.label}
-                      sub={price > 0 ? `+${price / 1000} ká` : (opt.is_default ? "Mặc định" : "0 ká")}
+                      sub={price > 0 ? `+${formatKa(price, "ceil")}` : (opt.is_default ? "Mặc định" : "0 ká")}
                       isActive={selectedOptionIds.includes(opt.id)}
                       onClick={() => handleSelectorToggle(group.id, opt.id, defaultOpt?.id)}
                     />
@@ -541,8 +573,8 @@ const BaseModal: React.FC<ProductModalProps> = ({
             const listLimit = Math.min(3, max);
             const pricesStr = Array.from({ length: listLimit }).map((_, i) => {
               const amount = i + 1;
-              const cost = ceilTo1000(amount * rawPricePerQty) / 1000;
-              return `${amount}g: +${cost} ká`;
+              const cost = ceilTo1000(amount * rawPricePerQty);
+              return `${amount}g: +${formatKa(cost, "ceil")}`;
             }).join(", ") + (max > listLimit ? "..." : "");
 
             return (
@@ -550,24 +582,26 @@ const BaseModal: React.FC<ProductModalProps> = ({
                 <SectionLabel text={group.name} />
                 <div className="flex items-center justify-between bg-white rounded-2xl border-2 border-border px-5 py-4">
                   <div>
-                    <p className="text-xs font-bold text-primary">{group.name}</p>
-                    <p className={cn("text-[10px] mt-0.5", rawPricePerQty > 0 ? "text-[#df5e5e] font-semibold" : "text-primary/50 font-medium")}>
+                    <p className="text-sm font-bold text-primary">{group.name}</p>
+                    <p className={cn("mt-1 text-xs", rawPricePerQty > 0 ? "font-semibold text-[#c74646]" : "font-medium text-primary/65")}>
                       {rawPricePerQty > 0 ? pricesStr : "Miễn phí"}
                     </p>
                   </div>
                   <div className="flex items-center gap-3 bg-[#d9e4d4] rounded-xl px-3 py-2">
                     <button
                       onClick={() => setQuantityMap((p) => ({ ...p, [group.id]: Math.max(0, qty - 1) }))}
-                      className="w-6 h-6 rounded-full bg-white/60 flex items-center justify-center hover:bg-white transition-colors"
+                      className="flex h-11 w-11 items-center justify-center rounded-full bg-white/60 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      aria-label={`Giảm ${group.name}`}
                     >
-                      <Minus className="w-3 h-3 text-primary" />
+                      <Minus className="h-4 w-4 text-primary" />
                     </button>
                     <span className="text-base font-bold w-5 text-center text-primary">{qty}</span>
                     <button
                       onClick={() => setQuantityMap((p) => ({ ...p, [group.id]: Math.min(max, qty + 1) }))}
-                      className="w-6 h-6 rounded-full bg-white/60 flex items-center justify-center hover:bg-white transition-colors"
+                      className="flex h-11 w-11 items-center justify-center rounded-full bg-white/60 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      aria-label={`Tăng ${group.name}`}
                     >
-                      <Plus className="w-3 h-3 text-primary" />
+                      <Plus className="h-4 w-4 text-primary" />
                     </button>
                   </div>
                 </div>

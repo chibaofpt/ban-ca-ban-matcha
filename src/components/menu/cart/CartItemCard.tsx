@@ -2,13 +2,14 @@
 
 import React, { memo } from "react";
 import Image from "next/image";
-import { Minus, Plus, Trash2, X, Ticket } from "lucide-react";
+import { AlertTriangle, Minus, Plus, Trash2, X, Ticket } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { AddonGroup, MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
+import { formatKa } from "@/src/utils/display";
 
 interface CartItemCardProps {
   item: CartItem;
@@ -55,12 +56,50 @@ const CartItemCard = ({
   const noteText = item.note || null;
   const isUnavailable = !menuItem;
 
+  if (isUnavailable) {
+    return (
+      <div className="flex gap-3.5 rounded-[1.25rem] border border-amber-200 bg-amber-50/70 p-3.5">
+        <div className="relative h-[5.5rem] w-[5.5rem] shrink-0 overflow-hidden rounded-2xl bg-secondary/10 opacity-60">
+          {item.imageUrl ? (
+            <Image src={item.imageUrl} alt={item.name} fill sizes="88px" className="object-cover grayscale" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              <AlertTriangle className="h-8 w-8 text-amber-600" />
+            </div>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h4 className="truncate text-sm font-bold text-primary">{item.name}</h4>
+              <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-amber-700">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                Món không còn phục vụ
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-primary/65">
+                Vui lòng xoá món này để tiếp tục đặt hàng.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onRemove(item.cartId)}
+              aria-label={`Xoá ${item.name}`}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-red-500 transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+            >
+              <Trash2 className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       onClick={() => onEdit(item)}
       className={cn(
         "p-3.5 rounded-[1.25rem] bg-white border border-transparent shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] transition-colors flex gap-3.5 cursor-pointer",
-        isUnavailable ? "opacity-50 pointer-events-none" : "hover:border-border/60"
+        "hover:border-border/60"
       )}
     >
       {/* Thumbnail & Stepper */}
@@ -113,7 +152,7 @@ const CartItemCard = ({
                 onRemove(item.cartId);
               }}
               aria-label={`Xoá ${item.name}`}
-              className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-primary/30 hover:text-red-500 hover:bg-red-50 transition-colors -mt-1 -mr-1"
+              className="shrink-0 w-11 h-11 rounded-full flex items-center justify-center text-primary/40 hover:text-red-500 hover:bg-red-50 transition-colors -mt-2 -mr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -200,11 +239,11 @@ const CartItemCard = ({
           <div className="flex items-center gap-1.5 shrink-0 justify-end">
             {item.originalClientPriceVnd > item.clientPriceVnd && (
               <span className="text-[12px] line-through text-primary/30 font-medium">
-                {(item.originalClientPriceVnd * item.quantity) / 1000} ká
+                {formatKa(item.originalClientPriceVnd * item.quantity, "ceil")}
               </span>
             )}
             <span className="font-bold text-[15px] text-primary">
-              {(item.clientPriceVnd * item.quantity) / 1000} ká
+              {formatKa(item.clientPriceVnd * item.quantity, "ceil")}
             </span>
           </div>
         </div>

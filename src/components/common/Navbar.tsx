@@ -20,6 +20,7 @@ import { useCartStore, useCartTotalItems } from "@/src/lib/store/cartStore";
 import { useAuthStore } from "@/src/lib/store/authStore";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { logout as serverLogout } from "@/src/services/authService";
+import { useQueryClient } from "@tanstack/react-query";
 
 /**
  * Navbar — fixed top bar with desktop links and mobile drawer.
@@ -29,6 +30,7 @@ const Navbar = () => {
   const [open, setOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
   const router = useRouter();
+  const queryClient = useQueryClient();
   const pathname = usePathname();
 
   const { scrollY } = useScroll();
@@ -57,6 +59,7 @@ const Navbar = () => {
   const handleLogout = async () => {
     try { await serverLogout(); } catch { /* best-effort */ }
     logout();
+    queryClient.removeQueries({ queryKey: ["customer"] });
     setOpen(false);
     router.push("/");
   };
@@ -138,7 +141,7 @@ const Navbar = () => {
                 activeClassName="text-primary"
               >
                 <ClipboardList className="w-3.5 h-3.5" />
-                Lịch sử
+                Đơn hàng & Voucher
               </NavLink>
 
               <button
@@ -270,7 +273,7 @@ const Navbar = () => {
                     activeClassName="text-primary"
                   >
                     <ClipboardList className="w-4 h-4" />
-                    Lịch sử
+                    Đơn hàng & Voucher
                   </NavLink>
 
                   <button

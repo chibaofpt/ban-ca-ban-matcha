@@ -4,6 +4,7 @@ import { QrCode, User, MapPin, ChevronRight } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { CustomerQRDisplay } from "@/src/views/CustomerQRDisplay";
+import { ProfilePointsHistory } from "@/src/views/customer/ProfilePointsHistory";
 
 export const metadata = {
   title: "Tài khoản của tôi | Bạn Cá Bán Matcha",
@@ -76,6 +77,7 @@ export default async function ProfilePage() {
             </div>
             <ChevronRight size={18} className="text-muted-foreground" />
           </Link>
+          <ProfilePointsHistory />
         </div>
 
         {/* QR Section */}

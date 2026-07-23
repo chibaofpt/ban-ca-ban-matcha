@@ -1,6 +1,7 @@
 import React from "react";
 import OptionCard from "./OptionCard";
 import type { MilkTypeOption, Size } from "@/src/lib/types/menu";
+import { formatKa } from "@/src/utils/display";
 
 interface MilkSelectorProps {
   milkTypes: MilkTypeOption[];
@@ -35,7 +36,15 @@ export function MilkSelector({
           <OptionCard
             key={milk.id}
             label={milk.name}
-            sub={isDefault ? "Mặc định" : diff > 0 ? `+${diff / 1000} ká` : diff < 0 ? `${diff / 1000} ká` : "Cùng giá"}
+            sub={
+              isDefault
+                ? "Mặc định"
+                : diff > 0
+                  ? `+${formatKa(diff, "ceil")}`
+                  : diff < 0
+                    ? `-${formatKa(Math.abs(diff), "floor")}`
+                    : "Cùng giá"
+            }
             isActive={selectedMilkId === milk.id}
             onClick={() => onChange(milk.id)}
           />

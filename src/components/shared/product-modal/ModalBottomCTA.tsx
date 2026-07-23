@@ -1,6 +1,7 @@
 import React from "react";
 import { ShoppingBag } from "lucide-react";
 import { cn } from "@/src/utils/cn";
+import { formatKa } from "@/src/utils/display";
 
 interface ModalBottomCTAProps {
   totalCost: number;
@@ -24,9 +25,9 @@ export function ModalBottomCTA({
       <div className="flex items-center justify-between gap-3">
         {/* Total price */}
         <div className="flex flex-col items-start justify-center flex-1 min-w-0">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-primary/45">Tổng tiền</span>
-          <span className="font-serif font-bold text-lg md:text-xl text-primary leading-none mt-0.5 whitespace-nowrap">
-            {totalCost / 1000} ká
+          <span className="text-xs font-bold uppercase tracking-wider text-primary/60">Tổng tiền</span>
+          <span className="font-serif font-bold text-2xl md:text-[1.75rem] text-primary leading-none mt-1 whitespace-nowrap">
+            {formatKa(totalCost, "ceil")}
           </span>
         </div>
 
@@ -35,13 +36,13 @@ export function ModalBottomCTA({
           <button
             onClick={() => setQuantity(Math.max(1, quantity - 1))}
             disabled={hideQuantityPicker}
-            className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 disabled:active:bg-transparent transition-colors text-primary font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-11 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 disabled:active:bg-transparent transition-colors text-primary font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >−</button>
           <span className="text-sm font-bold w-6 text-center text-primary">{quantity}</span>
           <button
             onClick={() => setQuantity(quantity + 1)}
             disabled={hideQuantityPicker}
-            className="w-9 md:w-10 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 disabled:active:bg-transparent transition-colors text-primary font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-11 h-11 flex items-center justify-center hover:bg-primary/10 active:bg-primary/20 disabled:active:bg-transparent transition-colors text-primary font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
           >+</button>
         </div>
 
