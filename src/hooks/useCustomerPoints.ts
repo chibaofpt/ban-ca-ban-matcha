@@ -1,11 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { apiClient } from "@/src/lib/api/client";
-
-interface PointsResponse {
-  data: {
-    points_balance: number;
-  };
-}
+import { getCustomerPoints } from "@/src/services/pointsService";
 
 /**
  * Hook fetch và cache điểm cá của khách hàng.
@@ -15,11 +9,19 @@ interface PointsResponse {
 export function useCustomerPoints(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["customer", "points"],
-    queryFn: async () => {
-      const res = await apiClient.get<PointsResponse>("/api/profile/points");
-      return res.data.data.points_balance;
-    },
+    queryFn: () => getCustomerPoints(1, 20),
+    select: (data) => data.points_balance,
     staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: "always",
     enabled: options?.enabled,
+  });
+}
+
+/** Fetches the customer's points history for the profile bottom sheet. */
+export function useCustomerPointsHistory(page = 1) {
+  return useQuery({
+    queryKey: ["customer", "points", "history", page],
+    queryFn: () => getCustomerPoints(page, 20),
+    refetchOnWindowFocus: "always",
   });
 }

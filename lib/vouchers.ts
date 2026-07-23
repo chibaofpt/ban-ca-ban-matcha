@@ -4,7 +4,7 @@
  * Called inside prisma.$transaction() from order routes.
  */
 
-import type { Voucher, Prisma } from "@prisma/client";
+import type { Voucher } from "@prisma/client";
 
 // ── Minimal types ──────────────────────────────────────────────────────────────
 
@@ -37,8 +37,6 @@ export interface ApplyVouchersResult {
   addon_voucher_id: string | null;
   /** Total VND reduced from subtotal by DISCOUNT voucher */
   discount_vnd: number;
-  /** Points to award back to customer because PRODUCT voucher covered more than actual item price */
-  surplus_points: number;
 }
 
 export type DbClientForVoucher = {
@@ -167,6 +165,27 @@ export function findAddonVoucherDiscount(
  */
 export function calcPointsEarned(total_vnd: number): number {
   return Math.floor(total_vnd / 10000);
+}
+
+// ── Aggregate surplus points ──────────────────────────────────────────────────
+
+/** Input for aggregate surplus calculation */
+interface SurplusItem {
+  covered_price_vnd: number;
+  unit_price_vnd: number;
+}
+
+/**
+ * Calculates aggregate surplus points from all PRODUCT voucher items.
+ * Sums VND surplus across all items first, then floors to points once.
+ * This prevents per-item rounding loss (e.g. 7k+6k=13k → 1pt, not 0+0=0).
+ */
+export function calcAggregateSurplusPoints(items: SurplusItem[]): number {
+  const totalSurplusVnd = items.reduce((sum, item) => {
+    const surplus = Math.max(item.covered_price_vnd - item.unit_price_vnd, 0);
+    return sum + surplus;
+  }, 0);
+  return Math.floor(totalSurplusVnd / 10000);
 }
 
 // ── Multi DISCOUNT voucher calculation ───────────────────────────────────────

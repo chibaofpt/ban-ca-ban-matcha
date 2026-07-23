@@ -11,7 +11,7 @@ import { describe, it, expect } from "vitest";
 // JWT_SECRET check that throws before any test setup can run.
 
 function normalizePhone(phone: string): string {
-  let cleaned = phone.replace(/[\s\-\.\(\)]/g, "");
+  const cleaned = phone.replace(/[\s\-\.\(\)]/g, "");
 
   if (/^84\d{9}$/.test(cleaned)) {
     return `+${cleaned}`;

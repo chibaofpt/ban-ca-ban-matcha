@@ -131,12 +131,11 @@ describe("filterModalPackages", () => {
       makePackage({ id: "p2", max_per_user: 2, user_redeemed_count: 2 }), // maxed out
       makePackage({ id: "p3", max_per_user: 1, user_redeemed_count: undefined }), // backward compatibility
     ];
-    // @ts-ignore
     const { filterModalPackages } = await import("@/src/lib/utils/voucherModalHelpers");
     const result = filterModalPackages(packages);
     
     expect(result).toHaveLength(2);
-    expect(result.map((p: any) => p.id)).toEqual(["p1", "p3"]);
+    expect(result.map((pkg) => pkg.id)).toEqual(["p1", "p3"]);
   });
 });
 

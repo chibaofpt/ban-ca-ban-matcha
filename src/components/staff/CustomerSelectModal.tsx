@@ -5,6 +5,7 @@ import { Search, User, Phone } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as staffOrderService from "@/src/services/staffOrderService";
 import type { CustomerSearchResult } from "@/src/services/staffOrderService";
+import { formatVietnamPhone, normalizeCustomerSearch } from "@/src/utils/display";
 
 export type CustomerInfo =
   | { type: "existing"; data: CustomerSearchResult }
@@ -28,7 +29,9 @@ export function CustomerSelectModal({
   const [step, setStep] = useState<"search" | "new-customer">("search");
 
   // Search state
-  const [query, setQuery] = useState(initialQuery);
+  const [query, setQuery] = useState(
+    initialQuery ? formatVietnamPhone(initialQuery) : "",
+  );
   const [searchResults, setSearchResults] = useState<CustomerSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -83,8 +86,8 @@ export function CustomerSelectModal({
 
   const handleNewCustomer = () => {
     setStep("new-customer");
-    const digits = query.replace(/\D/g, "");
-    setNewPhone(digits);
+    const normalized = normalizeCustomerSearch(query);
+    setNewPhone(/^\d+$/.test(normalized) && normalized.length === 9 ? `0${normalized}` : normalized);
     // If query has non-digits, it's likely a name, so prefill newName
     if (!/^\d+$/.test(query.trim())) {
       setNewName(query.trim());
@@ -152,7 +155,7 @@ export function CustomerSelectModal({
                       <p className="font-medium truncate">{c.name}</p>
                       <p className="text-[11px] text-muted-foreground flex items-center gap-1">
                         <Phone size={10} />
-                        {c.phone_number}
+                        {formatVietnamPhone(c.phone_number)}
                         <span className="ml-1 text-amber-600 dark:text-amber-400">
                           • 🐟 {c.points_balance} điểm
                         </span>

@@ -4,7 +4,7 @@ import type { VoucherPackage } from "@/src/services/adminVoucherService";
 // ── Mocks khai báo TRƯỚC import ────────────────────────────────────────────
 
 const mockListVoucherPackages = vi.fn();
-const mockFetchMenuItems = vi.fn();
+const mockFetchMenu = vi.fn();
 const mockFetchPowders = vi.fn();
 const mockCreateVoucherPackage = vi.fn();
 const mockUpdateVoucherPackage = vi.fn();
@@ -18,7 +18,7 @@ vi.mock("@/src/services/adminVoucherService", () => ({
 }));
 
 vi.mock("@/src/services/menuService", () => ({
-  fetchMenuItems: () => mockFetchMenuItems(),
+  fetchMenu: () => mockFetchMenu(),
 }));
 
 vi.mock("@/src/services/powderService", () => ({
@@ -58,26 +58,26 @@ const mockPackage: VoucherPackage = {
 describe("AdminVoucherPackagesPage — Contract 1: parallel initial load", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("gọi 3 services song song khi mount: listVoucherPackages, fetchMenuItems, fetchPowders", async () => {
+  it("gọi 3 services song song khi mount: listVoucherPackages, fetchMenu, fetchPowders", async () => {
     mockListVoucherPackages.mockResolvedValueOnce([mockPackage]);
-    mockFetchMenuItems.mockResolvedValueOnce([]);
+    mockFetchMenu.mockResolvedValueOnce({ latte: [], fusion: [], milk_types: [], addon_groups: [] });
     mockFetchPowders.mockResolvedValueOnce({ data: [], default_powder_gram: {} });
 
-    await Promise.all([mockListVoucherPackages(), mockFetchMenuItems(), mockFetchPowders()]);
+    await Promise.all([mockListVoucherPackages(), mockFetchMenu(), mockFetchPowders()]);
 
     expect(mockListVoucherPackages).toHaveBeenCalledTimes(1);
-    expect(mockFetchMenuItems).toHaveBeenCalledTimes(1);
+    expect(mockFetchMenu).toHaveBeenCalledTimes(1);
     expect(mockFetchPowders).toHaveBeenCalledTimes(1);
   });
 
   it("fetch thành công → trả đúng danh sách packages", async () => {
     mockListVoucherPackages.mockResolvedValueOnce([mockPackage]);
-    mockFetchMenuItems.mockResolvedValueOnce([]);
+    mockFetchMenu.mockResolvedValueOnce({ latte: [], fusion: [], milk_types: [], addon_groups: [] });
     mockFetchPowders.mockResolvedValueOnce({ data: [], default_powder_gram: {} });
 
     const [packages] = await Promise.all([
       mockListVoucherPackages(),
-      mockFetchMenuItems(),
+      mockFetchMenu(),
       mockFetchPowders(),
     ]);
 
@@ -87,11 +87,11 @@ describe("AdminVoucherPackagesPage — Contract 1: parallel initial load", () =>
 
   it("fetch fail → throw error", async () => {
     mockListVoucherPackages.mockRejectedValueOnce(new Error("DB error"));
-    mockFetchMenuItems.mockResolvedValueOnce([]);
+    mockFetchMenu.mockResolvedValueOnce({ latte: [], fusion: [], milk_types: [], addon_groups: [] });
     mockFetchPowders.mockResolvedValueOnce({ data: [] });
 
     await expect(
-      Promise.all([mockListVoucherPackages(), mockFetchMenuItems(), mockFetchPowders()])
+      Promise.all([mockListVoucherPackages(), mockFetchMenu(), mockFetchPowders()])
     ).rejects.toThrow();
   });
 });

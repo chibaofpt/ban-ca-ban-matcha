@@ -22,7 +22,7 @@ const JWT_SECRET = new TextEncoder().encode(secretStr);
  */
 export function normalizePhone(phone: string): string {
   // Strip whitespace, dashes, dots, parentheses
-  let cleaned = phone.replace(/[\s\-\.\(\)]/g, "");
+  const cleaned = phone.replace(/[\s\-\.\(\)]/g, "");
 
   // "84xxxxxxxxx" (11 digits, missing leading +) → "+84xxxxxxxxx"
   if (/^84\d{9}$/.test(cleaned)) {
@@ -69,7 +69,8 @@ export async function verifyJwt(token: string) {
 }
 
 /** Refresh token TTL in seconds: 7 days for all roles. */
-function refreshTtlSeconds(_role: string): number {
+function refreshTtlSeconds(role: string): number {
+  void role;
   return 7 * 24 * 60 * 60;   // 7 days
 }
 

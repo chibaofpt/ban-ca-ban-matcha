@@ -31,18 +31,20 @@ const mockLatteItem: AdminMenuItem = {
   image_url: null,
   description: null,
   sort_order: 0,
+  updated_at: "2023-10-27T00:00:00Z",
   base_liquid_note: null,
   custom_powder_grams: null,
   matcha_powder_id: "p-1",
-  powder: { id: "p-1", name: "Meyumi", updated_at: "2023-10-27T00:00:00Z", type: "RECOMMEND" },
-  resolved_default_powder_id: null,
+  powder: { id: "p-1", name: "Meyumi", type: "RECOMMEND" },
+  default_powder_id: null,
+  default_powder: null,
   allowed_powder_ids: [],
   sizes: [
     { size: "SMALL", base_price_vnd: 45000, milk_ml: 180 },
     { size: "MEDIUM", base_price_vnd: 55000, milk_ml: 220 },
     { size: "LARGE", base_price_vnd: 65000, milk_ml: 260 },
   ],
-} as any;
+};
 
 const mockMenuData: AdminMenuData = {
   latte: [mockLatteItem],

@@ -8,9 +8,9 @@ import {
   assertVoucherUsable,
   calcDiscountVoucher,
   calcProductVoucherSurplusPoints,
+  calcAggregateSurplusPoints,
   findAddonVoucherDiscount,
   calcPointsEarned,
-  VoucherError,
   type ResolvedOrderItem,
 } from "@/lib/vouchers";
 import type { Voucher } from "@prisma/client";
@@ -143,7 +143,6 @@ describe("assertVoucherUsable", () => {
     expect(() => assertVoucherUsable(v, USER_ID, "ADDON")).not.toThrow();
   });
 });
-
 // ── calcDiscountVoucher ───────────────────────────────────────────────────────
 
 describe("calcDiscountVoucher", () => {
@@ -187,7 +186,6 @@ describe("calcDiscountVoucher", () => {
     expect(calcDiscountVoucher(v, 69000)).toBe(0);
   });
 });
-
 // ── calcProductVoucherSurplusPoints ───────────────────────────────────────────
 
 describe("calcProductVoucherSurplusPoints", () => {
@@ -220,7 +218,6 @@ describe("calcProductVoucherSurplusPoints", () => {
     expect(calcProductVoucherSurplusPoints(200000, 50000)).toBe(15); // floor(150000 / 10000)
   });
 });
-
 // ── findAddonVoucherDiscount ──────────────────────────────────────────────────
 
 describe("findAddonVoucherDiscount", () => {
@@ -275,7 +272,6 @@ describe("findAddonVoucherDiscount", () => {
     expect(findAddonVoucherDiscount(items, ADDON_DA_DUA_ID)).toBe(5000);
   });
 });
-
 // ── calcPointsEarned ──────────────────────────────────────────────────────────
 
 describe("calcPointsEarned", () => {
@@ -301,5 +297,39 @@ describe("calcPointsEarned", () => {
 
   it("floors fractional results", () => {
     expect(calcPointsEarned(15999)).toBe(1); // floor(1.5999) = 1
+  });
+});
+
+// ── calcAggregateSurplusPoints ────────────────────────────────────────────────
+
+describe("calcAggregateSurplusPoints — surplus tổng hợp", () => {
+  it("Hai surplus 7k + 6k = 13k → 1 điểm (per-item sẽ cho 0 + 0 = 0)", () => {
+    const items = [
+      { covered_price_vnd: 77000, unit_price_vnd: 70000 }, // surplus 7k
+      { covered_price_vnd: 56000, unit_price_vnd: 50000 }, // surplus 6k
+    ];
+    expect(calcAggregateSurplusPoints(items)).toBe(1);
+  });
+
+  it("Một surplus 25k → 2 điểm", () => {
+    const items = [
+      { covered_price_vnd: 95000, unit_price_vnd: 70000 }, // surplus 25k
+    ];
+    expect(calcAggregateSurplusPoints(items)).toBe(2);
+  });
+
+  it("Tất cả surplus = 0 → 0 điểm", () => {
+    const items = [
+      { covered_price_vnd: 50000, unit_price_vnd: 50000 }, // surplus 0
+      { covered_price_vnd: 40000, unit_price_vnd: 60000 }, // surplus 0 (covered < actual)
+    ];
+    expect(calcAggregateSurplusPoints(items)).toBe(0);
+  });
+
+  it("covered_price < unit_price → surplus VND = 0, 0 điểm", () => {
+    const items = [
+      { covered_price_vnd: 30000, unit_price_vnd: 70000 },
+    ];
+    expect(calcAggregateSurplusPoints(items)).toBe(0);
   });
 });

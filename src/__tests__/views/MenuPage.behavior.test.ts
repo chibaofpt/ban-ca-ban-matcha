@@ -51,12 +51,12 @@ const mockMenuData = {
       powder: { id: "p-1", name: "Meyumi", type: "RECOMMEND" },
       resolved_default_powder_id: null,
       allowed_powder_ids: [],
-      milk_types: [],
       sizes: [{ size: "SMALL", base_price_vnd: 45000, milk_ml: 180 }],
-      addon_groups: [],
     },
   ],
   fusion: [],
+  milk_types: [],
+  addon_groups: [],
 };
 
 const mockPowderData = {

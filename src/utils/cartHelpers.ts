@@ -1,10 +1,15 @@
 import { CartItem } from "@/src/lib/types/cart";
-import { MenuItem } from "@/src/lib/types/menu";
+import type { AddonGroup, MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
 import { Powder } from "@/src/lib/types/powder";
 import { SWEETNESS_OPTIONS, ICE_OPTIONS } from "@/src/constants/orderOptions";
 import { ceilTo1000 } from "@/src/utils/pricing";
 
-export function line1ItemDetails(item: CartItem, menuItem?: MenuItem, powders?: Powder[]): string[] {
+export function line1ItemDetails(
+  item: CartItem,
+  menuItem: MenuItem | undefined,
+  milkTypes: MilkTypeOption[],
+  powders?: Powder[],
+): string[] {
   const chips: string[] = [];
   
   // Size
@@ -16,7 +21,7 @@ export function line1ItemDetails(item: CartItem, menuItem?: MenuItem, powders?: 
   // Milk / Powder
   if (item.category === "latte") {
     if (item.selectedMilkTypeId) {
-      const milk = menuItem.milk_types?.find(m => m.id === item.selectedMilkTypeId);
+      const milk = milkTypes.find((candidate) => candidate.id === item.selectedMilkTypeId);
       if (milk) chips.push(milk.name);
     }
   } else {
@@ -30,7 +35,7 @@ export function line1ItemDetails(item: CartItem, menuItem?: MenuItem, powders?: 
   return chips;
 }
 
-export function line2ItemDetails(item: CartItem, menuItem?: MenuItem): string[] {
+export function line2ItemDetails(item: CartItem): string[] {
   const chips: string[] = [];
 
   // Sweetness
@@ -53,12 +58,17 @@ export function line2ItemDetails(item: CartItem, menuItem?: MenuItem): string[] 
   return chips;
 }
 
-export function addonsDetails(item: CartItem, menuItem?: MenuItem, powders?: Powder[]): string[] {
+export function addonsDetails(
+  item: CartItem,
+  menuItem: MenuItem | undefined,
+  addonGroups: AddonGroup[],
+  powders?: Powder[],
+): string[] {
   const chips: string[] = [];
   if (!menuItem) return chips;
 
   // SELECTOR + TOGGLE addons
-  for (const g of menuItem.addon_groups) {
+  for (const g of addonGroups) {
     if (g.type === "SELECTOR" || g.type === "TOGGLE") {
       for (const opt of g.options) {
         if (item.selectedOptionIds.includes(opt.id) && !opt.is_default) {
@@ -92,7 +102,7 @@ export function addonsDetails(item: CartItem, menuItem?: MenuItem, powders?: Pow
   }
 
   // QUANTITY addons
-  for (const g of menuItem.addon_groups) {
+  for (const g of addonGroups) {
     if (g.type === "QUANTITY") {
       const qty = item.quantityMap[g.id] ?? 0;
       if (qty > 0 && g.options[0]) {

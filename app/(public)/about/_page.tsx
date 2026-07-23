@@ -1,6 +1,5 @@
 import React from 'react';
 import { Metadata } from 'next';
-import Image from 'next/image';
 import Link from 'next/link';
 import Footer from '@/src/components/common/Footer';
 
@@ -62,7 +61,7 @@ export default function AboutPage() {
                 Trước khi Bạn Cá xuất hiện, để thưởng thức một ly matcha đúng nghĩa được đánh bằng chổi chasen từ bột Ceremonial Grade, người Bình Dương thường phải đi rất xa. Chúng tôi tự hào là những người tiên phong, đặt nền móng cho văn hóa matcha nguyên bản tại <strong>Thủ Dầu Một, Bình Dương</strong>.
               </p>
               <p>
-                Với danh xưng thân thuộc "Bạn Cá", chúng tôi không chỉ bán một ly nước, mà trao gửi một trải nghiệm văn hóa ẩm thực tinh tế, tĩnh lặng và đầy nghệ thuật.
+                Với danh xưng thân thuộc &ldquo;Bạn Cá&rdquo;, chúng tôi không chỉ bán một ly nước, mà trao gửi một trải nghiệm văn hóa ẩm thực tinh tế, tĩnh lặng và đầy nghệ thuật.
               </p>
             </div>
           </div>

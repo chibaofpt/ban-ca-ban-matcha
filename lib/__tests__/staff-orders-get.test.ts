@@ -98,16 +98,7 @@ describe("GET /api/staff/orders — lọc đơn CANCELLED ra khỏi tab thông t
   it("tab Tại quầy (order_type=COUNTER) không trả đơn CANCELLED — where.status phải loại CANCELLED", async () => {
     mockGetSession.mockResolvedValue(adminSession);
 
-    let capturedWhere: Record<string, unknown> = {};
-    mockTransaction.mockImplementation(async (fns: Array<unknown>) => {
-      // Intercept: capture the where clause passed to findMany/count
-      // We need to inspect what prisma.order.findMany was called with
-      return [0, []];
-    });
-    mockOrderCount.mockImplementation((args: { where: Record<string, unknown> }) => {
-      capturedWhere = args.where;
-      return Promise.resolve(0);
-    });
+    mockOrderCount.mockResolvedValue(0);
     mockOrderFindMany.mockResolvedValue([]);
 
     // Simulate $transaction([count, findMany])

@@ -206,7 +206,8 @@ describe("POST /api/admin/menu/create-latte-with-powder", () => {
   });
 
   it("tráº£ 400 khi thiáº¿u sizes", async () => {
-    const { sizes: _, ...noSizes } = validFormData();
+    const noSizes = validFormData();
+    Reflect.deleteProperty(noSizes, "sizes");
     const res = await POST(makeFormDataReq(noSizes));
     expect(res.status).toBe(400);
     expect((await res.json()).code).toBe("VALIDATION_ERROR");

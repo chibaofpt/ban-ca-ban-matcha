@@ -1,7 +1,6 @@
 "use client";
 
 import Image from 'next/image';
-import { Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { AdminMenuItem } from "@/src/lib/types/menu";
 
@@ -18,12 +17,6 @@ export default function MenuItemCard({
   onToggleAvailable,
 }: MenuItemCardProps) {
   // Price range — min price among sizes that have a non-null base_price_vnd
-  const activeSizes = item.sizes.filter((s) => s.base_price_vnd != null);
-  const minPriceCa =
-    activeSizes.length > 0
-      ? Math.min(...activeSizes.map((s) => Math.floor(s.base_price_vnd! / 1000)))
-      : null;
-
   return (
     <div
       onClick={() => onClick(item)}

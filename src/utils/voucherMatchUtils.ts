@@ -146,7 +146,10 @@ export function estimateDiscountSavings(voucher: MyVoucher, subtotal: number): n
  * Rule: all FIXED applied first (sequentially), then at most 1 PERCENT on the remainder.
  * Result is capped so subtotal never goes below 0.
  */
-export function estimateMultiDiscountSavings(vouchers: MyVoucher[], subtotal: number): number {
+export function estimateMultiDiscountSavings(
+  vouchers: Array<Pick<MyVoucher, "discount_type" | "discount_value">>,
+  subtotal: number
+): number {
   let remaining = subtotal;
 
   // 1. Apply all FIXED vouchers first
@@ -160,7 +163,8 @@ export function estimateMultiDiscountSavings(vouchers: MyVoucher[], subtotal: nu
   const percentVoucher = vouchers.find((v) => v.discount_type === "PERCENT");
   if (percentVoucher && (percentVoucher.discount_value ?? 0) > 0) {
     const pct = Math.min(percentVoucher.discount_value ?? 0, 100);
-    remaining = Math.max(0, remaining - Math.floor((remaining * pct) / 100));
+    const discount = Math.floor(((remaining * pct) / 100) / 1000) * 1000;
+    remaining = Math.max(0, remaining - discount);
   }
 
   return subtotal - remaining;

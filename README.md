@@ -24,8 +24,8 @@ npm install
 cp .env.local.example .env.local
 # Điền đầy đủ các biến trong .env.local
 
-# 3. Push schema to Supabase (Phase 1+)
-npx prisma db push && npx prisma generate
+# 3. Apply committed Prisma migrations
+npm run migrate:dev
 
 # 4. Chạy dev server
 npm run dev
@@ -37,7 +37,7 @@ Mở [http://localhost:3000](http://localhost:3000) để xem kết quả.
 
 | Layer | Tech |
 |---|---|
-| Framework | Next.js 14 App Router + TypeScript |
+| Framework | Next.js 16 App Router + TypeScript |
 | Styling | Tailwind CSS |
 | Database | Supabase PostgreSQL + Prisma |
 | Auth | Custom JWT (jose) + httpOnly cookies |
@@ -48,9 +48,12 @@ Mở [http://localhost:3000](http://localhost:3000) để xem kết quả.
 
 Đọc theo thứ tự này trước khi viết bất kỳ dòng code nào:
 
-1. [`AGENTS.md`](./AGENTS.md) — source of truth: decisions, database schema, business logic, build phases
+1. [`AGENTS.md`](./AGENTS.md) — entry point, hard rules, and documentation routing
 2. [`STRUCTURE.md`](./STRUCTURE.md) — folder layout, naming conventions, import boundaries
-3. [`CLAUDE.md`](./CLAUDE.md) — coding rules và agent behavior
+3. [`API.md`](./API.md) — request/response contracts and API business notes
+4. [`SCHEMA.md`](./SCHEMA.md) — database fields and canonical order totals
+5. [`NOTES.md`](./NOTES.md) — unresolved implementation policies and deferred work
+6. `.agents/skills/order-flow`, `voucher-flow`, and `pricing-logic` — authoritative domain rules
 
 ## Build Phases
 
@@ -59,6 +62,6 @@ Mở [http://localhost:3000](http://localhost:3000) để xem kết quả.
 | 0 | Landing page + menu tĩnh + cart Zustand | ✅ Done |
 | 1 | Auth (register/login/logout/refresh) + Prisma schema | ✅ Done |
 | 2 | Menu API + admin CRUD + image upload | ✅ Done |
-| 3 | Orders + points | 🚧 In Progress |
-| 4 | Vouchers + QR scanner | ⏳ |
+| 3 | Orders + points | ✅ Done |
+| 4 | Vouchers + QR scanner | ✅ Done |
 | 5 | Promotions + OTP + Redis | ⏳ |

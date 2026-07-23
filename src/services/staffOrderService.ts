@@ -1,6 +1,7 @@
 import { apiClient } from "@/src/lib/api/client";
 import type { ApiResponse } from "@/src/lib/types/api";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
+import { normalizeCustomerSearch } from "@/src/utils/display";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -89,7 +90,7 @@ const URLS = {
  */
 export async function searchCustomers(query: string): Promise<CustomerSearchResult[]> {
   const res = await apiClient.get<ApiResponse<{ items: CustomerSearchResult[] }>>(URLS.users, {
-    params: { q: query },
+    params: { q: normalizeCustomerSearch(query) },
   });
   return res.data.data.items;
 }

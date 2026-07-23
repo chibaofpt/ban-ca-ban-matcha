@@ -24,6 +24,10 @@ import { useIsLoggedIn, useIsLoggedInSynced } from '@/src/lib/store/authStore';
 import { useCustomerPoints } from '@/src/hooks/useCustomerPoints';
 import { useVoucherPackages } from '@/src/hooks/useVoucherPackages';
 import { listMyVouchers } from '@/src/services/customerVoucherService';
+import { useCartStore } from '@/src/lib/store/cartStore';
+import type { CartItem } from '@/src/lib/types/cart';
+import { getMenuItemCartQuantity } from '@/src/utils/customerUx';
+import { ExistingCartItemSheet } from '@/src/components/menu/ExistingCartItemSheet';
 
 const swipeConfidenceThreshold = 10000;
 const swipePower = (offset: number, velocity: number) => {
@@ -33,14 +37,20 @@ const swipePower = (offset: number, velocity: number) => {
 export default function MenuPage() {
   const [activeTab, setActiveTab] = useState<TabId>('latte');
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+  const [editingItem, setEditingItem] = useState<CartItem | undefined>(undefined);
+  const [existingItemTarget, setExistingItemTarget] = useState<MenuItem | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const productListTopRef = useRef<HTMLDivElement>(null);
+  const previousTabRef = useRef<TabId>(activeTab);
+  const [containerWidth, setContainerWidth] = useState(1000);
   const carouselX = useMotionValue(0);
 
   const setPowderData = usePowderStore((s) => s.setPowderData);
   const isLoggedIn = useIsLoggedIn();         // UI display — fast, reads from memory
   const isLoggedInSynced = useIsLoggedInSynced(); // API guard — checks has_session cookie
   const openVoucherModal = useVoucherModalStore((s) => s.openModal);
+  const cartItems = useCartStore((s) => s.items);
   
   const { data: menuRes, isLoading: menuLoading, isError: menuError } = useQuery({
     queryKey: ['menu'],
@@ -105,6 +115,16 @@ export default function MenuPage() {
     setActiveTab(newTab);
   }, []);
 
+  useEffect(() => {
+    if (previousTabRef.current === activeTab) return;
+    previousTabRef.current = activeTab;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    productListTopRef.current?.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "start",
+    });
+  }, [activeTab]);
+
   // Sync carousel position when activeTab changes (e.g. from clicks)
   useEffect(() => {
     snapCarousel(currentIndex);
@@ -122,7 +142,21 @@ export default function MenuPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, [currentIndex, carouselX]);
 
-  const handleDragEnd = useCallback((e: any, { offset, velocity }: PanInfo) => {
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) setContainerWidth(entry.contentRect.width);
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  const handleDragEnd = useCallback((
+    event: MouseEvent | TouchEvent | PointerEvent,
+    { offset, velocity }: PanInfo
+  ) => {
+    void event;
     const swipe = swipePower(offset.x, velocity.x);
     const draggedFarLeft = offset.x < -100;
     const draggedFarRight = offset.x > 100;
@@ -141,8 +175,14 @@ export default function MenuPage() {
   }, [currentIndex, tabsList, snapCarousel]);
 
   const handleItemClick = useCallback((item: MenuItem) => {
+    const matchingItems = cartItems.filter((cartItem) => cartItem.menuItemId === item.id);
+    if (matchingItems.length > 0) {
+      setExistingItemTarget(item);
+      return;
+    }
+    setEditingItem(undefined);
     setSelectedItem(item);
-  }, []);
+  }, [cartItems]);
 
   return (
     <main className="min-h-screen bg-[#fdfcf7] text-foreground font-sans pt-4 pb-24 px-6">
@@ -166,7 +206,7 @@ export default function MenuPage() {
             <Gift size={14} />
             <span>
               {isLoggedIn
-                ? `Đổi quà${points !== null ? ` (${points} cá)` : ''}`
+                ? `Đổi quà${typeof points === "number" ? ` (${points} cá)` : ""}`
                 : 'Ưu đãi'}
             </span>
           </button>
@@ -176,6 +216,7 @@ export default function MenuPage() {
         <TabBar activeTab={activeTab} setActiveTab={handleTabChange} carouselX={carouselX} />
 
         {/* High-Performance Swipe Area (True Carousel without whileInView) */}
+        <div ref={productListTopRef} className="scroll-mt-20" />
         <div ref={containerRef} className="mt-2 flex-1 relative w-full overflow-hidden">
           {loading ? (
             <div className="flex flex-col gap-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-8 w-full">
@@ -188,7 +229,7 @@ export default function MenuPage() {
               style={{ x: carouselX }}
               drag="x"
               // Remove bounds constraints so we can rely purely on dragElastic and manual snap for smooth feel
-              dragConstraints={{ left: containerRef.current ? -containerRef.current.offsetWidth * 2 : -2000, right: 0 }}
+              dragConstraints={{ left: -containerWidth * 2, right: 0 }}
               dragElastic={0.2}
               onDragEnd={handleDragEnd}
               className="relative w-full touch-pan-y"
@@ -214,7 +255,9 @@ export default function MenuPage() {
                           <MenuCard
                             key={item.id}
                             item={item}
+                            milkTypes={data?.milk_types ?? []}
                             onClick={handleItemClick}
+                            cartQuantity={getMenuItemCartQuantity(cartItems, item.id)}
                             priority={index < 4}
                           />
                         ))}
@@ -234,15 +277,36 @@ export default function MenuPage() {
             key="product-modal-root"
             item={selectedItem}
             latteItems={data?.latte ?? []}
+            milkTypes={data?.milk_types ?? []}
+            addonGroups={data?.addon_groups ?? []}
             onClose={() => setSelectedItem(null)}
+            editingItem={editingItem}
             availableVouchers={vouchersData ?? []}
           />
         )}
       </AnimatePresence>
 
+      {existingItemTarget && (
+        <ExistingCartItemSheet
+          itemName={existingItemTarget.name}
+          items={cartItems.filter((cartItem) => cartItem.menuItemId === existingItemTarget.id)}
+          onClose={() => setExistingItemTarget(null)}
+          onAddNew={() => {
+            setEditingItem(undefined);
+            setSelectedItem(existingItemTarget);
+            setExistingItemTarget(null);
+          }}
+          onEdit={(cartItem) => {
+            setEditingItem(cartItem);
+            setSelectedItem(existingItemTarget);
+            setExistingItemTarget(null);
+          }}
+        />
+      )}
+
       <VoucherModal />
       <CartButton />
-      <CartDrawer />
+      {data && powderRes && <CartDrawer menuData={data} powderData={powderRes} />}
     </main>
   );
 }

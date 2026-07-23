@@ -4,14 +4,16 @@ import { vi, describe, it, expect, beforeEach } from "vitest";
 import React from "react";
 
 // ── Khai báo mock trước import ──────────────────────────────────
-const mockListMyVouchers = vi.fn();
-const mockListPackages = vi.fn();
-const mockExchangeVoucher = vi.fn();
+const { mockListMyVouchers, mockListPackages, mockExchangeVoucher } = vi.hoisted(() => ({
+  mockListMyVouchers: vi.fn(),
+  mockListPackages: vi.fn(),
+  mockExchangeVoucher: vi.fn(),
+}));
 
 vi.mock("@/src/services/customerVoucherService", () => ({
-  listMyVouchers: (...args: any[]) => mockListMyVouchers(...args),
-  listActiveVoucherPackages: (...args: any[]) => mockListPackages(...args),
-  exchangeVoucher: (...args: any[]) => mockExchangeVoucher(...args),
+  listMyVouchers: mockListMyVouchers,
+  listActiveVoucherPackages: mockListPackages,
+  exchangeVoucher: mockExchangeVoucher,
 }));
 
 import { useCustomerVouchers } from "@/src/hooks/useCustomerVouchers";

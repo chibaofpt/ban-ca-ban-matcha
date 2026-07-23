@@ -55,7 +55,8 @@ app/                              # Next.js App Router — entry points only, ze
     profile/route.ts
     profile/points/route.ts
     profile/vouchers/route.ts
-    profile/vouchers/redeem/route.ts
+    profile/vouchers/exchange/route.ts
+    profile/vouchers/refund/route.ts
     staff/orders/route.ts
     staff/scan/route.ts
     staff/users/route.ts

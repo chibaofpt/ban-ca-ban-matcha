@@ -8,6 +8,7 @@ import { useAuthStore } from "@/src/lib/store/authStore";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { Button } from "@/src/components/ui/button";
 import { Card, CardContent } from "@/src/components/ui/card";
+import Image from "next/image";
 
 interface UserVoucher {
   qr_token: string;
@@ -101,7 +102,7 @@ const Vouchers = () => {
                 <div className="flex items-start gap-3">
                   {v.voucher_type === "PRODUCT" && v.image_url ? (
                     <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0">
-                      <img src={v.image_url} alt={v.name} className="w-full h-full object-cover" />
+                      <Image src={v.image_url} alt={v.name} width={40} height={40} unoptimized className="w-full h-full object-cover" />
                     </div>
                   ) : v.voucher_type === "PRODUCT" && v.emoji ? (
                     <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">

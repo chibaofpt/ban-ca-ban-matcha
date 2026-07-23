@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { cancelOrder, fetchCustomerOrders } from "@/src/services/orderService";
 import { listMyVouchers, type MyVoucher } from "@/src/services/customerVoucherService";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -17,6 +17,7 @@ import VoucherModal from "@/src/components/shared/VoucherModal";
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
 import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
 import { useIsLoggedIn } from "@/src/lib/store/authStore";
+import { formatKa, formatOrderSize } from "@/src/utils/display";
 
 interface CustomerHistoryOrder {
   id: string;
@@ -24,6 +25,9 @@ interface CustomerHistoryOrder {
   status: OrderStatus;
   order_type: string;
   total_vnd: number;
+  shipping_fee_vnd: number;
+  freeship_discount_vnd: number;
+  grand_total_vnd: number;
   subtotal_vnd: number;
   total_voucher_discount_vnd: number;
   created_at: string;
@@ -178,11 +182,6 @@ export default function HistoryPage() {
   // Voucher history state is now managed by TanStack Query
   // The UI can use isVouchersLoading and vouchers directly
 
-  // Reset page when changing tabs (though vouchers tab currently has no pagination)
-  useEffect(() => {
-    setPage(1);
-  }, [activeTab]);
-
   // Points are automatically fetched by useCustomerPoints hook
   useEffect(() => {}, [isLoggedIn]);
 
@@ -207,6 +206,20 @@ export default function HistoryPage() {
 
   const rawOrders: CustomerHistoryOrder[] = queryData?.data || [];
   const totalPages = queryData?.meta?.totalPages || 1;
+  const orderStatusSignature = rawOrders
+    .map((order) => `${order.id}:${order.status}`)
+    .join("|");
+  const previousOrderStatusSignature = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (
+      previousOrderStatusSignature.current !== null &&
+      previousOrderStatusSignature.current !== orderStatusSignature
+    ) {
+      queryClient.invalidateQueries({ queryKey: ["customer", "points"] });
+    }
+    previousOrderStatusSignature.current = orderStatusSignature;
+  }, [orderStatusSignature, queryClient]);
 
   const refetch = () => queryClient.invalidateQueries({ queryKey: ["customer", "orders"] });
 
@@ -223,6 +236,7 @@ export default function HistoryPage() {
     onSuccess: () => {
       toast.success("Đã huỷ đơn hàng");
       refetch();
+      queryClient.invalidateQueries({ queryKey: ["customer", "points"] });
     },
     onError: () => {
       toast.error("Không thể huỷ đơn hàng. Vui lòng thử lại.");
@@ -239,21 +253,24 @@ export default function HistoryPage() {
     <div className="w-full px-4 py-6 max-w-2xl md:max-w-4xl lg:max-w-6xl mx-auto space-y-5 pb-24">
       {/* Header: title + voucher button */}
       <div className="flex items-center justify-between">
-        <h1 className="font-serif text-3xl font-bold text-primary">Lịch sử</h1>
+        <h1 className="font-serif text-3xl font-bold text-primary">Đơn hàng & Voucher</h1>
         <button
           id="voucher-modal-trigger-history"
           onClick={openVoucherModal}
           className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-amber-500 to-orange-500 shadow-sm shadow-orange-500/20 px-3.5 py-2.5 rounded-xl hover:scale-105 transition-transform"
         >
           <Gift size={14} />
-          <span>Đổi quà {points !== null && `(${points} 🐟)`}</span>
+          <span>Đổi quà {typeof points === "number" && `(${points} 🐟)`}</span>
         </button>
       </div>
 
       {/* Tabs */}
       <div className="grid grid-cols-2 bg-secondary/30 p-1 rounded-2xl">
         <button
-          onClick={() => setActiveTab("orders")}
+          onClick={() => {
+            setPage(1);
+            setActiveTab("orders");
+          }}
           className={`py-2.5 rounded-xl text-sm font-bold transition-all ${
             activeTab === "orders" ? "bg-card shadow-sm text-primary" : "text-primary/60 hover:text-primary"
           }`}
@@ -261,7 +278,10 @@ export default function HistoryPage() {
           Đơn hàng
         </button>
         <button
-          onClick={() => setActiveTab("vouchers")}
+          onClick={() => {
+            setPage(1);
+            setActiveTab("vouchers");
+          }}
           className={`py-2.5 rounded-xl text-sm font-bold transition-all ${
             activeTab === "vouchers" ? "bg-card shadow-sm text-primary" : "text-primary/60 hover:text-primary"
           }`}
@@ -418,7 +438,9 @@ export default function HistoryPage() {
                                 <div className="flex flex-col min-w-0">
                                   <span className="font-semibold text-[13px]">
                                     {it.menuItem.name}{" "}
-                                    <span className="font-normal text-muted-foreground">({it.size})</span>
+                                    <span className="font-normal text-muted-foreground">
+                                      {formatOrderSize(it.size)}
+                                    </span>
                                   </span>
                                   <OrderItemDetails item={it} />
                                 </div>
@@ -427,7 +449,9 @@ export default function HistoryPage() {
                             ))}
                             {order.total_voucher_discount_vnd > 0 && (
                               <li className="text-[11px] text-green-600 pt-1 flex flex-col border-t border-border/30">
-                                <span>Giảm giá: -{(order.total_voucher_discount_vnd / 1000).toLocaleString("vi-VN")}K</span>
+                                <span>
+                                  Giảm giá: -{formatKa(order.total_voucher_discount_vnd, "floor")}
+                                </span>
                                 {order.discountVouchers && order.discountVouchers.length > 0 && (
                                   <span className="font-medium mt-0.5 truncate block max-w-full" title={order.discountVouchers.map(dv => dv.voucher.package.name).join(", ")}>
                                     (Voucher: {order.discountVouchers.map(dv => dv.voucher.package.name).join(", ")})
@@ -471,7 +495,7 @@ export default function HistoryPage() {
                               )}
                             </div>
                             <span className="font-bold text-primary text-base">
-                              {(order.total_vnd / 1000).toLocaleString("vi-VN")}K
+                              {formatKa(order.grand_total_vnd, "ceil")}
                             </span>
                           </div>
                         </div>

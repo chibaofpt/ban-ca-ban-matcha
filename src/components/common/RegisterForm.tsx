@@ -21,10 +21,12 @@ import {
   type RegisterPayload,
 } from "@/src/services/authService";
 import { resetForceLogout } from "@/src/lib/api/client";
+import { useQueryClient } from "@tanstack/react-query";
 
 /** 2-step registration wizard: step 1 = phone + password, step 2 = name. */
 const RegisterForm = () => {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<1 | 2>(1);
   const [step1Data, setStep1Data] = useState<RegisterStep1Input | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -102,6 +104,7 @@ const RegisterForm = () => {
         password: step1Data.password,
       };
       const user = await registerRequest(payload);
+      queryClient.removeQueries({ queryKey: ["customer"] });
 
       const from = new URLSearchParams(window.location.search).get("from");
       if (from) {

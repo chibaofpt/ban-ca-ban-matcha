@@ -22,13 +22,19 @@ vi.mock("@/src/services/adminMenuService", () => ({
 const mockPowder: Powder = {
   id: "p-1",
   name: "Meyumi",
+  manufacturer: null,
   type: "RECOMMEND",
   is_available: true,
   price_per_gram: 300,
   description: null,
+  fragrance: null,
+  body: null,
+  bitterness: null,
+  umami: null,
+  color: null,
   reference_latte_item_id: null,
   size_config: [],
-} as any;
+};
 
 const mockPowders: Powder[] = [mockPowder];
 

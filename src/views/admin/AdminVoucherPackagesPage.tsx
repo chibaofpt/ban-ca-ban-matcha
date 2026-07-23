@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Coins, Gift, Plus, Pencil, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Coins, Gift, Plus, Pencil } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/src/utils/cn";
 import { toast } from "sonner";
+import axios from "axios";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import {
   listVoucherPackages,
@@ -12,12 +13,11 @@ import {
   updateVoucherPackage,
   deleteVoucherPackage,
   type VoucherPackage,
-  type CreateVoucherPackageInput
+  type CreateVoucherPackageInput,
+  type UpdateVoucherPackageInput
 } from "@/src/services/adminVoucherService";
-import { fetchMenuItems } from "@/src/services/menuService";
+import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
-import type { MenuItem } from "@/src/lib/types/menu";
-import type { Powder } from "@/src/lib/types/powder";
 
 interface VoucherPackageForm {
   name: string;
@@ -61,6 +61,13 @@ const emptyForm: VoucherPackageForm = {
   quantity: "",
   max_per_user: 1,
 };
+
+function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError<{ error?: string }>(error)) {
+    return error.response?.data?.error || fallback;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
 
 
 function VoucherTypeBadge({ type }: { type: VoucherPackage["voucher_type"] }) {
@@ -113,10 +120,11 @@ export default function AdminVoucherPackagesPage() {
     queryFn: listVoucherPackages,
   });
 
-  const { data: menuItems = [], isLoading: isMenuLoading } = useQuery({
-    queryKey: ["admin", "menu", "flat"],
-    queryFn: fetchMenuItems,
+  const { data: menuData, isLoading: isMenuLoading } = useQuery({
+    queryKey: ["menu"],
+    queryFn: fetchMenu,
   });
+  const menuItems = menuData ? [...menuData.latte, ...menuData.fusion] : [];
 
   const { data: powdersData, isLoading: isPowdersLoading } = useQuery({
     queryKey: ["admin", "powders", "raw"],
@@ -126,47 +134,11 @@ export default function AdminVoucherPackagesPage() {
 
   const loading = isPkgsLoading || isMenuLoading || isPowdersLoading;
 
-  // Extract unique non-matcha addon options from all menu items
-  const uniqueAddonOptions = Array.from(
-    new Map(
-      menuItems
-        .flatMap((item) => item.addon_groups || [])
-        .flatMap((group) => group.options || [])
-        .filter((opt) => opt.gram_value === null || opt.gram_value <= 0)
-        .map((opt) => [opt.id, opt])
-    ).values()
-  );
+  const uniqueAddonOptions = (menuData?.addon_groups ?? [])
+    .flatMap((group) => group.options)
+    .filter((option) => option.gram_value === null || option.gram_value <= 0);
 
-  // Extract unique milk types from all menu items
-  const uniqueMilkTypes = Array.from(
-    new Map(
-      menuItems
-        .flatMap((item) => item.milk_types || [])
-        .map((opt) => [opt.id, opt])
-    ).values()
-  );
-
-  // Prepopulate select defaults if items are loaded
-  useEffect(() => {
-    if (menuItems.length > 0 && !form.menu_item_id && form.name === emptyForm.name) {
-      setForm(prev => ({
-        ...prev,
-        menu_item_id: menuItems[0].id
-      }));
-    }
-  }, [menuItems, form.menu_item_id, form.name]);
-
-  // Sync menu_item_id and addon_option_id when dialog opens
-  useEffect(() => {
-    if (open) {
-      if (menuItems.length > 0 && !form.menu_item_id) {
-        setForm(prev => ({ ...prev, menu_item_id: menuItems[0].id }));
-      }
-      if (uniqueAddonOptions.length > 0 && !form.addon_option_id) {
-        setForm(prev => ({ ...prev, addon_option_id: uniqueAddonOptions[0].id }));
-      }
-    }
-  }, [open, menuItems, uniqueAddonOptions]);
+  const uniqueMilkTypes = menuData?.milk_types ?? [];
 
   const openAdd = () => {
     setEditingId(null);
@@ -208,13 +180,14 @@ export default function AdminVoucherPackagesPage() {
       toast.success("Đã thêm gói voucher mới");
       setOpen(false);
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.error || "Thao tác thất bại.");
+    onError: (err: unknown) => {
+      toast.error(getApiErrorMessage(err, "Thao tác thất bại."));
     }
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string, data: any }) => updateVoucherPackage(id, data),
+    mutationFn: ({ id, data }: { id: string; data: UpdateVoucherPackageInput }) =>
+      updateVoucherPackage(id, data),
     onSuccess: (updated) => {
       queryClient.setQueryData<VoucherPackage[]>(["admin", "voucher-packages"], (old) =>
         old?.map((p) => (p.id === updated.id ? { ...p, ...updated } : p))
@@ -222,8 +195,8 @@ export default function AdminVoucherPackagesPage() {
       toast.success("Đã cập nhật gói voucher");
       setOpen(false);
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.error || "Thao tác thất bại.");
+    onError: (err: unknown) => {
+      toast.error(getApiErrorMessage(err, "Thao tác thất bại."));
     }
   });
 
@@ -339,8 +312,8 @@ export default function AdminVoucherPackagesPage() {
       );
       toast.success("Đã ngưng hoạt động gói voucher");
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.error || "Xóa thất bại");
+    onError: (err: unknown) => {
+      toast.error(getApiErrorMessage(err, "Xóa thất bại"));
     }
   });
 
@@ -356,6 +329,7 @@ export default function AdminVoucherPackagesPage() {
       },
     });
   };
+  void handleDelete;
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, data }: { id: string, data: { is_active: boolean } }) => updateVoucherPackage(id, data),
@@ -365,8 +339,8 @@ export default function AdminVoucherPackagesPage() {
       );
       toast.success(updated.is_active ? "Đã kích hoạt gói" : "Đã hủy kích hoạt gói");
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.error || "Cập nhật thất bại");
+    onError: (err: unknown) => {
+      toast.error(getApiErrorMessage(err, "Cập nhật thất bại"));
     }
   });
 
@@ -761,7 +735,7 @@ export default function AdminVoucherPackagesPage() {
                           {powders
                             .filter((p) => {
                               const item = menuItems.find(i => i.id === form.menu_item_id);
-                              const allowed = (item as any)?.allowed_powder_ids || [];
+                              const allowed = item?.allowed_powder_ids || [];
                               return allowed.includes(p.id);
                             })
                             .map((p) => (

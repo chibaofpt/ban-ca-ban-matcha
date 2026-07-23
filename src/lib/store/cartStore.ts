@@ -8,13 +8,12 @@ export function computeFinalClientPrice(item: CartItem): number {
   const baseDrinkPrice = item.unitPrice - item.addonsPrice;
   const voucherCredit = item.productVoucherDiscountVnd ?? 0;
   
+  // PRODUCT credit caps at drink price — never spills into addon
   const drinkAfterCredit = Math.max(0, baseDrinkPrice - voucherCredit);
-  const remainingCredit = Math.max(0, voucherCredit - baseDrinkPrice);
   
-  const addonsAfterCredit = Math.max(0, item.addonsPrice - remainingCredit);
+  // ADDON voucher discounts apply independently
   const addonDiscount = item.addonVouchers?.reduce((sum, v) => sum + v.discountVnd, 0) ?? 0;
-  
-  const finalAddonsPrice = Math.max(0, addonsAfterCredit - addonDiscount);
+  const finalAddonsPrice = Math.max(0, item.addonsPrice - addonDiscount);
   
   return drinkAfterCredit + finalAddonsPrice;
 }
@@ -97,7 +96,7 @@ export const useCartStore = create<CartState>()(
       clearCart: () => set({ items: [] }),
 
       applyProductVoucher: (cartId, voucherId, coveredPriceVnd) => {
-        let currentItems = get().items.map((i) => {
+        const currentItems = get().items.map((i) => {
           if (i.productVoucherId === voucherId) {
             const nextI = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined };
             nextI.clientPriceVnd = computeFinalClientPrice(nextI);
@@ -145,7 +144,7 @@ export const useCartStore = create<CartState>()(
       },
 
       applyAddonVoucher: (cartId, voucherId, addonOptionId) => {
-        let currentItems = get().items.map((i) => {
+        const currentItems = get().items.map((i) => {
           if (i.addonVouchers?.some(v => v.voucherId === voucherId)) {
             const nextI = { ...i, addonVouchers: i.addonVouchers.filter(v => v.voucherId !== voucherId) };
             nextI.clientPriceVnd = computeFinalClientPrice(nextI);
@@ -159,7 +158,7 @@ export const useCartStore = create<CartState>()(
 
         const item = currentItems[itemIndex];
         
-        let newAddonVouchers = item.addonVouchers ? [...item.addonVouchers] : [];
+        const newAddonVouchers = item.addonVouchers ? [...item.addonVouchers] : [];
         const existingIdx = newAddonVouchers.findIndex(v => v.addonOptionId === addonOptionId);
         
         const toppingPrice = item.addonPrices?.[addonOptionId] ?? 0;

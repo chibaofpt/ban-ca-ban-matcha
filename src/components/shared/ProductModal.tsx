@@ -1,20 +1,20 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, useRef, Profiler } from "react";
+import React, { useState, useCallback, useMemo, Profiler, useSyncExternalStore } from "react";
 import Image from "next/image";
-import { motion, AnimatePresence } from "framer-motion";
 import { onRenderCallback } from "@/src/utils/dev/renderProfiler";
 import { Drawer } from "vaul";
 import * as Dialog from "@radix-ui/react-dialog";
-import { X, Minus, Plus, ShoppingBag, Ticket, CheckCircle2 } from "lucide-react";
+import { X, Minus, Plus, Ticket, CheckCircle2 } from "lucide-react";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { filterUsableVouchers } from "@/src/utils/voucherMatchUtils";
-import type { MenuItem, SweetnessLevel, Size } from "@/src/lib/types/menu";
+import type { AddonGroup, MenuItem, MilkTypeOption, SweetnessLevel, Size } from "@/src/lib/types/menu";
 import type { IceOption, CartItem } from "@/src/lib/types/cart";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { cn } from "@/src/utils/cn";
 import { ceilTo1000 } from "@/src/utils/pricing";
+import { formatKa } from "@/src/utils/display";
 import { SWEETNESS_OPTIONS, ICE_OPTIONS } from "@/src/constants/orderOptions";
 import { usePriceMap } from "./product-modal/usePriceMap";
 import { SizeSelector } from "./product-modal/SizeSelector";
@@ -27,6 +27,8 @@ import OptionCard from "./product-modal/OptionCard";
 interface ProductModalProps {
   item: MenuItem;
   latteItems: MenuItem[];
+  milkTypes: MilkTypeOption[];
+  addonGroups: AddonGroup[];
   onClose: () => void;
   // ── Edit mode ──
   editingItem?: CartItem;
@@ -40,10 +42,19 @@ interface ProductModalProps {
   currentCartItems?: CartItem[];
 }
 
+const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
+const subscribeToDesktopViewport = (onChange: () => void) => {
+  const media = window.matchMedia(DESKTOP_MEDIA_QUERY);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+};
+const getDesktopSnapshot = () => window.matchMedia(DESKTOP_MEDIA_QUERY).matches;
+const getDesktopServerSnapshot = () => false;
+
 // Extracted OptionCard, SizeSelector, MilkSelector, PowderSelector are imported
 
 const BaseModal: React.FC<ProductModalProps> = ({ 
-  item, latteItems, onClose, editingItem, onConfirm, freeVoucherId, 
+  item, latteItems, milkTypes, addonGroups, onClose, editingItem, onConfirm, freeVoucherId,
   freeVoucherCoveredPriceVnd, availableVouchers, nested = false, currentCartItems 
 }) => {
   const [isOpen, setIsOpen] = useState(true);
@@ -54,14 +65,11 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
 
   // ── Desktop / Responsive Detection ──
-  const [isDesktop, setIsDesktop] = useState(false);
-  useEffect(() => {
-    const media = window.matchMedia("(min-width: 768px)");
-    setIsDesktop(media.matches);
-    const listener = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
-    media.addEventListener("change", listener);
-    return () => media.removeEventListener("change", listener);
-  }, []);
+  const isDesktop = useSyncExternalStore(
+    subscribeToDesktopViewport,
+    getDesktopSnapshot,
+    getDesktopServerSnapshot
+  );
 
   // ── State ────────────────────────────────────────────────────────────────
   const [selectedSize, setSelectedSize] = useState<Size>(() => {
@@ -75,17 +83,30 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const [selectedPowderId, setSelectedPowderId] = useState<string>(() => editingItem?.selectedPowderId ?? item.resolved_default_powder_id ?? "");
   const [selectedMilkId, setSelectedMilkId] = useState<string>(() => {
     if (editingItem?.selectedMilkTypeId) return editingItem.selectedMilkTypeId;
-    return item.milk_types?.find(m => m.is_default)?.id ?? item.milk_types?.[0]?.id ?? "";
+    return milkTypes.find((milk) => milk.is_default)?.id ?? milkTypes[0]?.id ?? "";
   });
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>(() => {
-    if (editingItem) return editingItem.selectedOptionIds;
-    return item.addon_groups.flatMap((g) => g.options.filter((o) => o.is_default).map((o) => o.id));
+    const validOptionIds = new Set(
+      addonGroups.flatMap((group) => group.options.map((option) => option.id))
+    );
+    if (editingItem) {
+      return editingItem.selectedOptionIds.filter((id) => validOptionIds.has(id));
+    }
+    return addonGroups.flatMap((group) =>
+      group.options.filter((option) => option.is_default).map((option) => option.id)
+    );
   });
   const [quantityMap, setQuantityMap] = useState<Record<string, number>>(() => {
     if (editingItem) return editingItem.quantityMap;
-    return Object.fromEntries(item.addon_groups.filter((g) => g.type === "QUANTITY").map((g) => [g.id, 0]));
+    return Object.fromEntries(addonGroups.filter((group) => group.type === "QUANTITY").map((group) => [group.id, 0]));
   });
-  const [quantity, setQuantity] = useState(() => editingItem?.quantity ?? 1);
+  const [quantity, setQuantity] = useState(() => {
+    const startsWithVoucher =
+      editingItem?.productVoucherId !== undefined ||
+      (editingItem?.addonVouchers?.length ?? 0) > 0 ||
+      freeVoucherId !== undefined;
+    return startsWithVoucher ? 1 : editingItem?.quantity ?? 1;
+  });
   const [note, setNote] = useState(() => editingItem?.note ?? "");
 
   const [selectedProductVoucherId, setSelectedProductVoucherId] = useState<string | null>(() => editingItem?.productVoucherId ?? null);
@@ -113,49 +134,30 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const applicableAddonVouchers = useMemo(() => {
     const currentAddonIds = new Set([
       ...selectedOptionIds,
-      ...item.addon_groups.filter(g => g.type === "QUANTITY" && (quantityMap[g.id] ?? 0) > 0).map(g => g.options[0]?.id).filter(Boolean)
+      ...addonGroups.filter(group => group.type === "QUANTITY" && (quantityMap[group.id] ?? 0) > 0).map(group => group.options[0]?.id).filter(Boolean)
     ]);
     return filterUsableVouchers(availableVouchers ?? [], "ADDON").filter(v => v.addon_option_id !== null && currentAddonIds.has(v.addon_option_id) && !usedVoucherIds.has(v.id));
-  }, [availableVouchers, selectedOptionIds, quantityMap, item.addon_groups, usedVoucherIds]);
+  }, [availableVouchers, selectedOptionIds, quantityMap, addonGroups, usedVoucherIds]);
 
   const isProductVoucherApplied = selectedProductVoucherId !== null || freeVoucherId !== undefined;
   const isVoucherApplied = isProductVoucherApplied || selectedAddonVoucherIds.length > 0;
   
-  useEffect(() => {
-    if (isVoucherApplied && quantity !== 1) {
-      setQuantity(1);
-    }
-  }, [isVoucherApplied, quantity]);
-
   // ── Edit Validation ──────────────────────────────────────────────────────
   const lockQuantity = isVoucherApplied;
   
-  useEffect(() => {
-    if (!editingItem) return;
-    const allValidOptionIds = new Set(
-      item.addon_groups.flatMap(g => g.options.map(o => o.id))
-    );
-    const removedOptions = editingItem.selectedOptionIds.filter(
-      id => !allValidOptionIds.has(id)
-    );
-    if (removedOptions.length > 0) {
-      setSelectedOptionIds(prev => prev.filter(id => allValidOptionIds.has(id)));
-    }
-  }, [editingItem, item.addon_groups]);
-
   // ── Derived ──────────────────────────────────────────────────────────────
   const isLatte = item.category === "latte";
   const activePowderId = isLatte ? (item.powder?.id ?? "") : selectedPowderId;
   const activePowder = useMemo(() => powders.find((p) => p.id === activePowderId), [powders, activePowderId]);
   const activePowderPricePerGram = activePowder?.price_per_gram ?? 0;
 
-  const quantityGroups = useMemo(() => item.addon_groups.filter((g) => g.type === "QUANTITY"), [item.addon_groups]);
-  const selectorGroups = useMemo(() => item.addon_groups.filter((g) => g.type === "SELECTOR"), [item.addon_groups]);
-  const toggleGroups = useMemo(() => item.addon_groups.filter((g) => g.type === "TOGGLE"), [item.addon_groups]);
+  const quantityGroups = useMemo(() => addonGroups.filter((group) => group.type === "QUANTITY"), [addonGroups]);
+  const selectorGroups = useMemo(() => addonGroups.filter((group) => group.type === "SELECTOR"), [addonGroups]);
+  const toggleGroups = useMemo(() => addonGroups.filter((group) => group.type === "TOGGLE"), [addonGroups]);
 
   const matchaSelectorGroups = useMemo(() => selectorGroups.filter(g => g.name.toLowerCase().includes("matcha")), [selectorGroups]);
   const otherSelectorGroups = useMemo(() => selectorGroups.filter(g => !g.name.toLowerCase().includes("matcha")), [selectorGroups]);
-  const defaultMilkId = useMemo(() => item.milk_types?.find(m => m.is_default)?.id ?? "", [item.milk_types]);
+  const defaultMilkId = useMemo(() => milkTypes.find((milk) => milk.is_default)?.id ?? "", [milkTypes]);
 
   const powderList = useMemo(() => {
     return !isLatte && item.allowed_powder_ids.length > 0
@@ -168,12 +170,11 @@ const BaseModal: React.FC<ProductModalProps> = ({
     getPriceForContext,
     currentPriceContext,
     finalUnitPrice,
-    finalAddonsCost,
     totalCost,
     effectiveFreeVoucherId,
     effectiveFreeCoveredPrice
   } = usePriceMap({
-    item, latteItems, powders, defaultPowderGrams, selectedSize, activePowderId,
+    item, latteItems, milkTypes, addonGroups, powders, defaultPowderGrams, selectedSize, activePowderId,
     selectedMilkId, quantityMap, selectedOptionIds, selectedAddonVoucherIds,
     availableVouchers, selectedProductVoucherId, freeVoucherId, freeVoucherCoveredPriceVnd, quantity
   });
@@ -182,7 +183,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleSelectorToggle = useCallback((groupId: string, optionId: string, defaultOptId?: string) => {
-    const group = item.addon_groups.find(g => g.id === groupId);
+    const group = addonGroups.find(candidate => candidate.id === groupId);
     if (!group) return;
     const groupOptionIds = group.options.map((o) => o.id);
     setSelectedOptionIds((prev) => {
@@ -193,7 +194,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
       }
       return [...prev.filter((id) => !groupOptionIds.includes(id)), optionId];
     });
-  }, [item.addon_groups]);
+  }, [addonGroups]);
 
   const handleToggleChange = useCallback((optionId: string) => {
     setSelectedOptionIds((prev) =>
@@ -213,7 +214,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
   }, [onClose]);
 
   const handleAddToCart = useCallback(() => {
-    const quantityAddonOptions = item.addon_groups
+    const quantityAddonOptions = addonGroups
       .filter((g) => g.type === "QUANTITY")
       .flatMap((g) => {
         const qty = quantityMap[g.id] ?? 0;
@@ -229,7 +230,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
         } : null;
     }).filter((x): x is NonNullable<typeof x> => Boolean(x));
 
-    const cartItemData = {
+    const cartItemData: Omit<CartItem, "cartId"> = {
       menuItemId: item.id, name: item.name, category: item.category, imageUrl: item.image_url,
       size: selectedSize, unitPrice: currentPriceContext.unitPrice, quantity, sweetness, iceOption, coldwhisk,
       note, selectedOptionIds, quantityMap, addonsPrice: currentPriceContext.addonsCost, addonPrices: currentPriceContext.addonPricesMap, quantityAddonOptions,
@@ -256,7 +257,6 @@ const BaseModal: React.FC<ProductModalProps> = ({
         updateItem(editingItem.cartId, { ...cartItemData, quantity: 1 });
         const remainderData = {
           ...cartItemData,
-          cartId: crypto.randomUUID(),
           quantity: editingItem.quantity - 1,
           unitPrice: currentPriceContext.unitPrice,
           clientPriceVnd: currentPriceContext.unitPrice,
@@ -264,13 +264,13 @@ const BaseModal: React.FC<ProductModalProps> = ({
           productVoucherDiscountVnd: undefined,
           addonVouchers: [],
         };
-        addItem(remainderData as any);
+        addItem(remainderData);
       } else {
         updateItem(editingItem.cartId, cartItemData);
       }
     } else {
       // Customer Add mode
-      addItem(cartItemData as any);
+      addItem(cartItemData);
     }
     
     handleClose();
@@ -278,7 +278,8 @@ const BaseModal: React.FC<ProductModalProps> = ({
     item, quantityMap, selectedAddonVoucherIds, availableVouchers, currentPriceContext,
     selectedSize, finalUnitPrice, quantity, sweetness, iceOption, coldwhisk, note,
     selectedOptionIds, isLatte, selectedPowderId, selectedMilkId, effectiveFreeVoucherId,
-    effectiveFreeCoveredPrice, onConfirm, editingItem, updateItem, addItem, handleClose
+    effectiveFreeCoveredPrice, onConfirm, editingItem, updateItem, addItem, handleClose,
+    addonGroups
   ]);
 
   const sweetnessIdx = useMemo(() => SWEETNESS_OPTIONS.findIndex((o) => o.value === sweetness), [sweetness]);
@@ -311,11 +312,29 @@ const BaseModal: React.FC<ProductModalProps> = ({
             </span>
             <h2 className="font-serif text-3xl font-bold text-primary leading-tight">{item.name}</h2>
             {item.description && <p className="text-sm text-primary/60 leading-relaxed font-medium">{item.description}</p>}
+            <div className="pt-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-primary/55">Giá theo lựa chọn</p>
+              <div className="mt-1 flex items-baseline gap-2">
+                {currentPriceContext.unitPrice > finalUnitPrice && (
+                  <span className="text-sm font-semibold text-primary/40 line-through">
+                    {formatKa(currentPriceContext.unitPrice, "ceil")}
+                  </span>
+                )}
+                <span className="font-serif text-[2rem] font-bold leading-none text-primary">
+                  {formatKa(finalUnitPrice, "ceil")}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Right Column (customization options + scrolled container) */}
-        <button onClick={handleClose} className="absolute top-5 right-5 w-9 h-9 rounded-full bg-primary/8 flex items-center justify-center hover:rotate-90 transition-transform z-10">
+        <button
+          type="button"
+          onClick={handleClose}
+          className="absolute top-5 right-5 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-primary/8 transition-transform hover:rotate-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          aria-label="Đóng"
+        >
           <X className="w-5 h-5 text-primary" />
         </button>
 
@@ -325,6 +344,19 @@ const BaseModal: React.FC<ProductModalProps> = ({
           >
             <h2 className="font-serif text-2xl font-bold text-primary">{item.name}</h2>
             {item.description && <p className="text-sm text-primary/55 mt-1.5 leading-relaxed">{item.description}</p>}
+            <div className="mt-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-primary/55">Giá theo lựa chọn</p>
+              <div className="mt-1 flex items-baseline gap-2">
+                {currentPriceContext.unitPrice > finalUnitPrice && (
+                  <span className="text-sm font-semibold text-primary/40 line-through">
+                    {formatKa(currentPriceContext.unitPrice, "ceil")}
+                  </span>
+                )}
+                <span className="font-serif text-[1.75rem] font-bold leading-none text-primary">
+                  {formatKa(finalUnitPrice, "ceil")}
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* 1. SIZE */}
@@ -395,11 +427,11 @@ const BaseModal: React.FC<ProductModalProps> = ({
           </div>
 
           {/* 3a. LATTE: Milk */}
-          {isLatte && item.milk_types.length > 0 && (
+          {isLatte && milkTypes.length > 0 && (
             <div className="mt-7">
               <SectionLabel text="Loại sữa" />
               <MilkSelector
-                milkTypes={item.milk_types}
+                milkTypes={milkTypes}
                 selectedMilkId={selectedMilkId}
                 defaultMilkId={defaultMilkId}
                 onChange={setSelectedMilkId}
@@ -432,22 +464,22 @@ const BaseModal: React.FC<ProductModalProps> = ({
             <SectionLabel text="Đánh lạnh (Coldwhisk)" />
             <div className="flex items-center justify-between bg-white rounded-2xl border-2 border-border px-5 py-4">
               <div>
-                <p className="text-xs font-bold text-primary">Coldwhisk</p>
-                <p className="text-[11px] text-primary/50 mt-0.5 font-medium">Foam matcha mịn màng</p>
+                <p className="text-sm font-bold text-primary">Coldwhisk</p>
+                <p className="mt-1 text-xs font-medium text-primary/65">Foam matcha mịn màng</p>
               </div>
               <button
                 onClick={() => {
                   setColdwhisk(!coldwhisk);
                 }}
                 className={cn(
-                  "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
+                  "relative inline-flex h-11 w-14 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                   coldwhisk ? "bg-primary" : "bg-primary/20"
                 )}
               >
                 <span
                   className={cn(
                     "inline-block h-5 w-5 transform rounded-full bg-white transition-transform shadow-sm",
-                    coldwhisk ? "translate-x-6" : "translate-x-1"
+                    coldwhisk ? "translate-x-8" : "translate-x-1"
                   )}
                 />
               </button>
@@ -473,7 +505,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
           {(otherSelectorGroups.length > 0 || toggleGroups.length > 0) && (
             <div className="mt-7">
               <SectionLabel text="Topping" />
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {otherSelectorGroups.map((group) =>
                   group.options.filter(o => !o.is_default).map((opt) => {
                     const defaultOpt = group.options.find(o => o.is_default);
@@ -481,7 +513,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
                       <OptionCard
                         key={opt.id}
                         label={opt.label}
-                        sub={opt.price_vnd > 0 ? `+${opt.price_vnd / 1000} ká` : undefined}
+                        sub={opt.price_vnd > 0 ? `+${formatKa(opt.price_vnd, "ceil")}` : undefined}
                         isActive={selectedOptionIds.includes(opt.id)}
                         onClick={() => handleSelectorToggle(group.id, opt.id, defaultOpt?.id)}
                       />
@@ -495,7 +527,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
                     <OptionCard
                       key={group.id}
                       label={group.name}
-                      sub={opt.price_vnd > 0 ? `+${opt.price_vnd / 1000} ká` : undefined}
+                      sub={opt.price_vnd > 0 ? `+${formatKa(opt.price_vnd, "ceil")}` : undefined}
                       isActive={selectedOptionIds.includes(opt.id)}
                       onClick={() => handleToggleChange(opt.id)}
                     />
@@ -517,7 +549,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
                     <OptionCard
                       key={opt.id}
                       label={opt.label}
-                      sub={price > 0 ? `+${price / 1000} ká` : (opt.is_default ? "Mặc định" : "0 ká")}
+                      sub={price > 0 ? `+${formatKa(price, "ceil")}` : (opt.is_default ? "Mặc định" : "0 ká")}
                       isActive={selectedOptionIds.includes(opt.id)}
                       onClick={() => handleSelectorToggle(group.id, opt.id, defaultOpt?.id)}
                     />
@@ -541,8 +573,8 @@ const BaseModal: React.FC<ProductModalProps> = ({
             const listLimit = Math.min(3, max);
             const pricesStr = Array.from({ length: listLimit }).map((_, i) => {
               const amount = i + 1;
-              const cost = ceilTo1000(amount * rawPricePerQty) / 1000;
-              return `${amount}g: +${cost} ká`;
+              const cost = ceilTo1000(amount * rawPricePerQty);
+              return `${amount}g: +${formatKa(cost, "ceil")}`;
             }).join(", ") + (max > listLimit ? "..." : "");
 
             return (
@@ -550,24 +582,26 @@ const BaseModal: React.FC<ProductModalProps> = ({
                 <SectionLabel text={group.name} />
                 <div className="flex items-center justify-between bg-white rounded-2xl border-2 border-border px-5 py-4">
                   <div>
-                    <p className="text-xs font-bold text-primary">{group.name}</p>
-                    <p className={cn("text-[10px] mt-0.5", rawPricePerQty > 0 ? "text-[#df5e5e] font-semibold" : "text-primary/50 font-medium")}>
+                    <p className="text-sm font-bold text-primary">{group.name}</p>
+                    <p className={cn("mt-1 text-xs", rawPricePerQty > 0 ? "font-semibold text-[#c74646]" : "font-medium text-primary/65")}>
                       {rawPricePerQty > 0 ? pricesStr : "Miễn phí"}
                     </p>
                   </div>
                   <div className="flex items-center gap-3 bg-[#d9e4d4] rounded-xl px-3 py-2">
                     <button
                       onClick={() => setQuantityMap((p) => ({ ...p, [group.id]: Math.max(0, qty - 1) }))}
-                      className="w-6 h-6 rounded-full bg-white/60 flex items-center justify-center hover:bg-white transition-colors"
+                      className="flex h-11 w-11 items-center justify-center rounded-full bg-white/60 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      aria-label={`Giảm ${group.name}`}
                     >
-                      <Minus className="w-3 h-3 text-primary" />
+                      <Minus className="h-4 w-4 text-primary" />
                     </button>
                     <span className="text-base font-bold w-5 text-center text-primary">{qty}</span>
                     <button
                       onClick={() => setQuantityMap((p) => ({ ...p, [group.id]: Math.min(max, qty + 1) }))}
-                      className="w-6 h-6 rounded-full bg-white/60 flex items-center justify-center hover:bg-white transition-colors"
+                      className="flex h-11 w-11 items-center justify-center rounded-full bg-white/60 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      aria-label={`Tăng ${group.name}`}
                     >
-                      <Plus className="w-3 h-3 text-primary" />
+                      <Plus className="h-4 w-4 text-primary" />
                     </button>
                   </div>
                 </div>
@@ -599,7 +633,10 @@ const BaseModal: React.FC<ProductModalProps> = ({
                   return (
                     <button
                       key={v.id}
-                      onClick={() => setSelectedProductVoucherId(isSelected ? null : v.id)}
+                      onClick={() => {
+                        if (!isSelected) setQuantity(1);
+                        setSelectedProductVoucherId(isSelected ? null : v.id);
+                      }}
                       className={cn(
                         "w-full flex items-center justify-between p-3.5 rounded-xl border-2 text-left transition-colors",
                         isSelected ? "bg-orange-50 border-orange-200" : "bg-card border-border hover:bg-orange-50/30"
@@ -623,6 +660,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
                         if (isSelected) {
                           setSelectedAddonVoucherIds(prev => prev.filter(id => id !== v.id));
                         } else {
+                          setQuantity(1);
                           const otherIdsToRemove = applicableAddonVouchers
                             .filter(av => av.addon_option_id === v.addon_option_id && av.id !== v.id)
                             .map(av => av.id);

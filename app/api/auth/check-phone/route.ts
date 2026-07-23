@@ -39,7 +39,7 @@ export async function POST(req: Request) {
       existing !== null && existing.password_hash !== "GHOST_USER_NO_PASSWORD";
 
     return NextResponse.json({ data: { exists: isRegistered } }, { status: 200 });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       { error: "Đã có lỗi xảy ra", code: "SERVER_ERROR" },
       { status: 500 }

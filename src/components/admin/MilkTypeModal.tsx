@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
-import MilkTypeForm, { buildMilkTypeDefaultValues } from "@/src/components/admin/MilkTypeForm";
+import MilkTypeForm, {
+  buildMilkTypeDefaultValues,
+  type MilkTypeFormPayload,
+} from "@/src/components/admin/MilkTypeForm";
 import { createMilkType, updateMilkType } from "@/src/services/adminMilkTypeService";
 import type { AdminMilkType } from "@/src/lib/types/milkType";
 import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
@@ -24,7 +27,7 @@ export default function MilkTypeModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const handleSubmit = async (payload: any) => {
+  const handleSubmit = async (payload: MilkTypeFormPayload) => {
     setIsSubmitting(true);
     setErrorMsg(null);
     try {

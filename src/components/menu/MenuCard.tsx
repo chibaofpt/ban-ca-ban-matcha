@@ -4,14 +4,16 @@ import React from 'react';
 import Image from 'next/image';
 import { Coffee, Plus } from 'lucide-react';
 import { motion } from 'framer-motion';
-import type { MenuItem } from '@/src/lib/types/menu';
+import type { MenuItem, MilkTypeOption } from '@/src/lib/types/menu';
 import { usePowderStore } from '@/src/lib/store/powderStore';
-import { useCartStore } from '@/src/lib/store/cartStore';
 import { calcLattePrice, calcFusionPrice, resolveGram } from '@/src/utils/pricing';
+import { formatKa } from "@/src/utils/display";
 
 interface MenuCardProps {
   item: MenuItem;
+  milkTypes: MilkTypeOption[];
   onClick: (item: MenuItem) => void;
+  cartQuantity: number;
   priority?: boolean;
 }
 
@@ -21,14 +23,14 @@ const SIZE_CARD_LABELS: Record<string, string> = {
   LARGE: "Cá Lớn",
 };
 
-const MenuCard: React.FC<MenuCardProps> = ({ item, onClick, priority }) => {
+const MenuCard: React.FC<MenuCardProps> = ({ item, milkTypes, onClick, cartQuantity, priority }) => {
   const sizes = item.sizes.filter((s) => s.base_price_vnd != null);
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
 
   const isLatte = item.category === "latte";
   const defaultPowderId = isLatte ? item.powder?.id : item.resolved_default_powder_id;
-  const defaultMilk = item.milk_types?.find(m => m.is_default) ?? item.milk_types?.[0];
+  const defaultMilk = milkTypes.find((milk) => milk.is_default) ?? milkTypes[0];
 
   const getDisplayPrice = (sizeObj: MenuItem["sizes"][0]) => {
     const s = sizeObj.size;
@@ -55,83 +57,9 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick, priority }) => {
     }
   };
 
-  const addItem = useCartStore((s) => s.addItem);
-
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation();
-    
-    const sizeObj = sizes.find(s => s.size === 'MEDIUM') ?? sizes[0];
-    if (!sizeObj) return;
-    
-    const size = sizeObj.size;
-    const basePrice = sizeObj.base_price_vnd ?? 0;
-    
-    const pwd = powders.find(p => p.id === defaultPowderId);
-    const pwdPrice = pwd?.price_per_gram ?? 0;
-    const gram = resolveGram(size, item.custom_powder_grams, pwd?.size_config ?? [], defaultPowderGrams);
-
-    let unitPrice = 0;
-    let addonsCost = 0;
-    
-    if (isLatte) {
-      unitPrice = calcLattePrice({
-        base_price_vnd: basePrice,
-        gram,
-        powder_price_per_gram: pwdPrice,
-        milk_ml: sizeObj.milk_ml ?? 0,
-        milk_price_per_ml: defaultMilk?.price_per_ml ?? 40
-      });
-    } else {
-      unitPrice = calcFusionPrice({
-        base_price_vnd: basePrice,
-        gram,
-        powder_price_per_gram: pwdPrice,
-        premium_latte: 0
-      });
-    }
-    
-    const defaultOptionIds = item.addon_groups.flatMap((g) => g.options.filter((o) => o.is_default).map((o) => o.id));
-    const addonPricesMap: Record<string, number> = {};
-    item.addon_groups.forEach(g => {
-        g.options.forEach(opt => {
-            if (defaultOptionIds.includes(opt.id)) {
-                const price = opt.gram_value != null ? opt.gram_value * pwdPrice : opt.price_vnd;
-                addonPricesMap[opt.id] = price;
-                addonsCost += price;
-            }
-        });
-    });
-
-    const clientPriceVnd = unitPrice + addonsCost;
-
-    const cartItemData = {
-      cartId: crypto.randomUUID(),
-      menuItemId: item.id,
-      name: item.name,
-      category: item.category,
-      imageUrl: item.image_url,
-      size: size,
-      unitPrice: unitPrice,
-      quantity: 1,
-      sweetness: "FULL" as const,
-      iceOption: "NORMAL" as const,
-      coldwhisk: false,
-      note: "",
-      selectedOptionIds: defaultOptionIds,
-      quantityMap: {},
-      addonsPrice: addonsCost,
-      addonPrices: addonPricesMap,
-      quantityAddonOptions: [],
-      selectedPowderId: isLatte ? undefined : defaultPowderId,
-      selectedMilkTypeId: isLatte ? defaultMilk?.id : undefined,
-      clientPriceVnd: clientPriceVnd,
-      originalClientPriceVnd: unitPrice,
-      addonVouchers: [],
-      productVoucherId: undefined,
-      productVoucherDiscountVnd: undefined,
-    };
-
-    addItem(cartItemData as any);
+    onClick(item);
   };
 
   return (
@@ -142,6 +70,14 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick, priority }) => {
     >
       {/* Image Area - 4/5 height */}
       <div className="h-[80%] aspect-square bg-[#eef1eb] relative overflow-hidden flex-shrink-0 rounded-2xl">
+        {cartQuantity > 0 && (
+          <span
+            className="absolute left-2 top-2 z-10 flex min-h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-bold text-white shadow-md"
+            aria-label={`${cartQuantity} ly trong giỏ`}
+          >
+            {cartQuantity}
+          </span>
+        )}
         {item.image_url ? (
           <Image
             src={item.image_url}
@@ -189,26 +125,27 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick, priority }) => {
               return <div key={sizeKey}></div>;
             }
 
-            const price = getDisplayPrice(s) / 1000;
+            const price = getDisplayPrice(s);
             return (
               <div key={sizeKey} className="flex flex-col items-center gap-0.5">
                 <span className={`uppercase tracking-wide whitespace-nowrap ${isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
                   {SIZE_CARD_LABELS[sizeKey] ?? sizeKey}
                 </span>
                 <span className={`${isDefault ? 'text-base font-bold text-[#5b9a2b]' : 'text-sm font-semibold text-primary/50'}`}>
-                  {price} ká
+                  {formatKa(price, "ceil")}
                 </span>
               </div>
             );
           })}
           
           <div className="flex justify-end pb-0.5">
-            <button 
+            <button
+              type="button"
               onClick={handleAddToCart}
-              className="w-7 h-7 bg-[#5b9a2b] rounded-full flex items-center justify-center text-[#fdfcf7] hover:scale-110 active:scale-95 transition-transform"
+              className="w-11 h-11 bg-[#5b9a2b] rounded-full flex items-center justify-center text-[#fdfcf7] hover:scale-105 active:scale-95 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
               aria-label="Thêm vào giỏ"
             >
-              <Plus size={16} strokeWidth={3} />
+              <Plus size={18} strokeWidth={3} />
             </button>
           </div>
         </div>

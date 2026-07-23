@@ -14,26 +14,19 @@ export const dynamic = "force-dynamic";
 async function tryLazyCancel(orderId: string, auto_cancel_at: Date | null): Promise<boolean> {
   if (!auto_cancel_at || auto_cancel_at > new Date()) return false;
 
-  await prisma.$transaction(
+  return prisma.$transaction(
     async (tx) => {
-      const order = await tx.order.findUnique({
-        where: { id: orderId },
-        select: { id: true, status: true },
-      });
-      // Only cancel if still PENDING (prevent double-cancel race)
-      if (!order || order.status !== "PENDING") return;
-
-      await tx.order.update({
-        where: { id: orderId },
+      const claim = await tx.order.updateMany({
+        where: { id: orderId, status: "PENDING" },
         data: { status: "CANCELLED" },
       });
+      if (claim.count !== 1) return false;
 
       await restoreVouchersOnCancel(tx, orderId);
+      return true;
     },
     { maxWait: 5000, timeout: 10000 }
   );
-
-  return true;
 }
 
 /** GET /api/orders/[id] — Customer polls own order status for tracking. */
@@ -100,10 +93,21 @@ export async function GET(
             subtotal_vnd: order.subtotal_vnd,
             total_voucher_discount_vnd: order.total_voucher_discount_vnd,
             total_vnd: order.total_vnd,
+            shipping_fee_vnd: order.shipping_fee_vnd,
+            freeship_discount_vnd: order.freeship_discount_vnd,
+            grand_total_vnd: order.grand_total_vnd,
             pickup_time: order.pickup_time,
             auto_cancel_at: order.auto_cancel_at,
             payment_qr_url: null,
             created_at: order.created_at,
+            address_id: order.address_id,
+            delivery_address: order.delivery_address,
+            delivery_lat: order.delivery_lat,
+            delivery_lng: order.delivery_lng,
+            delivery_distance_km: order.delivery_distance_km,
+            delivery_receiver_name: order.delivery_receiver_name,
+            delivery_receiver_phone: order.delivery_receiver_phone,
+            freeship_voucher_id: order.freeship_voucher_id,
             items: order.items,
           },
         });
@@ -118,7 +122,7 @@ export async function GET(
       order.order_type !== "COUNTER"
     ) {
       try {
-        payment_qr_url = buildVietQRUrl({ amount: order.total_vnd, orderCode: order.order_code });
+        payment_qr_url = buildVietQRUrl({ amount: order.grand_total_vnd, orderCode: order.order_code });
       } catch {
         // Missing env vars in dev — non-fatal for tracking page
         payment_qr_url = null;
@@ -134,10 +138,21 @@ export async function GET(
         subtotal_vnd: order.subtotal_vnd,
         total_voucher_discount_vnd: order.total_voucher_discount_vnd,
         total_vnd: order.total_vnd,
+        shipping_fee_vnd: order.shipping_fee_vnd,
+        freeship_discount_vnd: order.freeship_discount_vnd,
+        grand_total_vnd: order.grand_total_vnd,
         pickup_time: order.pickup_time,
         auto_cancel_at: order.auto_cancel_at,
         payment_qr_url,
         created_at: order.created_at,
+        address_id: order.address_id,
+        delivery_address: order.delivery_address,
+        delivery_lat: order.delivery_lat,
+        delivery_lng: order.delivery_lng,
+        delivery_distance_km: order.delivery_distance_km,
+        delivery_receiver_name: order.delivery_receiver_name,
+        delivery_receiver_phone: order.delivery_receiver_phone,
+        freeship_voucher_id: order.freeship_voucher_id,
         items: order.items,
       },
     });
@@ -194,17 +209,26 @@ export async function PATCH(
       );
     }
 
-    await prisma.$transaction(
+    const cancelled = await prisma.$transaction(
       async (tx) => {
-        await tx.order.update({
-          where: { id: order.id },
+        const claim = await tx.order.updateMany({
+          where: { id: order.id, status: "PENDING" },
           data: { status: "CANCELLED" },
         });
+        if (claim.count !== 1) return false;
 
         await restoreVouchersOnCancel(tx, order.id);
+        return true;
       },
       { maxWait: 5000, timeout: 10000 }
     );
+
+    if (!cancelled) {
+      return NextResponse.json(
+        { error: "Order status changed concurrently", code: "CONFLICT" },
+        { status: 409 }
+      );
+    }
 
     return NextResponse.json({ data: { id: order.id, status: "CANCELLED" } });
   } catch (err) {

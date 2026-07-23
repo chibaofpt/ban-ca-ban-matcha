@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import { ChevronDown, ChevronUp, Phone, Clock, Search, FilterX, Filter, CheckCircle2, XCircle, BarChart3 } from "lucide-react";
 import { cn } from "@/src/utils/cn";
+import { formatKa, formatOrderSize } from "@/src/utils/display";
 import { fetchAdminOrders, confirmPayment, adminCancelOrder, type AdminOrderRes } from "@/src/services/adminOrderService";
 import { apiClient } from "@/src/lib/api/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -33,6 +34,7 @@ const formatOrderType = (type: string): string => {
   if (type === "DELIVERY") return "Giao hàng";
   return type;
 };
+void formatOrderType;
 
 export default function AdminOrdersPage() {
   const queryClient = useQueryClient();
@@ -64,11 +66,6 @@ export default function AdminOrdersPage() {
     endDate: "",
   });
   const [draftFilters, setDraftFilters] = useState(activeFilters);
-
-  // Reset page to 1 when changing tabs or filters
-  useEffect(() => {
-    setPage(1);
-  }, [activeTab, activeFilters]);
 
   const fetchOrdersFn = useCallback(async () => {
     const startIso = activeFilters.startDate ? new Date(`${activeFilters.startDate}T00:00:00`).toISOString() : undefined;
@@ -132,6 +129,7 @@ export default function AdminOrdersPage() {
   };
 
   const applyFilters = () => {
+    setPage(1);
     setActiveFilters(draftFilters);
     setShowFilterModal(false);
   };
@@ -139,6 +137,7 @@ export default function AdminOrdersPage() {
   const clearFilters = () => {
     const defaultFilters = { search: "", staffName: "", startDate: getTodayStr(), endDate: "" };
     setDraftFilters(defaultFilters);
+    setPage(1);
     setActiveFilters(defaultFilters);
     setShowFilterModal(false);
   };
@@ -303,7 +302,10 @@ export default function AdminOrdersPage() {
 
       <OrderTabs
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={(tab) => {
+          setPage(1);
+          setActiveTab(tab);
+        }}
         pendingCount={pendingCount}
         isAdmin={true}
       />
@@ -429,7 +431,9 @@ export default function AdminOrdersPage() {
                           <div className="flex flex-col">
                             <span className="font-semibold">
                               {it.menuItem.name}{" "}
-                              <span className="font-normal text-muted-foreground">({it.size})</span>
+                              <span className="font-normal text-muted-foreground">
+                                {formatOrderSize(it.size)}
+                              </span>
                             </span>
                             <OrderItemDetails item={it} />
                           </div>
@@ -444,7 +448,7 @@ export default function AdminOrdersPage() {
                             if (v.discount_type === "PERCENT") {
                               discountText = `Giảm ${v.discount_value}%`;
                             } else if (v.discount_type === "FIXED") {
-                              discountText = `Giảm ${(v.discount_value! / 1000).toLocaleString("vi-VN")}K`;
+                              discountText = `Giảm ${formatKa(v.discount_value!, "floor")}`;
                             }
                             return (
                               <span key={idx} className="font-medium">
@@ -461,29 +465,32 @@ export default function AdminOrdersPage() {
                   <div className="border-t border-border pt-3 space-y-1.5">
                     <div className="flex justify-between items-center gap-2 text-[13px] text-muted-foreground">
                       <span>Tổng tiền:</span>
-                      <span>{(order.subtotal_vnd / 1000).toLocaleString("vi-VN")}K</span>
+                      <span>{formatKa(order.subtotal_vnd, "ceil")}</span>
                     </div>
                     {order.shipping_fee_vnd > 0 && (
                       <div className="flex justify-between items-center gap-2 text-[13px] text-muted-foreground">
                         <span>Tiền ship:</span>
-                        <span>{(order.shipping_fee_vnd / 1000).toLocaleString("vi-VN")}K</span>
+                        <span>{formatKa(order.shipping_fee_vnd, "ceil")}</span>
                       </div>
                     )}
                     {(() => {
-                      const itemDiscount = order.items.reduce((sum: number, it: any) => sum + (it.total_discount_vnd || 0), 0);
+                      const itemDiscount = order.items.reduce(
+                        (sum, item) => sum + (item.total_discount_vnd || 0),
+                        0
+                      );
                       const totalDiscount = (order.total_voucher_discount_vnd || 0) + (order.freeship_discount_vnd || 0) + itemDiscount;
                       if (totalDiscount <= 0) return null;
                       return (
                         <div className="flex justify-between items-center gap-2 text-[13px] text-green-600">
                           <span>Voucher giảm:</span>
-                          <span>-{(totalDiscount / 1000).toLocaleString("vi-VN")}K</span>
+                          <span>-{formatKa(totalDiscount, "floor")}</span>
                         </div>
                       );
                     })()}
                     <div className="flex justify-between items-center gap-2 pt-1.5 border-t border-border/50">
                       <span className="text-sm font-medium">Tiền khách trả:</span>
                       <span className="font-bold text-primary text-base">
-                        {((order.grand_total_vnd || order.total_vnd) / 1000).toLocaleString("vi-VN")}K
+                        {formatKa(order.grand_total_vnd || order.total_vnd, "ceil")}
                       </span>
                     </div>
                     {/* Footer row: cancel (left) + staff name (right) OR status text */}

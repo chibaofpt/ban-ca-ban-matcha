@@ -33,8 +33,10 @@ vi.mock("@/src/lib/store/powderStore", () => ({
 
 const mockMenuData = {
   updated_at: "2026-01-01T00:00:00Z",
-  latte: [{ id: "item-1", name: "Matcha Latte", category: "latte", sizes: [], addon_groups: [] }],
+  latte: [{ id: "item-1", name: "Matcha Latte", category: "latte", sizes: [] }],
   fusion: [],
+  milk_types: [],
+  addon_groups: [],
 };
 
 const mockPowderData = { powders: [], default_powder_gram: { M: 3, L: 4, XL: 5 } };
@@ -114,7 +116,10 @@ describe("StaffOrdersPage — Contract 2: customer vouchers conditional fetch", 
   it("customerInfo.type = new → KHÔNG fetch vouchers", async () => {
     const customerInfo = { type: "new" as const, phone_number: "+84901234567", name: "Khách mới" };
 
-    if ((customerInfo as any)?.type === "existing") {
+    const isExistingCustomer = (info: { type: "new" } | { type: "existing" }) =>
+      info.type === "existing";
+
+    if (isExistingCustomer(customerInfo)) {
       await mockFetchCustomerVouchers("user-1");
     }
 

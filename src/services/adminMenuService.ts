@@ -1,4 +1,5 @@
 import { apiClient } from "@/src/lib/api/client";
+import axios from "axios";
 import type { ApiResponse } from "@/src/lib/types/api";
 import type { AdminMenuItem } from "@/src/lib/types/menu";
 
@@ -39,8 +40,8 @@ export async function createMenuItem(fd: FormData): Promise<AdminMenuItem> {
   try {
     const res = await apiClient.post<ApiResponse<AdminMenuItem>>(URL.list, fd);
     return res.data.data;
-  } catch (error: any) {
-    if (error.response?.data) {
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error) && error.response?.data) {
       console.error("API Error Response Data (CREATE):", error.response.data);
     }
     throw error;
@@ -57,8 +58,8 @@ export async function createLatteWithPowder(
       fd
     );
     return res.data.data;
-  } catch (error: any) {
-    if (error.response?.data) {
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error) && error.response?.data) {
       console.error("API Error Response Data (CREATE_LATTE_WITH_POWDER):", error.response.data);
     }
     throw error;
@@ -70,8 +71,8 @@ export async function updateMenuItem(id: string, fd: FormData): Promise<AdminMen
   try {
     const res = await apiClient.put<ApiResponse<AdminMenuItem>>(URL.byId(id), fd);
     return res.data.data;
-  } catch (error: any) {
-    if (error.response?.data) {
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error) && error.response?.data) {
       console.error("API Error Response Data:", error.response.data);
     }
     throw error;

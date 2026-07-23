@@ -43,7 +43,8 @@ export default function PushSubscriptionManager() {
         setIsSubscribed(true);
         toast.success("Đã bật thông báo đơn hàng");
       }
-    } catch (err: any) {
+    } catch (unknownError: unknown) {
+      const err = unknownError instanceof Error ? unknownError : new Error();
       console.error(err);
       if (Notification.permission === "denied") {
         setPermission("denied");

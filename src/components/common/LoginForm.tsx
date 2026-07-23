@@ -11,9 +11,11 @@ import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { loginFormSchema, LoginFormValues as LoginInput } from "@/src/lib/validations/auth";
 import { login as loginRequest, type LoginPayload } from "@/src/services/authService";
 import { resetForceLogout } from "@/src/lib/api/client";
+import { useQueryClient } from "@tanstack/react-query";
 
 const LoginForm = () => {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -44,12 +46,13 @@ const LoginForm = () => {
         password: data.password,
       };
       const user = await loginRequest(payload);
+      queryClient.removeQueries({ queryKey: ["customer"] });
 
       // Thực hiện điều hướng TRƯỚC KHI đóng modal để tránh lỗi component bị unmount làm hủy lệnh router
       if (user.role === "ADMIN" || user.role === "STAFF") {
         // Đối với Staff/Admin, dùng window.location.href để chuyển hẳn sang phân hệ quản lý
         // Đảm bảo không bị kẹt layout hay navbar của Customer.
-        window.location.href = "/staff/orders";
+        window.location.assign("/staff/orders");
       } else {
         // Đối với Customer, giữ nguyên trải nghiệm SPA mượt mà
         router.push("/menu");

@@ -5,7 +5,113 @@
 
 ---
 
+## Confirmed Business Rules Awaiting Code Alignment
+
+The following rules are approved. Treat `order-flow`, `voucher-flow`, and `pricing-logic` as
+the target behavior even where current code still differs:
+
+- Apply vouchers in order: PRODUCT → ADDON → DISCOUNT → FREESHIP.
+- Limit PRODUCT credit to drink components and match PRODUCT by `menu_item_id` only.
+- Cover one addon unit per ADDON voucher; allow multiple only for different addon IDs;
+  continue excluding Extra Matcha.
+- Check DISCOUNT minimum after item vouchers and FREESHIP minimum after all merchandise vouchers,
+  before shipping.
+- Ignore and do not consume vouchers that create zero incremental benefit.
+- Aggregate PRODUCT surplus VND for the whole order before converting to points.
+- Redeem online vouchers at ADMIN_CONFIRMED; award order and surplus points only at COMPLETED.
+- Calculate order points from `total_vnd`, excluding shipping.
+- Use one shared order/voucher calculator for customer and staff order creation.
+- Reuse existing schema fields, relations, API paths, and payload names unless they are proven
+  insufficient. Do not add convenience fields or rename APIs as part of the logic refactor.
+
+Do not preserve current behavior merely because it conflicts with these approved rules.
+
+## Unresolved Implementation Policies
+
+> No unresolved policies at this time.
+
+## Resolved Minimal-Change Constraints
+
+- **Voucher expiry status**: Lazy synchronization at read time. Called before list (`GET /api/profile/vouchers`),
+  apply (`POST /api/orders`, `POST /api/staff/orders`), and scan (`GET /api/staff/scan`).
+  `RESERVED` vouchers are never lazy-expired; if an order is cancelled after expiry the cancel
+  logic sets them to `EXPIRED`. No cron job, no Redis required.
+- **Aggregate PRODUCT surplus**: At COUNTER order creation and ONLINE order COMPLETED transition,
+  compute `Σ max(covered_price_vnd - unit_price_vnd, 0)` across all applied PRODUCT vouchers,
+  then `floor(sum / 10000)`. Write one `points_log` row with `reason = 'voucher_surplus'` and
+  `voucher_id = null`. Source of truth for "how much surplus was awarded" is `points_log`.
+- **DISCOUNT per-voucher amount**: `order_discount_vouchers.discount_applied_vnd` has been dropped
+  (migration `20260720201131`). Source of truth is `orders.total_voucher_discount_vnd` and voucher links.
+- **PRODUCT surplus recalculation**: Can be derived from `order_items.unit_price_vnd` (drink snapshot)
+  and `vouchers.covered_price_vnd` (voucher snapshot). No replacement field needed.
+- Preserve current API route names and payload field names throughout the voucher/order refactor.
+  A documentation correction that matches an existing route is allowed; a runtime rename requires
+  separate explicit approval.
+
+---
+
 ## Deferred — Do Not Implement
+
+### Deferred Code-Size Remediation — Approved Temporary Exception (2026-07-22)
+
+The architect approved a staging-first exception for the lint remediation task:
+
+- Fix lint errors and warnings with the smallest behaviour-preserving changes needed to pass the
+  `push-to-dev` QA gate.
+- Do **not** split the files below during that task, even when a lint edit touches them.
+- Do not add new logic to these files or use this exception for feature work.
+- Refactor them in a dedicated follow-up with characterization tests, file-by-file review, and
+  staging regression testing.
+
+Line counts are the baseline captured on 2026-07-22 and may change slightly before the follow-up.
+
+#### Production UI
+
+| File | Baseline lines |
+|---|---:|
+| `src/views/admin/AdminVoucherPackagesPage.tsx` | 864 |
+| `src/components/admin/MenuItemForm.tsx` | 753 |
+| `src/views/staff/StaffOrdersPage.tsx` | 722 |
+| `src/components/shared/ProductModal.tsx` | 706 |
+| `src/components/menu/CartDrawer.tsx` | 687 |
+| `src/views/admin/AdminOrdersPage.tsx` | 645 |
+| `src/components/staff/StaffCartDrawer.tsx` | 604 |
+| `src/components/report/DailyReportModal.tsx` | 578 |
+| `src/views/customer/HistoryPage.tsx` | 554 |
+| `src/views/admin/AdminMenuPage.tsx` | 454 |
+| `src/components/delivery/MapPicker.tsx` | 423 |
+| `src/views/staff/StaffOrdersListPage.tsx` | 393 |
+| `src/components/admin/PowderForm.tsx` | 363 |
+| `src/components/menu/cart/CartFooter.tsx` | 340 |
+| `src/components/shared/VoucherModal.tsx` | 337 |
+| `src/views/admin/AdminMilkTypesPage.tsx` | 322 |
+
+#### Server/API
+
+| File | Baseline lines |
+|---|---:|
+| `app/api/staff/orders/route.ts` | 738 |
+| `lib/orders.ts` | 398 |
+| `app/api/admin/voucher-packages/route.ts` | 371 |
+
+#### Tests
+
+| File | Baseline lines |
+|---|---:|
+| `lib/__tests__/orders-route.test.ts` | 817 |
+| `lib/__tests__/order-voucher-unify.test.ts` | 773 |
+| `lib/__tests__/admin-order-cancel.test.ts` | 716 |
+| `lib/__tests__/voucher-routes.test.ts` | 489 |
+| `lib/__tests__/pricing.test.ts` | 443 |
+| `lib/__tests__/create-latte-with-powder.test.ts` | 417 |
+| `lib/__tests__/confirm-payment.test.ts` | 405 |
+| `src/__tests__/components/customer/voucherModal.logic.test.ts` | 356 |
+| `lib/__tests__/vouchers.test.ts` | 336 |
+
+#### Scratch
+
+`scratch/CartDrawerOriginal.tsx` is also over 300 lines, but `scratch/**` is local tooling and is
+outside the application, TypeScript, and lint scope. It does not require a production refactor.
 
 | Issue | Status | Action |
 |---|---|---|

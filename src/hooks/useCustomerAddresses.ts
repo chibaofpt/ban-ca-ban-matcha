@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { addressService } from "@/src/services/addressService";
-import type { Address } from "@/src/lib/types/address";
+import type { AddressPayload } from "@/src/lib/types/address";
 
 /**
  * Hook fetch danh sách địa chỉ của khách hàng.
@@ -20,7 +20,7 @@ export function useCreateAddress() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (payload: any) => addressService.createAddress(payload),
+    mutationFn: (payload: AddressPayload) => addressService.createAddress(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customer", "addresses"] });
     },
@@ -34,7 +34,8 @@ export function useUpdateAddress() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: any }) => addressService.updateAddress(id, payload),
+    mutationFn: ({ id, payload }: { id: string; payload: AddressPayload }) =>
+      addressService.updateAddress(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customer", "addresses"] });
     },

@@ -2,7 +2,6 @@
 
 import React, { memo } from "react";
 import Image from "next/image";
-import { cn } from "@/src/utils/cn";
 import type { MenuItem } from "@/src/lib/types/menu";
 
 const SIZE_CARD_LABELS: Record<string, string> = {

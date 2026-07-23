@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, ArrowUp, ArrowDown, Trash2 } from "lucide-react";
+import { ArrowUp, ArrowDown, Trash2 } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { AdminMilkType } from "@/src/lib/types/milkType";
 import { formatMoney } from "@/src/utils/pricing";

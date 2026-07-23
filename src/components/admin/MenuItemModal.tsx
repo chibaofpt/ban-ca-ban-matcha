@@ -59,7 +59,6 @@ export default function MenuItemModal({
     }
   };
 
-  const defaultValues = mode === "edit" && item ? buildDefaultValues(item) : undefined;
   return (
     <div className="fixed inset-0 z-[100] flex justify-end bg-black/40 backdrop-blur-sm p-0 transition-opacity">
       <div 

@@ -12,6 +12,16 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local scratch/repair scripts are excluded from TypeScript and application builds.
+    "scratch/**",
+    "backup_vouchers.js",
+    "fix.js",
+    "patch-tests.js",
+    "patch-tests-2.js",
+    "scratch_patch_kb.js",
+    "scratch_update_kb.js",
+    "scratch_update_kb2.js",
+    "update_staff_orders.js",
   ]),
 ]);
 

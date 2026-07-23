@@ -53,6 +53,17 @@ export async function GET(request: NextRequest) {
     });
 
     if (voucher) {
+      // Lazy-sync: if ACTIVE but past expires_at, mark as EXPIRED
+      let effectiveStatus = voucher.status;
+      if (voucher.status === "ACTIVE" && voucher.expires_at && voucher.expires_at <= new Date()) {
+        effectiveStatus = "EXPIRED";
+        // Fire-and-forget: update DB status
+        await prisma.voucher.updateMany({
+          where: { id: voucher.id, status: "ACTIVE" },
+          data: { status: "EXPIRED" },
+        });
+      }
+
       return NextResponse.json({
         data: {
           type: "voucher",
@@ -63,7 +74,7 @@ export async function GET(request: NextRequest) {
             discount_value: voucher.discount_value,
             menu_item_id: voucher.menu_item_id,
             covered_price_vnd: voucher.covered_price_vnd,
-            status: voucher.status,
+            status: effectiveStatus,
             expires_at: voucher.expires_at ? voucher.expires_at.toISOString() : null,
           },
         },

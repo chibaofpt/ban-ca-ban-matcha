@@ -4,6 +4,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 /** Hero section — full-viewport background image with 2 CTA buttons. */
 export default function Hero() {
@@ -13,10 +14,13 @@ export default function Hero() {
     <section className="relative w-full min-h-[100svh] overflow-hidden bg-paper flex flex-col justify-end pt-5 md:pt-12 pb-8 md:pb-14 px-4 md:px-8">
 
       {/* Background Image */}
-      <img
+      <Image
         src="/homepage.png"
         alt="Bạn Cá Bán Matcha"
-        className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none"
+        fill
+        priority
+        unoptimized
+        className="object-cover object-center pointer-events-none"
       />
 
       {/* Overlay Chawan Image */}

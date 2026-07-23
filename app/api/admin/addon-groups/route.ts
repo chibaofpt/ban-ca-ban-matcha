@@ -31,8 +31,8 @@ export async function GET() {
     }));
 
     return NextResponse.json({ data: mapped });
-  } catch (error: any) {
-    console.error("[GET /api/admin/addon-groups] Error:", error.message);
+  } catch (error: unknown) {
+    console.error("[GET /api/admin/addon-groups] Error:", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: "Internal Server Error", code: "INTERNAL_ERROR" }, { status: 500 });
   }
 }
@@ -98,8 +98,8 @@ export async function POST(req: Request) {
 
     await invalidateMenuCaches();
     return NextResponse.json({ data: mappedResult }, { status: 201 });
-  } catch (error: any) {
-    console.error("[POST /api/admin/addon-groups] Error:", error.message);
+  } catch (error: unknown) {
+    console.error("[POST /api/admin/addon-groups] Error:", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: "Internal Server Error", code: "INTERNAL_ERROR" }, { status: 500 });
   }
 }

@@ -2,11 +2,10 @@
 
 import React, { useState, useCallback, useEffect, useRef, Profiler } from "react";
 import { onRenderCallback } from "@/src/utils/dev/renderProfiler";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, type PanInfo } from "framer-motion";
 import { Drawer } from "vaul";
-import { X, Trash2, ShoppingBag, CheckCircle2, AlertTriangle, RefreshCcw, Minus, Plus, Ticket, ChevronRight, Clock, ArrowLeft, MapPin } from "lucide-react";
+import { X, AlertTriangle, RefreshCcw, ArrowLeft } from "lucide-react";
 import { useCartStore, useCartTotalPrice } from "@/src/lib/store/cartStore";
-import Image from "next/image";
 import { useCheckout } from "@/src/hooks/useCheckout";
 import { PriceChangedError, type PriceConflict } from "@/src/services/orderService";
 import { useIsLoggedIn } from "@/src/lib/store/authStore";
@@ -16,21 +15,19 @@ import { useEditModalStore } from "@/src/lib/store/editModalStore";
 import { cn } from "@/src/utils/cn";
 import { useRouter } from "next/navigation";
 import { listMyVouchers, listActiveVoucherPackages, type MyVoucher, type VoucherPackage } from "@/src/services/customerVoucherService";
-import { filterUsableVouchers, buildAddonVoucherMap, buildProductVoucherMap, estimateProductSavings, estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
+import { filterUsableVouchers, buildAddonVoucherMap, buildProductVoucherMap, estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { DeliverySection } from "@/src/components/delivery/DeliverySection";
 import type { Address } from "@/src/lib/types/address";
-import { useQuery } from "@tanstack/react-query";
-import { fetchMenu } from "@/src/services/menuService";
-import { fetchPowders } from "@/src/services/powderService";
-import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
 import ProductModal from "@/src/components/shared/ProductModal";
-import type { CartItem } from "@/src/lib/types/cart";
 import CartItemCard from "./cart/CartItemCard";
 import { CartItemVoucherPicker } from "./cart/CartItemVoucherPicker";
 import { CartDiscountPicker } from "./cart/CartDiscountPicker";
 import { CartFooter } from "./cart/CartFooter";
 import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
+import type { MenuData, MenuItem } from "@/src/lib/types/menu";
+import type { PowderApiResponse } from "@/src/lib/types/powder";
+import { deriveCheckoutRewards } from "@/src/utils/customerUx";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -42,19 +39,27 @@ type CheckoutState =
 
 // ── CartDrawer ─────────────────────────────────────────────────────────────────
 
-function EditModalOverlay({ menuItems, latteItems, allVouchers }: { menuItems: any[], latteItems: any[], allVouchers: any[] }) {
+interface EditModalOverlayProps {
+  menuItems: MenuItem[];
+  menuData: MenuData;
+  allVouchers: MyVoucher[];
+}
+
+function EditModalOverlay({ menuItems, menuData, allVouchers }: EditModalOverlayProps) {
   const editingCartItem = useEditModalStore(s => s.editingCartItem);
   const closeEdit = useEditModalStore(s => s.closeEdit);
 
   if (!editingCartItem) return null;
-  const menuItem = menuItems.find((m: any) => m.id === editingCartItem.menuItemId);
+  const menuItem = menuItems.find((candidate) => candidate.id === editingCartItem.menuItemId);
   if (!menuItem) return null;
 
   return (
     <ProductModal
       key="edit-modal"
       item={menuItem}
-      latteItems={latteItems}
+      latteItems={menuData.latte}
+      milkTypes={menuData.milk_types}
+      addonGroups={menuData.addon_groups}
       editingItem={editingCartItem}
       onClose={closeEdit}
       availableVouchers={allVouchers}
@@ -63,7 +68,12 @@ function EditModalOverlay({ menuItems, latteItems, allVouchers }: { menuItems: a
   );
 }
 
-const CartDrawer = () => {
+interface CartDrawerProps {
+  menuData: MenuData;
+  powderData: PowderApiResponse;
+}
+
+const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   const items = useCartStore((s) => s.items);
   const removeItem = useCartStore((s) => s.removeItem);
   const updateQuantity = useCartStore((s) => s.updateQuantity);
@@ -100,6 +110,7 @@ const CartDrawer = () => {
     const [isDiscountPickerOpen, setIsDiscountPickerOpen] = useState(false);
   const [activeItemForVoucher, setActiveItemForVoucher] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  void showClearConfirm;
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [isAddressPickerOpen, setIsAddressPickerOpen] = useState(false);
   const openEdit = useEditModalStore((s) => s.openEdit);
@@ -111,16 +122,16 @@ const CartDrawer = () => {
   const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number | null>(null);
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
   const [isFetchingAddress, setIsFetchingAddress] = useState(false);
-  const [isVouchersLoading, setIsVouchersLoading] = useState(false);
 
   // ── Points state ──
   const { data: pointsBalance = 0 } = useCustomerPoints({ enabled: isLoggedIn && isCartOpen });
 
   const checkoutMutation = useCheckout();
 
-  const { data: menuData } = useQuery({ queryKey: ["menu"], queryFn: fetchMenu });
-  const { data: powderData } = useQuery({ queryKey: ["powders"], queryFn: fetchPowders });
-  const menuItems = menuData ? [...menuData.latte, ...menuData.fusion] : [];
+  const menuItems = [...menuData.latte, ...menuData.fusion];
+  const hasUnavailableItems = items.some(
+    (item) => !menuItems.some((menuItem) => menuItem.id === item.menuItemId),
+  );
 
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -131,7 +142,10 @@ const CartDrawer = () => {
   const applicableProductVouchers = buildProductVoucherMap(allVouchers, items);
 
   // Calculate final display price using multi-voucher estimator
-  const selectedDiscountVouchers = discountVouchers.filter(v => selectedVoucherIds.includes(v.id));
+  const selectedDiscountVouchers = selectedVoucherIds.flatMap((id) => {
+    const voucher = discountVouchers.find((candidate) => candidate.id === id);
+    return voucher ? [voucher] : [];
+  });
   const rawDiscountAmount = estimateMultiDiscountSavings(selectedDiscountVouchers, subtotalPrice);
   
   // Apply rounding rules to avoid .5k decimals in UI
@@ -143,20 +157,39 @@ const CartDrawer = () => {
   
   let freeshipDiscountK = 0;
   let appliedFreeshipId: string | null = null;
-  // total after discount (before shipping) = finalK * 1000
-  const totalAfterDiscountVnd = finalK * 1000;
-  const selectedFreeshipVouchers = freeshipVouchers.filter(v => selectedVoucherIds.includes(v.id));
+  const totalAfterDiscountVnd = Math.max(0, subtotalPrice - rawDiscountAmount);
+  const productVoucherCoveredPrices = Object.fromEntries(
+    allVouchers.flatMap((voucher) =>
+      voucher.voucher_type === "PRODUCT" && voucher.covered_price_vnd !== null
+        ? [[voucher.id, voucher.covered_price_vnd] as const]
+        : [],
+    ),
+  );
+  const checkoutRewards = deriveCheckoutRewards(
+    items,
+    totalAfterDiscountVnd,
+    productVoucherCoveredPrices,
+  );
+  const selectedFreeshipVouchers = selectedVoucherIds.flatMap((id) => {
+    const voucher = freeshipVouchers.find((candidate) => candidate.id === id);
+    return voucher ? [voucher] : [];
+  });
   if (orderType === "DELIVERY" && shippingFee !== null && selectedFreeshipVouchers.length > 0) {
     const bestVoucher = selectedFreeshipVouchers[0];
-    freeshipDiscountK = Math.floor(Math.min(shippingFee, bestVoucher.covered_delivery_fee_vnd ?? 0) / 1000);
-    appliedFreeshipId = bestVoucher.id;
+    const meetsMinimum =
+      bestVoucher.min_order_vnd === null ||
+      totalAfterDiscountVnd >= bestVoucher.min_order_vnd;
+    if (meetsMinimum && (bestVoucher.covered_delivery_fee_vnd ?? 0) > 0) {
+      freeshipDiscountK = Math.floor(
+        Math.min(shippingFee, bestVoucher.covered_delivery_fee_vnd ?? 0) / 1000
+      );
+      appliedFreeshipId = bestVoucher.id;
+    }
   }
 
   const totalDiscountK = discountK + freeshipDiscountK;
   const grandTotalK = Math.max(0, finalK + shippingK - freeshipDiscountK);
   
-  const discountAmount = discountK * 1000;
-  const finalPrice = grandTotalK * 1000;
 
   useEffect(() => {
     const updateTimes = () => {
@@ -179,7 +212,11 @@ const CartDrawer = () => {
 
   const resetCheckout = useCallback(() => setCheckout({ status: "idle" }), []);
 
-  const handleToggleDragEnd = (event: any, info: any) => {
+  const handleToggleDragEnd = (
+    event: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo
+  ) => {
+    void event;
     if (info.offset.x > 30) {
       setOrderType("PICKUP");
     } else if (info.offset.x < -30) {
@@ -195,7 +232,6 @@ const CartDrawer = () => {
       setSelectedVoucherIds([]);
       return;
     }
-    setIsVouchersLoading(true);
     Promise.all([
       listMyVouchers().catch(() => [] as MyVoucher[]),
       listActiveVoucherPackages().catch(() => [] as VoucherPackage[])
@@ -204,8 +240,7 @@ const CartDrawer = () => {
         setAllVouchers(vouchers);
         setAvailableVoucherPackages(packages.filter(p => p.voucher_type === "DISCOUNT" || p.voucher_type === "FREESHIP"));
       })
-      .finally(() => setIsVouchersLoading(false));
-  }, [isCartOpen, isLoggedIn]);
+  }, [isCartOpen, isLoggedIn, setSelectedVoucherIds]);
 
   // Auto-fetch default address when switching to DELIVERY
   useEffect(() => {
@@ -247,7 +282,8 @@ const CartDrawer = () => {
                     setDeliveryError(null);
                   }
                 }
-              } catch (err: any) {
+              } catch (unknownError: unknown) {
+                const err = unknownError instanceof Error ? unknownError : new Error();
                 if (isMounted) {
                   setDeliveryDistanceKm(null);
                   setShippingFee(null);
@@ -268,6 +304,13 @@ const CartDrawer = () => {
 
   const executeCheckout = useCallback(async () => {
     if (items.length === 0) return;
+    if (hasUnavailableItems) {
+      setCheckout({
+        status: "error",
+        message: "Vui lòng xoá món không còn phục vụ trước khi đặt hàng.",
+      });
+      return;
+    }
 
     // Check authentication
     if (!isLoggedIn) {
@@ -286,18 +329,17 @@ const CartDrawer = () => {
         const selectedDate = new Date();
         selectedDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
 
-        // Add 1 min buffer for slow submissions
-        if (selectedDate.getTime() < minAllowedTime - 60000) {
+        if (selectedDate.getTime() < minAllowedTime) {
           setCheckout({ status: "error", message: "Thời gian nhận món phải cách hiện tại ít nhất 10 phút." });
           return;
         }
         finalPickupTime = selectedDate.toISOString();
       } else {
-        // If not selected, send now + 10m
-        finalPickupTime = new Date(minAllowedTime).toISOString();
+        // Keep the default one minute beyond the 10-minute validation boundary.
+        finalPickupTime = new Date(Date.now() + 11 * 60 * 1000).toISOString();
       }
 
-      let payloadItems = [...items];
+      const payloadItems = [...items];
 
       if (orderType === "DELIVERY") {
         if (!deliveryAddress || shippingFee === null) {
@@ -306,12 +348,12 @@ const CartDrawer = () => {
         }
       }
 
-      const result = await checkoutMutation.mutateAsync({
+      await checkoutMutation.mutateAsync({
         items: payloadItems,
         options: {
           orderType,
           pickupTime: finalPickupTime,
-          discountVoucherIds: selectedVoucherIds,
+          discountVoucherIds: selectedDiscountVouchers.map((voucher) => voucher.id),
           ...(orderType === "DELIVERY" && deliveryAddress ? {
             addressId: deliveryAddress.id,
             deliveryAddress: deliveryAddress.full_address,
@@ -339,7 +381,27 @@ const CartDrawer = () => {
         setCheckout({ status: "error", message });
       }
     }
-  }, [items, clearCart, isLoggedIn, openLogin, router, setCartOpen, resetCheckout, pickupTime, selectedVoucherIds]);
+  }, [
+    items,
+    clearCart,
+    isLoggedIn,
+    openLogin,
+    router,
+    setCartOpen,
+    resetCheckout,
+    pickupTime,
+    selectedDiscountVouchers,
+    orderType,
+    deliveryAddress,
+    shippingFee,
+    appliedFreeshipId,
+    checkoutMutation,
+    setCheckout,
+    setPickupTime,
+    setIsTimeCustom,
+    setSelectedVoucherIds,
+    hasUnavailableItems,
+  ]);
 
   const handleClose = useCallback(() => {
     setCartOpen(false);
@@ -351,7 +413,7 @@ const CartDrawer = () => {
     setOrderType("PICKUP");
     setDeliveryAddress(null);
     setShippingFee(null);
-  }, [setCartOpen, resetCheckout]);
+  }, [setCartOpen, resetCheckout, setSelectedVoucherIds]);
 
   /** The cart item currently being assigned a voucher. */
   const activeItem = items.find(i => i.cartId === activeItemForVoucher);
@@ -490,6 +552,8 @@ const CartDrawer = () => {
                           item={item}
                           menuItem={menuItems.find(m => m.id === item.menuItemId)}
                           powderData={powderData}
+                          milkTypes={menuData.milk_types}
+                          addonGroups={menuData.addon_groups}
                           allVouchers={allVouchers}
                           applicableProductVouchers={applicableProductVouchers.get(item.menuItemId) || []}
                           applicableAddonVouchers={applicableAddonVouchersMap.get(item.cartId) || []}
@@ -530,13 +594,15 @@ const CartDrawer = () => {
               shippingFee={shippingFee}
               setIsAddressPickerOpen={setIsAddressPickerOpen}
               setIsDiscountPickerOpen={setIsDiscountPickerOpen}
-              productVouchersCount={items.reduce((sum, item) => sum + (applicableProductVouchers.get(item.menuItemId)?.length || 0), 0)}
-              addonVouchersCount={items.reduce((sum, item) => sum + (applicableAddonVouchersMap.get(item.cartId)?.length || 0), 0)}
               subtotalK={subtotalK}
               shippingK={shippingK}
               totalDiscountK={totalDiscountK}
               grandTotalK={grandTotalK}
               totalAfterDiscountVnd={totalAfterDiscountVnd}
+              hasUnavailableItems={hasUnavailableItems}
+              orderPoints={checkoutRewards.orderPoints}
+              surplusPoints={checkoutRewards.surplusPoints}
+              totalPoints={checkoutRewards.totalPoints}
               checkout={checkout}
               handleCheckout={handleCheckout}
               setShowClearConfirm={setShowClearConfirm}
@@ -632,7 +698,7 @@ const CartDrawer = () => {
             isDestructive={false}
           />
           {/* Product Modal overlay for edit */}
-          <EditModalOverlay menuItems={menuItems} latteItems={menuData?.latte ?? []} allVouchers={allVouchers} />
+          <EditModalOverlay menuItems={menuItems} menuData={menuData} allVouchers={allVouchers} />
         </Drawer.Content>
       </Drawer.Portal>
     </Drawer.Root>

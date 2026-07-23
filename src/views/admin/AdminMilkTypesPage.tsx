@@ -116,7 +116,17 @@ export default function AdminMilkTypesPage() {
   });
 
   const reorderMutation = useMutation({
-    mutationFn: async ({ currentId, currentOrder, swapId, swapOrder }: any) => {
+    mutationFn: async ({
+      currentId,
+      currentOrder,
+      swapId,
+      swapOrder,
+    }: {
+      currentId: string;
+      currentOrder: number;
+      swapId: string;
+      swapOrder: number;
+    }) => {
       await Promise.all([
         reorderMilkType(currentId, swapOrder),
         reorderMilkType(swapId, currentOrder),

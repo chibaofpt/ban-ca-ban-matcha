@@ -6,7 +6,7 @@ import { updateStoreScheduleSchema } from "@/lib/validations/storeSchedule";
 import { invalidateStoreCaches } from "@/lib/cacheInvalidation";
 
 /** GET /api/admin/store-schedule — ADMIN only. Returns all schedule rows grouped by day. */
-export async function GET(req: NextRequest) {
+export async function GET() {
   const session = await getSession();
   if (!session) {
     return NextResponse.json(

@@ -1,14 +1,39 @@
 "use client";
 
+import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Hero from '@/src/components/home/Hero';
 import MenuVoucherTabs from '@/src/components/home/MenuVoucherTabs';
 import PointsSection from '@/src/components/home/PointsSection';
 import ReviewsSection from '@/src/components/home/ReviewsSection';
 import BrandCarousel from '@/src/components/home/BrandCarousel';
 import VoucherModal from '@/src/components/shared/VoucherModal';
+import { fetchMenu } from '@/src/services/menuService';
+import { fetchPowders } from '@/src/services/powderService';
+import { listActiveVoucherPackages } from '@/src/services/customerVoucherService';
+import { usePowderStore } from '@/src/lib/store/powderStore';
 
-/** HomePage — composition layer. All logic lives in child components. */
+/** Homepage composition layer that owns page-level API queries. */
 export default function HomePage() {
+  const setPowderData = usePowderStore((state) => state.setPowderData);
+  const { data: menuData, isLoading: menuLoading } = useQuery({
+    queryKey: ["menu"],
+    queryFn: fetchMenu,
+  });
+  const { data: powderData } = useQuery({
+    queryKey: ["powders"],
+    queryFn: fetchPowders,
+  });
+  const { data: voucherPackages = [], isLoading: packageLoading } = useQuery({
+    queryKey: ["voucher_packages"],
+    queryFn: listActiveVoucherPackages,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (powderData) setPowderData(powderData);
+  }, [powderData, setPowderData]);
+
   return (
     <main className="w-full bg-transparent -mt-16">
       <style>{`
@@ -23,7 +48,12 @@ export default function HomePage() {
       </div>
       
       <div className="snap-start min-h-[100svh] flex flex-col">
-        <MenuVoucherTabs />
+        <MenuVoucherTabs
+          menuData={menuData}
+          voucherPackages={voucherPackages}
+          menuLoading={menuLoading}
+          packageLoading={packageLoading}
+        />
       </div>
       
       <div className="snap-start min-h-[100svh] flex flex-col">

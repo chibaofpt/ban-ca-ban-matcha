@@ -8,7 +8,7 @@
  *   import { onRenderCallback, useRenderCount } from "@/src/utils/dev/renderProfiler";
  */
 
-import { useRef, useEffect, useCallback, type ProfilerOnRenderCallback } from "react";
+import { useRef, useEffect, type ProfilerOnRenderCallback } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -98,7 +98,8 @@ export const onRenderCallback: ProfilerOnRenderCallback = (
 export function useRenderCount(label: string) {
   const count = useRef(0);
 
-  if (isDev) {
+  useEffect(() => {
+    if (!isDev) return;
     count.current += 1;
 
     // Log every 5th render to avoid console spam
@@ -108,7 +109,7 @@ export function useRenderCount(label: string) {
         "color: #888; font-style: italic",
       );
     }
-  }
+  });
 
   return count;
 }
@@ -124,18 +125,12 @@ export function useRenderCount(label: string) {
  * ```
  */
 export function useRenderTiming(label: string) {
-  const renderStart = useRef(0);
-
-  if (isDev) {
-    // Mark render start (runs during render phase)
-    renderStart.current = performance.now();
-  }
-
   useEffect(() => {
     if (!isDev) return;
 
+    const renderStart = performance.now();
     const renderEnd = performance.now();
-    const duration = renderEnd - renderStart.current;
+    const duration = renderEnd - renderStart;
 
     if (duration > 16) {
       console.warn(
@@ -148,7 +143,7 @@ export function useRenderTiming(label: string) {
     performance.mark(`${label}-render-end`);
     try {
       performance.measure(`${label}-render`, {
-        start: renderStart.current,
+        start: renderStart,
         end: renderEnd,
       });
     } catch {
@@ -219,7 +214,6 @@ function clearRenderStats(id?: string) {
 // ─── Expose to browser console ────────────────────────────────────
 
 if (isDev && typeof window !== "undefined") {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = window as unknown as Record<string, unknown>;
   win.__logRenderStats = logRenderStats;
   win.__clearRenderStats = clearRenderStats;

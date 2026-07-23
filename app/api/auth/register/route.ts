@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { RegisterSchema } from "@/lib/validations/auth";
 import { prisma } from "@/lib/prisma";
-import { normalizePhone, signJwt, createSession, setAuthCookies } from "@/lib/auth";
+import { normalizePhone, signJwt, setAuthCookies } from "@/lib/auth";
 import bcrypt from "bcryptjs";
 
 /**

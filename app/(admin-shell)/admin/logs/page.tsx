@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { apiClient } from "@/src/lib/api/client";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent } from "@/src/components/ui/card";
+import { Card } from "@/src/components/ui/card";
 import { Bug, Clock, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/src/utils/cn";
+import axios from "axios";
 
 interface SystemLog {
   id: string;
@@ -13,7 +14,7 @@ interface SystemLog {
   source: string;
   message: string;
   stack: string | null;
-  context: any | null;
+  context: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -28,7 +29,11 @@ export default function LogsPage() {
     }
   });
 
-  const error = queryError ? (queryError as any).response?.data?.error || queryError.message : "";
+  const error = queryError
+    ? (axios.isAxiosError<{ error?: string }>(queryError)
+        ? queryError.response?.data?.error
+        : null) || queryError.message
+    : "";
 
   return (
     <div className="space-y-6">

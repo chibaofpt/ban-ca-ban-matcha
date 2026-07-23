@@ -11,7 +11,6 @@ import {
 } from "@/src/services/adminPowderService";
 import { listAdminMenuItems } from "@/src/services/adminMenuService";
 import type { Powder } from "@/src/lib/types/powder";
-import type { AdminMenuItem } from "@/src/lib/types/menu";
 import { cn } from "@/src/utils/cn";
 
 type ModalState =

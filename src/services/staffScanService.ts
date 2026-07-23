@@ -1,5 +1,3 @@
-import { apiClient } from '@/src/lib/api/client';
-
 /** Quét QR token và trả về thông tin voucher hoặc user. */
 export async function scanQrToken() {}
 

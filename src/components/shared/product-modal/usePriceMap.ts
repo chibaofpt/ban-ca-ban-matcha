@@ -1,11 +1,19 @@
 import { useMemo } from "react";
-import type { MenuItem, Size } from "@/src/lib/types/menu";
+import type { AddonGroup, MenuItem, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import type { Powder, DefaultPowderGram } from "@/src/lib/types/powder";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
-import { calcLattePrice, calcFusionPrice, resolveGram, ceilTo1000 } from "@/src/utils/pricing";
+import {
+  applyProductVoucherCredit,
+  calcLattePrice,
+  calcFusionPrice,
+  resolveGram,
+  ceilTo1000,
+} from "@/src/utils/pricing";
 
 interface UsePriceMapProps {
   item: MenuItem;
+  milkTypes: MilkTypeOption[];
+  addonGroups: AddonGroup[];
   latteItems: MenuItem[];
   powders: Powder[];
   defaultPowderGrams: DefaultPowderGram[];
@@ -24,6 +32,8 @@ interface UsePriceMapProps {
 
 export function usePriceMap({
   item,
+  milkTypes,
+  addonGroups,
   latteItems,
   powders,
   defaultPowderGrams,
@@ -54,7 +64,7 @@ export function usePriceMap({
       let baseDrinkPrice = 0;
       if (isLatte) {
         const milk_ml = sizeObj?.milk_ml ?? 0;
-        const milk = item.milk_types?.find((m) => m.id === (milkId ?? selectedMilkId));
+        const milk = milkTypes.find((candidate) => candidate.id === (milkId ?? selectedMilkId));
         const milk_price_per_ml = milk?.price_per_ml ?? 40;
         baseDrinkPrice = calcLattePrice({ base_price_vnd, gram, powder_price_per_gram: pwd_price_per_gram, milk_ml, milk_price_per_ml });
       } else {
@@ -71,7 +81,7 @@ export function usePriceMap({
       let addonsCost = 0;
       const addonPricesMap: Record<string, number> = {};
 
-      for (const g of item.addon_groups) {
+      for (const g of addonGroups) {
         if (g.type === "QUANTITY") {
           const qty = quantityMap[g.id] ?? 0;
           const opt = g.options[0];
@@ -117,11 +127,13 @@ export function usePriceMap({
 
     if (effectiveFreeVoucherId && effectiveFreeCoveredPrice !== undefined) {
       const baseDrinkPrice = finalUnitPrice - finalAddonsCost;
-      const drinkAfterCredit = Math.max(0, baseDrinkPrice - effectiveFreeCoveredPrice);
-      const remainingCredit = Math.max(0, effectiveFreeCoveredPrice - baseDrinkPrice);
-      const addonsAfterCredit = Math.max(0, finalAddonsCost - remainingCredit);
-      finalUnitPrice = drinkAfterCredit + addonsAfterCredit;
-      finalAddonsCost = addonsAfterCredit;
+      const priceAfterProductVoucher = applyProductVoucherCredit(
+        baseDrinkPrice,
+        finalAddonsCost,
+        effectiveFreeCoveredPrice
+      );
+      finalUnitPrice = priceAfterProductVoucher.totalVnd;
+      finalAddonsCost = priceAfterProductVoucher.addonsPayableVnd;
     }
 
     const totalCost = finalUnitPrice * quantity;
@@ -136,7 +148,7 @@ export function usePriceMap({
       effectiveFreeCoveredPrice
     };
   }, [
-    item, latteItems, powders, defaultPowderGrams, selectedSize, activePowderId,
+    item, latteItems, milkTypes, addonGroups, powders, defaultPowderGrams, selectedSize, activePowderId,
     selectedMilkId, quantityMap, selectedOptionIds, selectedAddonVoucherIds,
     availableVouchers, selectedProductVoucherId, freeVoucherId, freeVoucherCoveredPriceVnd, quantity, isLatte
   ]);

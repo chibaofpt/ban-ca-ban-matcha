@@ -12,10 +12,16 @@ import { NextRequest } from "next/server";
 
 const mockGetSession = vi.fn();
 const mockVoucherFindMany = vi.fn();
+const mockVoucherUpdateMany = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ getSession: () => mockGetSession() }));
 vi.mock("@/lib/prisma", () => ({
-  prisma: { voucher: { findMany: (...args: unknown[]) => mockVoucherFindMany(...args) } },
+  prisma: {
+    voucher: {
+      findMany: (...args: unknown[]) => mockVoucherFindMany(...args),
+      updateMany: (...args: unknown[]) => mockVoucherUpdateMany(...args),
+    },
+  },
 }));
 
 // Import AFTER mocks
@@ -59,6 +65,7 @@ describe("GET /api/staff/users/[id]/vouchers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockVoucherFindMany.mockResolvedValue([]);
+    mockVoucherUpdateMany.mockResolvedValue({ count: 0 });
   });
 
   it("trả 401 khi chưa đăng nhập", async () => {

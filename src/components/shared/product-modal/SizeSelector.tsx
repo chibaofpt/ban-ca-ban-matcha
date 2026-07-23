@@ -1,7 +1,7 @@
 import React from "react";
 import OptionCard from "./OptionCard";
-import { SIZE_LABELS } from "@/src/constants/orderOptions";
 import type { Size } from "@/src/lib/types/menu";
+import { formatKa, getSizeDisplay } from "@/src/utils/display";
 
 interface SizeSelectorProps {
   sizes: { size: Size; base_price_vnd: number; milk_ml?: number | null }[];
@@ -18,11 +18,13 @@ export function SizeSelector({ sizes, selectedSize, onChange, getPriceForContext
     <div className="grid grid-cols-3 gap-2.5 mt-3">
       {sizes.map((s) => {
         const sizePrice = getPriceForContext(s.size, activePowderId).unitPrice;
+        const display = getSizeDisplay(s.size);
         return (
           <OptionCard
             key={s.size}
-            label={SIZE_LABELS[s.size]}
-            sub={`${sizePrice / 1000} ká`}
+            label={display.label}
+            meta={display.volume}
+            sub={formatKa(sizePrice, "ceil")}
             isActive={selectedSize === s.size}
             onClick={() => onChange(s.size)}
           />

@@ -1,7 +1,7 @@
 /**
  * Shared cancel-order helper used by all cancel paths.
  * Restores ALL vouchers (DISCOUNT, ADDON, PRODUCT) to ACTIVE,
- * reverses any surplus points awarded at order creation,
+ * reverses any surplus points awarded for the order,
  * and optionally reverses order_complete points for COMPLETED orders.
  * Must be called inside a prisma.$transaction().
  */
@@ -70,12 +70,18 @@ export async function restoreVouchersOnCancel(
   for (const dvId of uniqueDiscountIds) {
     const dv = await tx.voucher.findUnique({
       where: { id: dvId },
-      select: { status: true },
+      select: { status: true, expires_at: true },
     });
     if (dv && (dv.status === "RESERVED" || dv.status === "REDEEMED")) {
+      const isExpired = dv.expires_at && dv.expires_at <= new Date();
       await tx.voucher.update({
         where: { id: dvId },
-        data: { status: "ACTIVE", redeemed_at: null, redeemed_by: null, used_channel: null },
+        data: {
+          status: isExpired ? "EXPIRED" : "ACTIVE",
+          redeemed_at: null,
+          redeemed_by: null,
+          used_channel: null,
+        },
       });
     }
   }
@@ -106,12 +112,18 @@ export async function restoreVouchersOnCancel(
   for (const pvId of uniqueItemVoucherIds) {
     const pv = await tx.voucher.findUnique({
       where: { id: pvId },
-      select: { status: true },
+      select: { status: true, expires_at: true },
     });
     if (pv && (pv.status === "RESERVED" || pv.status === "REDEEMED")) {
+      const isExpired = pv.expires_at && pv.expires_at <= new Date();
       await tx.voucher.update({
         where: { id: pvId },
-        data: { status: "ACTIVE", redeemed_at: null, redeemed_by: null, used_channel: null },
+        data: {
+          status: isExpired ? "EXPIRED" : "ACTIVE",
+          redeemed_at: null,
+          redeemed_by: null,
+          used_channel: null,
+        },
       });
     }
   }
@@ -125,17 +137,23 @@ export async function restoreVouchersOnCancel(
   if (orderWithFreeship?.freeship_voucher_id) {
     const fv = await tx.voucher.findUnique({
       where: { id: orderWithFreeship.freeship_voucher_id },
-      select: { status: true },
+      select: { status: true, expires_at: true },
     });
     if (fv && (fv.status === "RESERVED" || fv.status === "REDEEMED")) {
+      const isExpired = fv.expires_at && fv.expires_at <= new Date();
       await tx.voucher.update({
         where: { id: orderWithFreeship.freeship_voucher_id },
-        data: { status: "ACTIVE", redeemed_at: null, redeemed_by: null, used_channel: null },
+        data: {
+          status: isExpired ? "EXPIRED" : "ACTIVE",
+          redeemed_at: null,
+          redeemed_by: null,
+          used_channel: null,
+        },
       });
     }
   }
 
-  // 3. Reverse any voucher_surplus points_log rows created at order creation.
+  // 3. Reverse any voucher_surplus points_log rows created for this order.
   //    Uses safe decrement to floor balance at 0 (prevents negative balance).
   const surplusLogs = await tx.pointsLog.findMany({
     where: { order_id: orderId, reason: "voucher_surplus" },

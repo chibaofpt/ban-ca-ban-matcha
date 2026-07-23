@@ -28,11 +28,30 @@ interface FormFields {
   grams_xl: string;
 }
 
+export interface PowderFormPayload {
+  name: string;
+  manufacturer: string;
+  description: string | null;
+  price_per_gram: number;
+  type: PowderType;
+  reference_latte_item_id: string | null;
+  fragrance: number | null;
+  body: number | null;
+  bitterness: number | null;
+  umami: number | null;
+  color: number | null;
+  is_available: boolean;
+  size_config: Array<{
+    size: "SMALL" | "MEDIUM" | "LARGE";
+    grams: number;
+  }>;
+}
+
 interface PowderFormProps {
   mode: "create" | "edit";
   defaultValues?: Partial<FormFields>;
   latteItems: AdminMenuItem[];
-  onSubmit: (data: any) => Promise<void>;
+  onSubmit: (data: PowderFormPayload) => Promise<void>;
   isSubmitting: boolean;
 }
 
@@ -120,7 +139,8 @@ export default function PowderForm({
       return;
     }
 
-    const payload: any = {
+    const size_config: PowderFormPayload["size_config"] = [];
+    const payload: PowderFormPayload = {
       name: values.name.trim(),
       manufacturer: values.manufacturer.trim(),
       description: values.description.trim() || null,
@@ -133,9 +153,9 @@ export default function PowderForm({
       umami: parseNum(values.umami),
       color: parseNum(values.color),
       is_available: values.is_available,
+      size_config,
     };
 
-    const size_config = [];
     const gM = parseNum(values.grams_m);
     const gL = parseNum(values.grams_l);
     const gXL = parseNum(values.grams_xl);
@@ -143,8 +163,6 @@ export default function PowderForm({
     if (gL != null && gL > 0) size_config.push({ size: "MEDIUM", grams: gL });
     if (gXL != null && gXL > 0) size_config.push({ size: "LARGE", grams: gXL });
     
-    payload.size_config = size_config;
-
     await onSubmit(payload);
   };
 
@@ -266,13 +284,13 @@ export default function PowderForm({
       <div className="pt-2 border-t border-border">
         <label className={labelClass}>Chỉ số hương vị (1 - 5)</label>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
-          {[
+          {([
             { id: "fragrance", label: "Hương (Fragrance)" },
             { id: "body", label: "Đậm (Body)" },
             { id: "bitterness", label: "Đắng (Bitterness)" },
             { id: "umami", label: "Ngọt thịt (Umami)" },
             { id: "color", label: "Màu (Color)" },
-          ].map(({ id, label }) => (
+          ] satisfies Array<{ id: keyof Pick<FormFields, "fragrance" | "body" | "bitterness" | "umami" | "color">; label: string }>).map(({ id, label }) => (
             <div key={id}>
               <label className="text-xs text-muted-foreground">{label}</label>
               <input
@@ -280,7 +298,7 @@ export default function PowderForm({
                 min="1"
                 max="5"
                 step="1"
-                {...register(id as any)}
+                {...register(id)}
                 placeholder="—"
                 className={inputClass}
               />

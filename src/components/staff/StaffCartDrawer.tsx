@@ -1,28 +1,27 @@
 "use client";
 
 import React, { useState, useMemo, useCallback } from "react";
-import { Trash2, User, UserX, Ticket, ArrowLeft, CheckCircle2, ChevronRight, X } from "lucide-react";
+import { User, UserX, Ticket, ArrowLeft, CheckCircle2, ChevronRight, X } from "lucide-react";
 import type { CartItem } from "@/src/lib/types/cart";
-import type { SweetnessLevel } from "@/src/lib/types/menu";
+import type { MenuData, SweetnessLevel } from "@/src/lib/types/menu";
+import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { CustomerInfo } from "./CustomerSelectModal";
 import type { MyVoucher } from "@/src/services/staffVoucherService";
 import { cn } from "@/src/utils/cn";
+import { formatKa, formatVietnamPhone } from "@/src/utils/display";
 import {
   buildProductVoucherMap,
   buildAddonVoucherMap,
-  estimateProductSavings,
   estimateMultiDiscountSavings,
   filterUsableVouchers,
 } from "@/src/utils/voucherMatchUtils";
 import { motion, AnimatePresence } from "framer-motion";
 import { Drawer } from "vaul";
-import { useQuery } from "@tanstack/react-query";
-import { fetchMenu } from "@/src/services/menuService";
-import { fetchPowders } from "@/src/services/powderService";
-import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
 import StaffCartItemCard from "./cart/StaffCartItemCard";
 import { VoucherCard, PackageCard } from "@/src/components/shared/VoucherCards";
 import type { VoucherPackage } from "@/src/services/customerVoucherService";
+import type { DiscountVoucher } from "@/src/lib/store/staffCartStore";
+import Image from "next/image";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -34,16 +33,16 @@ const SWEETNESS_LABEL: Record<SweetnessLevel, string> = {
   FULL: "Rất ngọt",
   EXTRA: "Cực ngọt",
 };
+void SWEETNESS_LABEL;
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
 interface StaffCartDrawerProps {
+  menuData?: MenuData;
+  powderData?: PowderApiResponse;
   isOpen: boolean;
   cart: CartItem[];
-  discountVoucher: {
-    discount_type: "PERCENT" | "FIXED";
-    discount_value: number;
-  } | null;
+  discountVoucher: DiscountVoucher | null;
   customerInfo: CustomerInfo | null;
   isSubmitting?: boolean;
   onClose: () => void;
@@ -72,6 +71,8 @@ interface StaffCartDrawerProps {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function StaffCartDrawer({
+  menuData,
+  powderData,
   isOpen,
   cart,
   discountVoucher,
@@ -98,8 +99,6 @@ export function StaffCartDrawer({
   isExchanging = false,
   preventCloseOutside = false,
 }: StaffCartDrawerProps) {
-  const { data: menuData } = useQuery({ queryKey: ["staff", "menu"], queryFn: fetchMenu });
-  const { data: powderData } = useQuery({ queryKey: ["staff", "powders"], queryFn: fetchPowders });
   const menuItems = menuData ? [...menuData.latte, ...menuData.fusion] : [];
 
   const [activeItemForVoucher, setActiveItemForVoucher] = useState<string | null>(null);
@@ -118,16 +117,30 @@ export function StaffCartDrawer({
   const applicableAddonVouchersMap = useMemo(() => buildAddonVoucherMap(customerVouchers, cart), [customerVouchers, cart]);
 
   // Discounts
-  const selectedDiscountVouchersList = useMemo(() => discountVouchers.filter(v => selectedDiscountIds.includes(v.id)), [discountVouchers, selectedDiscountIds]);
-  const listDiscount = useMemo(() => estimateMultiDiscountSavings(selectedDiscountVouchersList, subtotalPrice), [selectedDiscountVouchersList, subtotalPrice]);
-  
-  const scanDiscount = useMemo(() => discountVoucher
-    ? discountVoucher.discount_type === "PERCENT"
-      ? Math.floor((subtotalPrice * discountVoucher.discount_value) / 100)
-      : discountVoucher.discount_value
-    : 0, [discountVoucher, subtotalPrice]);
-
-  const rawDiscountAmount = listDiscount || scanDiscount;
+  const selectedDiscountVouchersList = useMemo(
+    () => selectedDiscountIds.flatMap((id) => {
+      const voucher = discountVouchers.find((candidate) => candidate.id === id);
+      return voucher ? [voucher] : [];
+    }),
+    [discountVouchers, selectedDiscountIds]
+  );
+  const previewDiscountVouchers = useMemo(
+    () => [
+      ...selectedDiscountVouchersList,
+      ...(discountVoucher && !selectedDiscountIds.includes(discountVoucher.id)
+        ? [discountVoucher]
+        : []),
+    ],
+    [discountVoucher, selectedDiscountIds, selectedDiscountVouchersList]
+  );
+  const rawDiscountAmount = useMemo(
+    () => estimateMultiDiscountSavings(previewDiscountVouchers, subtotalPrice),
+    [previewDiscountVouchers, subtotalPrice]
+  );
+  const scanDiscount = useMemo(
+    () => discountVoucher ? estimateMultiDiscountSavings([discountVoucher], subtotalPrice) : 0,
+    [discountVoucher, subtotalPrice]
+  );
 
   // Apply rounding rules to match Customer Cart
   const { subtotalK, finalK, discountK, discountAmount, total } = useMemo(() => {
@@ -152,7 +165,7 @@ export function StaffCartDrawer({
       setActiveItemForVoucher(null);
       setIsDiscountPickerOpen(false);
     }, 300);
-  }, [onClose]);
+  }, [onClose, setActiveItemForVoucher, setIsDiscountPickerOpen]);
 
   return (
     <Drawer.Root 
@@ -213,7 +226,7 @@ export function StaffCartDrawer({
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
                   {customerInfo
-                    ? (customerInfo.type === "existing" ? `${customerInfo.data.phone_number} • 🐟 ${customerInfo.data.points_balance}` : customerInfo.phone_number)
+                    ? (customerInfo.type === "existing" ? `${formatVietnamPhone(customerInfo.data.phone_number)} • 🐟 ${customerInfo.data.points_balance}` : formatVietnamPhone(customerInfo.phone_number))
                     : "Không tích điểm"}
                 </p>
               </div>
@@ -250,19 +263,7 @@ export function StaffCartDrawer({
             [...cart].reverse().map((c) => {
               const productVouchersForItem = applicableProductVouchers.get(c.menuItemId) || [];
               const addonVouchersForItem = applicableAddonVouchersMap.get(c.cartId) || [];
-              const hasMoreProductVouchers = !c.productVoucherId && productVouchersForItem.length > 0;
-              const hasMoreAddonVouchers = addonVouchersForItem.length > 0;
-              const hasAvailableVouchers = hasMoreProductVouchers || hasMoreAddonVouchers;
-              
-              const appliedProductVoucherId = c.productVoucherId;
-              const appliedAddonVouchers = c.addonVouchers ?? [];
-
               const menuItem = menuItems.find(m => m.id === c.menuItemId);
-              const line1Chips = line1ItemDetails(c, menuItem, powderData?.data);
-              const line2Chips = line2ItemDetails(c, menuItem);
-              const addonChips = addonsDetails(c, menuItem, powderData?.data);
-              
-              const noteText = c.note || null;
 
               return (
                 <StaffCartItemCard
@@ -270,6 +271,8 @@ export function StaffCartDrawer({
                   item={c}
                   menuItem={menuItem}
                   powderData={powderData}
+                  milkTypes={menuData?.milk_types ?? []}
+                  addonGroups={menuData?.addon_groups ?? []}
                   customerVouchers={customerVouchers}
                   applicableProductVouchers={productVouchersForItem}
                   applicableAddonVouchers={addonVouchersForItem}
@@ -315,10 +318,12 @@ export function StaffCartDrawer({
                 )}
                 
                 {/* Legacy discount from scanner */}
-                {discountVoucher && !listDiscount && (
+                {discountVoucher && !selectedDiscountIds.includes(discountVoucher.id) && (
                   <div className="flex items-center justify-between bg-green-50/50 border border-green-200/50 rounded-xl px-3 py-2">
                     <span className="text-xs font-bold text-green-700">🏷 Voucher quét mã</span>
-                    <span className="text-xs font-bold text-green-700">-{scanDiscount / 1000}k</span>
+                    <span className="text-xs font-bold text-green-700">
+                      -{formatKa(scanDiscount, "floor")}
+                    </span>
                   </div>
                 )}
               </div>
@@ -327,19 +332,19 @@ export function StaffCartDrawer({
               <div className="w-[45%] flex flex-col justify-end gap-1 text-right">
                 <div className="flex justify-between items-center text-xs text-muted-foreground font-medium">
                   <span>Tạm tính</span>
-                  <span>{subtotalK}k</span>
+                  <span>{formatKa(subtotalK * 1000)}</span>
                 </div>
                 {discountAmount > 0 && (
                   <div className="flex justify-between items-center text-xs text-orange-600 font-bold">
                     <span>Giảm</span>
-                    <span>-{discountK.toLocaleString('vi-VN')}k</span>
+                    <span>-{formatKa(discountK * 1000, "floor")}</span>
                   </div>
                 )}
                 <div className="border-t border-dashed border-border/60 my-1" />
                 <div className="flex flex-col items-end">
                   <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none mb-1">Tổng</span>
                   <span className="font-serif text-2xl font-bold text-primary leading-none flex items-center gap-1">
-                    <span className="text-xl">🐟</span> {finalK}k
+                    <span className="text-xl">🐟</span> {formatKa(finalK * 1000, "ceil")}
                   </span>
                   {customerInfo && finalK >= 10 && (
                     <span className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-100 px-1.5 py-0.5 rounded-md mt-1.5">
@@ -407,7 +412,7 @@ export function StaffCartDrawer({
                 {/* Item context */}
                 <div className="flex items-center gap-3 p-3 bg-secondary/20 border border-border/50 rounded-2xl">
                   <div className="w-12 h-12 rounded-xl overflow-hidden bg-secondary/40">
-                     {activeItem.imageUrl ? <img src={activeItem.imageUrl} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-xl">🍵</div>}
+                     {activeItem.imageUrl ? <Image src={activeItem.imageUrl} alt={activeItem.name} width={48} height={48} unoptimized className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-xl">🍵</div>}
                   </div>
                   <div>
                     <p className="font-bold text-sm">{activeItem.name}</p>
@@ -421,7 +426,6 @@ export function StaffCartDrawer({
                     <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Miễn phí món</p>
                     <div className="space-y-2">
                       {applicableProductVouchers.get(activeItem.menuItemId)?.map(v => {
-                        const savings = estimateProductSavings(v, activeItem.originalClientPriceVnd);
                         const isSelected = activeItem.productVoucherId === v.id;
                         const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && c.productVoucherId === v.id);
                         

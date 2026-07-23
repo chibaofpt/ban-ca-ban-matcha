@@ -1,72 +1,115 @@
 ---
 name: push-to-dev
 description: >
-  QA/QC review code thay đổi, kiểm tra an toàn trước khi đẩy lên branch dev cho tester.
-  Trigger on: "deploy dev", "đưa lên dev", "test staging", "push dev", "qa review".
+  QA/QC completed code and commit/push the dev branch for a Vercel staging deployment.
+  Use when the user explicitly asks to push or deploy dev, send code to staging, or invokes
+  push-to-dev after coding. A request that only says "qa review" is review-only and must not push.
 ---
 
-# Push to dev (Staging Deployment)
+# Push to Dev (Staging Deployment)
 
-> Skill này định nghĩa quy trình QA/QC review code thay đổi trước khi đẩy lên nhánh `dev` cho môi trường staging.
+> Solo-developer workflow: code directly on `dev` → QA passes → push `dev` → Vercel Preview
+> deploys staging → friends test the staging link. Run this workflow only after an explicit user request.
 
-## Section 1 — QA/QC Review
+## 1. Determine Mode and Release Scope
 
-Chạy lệnh `git diff` (hoặc kiểm tra các thay đổi gần đây) để xem xét code.
-Đóng vai trò QA/QC Engineer, kiểm tra an toàn hệ thống:
-- **Type errors**: `npx tsc --noEmit`
-- **Test suite**: `npm run test` (Vitest)
-- **Build simulation**: `npm run build:staging`
+- If the user asks only for `qa review`, review and report, then stop. Do not commit or push.
+- If the user explicitly asks to push or deploy `dev`, automatically commit and push after every gate passes.
+- Work only on the `dev` branch. Do not switch branches, force-push, rebase, merge `main`, or resolve conflicts.
+- Run `git fetch origin dev`, inspect `git status --short`, and compare local changes with `origin/dev`.
+- Stop if local `dev` is behind `origin/dev`, if the current branch is not `dev`, or if the remote state would make the push non-fast-forward.
+- Review staged, unstaged, and untracked files. Never automatically stage unreviewed untracked files, especially
+  env files, scratch files, backups, or `ROLLBACK_*.sql` files. A new migration may be staged only after its SQL is reviewed.
 
-Dựa trên Context dự án để phân tích thay đổi:
-- **Database Schema**: Kiểm tra nếu có bất kỳ thay đổi nào trong `prisma/schema.prisma` (ví dụ: bảng `users`, `orders`, `vouchers`, `menu_items`, `matcha_powder`, `points_log`, `voucher_packages`... hay các enums `OrderStatus`, `OrderType`, `Size`, `VoucherType`...). Nếu có thay đổi:
-  1. Yêu cầu developer chạy `npm run migrate:dev -- --name "mô_tả_thay_đổi"` để tạo file migration.
-  2. Review file SQL sinh ra trong thư mục `prisma/migrations/`.
-  3. Đảm bảo file migration được commit cùng code change.
-- **Critical API Routes**: Kiểm tra xem thay đổi có tác động tới các route cốt lõi trong `app/api/` hay không, như `app/api/auth`, `app/api/orders`, `app/api/delivery`, `app/api/menu`, `app/api/staff`, `app/api/voucher-packages`.
-- **Known pitfalls**: 
-  - Image hostname: remotePatterns hiện tại cover *.supabase.co (staging: mnklsbzkefuefpqvghrr, production: nqwfbmghziubdhvtgyao). Nếu dùng hostname ngoài 2 domains này → phải add thủ công vào next.config.ts
-  - SSL/TLS: Không dùng axios trên backend để upload file lên Supabase. Dùng client `supabase-js`.
-  - Sharp crash: Không import thư viện `sharp` trên backend.
-  - Prisma cache: Build config = `prisma generate && prisma migrate deploy && next build`.
-  - Env files: Mọi file `.env` bị ignore. Đảm bảo Vercel Preview đã được set đủ các biến per-env.
-  - Async Params Next.js 15+: Dynamic route `params` luôn là Promise (`Promise<{ id: string }>`).
-  - Scratch pollution: Đảm bảo code nháp bỏ trong folder `scratch/` đã được exclude ở `tsconfig.json`.
+## 2. Select and Validate the Staging Environment
 
-> **Ví dụ output mẫu báo cáo QA/QC:**
-> Báo cáo đánh giá QA/QC:
-> - [x] Type/Test/Build: PASS
-> - [ ] Cảnh báo Schema: Phát hiện thay đổi tại bảng `users` (thêm trường `otp_enabled`), yêu cầu chạy `npm run migrate:dev -- --name "add_otp"` và commit file SQL.
-> - [ ] API ảnh hưởng: `app/api/orders/route.ts` thay đổi logic `total_vnd`.
-> Kết luận: PHÁT HIỆN RỦI RO DỪNG. Chờ xác nhận từ Developer.
+- Treat the env files as purpose-specific; do not require them to contain identical keys:
+  - `.env.local`: local interactive development and shared local values.
+  - `.env.staging`: local Prisma/CLI commands that target the staging database.
+  - `.env.prod`: production-only local checks; never load it in this skill.
+  - `.env.local.example`: documented key inventory/template, never a runtime source of truth.
+  - Vercel Preview variables: authoritative values for the deployed `dev` branch.
+- Require `.env.staging` before any Prisma command. Check key names only and require both `DATABASE_URL` and
+  `DIRECT_URL`; never print or include their values in a report.
+- Confirm without logging values that staging and production database URLs are not identical. Block if the
+  target cannot be distinguished safely.
+- Never rely on Prisma's implicit `.env` lookup. Prefix direct Prisma checks with
+  `npx.cmd dotenv -e .env.staging --`, or use an npm script that already loads `.env.staging`.
+- Do not require shared application variables to exist in `.env.staging`; verify newly introduced application
+  variables against `.env.local.example` and the Vercel Preview configuration instead.
 
-**Nếu phát hiện rủi ro**: DỪNG lập tức, báo cáo hoàn toàn bằng tiếng Việt và chờ xác nhận.
-**Nếu KHÔNG phát hiện rủi ro (PASS toàn bộ)**: Tự động chuyển sang thực hiện Section 2 (Push to dev) mà không cần hỏi hay chờ xác nhận từ user.
-## Section 2 — Push to dev
+## 3. QA/QC Gate
 
-**Chỉ thực hiện** khi Section 1 QA/QC PASS (tự động) hoặc user xác nhận bỏ qua rủi ro.
-- Đảm bảo database đã được migrate lên Staging (nếu có schema change) bằng `npm run migrate:dev` và có file SQL được sinh ra trong `prisma/migrations/`.
-- Thực thi các lệnh Git:
+Read `AGENTS.md` and inspect the complete release diff. Apply any relevant order, voucher, pricing, API, and schema rules.
+
+Run only checks that do not modify a database:
+
 ```powershell
-git add .
-git commit -m "chore: prepare staging deployment"
-git push origin dev
+npm.cmd run lint
+npx.cmd tsc --noEmit
+npm.cmd run test
+npx.cmd dotenv -e .env.staging -- prisma validate
+git diff --check
 ```
-- Sau push, thông báo URL của môi trường Staging (preview branch `dev`) cho tester.
 
-## Section 3 — Verify staging deployment
+- Do not run `npm run build`, `npm run build:staging`, `db push`, `migrate reset`, or any production migration during QA.
+- Treat failed checks, whitespace errors, secrets in the diff, unexplained API/schema changes, or business-rule risks as **BLOCKED**.
+- Report all QA findings in Vietnamese and stop when blocked.
 
-- Sử dụng Vercel MCP (nếu có access) để kiểm tra branch `dev` xem deployment status có là READY hay không.
-- Kiểm tra runtime logs của môi trường preview trong 5 phút gần nhất.
-- Nếu có error → liệt kê ngay lập tức cho developer.
+## 4. Schema Changes on Staging
 
-> **Ví dụ output mẫu verify staging:**
-> - Trạng thái: READY ✅
-> - Runtime Logs (5 phút): Không tìm thấy Error ✅
+Run this section only when `prisma/schema.prisma` changed.
 
----
+1. Check whether a matching new directory exists under `prisma/migrations/`.
+2. If no migration exists, create one for review only on staging:
 
-**Hard rules**:
-- **KHÔNG** merge vào nhánh `main`.
-- **KHÔNG** chạy lệnh `db push` thẳng lên production DB. Luôn dùng `migrate dev` để tạo file sql chuẩn cho Vercel chạy `migrate deploy`.
-- Báo cáo QA/QC **PHẢI** viết hoàn toàn bằng tiếng Việt.
-- Nếu có rủi ro, phải dừng và chờ confirm. Nếu PASS 100%, tự động push lên dev không cần hỏi.
+   ```powershell
+   npm.cmd run migrate:dev -- --create-only --name "descriptive_change_name"
+   ```
+
+   The `migrate:dev` script is authoritative here because it explicitly loads `.env.staging`. Do not replace it
+   with a bare `prisma migrate dev` command.
+
+3. If Prisma detects drift or requests a reset, stop and ask exactly:
+   `Reset the staging database and lose all test data?`
+   Never reset until the user gives a new, explicit confirmation. Until a seed exists, state that test data must be recreated manually.
+4. Review the new SQL migration. Block changes involving `DROP`, `TRUNCATE`, `DELETE`, enum removal or rename,
+   table/column rename, `ALTER COLUMN ... TYPE`, data rewrites, or any unapproved data-loss risk.
+5. Commit the reviewed migration together with `prisma/schema.prisma` and the code. Never edit an already committed or applied migration.
+
+After the `dev` push, Vercel Preview runs `prisma migrate deploy` against staging. Do not manually run a staging deploy migration in this skill.
+
+## 5. Commit and Push Dev
+
+Continue only when every QA gate passes.
+
+1. Stage only reviewed release files:
+
+   ```powershell
+   git add -- <reviewed-file-1> <reviewed-file-2>
+   git diff --cached --check
+   git diff --cached
+   ```
+
+2. Create one concise commit message that describes the actual change. Do not amend an existing commit.
+3. Push normally:
+
+   ```powershell
+   git push origin dev
+   ```
+
+Never use `git add .`, `git push --force`, or push another branch.
+
+## 6. Staging Handoff
+
+- Report the pushed commit SHA, new migrations, the flows friends should test, and the Vercel Preview URL when accessible.
+- If Vercel MCP is available, check that the `dev` deployment is READY and inspect recent runtime logs.
+- If Vercel cannot be checked automatically, report `Cannot verify Vercel automatically`; never assume success.
+- A clear user statement that friends tested staging successfully is sufficient to invoke `production-deploy`.
+
+## Hard Rules
+
+- Never merge or push `main`.
+- Never run `db push`, automatically run `migrate reset`, or run any Prisma command against production.
+- Never generate or execute automatic rollback SQL.
+- Write QA reports in Vietnamese. In explicit push/deploy mode, automatically commit and push `dev` only after a full PASS.

@@ -1,97 +1,108 @@
 ---
 name: production-deploy
 description: >
-  Kiểm tra staging sau khi tester xác nhận ổn để tiến hành merge branch dev vào main.
-  Trigger on: "deploy", "production", "release", "merge main", "build vercel", "vercel error", "check production", "ready for prod".
+  Merge dev into main and release Vercel Production after the user confirms friends tested
+  staging successfully. Use when the user explicitly asks to deploy or release production,
+  merge main, or invokes production-deploy after staging testing.
 ---
 
-# Production Deploy (Merge to Main)
+# Production Deploy (Dev to Main)
 
-> Skill này thực thi quy trình đẩy code lên production (merge nhánh `dev` vào `main`).
-> **ĐIỀU KIỆN TIÊN QUYẾT**: Tester đã kiểm thử kỹ trên staging và xác nhận ok.
+> Solo-developer workflow: friends test the Vercel Preview from `dev` → the user confirms testing
+> passed and requests production deployment → merge `dev` into `main` → Vercel Production runs
+> `prisma migrate deploy`. Production receives the same migration history and schema as staging;
+> staging data is never copied to production.
 
-## Section 0 — Pre-flight Env Vars Check
+## 1. Entry Gate
 
-- Nhắc developer kiểm tra và xác nhận Vercel Environment Variables đã được config tách biệt (Production vs Preview) trên dashboard.
-- Đặc biệt nhấn mạnh: `DATABASE_URL` và `DIRECT_URL` của Production env phải trỏ vào Production DB.
+- Merge only after the user explicitly confirms staging testing passed. If the user asks only to inspect production,
+  perform a read-only preflight and stop without merging.
+- Run `git fetch origin main dev`. Require a clean worktree and require local `dev` to match `origin/dev`.
+- Stop for uncommitted changes, untracked files, remote divergence, or a potential merge conflict.
+- Review `origin/main...origin/dev`: commits, changed files, schema, migrations, API/business logic,
+  and newly referenced `process.env.*` names. Never print secret values.
+- Treat env files as purpose-specific rather than requiring identical contents:
+  - `.env.local`: local interactive development and shared local values.
+  - `.env.staging`: local staging Prisma/CLI commands only.
+  - `.env.prod`: read-only local production validation only; never use it to deploy a migration.
+  - `.env.local.example`: documented key inventory/template, not a runtime source of truth.
+  - Vercel Preview and Production variables: authoritative values for cloud deployments.
+- Require `.env.prod` for production schema validation. Check key names only and require `DATABASE_URL` and
+  `DIRECT_URL`; never print their values. Confirm without logging values that they do not match the staging URLs.
+- Run:
 
-> **Ví dụ output mẫu:**
-> Vercel config confirmed ✅ (Developer đã xác nhận Vercel Production/Preview env vars đã setup đúng)
+  ```powershell
+  npm.cmd run lint
+  npx.cmd tsc --noEmit
+  npm.cmd run test
+  npx.cmd dotenv -e .env.prod -- prisma validate
+  ```
 
-## Section 1 — Migration Safety Gate
+  Any failure is **BLOCKED**.
 
-Kiểm tra thư mục `prisma/migrations/`: liệt kê migration files mới (những file có trong branch dev mà không có trên main).
-Đọc file SQL migration mới để scan tìm các lệnh nguy hiểm (destructive):
-- `DROP`
-- `TRUNCATE`
-- `ALTER COLUMN ... TYPE`
-- `RENAME`
-- `DELETE FROM`
+## 2. Migration and Environment Gate
 
-- Dựa vào `prisma/schema.prisma` thực tế, kiểm tra có enum nào (ví dụ `Role`, `VoucherType`, `OrderStatus`, `OrderType`, `Size`, `SweetnessLevel`, `IceOption`, `PowderType`) bị sửa không.
-- Nếu có: cảnh báo về data compatibility.
-- Nếu tìm thấy lệnh destructive → **BLOCK**, yêu cầu developer xác nhận tay.
+- List migrations present in `dev` but absent from `main`, then read each new `migration.sql`.
+- If the Prisma schema changed without a matching migration, block the release.
+- Allow only additive, backward-compatible migrations already tested on staging, such as new tables,
+  safely nullable/defaulted columns, or indexes with no evident locking risk.
+- Block migrations containing `DROP`, `TRUNCATE`, `DELETE`, enum removal or rename, table/column rename,
+  `ALTER COLUMN ... TYPE`, `NOT NULL` without a backfill, a unique constraint over populated data,
+  a data rewrite, or another material lock/data-loss risk. These require a separate migration plan and
+  cannot be bypassed with a simple confirmation.
+- If any new migration exists, ask the user to confirm that a production backup was checked in the
+  Supabase Dashboard. Stop if the user cannot confirm it. Do not run production migrations locally.
+- If the code introduces an application environment variable, require it in `.env.local.example` and list only
+  its name. Require user confirmation that it is configured in both Vercel Preview and Production. Do not block
+  merely because a shared application variable is intentionally absent from `.env.staging` or `.env.prod`.
+- Never use `db push`, `migrate dev`, `migrate reset`, `migrate resolve`, or generated rollback SQL on production.
+  Vercel Production alone runs `migrate deploy` from committed migration files.
 
-> **Ví dụ output mẫu:**
-> Migration safe ✅ (Không phát hiện lệnh destructive) / ❌ (Phát hiện DROP TABLE users)
+## 3. Merge and Deploy
 
-## Section 2 — Staging Stability Check
+Continue only when every gate passes and the user explicitly requested production deployment.
 
-- Dùng Vercel MCP → Get runtime logs của Preview environment (branch `dev`) trong 30 phút gần nhất, filter `level=error`.
-- Dựa vào danh sách API thực tế, liệt kê và đảm bảo các critical routes sau không có lỗi: `app/api/auth`, `app/api/orders`, `app/api/menu`, `app/api/delivery`, `app/api/voucher-packages`, `app/api/staff`.
-
-> **Ví dụ output mẫu:**
-> Staging stable ✅ (Không có error trong 30 phút qua) / ❌ (Có lỗi tại route app/api/orders)
-
-## Section 3 — Env Vars Check
-
-Đọc code diff giữa nhánh `dev` và `main`. Tìm tất cả biến `process.env.*` được sử dụng trong code mới.
-Dựa vào 3-tier env structure, kiểm tra xem có biến mới chưa được khai báo không:
-- **Shared (local .env.local.example)**: STORE_LAT, STORE_LNG, BANK_ID, BANK_ACCOUNT, BANK_ACCOUNT_NAME, NEXT_PUBLIC_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, GOONG_API_KEY, NEXT_PUBLIC_GOONG_MAPTILES_KEY.
-- **Per-env (Trên Vercel)**: DATABASE_URL, DIRECT_URL, JWT_SECRET, CRON_SECRET, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, ESMS_API_KEY, ESMS_SECRET_KEY, ESMS_SANDBOX.
-
-Nếu xuất hiện biến `process.env.*` nào là biến mới toanh, chưa có trong danh sách production → **BLOCK**, yêu cầu developer setup trên Vercel Production trước.
-
-> **Ví dụ output mẫu:**
-> Env vars ✅ (Không có biến mới) / ❌ [Liệt kê: thiếu biến NEW_PAYMENT_KEY]
-
-## Section 4 — Rollback Plan
-
-- Nếu có migration mới trong `prisma/migrations/`: Dùng `npx prisma migrate diff --from-schema-datamodel prisma/schema.prisma --to-migrations prisma/migrations --script > ROLLBACK_$(Get-Date -Format 'yyyyMMddHHmmss').sql` để generate SQL rollback từ local và lưu tại root.
-- Nếu không có thay đổi DB → Ghi N/A.
-
-> **Ví dụ output mẫu:**
-> Rollback plan ✅ FILE: ROLLBACK_1719500000.sql / N/A
-
-## Section 5 — Merge to main
-
-**CHỈ THỰC HIỆN** khi Section 1, 2, 3 đều PASS.
-Thực thi các lệnh Git sau:
 ```powershell
-git checkout main
-git merge dev
+git switch main
+git pull --ff-only origin main
+git merge --no-ff origin/dev -m "chore: release dev to production"
 git push origin main
-git checkout dev
-```
-Sau push: Thông báo Vercel đang auto-deploy production.
-
-## Section 6 — Final Report
-
-Xuất báo cáo cuối cùng theo đúng format:
-```
-=== PRODUCTION GATE REPORT ===
-Migration safety:  ✅ / ❌
-Staging stability: ✅ / ❌
-Env vars:          ✅ / ❌ [liệt kê nếu thiếu]
-Rollback plan:     ✅ FILE: ROLLBACK_xxx.sql / N/A
-
-VERDICT: APPROVED / BLOCKED — [lý do nếu blocked]
+git switch dev
 ```
 
----
+- Never force-push.
+- If the merge conflicts, do not resolve it automatically. Abort the merge to restore the clean pre-merge
+  state, then report the conflict to the user.
+- After the push, let Vercel Production deploy automatically. Do not run a local production migration.
 
-**Hard rules**:
-- **Không merge** nếu bất kỳ Section 1/2/3 nào FAIL.
-- **Không bỏ qua** bước nào dù developer yêu cầu.
-- Nếu không đủ tool access để tự động verify (vd không có MCP để check Vercel logs) → ghi `Cannot verify: [lý do]` thay vì assume là OK.
-- Vercel rollback **không rollback DB** → luôn nhắc developer điều này trong report.
+## 4. Verification and Failure Handling
+
+- If Vercel MCP is available, verify that the `main` deployment is READY and inspect recent runtime logs.
+- If Vercel cannot be checked automatically, report `Cannot verify Vercel automatically` and ask the user
+  to open the production link for a smoke test.
+- If a production migration or deployment fails, do not roll back the database, generate `ROLLBACK_*.sql`,
+  or run `migrate resolve`. Report the commit SHA, affected migration, and error. The user decides between
+  a forward fix and restoring a verified backup.
+
+## Final Report
+
+Write the report in Vietnamese:
+
+```text
+=== PRODUCTION RELEASE REPORT ===
+Staging test:        PASS / not confirmed
+Code checks:         PASS / FAIL
+Migration safety:    N/A / PASS / BLOCKED
+Production backup:   N/A / user confirmed / not confirmed
+Environment vars:    N/A / confirmed / not confirmed
+Merge and push:      PASS / FAIL
+Vercel verification: READY / Cannot verify / FAIL
+
+VERDICT: RELEASED / BLOCKED — reason
+```
+
+## Hard Rules
+
+- Never merge `main` when any gate fails or is blocked.
+- Never reset production, copy staging data to production, or edit an applied migration.
+- Never roll back the database automatically. A Vercel rollback rolls back code, not schema or data.

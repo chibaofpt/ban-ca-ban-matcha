@@ -1,11 +1,13 @@
 "use client";
 
 import React, { memo } from "react";
-import { motion } from "framer-motion";
-import { Ticket, MapPin, ChevronRight, Trash2, ShoppingBag } from "lucide-react";
+import { motion, type PanInfo } from "framer-motion";
+import { Ticket, MapPin, ChevronRight, Trash2, ShoppingBag, Info } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { Address } from "@/src/lib/types/address";
 import type { PriceConflict } from "@/src/services/orderService";
+import { formatKa } from "@/src/utils/display";
+import { PointsBreakdownSheet } from "./PointsBreakdownSheet";
 
 type CheckoutState =
   | { status: "idle" }
@@ -25,7 +27,10 @@ interface CartFooterProps {
   setPickupTime: (time: string) => void;
   minTimeStr: string;
   setIsTimeCustom: (custom: boolean) => void;
-  handleToggleDragEnd: (event: any, info: any) => void;
+  handleToggleDragEnd: (
+    event: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo
+  ) => void;
   
   // Delivery State
   isFetchingAddress: boolean;
@@ -37,13 +42,15 @@ interface CartFooterProps {
   setIsDiscountPickerOpen: (open: boolean) => void;
 
   // Voucher / Pricing state
-  productVouchersCount: number;
-  addonVouchersCount: number;
   subtotalK: number;
   shippingK: number;
   totalDiscountK: number;
   grandTotalK: number;
   totalAfterDiscountVnd: number;
+  hasUnavailableItems: boolean;
+  orderPoints: number;
+  surplusPoints: number;
+  totalPoints: number;
 
   checkout: CheckoutState;
   handleCheckout: () => void;
@@ -70,17 +77,20 @@ export const CartFooter = memo(function CartFooter({
   shippingFee,
   setIsAddressPickerOpen,
   setIsDiscountPickerOpen,
-  productVouchersCount,
-  addonVouchersCount,
   subtotalK,
   shippingK,
   totalDiscountK,
   grandTotalK,
   totalAfterDiscountVnd,
+  hasUnavailableItems,
+  orderPoints,
+  surplusPoints,
+  totalPoints,
   checkout,
   handleCheckout,
   setShowClearConfirm,
 }: CartFooterProps) {
+  const [isPointsSheetOpen, setIsPointsSheetOpen] = React.useState(false);
   if (itemsLength === 0) return null;
 
   return (
@@ -159,17 +169,17 @@ export const CartFooter = memo(function CartFooter({
             />
           </div>
           {pickupTime && pickupTime < minTimeStr && (
-            <span className="text-[9px] text-red-500 font-medium text-right">
-              Tối thiểu {minTimeStr}
+            <span className="text-[10px] text-red-600 font-semibold text-right leading-tight">
+              Vui lòng đặt trước ít nhất 10 phút
             </span>
           )}
         </div>
       </div>
 
-      {/* Row 2: Ưu đãi + Địa chỉ (60%) | Pricing (40%) */}
+      {/* Row 2: Controls (55%) | compact payment details (45%) */}
       <div className="flex gap-3 items-stretch">
         <motion.div 
-          className="flex flex-col gap-1.5 min-h-[82px] touch-pan-y" style={{ width: "60%" }}
+          className="flex min-w-0 flex-[11] flex-col gap-1.5 min-h-[82px] touch-pan-y"
           drag="x"
           dragConstraints={{ left: 0, right: 0 }}
           dragElastic={0.15}
@@ -193,7 +203,11 @@ export const CartFooter = memo(function CartFooter({
               <div className="min-w-0">
                 <p className="text-[11px] font-bold text-orange-800 leading-tight">Mã ưu đãi</p>
                 <p className="text-[10px] text-orange-600/80 leading-tight truncate">
-                  {!isLoggedIn ? "Đăng nhập để xem ưu đãi" : (totalDiscountK > 0 ? `Đã áp dụng giảm ${totalDiscountK.toLocaleString("vi-VN")}k` : "Chọn mã ưu đãi")}
+                  {!isLoggedIn
+                    ? "Đăng nhập để xem ưu đãi"
+                    : totalDiscountK > 0
+                      ? `Đã áp dụng giảm ${formatKa(totalDiscountK * 1000, "floor")}`
+                      : "Chọn mã ưu đãi"}
                 </p>
               </div>
             </div>
@@ -237,34 +251,34 @@ export const CartFooter = memo(function CartFooter({
           )}
         </motion.div>
 
-        {/* Right 40% - Pricing breakdown */}
-        <div className="flex flex-col justify-end flex-1 gap-0.5">
+        {/* Right 45% - Pricing breakdown */}
+        <div className="flex min-w-0 flex-[9] flex-col justify-end gap-0.5">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-medium text-primary/50">Tạm tính</span>
-            <span className="text-[11px] font-bold text-primary/50">{subtotalK} k</span>
+            <span className="text-xs font-bold text-primary/60">{formatKa(subtotalK * 1000)}</span>
           </div>
 
           {orderType === "DELIVERY" && shippingFee !== null ? (
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-medium text-primary/50">Phí ship</span>
-              <span className="text-[11px] font-bold text-primary/50">{shippingK} k</span>
+              <span className="text-xs font-bold text-primary/60">{formatKa(shippingK * 1000, "ceil")}</span>
             </div>
           ) : (
             <div className="flex items-center justify-between invisible">
               <span className="text-[10px] font-medium text-primary/50">Phí ship</span>
-              <span className="text-[11px] font-bold text-primary/50">0 k</span>
+              <span className="text-xs font-bold text-primary/50">0 ká</span>
             </div>
           )}
 
           {totalDiscountK > 0 ? (
             <div className="flex items-center justify-between text-orange-600">
               <span className="text-[10px] font-medium">Giảm giá</span>
-              <span className="text-[11px] font-bold">-{totalDiscountK.toLocaleString("vi-VN")} k</span>
+              <span className="text-xs font-bold">-{formatKa(totalDiscountK * 1000, "floor")}</span>
             </div>
           ) : (
             <div className="flex items-center justify-between invisible">
               <span className="text-[10px] font-medium">Giảm giá</span>
-              <span className="text-[11px] font-bold">0 k</span>
+              <span className="text-xs font-bold">0 ká</span>
             </div>
           )}
           
@@ -274,12 +288,19 @@ export const CartFooter = memo(function CartFooter({
             <span className="text-[9px] font-bold text-primary/40 uppercase tracking-widest leading-none">Tổng tiền</span>
             <div className="flex flex-col items-end">
               <span className="font-serif text-xl font-bold text-primary leading-none">
-                {grandTotalK} k
+                {formatKa(grandTotalK * 1000, "ceil")}
               </span>
-              {isLoggedIn && totalAfterDiscountVnd >= 10000 && (
-                <span className="text-[9px] font-bold text-teal-700 bg-teal-50 px-1 py-0.5 rounded-sm mt-0.5">
-                  +{Math.floor(totalAfterDiscountVnd / 10000)} điểm
-                </span>
+              {isLoggedIn && totalPoints > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsPointsSheetOpen(true)}
+                  className="relative mt-0.5 flex h-5 items-center gap-1 whitespace-nowrap rounded-md bg-teal-50 px-1.5 text-[10px] font-bold text-teal-800 after:absolute after:-inset-y-3 after:inset-x-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-700"
+                  aria-label="Xem cách tính điểm"
+                >
+                  +{totalPoints} điểm
+                  {surplusPoints > 0 && <span className="text-amber-700">· Có điểm dư</span>}
+                  <Info className="h-3 w-3" />
+                </button>
               )}
             </div>
           </div>
@@ -307,13 +328,14 @@ export const CartFooter = memo(function CartFooter({
           disabled={
             checkout.status === "loading" || 
             itemsLength === 0 || 
-            (orderType === "PICKUP" && !!pickupTime && pickupTime < minTimeStr) || 
+            (!!pickupTime && pickupTime < minTimeStr) ||
+            hasUnavailableItems ||
             isStoreClosed ||
             (orderType === "DELIVERY" && (!deliveryAddress || shippingFee === null || !!deliveryError))
           }
           className={cn(
             "flex-[3] py-3.5 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center justify-center gap-1.5",
-            checkout.status === "loading" || (orderType === "PICKUP" && !!pickupTime && pickupTime < minTimeStr) || isStoreClosed || (orderType === "DELIVERY" && (!deliveryAddress || shippingFee === null || !!deliveryError))
+            checkout.status === "loading" || (!!pickupTime && pickupTime < minTimeStr) || hasUnavailableItems || isStoreClosed || (orderType === "DELIVERY" && (!deliveryAddress || shippingFee === null || !!deliveryError))
               ? "bg-primary/60 text-white cursor-not-allowed"
               : "bg-primary text-white hover:scale-[1.01] active:scale-[0.99]"
           )}
@@ -335,6 +357,19 @@ export const CartFooter = memo(function CartFooter({
           )}
         </button>
       </div>
+      {hasUnavailableItems && (
+        <p className="text-center text-xs font-semibold text-amber-700">
+          Vui lòng xoá món không còn phục vụ để tiếp tục.
+        </p>
+      )}
+      <PointsBreakdownSheet
+        open={isPointsSheetOpen}
+        onOpenChange={setIsPointsSheetOpen}
+        eligibleMerchandiseVnd={totalAfterDiscountVnd}
+        orderPoints={orderPoints}
+        surplusPoints={surplusPoints}
+        totalPoints={totalPoints}
+      />
     </div>
   );
 });

@@ -60,7 +60,7 @@ async function fetchMenuData(): Promise<MenuData> {
       milkMlMap[c.size] = c.milk_ml;
     }
 
-    // Global addon groups shape (same for every item)
+    // Global addon groups shape returned once at MenuData level
     const globalAddonGroups: AddonGroup[] = addonGroups.map((g) => ({
       id: g.id,
       name: g.name,
@@ -76,6 +76,14 @@ async function fetchMenuData(): Promise<MenuData> {
         is_default: o.is_default,
         sort_order: o.sort_order,
       })),
+    }));
+
+    const globalMilkTypes: MilkTypeOption[] = milkTypes.map((m) => ({
+      id: m.id,
+      name: m.name,
+      price_per_ml: m.price_per_ml,
+      is_default: m.is_default,
+      display_order: m.display_order,
     }));
 
     // Resolve Fusion default powder fallback order: Meyumi → Hana → MH-3 → cheapest
@@ -102,8 +110,7 @@ async function fetchMenuData(): Promise<MenuData> {
 
     let maxUpdatedAt = new Date(0);
     for (const item of items) {
-      // updated_at tracking — MenuItem has updated_at
-      const updatedAt = (item as unknown as { updated_at: Date }).updated_at;
+      const updatedAt = item.updated_at;
       if (updatedAt > maxUpdatedAt) maxUpdatedAt = updatedAt;
 
       // Sizes — exclude null base_price_vnd
@@ -129,9 +136,7 @@ async function fetchMenuData(): Promise<MenuData> {
         powder: null,
         resolved_default_powder_id: null,
         allowed_powder_ids: [],
-        milk_types: [],
         sizes,
-        addon_groups: globalAddonGroups,
       };
 
       if (item.category === "latte") {
@@ -142,13 +147,6 @@ async function fetchMenuData(): Promise<MenuData> {
               type: item.matchaPowder.type,
             } as MenuItemPowder)
           : null;
-        menuItem.milk_types = milkTypes.map((m): MilkTypeOption => ({
-          id: m.id,
-          name: m.name,
-          price_per_ml: m.price_per_ml,
-          is_default: m.is_default,
-          display_order: m.display_order,
-        }));
         latte.push(menuItem);
       } else {
         menuItem.resolved_default_powder_id = resolveFusionDefaultPowderId(
@@ -161,13 +159,11 @@ async function fetchMenuData(): Promise<MenuData> {
       }
     }
 
-    const allItems = [...latte, ...fusion];
-    const seasonal = allItems.filter(item => item.is_seasonal);
-
     return {
       updated_at: maxUpdatedAt.toISOString(),
       latte,
       fusion,
-      seasonal,
-    } as unknown as MenuData;
+      milk_types: globalMilkTypes,
+      addon_groups: globalAddonGroups,
+    };
 }

@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { sendPushToUser } from "@/lib/push";
 
 export async function POST(req: NextRequest) {
+  void req;
   const session = await getSession();
   
   if (!session) {

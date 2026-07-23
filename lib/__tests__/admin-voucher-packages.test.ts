@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Unit tests for admin voucher-packages API routes.
  * GET + POST /api/admin/voucher-packages
  * PUT + DELETE /api/admin/voucher-packages/[id]
@@ -351,9 +351,68 @@ describe("POST /api/admin/voucher-packages", () => {
   });
 });
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ── Validation bổ sung ──────────────────────────────────────────────────────
+
+describe("POST /api/admin/voucher-packages — validation bổ sung", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetSession.mockResolvedValue(ADMIN_SESSION);
+  });
+
+  it("FIXED discount_value không chia hết cho 1000 → VALIDATION_ERROR", async () => {
+    const res = await POST(
+      makeReq({
+        voucher_type: "DISCOUNT",
+        name: "Fixed 15500",
+        points_cost: 1,
+        discount_type: "FIXED",
+        discount_value: 15500, // NOT divisible by 1000
+      })
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("PRODUCT package covered_price_vnd chỉ tính giá nước, không cộng addon", async () => {
+    const ADDON_KEM_ID = "a50e8400-e29b-41d4-a716-446655440099";
+    // Setup: latte SMALL with addon kem (15k)
+    mockMenuItemFindUnique.mockResolvedValue(latteMenuItem);
+    mockBuildPricingContext.mockResolvedValue(basePricingCtx);
+    mockResolveOrderItemPrice.mockReturnValue(45000); // base SMALL = 45k
+
+    // Addon kem 15k
+    const kemAddon = { id: ADDON_KEM_ID, price_vnd: 15000, gram_value: null };
+    mockAddonFindMany.mockResolvedValue([kemAddon]);
+
+    // Mock create to capture what covered_price_vnd is set to
+    mockPkgCreate.mockImplementation(
+      (args: { data: Record<string, unknown> }) => Promise.resolve({ id: "new-pkg", ...args.data })
+    );
+
+    const res = await POST(
+      makeReq({
+        voucher_type: "PRODUCT",
+        name: "Trà Xanh Sữa SMALL + Kem",
+        points_cost: 5,
+        menu_item_id: MENU_ITEM_ID,
+        size: "SMALL",
+        included_addon_option_ids: [ADDON_KEM_ID],
+      })
+    );
+
+    expect(res.status).toBe(201);
+
+    // covered_price_vnd should be 45000 (drink only), NOT 45000 + 15000 = 60000
+    const createCall = mockPkgCreate.mock.calls[0][0] as { data: { covered_price_vnd: number } };
+    expect(createCall.data.covered_price_vnd).toBe(45000);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // PUT /api/admin/voucher-packages/[id]
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 describe("PUT /api/admin/voucher-packages/[id]", () => {
   beforeEach(() => {
