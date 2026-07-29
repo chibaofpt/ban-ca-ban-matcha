@@ -14,8 +14,12 @@ export interface OrderItemRes {
   coldwhisk: boolean;
   note: string | null;
   selectedPowder: { name: string; price_per_gram: number } | null;
+  menu_item_id?: string;
+  selected_powder_id?: string | null;
+  selected_milk_type_id?: string | null;
   milkType: { name: string; is_default: boolean } | null;
   addons: {
+    addon_option_id?: string;
     unit_price_vnd: number;
     addonOption: {
       label: string;

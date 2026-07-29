@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { RegisterSchema } from "@/lib/validations/auth";
+import { RegisterSchemaWithInstagram } from "@/lib/validations/auth";
 import { prisma } from "@/lib/prisma";
 import { normalizePhone, signJwt, setAuthCookies } from "@/lib/auth";
+import { isUniqueConstraintError } from "@/lib/prisma-errors";
 import bcrypt from "bcryptjs";
 
 /**
@@ -9,8 +10,8 @@ import bcrypt from "bcryptjs";
  */
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const parsedParams = RegisterSchema.safeParse(body);
+    const body = await req.json().catch(() => null);
+    const parsedParams = RegisterSchemaWithInstagram.safeParse(body);
 
     if (!parsedParams.success) {
       const firstError = parsedParams.error.issues[0];
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { name, phone_number, password } = parsedParams.data;
+    const { name, phone_number, password, insta_name } = parsedParams.data;
     const normalizedPhone = normalizePhone(phone_number);
 
     // Check for existing user
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
           data: {
             name,
             password_hash: passwordHash,
+            insta_name,
             points_balance: { increment: 5 }, // Award welcome bonus
           },
         });
@@ -66,6 +68,7 @@ export async function POST(req: Request) {
             name,
             phone_number: normalizedPhone,
             password_hash: passwordHash,
+            insta_name,
             points_balance: 5, // Award welcome bonus
           },
         });
@@ -115,12 +118,19 @@ export async function POST(req: Request) {
         data: {
           name: user.name,
           phone_number: user.phone_number,
+          insta_name: user.insta_name,
           role: user.role,
         },
       },
       { status: 201 }
     );
   } catch (err: unknown) {
+    if (isUniqueConstraintError(err)) {
+      return NextResponse.json(
+        { error: "Tên Instagram này đã được sử dụng", code: "CONFLICT" },
+        { status: 409 },
+      );
+    }
     console.error("Register Error:", err);
     return NextResponse.json({ error: "Đã xảy ra lỗi hệ thống", code: "INTERNAL_ERROR" }, { status: 500 });
   }

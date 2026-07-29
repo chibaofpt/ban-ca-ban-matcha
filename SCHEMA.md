@@ -103,6 +103,7 @@ grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
 - `id` uuid PK
 - `name` string
 - `phone_number` string UK — normalized to +84 before storage
+- `insta_name` string UK nullable — self-declared login alias, normalized without `@` and to lowercase
 - `password_hash` string — bcryptjs cost 12. Ghost user = `"GHOST_USER_NO_PASSWORD"`
 - `role` Role — default `CUSTOMER`
 - `points_balance` int — default 0

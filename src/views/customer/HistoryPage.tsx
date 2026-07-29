@@ -6,18 +6,23 @@ import { listMyVouchers, type MyVoucher } from "@/src/services/customerVoucherSe
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronUp, Clock, Copy, CheckCircle2, XCircle, Ticket, Fish, ArrowRightLeft, User, ShieldCheck, Gift } from "lucide-react";
+import { ChevronDown, ChevronUp, Clock, Copy, CheckCircle2, XCircle, Ticket, Fish, ArrowRightLeft, User, ShieldCheck, Gift, RotateCcw } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import { CountdownTimer } from "@/src/components/customer/CountdownTimer";
 import { OrderProgressBar } from "@/src/components/shared/OrderProgressBar";
 import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import type { OrderStatus } from "@/src/lib/types/order";
+import type { Category, Size, SweetnessLevel } from "@/src/lib/types/menu";
+import type { IceOption } from "@/src/lib/types/cart";
 import VoucherModal from "@/src/components/shared/VoucherModal";
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
 import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
 import { useIsLoggedIn } from "@/src/lib/store/authStore";
 import { formatKa, formatOrderSize } from "@/src/utils/display";
+import { groupOrderItems } from "@/src/utils/orderHelpers";
+import ReorderResultSheet from "@/src/components/customer/ReorderResultSheet";
+import { useReorderItem } from "@/src/hooks/useReorderItem";
 
 interface CustomerHistoryOrder {
   id: string;
@@ -35,20 +40,24 @@ interface CustomerHistoryOrder {
   payment_qr_url: string | null;
   discountVouchers?: Array<{ voucher: { package: { name: string } } }>;
   items: Array<{
+    menu_item_id: string;
     quantity: number;
-    size: string;
+    size: Size;
     unit_price_vnd: number;
     addons_price_vnd: number;
-    sweetness: string;
-    ice_option: string;
+    sweetness: SweetnessLevel;
+    ice_option: IceOption;
     coldwhisk: boolean;
     note: string | null;
-    menuItem: { name: string; category: string };
+    selected_powder_id: string | null;
+    selected_milk_type_id: string | null;
+    menuItem: { name: string; category: Category };
     productVoucher?: { package: { name: string } } | null;
     addonVouchers?: Array<{ voucher: { package: { name: string } } }>;
     selectedPowder: { name: string; price_per_gram: number } | null;
     milkType: { name: string; is_default: boolean } | null;
     addons: Array<{
+      addon_option_id: string;
       unit_price_vnd: number;
       quantity: number;
       addonOption: {
@@ -178,6 +187,13 @@ export default function HistoryPage() {
     isOpen: boolean;
     orderId: string;
   }>({ isOpen: false, orderId: "" });
+
+  const {
+    result: reorderResult,
+    reorderItem,
+    closeResult,
+    openCart,
+  } = useReorderItem();
 
   // Voucher history state is now managed by TanStack Query
   // The UI can use isVouchersLoading and vouchers directly
@@ -326,10 +342,11 @@ export default function HistoryPage() {
                 <>
                   {rawOrders.map((order) => {
                     const isOpen = !!expanded[order.id];
-                  const isPending = order.status === "PENDING";
-                  const isCompleted = order.status === "COMPLETED";
-                  const isCancelled = order.status === "CANCELLED";
-                  const isTerminal = isCompleted || isCancelled;
+                    const isPending = order.status === "PENDING";
+                    const isCompleted = order.status === "COMPLETED";
+                    const isCancelled = order.status === "CANCELLED";
+                    const isTerminal = isCompleted || isCancelled;
+                    const groupedItems = groupOrderItems(order.items);
 
                   return (
                     <div
@@ -424,7 +441,7 @@ export default function HistoryPage() {
                             className="w-full flex items-center justify-between text-sm text-foreground/90 font-semibold py-1.5 hover:text-primary transition-colors"
                           >
                             <span>
-                              {order.items.reduce((s, i) => s + i.quantity, 0)} món
+                              {groupedItems.reduce((s, i) => s + i.quantity, 0)} món
                             </span>
                             {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                           </button>
@@ -433,7 +450,7 @@ export default function HistoryPage() {
                         {/* Expanded item list */}
                         {isOpen && (
                           <ul className="space-y-3 text-sm text-foreground/90 pb-2">
-                            {order.items.map((it, idx) => (
+                            {groupedItems.map((it, idx) => (
                               <li key={idx} className="flex justify-between gap-3">
                                 <div className="flex flex-col min-w-0">
                                   <span className="font-semibold text-[13px]">
@@ -444,7 +461,17 @@ export default function HistoryPage() {
                                   </span>
                                   <OrderItemDetails item={it} />
                                 </div>
-                                <span className="font-medium text-foreground shrink-0 mt-0.5 text-[13px]">×{it.quantity}</span>
+                                <div className="flex items-center gap-2 shrink-0 mt-0.5">
+                                  <span className="font-medium text-foreground text-[13px]">×{it.quantity}</span>
+                                  {isTerminal && (
+                                    <button
+                                      onClick={() => void reorderItem(it)}
+                                      className="p-1.5 -mr-1.5 rounded-full text-primary hover:bg-primary/10 active:bg-primary/20 transition-colors"
+                                    >
+                                      <RotateCcw size={14} />
+                                    </button>
+                                  )}
+                                </div>
                               </li>
                             ))}
                             {order.total_voucher_discount_vnd > 0 && (
@@ -567,6 +594,16 @@ export default function HistoryPage() {
         isDestructive={true}
         onConfirm={handleCancelConfirm}
         onCancel={() => setCancelModal({ isOpen: false, orderId: "" })}
+      />
+
+      <ReorderResultSheet
+        isOpen={reorderResult.isOpen}
+        onClose={closeResult}
+        onOpenCart={openCart}
+        itemName={reorderResult.itemName}
+        configSummary={reorderResult.configSummary}
+        warnings={reorderResult.warnings}
+        isSuccess={reorderResult.isSuccess}
       />
 
       <VoucherModal />

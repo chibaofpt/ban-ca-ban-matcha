@@ -4,11 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { normalizePhone, signJwt, createSession, setAuthCookies } from "@/lib/auth";
 import {
   checkLoginFailLimit,
-  checkPhoneFloodGuard,
+  checkIdentifierFloodGuard,
   recordLoginFail,
-  recordPhoneFloodAttempt,
+  recordIdentifierFloodAttempt,
   resetLoginFail,
-  resetPhoneFlood,
+  resetIdentifierFlood,
+  type LoginIdentifierKind,
 } from "@/lib/rateLimit";
 import bcrypt from "bcryptjs";
 
@@ -25,7 +26,7 @@ const MAX_ACTIVE_SESSIONS = 5;
  */
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
     const parsedParams = LoginSchema.safeParse(body);
 
     if (!parsedParams.success) {
@@ -36,8 +37,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const { phone_number, password } = parsedParams.data;
-    const normalizedPhone = normalizePhone(phone_number);
+    const { phone_number, insta_name, password } = parsedParams.data;
+    const identifierKind: LoginIdentifierKind =
+      phone_number !== undefined ? "phone" : "instagram";
+    const normalizedIdentifier =
+      phone_number !== undefined ? normalizePhone(phone_number) : insta_name!;
 
     // Extract IP for rate limiting (x-forwarded-for set by Vercel/proxy)
     const ip =
@@ -55,23 +59,38 @@ export async function POST(req: Request) {
       );
     }
 
-    // ── Layer 3: Phone flood guard ─────────────────────────────────────────────
-    // Catches distributed attacks where many IPs target the same phone number.
-    const phoneCheck = await checkPhoneFloodGuard(normalizedPhone);
-    if (!phoneCheck.allowed) {
+    // Catches distributed attacks where many IPs target one login identifier.
+    const identifierCheck = await checkIdentifierFloodGuard(
+      identifierKind,
+      normalizedIdentifier,
+    );
+    if (!identifierCheck.allowed) {
       return NextResponse.json(
-        { error: "Quá nhiều yêu cầu cho số điện thoại này. Vui lòng thử lại sau 15 phút.", code: "PHONE_FLOOD" },
+        {
+          error: "Quá nhiều yêu cầu đăng nhập. Vui lòng thử lại sau 15 phút.",
+          code: identifierKind === "phone" ? "PHONE_FLOOD" : "TOO_MANY_REQUESTS",
+        },
         { status: 429 }
       );
     }
 
     const user = await prisma.user.findUnique({
-      where: { phone_number: normalizedPhone },
+      where:
+        identifierKind === "phone"
+          ? { phone_number: normalizedIdentifier }
+          : { insta_name: normalizedIdentifier },
     });
+    const isAllowedCandidate =
+      user !== null &&
+      (identifierKind === "phone" || user.role === "CUSTOMER");
 
     // EDGE-3: Ghost user guard — must run bcrypt for timing-safety, then reject clearly.
     // Ghost users have never set a password; they should register, not login.
-    if (user && user.password_hash === "GHOST_USER_NO_PASSWORD") {
+    if (
+      identifierKind === "phone" &&
+      user &&
+      user.password_hash === "GHOST_USER_NO_PASSWORD"
+    ) {
       await bcrypt.compare(password, DUMMY_HASH); // timing-safe: always run compare
       return NextResponse.json(
         { error: "Số điện thoại chưa được đăng ký. Vui lòng tạo tài khoản.", code: "NOT_REGISTERED" },
@@ -82,19 +101,19 @@ export async function POST(req: Request) {
     // Timing-safe password compare
     const isValidPassword = await bcrypt.compare(
       password,
-      user ? user.password_hash : DUMMY_HASH
+      isAllowedCandidate ? user.password_hash : DUMMY_HASH
     );
 
-    if (!user || !isValidPassword) {
+    if (!isAllowedCandidate || !isValidPassword) {
       // Record failed attempt — both counters increment only on wrong password.
       // Run in parallel to minimize latency impact.
       await Promise.all([
         recordLoginFail(ip),
-        recordPhoneFloodAttempt(normalizedPhone),
+        recordIdentifierFloodAttempt(identifierKind, normalizedIdentifier),
       ]);
 
       return NextResponse.json(
-        { error: "Số điện thoại hoặc mật khẩu không chính xác", code: "INVALID_CREDENTIALS" },
+        { error: "Thông tin đăng nhập hoặc mật khẩu không chính xác", code: "INVALID_CREDENTIALS" },
         { status: 401 }
       );
     }
@@ -103,7 +122,7 @@ export async function POST(req: Request) {
     // Run in parallel to minimize latency impact.
     await Promise.all([
       resetLoginFail(ip),
-      resetPhoneFlood(normalizedPhone),
+      resetIdentifierFlood(identifierKind, normalizedIdentifier),
     ]);
 
     // EDGE-4: Session limit — keep at most MAX_ACTIVE_SESSIONS-1 existing sessions
@@ -133,6 +152,7 @@ export async function POST(req: Request) {
         data: {
           name: user.name,
           phone_number: user.phone_number,
+          insta_name: user.insta_name,
           role: user.role,
         },
       },

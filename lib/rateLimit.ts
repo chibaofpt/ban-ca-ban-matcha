@@ -67,8 +67,8 @@ export async function checkDistributedRateLimit(
 /** Max failed login attempts per IP before that IP is blocked. */
 const IP_LOGIN_FAIL_LIMIT = 5;
 
-/** Max failed login attempts per phone number (across all IPs) before phone is soft-blocked. */
-const PHONE_FLOOD_LIMIT = 10;
+/** Max failed login attempts per identifier before it is soft-blocked. */
+const IDENTIFIER_FLOOD_LIMIT = 10;
 
 /** TTL for both counters in seconds (15 minutes). */
 const LOGIN_FAIL_TTL = 900;
@@ -132,51 +132,87 @@ export async function resetLoginFail(ip: string): Promise<void> {
  * too many failed attempts across all IPs (distributed attack defence).
  * Fail-open: returns { allowed: true } if Redis is unavailable.
  */
-export async function checkPhoneFloodGuard(
-  phone: string,
+export type LoginIdentifierKind = "phone" | "instagram";
+
+function identifierFloodKey(
+  kind: LoginIdentifierKind,
+  identifier: string,
+): string {
+  return `login:${kind}:${identifier}`;
+}
+
+/**
+ * Check the distributed flood guard for a normalized phone or Instagram identifier.
+ */
+export async function checkIdentifierFloodGuard(
+  kind: LoginIdentifierKind,
+  identifier: string,
 ): Promise<{ allowed: boolean }> {
   const client = getRedisClient();
   if (!client) return { allowed: true };
 
   try {
-    const key = `login:phone:${phone}`;
+    const key = identifierFloodKey(kind, identifier);
     const count = await (client as unknown as { get: (k: string) => Promise<number | null> }).get(key);
     const num = count ? Number(count) : 0;
-    return { allowed: num < PHONE_FLOOD_LIMIT };
+    return { allowed: num < IDENTIFIER_FLOOD_LIMIT };
   } catch (err) {
-    console.error('[RateLimit] checkPhoneFloodGuard failed, failing open:', err);
+    console.error('[RateLimit] identifier flood check failed, failing open:', err);
     return { allowed: true };
   }
 }
 
 /**
- * Increment the phone flood counter. Call only on wrong password attempts.
+ * Increment the normalized identifier flood counter after invalid credentials.
  * Silently ignores Redis failures.
  */
-export async function recordPhoneFloodAttempt(phone: string): Promise<void> {
+export async function recordIdentifierFloodAttempt(
+  kind: LoginIdentifierKind,
+  identifier: string,
+): Promise<void> {
   const client = getRedisClient();
   if (!client) return;
 
   try {
-    const key = `login:phone:${phone}`;
+    const key = identifierFloodKey(kind, identifier);
     await (client as unknown as { incr: (k: string) => Promise<number> }).incr(key);
     await (client as unknown as { expire: (k: string, s: number) => Promise<number> }).expire(key, LOGIN_FAIL_TTL);
   } catch (err) {
-    console.error('[RateLimit] recordPhoneFloodAttempt failed:', err);
+    console.error('[RateLimit] record identifier flood failed:', err);
   }
 }
 
 /**
- * Reset the phone flood counter on successful login.
+ * Reset the normalized identifier flood counter on successful login.
  * Silently ignores Redis failures.
  */
-export async function resetPhoneFlood(phone: string): Promise<void> {
+export async function resetIdentifierFlood(
+  kind: LoginIdentifierKind,
+  identifier: string,
+): Promise<void> {
   const client = getRedisClient();
   if (!client) return;
 
   try {
-    await (client as unknown as { del: (k: string) => Promise<number> }).del(`login:phone:${phone}`);
+    await (client as unknown as { del: (k: string) => Promise<number> }).del(
+      identifierFloodKey(kind, identifier),
+    );
   } catch (err) {
-    console.error('[RateLimit] resetPhoneFlood failed:', err);
+    console.error('[RateLimit] reset identifier flood failed:', err);
   }
+}
+
+/** Backward-compatible phone flood check wrapper. */
+export async function checkPhoneFloodGuard(phone: string): Promise<{ allowed: boolean }> {
+  return checkIdentifierFloodGuard("phone", phone);
+}
+
+/** Backward-compatible phone flood increment wrapper. */
+export async function recordPhoneFloodAttempt(phone: string): Promise<void> {
+  return recordIdentifierFloodAttempt("phone", phone);
+}
+
+/** Backward-compatible phone flood reset wrapper. */
+export async function resetPhoneFlood(phone: string): Promise<void> {
+  return resetIdentifierFlood("phone", phone);
 }
