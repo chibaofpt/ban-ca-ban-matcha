@@ -13,7 +13,7 @@ export function line1ItemDetails(
   const chips: string[] = [];
   
   // Size
-  const sizeLabel = item.size === "SMALL" ? "cá nhỏ (360ml)" : item.size === "MEDIUM" ? "cá vừa (500ml)" : "cá lớn (1000ml)";
+  const sizeLabel = item.size === "SMALL" ? "cá nhỏ (360ml)" : item.size === "MEDIUM" ? "cá vừa (500ml)" : "cá lớn (700ml)";
   chips.push(sizeLabel);
 
   if (!menuItem) return chips;

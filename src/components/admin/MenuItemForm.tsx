@@ -6,7 +6,7 @@ import { useForm, Controller, useWatch } from "react-hook-form";
 import { cn } from "@/src/utils/cn";
 import type { AdminMenuItem } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
-import Image from "next/image";
+import MenuImageCropField from "@/src/components/admin/MenuImageCropField";
 
 // ── Form field types (all strings for HTML inputs) ────────────────────────────
 // RHF works with raw string inputs; we parse manually on submit.
@@ -138,7 +138,6 @@ export default function MenuItemForm({
   const powderMode = useWatch({ control, name: "powder_mode" });
   const matchaPowderId = useWatch({ control, name: "matcha_powder_id" });
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [pendingValues, setPendingValues] = useState<FormFields | null>(null);
@@ -268,20 +267,6 @@ export default function MenuItemForm({
     await onSubmit(fd);
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    if (file && file.size > 5 * 1024 * 1024) {
-      setFormError("Ảnh quá lớn! Vui lòng chọn ảnh nhỏ hơn 5MB.");
-      setImageFile(null);
-      setImagePreview(null);
-      e.target.value = "";
-      return;
-    }
-    setFormError(null);
-    setImageFile(file);
-    setImagePreview(file ? URL.createObjectURL(file) : null);
-  };
-
   const inputClass =
     "rounded-xl border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1 disabled:opacity-50 disabled:cursor-not-allowed";
   const labelClass = "text-sm font-medium text-foreground";
@@ -353,32 +338,11 @@ export default function MenuItemForm({
             />
           </div>
 
-          <div className="space-y-2">
-            <label className={labelClass}>Ảnh đại diện</label>
-            <div className="relative group rounded-2xl border-2 border-dashed border-border hover:border-primary/50 transition-colors bg-secondary/10 aspect-video flex flex-col items-center justify-center overflow-hidden cursor-pointer">
-              {imagePreview || (mode === "edit" && defaultValues?.name) ? (
-                imagePreview ? (
-                   <Image src={imagePreview} alt="Preview" fill unoptimized className="object-cover" />
-                ) : (
-                  <div className="text-4xl">📷</div>
-                )
-              ) : (
-                <div className="text-center p-4">
-                  <div className="bg-background w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-2 shadow-sm border border-border">
-                    <span className="text-muted-foreground">+</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground font-medium">Nhấn để tải ảnh lên</span>
-                </div>
-              )}
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                onChange={handleImageChange}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              />
-            </div>
-            <p className="text-[10px] text-muted-foreground text-center">Tỉ lệ 16:9 khuyên dùng. Max 5MB.</p>
-          </div>
+          <MenuImageCropField
+            hasExistingImage={mode === "edit" && Boolean(defaultValues?.name)}
+            onFileChange={setImageFile}
+            onError={setFormError}
+          />
         </div>
 
         <div className="w-full h-px bg-border/50" />
@@ -389,22 +353,23 @@ export default function MenuItemForm({
             Giá cơ sở (🐟 cá)
             <span className="text-muted-foreground font-normal ml-2 text-xs opacity-80">— Bỏ trống nếu không bán size tương ứng</span>
           </label>
-          <div className="grid grid-cols-3 gap-4 mt-2">
+          <div className="grid grid-cols-3 gap-3 mt-2">
             {(["SMALL", "MEDIUM", "LARGE"] as const).map((size) => {
               const sizeFieldMap = { SMALL: "size_m", MEDIUM: "size_l", LARGE: "size_xl" } as const;
+              const sizeLabel = { SMALL: "S", MEDIUM: "M", LARGE: "L" } as const;
               const field = sizeFieldMap[size];
               return (
-                <div key={size} className="relative">
-                  <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                    <span className="text-xs font-bold text-muted-foreground w-4">{size}</span>
-                  </div>
+                <div key={size} className="text-center">
+                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest block mb-1.5">
+                    {sizeLabel[size]}
+                  </span>
                   <input
                     type="number"
                     min="0"
                     step="1"
                     {...register(field)}
                     placeholder="—"
-                    className={cn(inputClass, "pl-9 font-medium")}
+                    className={cn(inputClass, "text-center font-medium")}
                   />
                 </div>
               );
@@ -616,22 +581,23 @@ export default function MenuItemForm({
                   Định lượng bột tuỳ chỉnh cho Món (g)
                 </label>
                 <p className="text-[10px] text-muted-foreground mt-0.5 mb-2">Bỏ trống sẽ dùng cấu hình mặc định của hệ thống.</p>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-3 gap-3">
                   {(["SMALL", "MEDIUM", "LARGE"] as const).map((size) => {
                     const gramsFieldMap = { SMALL: "grams_m", MEDIUM: "grams_l", LARGE: "grams_xl" } as const;
+                    const sizeLabel = { SMALL: "S", MEDIUM: "M", LARGE: "L" } as const;
                     const field = gramsFieldMap[size];
                     return (
-                      <div key={size} className="relative">
-                        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                          <span className="text-xs font-bold text-muted-foreground">{size}</span>
-                        </div>
+                      <div key={size} className="text-center">
+                        <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest block mb-1.5">
+                          {sizeLabel[size]}
+                        </span>
                         <input
                           type="number"
                           min="0"
                           step="0.1"
                           {...register(field)}
                           placeholder="—"
-                          className={cn(inputClass, "pl-9 text-xs")}
+                          className={cn(inputClass, "text-center text-xs")}
                         />
                       </div>
                     );
@@ -646,22 +612,23 @@ export default function MenuItemForm({
                     Định lượng chuẩn của Bột mới (g)
                   </label>
                   <p className="text-[10px] text-muted-foreground mt-0.5 mb-2">Ghi đè cấu hình hệ thống cho riêng loại bột này.</p>
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-3 gap-3">
                     {(["SMALL", "MEDIUM", "LARGE"] as const).map((size) => {
                       const npGramsFieldMap = { SMALL: "new_powder_grams_m", MEDIUM: "new_powder_grams_l", LARGE: "new_powder_grams_xl" } as const;
+                      const sizeLabel = { SMALL: "S", MEDIUM: "M", LARGE: "L" } as const;
                       const field = npGramsFieldMap[size];
                       return (
-                        <div key={size} className="relative">
-                          <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-                            <span className="text-xs font-bold text-muted-foreground">{size}</span>
-                          </div>
+                        <div key={size} className="text-center">
+                          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest block mb-1.5">
+                            {sizeLabel[size]}
+                          </span>
                           <input
                             type="number"
                             min="0"
                             step="0.1"
                             {...register(field)}
                             placeholder="—"
-                            className={cn(inputClass, "pl-9 text-xs")}
+                            className={cn(inputClass, "text-center text-xs")}
                           />
                         </div>
                       );
@@ -749,6 +716,7 @@ export default function MenuItemForm({
           </div>
         </div>
       )}
+
     </form>
   );
 }

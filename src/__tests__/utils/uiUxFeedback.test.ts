@@ -56,7 +56,7 @@ describe("formatOrderSize — không hiển thị enum thô", () => {
   it("map đủ ba size sang tên và dung tích", () => {
     expect(formatOrderSize("SMALL")).toBe("Cá con (360ml)");
     expect(formatOrderSize("MEDIUM")).toBe("Cá vừa (500ml)");
-    expect(formatOrderSize("LARGE")).toBe("Cá lớn (1000ml)");
+    expect(formatOrderSize("LARGE")).toBe("Cá lớn (700ml)");
   });
 });
 

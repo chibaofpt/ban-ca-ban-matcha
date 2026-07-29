@@ -56,8 +56,11 @@ vi.mock("@/lib/rateLimit", () => ({
   recordLoginFail: (...args: unknown[]) => mockRecordLoginFail(...args),
   resetLoginFail: (...args: unknown[]) => mockResetLoginFail(...args),
   checkPhoneFloodGuard: (...args: unknown[]) => mockCheckPhoneFloodGuard(...args),
+  checkIdentifierFloodGuard: (...args: unknown[]) => mockCheckPhoneFloodGuard(...args),
   recordPhoneFloodAttempt: (...args: unknown[]) => mockRecordPhoneFloodAttempt(...args),
+  recordIdentifierFloodAttempt: (...args: unknown[]) => mockRecordPhoneFloodAttempt(...args),
   resetPhoneFlood: (...args: unknown[]) => mockResetPhoneFlood(...args),
+  resetIdentifierFlood: (...args: unknown[]) => mockResetPhoneFlood(...args),
   // Keep existing export so middleware tests don't break
   checkDistributedRateLimit: vi.fn().mockResolvedValue({ allowed: true, remaining: 9 }),
   getAuthRateLimit: vi.fn().mockReturnValue(null),

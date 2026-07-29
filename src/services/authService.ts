@@ -14,12 +14,12 @@ export interface RegisterPayload {
   name: string;
   phone_number: string;
   password: string;
+  insta_name?: string;
 }
 
-export interface LoginPayload {
-  phone_number: string;
-  password: string;
-}
+export type LoginPayload =
+  | { phone_number: string; password: string; insta_name?: never }
+  | { insta_name: string; password: string; phone_number?: never };
 
 /** Check whether a phone number is already registered */
 export async function checkPhone(phone_number: string): Promise<{ exists: boolean }> {

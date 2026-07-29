@@ -13,6 +13,7 @@ export interface AuthUser {
 interface AuthState {
   user: AuthUser | null;
   login: (phone: string, name?: string) => void;
+  updateName: (name: string) => void;
   logout: () => void;
 }
 
@@ -30,6 +31,11 @@ export const useAuthStore = create<AuthState>()(
         resetForceLogout();
         set({ user: { phone, name: name ?? phone } });
       },
+
+      updateName: (name) =>
+        set((state) => ({
+          user: state.user ? { ...state.user, name } : null,
+        })),
 
       logout: () => set({ user: null }),
     }),

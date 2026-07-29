@@ -126,7 +126,7 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 | `/api/orders` | POST | Create order from cart |
 | `/api/orders` | GET | List own orders (newest first, limit 20) |
 | `/api/orders/[id]` | GET | Own order detail |
-| `/api/profile` | GET | Own profile info |
+| `/api/profile` | GET/PATCH | Read or update own profile info |
 | `/api/profile/points` | GET | Balance + last 20 log entries |
 | `/api/profile/vouchers` | GET | Own ACTIVE vouchers |
 | `/api/profile/vouchers/exchange` | POST | Spend points on a voucher package to receive a Voucher |
@@ -188,8 +188,44 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 
 ### `POST /api/auth/register`
 ```ts
-{ phone_number: string, password: string, name: string }
+{
+  phone_number: string
+  password: string
+  name: string
+  insta_name?: string // optional, unique, normalized without @ and to lowercase
+}
 // If phone exists with password_hash = "GHOST_USER_NO_PASSWORD" → UPDATE instead of INSERT
+```
+
+### `POST /api/auth/login`
+```ts
+// Exactly one identifier is required. Instagram login is CUSTOMER-only.
+{ phone_number: string, password: string }
+// or
+{ insta_name: string, password: string }
+```
+
+### `GET /api/profile`
+```ts
+{
+  data: {
+    name: string
+    phone_number: string
+    insta_name: string | null
+    points_balance: number
+    qr_token: string
+  }
+}
+```
+
+### `PATCH /api/profile`
+```ts
+{
+  name?: string
+  insta_name?: string | null
+  current_password?: string // required only when Instagram actually changes
+}
+// CUSTOMER-only. phone_number is intentionally not editable.
 ```
 
 ### `GET /api/powders`

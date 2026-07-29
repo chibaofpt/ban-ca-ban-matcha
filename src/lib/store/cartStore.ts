@@ -22,7 +22,7 @@ interface CartState {
   items: CartItem[];
   isCartOpen: boolean;
   setCartOpen: (open: boolean) => void;
-  addItem: (newItem: Omit<CartItem, "cartId">) => void;
+  addItem: (newItem: Omit<CartItem, "cartId">) => string;
   removeItem: (cartId: string) => void;
   updateItem: (cartId: string, updates: Partial<CartItem>) => void;
   updateQuantity: (cartId: string, quantity: number) => void;
@@ -59,10 +59,10 @@ export const useCartStore = create<CartState>()(
       }),
 
       addItem: (newItem) => {
-        const { items } = get();
-        // Each addition is a unique row with its own cartId — no deduplication.
         const cartId = crypto.randomUUID();
-        set({ items: [...items, { ...newItem, cartId }] });
+        const fullItem: CartItem = { ...newItem, cartId };
+        set((state) => ({ items: [...state.items, fullItem] }));
+        return cartId;
       },
 
       removeItem: (cartId) => {

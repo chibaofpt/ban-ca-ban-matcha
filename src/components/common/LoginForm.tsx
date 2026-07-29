@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Phone, Lock, Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { AtSign, Lock, Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAuthStore } from "@/src/lib/store/authStore";
@@ -12,6 +12,7 @@ import { loginFormSchema, LoginFormValues as LoginInput } from "@/src/lib/valida
 import { login as loginRequest, type LoginPayload } from "@/src/services/authService";
 import { resetForceLogout } from "@/src/lib/api/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { classifyLoginIdentifier } from "@/src/lib/utils/loginIdentifier";
 
 const LoginForm = () => {
   const router = useRouter();
@@ -29,7 +30,7 @@ const LoginForm = () => {
     mode: "onChange",
     reValidateMode: "onChange",
     defaultValues: {
-      phone_number: "",
+      identifier: "",
       password: "",
     },
   });
@@ -41,10 +42,11 @@ const LoginForm = () => {
   const onSubmit = async (data: LoginInput) => {
     setServerError(null);
     try {
-      const payload: LoginPayload = {
-        phone_number: data.phone_number,
-        password: data.password,
-      };
+      const identifier = classifyLoginIdentifier(data.identifier);
+      const payload: LoginPayload =
+        identifier.kind === "phone"
+          ? { phone_number: identifier.value, password: data.password }
+          : { insta_name: identifier.value, password: data.password };
       const user = await loginRequest(payload);
       queryClient.removeQueries({ queryKey: ["customer"] });
 
@@ -98,31 +100,34 @@ const LoginForm = () => {
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-1.5">
-          <label htmlFor="login-phone" className="text-sm font-medium text-foreground">
-            Số điện thoại
+          <label htmlFor="login-identifier" className="text-sm font-medium text-foreground">
+            Số điện thoại hoặc Instagram
           </label>
           <div className="relative">
-            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
-              id="login-phone"
-              type="tel"
-              placeholder="091 234 5678"
-              {...register("phone_number", {
-                onChange: (e) => {
-                  /** Strip whitespace so "091 234 5678" → "0912345678" before Zod sees it */
-                  const cleaned = e.target.value.replace(/\s+/g, "");
-                  setValue("phone_number", cleaned, { shouldValidate: true });
+              id="login-identifier"
+              type="text"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="091 234 5678 hoặc @ten_instagram"
+              {...register("identifier", {
+                onChange: (event) => {
+                  setValue("identifier", event.target.value, {
+                    shouldValidate: true,
+                  });
                 },
                 onBlur: () => window.scrollTo(0, 0)
               })}
               disabled={isSubmitting}
-              className={`w-full h-11 pl-9 pr-4 rounded-xl border bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 ${
-                errors.phone_number ? "border-red-500 focus:ring-red-500" : "border-input"
+              className={`w-full h-11 pl-9 pr-4 rounded-xl border bg-background text-base md:text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 ${
+                errors.identifier ? "border-red-500 focus:ring-red-500" : "border-input"
               }`}
             />
           </div>
-          {errors.phone_number && (
-            <p className="text-xs text-red-500">{errors.phone_number.message}</p>
+          {errors.identifier && (
+            <p className="text-xs text-red-500">{errors.identifier.message}</p>
           )}
         </div>
 
@@ -140,15 +145,17 @@ const LoginForm = () => {
               {...register("password", {
                 onBlur: () => window.scrollTo(0, 0)
               })}
+              autoComplete="current-password"
               disabled={isSubmitting}
-              className={`w-full h-11 pl-9 pr-10 rounded-xl border bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 ${
+              className={`w-full h-11 pl-9 pr-11 rounded-xl border bg-background text-base md:text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 ${
                 errors.password ? "border-red-500 focus:ring-red-500" : "border-input"
               }`}
             />
             <button
               type="button"
               onClick={(e) => { e.preventDefault(); setShowPassword(!showPassword); }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none z-10 cursor-pointer"
+              aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+              className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring z-10 cursor-pointer"
               disabled={isSubmitting}
             >
               {showPassword ? (

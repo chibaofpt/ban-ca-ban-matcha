@@ -5,7 +5,7 @@ export type KaRoundingMode = "exact" | "ceil" | "floor";
 const SIZE_DISPLAY: Record<Size, { label: string; volume: string }> = {
   SMALL: { label: "Cá con", volume: "360ml" },
   MEDIUM: { label: "Cá vừa", volume: "500ml" },
-  LARGE: { label: "Cá lớn", volume: "1000ml" },
+  LARGE: { label: "Cá lớn", volume: "700ml" },
 };
 
 /** Formats integer VND as compact thousands with the ká suffix. */
