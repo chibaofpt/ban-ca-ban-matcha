@@ -118,21 +118,21 @@ const Navbar = () => {
             {isLoggedIn ? (
               <>
                 <NavLink
-                  href="/profile"
-                  className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-1.5"
-                  activeClassName="text-primary"
-                >
-                  <UserCircle className="w-3.5 h-3.5" />
-                  Tài khoản (QR)
-                </NavLink>
-
-                <NavLink
                   href="/history"
                   className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-1.5"
                   activeClassName="text-primary"
                 >
                   <ClipboardList className="w-3.5 h-3.5" />
-                  Đơn hàng & Voucher
+                  Đơn hàng và điểm
+                </NavLink>
+
+                <NavLink
+                  href="/profile"
+                  className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-1.5"
+                  activeClassName="text-primary"
+                >
+                  <UserCircle className="w-3.5 h-3.5" />
+                  Tài khoản
                 </NavLink>
 
                 <button
@@ -238,23 +238,23 @@ const Navbar = () => {
                 {isLoggedIn ? (
                   <>
                     <NavLink
-                      href="/profile"
-                      onClick={close}
-                      className="flex min-h-11 w-full flex-row-reverse items-center justify-end gap-2 text-sm font-medium text-foreground/80 transition-colors hover:text-primary"
-                      activeClassName="text-primary"
-                    >
-                      <UserCircle className="w-4 h-4" />
-                      Tài khoản (QR)
-                    </NavLink>
-
-                    <NavLink
                       href="/history"
                       onClick={close}
                       className="flex min-h-11 w-full flex-row-reverse items-center justify-end gap-2 text-sm font-medium text-foreground/80 transition-colors hover:text-primary"
                       activeClassName="text-primary"
                     >
                       <ClipboardList className="w-4 h-4" />
-                      Đơn hàng & Voucher
+                      Đơn hàng và điểm
+                    </NavLink>
+
+                    <NavLink
+                      href="/profile"
+                      onClick={close}
+                      className="flex min-h-11 w-full flex-row-reverse items-center justify-end gap-2 text-sm font-medium text-foreground/80 transition-colors hover:text-primary"
+                      activeClassName="text-primary"
+                    >
+                      <UserCircle className="w-4 h-4" />
+                      Tài khoản
                     </NavLink>
 
                     <button

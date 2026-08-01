@@ -127,8 +127,8 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 | `/api/orders` | GET | List own orders (newest first, limit 20) |
 | `/api/orders/[id]` | GET | Own order detail |
 | `/api/profile` | GET/PATCH | Read or update own profile info |
-| `/api/profile/points` | GET | Balance + last 20 log entries |
-| `/api/profile/vouchers` | GET | Own ACTIVE vouchers |
+| `/api/profile/points` | GET | Balance + grouped point events (10 events/page) |
+| `/api/profile/vouchers` | GET | Own vouchers in all lifecycle statuses |
 | `/api/profile/vouchers/exchange` | POST | Spend points on a voucher package to receive a Voucher |
 | `/api/profile/vouchers/refund` | POST | Auto-refund points if the voucher's target item is no longer available |
 
@@ -217,6 +217,44 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
   }
 }
 ```
+
+### `GET /api/profile/points?page=1&limit=10`
+```ts
+{
+  data: {
+    points_balance: number
+    events: {
+      id: string
+      kind: "order_reward" | "order_reversal" | "other"
+      reason: string
+      total_delta: number
+      order_points: number
+      surplus_points: number
+      created_at: string
+      order: {
+        order_code: string | null
+        points_base_vnd: number        // orders.total_vnd; excludes shipping
+      } | null
+      voucher: { package_name: string } | null
+      actor: {
+        name: string
+        role: "CUSTOMER" | "STAFF" | "ADMIN"
+      } | null
+    }[]
+    meta: {
+      total: number                    // grouped events, not raw log rows
+      page: number
+      limit: number
+      totalPages: number
+    }
+  }
+}
+```
+
+- Default `page=1`, `limit=10`; maximum `limit=50`. Invalid values return `400 VALIDATION_ERROR`.
+- `order_complete` + `voucher_surplus` group by order; reversal reasons form a separate event.
+- Pagination happens after grouping, so one order event is never split across pages.
+- The response never exposes `order_id`, `voucher_id`, or `performed_by`.
 
 ### `PATCH /api/profile`
 ```ts
@@ -612,3 +650,4 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
 | `voucher_surplus_reversed` | Reversal of aggregate PRODUCT surplus after cancellation |
 | `voucher_refund` | Target item soft-deleted → full points refund |
 | `reversed_by_admin` | Admin reverses a manual adjustment |
+| `registration_bonus` | New customer registration bonus |

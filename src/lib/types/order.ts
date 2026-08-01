@@ -87,3 +87,37 @@ export interface CreateOrderResult {
   /** Voucher QR tokens skipped because they produced no incremental benefit. */
   skipped_vouchers: string[];
 }
+
+/** Enriched item returned in the customer order-history list. */
+export interface CustomerHistoryOrderItem extends HistoryOrderItem {
+  selectedPowder: { name: string; price_per_gram: number } | null;
+  milkType: { name: string; is_default: boolean } | null;
+  productVoucher?: { package: { name: string } } | null;
+  addonVouchers?: Array<{ voucher: { package: { name: string } } }>;
+}
+
+/** Customer order card returned by the paginated history endpoint. */
+export interface CustomerHistoryOrder {
+  id: string;
+  order_code: string | null;
+  status: OrderStatus;
+  order_type: OrderType;
+  total_vnd: number;
+  shipping_fee_vnd: number;
+  freeship_discount_vnd: number;
+  grand_total_vnd: number;
+  subtotal_vnd: number;
+  total_voucher_discount_vnd: number;
+  created_at: string;
+  auto_cancel_at: string | null;
+  payment_qr_url: string | null;
+  discountVouchers?: Array<{ voucher: { package: { name: string } } }>;
+  items: CustomerHistoryOrderItem[];
+}
+
+/** Paginated customer order-history response. */
+export interface CustomerHistoryOrdersResponse {
+  data: CustomerHistoryOrder[];
+  meta: { total: number; page: number; limit?: number; totalPages: number };
+}
+import type { HistoryOrderItem } from "@/src/lib/types/reorder";

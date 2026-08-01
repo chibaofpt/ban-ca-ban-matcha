@@ -8,6 +8,8 @@
 import { describe, it, expect } from "vitest";
 import {
   filterModalVouchers,
+  filterHistoryVouchers,
+  getAdjacentVoucherTab,
   canInteract,
   computePointsAfterExchange,
   getVoucherBenefitText,
@@ -81,7 +83,7 @@ function makePackage(overrides: Partial<VoucherPackage> = {}): VoucherPackage {
 // ── filterModalVouchers ────────────────────────────────────────────────────────
 
 describe("filterModalVouchers", () => {
-  it("trả về ACTIVE, RESERVED, EXPIRED, REDEEMED và ẩn REFUNDED", () => {
+  it("chỉ trả về ACTIVE và RESERVED cho tab Voucher của tôi", () => {
     const vouchers = [
       makeVoucher({ id: "v1", status: "ACTIVE" }),
       makeVoucher({ id: "v2", status: "RESERVED" }),
@@ -90,12 +92,10 @@ describe("filterModalVouchers", () => {
       makeVoucher({ id: "v5", status: "REFUNDED" }),
     ];
     const result = filterModalVouchers(vouchers);
-    expect(result).toHaveLength(4);
-    expect(result.map((v) => v.id)).toEqual(expect.arrayContaining(["v1", "v2", "v3", "v4"]));
-    expect(result.map((v) => v.id)).not.toContain("v5");
+    expect(result.map((v) => v.id)).toEqual(["v1", "v2"]);
   });
 
-  it("sắp xếp ACTIVE trước, RESERVED sau, EXPIRED sau nữa, REDEEMED cuối cùng", () => {
+  it("sắp xếp ACTIVE trước RESERVED", () => {
     const vouchers = [
       makeVoucher({ id: "rd1", status: "REDEEMED" }),
       makeVoucher({ id: "ex1", status: "EXPIRED" }),
@@ -105,20 +105,53 @@ describe("filterModalVouchers", () => {
     const result = filterModalVouchers(vouchers);
     expect(result[0].status).toBe("ACTIVE");
     expect(result[1].status).toBe("RESERVED");
-    expect(result[2].status).toBe("EXPIRED");
-    expect(result[3].status).toBe("REDEEMED");
+    expect(result).toHaveLength(2);
   });
 
   it("mảng rỗng → rỗng", () => {
     expect(filterModalVouchers([])).toHaveLength(0);
   });
 
-  it("tất cả REDEEMED → trả về tất cả", () => {
+  it("tất cả REDEEMED → trả về rỗng", () => {
     const vouchers = [
       makeVoucher({ status: "REDEEMED" }),
       makeVoucher({ status: "REDEEMED" }),
     ];
-    expect(filterModalVouchers(vouchers)).toHaveLength(2);
+    expect(filterModalVouchers(vouchers)).toHaveLength(0);
+  });
+});
+
+describe("filterHistoryVouchers", () => {
+  it("chỉ trả về REDEEMED và EXPIRED, không trộn voucher còn hiệu lực", () => {
+    const vouchers = [
+      makeVoucher({ id: "active", status: "ACTIVE" }),
+      makeVoucher({ id: "reserved", status: "RESERVED" }),
+      makeVoucher({ id: "redeemed", status: "REDEEMED" }),
+      makeVoucher({ id: "expired", status: "EXPIRED" }),
+      makeVoucher({ id: "refunded", status: "REFUNDED" }),
+    ];
+
+    expect(filterHistoryVouchers(vouchers).map((voucher) => voucher.id)).toEqual([
+      "redeemed",
+      "expired",
+    ]);
+  });
+});
+
+describe("getAdjacentVoucherTab", () => {
+  it("vuốt trái lần lượt qua Voucher của tôi → Đổi thưởng → Lịch sử", () => {
+    expect(getAdjacentVoucherTab("my_vouchers", "left", true)).toBe("packages");
+    expect(getAdjacentVoucherTab("packages", "left", true)).toBe("history");
+  });
+
+  it("vuốt phải quay ngược và dừng ở tab đầu", () => {
+    expect(getAdjacentVoucherTab("history", "right", true)).toBe("packages");
+    expect(getAdjacentVoucherTab("my_vouchers", "right", true)).toBe("my_vouchers");
+  });
+
+  it("khách chưa đăng nhập luôn ở tab Đổi thưởng", () => {
+    expect(getAdjacentVoucherTab("packages", "left", false)).toBe("packages");
+    expect(getAdjacentVoucherTab("packages", "right", false)).toBe("packages");
   });
 });
 

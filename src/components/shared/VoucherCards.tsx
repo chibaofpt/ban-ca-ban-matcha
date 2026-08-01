@@ -81,12 +81,12 @@ export function VoucherCard({
             </span>
           )}
           {isExpired && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-muted-foreground/20 text-muted-foreground">
+            <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
               Hết hạn
             </span>
           )}
           {isRedeemed && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-muted-foreground/20 text-muted-foreground">
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-600">
               Đã dùng
             </span>
           )}

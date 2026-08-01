@@ -1,6 +1,10 @@
 import { apiClient } from "@/src/lib/api/client";
 import type { CartItem } from "@/src/lib/types/cart";
-import type { CustomerOrderDetail, CreateOrderResult } from "@/src/lib/types/order";
+import type {
+  CustomerHistoryOrdersResponse,
+  CustomerOrderDetail,
+  CreateOrderResult,
+} from "@/src/lib/types/order";
 
 // Re-export for consumers
 export type { CreateOrderResult } from "@/src/lib/types/order";
@@ -147,14 +151,18 @@ export async function createOrder(
  * Fetches the paginated list of orders for the current customer.
  * Calls GET /api/orders.
  */
-export async function fetchCustomerOrders(params?: { page?: number; limit?: number }) {
+export async function fetchCustomerOrders(
+  params?: { page?: number; limit?: number },
+): Promise<CustomerHistoryOrdersResponse> {
   const query = new URLSearchParams();
   if (params?.page) query.append('page', params.page.toString());
   if (params?.limit) query.append('limit', params.limit.toString());
   
   const qs = query.toString();
-  const res = await apiClient.get(`/api/orders${qs ? `?${qs}` : ''}`);
-  return res.data; // { data: [...], meta: { total, page, totalPages } }
+  const res = await apiClient.get<CustomerHistoryOrdersResponse>(
+    `/api/orders${qs ? `?${qs}` : ""}`,
+  );
+  return res.data;
 }
 
 /**

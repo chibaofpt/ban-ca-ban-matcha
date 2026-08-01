@@ -3,7 +3,6 @@ import type { CartItem } from "@/src/lib/types/cart";
 import {
   deriveCheckoutRewards,
   getMenuItemCartQuantity,
-  groupPointsLogs,
 } from "@/src/utils/customerUx";
 import {
   formatKa,
@@ -51,7 +50,6 @@ describe("formatKa — hiển thị tiền theo nghìn ká", () => {
     expect(formatKa(65_000)).toBe("65 ká");
   });
 });
-
 describe("formatOrderSize — không hiển thị enum thô", () => {
   it("map đủ ba size sang tên và dung tích", () => {
     expect(formatOrderSize("SMALL")).toBe("Cá con (360ml)");
@@ -122,60 +120,5 @@ describe("formatVietnamPhone — staff search", () => {
 
   it("giữ nguyên truy vấn tên khách", () => {
     expect(normalizeCustomerSearch("Linh Cá")).toBe("Linh Cá");
-  });
-});
-
-describe("groupPointsLogs — lịch sử điểm theo đơn", () => {
-  it("gom điểm mua hàng và surplus của cùng một đơn thành một sự kiện", () => {
-    const groups = groupPointsLogs([
-      {
-        id: "log-1",
-        delta: 8,
-        reason: "order_complete",
-        order_id: "order-1",
-        voucher_id: null,
-        created_at: "2026-07-24T10:00:00.000Z",
-      },
-      {
-        id: "log-2",
-        delta: 1,
-        reason: "voucher_surplus",
-        order_id: "order-1",
-        voucher_id: null,
-        created_at: "2026-07-24T10:00:00.100Z",
-      },
-    ]);
-
-    expect(groups).toHaveLength(1);
-    expect(groups[0]).toMatchObject({
-      kind: "order_reward",
-      orderPoints: 8,
-      surplusPoints: 1,
-      totalDelta: 9,
-    });
-  });
-
-  it("không gộp log đảo điểm vào lần cộng điểm ban đầu", () => {
-    const groups = groupPointsLogs([
-      {
-        id: "log-1",
-        delta: 8,
-        reason: "order_complete",
-        order_id: "order-1",
-        voucher_id: null,
-        created_at: "2026-07-24T10:00:00.000Z",
-      },
-      {
-        id: "log-2",
-        delta: -8,
-        reason: "order_complete_reversed",
-        order_id: "order-1",
-        voucher_id: null,
-        created_at: "2026-07-24T11:00:00.000Z",
-      },
-    ]);
-
-    expect(groups).toHaveLength(2);
-    expect(groups.map((group) => group.kind)).toEqual(["order_reversal", "order_reward"]);
   });
 });

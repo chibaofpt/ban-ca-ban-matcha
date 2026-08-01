@@ -5,40 +5,58 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { groupPointsHistory } from "@/lib/pointsHistory";
+import { pointsHistoryQuerySchema } from "@/lib/validations/points";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/profile/points — Returns points_balance and last 20 points_log entries. */
+/** GET /api/profile/points — Returns balance and grouped customer point events. */
 export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const parsed = pointsHistoryQuerySchema.safeParse({
+    page: searchParams.get("page"),
+    limit: searchParams.get("limit"),
+  });
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Invalid pagination", code: "VALIDATION_ERROR" },
+      { status: 400 },
+    );
+  }
+
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   }
+  if (session.role !== "CUSTOMER") {
+    return NextResponse.json(
+      { error: "Forbidden", code: "FORBIDDEN" },
+      { status: 403 },
+    );
+  }
 
-  const { searchParams } = new URL(req.url);
-  const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10));
-  const limit = Math.max(1, Math.min(50, parseInt(searchParams.get("limit") ?? "20", 10)));
-  const skip = (page - 1) * limit;
+  const { page, limit } = parsed.data;
 
   try {
-    const [user, total, logs] = await prisma.$transaction([
+    const [user, logs] = await prisma.$transaction([
       prisma.user.findUnique({
         where: { id: session.id },
         select: { points_balance: true },
       }),
-      prisma.pointsLog.count({ where: { user_id: session.id } }),
       prisma.pointsLog.findMany({
         where: { user_id: session.id },
         orderBy: { created_at: "desc" },
-        skip,
-        take: limit,
         select: {
           id: true,
           delta: true,
           reason: true,
           order_id: true,
-          voucher_id: true,
           created_at: true,
+          order: { select: { total_vnd: true, order_code: true } },
+          voucher: {
+            select: { package: { select: { name: true } } },
+          },
+          staff: { select: { name: true, role: true } },
         },
       }),
     ]);
@@ -47,15 +65,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "User not found", code: "NOT_FOUND" }, { status: 404 });
     }
 
+    const history = groupPointsHistory(logs, page, limit);
+
     return NextResponse.json({
       data: {
         points_balance: user.points_balance,
-        logs,
-        meta: {
-          total,
-          page,
-          totalPages: Math.ceil(total / limit),
-        },
+        ...history,
       },
     });
   } catch (err) {

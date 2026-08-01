@@ -94,7 +94,7 @@ export async function listActiveVoucherPackages(): Promise<VoucherPackage[]> {
 }
 
 /**
- * Fetches all ACTIVE vouchers belonging to the current user.
+ * Fetches vouchers in every lifecycle status belonging to the current user.
  * Calls GET /api/profile/vouchers (requires CUSTOMER auth).
  */
 export async function listMyVouchers(): Promise<MyVoucher[]> {

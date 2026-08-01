@@ -85,11 +85,13 @@ export function AddressCard({
         {!isSelectable && (
           <div className="relative" ref={menuRef}>
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 setShowMenu(!showMenu);
               }}
-              className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label={`Mở tuỳ chọn cho địa chỉ ${address.label}`}
+              className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <MoreVertical className="h-5 w-5" />
             </button>
@@ -98,33 +100,36 @@ export function AddressCard({
               <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-10">
                 {!address.is_default && (
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       setShowMenu(false);
                       onSetDefault();
                     }}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-green-50 hover:text-green-600 flex items-center gap-2"
+                    className="flex min-h-11 w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-green-50 hover:text-green-600"
                   >
                     <CheckCircle2 className="h-4 w-4" /> Đặt làm mặc định
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowMenu(false);
                     onEdit();
                   }}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                  className="flex min-h-11 w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
                 >
                   <Edit2 className="h-4 w-4" /> Chỉnh sửa
                 </button>
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowMenu(false);
                     onDelete();
                   }}
-                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                  className="flex min-h-11 w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
                 >
                   <Trash2 className="h-4 w-4" /> Xóa địa chỉ
                 </button>

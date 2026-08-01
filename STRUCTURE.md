@@ -19,6 +19,7 @@ app/                              # Next.js App Router — entry points only, ze
       page.tsx                    # → src/views/RegisterPage
   (customer)/                     # Phase 3+ — CUSTOMER role required
     profile/page.tsx
+    history/page.tsx              # → src/views/customer/HistoryPage
     orders/page.tsx
     orders/[id]/page.tsx
     points/page.tsx
@@ -94,6 +95,10 @@ src/                              # Frontend — never import lib/ from here
     OrdersPage.tsx                # Phase 3
     PointsPage.tsx                # Phase 4
     VouchersPage.tsx              # Phase 4
+    customer/
+      AddressBookSheetContainer.tsx # Address query/mutation orchestration for profile sheet
+      HistoryPage.tsx             # Orders + grouped points tabs
+      ProfilePage.tsx
     admin/
       AdminLoginPage.tsx
       AdminMenuPage.tsx
@@ -124,6 +129,15 @@ src/                              # Frontend — never import lib/ from here
     auth/
       PhoneInput.tsx
       PasswordInput.tsx
+    customer/
+      AddressBookSheet.tsx        # Address list + add/edit bottom-sheet layers
+      OrderHistoryTab.tsx
+      OrderHistoryCard.tsx
+      OrderHistoryItems.tsx
+      PointsHistoryTab.tsx
+      ProfileQRSheet.tsx          # Customer loyalty QR bottom sheet
+    shared/
+      VoucherModalSections.tsx    # Voucher tabs + redeemed/expired history section
     admin/
       AdminMenuPage.tsx
       MenuItemCard.tsx
@@ -153,6 +167,7 @@ src/                              # Frontend — never import lib/ from here
     orderService.ts               # Phase 3
     authService.ts
     profileService.ts             # Phase 3
+    pointsService.ts              # GET /api/profile/points
     voucherService.ts             # Phase 4
     adminMenuService.ts
     adminPowderService.ts         # CRUD /api/admin/matcha-powders
@@ -192,8 +207,13 @@ scratch/                          # Ignored by Git. Scratchpad for quick server 
       menu.ts
       cart.ts
       order.ts                    # Phase 3
+      points.ts                   # Grouped points history DTO
       user.ts
       powder.ts                   # Powder, PowderSizeConfig, MilkType types
+    utils/
+      addressBookSheet.ts         # Pure list/form state transitions
+    validations/
+      address.ts                  # Client address form schema
   utils/
     formatPrice.ts                # formatPrice(vnd: number) → "🐟 {vnd/1000} cá"
     pricing.ts                    # Pure pricing functions — NO imports from lib/ or services
@@ -217,6 +237,7 @@ lib/                              # Backend only — server-side, NEVER import i
   pricing.ts                      # Thin wrapper: fetches DB data → calls src/utils/pricing.ts
                                   # exports: resolveOrderItemPrice(), buildPricingContext()
                                   # Zero pricing logic of its own
+  pointsHistory.ts                # Groups immutable points_log rows before pagination
   validations/
     auth.ts
     menu.ts
