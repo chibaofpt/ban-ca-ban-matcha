@@ -1,417 +1,278 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
-import { ArrowLeft, LocateFixed, Loader2, AlertTriangle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertTriangle, ArrowLeft, Loader2, LocateFixed, MapPin } from "lucide-react";
 import { MapSearchBar } from "./MapSearchBar";
-import { deliveryService } from "@/src/services/deliveryService";
 import { STORE_LOCATION } from "@/src/constants/storeConfig";
 import { DELIVERY_CONFIG } from "@/src/constants/delivery";
-
+import { createMapRenderer, type MapRenderer } from "@/src/lib/map/mapRenderer";
+import { deliveryService } from "@/src/services/deliveryService";
 import { getDistanceKm } from "@/src/utils/distance";
-import type { GoongErrorEvent, Map as GoongMap } from "@goongmaps/goong-js";
 
 interface MapPickerProps {
-  /** Called when user confirms a location */
   onConfirm: (data: { address: string; lat: number; lng: number }) => void;
-  /** Called to close the picker without selecting */
   onClose: () => void;
-  /** Initial coordinates (e.g. from a previously saved address) */
   initialLat?: number;
   initialLng?: number;
 }
 
-/** Full-screen Grab-style map picker with fixed center pin */
+type RendererStatus = "loading" | "ready" | "unavailable";
+
+/** Let customers choose a delivery location with a resilient search-only fallback. */
 export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPickerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<GoongMap | null>(null);
+  const rendererRef = useRef<MapRenderer | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const [address, setAddress] = useState<string>("");
-  const [centerLat, setCenterLat] = useState<number>(initialLat ?? STORE_LOCATION.lat);
-  const [centerLng, setCenterLng] = useState<number>(initialLng ?? STORE_LOCATION.lng);
-  const [isLoading, setIsLoading] = useState(true);
+  const [address, setAddress] = useState("");
+  const [centerLat, setCenterLat] = useState(initialLat ?? STORE_LOCATION.lat);
+  const [centerLng, setCenterLng] = useState(initialLng ?? STORE_LOCATION.lng);
+  const [rendererStatus, setRendererStatus] = useState<RendererStatus>("loading");
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [isOutOfRange, setIsOutOfRange] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
 
-  // Reverse geocode center position
-  const reverseGeocodeCenter = useCallback(async (lat: number, lng: number) => {
-    try {
-      setIsGeocoding(true);
-      const dist = getDistanceKm(lat, lng);
-      setIsOutOfRange(dist > DELIVERY_CONFIG.MAX_RADIUS_KM);
+  const setSelectedLocation = useCallback(
+    (lat: number, lng: number, selectedAddress?: string) => {
       setCenterLat(lat);
       setCenterLng(lng);
+      setIsOutOfRange(getDistanceKm(lat, lng) > DELIVERY_CONFIG.MAX_RADIUS_KM);
+      if (selectedAddress !== undefined) setAddress(selectedAddress);
+    },
+    [],
+  );
 
-      const result = await deliveryService.reverseGeocode(lat, lng);
-      setAddress(result.address);
-    } catch {
-      setAddress("Không thể xác định địa chỉ");
-    } finally {
-      setIsGeocoding(false);
-    }
+  const reverseGeocodeCenter = useCallback(
+    async (lat: number, lng: number) => {
+      setSelectedLocation(lat, lng);
+      setIsGeocoding(true);
+      try {
+        const result = await deliveryService.reverseGeocode(lat, lng);
+        setAddress(result.address);
+      } catch {
+        setAddress("");
+        setMapError("Không thể xác định địa chỉ tại vị trí này.");
+      } finally {
+        setIsGeocoding(false);
+      }
+    },
+    [setSelectedLocation],
+  );
+
+  const markRendererUnavailable = useCallback(() => {
+    rendererRef.current?.destroy();
+    rendererRef.current = null;
+    setRendererStatus("unavailable");
+    setMapError("Bản đồ hiện không khả dụng. Bạn vẫn có thể tìm và chọn địa chỉ.");
   }, []);
 
-  // Initialize map
+  const requestGps = useCallback(
+    (renderer: MapRenderer, fallBackToStore: boolean) => {
+      if (!navigator.geolocation) return;
+      setGpsLoading(true);
+      navigator.geolocation.getCurrentPosition(
+        ({ coords }) => {
+          if (rendererRef.current !== renderer) return;
+          renderer.flyTo({ lat: coords.latitude, lng: coords.longitude });
+          setGpsLoading(false);
+        },
+        () => {
+          if (rendererRef.current !== renderer) return;
+          setGpsLoading(false);
+          if (fallBackToStore) {
+            void reverseGeocodeCenter(STORE_LOCATION.lat, STORE_LOCATION.lng);
+          } else {
+            setMapError("Không thể truy cập vị trí. Hãy kiểm tra quyền GPS của trình duyệt.");
+          }
+        },
+        { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
+      );
+    },
+    [reverseGeocodeCenter],
+  );
+
   useEffect(() => {
-    let map: GoongMap | undefined;
-    let isMounted = true;
+    let mounted = true;
 
-    // Intercept console.error and console.warn to silence Goong's missing source layer warnings 
-    // which cause Next.js Dev Error Overlay to pop up constantly
-    const origError = console.error;
-    const origWarn = console.warn;
-    console.error = (...args) => {
-      if (typeof args[0] === 'string' && args[0].includes('poi-tree')) return;
-      if (typeof args[0] === 'string' && args[0].includes('composite')) return;
-      origError(...args);
-    };
-    console.warn = (...args) => {
-      if (typeof args[0] === 'string' && args[0].includes('poi-tree')) return;
-      if (typeof args[0] === 'string' && args[0].includes('composite')) return;
-      origWarn(...args);
-    };
+    async function initializeRenderer() {
+      const container = mapContainerRef.current;
+      const tileKey = process.env.NEXT_PUBLIC_GOONG_MAPTILES_KEY;
+      if (!container || !tileKey) {
+        if (mounted) markRendererUnavailable();
+        return;
+      }
 
-    async function initMap() {
       try {
-        const goongjs = await import("@goongmaps/goong-js");
-        await import("@goongmaps/goong-js/dist/goong-js.css");
+        const renderer = await createMapRenderer({
+          container,
+          initialCenter: {
+            lat: initialLat ?? STORE_LOCATION.lat,
+            lng: initialLng ?? STORE_LOCATION.lng,
+          },
+          tileKey,
+          deliveryRadiusKm: DELIVERY_CONFIG.MAX_RADIUS_KM,
+          onMoveEnd: ({ lat, lng }) => {
+            if (!mounted) return;
+            setSelectedLocation(lat, lng);
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+            debounceRef.current = setTimeout(() => {
+              if (mounted) void reverseGeocodeCenter(lat, lng);
+            }, 1_000);
+          },
+          onError: () => {
+            if (mounted) markRendererUnavailable();
+          },
+        });
 
-        const turfCircle = (await import("@turf/circle")).default;
-
-        if (!isMounted || !mapContainerRef.current) return;
-
-        const maptileKey = process.env.NEXT_PUBLIC_GOONG_MAPTILES_KEY;
-        if (!maptileKey) {
-          setMapError("Map API key chưa được cấu hình");
-          setIsLoading(false);
+        if (!mounted) {
+          renderer.destroy();
           return;
         }
-
-        goongjs.default.accessToken = maptileKey;
-
-        const initialCenter: [number, number] = [
-          initialLng ?? STORE_LOCATION.lng,
-          initialLat ?? STORE_LOCATION.lat,
-        ];
-
-        const mapInstance = new goongjs.default.Map({
-          container: mapContainerRef.current,
-          style: "https://tiles.goong.io/assets/goong_map_web.json",
-          center: initialCenter,
-          zoom: 14,
-          attributionControl: false,
-        });
-
-        // Intercept Mapbox internal error events
-        mapInstance.on('error', (e: GoongErrorEvent) => {
-          if (e && e.error && typeof e.error.message === 'string') {
-            if (e.error.message.includes('poi-tree') || e.error.message.includes('composite')) {
-              e.preventDefault?.();
-              return;
-            }
-          }
-          console.warn("Map error event:", e);
-        });
-
-        map = mapInstance;
-        mapRef.current = mapInstance;
-
-        mapInstance.on("load", () => {
-          if (!isMounted) return;
-
-          // Force resize to fix half-height canvas issue on mobile
-          setTimeout(() => {
-            if (isMounted) mapInstance.resize();
-          }, 300);
-
-          // Draw delivery radius circle
-          const circleGeoJSON = turfCircle(
-            [STORE_LOCATION.lng, STORE_LOCATION.lat],
-            DELIVERY_CONFIG.MAX_RADIUS_KM,
-            { steps: 64, units: "kilometers" }
-          );
-
-          mapInstance.addSource("delivery-radius", {
-            type: "geojson",
-            data: circleGeoJSON,
-          });
-
-          mapInstance.addLayer({
-            id: "delivery-radius-fill",
-            type: "fill",
-            source: "delivery-radius",
-            paint: {
-              "fill-color": "#22c55e",
-              "fill-opacity": 0.08,
-            },
-          });
-
-          mapInstance.addLayer({
-            id: "delivery-radius-border",
-            type: "line",
-            source: "delivery-radius",
-            paint: {
-              "line-color": "#22c55e",
-              "line-width": 2,
-              "line-dasharray": [3, 2],
-            },
-          });
-
-          // Add store marker
-          const storeEl = document.createElement("div");
-          storeEl.innerHTML = "🏪";
-          storeEl.style.fontSize = "24px";
-          storeEl.style.lineHeight = "1";
-          new goongjs.default.Marker({ element: storeEl })
-            .setLngLat([STORE_LOCATION.lng, STORE_LOCATION.lat])
-            .addTo(mapInstance);
-
-          setIsLoading(false);
-
-          // If no initial position, try GPS
-          if (!initialLat && !initialLng) {
-            requestGPS(mapInstance);
-          } else {
-            // Reverse geocode initial position
-            reverseGeocodeCenter(initialLat!, initialLng!);
-          }
-        });
-
-        // On map move end — reverse geocode center
-        mapInstance.on("moveend", () => {
-          if (!isMounted) return;
-          const center = mapInstance.getCenter();
-          const lat = center.lat;
-          const lng = center.lng;
-
-          // Check out of range immediately (no debounce)
-          const dist = getDistanceKm(lat, lng);
-          setIsOutOfRange(dist > DELIVERY_CONFIG.MAX_RADIUS_KM);
-          setCenterLat(lat);
-          setCenterLng(lng);
-
-          // Debounce reverse geocode
-          if (debounceRef.current) clearTimeout(debounceRef.current);
-          debounceRef.current = setTimeout(() => {
-            if (isMounted) reverseGeocodeCenter(lat, lng);
-          }, 1000);
-        });
-
-        mapInstance.addControl(
-          new goongjs.default.NavigationControl({ showCompass: false }),
-          "bottom-right"
-        );
-      } catch (err) {
-        console.error("Map init error:", err);
-        if (isMounted) {
-          setMapError("Không thể tải bản đồ. Vui lòng thử lại.");
-          setIsLoading(false);
+        rendererRef.current = renderer;
+        setRendererStatus("ready");
+        setMapError(null);
+        if (initialLat !== undefined && initialLng !== undefined) {
+          void reverseGeocodeCenter(initialLat, initialLng);
+        } else {
+          requestGps(renderer, true);
         }
+      } catch {
+        if (mounted) markRendererUnavailable();
       }
     }
 
-    function requestGPS(mapInstance: GoongMap) {
-      if (!navigator.geolocation) return;
-
-      setGpsLoading(true);
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          if (!isMounted) return;
-          const { latitude, longitude } = position.coords;
-          mapInstance.flyTo({
-            center: [longitude, latitude],
-            zoom: 16,
-            speed: 1.2,
-            essential: true,
-          });
-          setGpsLoading(false);
-          // moveend will trigger reverse geocode
-        },
-        () => {
-          // GPS denied/failed — stay at store location
-          if (isMounted) {
-            setGpsLoading(false);
-            reverseGeocodeCenter(STORE_LOCATION.lat, STORE_LOCATION.lng);
-          }
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-      );
-    }
-
-    initMap();
-
+    void initializeRenderer();
     return () => {
-      isMounted = false;
-      console.error = origError; // restore original console.error
-      console.warn = origWarn; // restore original console.warn
+      mounted = false;
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      map?.remove();
+      rendererRef.current?.destroy();
+      rendererRef.current = null;
     };
-  }, [initialLat, initialLng, reverseGeocodeCenter]);
+  }, [
+    initialLat,
+    initialLng,
+    markRendererUnavailable,
+    requestGps,
+    reverseGeocodeCenter,
+    setSelectedLocation,
+  ]);
 
-  // Handle GPS button press
-  const handleGPS = () => {
-    if (!navigator.geolocation || !mapRef.current) return;
-
-    setGpsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        mapRef.current?.flyTo({
-          center: [longitude, latitude],
-          zoom: 16,
-          speed: 1.2,
-          essential: true,
-        });
-        setGpsLoading(false);
-      },
-      () => {
-        setGpsLoading(false);
-        setMapError("Không thể truy cập vị trí. Hãy cho phép quyền GPS trong trình duyệt.");
-        setTimeout(() => setMapError(null), 4000);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    );
-  };
-
-  // Handle search result
-  const handleSearchSelect = (lat: number, lng: number) => {
-    if (!mapRef.current) return;
-    mapRef.current.flyTo({
-      center: [lng, lat],
-      zoom: 16,
-      speed: 1.2,
-      essential: true,
-    });
-    // moveend will trigger reverse geocode
+  const handleSearchSelect = (lat: number, lng: number, selectedAddress: string) => {
+    setSelectedLocation(lat, lng, selectedAddress);
+    rendererRef.current?.flyTo({ lat, lng });
   };
 
   const handleConfirm = () => {
-    if (isOutOfRange || !address || isGeocoding) return;
-    onConfirm({ address, lat: centerLat, lng: centerLng });
+    if (!isOutOfRange && address && !isGeocoding) {
+      onConfirm({ address, lat: centerLat, lng: centerLng });
+    }
   };
 
+  const isLoading = rendererStatus === "loading";
+  const isRendererReady = rendererStatus === "ready";
   const distKm = getDistanceKm(centerLat, centerLng);
 
   return (
-    <div className="fixed inset-0 z-[100] bg-white flex flex-col">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 shrink-0 bg-white z-20">
+    <div className="fixed inset-0 z-[100] flex flex-col bg-white">
+      <header className="z-20 flex shrink-0 items-center gap-3 border-b border-gray-100 bg-white px-4 py-3">
         <button
+          type="button"
           onClick={onClose}
-          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+          aria-label="Đóng bản đồ"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600"
         >
-          <ArrowLeft className="w-4 h-4 text-gray-700" />
+          <ArrowLeft className="h-4 w-4 text-gray-700" />
         </button>
-        <h3 className="font-bold text-gray-900 text-[15px]">Chọn vị trí giao hàng</h3>
-      </div>
+        <h3 className="text-[15px] font-bold text-gray-900">Chọn vị trí giao hàng</h3>
+      </header>
 
-      {/* Map area */}
-      <div className="flex-1 relative min-h-0">
-        {/* Map container */}
-        <div ref={mapContainerRef} className="w-full h-full" />
-
-        {/* Loading overlay */}
+      <main className="relative min-h-0 flex-1">
+        <div ref={mapContainerRef} className="h-full w-full" />
         {isLoading && (
-          <div className="absolute inset-0 bg-gray-100 flex items-center justify-center z-10">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-100">
             <div className="flex flex-col items-center gap-2">
               <Loader2 className="h-8 w-8 animate-spin text-green-600" />
-              <span className="text-sm text-gray-500 font-medium">Đang tải bản đồ...</span>
+              <span className="text-sm font-medium text-gray-600">Đang tải bản đồ...</span>
             </div>
           </div>
         )}
 
-        {/* Map error */}
-        {mapError && (
-          <div className="absolute top-16 left-3 right-3 z-20 bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-            <span className="text-xs text-red-700 font-medium">{mapError}</span>
+        {rendererStatus === "unavailable" && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-50 px-6 pt-16 text-center">
+            <div className="max-w-sm rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <AlertTriangle className="mx-auto mb-2 h-6 w-6 text-amber-600" />
+              <p className="text-sm font-semibold text-amber-900">Bản đồ hiện không khả dụng</p>
+              <p className="mt-1 text-xs leading-relaxed text-amber-800">
+                Nhập và chọn địa chỉ ở ô tìm kiếm để tiếp tục mà không cần bản đồ.
+              </p>
+            </div>
           </div>
         )}
 
-        {/* Search bar */}
         {!isLoading && <MapSearchBar onSelect={handleSearchSelect} />}
 
-        {/* Fixed center pin */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-full z-10 pointer-events-none">
-          <div className="flex flex-col items-center">
-            <div className="text-3xl drop-shadow-lg" style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.3))" }}>
-              📍
+        {isRendererReady && (
+          <>
+            <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-full">
+              <MapPin className="h-9 w-9 fill-green-600 text-white drop-shadow-lg" />
             </div>
-            {/* Pin shadow dot */}
-            <div className="w-2 h-2 rounded-full bg-black/20 -mt-1" />
-          </div>
-        </div>
-
-        {/* GPS button */}
-        {!isLoading && (
-          <button
-            onClick={handleGPS}
-            disabled={gpsLoading}
-            className="absolute bottom-4 right-3 z-10 w-10 h-10 bg-white border border-gray-200 rounded-full shadow-lg flex items-center justify-center hover:bg-gray-50 transition-colors disabled:opacity-50"
-            title="Vị trí hiện tại"
-          >
-            {gpsLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-green-600" />
-            ) : (
-              <LocateFixed className="h-4 w-4 text-green-600" />
-            )}
-          </button>
+            <button
+              type="button"
+              onClick={() => rendererRef.current && requestGps(rendererRef.current, false)}
+              disabled={gpsLoading}
+              aria-label="Dùng vị trí hiện tại"
+              className="absolute bottom-4 right-3 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600 disabled:opacity-50"
+            >
+              {gpsLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin text-green-600" />
+              ) : (
+                <LocateFixed className="h-4 w-4 text-green-600" />
+              )}
+            </button>
+          </>
         )}
 
-        {/* Out of range warning overlay on map */}
-        {isOutOfRange && (
-          <div className="absolute bottom-4 left-3 right-16 z-10 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
-            <span className="text-[11px] text-amber-700 font-medium">
-              Ngoài vùng giao hàng ({distKm.toFixed(1)}km / tối đa {DELIVERY_CONFIG.MAX_RADIUS_KM}km)
-            </span>
+        {mapError && isRendererReady && (
+          <div className="absolute left-3 right-16 top-16 z-20 flex gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-700">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{mapError}</span>
           </div>
         )}
-      </div>
+      </main>
 
-      {/* Bottom info panel */}
-      <div className="shrink-0 bg-white border-t border-gray-100 px-4 pt-3 pb-4 space-y-3 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.08)]">
-        {/* Address display */}
+      <footer className="shrink-0 space-y-3 border-t border-gray-100 bg-white px-4 pb-4 pt-3 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.08)]">
         <div className="flex items-start gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center shrink-0 mt-0.5">
-            <span className="text-base">📍</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Địa chỉ giao hàng</p>
+          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-50">
+            <MapPin className="h-4 w-4 text-green-700" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="mb-0.5 text-[11px] font-bold uppercase tracking-wider text-gray-500">Địa chỉ giao hàng</p>
             {isGeocoding ? (
-              <div className="flex items-center gap-2">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-green-600" />
-                <span className="text-sm text-gray-400">Đang xác định...</span>
-              </div>
+              <p className="flex items-center gap-2 text-sm text-gray-500">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Đang xác định...
+              </p>
             ) : (
-              <p className="text-sm font-medium text-gray-900 leading-snug line-clamp-2">
-                {address || "Kéo bản đồ để chọn vị trí"}
+              <p className="line-clamp-2 text-sm font-medium leading-snug text-gray-900">
+                {address || "Tìm kiếm địa chỉ để chọn vị trí"}
               </p>
             )}
-            {!isOutOfRange && address && !isGeocoding && (
-              <p className="text-xs text-gray-400 mt-0.5">
-                Cách cửa hàng {distKm.toFixed(1)}km
+            {isOutOfRange && (
+              <p className="mt-1 text-xs font-medium text-amber-700">
+                Ngoài vùng giao hàng ({distKm.toFixed(1)}km / tối đa {DELIVERY_CONFIG.MAX_RADIUS_KM}km)
               </p>
             )}
           </div>
         </div>
 
-        {/* Confirm button */}
         <button
+          type="button"
           onClick={handleConfirm}
           disabled={isOutOfRange || !address || isGeocoding || isLoading}
-          className={`w-full py-3 rounded-2xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
-            isOutOfRange || !address || isGeocoding || isLoading
-              ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-              : "bg-green-600 text-white hover:bg-green-700 shadow-lg active:scale-[0.98]"
-          }`}
+          className="flex min-h-11 w-full items-center justify-center rounded-2xl bg-green-600 px-4 text-sm font-bold text-white transition-transform active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500"
         >
-          {isOutOfRange ? "Ngoài vùng giao hàng" : "Xác nhận vị trí này"}
+          {isOutOfRange ? "Ngoài vùng giao hàng" : "Xác nhận địa chỉ này"}
         </button>
-      </div>
+      </footer>
     </div>
   );
 }

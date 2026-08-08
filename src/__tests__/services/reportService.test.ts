@@ -97,7 +97,7 @@ describe("getReport", () => {
     await getReport({ startDate: "2026-05-01", endDate: "2026-05-31" });
 
     const [, config] = vi.mocked(apiClient.get).mock.calls[0];
-    expect(config?.params?.staffId).toBeUndefined();
+    expect(config?.params).not.toHaveProperty("staffId");
   });
 
   it("returns the DailyReport data from the response", async () => {
@@ -344,7 +344,7 @@ describe("getAdminReport", () => {
     await getAdminReport({ startDate: "2026-06-01", endDate: "2026-06-20" });
 
     const [, config] = vi.mocked(apiClient.get).mock.calls[0];
-    expect(config?.params?.staffId).toBeUndefined();
+    expect(config?.params).not.toHaveProperty("staffId");
   });
 
   it("trả về AdminReport với addon_usage, revenue_by_type, top_products", async () => {

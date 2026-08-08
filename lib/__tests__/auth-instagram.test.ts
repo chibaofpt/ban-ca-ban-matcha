@@ -33,6 +33,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/lib/rateLimit", () => ({
+  getClientIp: () => "203.0.113.10",
   checkLoginFailLimit: (...args: unknown[]) => mockCheckLoginFailLimit(...args),
   checkIdentifierFloodGuard: (...args: unknown[]) =>
     mockCheckIdentifierFloodGuard(...args),

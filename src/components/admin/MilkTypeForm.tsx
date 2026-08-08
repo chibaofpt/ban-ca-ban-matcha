@@ -91,9 +91,12 @@ export default function MilkTypeForm({
           type="number"
           min="0"
           step="1"
-          {...register("price_per_ml", { required: "Vui lòng nhập giá" })}
+          {...register("price_per_ml", {
+            required: "Vui lòng nhập giá",
+            min: { value: 0, message: "Giá không được âm" },
+          })}
           placeholder="Ví dụ: 30"
-          className={inputClass}
+          className={cn(inputClass, errors.price_per_ml && "border-destructive focus:ring-destructive/40")}
         />
         {errors.price_per_ml && <p className={errorClass}>{errors.price_per_ml.message}</p>}
       </div>

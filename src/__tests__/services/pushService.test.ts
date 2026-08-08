@@ -48,7 +48,6 @@ Object.defineProperty(global, "navigator", {
   },
   writable: true,
 });
-
 const mockRequestPermission = vi.fn().mockResolvedValue("granted");
 
 const mockNotification = {
@@ -79,7 +78,6 @@ import {
   subscribeToPush,
   unsubscribeFromPush,
   checkAndResubscribe,
-  sendTestPush,
 } from "@/src/services/pushService";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -248,32 +246,5 @@ describe("checkAndResubscribe", () => {
     // Nếu đã có rồi → upsert (để refresh), không unsubscribe rồi subscribe lại
     // Server tự xử lý upsert nếu endpoint trùng
     expect(mockSubscribe).not.toHaveBeenCalled();
-  });
-});
-
-describe("sendTestPush", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockPost.mockResolvedValue({ data: { data: { sent: 1 } } });
-  });
-
-  it("gọi POST /api/push/test", async () => {
-    await sendTestPush();
-
-    expect(mockPost).toHaveBeenCalledWith("/api/push/test", {});
-  });
-
-  it("trả về { sent: N } từ API", async () => {
-    mockPost.mockResolvedValue({ data: { data: { sent: 2 } } });
-
-    const result = await sendTestPush();
-
-    expect(result).toEqual({ sent: 2 });
-  });
-
-  it("throw error khi API trả lỗi", async () => {
-    mockPost.mockRejectedValue(new Error("Forbidden"));
-
-    await expect(sendTestPush()).rejects.toThrow();
   });
 });

@@ -102,7 +102,7 @@ const latteMenuItem = {
   sizes: [{ size: "MEDIUM", base_price_vnd: 55000 }],
 };
 
-const existingCustomer = { id: USER_ID };
+const existingCustomer = { id: USER_ID, qr_token: QR_TOKEN, role: "CUSTOMER" };
 const discountVoucher = {
   id: VOUCHER_ID,
   user_id: USER_ID,
@@ -217,7 +217,7 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
     // For user lookup by phone
     mockUserFindUnique
       .mockResolvedValueOnce(existingCustomer)    // lookup by phone_number
-      .mockResolvedValueOnce({ id: USER_ID });    // lookup by qr_token
+      .mockResolvedValueOnce(existingCustomer);    // lookup by qr_token
 
     mockVoucherFindUnique.mockResolvedValue(discountVoucher);
     mockGetSession.mockResolvedValue(STAFF_SESSION);
@@ -255,7 +255,7 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
     // qr_token lookup → returns OTHER_USER_ID — mismatch!
     mockUserFindUnique
       .mockResolvedValueOnce(existingCustomer)                    // phone lookup
-      .mockResolvedValueOnce({ id: OTHER_USER_ID });              // qr_token lookup (different user)
+      .mockResolvedValueOnce({ id: OTHER_USER_ID, qr_token: QR_TOKEN, role: "CUSTOMER" });
 
     mockVoucherFindUnique.mockResolvedValue(discountVoucher);
     mockGetSession.mockResolvedValue(STAFF_SESSION);
@@ -306,7 +306,8 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
     // qr_token lookup returns null (token not found)
     mockUserFindUnique
       .mockResolvedValueOnce(existingCustomer)  // phone lookup
-      .mockResolvedValueOnce(null);             // qr_token lookup → not found
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);             // public + legacy lookup → not found
 
     mockVoucherFindUnique.mockResolvedValue(discountVoucher);
     mockGetSession.mockResolvedValue(STAFF_SESSION);

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import type { OrderType, Prisma } from "@prisma/client";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
+import { toPublicOrderDto } from "@/lib/orderPublicDto";
 
 export const dynamic = "force-dynamic";
 
@@ -161,14 +162,16 @@ export async function GET(req: NextRequest) {
               order.status = "CANCELLED"; // update in-memory for response
             }
           } catch (err) {
-            console.error(`[GET /api/admin/orders lazy-cancel] Failed for order ${order.id}:`, err);
+            console.error("[GET /api/admin/orders lazy-cancel] Failed", {
+              name: err instanceof Error ? err.name : typeof err,
+            });
           }
         })
       );
     }
 
     return NextResponse.json({
-      data: orders,
+      data: orders.map((order) => toPublicOrderDto(order)),
       meta: { total, page, totalPages }
     });
   } catch (err) {

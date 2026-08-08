@@ -149,7 +149,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   // ── QR scan state ──────────────────────────────────────────
 
   const [initialSearchQuery, setInitialSearchQuery] = useState("");
-  const [scannedProductVoucher, setScannedProductVoucher] = useState<{ id: string; covered_price_vnd: number } | null>(null);
+  const [scannedProductVoucher, setScannedProductVoucher] = useState<{ qr_token: string; covered_price_vnd: number } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
 
@@ -192,7 +192,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   // Fetch customer vouchers when customer changes
   useEffect(() => {
     if (customerInfo?.type === "existing") {
-      fetchCustomerVouchers(customerInfo.data.id)
+      fetchCustomerVouchers(customerInfo.data.qr_token)
         .then(setCustomerVouchers)
         .catch(() => setCustomerVouchers([]));
     }
@@ -213,7 +213,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   const exchangeMutation = useMutation({
     mutationFn: (packageId: string) => {
       if (customerInfo?.type !== "existing") throw new Error("Invalid customer");
-      return exchangeCustomerVoucher(customerInfo.data.id, packageId);
+      return exchangeCustomerVoucher(customerInfo.data.qr_token, packageId);
     }
   });
 
@@ -231,7 +231,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         });
       }
       
-      fetchCustomerVouchers(customerInfo.data.id)
+      fetchCustomerVouchers(customerInfo.data.qr_token)
         .then(setCustomerVouchers)
         .catch(() => setCustomerVouchers([]));
     } catch (err: unknown) {
@@ -372,7 +372,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     let payload: CreateStaffOrderPayload;
     const items = buildOrderItems(cart);
     const discountVoucherIds = Array.from(new Set([
-      ...(discountVoucher ? [discountVoucher.id] : []),
+      ...(discountVoucher ? [discountVoucher.qr_token] : []),
       ...selectedDiscountIds,
     ]));
 
@@ -401,18 +401,19 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   const handleScanUser = ({
     phone_number,
     name,
+    qr_token,
   }: {
     phone_number: string;
     name?: string;
     points_balance?: number;
-    id?: string;
+    qr_token?: string;
   }) => {
     setScanOpen(false);
     if (name) {
       setCustomerInfo({
         type: "existing",
         data: {
-          id: name,
+          qr_token: qr_token ?? "",
           phone_number,
           name,
           points_balance: 0,
@@ -426,7 +427,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   };
 
   const handleScanVoucherDiscount = (data: {
-    id: string;
+    qr_token: string;
     discount_type: "PERCENT" | "FIXED";
     discount_value: number;
   }) => {
@@ -435,17 +436,17 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   };
 
   const handleScanVoucherProduct = ({
-    id,
+    qr_token,
     menu_item_id,
     covered_price_vnd,
   }: {
-    id: string;
+    qr_token: string;
     menu_item_id: string;
     covered_price_vnd: number;
   }) => {
     const item = menuItems.find((i) => i.id === menu_item_id);
     if (!item) return;
-    setScannedProductVoucher({ id, covered_price_vnd });
+    setScannedProductVoucher({ qr_token, covered_price_vnd });
     setSelectedItem(item);
     setScanOpen(false);
   };
@@ -454,13 +455,13 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
 
   const handleApplyProduct = (cartId: string, voucher: import("@/src/services/staffVoucherService").MyVoucher) => {
     if (voucher.covered_price_vnd) {
-      applyProductVoucher(cartId, voucher.id, voucher.covered_price_vnd);
+      applyProductVoucher(cartId, voucher.qr_token, voucher.covered_price_vnd);
     }
   };
 
   const handleApplyAddon = (cartId: string, voucher: import("@/src/services/staffVoucherService").MyVoucher) => {
     if (voucher.addon_option_id) {
-      applyAddonVoucher(cartId, voucher.id, voucher.addon_option_id);
+      applyAddonVoucher(cartId, voucher.qr_token, voucher.addon_option_id);
     }
   };
 
@@ -606,7 +607,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
               milkTypes={menuData?.milk_types ?? []}
               addonGroups={menuData?.addon_groups ?? []}
               editingItem={editingCartItem || undefined}
-              freeVoucherId={scannedProductVoucher?.id}
+              freeVoucherId={scannedProductVoucher?.qr_token}
               freeVoucherCoveredPriceVnd={scannedProductVoucher?.covered_price_vnd}
               availableVouchers={customerVouchers}
               onClose={() => {
@@ -630,7 +631,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
           latteItems={menuData?.latte ?? []}
           milkTypes={menuData?.milk_types ?? []}
           addonGroups={menuData?.addon_groups ?? []}
-          freeVoucherId={scannedProductVoucher?.id}
+          freeVoucherId={scannedProductVoucher?.qr_token}
           freeVoucherCoveredPriceVnd={scannedProductVoucher?.covered_price_vnd}
           availableVouchers={customerVouchers}
           onClose={() => {

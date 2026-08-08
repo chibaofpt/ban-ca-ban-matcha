@@ -143,7 +143,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
 
   // Calculate final display price using multi-voucher estimator
   const selectedDiscountVouchers = selectedVoucherIds.flatMap((id) => {
-    const voucher = discountVouchers.find((candidate) => candidate.id === id);
+    const voucher = discountVouchers.find((candidate) => candidate.qr_token === id);
     return voucher ? [voucher] : [];
   });
   const rawDiscountAmount = estimateMultiDiscountSavings(selectedDiscountVouchers, subtotalPrice);
@@ -161,7 +161,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   const productVoucherCoveredPrices = Object.fromEntries(
     allVouchers.flatMap((voucher) =>
       voucher.voucher_type === "PRODUCT" && voucher.covered_price_vnd !== null
-        ? [[voucher.id, voucher.covered_price_vnd] as const]
+        ? [[voucher.qr_token, voucher.covered_price_vnd] as const]
         : [],
     ),
   );
@@ -171,7 +171,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
     productVoucherCoveredPrices,
   );
   const selectedFreeshipVouchers = selectedVoucherIds.flatMap((id) => {
-    const voucher = freeshipVouchers.find((candidate) => candidate.id === id);
+    const voucher = freeshipVouchers.find((candidate) => candidate.qr_token === id);
     return voucher ? [voucher] : [];
   });
   if (orderType === "DELIVERY" && shippingFee !== null && selectedFreeshipVouchers.length > 0) {
@@ -183,7 +183,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
       freeshipDiscountK = Math.floor(
         Math.min(shippingFee, bestVoucher.covered_delivery_fee_vnd ?? 0) / 1000
       );
-      appliedFreeshipId = bestVoucher.id;
+      appliedFreeshipId = bestVoucher.qr_token;
     }
   }
 
@@ -353,7 +353,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
         options: {
           orderType,
           pickupTime: finalPickupTime,
-          discountVoucherIds: selectedDiscountVouchers.map((voucher) => voucher.id),
+          discountVoucherIds: selectedDiscountVouchers.map((voucher) => voucher.qr_token),
           ...(orderType === "DELIVERY" && deliveryAddress ? {
             addressId: deliveryAddress.id,
             deliveryAddress: deliveryAddress.full_address,

@@ -1,4 +1,8 @@
 import { PrismaClient } from "@prisma/client";
+import { config } from "dotenv";
+
+config({ path: ".env.local" });
+
 
 const prisma = new PrismaClient();
 
@@ -21,6 +25,12 @@ function resolveGram(
 }
 
 async function run() {
+  const staffPhone = process.env.TEST_STAFF_PHONE;
+  const staffPassword = process.env.TEST_STAFF_PASSWORD;
+  if (!staffPhone || !staffPassword) {
+    throw new Error("Missing TEST_STAFF_PHONE or TEST_STAFF_PASSWORD in .env.local");
+  }
+
   console.log("=== STEP 1: Querying Database for Menu Item & Pricing Config ===");
   const menuItem = await prisma.menuItem.findFirst({
     where: { is_available: true },
@@ -107,8 +117,8 @@ async function run() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      phone_number: "0949129938",
-      password: "15062023",
+      phone_number: staffPhone,
+      password: staffPassword,
     }),
   });
 

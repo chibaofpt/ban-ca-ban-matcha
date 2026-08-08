@@ -72,9 +72,9 @@ export function buildPowderDefaultValues(item: Powder): Partial<FormFields> {
     umami: item.umami != null ? String(item.umami) : "",
     color: item.color != null ? String(item.color) : "",
     is_available: item.is_available,
-    grams_m: sizeMap["M"] != null ? String(sizeMap["M"]) : "",
-    grams_l: sizeMap["L"] != null ? String(sizeMap["L"]) : "",
-    grams_xl: sizeMap["XL"] != null ? String(sizeMap["XL"]) : "",
+    grams_m: sizeMap["SMALL"] != null ? String(sizeMap["SMALL"]) : "",
+    grams_l: sizeMap["MEDIUM"] != null ? String(sizeMap["MEDIUM"]) : "",
+    grams_xl: sizeMap["LARGE"] != null ? String(sizeMap["LARGE"]) : "",
   };
 }
 
@@ -133,18 +133,12 @@ export default function PowderForm({
     const values = pendingValues;
     setShowConfirm(false);
 
-    const price = parseNum(values.price_per_gram);
-    if (price == null || price < 0) {
-      setFormError("Giá trị VND/g không hợp lệ.");
-      return;
-    }
-
     const size_config: PowderFormPayload["size_config"] = [];
     const payload: PowderFormPayload = {
       name: values.name.trim(),
       manufacturer: values.manufacturer.trim(),
       description: values.description.trim() || null,
-      price_per_gram: Math.round(price),
+      price_per_gram: Math.round(Number(values.price_per_gram)),
       type: values.type,
       reference_latte_item_id: values.reference_latte_item_id || null,
       fragrance: parseNum(values.fragrance),
@@ -208,9 +202,17 @@ export default function PowderForm({
               type="number"
               min="0"
               step="1"
-              {...register("price_per_gram", { required: "Vui lòng nhập giá" })}
+              {...register("price_per_gram", {
+                required: "Vui lòng nhập giá",
+                validate: (v) => {
+                  const n = Number(v);
+                  if (!Number.isFinite(n)) return "Giá không hợp lệ";
+                  if (n < 0) return "Giá không được âm";
+                  return true;
+                },
+              })}
               placeholder="Ví dụ: 6000"
-              className={inputClass}
+              className={cn(inputClass, errors.price_per_gram && "border-destructive focus:ring-destructive/40")}
             />
             {errors.price_per_gram && <p className={errorClass}>{errors.price_per_gram.message}</p>}
           </div>
@@ -298,10 +300,14 @@ export default function PowderForm({
                 min="1"
                 max="5"
                 step="1"
-                {...register(id)}
+                {...register(id, {
+                  min: { value: 1, message: "Tối thiểu 1" },
+                  max: { value: 5, message: "Tối đa 5" },
+                })}
                 placeholder="—"
-                className={inputClass}
+                className={cn(inputClass, errors[id] && "border-destructive focus:ring-destructive/40")}
               />
+              {errors[id] && <p className={errorClass}>{errors[id]?.message}</p>}
             </div>
           ))}
         </div>

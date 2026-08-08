@@ -22,7 +22,7 @@ const mockOrdersResponse = {
       pickup_time: null,
       user: { name: "Nguyễn Văn A", phone_number: "+84901234567" },
       handler: null,
-      items: [{ quantity: 1, size: "M", unit_price_vnd: 55000, addons_price_vnd: 0, menuItem: { name: "Matcha Latte" }, addons: [] }],
+      items: [{ quantity: 1, size: "SMALL", unit_price_vnd: 55000, addons_price_vnd: 0, menuItem: { name: "Matcha Latte" }, addons: [] }],
     },
   ],
   meta: { total: 1, totalPages: 1, page: 1, limit: 10 },

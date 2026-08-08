@@ -3,71 +3,13 @@
 import { useForm, useFieldArray, Controller, useWatch } from "react-hook-form";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/src/utils/cn";
-import type { AdminAddonGroup } from "@/src/lib/types/addonGroup";
-
-interface FormOption {
-  id?: string;
-  label: string;
-  price_vnd: string;
-  is_default: boolean;
-  sort_order: string;
-  gram_value: string;
-}
-
-interface FormFields {
-  name: string;
-  description: string;
-  type: "SELECTOR" | "TOGGLE" | "QUANTITY";
-  is_required: boolean;
-  min_quantity: string;
-  max_quantity: string;
-  is_active: boolean;
-  options: FormOption[];
-}
-
-export interface AddonGroupFormPayload {
-  name: string;
-  description: string | null;
-  type: FormFields["type"];
-  is_required: boolean;
-  min_quantity: number | null;
-  max_quantity: number | null;
-  is_active: boolean;
-  options: Array<{
-    id?: string;
-    label: string;
-    price_vnd: number;
-    is_default: boolean;
-    sort_order: number;
-    gram_value: number | null;
-  }>;
-}
+import type { AddonGroupFormFields as FormFields, AddonGroupFormPayload } from "@/src/components/admin/addonGroupFormModel";
 
 interface AddonGroupFormProps {
   mode: "create" | "edit";
   defaultValues?: Partial<FormFields>;
   onSubmit: (data: AddonGroupFormPayload) => Promise<void>;
   isSubmitting: boolean;
-}
-
-export function buildAddonGroupDefaultValues(item: AdminAddonGroup): Partial<FormFields> {
-  return {
-    name: item.name,
-    description: item.description ?? "",
-    type: item.type,
-    is_required: item.is_required,
-    min_quantity: item.min_quantity !== null ? String(item.min_quantity) : "",
-    max_quantity: item.max_quantity !== null ? String(item.max_quantity) : "",
-    is_active: item.is_active,
-    options: item.options.map(opt => ({
-      id: opt.id,
-      label: opt.label,
-      price_vnd: String(opt.price_vnd),
-      is_default: opt.is_default,
-      sort_order: String(opt.sort_order),
-      gram_value: opt.gram_value !== null ? String(opt.gram_value) : "",
-    })),
-  };
 }
 
 export default function AddonGroupForm({
@@ -227,9 +169,13 @@ export default function AddonGroupForm({
                   <input
                     type="number"
                     min="0"
-                    {...register(`options.${index}.price_vnd`, { required: "Bắt buộc" })}
-                    className={cn(inputClass, "mt-0")}
+                    {...register(`options.${index}.price_vnd`, {
+                      required: "Bắt buộc",
+                      min: { value: 0, message: "Giá không được âm" },
+                    })}
+                    className={cn(inputClass, "mt-0", errors.options?.[index]?.price_vnd && "border-destructive focus:ring-destructive/40")}
                   />
+                  {errors.options?.[index]?.price_vnd && <p className={errorClass}>{errors.options[index]?.price_vnd?.message}</p>}
                 </div>
 
                 {isExtraMatcha && (

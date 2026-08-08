@@ -54,6 +54,8 @@ function makeSupabaseResponse(data: unknown, status = 200) {
 describe("middleware-auth — findSessionWithUser", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("SUPABASE_SECRET_KEY", "");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
   });
 
   it("trả về session kèm user khi refresh_token hợp lệ", async () => {
@@ -81,6 +83,18 @@ describe("middleware-auth — findSessionWithUser", () => {
     const headers = options.headers as Record<string, string>;
     expect(headers["apikey"]).toBe("test-service-role-key");
     expect(headers["Authorization"]).toContain("Bearer test-service-role-key");
+  });
+
+  it("ưu tiên secret key mới khi cả hai key đều được cấu hình", async () => {
+    vi.stubEnv("SUPABASE_SECRET_KEY", "test-secret-key");
+    mockFetch.mockResolvedValueOnce(makeSupabaseResponse([MOCK_SESSION]));
+
+    await findSessionWithUser("refresh-token-secret-key");
+
+    const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const headers = options.headers as Record<string, string>;
+    expect(headers["apikey"]).toBe("test-secret-key");
+    expect(headers).not.toHaveProperty("Authorization");
   });
 
   it("trả về null khi không tìm thấy session", async () => {

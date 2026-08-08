@@ -119,7 +119,7 @@ export function StaffCartDrawer({
   // Discounts
   const selectedDiscountVouchersList = useMemo(
     () => selectedDiscountIds.flatMap((id) => {
-      const voucher = discountVouchers.find((candidate) => candidate.id === id);
+      const voucher = discountVouchers.find((candidate) => candidate.qr_token === id);
       return voucher ? [voucher] : [];
     }),
     [discountVouchers, selectedDiscountIds]
@@ -127,7 +127,7 @@ export function StaffCartDrawer({
   const previewDiscountVouchers = useMemo(
     () => [
       ...selectedDiscountVouchersList,
-      ...(discountVoucher && !selectedDiscountIds.includes(discountVoucher.id)
+      ...(discountVoucher && !selectedDiscountIds.includes(discountVoucher.qr_token)
         ? [discountVoucher]
         : []),
     ],
@@ -318,7 +318,7 @@ export function StaffCartDrawer({
                 )}
                 
                 {/* Legacy discount from scanner */}
-                {discountVoucher && !selectedDiscountIds.includes(discountVoucher.id) && (
+                {discountVoucher && !selectedDiscountIds.includes(discountVoucher.qr_token) && (
                   <div className="flex items-center justify-between bg-green-50/50 border border-green-200/50 rounded-xl px-3 py-2">
                     <span className="text-xs font-bold text-green-700">🏷 Voucher quét mã</span>
                     <span className="text-xs font-bold text-green-700">
@@ -426,12 +426,12 @@ export function StaffCartDrawer({
                     <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Miễn phí món</p>
                     <div className="space-y-2">
                       {applicableProductVouchers.get(activeItem.menuItemId)?.map(v => {
-                        const isSelected = activeItem.productVoucherId === v.id;
-                        const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && c.productVoucherId === v.id);
+                        const isSelected = activeItem.productVoucherId === v.qr_token;
+                        const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && c.productVoucherId === v.qr_token);
                         
                         return (
                           <VoucherCard 
-                            key={v.id} 
+                            key={v.qr_token}
                             voucher={v}
                             isDisabled={isAlreadyUsed}
                             disabledReason={isAlreadyUsed ? "Đã dùng ở ly khác" : undefined}
@@ -461,18 +461,18 @@ export function StaffCartDrawer({
                     <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Topping miễn phí</p>
                     <div className="space-y-2">
                       {applicableAddonVouchersMap.get(activeItem.cartId)?.map(v => {
-                        const isSelected = (activeItem.addonVouchers ?? []).some(av => av.voucherId === v.id);
-                        const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && c.addonVouchers?.some(av => av.voucherId === v.id));
+                        const isSelected = (activeItem.addonVouchers ?? []).some(av => av.voucherId === v.qr_token);
+                        const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && c.addonVouchers?.some(av => av.voucherId === v.qr_token));
                         
                         return (
                           <VoucherCard 
-                            key={v.id} 
+                            key={v.qr_token}
                             voucher={v}
                             isDisabled={isAlreadyUsed}
                             disabledReason={isAlreadyUsed ? "Đã dùng ở ly khác" : undefined}
                             onClick={() => {
                               if (isAlreadyUsed) return;
-                              if (isSelected && onRemoveAddon) onRemoveAddon(activeItem.cartId, v.id);
+                              if (isSelected && onRemoveAddon) onRemoveAddon(activeItem.cartId, v.qr_token);
                               else if (!isSelected && onApplyAddon) onApplyAddon(activeItem.cartId, v);
                               setActiveItemForVoucher(null);
                             }}
@@ -519,9 +519,9 @@ export function StaffCartDrawer({
                   <p className="text-center text-sm text-muted-foreground mt-10">Không có mã giảm giá nào</p>
                 )}
                 {discountVouchers.map(v => {
-                  const isSelected = selectedDiscountIds?.includes(v.id) ?? false;
+                  const isSelected = selectedDiscountIds?.includes(v.qr_token) ?? false;
                   const hasPercent = (discountVoucher?.discount_type === "PERCENT") || (selectedDiscountIds?.some(id => {
-                    const found = discountVouchers.find(dv => dv.id === id);
+                    const found = discountVouchers.find(dv => dv.qr_token === id);
                     return found?.discount_type === "PERCENT";
                   }) ?? false);
                   // Disable if trying to add a second PERCENT voucher
@@ -529,11 +529,11 @@ export function StaffCartDrawer({
 
                   return (
                     <VoucherCard 
-                      key={v.id} 
+                      key={v.qr_token}
                       voucher={v}
                       isDisabled={isDisabled}
                       disabledReason={isDisabled ? "Đã chọn 1 mã giảm %" : undefined}
-                      onClick={() => !isDisabled && onToggleDiscount && onToggleDiscount(v.id)}
+                      onClick={() => !isDisabled && onToggleDiscount && onToggleDiscount(v.qr_token)}
                       actionNode={
                         isSelected ? (
                           <CheckCircle2 className="w-5 h-5 text-orange-500 shrink-0 ml-2" />

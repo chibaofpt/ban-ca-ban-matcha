@@ -8,6 +8,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
+import { resolveCustomerIdentifier } from "@/lib/publicIdentifiers";
+import { toPublicVoucherDto } from "@/lib/voucherPublicDto";
 
 export const dynamic = "force-dynamic";
 
@@ -25,9 +27,13 @@ export async function GET(
     return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
   }
 
-  const { id: userId } = await params;
+  const { id: userIdentifier } = await params;
 
   try {
+    const user = await resolveCustomerIdentifier(userIdentifier);
+    if (!user) return NextResponse.json({ data: [] });
+
+    const userId = user.id;
     await lazyExpireVouchers(userId);
     const vouchers = await prisma.voucher.findMany({
       where: {
@@ -43,9 +49,11 @@ export async function GET(
       },
     });
 
-    return NextResponse.json({ data: vouchers });
+    return NextResponse.json({ data: vouchers.map(toPublicVoucherDto) });
   } catch (err) {
-    console.error("[GET /api/staff/users/[id]/vouchers]", err);
+    console.error("[GET /api/staff/users/[id]/vouchers]", {
+      name: err instanceof Error ? err.name : typeof err,
+    });
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },
       { status: 500 }

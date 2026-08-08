@@ -20,6 +20,8 @@ const mockMenuItemFindUniqueOrThrow = vi.fn();
 const mockPowderSizeConfigCreateMany = vi.fn();
 const mockTransaction = vi.fn();
 const mockUploadMenuImage = vi.fn();
+const mockRemoveMenuImages = vi.fn();
+const mockBuildMenuImagePath = vi.fn();
 const mockDefaultSizeConfigFindMany = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
@@ -28,6 +30,8 @@ vi.mock("@/lib/auth", () => ({
 
 vi.mock("@/lib/storage", () => ({
   uploadMenuImage: (...args: unknown[]) => mockUploadMenuImage(...args),
+  removeMenuImages: (...args: unknown[]) => mockRemoveMenuImages(...args),
+  buildMenuImagePath: (...args: unknown[]) => mockBuildMenuImagePath(...args),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -172,6 +176,8 @@ describe("POST /api/admin/menu/create-latte-with-powder", () => {
     vi.clearAllMocks();
     mockGetSession.mockResolvedValue(ADMIN_SESSION);
     mockUploadMenuImage.mockResolvedValue("https://example.com/image.jpg");
+    mockRemoveMenuImages.mockResolvedValue(undefined);
+    mockBuildMenuImagePath.mockReturnValue("products/latte/matcha-seo-12345678.webp");
   });
 
   // â”€â”€ Auth & Role â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -401,6 +407,42 @@ describe("POST /api/admin/menu/create-latte-with-powder", () => {
     setupTx();
     await POST(makeFormDataReq(validFormData()));
     expect(mockUploadMenuImage).not.toHaveBeenCalled();
+  });
+
+  it("dùng image_filename để tạo object path SEO", async () => {
+    setupTx();
+    const image = new File(["image"], "crop.webp", { type: "image/webp" });
+
+    await POST(makeFormDataReq({
+      ...validFormData(),
+      image_filename: "Matcha Đậu Đỏ",
+      image,
+    }));
+
+    expect(mockBuildMenuImagePath).toHaveBeenCalledWith(expect.objectContaining({
+      category: "latte",
+      productName: "Matcha Latte",
+      requestedName: "Matcha Đậu Đỏ",
+      contentType: "image/webp",
+    }));
+    expect(mockUploadMenuImage).toHaveBeenCalledWith(
+      "products/latte/matcha-seo-12345678.webp",
+      expect.any(Buffer),
+      "image/webp",
+    );
+  });
+
+  it("xóa ảnh vừa upload khi transaction database thất bại", async () => {
+    mockDefaultSizeConfigFindMany.mockResolvedValue(defaultSizeConfigs);
+    mockTransaction.mockRejectedValue(new Error("DB failed"));
+    const image = new File(["image"], "crop.webp", { type: "image/webp" });
+
+    const response = await POST(makeFormDataReq({ ...validFormData(), image }));
+
+    expect(response.status).toBe(500);
+    expect(mockRemoveMenuImages).toHaveBeenCalledWith([
+      "products/latte/matcha-seo-12345678.webp",
+    ]);
   });
 
   it("response menu_item cÃ³ Ä‘á»§ cÃ¡c field cáº§n thiáº¿t", async () => {

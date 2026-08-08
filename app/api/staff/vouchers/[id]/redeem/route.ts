@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { resolveStaffVoucherIdentifier } from "@/lib/publicIdentifiers";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +20,7 @@ export async function PATCH(
 
     const { id: qrToken } = await params;
 
-    // We look up the voucher by qr_token
-    const voucher = await prisma.voucher.findUnique({
-      where: { qr_token: qrToken },
-    });
+    const voucher = await resolveStaffVoucherIdentifier(qrToken);
 
     if (!voucher) {
       return NextResponse.json(
@@ -90,12 +88,14 @@ export async function PATCH(
 
     return NextResponse.json({
       data: {
-        id: voucher.qr_token,
+        qr_token: voucher.qr_token,
         status: "REDEEMED",
       },
     });
   } catch (error) {
-    console.error("PATCH /api/staff/vouchers/[id]/redeem error:", error);
+    console.error("PATCH /api/staff/vouchers/[id]/redeem error", {
+      name: error instanceof Error ? error.name : typeof error,
+    });
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },
       { status: 500 }

@@ -3,29 +3,39 @@ import { getSession } from "@/lib/auth";
 import { getStoreLocation, goongDistanceMatrix } from "@/lib/goong";
 import { calcShippingFee } from "@/src/utils/pricing";
 import { DELIVERY_CONFIG } from "@/src/constants/delivery";
+import { checkRateLimits, getClientIp } from "@/lib/rateLimit";
+import { locationQuerySchema } from "@/lib/validations/delivery";
+import { captureServerException } from "@/lib/observability";
 
 export const dynamic = "force-dynamic";
 
+/** Estimate distance, duration, and shipping fee for validated coordinates. */
 export async function GET(req: NextRequest) {
+  const parsed = locationQuerySchema.safeParse({
+    lat: req.nextUrl.searchParams.get("lat") ?? undefined,
+    lng: req.nextUrl.searchParams.get("lng") ?? undefined,
+  });
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid coordinates", code: "VALIDATION_ERROR" }, { status: 400 });
+  }
+
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   }
 
-  const { searchParams } = new URL(req.url);
-  const destLatStr = searchParams.get("lat");
-  const destLngStr = searchParams.get("lng");
-
-  if (!destLatStr || !destLngStr) {
-    return NextResponse.json({ error: "Query 'lat' and 'lng' are required", code: "VALIDATION_ERROR" }, { status: 400 });
+  const limit = await checkRateLimits([
+    { ruleName: "deliveryAccount", identifier: session.id },
+    { ruleName: "deliveryIp", identifier: getClientIp(req) },
+  ]);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests", code: "TOO_MANY_REQUESTS" },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
   }
 
-  const destLat = parseFloat(destLatStr);
-  const destLng = parseFloat(destLngStr);
-
-  if (isNaN(destLat) || isNaN(destLng)) {
-    return NextResponse.json({ error: "Invalid coordinates", code: "VALIDATION_ERROR" }, { status: 400 });
-  }
+  const { lat: destLat, lng: destLng } = parsed.data;
 
   try {
     const store = getStoreLocation();
@@ -60,8 +70,10 @@ export async function GET(req: NextRequest) {
         shipping_fee_vnd
       }
     });
-  } catch (error) {
-    console.error("[GET /api/delivery/estimate] Error:", error);
+  } catch {
+    captureServerException(new Error("Delivery estimate upstream failure"), {
+      operation: "delivery_estimate",
+    });
     return NextResponse.json(
       { error: "Failed to estimate delivery fee", code: "GOONG_API_ERROR" },
       { status: 502 }

@@ -12,12 +12,12 @@ interface QRScannerModalProps {
   onScanUser: (data: { phone_number: string }) => void;
   /** Called when a DISCOUNT voucher QR is scanned and status is ACTIVE. */
   onScanVoucherDiscount: (data: {
-    id: string;
+    qr_token: string;
     discount_type: "PERCENT" | "FIXED";
     discount_value: number;
   }) => void;
   /** Called when a PRODUCT voucher QR is scanned and status is ACTIVE. */
-  onScanVoucherProduct: (data: { id: string; menu_item_id: string; covered_price_vnd: number }) => void;
+  onScanVoucherProduct: (data: { qr_token: string; menu_item_id: string; covered_price_vnd: number }) => void;
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ export function QRScannerModal({
                 const dv = result.data.discount_value;
                 if (dt !== null && dv !== null) {
                   onScanVoucherDiscount({
-                    id: result.data.id,
+                    qr_token: result.data.qr_token,
                     discount_type: dt,
                     discount_value: dv,
                   });
@@ -90,7 +90,7 @@ export function QRScannerModal({
                 const mid = result.data.menu_item_id;
                 const cpv = result.data.covered_price_vnd;
                 if (mid !== null && cpv !== null) {
-                  onScanVoucherProduct({ id: result.data.id, menu_item_id: mid, covered_price_vnd: cpv });
+                  onScanVoucherProduct({ qr_token: result.data.qr_token, menu_item_id: mid, covered_price_vnd: cpv });
                 }
               }
             } catch {

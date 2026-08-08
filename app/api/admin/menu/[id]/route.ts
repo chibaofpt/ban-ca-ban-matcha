@@ -2,181 +2,54 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { updateMenuSchema } from "@/lib/validations/menu";
-import { uploadMenuImage } from "@/lib/storage";
-import type { Prisma } from "@prisma/client";
+import {
+  buildMenuImagePath,
+  contentTypeForMenuImagePath,
+  copyMenuImage,
+  parseMenuImagePath,
+  removeMenuImages,
+  uploadMenuImage,
+} from "@/lib/storage";
 import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
+import { captureServerException } from "@/lib/observability";
+import { ADMIN_MENU_INCLUDE, formatAdminMenuItem } from "@/lib/adminMenuDto";
+import { parseAdminMenuUpdate } from "@/lib/adminMenuRequest";
+import { asMenuStorageCategory, validateMenuImageFile, validateUniqueLattePowder } from "@/lib/adminMenuUpdate";
 
 export const dynamic = "force-dynamic";
 
 // ── Shared include + helper (mirrors route.ts) ───────────────────────────────
 
-type MenuItemWithRelations = Prisma.MenuItemGetPayload<{
-  include: {
-    sizes: true;
-    matchaPowder: { select: { id: true; name: true; type: true } };
-    defaultPowder: { select: { id: true; name: true; type: true } };
-    fusionAllowedPowders: {
-      include: { matchaPowder: { select: { id: true; is_available: true } } };
-    };
-  };
-}>;
-
-const SIZE_ORDER: Record<string, number> = { M: 0, L: 1, XL: 2 };
-
-function formatAdminMenuItem(
-  item: MenuItemWithRelations,
-  milkMlMap: Record<string, number>
-) {
-  return {
-    id: item.id,
-    name: item.name,
-    description: item.description ?? null,
-    category: item.category,
-    is_seasonal: item.is_seasonal,
-    image_url: item.image_url ?? null,
-    is_available: item.is_available,
-    sort_order: item.sort_order,
-    base_liquid_note: item.base_liquid_note ?? null,
-    custom_powder_grams: item.custom_powder_grams ?? null,
-    updated_at: item.updated_at,
-    matcha_powder_id: item.matcha_powder_id ?? null,
-    powder: item.matchaPowder ?? null,
-    default_powder_id: item.default_powder_id ?? null,
-    default_powder: item.defaultPowder ?? null,
-    allowed_powder_ids: item.fusionAllowedPowders
-      .filter((fp) => fp.matchaPowder.is_available)
-      .map((fp) => fp.powder_id),
-    sizes: item.sizes
-      .map((s) => ({
-        size: s.size,
-        base_price_vnd: s.base_price_vnd,
-        milk_ml: milkMlMap[s.size] ?? 0,
-      }))
-      .sort((a, b) => SIZE_ORDER[a.size] - SIZE_ORDER[b.size]),
-  };
-}
-
-const INCLUDE = {
-  sizes: { orderBy: { size: "asc" as const } },
-  matchaPowder: { select: { id: true, name: true, type: true } },
-  defaultPowder: { select: { id: true, name: true, type: true } },
-  fusionAllowedPowders: {
-    include: {
-      matchaPowder: { select: { id: true, is_available: true } },
-    },
-  },
-} satisfies Prisma.MenuItemInclude;
-
 // ── PUT /api/admin/menu/[id] ─────────────────────────────────────────────────
 
 /** PUT /api/admin/menu/[id] — update menu item. Accepts multipart/form-data OR application/json. ADMIN only. */
-export async function PUT(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-): Promise<NextResponse> {
+export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }): Promise<NextResponse> {
   const session = await getSession();
-  if (!session)
-    return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
-  if (session.role !== "ADMIN")
-    return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+  if (!session) return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
+  if (session.role !== "ADMIN") return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
 
   const { id } = await params;
 
+  let newImagePath: string | null = null;
+  let oldImagePathToDelete: string | null = null;
+  let databaseCommitted = false;
   try {
-    console.log("[PUT] STEP 1 — start, id:", id);
     // ── Detect Content-Type → parse body ──────────────────────────────────
     // Toggle availability sends JSON { is_available }
     // Form edit sends multipart/form-data — both go through this same route
-    const contentType = req.headers.get("content-type") ?? "";
-    console.log("[PUT] STEP 2 — content-type:", contentType);
-    let raw: Record<string, unknown>;
-    let imageFile: File | null = null;
+    const parsedRequest = await parseAdminMenuUpdate(req);
+    if (!parsedRequest.ok) return parsedRequest.response;
+    const { raw, imageFile } = parsedRequest;
 
-    if (contentType.includes("multipart/form-data")) {
-      const formData = await req.formData();
-      raw = {
-        name: formData.get("name") || undefined,
-        description: formData.get("description") || undefined,
-        is_seasonal:
-          formData.get("is_seasonal") === "true"
-            ? true
-            : formData.get("is_seasonal") === "false"
-            ? false
-            : undefined,
-        is_available:
-          formData.get("is_available") === "true"
-            ? true
-            : formData.get("is_available") === "false"
-            ? false
-            : undefined,
-        sort_order: formData.get("sort_order")
-          ? Number(formData.get("sort_order"))
-          : undefined,
-        matcha_powder_id: formData.get("matcha_powder_id") && /^[0-9a-fA-F]{8}-/.test(formData.get("matcha_powder_id") as string) 
-          ? formData.get("matcha_powder_id") as string 
-          : undefined,
-        default_powder_id: formData.get("default_powder_id") && /^[0-9a-fA-F]{8}-/.test(formData.get("default_powder_id") as string)
-          ? formData.get("default_powder_id") as string 
-          : undefined,
-        base_liquid_note: formData.get("base_liquid_note") || undefined,
-      };
-
-      const sizesStr = formData.get("sizes") as string | null;
-      if (sizesStr) {
-        try {
-          raw.sizes = JSON.parse(sizesStr);
-        } catch {
-          return NextResponse.json(
-            { error: "Định dạng sizes không hợp lệ", code: "VALIDATION_ERROR" },
-            { status: 400 }
-          );
-        }
-      }
-
-      const cpgStr = formData.get("custom_powder_grams") as string | null;
-      if (cpgStr) {
-        try {
-          raw.custom_powder_grams = JSON.parse(cpgStr);
-        } catch {
-          return NextResponse.json(
-            { error: "Định dạng custom_powder_grams không hợp lệ", code: "VALIDATION_ERROR" },
-            { status: 400 }
-          );
-        }
-      }
-
-      const apStr = formData.get("allowed_powder_ids") as string | null;
-      if (apStr) {
-        try {
-          raw.allowed_powder_ids = JSON.parse(apStr);
-        } catch {
-          return NextResponse.json(
-            { error: "Định dạng allowed_powder_ids không hợp lệ", code: "VALIDATION_ERROR" },
-            { status: 400 }
-          );
-        }
-      }
-
-      const candidate = formData.get("image");
-      if (candidate instanceof File && candidate.size > 0) imageFile = candidate;
-    } else {
-      raw = (await req.json().catch(() => null)) ?? {};
-    }
-
-    console.log("[PUT] STEP 3 — raw keys:", Object.keys(raw));
-    console.log("[PUT] STEP 3 — imageFile:", imageFile ? `${imageFile.name} (${imageFile.size}b, ${imageFile.type})` : null);
 
     // ── findUnique → 404 ─────────────────────────────────────────────────
-    console.log("[PUT] STEP 4 — querying DB for id:", id);
     const existing = await prisma.menuItem.findUnique({ where: { id } });
-    console.log("[PUT] STEP 5 — existing:", existing ? existing.name : "NOT FOUND");
     if (!existing)
       return NextResponse.json({ error: "Không tìm thấy món", code: "NOT_FOUND" }, { status: 404 });
 
     // ── Zod validation ───────────────────────────────────────────────────
     const validation = updateMenuSchema.safeParse(raw);
     if (!validation.success) {
-      console.error("[PUT /api/admin/menu/[id]] Validation error:", JSON.stringify(validation.error.issues, null, 2));
       return NextResponse.json(
         { 
           error: validation.error.issues[0].message, 
@@ -187,56 +60,68 @@ export async function PUT(
       );
     }
     const validData = validation.data;
-    console.log("[PUT] STEP 6 — validation passed");
 
     // ── Check uniqueness of powder ──────────────────────────────────────────
-    if (existing.category === "latte" && validData.matcha_powder_id && validData.matcha_powder_id !== existing.matcha_powder_id) {
-      const powderUsed = await prisma.menuItem.findUnique({
-        where: { matcha_powder_id: validData.matcha_powder_id },
-      });
-      if (powderUsed && powderUsed.id !== id) {
-        return NextResponse.json(
-          { error: "Loại bột này đã được sử dụng cho một món Latte khác", code: "VALIDATION_ERROR" },
-          { status: 400 }
-        );
-      }
-    }
+    const powderConflict = await validateUniqueLattePowder({
+      itemId: id,
+      category: existing.category,
+      currentPowderId: existing.matcha_powder_id,
+      nextPowderId: validData.matcha_powder_id,
+    });
+    if (powderConflict) return powderConflict;
 
-    // ── Image upload (multipart only) ─────────────────────────────────────
+    // ── Image upload or SEO rename (multipart only) ───────────────────────
     let image_url: string | undefined;
     if (imageFile) {
-      console.log("[PUT] STEP 7 — uploading image:", imageFile.name, imageFile.type, imageFile.size);
-      const allowed = ["image/jpeg", "image/png", "image/webp"];
-      if (!allowed.includes(imageFile.type))
-        return NextResponse.json(
-          { error: "Định dạng ảnh không hỗ trợ (JPEG, PNG, WEBP)", code: "VALIDATION_ERROR" },
-          { status: 400 }
-        );
-      if (imageFile.size > 5 * 1024 * 1024)
-        return NextResponse.json(
-          { error: "Ảnh quá lớn (tối đa 5MB)", code: "VALIDATION_ERROR" },
-          { status: 400 }
-        );
+      const imageError = validateMenuImageFile(imageFile);
+      if (imageError) return imageError;
       const buffer = Buffer.from(await imageFile.arrayBuffer());
-      console.log("[PUT] STEP 8 — buffer ready, size:", buffer.length);
       try {
-        image_url = await uploadMenuImage(`${Date.now()}-${imageFile.name}`, buffer, imageFile.type);
-        console.log("[PUT] STEP 9 — upload OK, url:", image_url);
+        const imagePath = buildMenuImagePath({
+          category: asMenuStorageCategory(existing.category),
+          productName: validData.name ?? existing.name,
+          requestedName: validData.image_filename,
+          contentType: imageFile.type,
+        });
+        image_url = await uploadMenuImage(imagePath, buffer, imageFile.type);
+        newImagePath = imagePath;
+        oldImagePathToDelete = existing.image_url
+          ? parseMenuImagePath(existing.image_url)
+          : null;
       } catch (uploadErr: unknown) {
-        const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
-        console.error("[PUT] STEP 9 FAILED — upload error:", msg);
+        captureServerException(uploadErr, { operation: "upload_menu_image_update" });
         return NextResponse.json(
-          { error: `Upload ảnh thất bại: ${msg}`, code: "UPLOAD_ERROR" },
+          { error: "Upload ảnh thất bại", code: "UPLOAD_ERROR" },
           { status: 500 }
         );
       }
-    } else {
-      console.log("[PUT] STEP 7 — no image to upload");
+    } else if (validData.image_filename) {
+      const currentPath = existing.image_url
+        ? parseMenuImagePath(existing.image_url)
+        : null;
+      const currentContentType = currentPath
+        ? contentTypeForMenuImagePath(currentPath)
+        : null;
+      if (!currentPath || !currentContentType) {
+        return NextResponse.json(
+          { error: "Không có ảnh hợp lệ để đổi tên", code: "VALIDATION_ERROR" },
+          { status: 400 },
+        );
+      }
+      const renamedPath = buildMenuImagePath({
+        category: asMenuStorageCategory(existing.category),
+        productName: validData.name ?? existing.name,
+        requestedName: validData.image_filename,
+        contentType: currentContentType,
+      });
+      image_url = await copyMenuImage(currentPath, renamedPath);
+      newImagePath = renamedPath;
+      oldImagePathToDelete = currentPath;
     }
 
     // ── DB write in transaction ───────────────────────────────────────────
-    const [updatedItem, defaultSizeConfigs] = await Promise.all([
-      prisma.$transaction(async (tx) => {
+    const defaultSizeConfigs = await prisma.defaultSizeConfig.findMany();
+    const updatedItem = await prisma.$transaction(async (tx) => {
         await tx.menuItem.update({
           where: { id },
           data: {
@@ -309,23 +194,41 @@ export async function PUT(
           }
         }
 
-        return tx.menuItem.findUniqueOrThrow({ where: { id }, include: INCLUDE });
-      }, { maxWait: 10000, timeout: 15000 }),
-      prisma.defaultSizeConfig.findMany(),
-    ]);
-
+        return tx.menuItem.findUniqueOrThrow({ where: { id }, include: ADMIN_MENU_INCLUDE });
+      }, { maxWait: 10000, timeout: 15000 });
+    databaseCommitted = true;
     const milkMlMap: Record<string, number> = {};
     for (const c of defaultSizeConfigs) milkMlMap[c.size] = c.milk_ml;
 
-    await invalidateMenuCaches();
+    if (oldImagePathToDelete) {
+      try {
+        await removeMenuImages([oldImagePathToDelete]);
+      } catch (cleanupError) {
+        captureServerException(cleanupError, {
+          operation: "delete_replaced_menu_image",
+        });
+      }
+    }
+
+    try {
+      await invalidateMenuCaches();
+    } catch (cacheError) {
+      captureServerException(cacheError, { operation: "invalidate_menu_after_update" });
+    }
     return NextResponse.json({ data: formatAdminMenuItem(updatedItem, milkMlMap) });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const stack = err instanceof Error ? err.stack : undefined;
-    console.error("[PUT] UNCAUGHT ERROR:", msg);
-    console.error("[PUT] STACK:", stack);
+    if (newImagePath && !databaseCommitted) {
+      try {
+        await removeMenuImages([newImagePath]);
+      } catch (cleanupError) {
+        captureServerException(cleanupError, {
+          operation: "rollback_menu_image_update",
+        });
+      }
+    }
+    captureServerException(err, { operation: "update_menu_item" });
     return NextResponse.json(
-      { error: "Internal server error", code: "INTERNAL_ERROR", details: { msg } },
+      { error: "Internal server error", code: "INTERNAL_ERROR" },
       { status: 500 }
     );
   }
@@ -334,15 +237,10 @@ export async function PUT(
 // ── DELETE /api/admin/menu/[id] ───────────────────────────────────────────────
 
 /** DELETE /api/admin/menu/[id] — soft delete + cascade disable referenced powder. ADMIN only. */
-export async function DELETE(
-  _req: Request,
-  { params }: { params: Promise<{ id: string }> }
-): Promise<NextResponse> {
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }): Promise<NextResponse> {
   const session = await getSession();
-  if (!session)
-    return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
-  if (session.role !== "ADMIN")
-    return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+  if (!session) return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
+  if (session.role !== "ADMIN") return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
 
   const { id } = await params;
 

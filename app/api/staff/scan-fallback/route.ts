@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { logSystemEvent } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,6 @@ export async function POST(request: Request) {
     const user = await prisma.user.findUnique({
       where: { phone_number },
       select: {
-        id: true,
         name: true,
         phone_number: true,
         points_balance: true,
@@ -51,19 +51,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Log the manual bypass to SystemLog
-    await prisma.systemLog.create({
-      data: {
-        level: "audit",
-        source: "qr_fallback",
-        message: "Staff manually entered QR short code",
-        context: {
-          staff_id: session.id,
-          user_id: user.id,
-          phone_number: user.phone_number,
-          entered_code: code,
-        },
-      },
+    // 3. Record the manual bypass without identifiers or submitted secrets.
+    await logSystemEvent({
+      level: "info",
+      source: "qr_fallback",
+      message: "Staff manually verified a QR short code",
     });
 
     // 4. Return same shape as /api/staff/scan
@@ -71,7 +63,7 @@ export async function POST(request: Request) {
       data: {
         type: "user",
         data: {
-          id: user.qr_token, // Always return qr_token as id
+          qr_token: user.qr_token,
           name: user.name,
           phone_number: user.phone_number,
           points_balance: user.points_balance,
@@ -79,7 +71,9 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error("POST /api/staff/scan-fallback error:", error);
+    console.error("POST /api/staff/scan-fallback error", {
+      name: error instanceof Error ? error.name : typeof error,
+    });
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },
       { status: 500 }

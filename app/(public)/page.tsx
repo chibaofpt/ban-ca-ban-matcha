@@ -1,4 +1,6 @@
 import HomePage from '@/src/views/HomePage';
+import { headers } from 'next/headers';
+import { serializeJsonLd } from '@/src/utils/jsonLd';
 
 export const metadata = {
   title: 'Bạn Cá Bán Matcha — Tiên phong văn hóa Matcha tại Bình Dương',
@@ -31,12 +33,14 @@ const jsonLd = {
  * app/(public)/page.tsx – Entry-only wrapper for the Home route.
  * Following the Pattern Rule: logic and styling are delegated to src/views/HomePage.
  */
-export default function Page() {
+export default async function Page() {
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
   return (
     <>
       <script
+        nonce={nonce}
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
       <HomePage />
     </>

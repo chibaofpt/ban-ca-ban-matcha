@@ -193,7 +193,7 @@ const CartItemCard = ({
           <div className="flex flex-wrap gap-1.5 flex-1">
             {/* Applied: product voucher */}
             {item.productVoucherId && (() => {
-              const pv = allVouchers.find(v => v.id === item.productVoucherId);
+              const pv = allVouchers.find(v => v.qr_token === item.productVoucherId);
               return (
                 <div className="text-[10px] font-bold bg-orange-50 border border-orange-200 text-orange-700 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
                   <Ticket className="w-3 h-3 text-orange-500" /> {pv?.package?.name || "Free món"}
@@ -209,7 +209,7 @@ const CartItemCard = ({
             })()}
             {/* Applied: addon vouchers */}
             {item.addonVouchers && item.addonVouchers.map(av => {
-              const voucherInfo = allVouchers.find(v => v.id === av.voucherId);
+              const voucherInfo = allVouchers.find(v => v.qr_token === av.voucherId);
               return (
                 <div key={av.voucherId} className="text-[10px] font-bold bg-green-50 border border-green-200 text-green-700 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
                   <Ticket className="w-3 h-3 text-green-600" /> Free {voucherInfo?.addonOption?.label || "Topping"}

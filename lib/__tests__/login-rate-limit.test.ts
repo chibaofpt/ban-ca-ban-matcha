@@ -44,6 +44,8 @@ import {
   resetPhoneFlood,
 } from "@/lib/rateLimit";
 
+vi.stubEnv("JWT_SECRET", "test-rate-limit-secret-at-least-32-bytes");
+
 // ══════════════════════════════════════════════════════════════════════════════
 // checkLoginFailLimit — kiểm tra IP fail counter
 // ══════════════════════════════════════════════════════════════════════════════
@@ -156,14 +158,18 @@ describe("recordLoginFail + resetLoginFail", () => {
   it("recordLoginFail gọi Redis incr + expire với đúng key và TTL 900s", async () => {
     await recordLoginFail("1.2.3.4");
 
-    expect(mockIncr).toHaveBeenCalledWith("login:fail:1.2.3.4");
-    expect(mockExpire).toHaveBeenCalledWith("login:fail:1.2.3.4", 900);
+    const key = mockIncr.mock.calls[0][0] as string;
+    expect(key).toMatch(/^rl:v1:auth:login-failed-ip:[a-f0-9]{64}$/);
+    expect(key).not.toContain("1.2.3.4");
+    expect(mockExpire).toHaveBeenCalledWith(key, 900);
   });
 
   it("resetLoginFail gọi Redis del với đúng key", async () => {
     await resetLoginFail("1.2.3.4");
 
-    expect(mockDel).toHaveBeenCalledWith("login:fail:1.2.3.4");
+    const key = mockDel.mock.calls[0][0] as string;
+    expect(key).toMatch(/^rl:v1:auth:login-failed-ip:[a-f0-9]{64}$/);
+    expect(key).not.toContain("1.2.3.4");
   });
 
   it("không throw khi Redis down", async () => {
@@ -190,14 +196,18 @@ describe("recordPhoneFloodAttempt + resetPhoneFlood", () => {
   it("recordPhoneFloodAttempt gọi Redis incr + expire với đúng key và TTL 900s", async () => {
     await recordPhoneFloodAttempt("+84912345678");
 
-    expect(mockIncr).toHaveBeenCalledWith("login:phone:+84912345678");
-    expect(mockExpire).toHaveBeenCalledWith("login:phone:+84912345678", 900);
+    const key = mockIncr.mock.calls[0][0] as string;
+    expect(key).toMatch(/^rl:v1:auth:login-identifier:[a-f0-9]{64}$/);
+    expect(key).not.toContain("+84912345678");
+    expect(mockExpire).toHaveBeenCalledWith(key, 900);
   });
 
   it("resetPhoneFlood gọi Redis del với đúng key", async () => {
     await resetPhoneFlood("+84912345678");
 
-    expect(mockDel).toHaveBeenCalledWith("login:phone:+84912345678");
+    const key = mockDel.mock.calls[0][0] as string;
+    expect(key).toMatch(/^rl:v1:auth:login-identifier:[a-f0-9]{64}$/);
+    expect(key).not.toContain("+84912345678");
   });
 
   it("không throw khi Redis down", async () => {

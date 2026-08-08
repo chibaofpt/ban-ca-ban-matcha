@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { imageFilenameSchema } from "@/lib/validations/menu";
 
 /** Schema cho phần bột mới tạo inline cùng với Latte. */
 const inlinePowderSchema = z.object({
@@ -58,6 +59,7 @@ export const createLatteWithPowderSchema = z.object({
   sort_order: z.number().int().min(0).default(0),
   sizes: sizesSchema,
   custom_powder_grams: customPowderGramsSchema,
+  image_filename: imageFilenameSchema,
 
   // ── Inline powder fields ──────────────────────────────────────────────────
   new_powder: inlinePowderSchema,

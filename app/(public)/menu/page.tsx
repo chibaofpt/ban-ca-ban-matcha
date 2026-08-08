@@ -1,5 +1,7 @@
 import MenuPage from '@/src/views/MenuPage';
 import { prisma } from '@/lib/prisma';
+import { headers } from 'next/headers';
+import { serializeJsonLd } from '@/src/utils/jsonLd';
 
 export const metadata = {
   title: 'Menu — Bạn Cá Bán Matcha',
@@ -12,7 +14,9 @@ export const metadata = {
 
 export const dynamic = 'force-dynamic';
 
+/** Render the public menu and nonce-authorized SEO metadata. */
 export default async function Page() {
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
   // Fetch minimal data for SEO JSON-LD on the server
   const items = await prisma.menuItem.findMany({
     where: { is_available: true },
@@ -50,8 +54,9 @@ export default async function Page() {
   return (
     <>
       <script
+        nonce={nonce}
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
       <MenuPage />
     </>

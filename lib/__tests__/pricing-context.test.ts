@@ -34,15 +34,15 @@ const MILK_DEFAULT_ID  = "milk-default-uuid";
 const MILK_PREMIUM_ID  = "milk-premium-uuid";
 
 const dbDefaultSizeConfigs = [
-  { size: "M",  milk_ml: 130, powder_gram: new Decimal("3.5") },
-  { size: "L",  milk_ml: 200, powder_gram: new Decimal("4.5") },
-  { size: "XL", milk_ml: 300, powder_gram: new Decimal("8.0") },
+  { size: "SMALL",  milk_ml: 130, powder_gram: new Decimal("3.5") },
+  { size: "MEDIUM", milk_ml: 200, powder_gram: new Decimal("4.5") },
+  { size: "LARGE",  milk_ml: 300, powder_gram: new Decimal("8.0") },
 ];
 
 const dbPowderSizeConfigs = [
-  { powder_id: POWDER_MEYUMI_ID, size: "M",  grams: new Decimal("4.0") },
-  { powder_id: POWDER_MEYUMI_ID, size: "L",  grams: new Decimal("6.0") },
-  { powder_id: POWDER_HANA_ID,   size: "M",  grams: new Decimal("4.5") },
+  { powder_id: POWDER_MEYUMI_ID, size: "SMALL",  grams: new Decimal("4.0") },
+  { powder_id: POWDER_MEYUMI_ID, size: "MEDIUM", grams: new Decimal("6.0") },
+  { powder_id: POWDER_HANA_ID,   size: "SMALL",  grams: new Decimal("4.5") },
 ];
 
 const dbPowders = [
@@ -87,9 +87,9 @@ describe("buildPricingContext", () => {
       const ctx = await buildPricingContext(makeMockClient() as never);
 
       expect(ctx.defaultSizeConfigs).toHaveLength(3);
-      expect(ctx.defaultSizeConfigs[0]).toEqual({ size: "M",  milk_ml: 130, powder_gram: 3.5 });
-      expect(ctx.defaultSizeConfigs[1]).toEqual({ size: "L",  milk_ml: 200, powder_gram: 4.5 });
-      expect(ctx.defaultSizeConfigs[2]).toEqual({ size: "XL", milk_ml: 300, powder_gram: 8.0 });
+      expect(ctx.defaultSizeConfigs[0]).toEqual({ size: "SMALL",  milk_ml: 130, powder_gram: 3.5 });
+      expect(ctx.defaultSizeConfigs[1]).toEqual({ size: "MEDIUM", milk_ml: 200, powder_gram: 4.5 });
+      expect(ctx.defaultSizeConfigs[2]).toEqual({ size: "LARGE",  milk_ml: 300, powder_gram: 8.0 });
     });
 
     it("Decimal powder_gram được convert sang number", async () => {
@@ -180,8 +180,8 @@ describe("buildPricingContext", () => {
       const ctx = await buildPricingContext(makeMockClient() as never);
 
       const meyumiConfigs = ctx.powderSizeConfigMap[POWDER_MEYUMI_ID];
-      expect(meyumiConfigs[0]).toEqual({ size: "M", grams: 4.0 });
-      expect(meyumiConfigs[1]).toEqual({ size: "L", grams: 6.0 });
+      expect(meyumiConfigs[0]).toEqual({ size: "SMALL",  grams: 4.0 });
+      expect(meyumiConfigs[1]).toEqual({ size: "MEDIUM", grams: 6.0 });
     });
 
     it("Decimal grams được convert sang number", async () => {

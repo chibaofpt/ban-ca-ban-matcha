@@ -170,7 +170,7 @@ export function VoucherQRVerifyModal({
          return;
       }
       // Success — pass back the raw token
-      onVerified(result.data.id);
+      onVerified(result.data.qr_token);
     } catch (err: unknown) {
       const responseError = axios.isAxiosError<{ error?: string }>(err)
         ? err.response?.data?.error

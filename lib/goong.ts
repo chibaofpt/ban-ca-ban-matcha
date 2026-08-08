@@ -41,7 +41,6 @@ export async function goongAutocomplete(
 
   const res = await fetch(url.toString(), { method: "GET" });
   if (!res.ok) {
-    console.error("[goongAutocomplete] Error response:", await res.text());
     throw new Error(`Goong API error: ${res.status}`);
   }
 
@@ -75,7 +74,6 @@ export async function goongGeocode(
 
   const res = await fetch(url.toString(), { method: "GET" });
   if (!res.ok) {
-    console.error("[goongGeocode] Error response:", await res.text());
     throw new Error(`Goong API error: ${res.status}`);
   }
 
@@ -109,7 +107,6 @@ export async function goongDistanceMatrix(
 
   const res = await fetch(url.toString(), { method: "GET" });
   if (!res.ok) {
-    console.error("[goongDistanceMatrix] Error response:", await res.text());
     throw new Error(`Goong API error: ${res.status}`);
   }
 
@@ -141,7 +138,6 @@ export async function goongReverseGeocode(
 
   const res = await fetch(url.toString(), { method: "GET" });
   if (!res.ok) {
-    console.error("[goongReverseGeocode] Error response:", await res.text());
     throw new Error(`Goong API error: ${res.status}`);
   }
 

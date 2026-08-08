@@ -51,15 +51,8 @@ const LoginForm = () => {
       queryClient.removeQueries({ queryKey: ["customer"] });
 
       // Thực hiện điều hướng TRƯỚC KHI đóng modal để tránh lỗi component bị unmount làm hủy lệnh router
-      if (user.role === "ADMIN" || user.role === "STAFF") {
-        // Đối với Staff/Admin, dùng window.location.href để chuyển hẳn sang phân hệ quản lý
-        // Đảm bảo không bị kẹt layout hay navbar của Customer.
-        window.location.assign("/staff/orders");
-      } else {
-        // Đối với Customer, giữ nguyên trải nghiệm SPA mượt mà
-        router.push("/menu");
-        router.refresh();
-      }
+      router.push(user.role === "ADMIN" || user.role === "STAFF" ? "/staff/orders" : "/menu");
+      router.refresh();
 
       // Cập nhật state và đóng modal sau
       login(user.phone_number, user.name);

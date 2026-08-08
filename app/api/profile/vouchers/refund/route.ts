@@ -167,7 +167,9 @@ export async function POST(req: NextRequest) {
       { status: 200 }
     );
   } catch (err) {
-    console.error("[POST /api/profile/vouchers/refund]", err);
+    console.error("[POST /api/profile/vouchers/refund]", {
+      name: err instanceof Error ? err.name : typeof err,
+    });
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },
       { status: 500 }

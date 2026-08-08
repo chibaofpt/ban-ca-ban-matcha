@@ -5,7 +5,7 @@ import { computeFinalClientPrice } from "./cartStore";
 import type { CustomerInfo } from "@/src/components/staff/CustomerSelectModal";
 
 export interface DiscountVoucher {
-  id: string;
+  qr_token: string;
   discount_type: "PERCENT" | "FIXED";
   discount_value: number;
 }
@@ -44,7 +44,7 @@ export const useStaffCartStore = create<StaffCartState>()(
 
       setCustomerInfo: (info) => {
         const currentInfo = get().customerInfo;
-        const isSameCustomer = currentInfo?.type === "existing" && info?.type === "existing" && currentInfo.data.id === info.data.id;
+        const isSameCustomer = currentInfo?.type === "existing" && info?.type === "existing" && currentInfo.data.qr_token === info.data.qr_token;
         set({ customerInfo: info });
         
         if (!isSameCustomer) {

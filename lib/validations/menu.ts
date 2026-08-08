@@ -14,6 +14,17 @@ const customPowderGramsSchema = z
   .nullable()
   .optional();
 
+/** Optional SEO filename stored only in the Supabase object path. */
+export const imageFilenameSchema = z
+  .string()
+  .trim()
+  .max(80, "Tên file ảnh tối đa 80 ký tự")
+  .refine(
+    (value) => !value.includes("..") && !value.includes("/") && !value.includes("\\") && !value.includes("\0"),
+    "Tên file ảnh không hợp lệ",
+  )
+  .optional();
+
 /** Validates that sizes array has exactly 3 rows covering SMALL, MEDIUM, LARGE. */
 const sizesSchema = z
   .array(sizeSchema)
@@ -35,6 +46,7 @@ const baseMenuSchema = z.object({
   sort_order: z.number().int().min(0).default(0),
   sizes: sizesSchema,
   custom_powder_grams: customPowderGramsSchema,
+  image_filename: imageFilenameSchema,
 });
 
 export const createLatteMenuSchema = baseMenuSchema.extend({
@@ -64,6 +76,7 @@ export const updateMenuSchema = z.object({
   is_available: z.boolean().optional(),
   is_seasonal: z.boolean().optional(),
   image_url: z.string().url().optional().nullable(),
+  image_filename: imageFilenameSchema,
   sort_order: z.number().int().min(0).optional(),
   sizes: sizesSchema.optional(),
   custom_powder_grams: customPowderGramsSchema,

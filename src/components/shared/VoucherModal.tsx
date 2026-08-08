@@ -6,7 +6,6 @@ import { Drawer } from "vaul";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X, QrCode, Star, Loader2, Ticket, Gift, LogIn } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/src/utils/cn";
 
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
 import { useIsLoggedIn } from "@/src/lib/store/authStore";
@@ -21,14 +20,16 @@ import {
 } from "@/src/services/customerVoucherService";
 import {
   filterModalVouchers,
+  filterHistoryVouchers,
   filterModalPackages,
+  getAdjacentVoucherTab,
   getExchangeErrorMessage,
+  type VoucherModalTab,
 } from "@/src/lib/utils/voucherModalHelpers";
 import { QrModal } from "./QrModal";
+import { VoucherHistorySection, VoucherModalTabs } from "./VoucherModalSections";
 
 import { VoucherCard, PackageCard } from "./VoucherCards";
-
-// ── VoucherModal (Main) ───────────────────────────────────────────────────────
 
 import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
 
@@ -48,9 +49,7 @@ export default function VoucherModal() {
     return () => media.removeEventListener("change", listener);
   }, []);
 
-  // Vouchers: only for logged-in users
   const { data: vouchers = [], isLoading: vLoading } = useCustomerVouchers({ enabled: open && isLoggedIn });
-  // Packages: always fetch when open — public API, works for guests too
   const { data: packages = [], isLoading: pLoading } = useVoucherPackages({ enabled: open });
   const exchangeMutation = useExchangeVoucher();
 
@@ -58,19 +57,13 @@ export default function VoucherModal() {
   const [exchangingId, setExchangingId] = useState<string | null>(null);
   const [qrVoucher, setQrVoucher] = useState<MyVoucher | null>(null);
 
-  // Guests default to "packages" tab; logged-in users default to "my_vouchers"
-  const [activeTab, setActiveTab] = useState<"my_vouchers" | "packages">("my_vouchers");
-
-  // When modal opens, set the correct default tab based on login state
+  const [activeTab, setActiveTab] = useState<VoucherModalTab>("my_vouchers");
   useEffect(() => {
     if (open) {
       setActiveTab(isLoggedIn ? "my_vouchers" : "packages");
     }
   }, [open, isLoggedIn]);
 
-  // Pull-to-dismiss + horizontal-swipe logic.
-  // Vertical pull-to-dismiss: DismissableSheet handles via contentHandlers.
-  // Horizontal swipe (tab switching): wrapped in handleContentTouchEnd below.
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
 
@@ -81,11 +74,9 @@ export default function VoucherModal() {
     const deltaX = currentX - touchStartX.current;
     const deltaY = currentY - touchStartY.current;
     if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY)) {
-      if (deltaX < 0 && activeTab === "my_vouchers") {
-        setActiveTab("packages");
-      } else if (deltaX > 0 && activeTab === "packages") {
-        setActiveTab("my_vouchers");
-      }
+      setActiveTab(
+        getAdjacentVoucherTab(activeTab, deltaX < 0 ? "left" : "right", isLoggedIn),
+      );
     }
   };
 
@@ -116,11 +107,9 @@ export default function VoucherModal() {
   }
 
   const filteredVouchers = filterModalVouchers(vouchers);
+  const historyVouchers = filterHistoryVouchers(vouchers);
   const filteredPackages = filterModalPackages(packages);
 
-  // Body scroll lock is handled by DismissableSheet.
-
-  // Framer motion variants for tab switching
   const tabVariants = {
     initial: (direction: number) => ({
       opacity: 0,
@@ -137,7 +126,7 @@ export default function VoucherModal() {
       transition: { duration: 0.2, ease: "easeIn" as const },
     }),
   };
-  const direction = activeTab === "my_vouchers" ? -1 : 1;
+  const direction = ["my_vouchers", "packages", "history"].indexOf(activeTab) - 1;
 
   const modalContent = (
     <>
@@ -149,7 +138,7 @@ export default function VoucherModal() {
                 <h2 className="font-serif text-lg font-bold text-primary">Ưu đãi 🎁</h2>
                 <button
                   onClick={close}
-                  className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-secondary/60 transition text-muted-foreground"
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground transition hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   aria-label="Đóng"
                 >
                   <X size={18} />
@@ -164,36 +153,12 @@ export default function VoucherModal() {
               )}
             </div>
 
-            {/* ── Text Tabs ── */}
-            <div className="px-4 border-b border-border/50">
-              <div className="flex gap-6">
-                {/* "Voucher của tôi" tab hidden for guests */}
-                {isLoggedIn && (
-                  <button
-                    onClick={() => setActiveTab("my_vouchers")}
-                    className={cn(
-                      "pb-3 text-sm font-bold transition-all border-b-2 relative -mb-[1px]",
-                      activeTab === "my_vouchers"
-                        ? "border-primary text-primary"
-                        : "border-transparent text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    Voucher của tôi {filteredVouchers.length > 0 && `(${filteredVouchers.length})`}
-                  </button>
-                )}
-                <button
-                  onClick={() => setActiveTab("packages")}
-                  className={cn(
-                    "pb-3 text-sm font-bold transition-all border-b-2 relative -mb-[1px]",
-                    activeTab === "packages"
-                      ? "border-primary text-primary"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  Đổi thưởng
-                </button>
-              </div>
-            </div>
+            <VoucherModalTabs
+              activeTab={activeTab}
+              isLoggedIn={isLoggedIn}
+              voucherCount={filteredVouchers.length}
+              onChange={setActiveTab}
+            />
 
             {/* ── Scrollable Body — touch handlers extended for horizontal swipe ── */}
             <div
@@ -230,12 +195,14 @@ export default function VoucherModal() {
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-8">
                             {filteredVouchers.map((v) => (
                               <VoucherCard 
-                                key={v.id} 
+                                key={v.qr_token}
                                 voucher={v} 
                                 actionNode={
                                   <button
+                                    type="button"
                                     onClick={(e) => { e.stopPropagation(); setQrVoucher(v); }}
-                                    className="bg-primary/10 text-primary p-1.5 rounded-md hover:bg-primary/20 transition-colors"
+                                    aria-label={`Hiện mã QR của ${v.package.name}`}
+                                    className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                   >
                                     <QrCode size={16} />
                                   </button>
@@ -245,6 +212,8 @@ export default function VoucherModal() {
                           </div>
                         )}
                       </div>
+                    ) : activeTab === "history" && isLoggedIn ? (
+                      <VoucherHistorySection vouchers={historyVouchers} />
                     ) : (
                       /* Section 2: Exchange Packages (public) */
                       <div>

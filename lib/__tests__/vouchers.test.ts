@@ -56,7 +56,7 @@ function makeOrderItem(
   return {
     menu_item_id: "item-001",
     quantity: 1,
-    size: "L",
+    size: "MEDIUM",
     unit_price_vnd: 55000,
     addons_price_vnd: addons.reduce((s, a) => s + a.unit_price_vnd * a.quantity, 0),
     line_total: 55000 + addons.reduce((s, a) => s + a.unit_price_vnd * a.quantity, 0),

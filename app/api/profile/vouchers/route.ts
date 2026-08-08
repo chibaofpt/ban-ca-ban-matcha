@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
+import { toPublicVoucherDto } from "@/lib/voucherPublicDto";
 
 export const dynamic = "force-dynamic";
 
@@ -34,9 +35,11 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json({ data: vouchers });
+    return NextResponse.json({ data: vouchers.map(toPublicVoucherDto) });
   } catch (err) {
-    console.error("[GET /api/profile/vouchers]", err);
+    console.error("[GET /api/profile/vouchers]", {
+      name: err instanceof Error ? err.name : typeof err,
+    });
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },
       { status: 500 }

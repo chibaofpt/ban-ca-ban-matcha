@@ -12,7 +12,10 @@ vi.mock("@/src/lib/api/client", () => ({
   },
 }));
 
-import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
+import {
+  useCustomerPoints,
+  useCustomerPointsHistory,
+} from "@/src/hooks/useCustomerPoints";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,7 +38,15 @@ describe("useCustomerPoints — React Query Hook", () => {
   });
 
   it("gọi API và trả về điểm cá thành công", async () => {
-    mockGet.mockResolvedValueOnce({ data: { data: { points_balance: 1500 } } });
+    mockGet.mockResolvedValueOnce({
+      data: {
+        data: {
+          points_balance: 1500,
+          events: [],
+          meta: { total: 0, page: 1, limit: 10, totalPages: 1 },
+        },
+      },
+    });
 
     const { result } = renderHook(() => useCustomerPoints(), { wrapper });
 
@@ -46,7 +57,9 @@ describe("useCustomerPoints — React Query Hook", () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    expect(mockGet).toHaveBeenCalledWith("/api/profile/points");
+    expect(mockGet).toHaveBeenCalledWith("/api/profile/points", {
+      params: { page: 1, limit: 10 },
+    });
     expect(result.current.data).toBe(1500);
   });
 
@@ -60,5 +73,56 @@ describe("useCustomerPoints — React Query Hook", () => {
     });
 
     expect(result.current.data).toBeUndefined();
+  });
+
+  it("history hook truyền limit và tách cache theo page limit", async () => {
+    mockGet.mockResolvedValue({
+      data: {
+        data: {
+          points_balance: 20,
+          events: [],
+          meta: { total: 0, page: 2, limit: 5, totalPages: 1 },
+        },
+      },
+    });
+
+    const { result } = renderHook(() => useCustomerPointsHistory(2, 5), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockGet).toHaveBeenCalledWith("/api/profile/points", {
+      params: { page: 2, limit: 5 },
+    });
+    expect(
+      queryClient.getQueryData([
+        "customer",
+        "points",
+        { page: 2, limit: 5 },
+      ]),
+    ).toBeDefined();
+  });
+
+  it("balance và history trang đầu dùng chung một request", async () => {
+    mockGet.mockResolvedValue({
+      data: {
+        data: {
+          points_balance: 20,
+          events: [],
+          meta: { total: 0, page: 1, limit: 10, totalPages: 1 },
+        },
+      },
+    });
+
+    const { result } = renderHook(
+      () => ({
+        balance: useCustomerPoints(),
+        history: useCustomerPointsHistory(1, 10),
+      }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.history.isSuccess).toBe(true));
+    expect(mockGet).toHaveBeenCalledTimes(1);
   });
 });

@@ -7,6 +7,7 @@ import { createMenuItem, updateMenuItem } from "@/src/services/adminMenuService"
 import { createLatteWithPowder } from "@/src/services/adminMenuService";
 import type { AdminMenuItem } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
+import MenuImageSeoField from "@/src/components/admin/MenuImageSeoField";
 
 interface MenuItemModalProps {
   mode: "create" | "edit";
@@ -29,10 +30,24 @@ export default function MenuItemModal({
   useBodyScrollLock(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [imageFilename, setImageFilename] = useState("");
 
   const handleSubmit = async (fd: FormData) => {
-    setIsSubmitting(true);
     setErrorMsg(null);
+    const requestedFilename = imageFilename.trim();
+    if (/\.\.|[/\\\0]/.test(requestedFilename)) {
+      setErrorMsg("Tên file ảnh không hợp lệ.");
+      return;
+    }
+    const image = fd.get("image");
+    const hasNewImage = image instanceof File && image.size > 0;
+    if (requestedFilename && !hasNewImage && !item?.image_url) {
+      setErrorMsg("Vui lòng chọn ảnh trước khi đặt tên file SEO.");
+      return;
+    }
+    if (requestedFilename) fd.set("image_filename", requestedFilename);
+
+    setIsSubmitting(true);
     try {
       let saved: AdminMenuItem;
       let createdPowderName: string | undefined = undefined;
@@ -90,6 +105,13 @@ export default function MenuItemModal({
               {errorMsg}
             </div>
           )}
+
+          <MenuImageSeoField
+            currentImageUrl={item?.image_url}
+            value={imageFilename}
+            onChange={setImageFilename}
+            disabled={isSubmitting}
+          />
 
           <MenuItemForm
             mode={mode}

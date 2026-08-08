@@ -6,6 +6,14 @@ import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 
 export const dynamic = "force-dynamic";
 
+function toPublicOrderItems<T extends { product_voucher_id: string | null }>(items: T[]) {
+  return items.map((item) => {
+    const { product_voucher_id: _productVoucherId, ...publicItem } = item;
+    void _productVoucherId;
+    return publicItem;
+  });
+}
+
 /**
  * Runs a lazy auto-cancel check for a PENDING order.
  * If auto_cancel_at has passed, cancels the order and restores ALL vouchers.
@@ -107,8 +115,7 @@ export async function GET(
             delivery_distance_km: order.delivery_distance_km,
             delivery_receiver_name: order.delivery_receiver_name,
             delivery_receiver_phone: order.delivery_receiver_phone,
-            freeship_voucher_id: order.freeship_voucher_id,
-            items: order.items,
+            items: toPublicOrderItems(order.items),
           },
         });
       }
@@ -152,8 +159,7 @@ export async function GET(
         delivery_distance_km: order.delivery_distance_km,
         delivery_receiver_name: order.delivery_receiver_name,
         delivery_receiver_phone: order.delivery_receiver_phone,
-        freeship_voucher_id: order.freeship_voucher_id,
-        items: order.items,
+        items: toPublicOrderItems(order.items),
       },
     });
   } catch (err) {

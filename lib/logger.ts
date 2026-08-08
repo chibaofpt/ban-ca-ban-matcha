@@ -22,15 +22,9 @@ export async function logSystemEvent({
   error,
   context = null,
 }: LogParams) {
-  let stack: string | null = null;
-  let errMsg = message;
-
-  if (error instanceof Error) {
-    if (!errMsg) errMsg = error.message;
-    stack = error.stack ?? null;
-  } else if (error) {
-    stack = String(error);
-  }
+  const errMsg = message || "Operational error";
+  void error;
+  void context;
 
   try {
     await prisma.systemLog.create({
@@ -38,13 +32,15 @@ export async function logSystemEvent({
         level,
         source,
         message: errMsg,
-        stack,
-        context: context ? JSON.parse(JSON.stringify(context)) : null,
+        stack: null,
+        context: undefined,
       },
     });
   } catch (err) {
     // Fallback if DB logging fails
-    console.error("[SystemLog] FAILED to write to DB:", err);
-    console.error(`[${level.toUpperCase()}] [${source}]`, errMsg, stack, context);
+    console.error("[SystemLog] FAILED to write to DB", {
+      name: err instanceof Error ? err.name : typeof err,
+    });
+    console.error(`[${level.toUpperCase()}] [${source}]`, errMsg);
   }
 }

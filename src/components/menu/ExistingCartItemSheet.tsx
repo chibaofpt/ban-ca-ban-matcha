@@ -4,21 +4,101 @@ import { useState } from "react";
 import { Drawer } from "vaul";
 import { Check, Plus, Settings2, X } from "lucide-react";
 import type { CartItem } from "@/src/lib/types/cart";
+import type { AddonGroup, MilkTypeOption } from "@/src/lib/types/menu";
+import type { Powder } from "@/src/lib/types/powder";
 import { formatKa, formatOrderSize } from "@/src/utils/display";
 import { cn } from "@/src/utils/cn";
 
 interface ExistingCartItemSheetProps {
   itemName: string;
   items: CartItem[];
+  addonGroups: AddonGroup[];
+  milkTypes: MilkTypeOption[];
+  powders: Powder[];
   onClose: () => void;
   onEdit: (item: CartItem) => void;
   onAddNew: () => void;
 }
 
-/** Lets customers choose an existing cart configuration or add a new one. */
+const SWEETNESS_LABEL: Record<string, string> = {
+  NONE: "Không đường",
+  QUARTER: "25% đường",
+  HALF: "50% đường",
+  THREE_QUARTER: "75% đường",
+  FULL: "100% đường",
+  EXTRA: "Nhiều đường",
+};
+
+const ICE_LABEL: Record<string, string> = {
+  NORMAL: "Đá bình thường",
+  LESS_ICE: "Ít đá",
+  NO_ICE: "Không đá",
+  SEPARATE_ICE: "Đá riêng",
+};
+
+/**
+ * Builds a flat list of human-readable detail tags for a cart item.
+ * Used to show the full configuration in ExistingCartItemSheet.
+ */
+function buildDetailTags(
+  item: CartItem,
+  addonGroups: AddonGroup[],
+  milkTypes: MilkTypeOption[],
+  powders: Powder[],
+): string[] {
+  const tags: string[] = [];
+
+  // Sweetness
+  tags.push(SWEETNESS_LABEL[item.sweetness] ?? item.sweetness);
+
+  // Ice
+  tags.push(ICE_LABEL[item.iceOption] ?? item.iceOption);
+
+  // Coldwhisk (latte only typically, but show if true)
+  if (item.coldwhisk) tags.push("Cold whisk");
+
+  // Milk (latte only)
+  if (item.selectedMilkTypeId) {
+    const milk = milkTypes.find((m) => m.id === item.selectedMilkTypeId);
+    if (milk) tags.push(milk.name);
+  }
+
+  // Powder (fusion only)
+  if (item.selectedPowderId) {
+    const powder = powders.find((p) => p.id === item.selectedPowderId);
+    if (powder) tags.push(`Bột ${powder.name}`);
+  }
+
+  // Addon options (SELECTOR / TOGGLE)
+  if (item.selectedOptionIds.length > 0) {
+    const allOptions = addonGroups.flatMap((g) => g.options);
+    for (const optId of item.selectedOptionIds) {
+      const opt = allOptions.find((o) => o.id === optId);
+      if (opt && !opt.is_default) tags.push(opt.label);
+    }
+  }
+
+  // Addon QUANTITY options
+  const quantityEntries = Object.entries(item.quantityMap ?? {});
+  if (quantityEntries.length > 0) {
+    const allOptions = addonGroups.flatMap((g) => g.options);
+    for (const [optId, qty] of quantityEntries) {
+      if (qty <= 0) continue;
+      const opt = allOptions.find((o) => o.id === optId);
+      if (opt) tags.push(`${opt.label} ×${qty}`);
+    }
+  }
+
+  return tags;
+}
+
+/** Lets customers choose an existing cart configuration to edit, or add a new one. */
 export function ExistingCartItemSheet({
   itemName,
   items,
+  addonGroups,
+  milkTypes,
+  powders,
   onClose,
   onEdit,
   onAddNew,
@@ -55,37 +135,56 @@ export function ExistingCartItemSheet({
           <div className="flex-1 space-y-2 overflow-y-auto overscroll-contain px-5 py-4">
             {items.map((item) => {
               const isSelected = item.cartId === selectedItem?.cartId;
+              const tags = buildDetailTags(item, addonGroups, milkTypes, powders);
+
               return (
                 <button
                   key={item.cartId}
                   type="button"
                   onClick={() => setSelectedCartId(item.cartId)}
                   className={cn(
-                    "flex min-h-16 w-full items-center gap-3 rounded-2xl border-2 p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                    "flex w-full flex-col gap-2 rounded-2xl border-2 p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                     isSelected
                       ? "border-primary bg-primary/5"
                       : "border-border bg-white hover:border-primary/30",
                   )}
                 >
-                  <div
-                    className={cn(
-                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2",
-                      isSelected ? "border-primary bg-primary text-white" : "border-primary/25",
+                  {/* Top row: radio + size/qty + price */}
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={cn(
+                        "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2",
+                        isSelected ? "border-primary bg-primary text-white" : "border-primary/25",
+                      )}
+                    >
+                      {isSelected && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold text-primary">
+                        {formatOrderSize(item.size)} · {item.quantity} ly
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-sm font-bold text-primary">
+                      {formatKa(item.clientPriceVnd * item.quantity, "ceil")}
+                    </span>
+                  </div>
+
+                  {/* Detail tags */}
+                  <div className="flex flex-wrap gap-1.5 pl-9">
+                    {tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center rounded-full bg-primary/8 px-2 py-0.5 text-[11px] font-medium text-primary/70"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                    {item.note && (
+                      <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 border border-amber-200/60">
+                        📝 {item.note}
+                      </span>
                     )}
-                  >
-                    {isSelected && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold text-primary">
-                      {formatOrderSize(item.size)} · {item.quantity} ly
-                    </p>
-                    <p className="mt-1 truncate text-xs text-primary/60">
-                      {item.note || "Không có ghi chú"}
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-sm font-bold text-primary">
-                    {formatKa(item.clientPriceVnd * item.quantity, "ceil")}
-                  </span>
                 </button>
               );
             })}

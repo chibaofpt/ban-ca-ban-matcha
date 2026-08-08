@@ -19,6 +19,7 @@ app/                              # Next.js App Router — entry points only, ze
       page.tsx                    # → src/views/RegisterPage
   (customer)/                     # Phase 3+ — CUSTOMER role required
     profile/page.tsx
+    history/page.tsx              # → src/views/customer/HistoryPage
     orders/page.tsx
     orders/[id]/page.tsx
     points/page.tsx
@@ -44,23 +45,39 @@ app/                              # Next.js App Router — entry points only, ze
       scan/page.tsx               # → src/views/staff/StaffScanPage
   api/                            # Route handlers — delegate business logic to lib/
     auth/
+      check-phone/route.ts
       register/route.ts
       login/route.ts
       logout/route.ts
+      me/route.ts
       refresh/route.ts
     menu/route.ts
     powders/route.ts              # Public — full powder catalogue
     orders/route.ts
     orders/[id]/route.ts
+    delivery/
+      autocomplete/route.ts        # Validated/rate-limited Goong proxy
+      estimate/route.ts
+      geocode/route.ts
+      reverse-geocode/route.ts
+    cron/cancel-expired-orders/route.ts
+    cron/clean-sessions/route.ts
+    cron/cleanup-menu-images/route.ts
+    push/
+      subscribe/route.ts
+      unsubscribe/route.ts         # No production push test route
     profile/route.ts
     profile/points/route.ts
     profile/vouchers/route.ts
     profile/vouchers/exchange/route.ts
     profile/vouchers/refund/route.ts
     staff/orders/route.ts
+    staff/orders/[id]/route.ts
     staff/scan/route.ts
+    staff/scan-fallback/route.ts   # Privacy-safe manual QR short-code recovery
     staff/users/route.ts
     staff/users/[id]/vouchers/route.ts
+    staff/users/[id]/vouchers/exchange/route.ts
     staff/vouchers/[id]/redeem/route.ts
     admin/points/add/route.ts
     admin/orders/[id]/status/route.ts
@@ -94,6 +111,10 @@ src/                              # Frontend — never import lib/ from here
     OrdersPage.tsx                # Phase 3
     PointsPage.tsx                # Phase 4
     VouchersPage.tsx              # Phase 4
+    customer/
+      AddressBookSheetContainer.tsx # Address query/mutation orchestration for profile sheet
+      HistoryPage.tsx             # Orders + grouped points tabs
+      ProfilePage.tsx
     admin/
       AdminLoginPage.tsx
       AdminMenuPage.tsx
@@ -117,6 +138,7 @@ src/                              # Frontend — never import lib/ from here
       FeatureCard.tsx
     menu/
       MenuCard.tsx
+      MenuPanels.tsx              # Pure latte/fusion/seasonal panel rendering
       ProductModal.tsx
       CartButton.tsx
       CartDrawer.tsx
@@ -124,10 +146,20 @@ src/                              # Frontend — never import lib/ from here
     auth/
       PhoneInput.tsx
       PasswordInput.tsx
+    customer/
+      AddressBookSheet.tsx        # Address list + add/edit bottom-sheet layers
+      OrderHistoryTab.tsx
+      OrderHistoryCard.tsx
+      OrderHistoryItems.tsx
+      PointsHistoryTab.tsx
+      ProfileQRSheet.tsx          # Customer loyalty QR bottom sheet
+    shared/
+      VoucherModalSections.tsx    # Voucher tabs + redeemed/expired history section
     admin/
       AdminMenuPage.tsx
       MenuItemCard.tsx
       MenuItemModal.tsx
+      MenuImageSeoField.tsx       # Optional SEO filename input; no DB field
       MenuSubTabs.tsx             # Horizontal sub-tab bar for /admin/menu/*
       VoucherPackageForm.tsx
       PointsLogTable.tsx
@@ -136,6 +168,7 @@ src/                              # Frontend — never import lib/ from here
       MilkTypeCard.tsx
       MilkTypeModal.tsx
       AddonGroupForm.tsx
+      addonGroupFormModel.ts      # Addon form types + DTO-to-form defaults
       AddonGroupCard.tsx
       AddonGroupModal.tsx
       SizeConfigForm.tsx
@@ -153,6 +186,7 @@ src/                              # Frontend — never import lib/ from here
     orderService.ts               # Phase 3
     authService.ts
     profileService.ts             # Phase 3
+    pointsService.ts              # GET /api/profile/points
     voucherService.ts             # Phase 4
     adminMenuService.ts
     adminPowderService.ts         # CRUD /api/admin/matcha-powders
@@ -181,9 +215,13 @@ scratch/                          # Ignored by Git. Scratchpad for quick server 
     api/
       client.ts                   # Single Axios instance — always import from here
     store/
-      cartStore.ts                # Zustand cart — localStorage persisted
+      cartStore.ts                # Zustand cart — v3 migration retains items but clears voucher IDs/credits
       powderStore.ts              # Zustand — powder catalogue cached from /api/powders
       storeStore.ts               # Zustand — store open/closed status (hydrated on HomePage, read in CartDrawer)
+    observability.ts              # Browser Sentry adapter for errors and business breadcrumbs
+    sentryPrivacy.ts              # Browser event/breadcrumb privacy scrubber
+    map/
+      mapRenderer.ts              # Lazy MapLibre renderer using Goong style/tiles; search fallback survives renderer failure
     hooks/
       useScrollProgress.ts
       useBodyScrollLock.ts
@@ -192,8 +230,13 @@ scratch/                          # Ignored by Git. Scratchpad for quick server 
       menu.ts
       cart.ts
       order.ts                    # Phase 3
+      points.ts                   # Grouped points history DTO
       user.ts
       powder.ts                   # Powder, PowderSizeConfig, MilkType types
+    utils/
+      addressBookSheet.ts         # Pure list/form state transitions
+    validations/
+      address.ts                  # Client address form schema
   utils/
     formatPrice.ts                # formatPrice(vnd: number) → "🐟 {vnd/1000} cá"
     pricing.ts                    # Pure pricing functions — NO imports from lib/ or services
@@ -212,25 +255,63 @@ public/
 lib/                              # Backend only — server-side, NEVER import in src/
   prisma.ts
   auth.ts                         # signJwt, verifyJwt, getSession
+  cronAuth.ts                     # Timing-safe, fail-closed CRON_SECRET verification
+  cleanExpiredSessions.ts         # Bounded, idempotent expired-session cleanup worker
+  middlewareSession.ts            # CSP nonce + session/JWT rotation decisions for middleware
   sms.ts
   storage.ts                      # Supabase Storage helpers — bucket: menu-images
+  menuImageCleanup.ts             # Finds/deletes unreferenced images after grace period
+  cancelExpiredOrders.ts          # Bounded, idempotent auto-cancel worker
+  orderLimits.ts                  # 20,000,000 VND server-calculated order ceiling
+  customerOrderCreation.ts        # Customer order validation + creation orchestration
+  customerOrderDelivery.ts        # Authoritative saved/unsaved delivery resolution
+  customerOrderDiscounts.ts       # Order-level voucher resolution and totals
+  customerOrderItemVouchers.ts    # Per-item voucher resolution and reservation inputs
+  customerOrderWrite.ts           # Transactional customer order persistence
+  customerOrderHistory.ts         # Customer order list projection and pagination
+  orderPublicDto.ts               # Removes user/voucher database identifiers from nested orders
+  publicIdentifiers.ts            # qr_token-first lookup + one-release legacy UUID input bridge
+  rateLimit.ts                    # Redis fixed-window enforcement + HMAC identifiers
+  clientIp.ts                     # Bounded trusted Vercel/proxy client-IP parsing
+  rateLimitConfig.ts              # Central registry of every rate-limit rule
+  securityHeaders.ts              # Nonce CSP modes, static headers, route-scoped browser permissions
+  observability.ts                # Server-side Sentry adapter and cron monitor
+  sentryPrivacy.ts                # Server event privacy scrubber
+  voucherPublicDto.ts             # Voucher API/UI boundary containing qr_token, never voucher id
+  adminMenuDto.ts                 # Shared Prisma include + admin menu response mapper
+  adminMenuRequest.ts             # JSON/multipart admin menu update parser
+  adminMenuUpdate.ts              # Menu update image/category/powder validation helpers
   pricing.ts                      # Thin wrapper: fetches DB data → calls src/utils/pricing.ts
                                   # exports: resolveOrderItemPrice(), buildPricingContext()
                                   # Zero pricing logic of its own
+  pointsHistory.ts                # Groups immutable points_log rows before pagination
   validations/
     auth.ts
     menu.ts
     order.ts
+    delivery.ts                   # Bounded delivery proxy coordinates and text inputs
     voucher.ts
     points.ts
     powder.ts                     # Zod schemas for matcha_powder, milk_type, default_size_config
     storeSchedule.ts              # Zod schemas for store schedule + closure toggle
 
 middleware.ts
+instrumentation.ts                # Next.js server/edge Sentry bootstrap
+instrumentation-client.ts         # Browser Sentry bootstrap
+sentry.server.config.ts
+sentry.edge.config.ts
 prisma/schema.prisma
+prisma/migrations/20260804000000_harden_supabase_data_plane/
+                                  # RLS/ACL hardening; rollback only with a compensating migration
 .env.local
 .env.local.example
 ```
+
+The delivery map uses `maplibre-gl` as the primary renderer and injects the public Goong maptiles
+key only for Goong HTTPS tile requests. Autocomplete, forward/reverse geocoding, and distance
+estimates stay behind authenticated `/api/delivery/*` proxies. If MapLibre or the tile style cannot
+load, the address search/selection flow remains available without the map. The removed
+`app/api/push/test/route.ts` is intentionally absent from the production route tree.
 
 ---
 

@@ -10,20 +10,41 @@ import type { MyVoucher, VoucherPackage } from "@/src/services/customerVoucherSe
 // ── Section 1: My Vouchers ────────────────────────────────────────────────────
 
 /**
- * Filter vouchers to show in Section 1 of VoucherModal.
- * Sort order: ACTIVE/RESERVED > EXPIRED > REDEEMED.
+ * Filter usable and reserved vouchers for the "Voucher của tôi" tab.
+ * Sort order: ACTIVE before RESERVED.
  */
 export function filterModalVouchers(vouchers: MyVoucher[]): MyVoucher[] {
   const getWeight = (status: string) => {
-    if (status === "ACTIVE") return 4;
-    if (status === "RESERVED") return 3;
-    if (status === "EXPIRED") return 2;
-    if (status === "REDEEMED") return 1;
+    if (status === "ACTIVE") return 2;
+    if (status === "RESERVED") return 1;
     return 0;
   };
   return vouchers
     .filter((v) => getWeight(v.status) > 0)
     .sort((a, b) => getWeight(b.status) - getWeight(a.status));
+}
+
+/** Filter redeemed and expired vouchers for the history tab. */
+export function filterHistoryVouchers(vouchers: MyVoucher[]): MyVoucher[] {
+  return vouchers.filter(
+    (voucher) => voucher.status === "REDEEMED" || voucher.status === "EXPIRED",
+  );
+}
+
+export type VoucherModalTab = "my_vouchers" | "packages" | "history";
+
+/** Resolve the next voucher tab for a horizontal swipe without wrapping. */
+export function getAdjacentVoucherTab(
+  activeTab: VoucherModalTab,
+  direction: "left" | "right",
+  isLoggedIn: boolean,
+): VoucherModalTab {
+  if (!isLoggedIn) return "packages";
+  const tabs: VoucherModalTab[] = ["my_vouchers", "packages", "history"];
+  const currentIndex = tabs.indexOf(activeTab);
+  const offset = direction === "left" ? 1 : -1;
+  const nextIndex = Math.min(tabs.length - 1, Math.max(0, currentIndex + offset));
+  return tabs[nextIndex];
 }
 
 /**

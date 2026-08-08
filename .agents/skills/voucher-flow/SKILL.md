@@ -22,7 +22,7 @@ Also read `order-flow` for order status and `pricing-logic` for drink price comp
 | `lib/vouchers.ts` | SERVER | Voucher validation, application, and redemption (8.2 KB) |
 | `src/utils/voucherMatchUtils.ts` | CLIENT | Voucher matching utilities (7.2 KB) |
 | `src/lib/utils/voucherModalHelpers.ts` | CLIENT | Modal display helpers (7.4 KB) |
-| `app/api/profile/vouchers/route.ts` | SERVER | List customer's ACTIVE vouchers |
+| `app/api/profile/vouchers/route.ts` | SERVER | List customer's vouchers in all lifecycle statuses |
 | `app/api/profile/vouchers/exchange/route.ts` | SERVER | Spend points → get voucher |
 | `app/api/profile/vouchers/refund/route.ts` | SERVER | Auto-refund when item unavailable |
 | `app/api/staff/scan/route.ts` | SERVER | QR scan → resolve user or voucher |

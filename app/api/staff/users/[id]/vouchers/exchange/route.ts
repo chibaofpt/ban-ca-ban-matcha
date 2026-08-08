@@ -10,6 +10,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import type { Prisma } from "@prisma/client";
+import { resolveCustomerIdentifier } from "@/lib/publicIdentifiers";
 
 export const dynamic = "force-dynamic";
 
@@ -34,8 +35,6 @@ export async function POST(
     return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
   }
 
-  const userId = id;
-
   // 2. Parse body
   const body = await req.json().catch(() => null);
   const parsed = exchangeSchema.safeParse(body);
@@ -48,6 +47,14 @@ export async function POST(
 
   try {
     const { package_id } = parsed.data;
+    const resolvedUser = await resolveCustomerIdentifier(id);
+    if (!resolvedUser) {
+      return NextResponse.json(
+        { error: "User not found", code: "NOT_FOUND" },
+        { status: 404 }
+      );
+    }
+    const userId = resolvedUser.id;
 
     // 3. Read: validate package + user balance
     const [pkg, user] = await Promise.all([
@@ -162,7 +169,6 @@ export async function POST(
     return NextResponse.json(
       {
         data: {
-          id: voucher.id,
           qr_token: voucher.qr_token,
           voucher_type: voucher.voucher_type,
           status: voucher.status,
@@ -192,7 +198,9 @@ export async function POST(
         );
       }
     }
-    console.error("[POST /api/staff/users/[id]/vouchers/exchange]", err);
+    console.error("[POST /api/staff/users/[id]/vouchers/exchange]", {
+      name: err instanceof Error ? err.name : typeof err,
+    });
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },
       { status: 500 }

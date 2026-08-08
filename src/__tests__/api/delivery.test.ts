@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { POST } from "@/app/api/orders/route";
 import { getSession } from "@/lib/auth";
 import { goongDistanceMatrix } from "@/lib/goong";
+import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
 
 vi.mock("@/lib/auth", () => ({ getSession: vi.fn() }));
@@ -16,7 +17,7 @@ vi.mock("@/lib/storeSchedule", () => ({
 vi.mock("@/lib/prisma", () => {
   const mockPrisma = {
     menuItemSize: { findMany: vi.fn() },
-    address: { findUnique: vi.fn() },
+    address: { findFirst: vi.fn() },
     voucher: { findFirst: vi.fn() },
     $transaction: vi.fn((cb) => cb(mockPrisma)),
     order: { create: vi.fn() },
@@ -34,6 +35,7 @@ describe("POST /api/orders — DELIVERY flow", () => {
       role: "CUSTOMER",
       phone_number: "+84901234567",
     });
+    (prisma.address.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue(null);
   });
 
   function createRequest(body: unknown) {
@@ -56,7 +58,39 @@ describe("POST /api/orders — DELIVERY flow", () => {
     expect(json.code).toBe("VALIDATION_ERROR");
   });
 
+  it("Trả 404 và không tính khoảng cách khi address_id không thuộc khách", async () => {
+    const req = createRequest({
+      order_type: "DELIVERY",
+      items: [{ menu_item_id: "e4d3f350-0012-4015-8df9-2ed3cc404c01", size: "MEDIUM", quantity: 1, client_price_vnd: 50000 }],
+      address_id: "e4d3f350-0012-4015-8df9-2ed3cc404c02",
+      delivery_lat: 11,
+      delivery_lng: 107,
+      delivery_address: "Test address",
+      delivery_receiver_name: "Test",
+      delivery_receiver_phone: "+84901234567",
+      client_shipping_fee_vnd: 0,
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(404);
+    expect((await res.json()).code).toBe("NOT_FOUND");
+    expect(prisma.address.findFirst).toHaveBeenCalledWith({
+      where: { id: "e4d3f350-0012-4015-8df9-2ed3cc404c02", user_id: mockUserId },
+    });
+    expect(goongDistanceMatrix).not.toHaveBeenCalled();
+  });
+
   it("Trả 400 DELIVERY_OUT_OF_RANGE nếu khoảng cách > 15km", async () => {
+    (prisma.address.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "e4d3f350-0012-4015-8df9-2ed3cc404c02",
+      full_address: "Saved address",
+      lat: 11,
+      lng: 107,
+      receiver_name: "Test",
+      receiver_phone: "+84901234567",
+      distance_km: null,
+    });
     vi.mocked(goongDistanceMatrix).mockResolvedValue({ distanceKm: 16, durationMinutes: 30 });
 
     const req = createRequest({
@@ -78,6 +112,15 @@ describe("POST /api/orders — DELIVERY flow", () => {
   });
 
   it("Trả 409 SHIPPING_FEE_CHANGED nếu client tính sai phí ship so với server", async () => {
+    (prisma.address.findFirst as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: "e4d3f350-0012-4015-8df9-2ed3cc404c02",
+      full_address: "Saved address",
+      lat: 11,
+      lng: 107,
+      receiver_name: "Test",
+      receiver_phone: "+84901234567",
+      distance_km: null,
+    });
     // 3km -> 2km(15k) + 1km(5.7k) = 20.7k -> 21k
     vi.mocked(goongDistanceMatrix).mockResolvedValue({ distanceKm: 3, durationMinutes: 10 });
 

@@ -1,75 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
+import { runCancelExpiredOrders } from "@/lib/cancelExpiredOrders";
+import { verifyCronRequest } from "@/lib/cronAuth";
+import { captureServerException, withAutoCancelMonitor } from "@/lib/observability";
 
 export const dynamic = "force-dynamic";
 
-/**
- * GET /api/cron/cancel-expired-orders
- * Vercel Cron — runs every 5 minutes (see vercel.json).
- * Cancels PENDING customer orders that have passed their auto_cancel_at deadline.
- * Restores any RESERVED vouchers to ACTIVE.
- *
- * Security: Validates CRON_SECRET in Authorization header.
- */
-export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
-  }
+/** GET /api/cron/cancel-expired-orders — cancel one bounded batch of expired orders. */
+export async function GET(req: NextRequest): Promise<NextResponse> {
+  const authError = verifyCronRequest(req);
+  if (authError) return authError;
 
   try {
-    const now = new Date();
-
-    // Find all expired PENDING orders (PICKUP/DELIVERY only — COUNTER has no auto_cancel_at)
-    const expiredOrders = await prisma.order.findMany({
-      where: {
-        status: "PENDING",
-        auto_cancel_at: { lte: now },
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    if (expiredOrders.length === 0) {
-      return NextResponse.json({ data: { cancelled_count: 0 } });
+    const result = await withAutoCancelMonitor(runCancelExpiredOrders);
+    if (result.failed > 0) {
+      return NextResponse.json(
+        {
+          error: "Some expired orders could not be cancelled",
+          code: "INTERNAL_ERROR",
+          details: result,
+        },
+        { status: 500 },
+      );
     }
-
-    // Cancel each order atomically — individual transactions for voucher consistency
-    let cancelledCount = 0;
-    await Promise.all(
-      expiredOrders.map(async (order) => {
-        try {
-          const wasCancelled = await prisma.$transaction(
-            async (tx) => {
-              const claim = await tx.order.updateMany({
-                where: { id: order.id, status: "PENDING" },
-                data: { status: "CANCELLED" },
-              });
-              if (claim.count !== 1) return false;
-              await restoreVouchersOnCancel(tx, order.id);
-              return true;
-            },
-            { maxWait: 5000, timeout: 10000 }
-          );
-          if (wasCancelled) cancelledCount++;
-        } catch (err) {
-          // Log but do not throw — one failed cancel should not block others
-          console.error(`[cron] Failed to cancel order ${order.id}:`, err);
-        }
-      })
-    );
-
-    console.log(`[cron/cancel-expired-orders] Cancelled ${cancelledCount}/${expiredOrders.length} orders`);
-    return NextResponse.json({ data: { cancelled_count: cancelledCount } });
-  } catch (err) {
-    console.error("[GET /api/cron/cancel-expired-orders]", err);
+    return NextResponse.json({ data: result });
+  } catch (error) {
+    captureServerException(error, { operation: "cancel_expired_orders_route" });
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
