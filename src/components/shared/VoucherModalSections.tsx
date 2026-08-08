@@ -64,7 +64,7 @@ export function VoucherHistorySection({ vouchers }: { vouchers: MyVoucher[] }) {
   return (
     <div className="grid grid-cols-1 gap-3 pb-8 sm:grid-cols-2">
       {vouchers.map((voucher) => (
-        <VoucherCard key={voucher.id} voucher={voucher} />
+        <VoucherCard key={voucher.qr_token} voucher={voucher} />
       ))}
     </div>
   );

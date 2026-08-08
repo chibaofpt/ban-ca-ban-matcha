@@ -1,0 +1,62 @@
+import type { User, Voucher } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { recordLegacyIdentifierFallback } from "@/lib/observability";
+
+export type PublicUserIdentity = Pick<User, "id" | "qr_token">;
+
+/** Resolve a customer path identifier by public token, then one-release legacy UUID fallback. */
+export async function resolveCustomerIdentifier(
+  identifier: string,
+): Promise<PublicUserIdentity | null> {
+  const publicUser = await prisma.user.findUnique({
+    where: { qr_token: identifier },
+    select: { id: true, qr_token: true, role: true },
+  });
+  if (publicUser) {
+    return publicUser.role === "CUSTOMER" ? publicUser : null;
+  }
+
+  const legacyUser = await prisma.user.findUnique({
+    where: { id: identifier },
+    select: { id: true, qr_token: true, role: true },
+  });
+  if (!legacyUser || legacyUser.role !== "CUSTOMER") return null;
+  recordLegacyIdentifierFallback("user", "customer");
+  return legacyUser;
+}
+
+/** Resolve a voucher identifier while enforcing ownership before legacy UUID fallback. */
+export async function resolveOwnedVoucherIdentifier(
+  identifier: string,
+  ownerId: string,
+): Promise<Voucher | null> {
+  const publicVoucher = await prisma.voucher.findUnique({
+    where: { qr_token: identifier },
+  });
+  if (publicVoucher) {
+    return publicVoucher.user_id === ownerId ? publicVoucher : null;
+  }
+
+  const legacyVoucher = await prisma.voucher.findUnique({
+    where: { id: identifier },
+  });
+  if (!legacyVoucher || legacyVoucher.user_id !== ownerId) return null;
+  recordLegacyIdentifierFallback("voucher", "owner");
+  return legacyVoucher;
+}
+
+/** Resolve a voucher for an authorized staff flow, preferring its public token. */
+export async function resolveStaffVoucherIdentifier(
+  identifier: string,
+): Promise<Voucher | null> {
+  const publicVoucher = await prisma.voucher.findUnique({
+    where: { qr_token: identifier },
+  });
+  if (publicVoucher) return publicVoucher;
+
+  const legacyVoucher = await prisma.voucher.findUnique({
+    where: { id: identifier },
+  });
+  if (legacyVoucher) recordLegacyIdentifierFallback("voucher", "staff");
+  return legacyVoucher;
+}

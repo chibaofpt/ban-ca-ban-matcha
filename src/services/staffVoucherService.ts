@@ -18,9 +18,9 @@ export type { MyVoucher, ExchangedVoucher } from "./customerVoucherService";
  * Fetches all ACTIVE vouchers belonging to a given customer.
  * Calls GET /api/staff/users/[id]/vouchers (requires STAFF or ADMIN auth).
  */
-export async function fetchCustomerVouchers(userId: string): Promise<MyVoucher[]> {
+export async function fetchCustomerVouchers(userQrToken: string): Promise<MyVoucher[]> {
   const res = await apiClient.get<ApiResponse<MyVoucher[]>>(
-    `/api/staff/users/${userId}/vouchers`
+    `/api/staff/users/${userQrToken}/vouchers`
   );
   return res.data.data;
 }
@@ -29,9 +29,9 @@ export async function fetchCustomerVouchers(userId: string): Promise<MyVoucher[]
  * Spends a customer's points to redeem a VoucherPackage on their behalf.
  * Calls POST /api/staff/users/[id]/vouchers/exchange (requires ADMIN auth).
  */
-export async function exchangeCustomerVoucher(userId: string, packageId: string): Promise<ExchangedVoucher> {
+export async function exchangeCustomerVoucher(userQrToken: string, packageId: string): Promise<ExchangedVoucher> {
   const res = await apiClient.post<ApiResponse<ExchangedVoucher>>(
-    `/api/staff/users/${userId}/vouchers/exchange`,
+    `/api/staff/users/${userQrToken}/vouchers/exchange`,
     { package_id: packageId }
   );
   return res.data.data;

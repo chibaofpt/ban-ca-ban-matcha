@@ -40,7 +40,7 @@ export function matchProductVouchers(
   usedVoucherIds: Set<string> = new Set()
 ): MyVoucher[] {
   return filterUsableVouchers(vouchers, "PRODUCT").filter(
-    (v) => v.menu_item_id === menuItemId && !usedVoucherIds.has(v.id)
+    (v) => v.menu_item_id === menuItemId && !usedVoucherIds.has(v.qr_token)
   );
 }
 
@@ -82,7 +82,7 @@ export function matchAddonVouchers(
     ])
   );
   return filterUsableVouchers(vouchers, "ADDON").filter(
-    (v) => v.addon_option_id !== null && allOptionIds.has(v.addon_option_id) && !usedVoucherIds.has(v.id)
+    (v) => v.addon_option_id !== null && allOptionIds.has(v.addon_option_id) && !usedVoucherIds.has(v.qr_token)
   );
 }
 

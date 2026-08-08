@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { CartItem } from "@/src/lib/types/cart";
+import { addBusinessBreadcrumb } from "@/src/lib/observability";
 
 export function computeFinalClientPrice(item: CartItem): number {
   const baseDrinkPrice = item.unitPrice - item.addonsPrice;
@@ -43,6 +44,41 @@ interface CartState {
   setSelectedVoucherIds: (ids: string[] | ((prev: string[]) => string[])) => void;
 }
 
+type PersistedCartState = Partial<Pick<CartState, "items" | "isCartOpen" | "selectedVoucherIds">>;
+
+/** Migrate persisted cart data while retaining items and removing legacy voucher identifiers. */
+export function migrateCartState(
+  persistedState: unknown,
+  fromVersion: number,
+): PersistedCartState {
+  const old = persistedState as PersistedCartState;
+  if (!old.items) return old;
+
+  const sizeMap: Record<string, import("@/src/lib/types/menu").Size> = {
+    M: "SMALL",
+    L: "MEDIUM",
+    XL: "LARGE",
+  };
+
+  old.items = old.items.map((item) => {
+    const sizedItem = fromVersion < 2
+      ? { ...item, size: sizeMap[item.size] ?? "SMALL" }
+      : item;
+    if (fromVersion >= 3) return sizedItem;
+
+    return {
+      ...sizedItem,
+      clientPriceVnd: sizedItem.originalClientPriceVnd ?? sizedItem.unitPrice,
+      productVoucherId: undefined,
+      productVoucherDiscountVnd: undefined,
+      addonVouchers: [],
+    };
+  });
+
+  if (fromVersion < 3) old.selectedVoucherIds = [];
+  return old;
+}
+
 /**
  * useCartStore — global shopping cart state managed by Zustand.
  * Persisted to localStorage so the fish stay in the bag after refresh.
@@ -62,12 +98,19 @@ export const useCartStore = create<CartState>()(
         const cartId = crypto.randomUUID();
         const fullItem: CartItem = { ...newItem, cartId };
         set((state) => ({ items: [...state.items, fullItem] }));
+        addBusinessBreadcrumb("cart.add", {
+          category: newItem.category,
+          quantity: newItem.quantity,
+        });
         return cartId;
       },
 
       removeItem: (cartId) => {
         set({
           items: get().items.filter((i) => i.cartId !== cartId),
+        });
+        addBusinessBreadcrumb("cart.remove", {
+          remaining_items: get().items.length,
         });
       },
 
@@ -116,6 +159,7 @@ export const useCartStore = create<CartState>()(
         if (item.quantity === 1) {
           currentItems[itemIndex] = nextItem;
           set({ items: currentItems });
+          addBusinessBreadcrumb("voucher.apply", { voucher_type: "PRODUCT" });
           return;
         }
 
@@ -130,6 +174,7 @@ export const useCartStore = create<CartState>()(
         currentItems.splice(itemIndex + 1, 0, newItem);
 
         set({ items: currentItems });
+        addBusinessBreadcrumb("voucher.apply", { voucher_type: "PRODUCT" });
       },
 
       removeProductVoucher: (cartId) => {
@@ -141,6 +186,7 @@ export const useCartStore = create<CartState>()(
             return nextItem;
           }),
         });
+        addBusinessBreadcrumb("voucher.remove", { voucher_type: "PRODUCT" });
       },
 
       applyAddonVoucher: (cartId, voucherId, addonOptionId) => {
@@ -207,25 +253,13 @@ export const useCartStore = create<CartState>()(
     }),
     {
       name: "bcbm-cart",
-      version: 2,
+      version: 3,
       /**
        * Auto-migrate old localStorage cart data:
        * Size M → SMALL, L → MEDIUM, XL → LARGE (Big-Bang strategy).
        * Runs once when version upgrades from <2 to 2.
        */
-      migrate: (persistedState: unknown, fromVersion: number) => {
-        if (fromVersion < 2) {
-          const sizeMap: Record<string, string> = { M: "SMALL", L: "MEDIUM", XL: "LARGE" };
-          const old = persistedState as Partial<CartState>;
-          if (old.items) {
-            old.items = old.items.map((item) => ({
-              ...item,
-            size: (sizeMap[item.size] ?? "SMALL") as import("@/src/lib/types/menu").Size,
-            }));
-          }
-        }
-        return persistedState as CartState;
-      },
+      migrate: migrateCartState,
     }
   )
 );

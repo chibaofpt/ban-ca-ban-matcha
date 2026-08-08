@@ -1,39 +1,23 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { runCleanExpiredSessions } from "@/lib/cleanExpiredSessions";
+import { verifyCronRequest } from "@/lib/cronAuth";
+import { captureServerException } from "@/lib/observability";
 
 export const dynamic = "force-dynamic";
 
-/**
- * GET /api/cron/clean-sessions
- * Vercel Cron Job endpoint to delete expired sessions.
- * Configured in vercel.json to run daily.
- */
-export async function GET(request: Request) {
-  // Verify cron secret
-  const authHeader = request.headers.get("authorization");
-  if (
-    process.env.CRON_SECRET &&
-    authHeader !== `Bearer ${process.env.CRON_SECRET}`
-  ) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+/** GET /api/cron/clean-sessions — delete expired sessions in bounded batches. */
+export async function GET(request: Request): Promise<NextResponse> {
+  const authError = verifyCronRequest(request);
+  if (authError) return authError;
 
   try {
-    const result = await prisma.session.deleteMany({
-      where: {
-        expires_at: {
-          lt: new Date(),
-        },
-      },
-    });
-
-    return NextResponse.json({
-      success: true,
-      deleted_count: result.count,
-      message: `Cleaned up ${result.count} expired sessions.`,
-    });
-  } catch (err: unknown) {
-    console.error("[CRON] Clean sessions error:", err);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    const result = await runCleanExpiredSessions();
+    return NextResponse.json({ data: result });
+  } catch (error) {
+    captureServerException(error, { operation: "clean_expired_sessions_route" });
+    return NextResponse.json(
+      { error: "Internal server error", code: "INTERNAL_ERROR" },
+      { status: 500 },
+    );
   }
 }

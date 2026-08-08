@@ -46,7 +46,7 @@ export const CartDiscountPicker = ({
     try {
       setIsRedeeming(packageId);
       const newVoucher = await exchangeVoucher(packageId);
-      onUpdateSelectedVouchers(prev => [...prev, newVoucher.id]);
+      onUpdateSelectedVouchers(prev => [...prev, newVoucher.qr_token]);
       onRefreshVouchers();
       queryClient.invalidateQueries({ queryKey: ["customer", "points"] }); // refresh points
     } catch (error: unknown) {
@@ -125,7 +125,7 @@ export const CartDiscountPicker = ({
           ) : (
             <div className="grid grid-cols-1 gap-3">
               {myVouchers.map((v) => {
-                const isSelected = selectedVoucherIds.includes(v.id);
+                const isSelected = selectedVoucherIds.includes(v.qr_token);
                 const selectedOrderDiscount = selectedDiscountVouchers;
                 const currentOrderDiscount = estimateMultiDiscountSavings(
                   selectedOrderDiscount,
@@ -175,7 +175,7 @@ export const CartDiscountPicker = ({
 
                 return (
                   <VoucherCard 
-                    key={v.id} 
+                    key={v.qr_token}
                     voucher={v} 
                     isDisabled={isDisabled}
                     disabledReason={disabledReason}
@@ -183,19 +183,19 @@ export const CartDiscountPicker = ({
                     onClick={() => {
                       onUpdateSelectedVouchers((prev: string[]) => {
                         if (isSelected) {
-                          return prev.filter((id) => id !== v.id);
+                          return prev.filter((id) => id !== v.qr_token);
                         }
                         let newSelected = [...prev];
                         if (v.voucher_type === "DISCOUNT" && v.discount_type === "PERCENT") {
                           newSelected = newSelected.filter(id => {
-                            const existingV = discountVouchers.find(d => d.id === id);
+                            const existingV = discountVouchers.find(d => d.qr_token === id);
                             return !(existingV && existingV.discount_type === "PERCENT");
                           });
                         }
                         if (v.voucher_type === "FREESHIP") {
-                          newSelected = newSelected.filter(id => !freeshipVouchers.find(f => f.id === id));
+                          newSelected = newSelected.filter(id => !freeshipVouchers.find(f => f.qr_token === id));
                         }
-                        return [...newSelected, v.id];
+                        return [...newSelected, v.qr_token];
                       });
                     }}
                     actionNode={

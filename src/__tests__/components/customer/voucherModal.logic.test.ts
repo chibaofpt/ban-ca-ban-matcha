@@ -25,7 +25,6 @@ import type { MyVoucher, VoucherPackage } from "@/src/services/customerVoucherSe
 
 function makeVoucher(overrides: Partial<MyVoucher> = {}): MyVoucher {
   return {
-    id: "v-1",
     qr_token: "QR-TOKEN-ABC",
     voucher_type: "DISCOUNT",
     discount_type: "PERCENT",
@@ -42,7 +41,6 @@ function makeVoucher(overrides: Partial<MyVoucher> = {}): MyVoucher {
     used_channel: null,
     expires_at: null,
     redeemed_at: null,
-    redeemed_by: null,
     created_at: new Date().toISOString(),
     package: { name: "Giảm 20%", description: null, points_cost: 50 },
     menuItem: null,
@@ -85,22 +83,22 @@ function makePackage(overrides: Partial<VoucherPackage> = {}): VoucherPackage {
 describe("filterModalVouchers", () => {
   it("chỉ trả về ACTIVE và RESERVED cho tab Voucher của tôi", () => {
     const vouchers = [
-      makeVoucher({ id: "v1", status: "ACTIVE" }),
-      makeVoucher({ id: "v2", status: "RESERVED" }),
-      makeVoucher({ id: "v3", status: "REDEEMED" }),
-      makeVoucher({ id: "v4", status: "EXPIRED" }),
-      makeVoucher({ id: "v5", status: "REFUNDED" }),
+      makeVoucher({ qr_token: "v1", status: "ACTIVE" }),
+      makeVoucher({ qr_token: "v2", status: "RESERVED" }),
+      makeVoucher({ qr_token: "v3", status: "REDEEMED" }),
+      makeVoucher({ qr_token: "v4", status: "EXPIRED" }),
+      makeVoucher({ qr_token: "v5", status: "REFUNDED" }),
     ];
     const result = filterModalVouchers(vouchers);
-    expect(result.map((v) => v.id)).toEqual(["v1", "v2"]);
+    expect(result.map((v) => v.qr_token)).toEqual(["v1", "v2"]);
   });
 
   it("sắp xếp ACTIVE trước RESERVED", () => {
     const vouchers = [
-      makeVoucher({ id: "rd1", status: "REDEEMED" }),
-      makeVoucher({ id: "ex1", status: "EXPIRED" }),
-      makeVoucher({ id: "r1", status: "RESERVED" }),
-      makeVoucher({ id: "a1", status: "ACTIVE" }),
+      makeVoucher({ qr_token: "rd1", status: "REDEEMED" }),
+      makeVoucher({ qr_token: "ex1", status: "EXPIRED" }),
+      makeVoucher({ qr_token: "r1", status: "RESERVED" }),
+      makeVoucher({ qr_token: "a1", status: "ACTIVE" }),
     ];
     const result = filterModalVouchers(vouchers);
     expect(result[0].status).toBe("ACTIVE");
@@ -124,14 +122,14 @@ describe("filterModalVouchers", () => {
 describe("filterHistoryVouchers", () => {
   it("chỉ trả về REDEEMED và EXPIRED, không trộn voucher còn hiệu lực", () => {
     const vouchers = [
-      makeVoucher({ id: "active", status: "ACTIVE" }),
-      makeVoucher({ id: "reserved", status: "RESERVED" }),
-      makeVoucher({ id: "redeemed", status: "REDEEMED" }),
-      makeVoucher({ id: "expired", status: "EXPIRED" }),
-      makeVoucher({ id: "refunded", status: "REFUNDED" }),
+      makeVoucher({ qr_token: "active", status: "ACTIVE" }),
+      makeVoucher({ qr_token: "reserved", status: "RESERVED" }),
+      makeVoucher({ qr_token: "redeemed", status: "REDEEMED" }),
+      makeVoucher({ qr_token: "expired", status: "EXPIRED" }),
+      makeVoucher({ qr_token: "refunded", status: "REFUNDED" }),
     ];
 
-    expect(filterHistoryVouchers(vouchers).map((voucher) => voucher.id)).toEqual([
+    expect(filterHistoryVouchers(vouchers).map((voucher) => voucher.qr_token)).toEqual([
       "redeemed",
       "expired",
     ]);

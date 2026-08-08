@@ -10,7 +10,7 @@ if (typeof process !== "undefined" && typeof process.on === "function") {
     if (warning.name === "DeprecationWarning" && warning.message.includes("url.parse")) {
       return;
     }
-    console.warn(warning.stack || warning.message);
+    console.warn("[Process Warning]", { name: warning.name });
   });
 }
 
@@ -35,7 +35,9 @@ function initVapid(): boolean {
       isVapidInitialized = true;
       console.log("[Push Notification] VAPID keys loaded and configured successfully.");
     } catch (err) {
-      console.error("[Push Notification] Failed to initialize web-push VAPID details:", err);
+      console.error("[Push Notification] Failed to initialize web-push VAPID details", {
+        name: err instanceof Error ? err.name : typeof err,
+      });
     }
   }
   return isVapidInitialized;
@@ -105,13 +107,18 @@ export async function sendPushToRoles(
               data: { is_active: false },
             });
           } else {
-            console.error(`[WebPush Error] Failed to send to ${sub.endpoint}:`, error);
+            console.error("[WebPush Error] Notification delivery failed", {
+              name: error instanceof Error ? error.name : typeof error,
+              statusCode,
+            });
           }
         }
       })
     );
   } catch (error) {
-    console.error("[WebPush Error] Failed to execute sendPushToRoles:", error);
+    console.error("[WebPush Error] Failed to execute sendPushToRoles", {
+      name: error instanceof Error ? error.name : typeof error,
+    });
   }
 }
 
@@ -131,12 +138,12 @@ export async function sendPushToUser(
       },
     });
 
-    console.log(`[Push Notification] Found ${subscriptions.length} active subscription(s) for user: ${userId}`);
+    console.log(`[Push Notification] Found ${subscriptions.length} active subscription(s)`);
 
     if (subscriptions.length === 0) return 0;
 
     if (!initVapid()) {
-      console.warn(`[Push Notification] Skipped sending to user ${userId} because VAPID keys are missing.`);
+      console.warn("[Push Notification] Skipped because VAPID keys are missing.");
       return 0;
     }
 
@@ -162,7 +169,10 @@ export async function sendPushToUser(
               data: { is_active: false },
             });
           } else {
-            console.error(`[WebPush Error] Failed to send to ${sub.endpoint}:`, error);
+            console.error("[WebPush Error] Notification delivery failed", {
+              name: error instanceof Error ? error.name : typeof error,
+              statusCode,
+            });
           }
         }
       })
@@ -170,7 +180,9 @@ export async function sendPushToUser(
 
     return sentCount;
   } catch (error) {
-    console.error("[WebPush Error] Failed to execute sendPushToUser:", error);
+    console.error("[WebPush Error] Failed to execute sendPushToUser", {
+      name: error instanceof Error ? error.name : typeof error,
+    });
     return 0;
   }
 }

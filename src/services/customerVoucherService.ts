@@ -42,7 +42,6 @@ export interface VoucherPackage {
 }
 
 export interface MyVoucher {
-  id: string;
   qr_token: string;
   voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP";
   discount_type: "PERCENT" | "FIXED" | null;
@@ -65,7 +64,6 @@ export interface MyVoucher {
   used_channel: "ONLINE" | "OFFLINE" | null;
   expires_at: string | null;
   redeemed_at: string | null;
-  redeemed_by: string | null;
   created_at: string;
   package: { name: string; description: string | null; points_cost: number };
   menuItem: { name: string; is_available: boolean } | null;
@@ -75,7 +73,6 @@ export interface MyVoucher {
 }
 
 export interface ExchangedVoucher {
-  id: string;
   qr_token: string;
   voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP";
   status: "ACTIVE";

@@ -115,7 +115,7 @@ outside the application, TypeScript, and lint scope. It does not require a produ
 
 | Issue | Status | Action |
 |---|---|---|
-| Image cleanup (old Supabase Storage files orphaned on replace/delete) | Deferred | Acceptable for now |
+| Image cleanup (old Supabase Storage files orphaned on replace/delete) | Implemented | Daily job; protects every DB reference including soft-deleted items; 48h grace; dry-run first 7 days |
 | Cascade delete on `voucher_packages.menu_item_id` | Unresolved | Do NOT add cascade. Ask architect. |
 | Hard delete `menu_item` while active vouchers reference it | Deferred | Soft delete only. Ask before any hard delete. |
 | Order ready notification (Zalo ZNS via ESMS) | Phase 5 | Alongside OTP |
@@ -129,6 +129,41 @@ outside the application, TypeScript, and lint scope. It does not require a produ
 | **`default_size_config` audit log** | Deferred | No audit trail when admin edits M/L/XL config. If needed: add `updated_at` + `updated_by` columns. Changes apply globally and immediately — admin is responsible. |
 | **`PRICE_CHANGED` mid-session edge case** | Not a concern | Admin updates prices at night when shop is closed. No real-time mitigation needed beyond reject + conflict response. |
 | **Voucher Gacha / Gamification** | Phase 5+ | Current `VoucherPackage` (template) + `Voucher` (instance) schema fully supports this. Do NOT modify order/voucher logic. Add `GachaPool` table + `POST /api/gacha/play` route to randomly pick a package and mint a voucher. Order logic remains 100% unaffected. |
+
+---
+
+## Launch Hardening Decisions
+
+- **Public identifiers**: API/UI outputs contain `qr_token` for users and vouchers and strip their
+  database IDs from nested order/voucher DTOs. Resolver-backed inputs retain a one-release,
+  token-first legacy UUID fallback with ownership/role checks and identifier-free telemetry. Keep
+  existing `_id` request field names during the bridge; remove the fallback after migration
+  telemetry is quiet for the agreed release window.
+- **Persisted cart compatibility**: customer cart schema v3 keeps cart items but clears all
+  persisted PRODUCT, ADDON, and order-level voucher selections/credits from older schemas and
+  restores undiscounted client prices. This prevents a stale localStorage database UUID from being
+  resubmitted after the public-identifier rollout.
+- **Delivery authority**: saved delivery address IDs are ownership-scoped. When one is supplied,
+  its database address, coordinates, and distance win; receiver details alone may be overridden.
+  For an unsaved address, coordinates and receiver fields are required and the server obtains the
+  Goong road distance, enforces the radius, and recalculates the shipping fee.
+- **Map provider**: MapLibre is the primary browser renderer over Goong style/tiles. The public
+  maptiles key is attached only to Goong HTTPS tile requests. Authenticated Goong proxy search and
+  geocoding remain available as the address-selection fallback when the renderer/style is down.
+- **Push/Sentry privacy**: `/api/push/test` is deleted. Sentry does not send default PII; client and
+  server scrub user context, bodies, auth/cookie headers, query strings, phones, addresses, QR
+  tokens, and internal IDs. Replay masks all text and blocks media.
+- **Pre-Phase-5 Upstash exception**: Upstash is approved now only for distributed security rate
+  limits. It remains forbidden for application caching, OTP, promotions, SMS/ZNS, or other Phase 5
+  functionality. Counters are fixed-window, TTL-bound, HMAC-keyed, and fail open with a sanitized
+  Sentry event when Redis is unavailable.
+
+### Dependency audit resolution
+
+Next.js and `eslint-config-next` are pinned at stable `16.3.0`. This removes the vulnerable
+Next-owned `postcss` and `sharp` dependency paths without transitive overrides. The production
+audit on 2026-08-08 reported zero vulnerabilities at every severity. Continue running
+`npm audit --omit=dev` at every release gate; a later non-zero result is a new release blocker.
 
 ---
 
@@ -173,12 +208,74 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 
 # Supabase Storage
 NEXT_PUBLIC_SUPABASE_URL=""
-SUPABASE_SERVICE_ROLE_KEY=""
+SUPABASE_SECRET_KEY=""                          # preferred server-only credential
+SUPABASE_SERVICE_ROLE_KEY=""                    # one-release legacy fallback; never NEXT_PUBLIC_
 
-# Sentry
-SENTRY_DSN=""                                   # optional until Phase 3
+# Delivery maps / proxy
+GOONG_API_KEY=""                                # server-only Goong REST API key
+NEXT_PUBLIC_GOONG_MAPTILES_KEY=""               # public; restrict to approved domains
+STORE_LAT=""
+STORE_LNG=""
 
-# Upstash Redis — Phase 5 ONLY
+# Sentry (one project, environment separates staging/production)
+SENTRY_DSN=""
+NEXT_PUBLIC_SENTRY_DSN=""
+SENTRY_ORG=""
+SENTRY_PROJECT=""
+SENTRY_AUTH_TOKEN=""                            # build-time only; rotate if exposed
+NEXT_PUBLIC_APP_ENV="staging"                   # staging | production
+CSP_MODE="report-only"                          # report-only | enforce | off (emergency only)
+
+# Cron / Storage cleanup
+CRON_SECRET=""
+IMAGE_CLEANUP_DRY_RUN="true"                    # switch to false after reviewing 7 daily runs
+
+# Upstash Redis — security rate-limit exception only before Phase 5
 UPSTASH_REDIS_REST_URL=""
 UPSTASH_REDIS_REST_TOKEN=""
 ```
+
+## Launch Gates / Operational Runbook
+
+1. **Preview — report only.** Set `CSP_MODE=report-only`, `NEXT_PUBLIC_APP_ENV=staging`, and
+   `IMAGE_CLEANUP_DRY_RUN=true`. Use Preview-only Supabase and Upstash resources. Confirm Sentry
+   receives sanitized errors/CSP violations, rate limits issue `Retry-After`, delivery can continue
+   through Goong search when MapLibre is unavailable, and `/api/push/test` returns 404.
+2. **Verify dependencies.** Run `npm audit --omit=dev` and require zero production
+   vulnerabilities. Confirm `next` and `eslint-config-next` remain on stable `16.3.0` or a later
+   reviewed security patch, and confirm `@goongmaps/goong-js` is absent.
+3. **Staging database preflight.** Before applying
+   `20260804000000_harden_supabase_data_plane`, save the object ACL/RLS and default-ACL query
+   results embedded at the top of that migration. Apply with `prisma migrate deploy`, never
+   `db push`. Verify direct Prisma CRUD and the Edge refresh-session flow still work.
+4. **Verify the Supabase data plane.** With staging keys, prove `anon` and `authenticated` cannot
+   read or mutate any application table. Prove `service_role` has only schema usage, CRUD on
+   `sessions`, and column-limited SELECT of `users.id`, `users.role`, and `users.phone_number`.
+   Confirm all 26 application tables have RLS enabled and no accidental public policies/grants.
+   Separately verify menu image list/upload/copy/delete through the Storage wrapper.
+5. **Promote secrets deliberately.** Prefer `SUPABASE_SECRET_KEY`; retain
+   `SUPABASE_SERVICE_ROLE_KEY` only for the one-release fallback. Rotate any launch/shared
+   database, Supabase, JWT, cron, Upstash, Goong, VAPID private, or Sentry auth credential, update
+   Vercel atomically, revoke the old value, and expect JWT rotation to sign users out. Never put a
+   server secret in a `NEXT_PUBLIC_` variable.
+6. **Production CSP enforcement.** Review Preview and staging CSP reports until expected customer,
+   staff scan/camera, geolocation, Supabase, Goong, Sentry, VietQR, and worker flows are clean. Then
+   set Production `CSP_MODE=enforce`. `off` is an emergency rollback only and requires an incident
+   record; it is not a normal rollout state.
+7. **Configure and verify Supabase Cron.** Send `Authorization: Bearer <CRON_SECRET>` to
+   `/api/cron/cancel-expired-orders` at `*/5 * * * *` UTC, `/api/cron/clean-sessions` at
+   `15 20 * * *` UTC, and `/api/cron/cleanup-menu-images` at `0 17 * * *` UTC. Keep only the Vercel
+   Hobby backup for cancellation at `0 0 * * *` UTC. Confirm expected Sentry cron check-ins and
+   that missing server secret fails `500`, while missing/wrong bearer credentials fail `401`,
+   before a worker starts.
+8. **Run the seven-day image dry run.** Leave `IMAGE_CLEANUP_DRY_RUN=true` for seven consecutive
+   daily executions. Review and retain each candidate report; confirm referenced and soft-deleted
+   item images never appear. Only then set it to `false`; deletion still requires a 48-hour orphan
+   age.
+9. **Close compatibility bridges.** Monitor identifier-fallback telemetry for the agreed release
+   window. Migrate remaining clients, remove the legacy user/voucher UUID and Supabase service-role
+   fallbacks in the next approved release, and keep `qr_token` as the only public identifier.
+10. **Rollback by compensation only.** Never edit/delete an applied migration. Create a new
+    compensating migration from the captured staging/production ACL snapshot. Prefer restoring only
+    a proven missing `service_role` grant while retaining RLS. Disable RLS only after prior ACLs are
+    restored and the incident owner explicitly accepts renewed Data API exposure.

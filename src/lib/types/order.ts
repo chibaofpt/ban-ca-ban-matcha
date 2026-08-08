@@ -66,7 +66,6 @@ export interface CustomerOrderDetail {
   delivery_distance_km: number | null;
   delivery_receiver_name: string | null;
   delivery_receiver_phone: string | null;
-  freeship_voucher_id: string | null;
 }
 
 /** Slim result returned immediately after creating a new customer order. */

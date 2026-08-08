@@ -77,7 +77,7 @@ export function useReorderItem() {
         if (productVoucher?.covered_price_vnd) {
           applyProductVoucher(
             cartId,
-            productVoucher.id,
+            productVoucher.qr_token,
             productVoucher.covered_price_vnd,
           );
         }
@@ -92,7 +92,7 @@ export function useReorderItem() {
             addonIds.includes(optionId) &&
             !usedOptions.has(optionId)
           ) {
-            applyAddonVoucher(cartId, voucher.id, optionId);
+            applyAddonVoucher(cartId, voucher.qr_token, optionId);
             usedOptions.add(optionId);
           }
         }

@@ -32,6 +32,8 @@ const mockUserUpdate = vi.fn();
 const mockPointsLogCreate = vi.fn();
 const mockCheckStoreOpen = vi.fn();
 const mockValidatePickupTime = vi.fn();
+const mockCheckRateLimits = vi.fn();
+const mockAddressFindFirst = vi.fn();
 
 // Mock lib/auth
 vi.mock("@/lib/auth", () => ({
@@ -43,6 +45,11 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/storeSchedule", () => ({
   checkStoreOpen: () => mockCheckStoreOpen(),
   validatePickupTime: (pt: Date, now?: Date) => mockValidatePickupTime(pt, now),
+}));
+
+vi.mock("@/lib/rateLimit", () => ({
+  checkRateLimits: (...args: unknown[]) => mockCheckRateLimits(...args),
+  getClientIp: () => "203.0.113.10",
 }));
 
 // Mock lib/pricing (needed transitively by lib/orders)
@@ -64,6 +71,7 @@ vi.mock("@/lib/prisma", () => ({
     $transaction: vi.fn(),
     menuItem: { findUnique: vi.fn() },
     addonOption: { findUnique: vi.fn() },
+    address: { findFirst: (...args: unknown[]) => mockAddressFindFirst(...args) },
     order: { findUnique: vi.fn() },
     voucher: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     user: { update: vi.fn() },
@@ -103,6 +111,7 @@ const V_USED    = "550e8400-e29b-41d4-a716-446655440016";
 const V_EXP     = "550e8400-e29b-41d4-a716-446655440017";
 const V_PROD    = "550e8400-e29b-41d4-a716-446655440018";
 const OTHER_USER = "550e8400-e29b-41d4-a716-446655440099";
+const ADDRESS_ID = "550e8400-e29b-41d4-a716-446655440098";
 
 const validPayload = {
   order_type: "PICKUP",
@@ -256,6 +265,12 @@ describe("POST /api/orders", () => {
 
     mockCheckStoreOpen.mockResolvedValue({ is_open: true, reason: "OPEN", closure_note: null });
     mockValidatePickupTime.mockResolvedValue({ isValid: true });
+    mockCheckRateLimits.mockResolvedValue({
+      allowed: true,
+      remaining: 4,
+      retryAfterSeconds: 0,
+    });
+    mockAddressFindFirst.mockResolvedValue(null);
   });
 
   // ── Auth & Role ────────────────────────────────────────────────────────────
@@ -279,6 +294,54 @@ describe("POST /api/orders", () => {
     const res = await POST(makeReq(validPayload));
     expect(res.status).toBe(403);
     expect((await res.json()).code).toBe("FORBIDDEN");
+  });
+
+  it("trả 422 trước khi ghi khi tổng server vượt 20.000.000đ", async () => {
+    setupTx();
+    vi.mocked(resolveOrderItemPrice).mockReturnValue(20_000_001);
+
+    const res = await POST(makeReq({
+      ...validPayload,
+      items: [{ ...validPayload.items[0], client_price_vnd: 20_000_001 }],
+    }));
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({
+      code: "BUSINESS_RULE_VIOLATION",
+      details: { reason: "ORDER_VALUE_EXCEEDED" },
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(mockOrderCreate).not.toHaveBeenCalled();
+  });
+
+  it("trả 429 và Retry-After khi user vượt giới hạn tạo đơn", async () => {
+    mockCheckRateLimits.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 321,
+    });
+
+    const res = await POST(makeReq(validPayload));
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("321");
+    expect((await res.json()).code).toBe("TOO_MANY_REQUESTS");
+    expect(mockCheckRateLimits).toHaveBeenCalledWith([
+      { ruleName: "customerOrderUser", identifier: USER_ID },
+      { ruleName: "customerOrderIp", identifier: "203.0.113.10" },
+    ]);
+    expect(mockCheckStoreOpen).not.toHaveBeenCalled();
+  });
+
+  it("dùng Retry-After tổng hợp ổn định khi cả account và IP bị chặn", async () => {
+    mockCheckRateLimits.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSeconds: 99 });
+
+    const res = await POST(makeReq(validPayload));
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("99");
+    expect(mockCheckRateLimits).toHaveBeenCalledTimes(1);
+    expect(mockCheckStoreOpen).not.toHaveBeenCalled();
   });
 
   // ── Validation ─────────────────────────────────────────────────────────────
@@ -320,6 +383,75 @@ describe("POST /api/orders", () => {
     expect(json.data.status).toBe("PENDING");
     expect(json.data.total_vnd).toBe(69000);
     expect(json.data.points_earned).toBeUndefined(); // not in response
+  });
+
+  it("dùng vị trí đã lưu nhưng vẫn cho đổi người nhận tại cùng địa chỉ", async () => {
+    setupTx();
+    mockAddressFindFirst.mockResolvedValue({
+      id: ADDRESS_ID,
+      full_address: "12 Đường Gần Quán",
+      lat: 10.77,
+      lng: 106.7,
+      receiver_name: "Người Nhận Thật",
+      receiver_phone: "+84901234567",
+      distance_km: 1,
+    });
+
+    const res = await POST(makeReq({
+      ...validPayload,
+      order_type: "DELIVERY",
+      address_id: ADDRESS_ID,
+      delivery_address: "Địa chỉ giả rất xa",
+      delivery_lat: 80,
+      delivery_lng: 170,
+      delivery_receiver_name: "Người Giả",
+      delivery_receiver_phone: "+84909999999",
+      client_shipping_fee_vnd: 13_000,
+    }));
+
+    expect(res.status).toBe(201);
+    expect(mockOrderCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        address_id: ADDRESS_ID,
+        delivery_address: "12 Đường Gần Quán",
+        delivery_lat: 10.77,
+        delivery_lng: 106.7,
+        delivery_distance_km: 1,
+        delivery_receiver_name: "Người Giả",
+        delivery_receiver_phone: "+84909999999",
+      }),
+    }));
+  });
+
+  it("PICKUP bỏ qua toàn bộ field chỉ dành cho DELIVERY", async () => {
+    setupTx();
+
+    const res = await POST(makeReq({
+      ...validPayload,
+      address_id: ADDRESS_ID,
+      delivery_address: "Không được lưu",
+      delivery_lat: 10.77,
+      delivery_lng: 106.7,
+      delivery_receiver_name: "Không Lưu",
+      delivery_receiver_phone: "+84901234567",
+      client_shipping_fee_vnd: 13_000,
+      freeship_voucher_id: V_FIX,
+    }));
+
+    expect(res.status).toBe(201);
+    expect(mockAddressFindFirst).not.toHaveBeenCalled();
+    expect(mockOrderCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        address_id: null,
+        delivery_address: null,
+        delivery_lat: null,
+        delivery_lng: null,
+        delivery_distance_km: null,
+        delivery_receiver_name: null,
+        delivery_receiver_phone: null,
+        freeship_voucher_id: null,
+      }),
+    }));
   });
 
   it("order.create uses user_id from session, not body", async () => {
@@ -794,8 +926,15 @@ describe("GET /api/orders", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.data).toEqual(
-      mockOrders.map((o) => ({ ...o, payment_qr_url: null }))
+      mockOrders.map(({ id, created_at }) => ({
+        id,
+        created_at,
+        discountVouchers: [],
+        items: [],
+        payment_qr_url: null,
+      }))
     );
+    expect(JSON.stringify(json.data)).not.toContain("user_id");
 
     expect(prisma.order.findMany).toHaveBeenCalledWith(
       expect.objectContaining({

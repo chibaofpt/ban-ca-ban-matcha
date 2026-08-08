@@ -20,6 +20,7 @@ const mockPointsLogCreate = vi.fn();
 const mockUserFindUnique = vi.fn();
 const mockUserCreate = vi.fn();
 const mockOrderDiscountVoucherCreate = vi.fn();
+const mockCheckRateLimit = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
@@ -62,6 +63,10 @@ vi.mock("@/lib/logger", () => ({
 
 vi.mock("@/lib/cancelOrder", () => ({
   restoreVouchersOnCancel: vi.fn(),
+}));
+
+vi.mock("@/lib/rateLimit", () => ({
+  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
 }));
 
 // Import AFTER mocks
@@ -192,6 +197,51 @@ describe("POST /api/staff/orders — COUNTER integration", () => {
     availablePowders: [],
     });
     vi.mocked(resolveOrderItemPrice).mockReturnValue(69000);
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: true,
+      remaining: 29,
+      retryAfterSeconds: 0,
+    });
+  });
+
+  it("trả 429 theo account trước khi xử lý business logic", async () => {
+    mockCheckRateLimit.mockResolvedValue({
+      allowed: false,
+      remaining: 0,
+      retryAfterSeconds: 45,
+    });
+
+    const res = await POST(makeReq(validPayload()));
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("45");
+    expect((await res.json()).code).toBe("TOO_MANY_REQUESTS");
+    expect(mockCheckRateLimit).toHaveBeenCalledWith("staffOrderAccount", STAFF_ID);
+    expect(mockUserFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("trả 422 trước khi ghi khi tổng server vượt 20.000.000đ", async () => {
+    setupTx();
+    vi.mocked(resolveOrderItemPrice).mockReturnValue(20_000_001);
+
+    const res = await POST(makeReq(validPayload({
+      items: [{
+        menu_item_id: ITEM_ID,
+        quantity: 1,
+        size: "MEDIUM",
+        sweetness: "FULL",
+        addon_option_ids: [],
+        client_price_vnd: 20_000_001,
+      }],
+    })));
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({
+      code: "BUSINESS_RULE_VIOLATION",
+      details: { reason: "ORDER_VALUE_EXCEEDED" },
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(mockOrderCreate).not.toHaveBeenCalled();
   });
 
   it("COUNTER order basic: tạo thành công, points = floor(total_vnd / 10000)", async () => {

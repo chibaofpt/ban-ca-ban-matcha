@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         data: {
           type: "user",
           data: {
-            id: token, // API.md: "Never return internal id — always qr_token"
+            qr_token: token,
             name: user.name,
             phone_number: user.phone_number,
             points_balance: user.points_balance,
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
         data: {
           type: "voucher",
           data: {
-            id: voucher.qr_token, // API.md: "Never return internal id — always qr_token"
+            qr_token: voucher.qr_token,
             voucher_type: voucher.voucher_type,
             discount_type: voucher.discount_type,
             discount_value: voucher.discount_value,

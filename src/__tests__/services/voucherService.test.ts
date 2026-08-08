@@ -55,7 +55,7 @@ const mockProductPackage = {
   discount_type: null,
   discount_value: null,
   menu_item_id: "item-meyumi",
-  size: "M" as const,
+  size: "SMALL" as const,
   addon_option_id: null,
   covered_price_vnd: 50000,
   is_active: true,
@@ -228,7 +228,6 @@ describe("exchangeVoucher", () => {
 
     const result = await exchangeVoucher("pkg-discount-1");
 
-    expect(result.id).toBe("voucher-new-1");
     expect(result.qr_token).toBe("qr-xyz");
     expect(result.status).toBe("ACTIVE");
   });

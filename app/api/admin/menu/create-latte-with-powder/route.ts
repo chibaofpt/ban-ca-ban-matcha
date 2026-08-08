@@ -2,71 +2,20 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createLatteWithPowderSchema } from "@/lib/validations/createLatteWithPowder";
-import { uploadMenuImage } from "@/lib/storage";
-import type { Prisma } from "@prisma/client";
+import {
+  buildMenuImagePath,
+  removeMenuImages,
+  uploadMenuImage,
+} from "@/lib/storage";
 import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
+import { captureServerException } from "@/lib/observability";
+import { ADMIN_MENU_INCLUDE, formatAdminMenuItem } from "@/lib/adminMenuDto";
 
 export const dynamic = "force-dynamic";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type MenuItemWithRelations = Prisma.MenuItemGetPayload<{
-  include: {
-    sizes: true;
-    matchaPowder: { select: { id: true; name: true; type: true } };
-    defaultPowder: { select: { id: true; name: true; type: true } };
-    fusionAllowedPowders: {
-      include: { matchaPowder: { select: { id: true; is_available: true } } };
-    };
-  };
-}>;
-
 // ── Helper ───────────────────────────────────────────────────────────────────
-
-const SIZE_ORDER: Record<string, number> = { M: 0, L: 1, XL: 2 };
-
-/** Format a MenuItem row into the AdminMenuItem API shape. */
-function formatAdminMenuItem(
-  item: MenuItemWithRelations,
-  milkMlMap: Record<string, number>
-) {
-  return {
-    id: item.id,
-    name: item.name,
-    description: item.description ?? null,
-    category: item.category,
-    is_seasonal: item.is_seasonal,
-    image_url: item.image_url ?? null,
-    is_available: item.is_available,
-    sort_order: item.sort_order,
-    base_liquid_note: null,
-    custom_powder_grams: item.custom_powder_grams ?? null,
-    updated_at: item.updated_at,
-    matcha_powder_id: item.matcha_powder_id ?? null,
-    powder: item.matchaPowder ?? null,
-    default_powder_id: null,
-    default_powder: null,
-    allowed_powder_ids: [],
-    sizes: item.sizes
-      .map((s) => ({
-        size: s.size,
-        base_price_vnd: s.base_price_vnd,
-        milk_ml: milkMlMap[s.size] ?? 0,
-      }))
-      .sort((a, b) => SIZE_ORDER[a.size] - SIZE_ORDER[b.size]),
-  };
-}
-
-const INCLUDE = {
-  sizes: { orderBy: { size: "asc" as const } },
-  matchaPowder: { select: { id: true, name: true, type: true } },
-  defaultPowder: { select: { id: true, name: true, type: true } },
-  fusionAllowedPowders: {
-    include: {
-      matchaPowder: { select: { id: true, is_available: true } },
-    },
-  },
-} satisfies Prisma.MenuItemInclude;
 
 // ── POST ─────────────────────────────────────────────────────────────────────
 
@@ -99,6 +48,8 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
+  let uploadedImagePath: string | null = null;
+  let databaseCommitted = false;
   try {
     // ── Parse multipart/form-data ────────────────────────────────────────────
     const formData = await req.formData();
@@ -159,6 +110,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       sort_order: formData.get("sort_order") ? Number(formData.get("sort_order")) : 0,
       sizes: parsedSizes,
       custom_powder_grams: parsedCustomPowderGrams,
+      image_filename: formData.get("image_filename") || undefined,
       new_powder: {
         name: formData.get("new_powder_name"),
         price_per_gram: parsedPricePerGram,
@@ -198,7 +150,14 @@ export async function POST(req: Request): Promise<NextResponse> {
         );
       }
       const buffer = Buffer.from(await imageFile.arrayBuffer());
-      image_url = await uploadMenuImage(`${Date.now()}-${imageFile.name}`, buffer, imageFile.type);
+      const imagePath = buildMenuImagePath({
+        category: "latte",
+        productName: validData.name,
+        requestedName: validData.image_filename,
+        contentType: imageFile.type,
+      });
+      image_url = await uploadMenuImage(imagePath, buffer, imageFile.type);
+      uploadedImagePath = imagePath;
     }
 
     // ── Fetch defaultSizeConfig for response formatting ───────────────────────
@@ -274,15 +233,22 @@ export async function POST(req: Request): Promise<NextResponse> {
         // Step 6: Re-fetch MenuItem with full includes for response
         const fullItem = await tx.menuItem.findUniqueOrThrow({
           where: { id: latte.id },
-          include: INCLUDE,
+          include: ADMIN_MENU_INCLUDE,
         });
 
         return [fullItem, powder.name] as const;
       },
       { maxWait: 10000, timeout: 15000 }
     );
+    databaseCommitted = true;
 
-    await invalidateMenuCaches();
+    try {
+      await invalidateMenuCaches();
+    } catch (cacheError) {
+      captureServerException(cacheError, {
+        operation: "invalidate_menu_after_inline_latte_create",
+      });
+    }
     return NextResponse.json(
       {
         data: {
@@ -293,6 +259,15 @@ export async function POST(req: Request): Promise<NextResponse> {
       { status: 201 }
     );
   } catch (err: unknown) {
+    if (uploadedImagePath && !databaseCommitted) {
+      try {
+        await removeMenuImages([uploadedImagePath]);
+      } catch (cleanupError) {
+        captureServerException(cleanupError, {
+          operation: "rollback_inline_latte_image_create",
+        });
+      }
+    }
     // Handle Prisma unique constraint (reference_latte_item_id already taken)
     if (
       typeof err === "object" &&
@@ -312,7 +287,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
 
-    console.error("[POST /api/admin/menu/create-latte-with-powder]", err);
+    captureServerException(err, { operation: "create_latte_with_powder" });
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },
       { status: 500 }

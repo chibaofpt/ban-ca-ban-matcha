@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import type { OrderStatus, OrderType, Prisma } from "@prisma/client";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
+import { toPublicOrderDto } from "@/lib/orderPublicDto";
 import { redeemOrderVouchers, VoucherRedeemError } from "@/lib/redeemVouchers";
 import { z } from "zod";
 
@@ -256,7 +257,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return result;
     }, { maxWait: 5000, timeout: 10000 });
 
-    return NextResponse.json({ data: updatedOrder });
+    return NextResponse.json({ data: toPublicOrderDto(updatedOrder) });
 
   } catch (err: unknown) {
     if (err instanceof Error) {

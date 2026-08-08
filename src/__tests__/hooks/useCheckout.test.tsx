@@ -6,7 +6,10 @@ import type { CartItem } from "@/src/lib/types/cart";
 import type { createOrder } from "@/src/services/orderService";
 
 // ── Khai báo mock trước import ──────────────────────────────────
-const { mockCreateOrder } = vi.hoisted(() => ({ mockCreateOrder: vi.fn() }));
+const { mockCreateOrder, mockAddBusinessBreadcrumb } = vi.hoisted(() => ({
+  mockCreateOrder: vi.fn(),
+  mockAddBusinessBreadcrumb: vi.fn(),
+}));
 
 vi.mock("@/src/services/orderService", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/src/services/orderService")>();
@@ -15,6 +18,10 @@ vi.mock("@/src/services/orderService", async (importOriginal) => {
     createOrder: mockCreateOrder,
   };
 });
+
+vi.mock("@/src/lib/observability", () => ({
+  addBusinessBreadcrumb: (...args: unknown[]) => mockAddBusinessBreadcrumb(...args),
+}));
 
 import { useCheckout } from "@/src/hooks/useCheckout";
 
@@ -81,6 +88,14 @@ describe("useCheckout Hook", () => {
     expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ["customer", "points"] });
     expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ["customer", "orders"] });
     expect(mockInvalidate).toHaveBeenCalledWith({ queryKey: ["customer", "vouchers"] });
+    expect(mockAddBusinessBreadcrumb).toHaveBeenCalledWith("checkout.started", {
+      item_count: 1,
+      order_type: "PICKUP",
+    });
+    expect(mockAddBusinessBreadcrumb).toHaveBeenCalledWith("order.created", {
+      item_count: 1,
+      order_type: "PICKUP",
+    });
   });
 
   it("throw error nếu checkout thất bại", async () => {
@@ -94,5 +109,9 @@ describe("useCheckout Hook", () => {
         await result.current.mutateAsync({ items: [], options: {} });
       })
     ).rejects.toThrow("Lỗi đặt hàng");
+    expect(mockAddBusinessBreadcrumb).toHaveBeenCalledWith("order.failed", {
+      item_count: 0,
+      order_type: "UNKNOWN",
+    });
   });
 });

@@ -9,6 +9,7 @@ import {
   recordIdentifierFloodAttempt,
   resetLoginFail,
   resetIdentifierFlood,
+  getClientIp,
   type LoginIdentifierKind,
 } from "@/lib/rateLimit";
 import bcrypt from "bcryptjs";
@@ -43,11 +44,7 @@ export async function POST(req: Request) {
     const normalizedIdentifier =
       phone_number !== undefined ? normalizePhone(phone_number) : insta_name!;
 
-    // Extract IP for rate limiting (x-forwarded-for set by Vercel/proxy)
-    const ip =
-      req.headers instanceof Headers
-        ? (req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown")
-        : "unknown";
+    const ip = getClientIp(req);
 
     // ── Layer 2: IP-based fail counter ────────────────────────────────────────
     // Checked BEFORE DB lookup to short-circuit early and save a DB query.

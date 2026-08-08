@@ -1,146 +1,141 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, PanInfo, useMotionValue, animate, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Gift } from 'lucide-react';
-import Link from 'next/link';
+import { useQuery } from "@tanstack/react-query";
+import { AnimatePresence, animate, useMotionValue } from "framer-motion";
+import { ArrowLeft, Gift } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
 
-import { useQuery } from '@tanstack/react-query';
+import CartButton from "@/src/components/menu/CartButton";
+import CartDrawer from "@/src/components/menu/CartDrawer";
+import { ExistingCartItemSheet } from "@/src/components/menu/ExistingCartItemSheet";
+import { MenuPanels } from "@/src/components/menu/MenuPanels";
+import TabBar, { type TabId } from "@/src/components/menu/TabBar";
+import ProductModal from "@/src/components/shared/ProductModal";
+import VoucherModal from "@/src/components/shared/VoucherModal";
+import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
+import { useVoucherPackages } from "@/src/hooks/useVoucherPackages";
+import { useCartStore } from "@/src/lib/store/cartStore";
+import { useIsLoggedIn, useIsLoggedInSynced } from "@/src/lib/store/authStore";
+import { usePowderStore } from "@/src/lib/store/powderStore";
+import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
+import type { CartItem } from "@/src/lib/types/cart";
+import type { MenuItem } from "@/src/lib/types/menu";
+import { listMyVouchers } from "@/src/services/customerVoucherService";
+import { fetchMenu } from "@/src/services/menuService";
+import { fetchPowders } from "@/src/services/powderService";
 
-import type { MenuItem, Category } from '@/src/lib/types/menu';
-import { fetchMenu } from '@/src/services/menuService';
-import { fetchPowders } from '@/src/services/powderService';
-import { usePowderStore } from '@/src/lib/store/powderStore';
-import TabBar from '@/src/components/menu/TabBar';
-import type { TabId } from '@/src/components/menu/TabBar';
-import { tabs as tabsConfig } from '@/src/components/menu/TabBar';
-import MenuCard from '@/src/components/menu/MenuCard';
-import ProductModal from '@/src/components/shared/ProductModal';
-import CartButton from '@/src/components/menu/CartButton';
-import CartDrawer from '@/src/components/menu/CartDrawer';
-import VoucherModal from '@/src/components/shared/VoucherModal';
-import { useVoucherModalStore } from '@/src/lib/store/voucherModalStore';
-import { useIsLoggedIn, useIsLoggedInSynced } from '@/src/lib/store/authStore';
-import { useCustomerPoints } from '@/src/hooks/useCustomerPoints';
-import { useVoucherPackages } from '@/src/hooks/useVoucherPackages';
-import { listMyVouchers } from '@/src/services/customerVoucherService';
-import { useCartStore } from '@/src/lib/store/cartStore';
-import type { CartItem } from '@/src/lib/types/cart';
-import { getMenuItemCartQuantity } from '@/src/utils/customerUx';
-import { ExistingCartItemSheet } from '@/src/components/menu/ExistingCartItemSheet';
+type PanelIndex = 0 | 1;
 
-const swipeConfidenceThreshold = 10000;
-const swipePower = (offset: number, velocity: number) => {
-  return Math.abs(offset) * velocity;
+const TAB_PANEL: Record<TabId, PanelIndex> = {
+  latte: 0,
+  fusion: 0,
+  seasonal: 1,
 };
 
+/** Displays the customer menu carousel and its cart/voucher interaction layers. */
 export default function MenuPage() {
-  const [activeTab, setActiveTab] = useState<TabId>('latte');
+  const [activeTab, setActiveTab] = useState<TabId>("latte");
+  const [activePanel, setActivePanel] = useState<PanelIndex>(0);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
-  const [editingItem, setEditingItem] = useState<CartItem | undefined>(undefined);
+  const [editingItem, setEditingItem] = useState<CartItem | undefined>();
   const [existingItemTarget, setExistingItemTarget] = useState<MenuItem | null>(null);
-
-  const containerRef = useRef<HTMLDivElement>(null);
-  const productListTopRef = useRef<HTMLDivElement>(null);
-  const previousTabRef = useRef<TabId>(activeTab);
   const [containerWidth, setContainerWidth] = useState(1000);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const latteSectionRef = useRef<HTMLDivElement>(null);
+  const fusionSectionRef = useRef<HTMLDivElement>(null);
+  const isScrollingProgrammatically = useRef(false);
   const carouselX = useMotionValue(0);
 
-  const setPowderData = usePowderStore((s) => s.setPowderData);
-  const isLoggedIn = useIsLoggedIn();         // UI display — fast, reads from memory
-  const isLoggedInSynced = useIsLoggedInSynced(); // API guard — checks has_session cookie
-  const openVoucherModal = useVoucherModalStore((s) => s.openModal);
-  const cartItems = useCartStore((s) => s.items);
-  
+  const setPowderData = usePowderStore((state) => state.setPowderData);
+  const isLoggedIn = useIsLoggedIn();
+  const isLoggedInSynced = useIsLoggedInSynced();
+  const openVoucherModal = useVoucherModalStore((state) => state.openModal);
+  const cartItems = useCartStore((state) => state.items);
   const { data: menuRes, isLoading: menuLoading, isError: menuError } = useQuery({
-    queryKey: ['menu'],
+    queryKey: ["menu"],
     queryFn: fetchMenu,
   });
-
   const { data: powderRes, isLoading: powderLoading, isError: powderError } = useQuery({
-    queryKey: ['powders'],
+    queryKey: ["powders"],
     queryFn: fetchPowders,
   });
-
-  const isMenuLoaded = !!menuRes && !!powderRes;
+  const isMenuLoaded = Boolean(menuRes && powderRes);
   const { data: packagesRes } = useVoucherPackages({ enabled: isMenuLoaded });
-
-  const isPackagesLoaded = !!packagesRes;
-
-  const { data: points } = useCustomerPoints({ enabled: isPackagesLoaded && isLoggedInSynced });
-
+  const { data: points } = useCustomerPoints({
+    enabled: Boolean(packagesRes) && isLoggedInSynced,
+  });
   const { data: vouchersData } = useQuery({
-    queryKey: ['my_vouchers'],
+    queryKey: ["my_vouchers"],
     queryFn: listMyVouchers,
-    enabled: isPackagesLoaded && isLoggedInSynced,
+    enabled: Boolean(packagesRes) && isLoggedInSynced,
   });
 
-  const loading = menuLoading || powderLoading;
-  const data = menuRes ?? null;
-
-
-
   useEffect(() => {
-    if (powderRes) {
-      setPowderData(powderRes);
-    }
+    if (powderRes) setPowderData(powderRes);
   }, [powderRes, setPowderData]);
 
   useEffect(() => {
-    if (menuError || powderError) {
-      console.error("Error fetching menu or powders");
-    }
+    if (menuError || powderError) console.error("Error fetching menu or powders");
   }, [menuError, powderError]);
 
-  const getItemsForTab = useCallback((tabId: TabId): MenuItem[] => {
-    if (!data) return [];
-    if (tabId === 'seasonal') {
-      const allItems = [...(data.latte || []), ...(data.fusion || [])];
-      return allItems.filter(item => item.is_seasonal);
-    }
-    return data[tabId as Category] ?? [];
-  }, [data]);
+  const snapToPanel = useCallback((panel: PanelIndex) => {
+    const width = containerRef.current?.offsetWidth ?? containerWidth;
+    animate(carouselX, -panel * width, { type: "spring", stiffness: 300, damping: 30 });
+  }, [carouselX, containerWidth]);
 
-  const tabsList = tabsConfig.map(t => t.id);
-  const currentIndex = tabsList.indexOf(activeTab);
-
-  const snapCarousel = useCallback((index: number) => {
-    if (containerRef.current) {
-      const W = containerRef.current.offsetWidth;
-      animate(carouselX, -index * W, { type: 'spring', stiffness: 300, damping: 30 });
-    }
-  }, [carouselX]);
-
-  const handleTabChange = useCallback((newTab: TabId) => {
-    setActiveTab(newTab);
-  }, []);
-
-  useEffect(() => {
-    if (previousTabRef.current === activeTab) return;
-    previousTabRef.current = activeTab;
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    productListTopRef.current?.scrollIntoView({
-      behavior: reduceMotion ? "auto" : "smooth",
+  const scrollToSection = useCallback((ref: RefObject<HTMLDivElement | null>, delay = 0) => {
+    const scroll = () => ref.current?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
       block: "start",
     });
-  }, [activeTab]);
+    if (delay > 0) setTimeout(scroll, delay);
+    else scroll();
+  }, []);
 
-  // Sync carousel position when activeTab changes (e.g. from clicks)
+  const handleTabChange = useCallback((newTab: TabId) => {
+    if (TAB_PANEL[newTab] === 1) {
+      if (activePanel !== 1) {
+        setActivePanel(1);
+        snapToPanel(1);
+      }
+      setActiveTab("seasonal");
+      return;
+    }
+
+    setActiveTab(newTab);
+    const target = newTab === "fusion" ? fusionSectionRef : latteSectionRef;
+    isScrollingProgrammatically.current = true;
+    if (activePanel === 1) {
+      setActivePanel(0);
+      snapToPanel(0);
+      scrollToSection(target, 380);
+    } else {
+      scrollToSection(target);
+    }
+    setTimeout(() => { isScrollingProgrammatically.current = false; }, 900);
+  }, [activePanel, scrollToSection, snapToPanel]);
+
   useEffect(() => {
-    snapCarousel(currentIndex);
-  }, [currentIndex, snapCarousel]);
+    const fusionSection = fusionSectionRef.current;
+    if (!fusionSection) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (isScrollingProgrammatically.current || activePanel !== 0) return;
+      setActiveTab(entry.isIntersecting ? "fusion" : "latte");
+    }, { rootMargin: "-80px 0px 0px 0px", threshold: 0 });
+    observer.observe(fusionSection);
+    return () => observer.disconnect();
+  }, [activePanel]);
 
-  // Handle window resize to keep snapped
   useEffect(() => {
     const handleResize = () => {
-      if (containerRef.current) {
-        const W = containerRef.current.offsetWidth;
-        carouselX.set(-currentIndex * W);
-      }
+      const width = containerRef.current?.offsetWidth;
+      if (width) carouselX.set(-activePanel * width);
     };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [currentIndex, carouselX]);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [activePanel, carouselX]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -152,31 +147,8 @@ export default function MenuPage() {
     return () => observer.disconnect();
   }, []);
 
-  const handleDragEnd = useCallback((
-    event: MouseEvent | TouchEvent | PointerEvent,
-    { offset, velocity }: PanInfo
-  ) => {
-    void event;
-    const swipe = swipePower(offset.x, velocity.x);
-    const draggedFarLeft = offset.x < -100;
-    const draggedFarRight = offset.x > 100;
-
-    if (swipe < -swipeConfidenceThreshold || draggedFarLeft) {
-      // Next tab
-      if (currentIndex < tabsList.length - 1) setActiveTab(tabsList[currentIndex + 1]);
-      else snapCarousel(currentIndex);
-    } else if (swipe > swipeConfidenceThreshold || draggedFarRight) {
-      // Prev tab
-      if (currentIndex > 0) setActiveTab(tabsList[currentIndex - 1]);
-      else snapCarousel(currentIndex);
-    } else {
-      snapCarousel(currentIndex);
-    }
-  }, [currentIndex, tabsList, snapCarousel]);
-
   const handleItemClick = useCallback((item: MenuItem) => {
-    const matchingItems = cartItems.filter((cartItem) => cartItem.menuItemId === item.id);
-    if (matchingItems.length > 0) {
+    if (cartItems.some((cartItem) => cartItem.menuItemId === item.id)) {
       setExistingItemTarget(item);
       return;
     }
@@ -184,126 +156,70 @@ export default function MenuPage() {
     setSelectedItem(item);
   }, [cartItems]);
 
+  const data = menuRes ?? null;
+  const seasonalItems = [...(data?.latte ?? []), ...(data?.fusion ?? [])]
+    .filter((item) => item.is_seasonal);
+
   return (
     <main className="min-h-screen bg-[#fdfcf7] text-foreground font-sans pt-4 pb-24 px-6">
       <div className="max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto flex flex-col h-full">
-
         <div className="flex items-center justify-between mb-4">
-          <Link
-            href="/"
-            className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-sm border border-border/50 text-primary/60 hover:text-primary hover:shadow-md hover:scale-105 transition-all"
-            aria-label="Về trang chủ"
-          >
+          <Link href="/" className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-sm border border-border/50 text-primary/60 hover:text-primary hover:shadow-md hover:scale-105 transition-all" aria-label="Về trang chủ">
             <ArrowLeft className="w-5 h-5 -ml-0.5" />
           </Link>
-
           <h1 className="font-serif text-2xl md:text-3xl font-bold text-primary">Menu</h1>
-
-          <button
-            onClick={openVoucherModal}
-            className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-amber-500 to-orange-500 shadow-sm shadow-orange-500/20 px-3.5 py-2.5 rounded-xl hover:scale-105 transition-transform cursor-pointer"
-          >
+          <button onClick={openVoucherModal} className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-amber-500 to-orange-500 shadow-sm shadow-orange-500/20 px-3.5 py-2.5 rounded-xl hover:scale-105 transition-transform cursor-pointer">
             <Gift size={14} />
-            <span>
-              {isLoggedIn
-                ? `Đổi quà${typeof points === "number" ? ` (${points} cá)` : ""}`
-                : 'Ưu đãi'}
-            </span>
+            <span>{isLoggedIn ? `Đổi quà${typeof points === "number" ? ` (${points} cá)` : ""}` : "Ưu đãi"}</span>
           </button>
         </div>
-
-        {/* Sync drag position down to TabBar */}
-        <TabBar activeTab={activeTab} setActiveTab={handleTabChange} carouselX={carouselX} />
-
-        {/* High-Performance Swipe Area (True Carousel without whileInView) */}
-        <div ref={productListTopRef} className="scroll-mt-20" />
-        <div ref={containerRef} className="mt-2 flex-1 relative w-full overflow-hidden">
-          {loading ? (
-            <div className="flex flex-col gap-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-8 w-full">
-              {[1, 2, 3, 4, 5, 6].map(i => (
-                <div key={i} className="h-[130px] w-full bg-secondary/20 animate-pulse rounded-2xl mb-4" />
-              ))}
-            </div>
-          ) : (
-            <motion.div
-              style={{ x: carouselX }}
-              drag="x"
-              // Remove bounds constraints so we can rely purely on dragElastic and manual snap for smooth feel
-              dragConstraints={{ left: -containerWidth * 2, right: 0 }}
-              dragElastic={0.2}
-              onDragEnd={handleDragEnd}
-              className="relative w-full touch-pan-y"
-            >
-              {tabsConfig.map((tab, idx) => {
-                const tabItems = getItemsForTab(tab.id);
-                const isActive = activeTab === tab.id;
-                return (
-                  <div 
-                    key={tab.id} 
-                    className={`w-full pb-8 px-0.5 ${isActive ? "relative" : "absolute top-0"}`}
-                    style={{ left: `${idx * 100}%` }}
-                  >
-                    {tabItems.length === 0 ? (
-                      <div className="py-24 text-center text-primary/40 space-y-4 col-span-full">
-                        <span className="text-6xl">🍲</span>
-                        <p className="font-bold text-lg italic">Không thấy món này...</p>
-                        <p className="text-sm">Thử tìm tên khác nhé</p>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col gap-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-8">
-                        {tabItems.map((item, index) => (
-                          <MenuCard
-                            key={item.id}
-                            item={item}
-                            milkTypes={data?.milk_types ?? []}
-                            onClick={handleItemClick}
-                            cartQuantity={getMenuItemCartQuantity(cartItems, item.id)}
-                            priority={index < 4}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </motion.div>
-          )}
+        <TabBar activeTab={activeTab} setActiveTab={handleTabChange} />
+        <div ref={containerRef} className="flex-1 relative w-full overflow-hidden">
+          <MenuPanels
+            carouselX={carouselX}
+            loading={menuLoading || powderLoading}
+            latteItems={data?.latte ?? []}
+            fusionItems={data?.fusion ?? []}
+            seasonalItems={seasonalItems}
+            milkTypes={data?.milk_types ?? []}
+            cartItems={cartItems}
+            latteSectionRef={latteSectionRef}
+            fusionSectionRef={fusionSectionRef}
+            onItemClick={handleItemClick}
+          />
         </div>
       </div>
 
       <AnimatePresence>
-        {selectedItem && (
-          <ProductModal
-            key="product-modal-root"
-            item={selectedItem}
-            latteItems={data?.latte ?? []}
-            milkTypes={data?.milk_types ?? []}
-            addonGroups={data?.addon_groups ?? []}
-            onClose={() => setSelectedItem(null)}
-            editingItem={editingItem}
-            availableVouchers={vouchersData ?? []}
-          />
-        )}
+        {selectedItem && <ProductModal
+          key="product-modal-root"
+          item={selectedItem}
+          latteItems={data?.latte ?? []}
+          milkTypes={data?.milk_types ?? []}
+          addonGroups={data?.addon_groups ?? []}
+          onClose={() => setSelectedItem(null)}
+          editingItem={editingItem}
+          availableVouchers={vouchersData ?? []}
+        />}
       </AnimatePresence>
-
-      {existingItemTarget && (
-        <ExistingCartItemSheet
-          itemName={existingItemTarget.name}
-          items={cartItems.filter((cartItem) => cartItem.menuItemId === existingItemTarget.id)}
-          onClose={() => setExistingItemTarget(null)}
-          onAddNew={() => {
-            setEditingItem(undefined);
-            setSelectedItem(existingItemTarget);
-            setExistingItemTarget(null);
-          }}
-          onEdit={(cartItem) => {
-            setEditingItem(cartItem);
-            setSelectedItem(existingItemTarget);
-            setExistingItemTarget(null);
-          }}
-        />
-      )}
-
+      {existingItemTarget && <ExistingCartItemSheet
+        itemName={existingItemTarget.name}
+        items={cartItems.filter((item) => item.menuItemId === existingItemTarget.id)}
+        addonGroups={data?.addon_groups ?? []}
+        milkTypes={data?.milk_types ?? []}
+        powders={powderRes?.data ?? []}
+        onClose={() => setExistingItemTarget(null)}
+        onAddNew={() => {
+          setEditingItem(undefined);
+          setSelectedItem(existingItemTarget);
+          setExistingItemTarget(null);
+        }}
+        onEdit={(cartItem) => {
+          setEditingItem(cartItem);
+          setSelectedItem(existingItemTarget);
+          setExistingItemTarget(null);
+        }}
+      />}
       <VoucherModal />
       <CartButton />
       {data && powderRes && <CartDrawer menuData={data} powderData={powderRes} />}

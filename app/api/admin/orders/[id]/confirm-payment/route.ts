@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 import { redeemOrderVouchers, VoucherRedeemError } from "@/lib/redeemVouchers";
+import { toPublicOrderDto } from "@/lib/orderPublicDto";
 import { after } from "next/server";
 import { sendPushToRoles } from "@/lib/push";
 
@@ -166,10 +167,14 @@ export async function PATCH(
         session.id // Không push lại cho người vừa duyệt
       )
         .then(() => console.log(`[AFTER JOB] Successfully completed push task for confirmed order: ${updatedOrder.order_code}`))
-        .catch((err) => console.error("[AFTER JOB] Failed to send push:", err));
+        .catch((error: unknown) => {
+          console.error("[AFTER JOB] Failed to send push", {
+            name: error instanceof Error ? error.name : typeof error,
+          });
+        });
     });
 
-    return NextResponse.json({ data: updatedOrder });
+    return NextResponse.json({ data: toPublicOrderDto(updatedOrder) });
   } catch (err) {
     if (err instanceof VoucherRedeemError) {
       return NextResponse.json(

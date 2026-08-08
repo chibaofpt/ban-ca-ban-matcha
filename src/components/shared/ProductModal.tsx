@@ -128,7 +128,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
   }, [cartItems, editingItem?.cartId]);
 
   const applicableProductVouchers = useMemo(() => {
-    return filterUsableVouchers(availableVouchers ?? [], "PRODUCT").filter(v => v.menu_item_id === item.id && !usedVoucherIds.has(v.id));
+    return filterUsableVouchers(availableVouchers ?? [], "PRODUCT").filter(v => v.menu_item_id === item.id && !usedVoucherIds.has(v.qr_token));
   }, [availableVouchers, item.id, usedVoucherIds]);
 
   const applicableAddonVouchers = useMemo(() => {
@@ -136,7 +136,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
       ...selectedOptionIds,
       ...addonGroups.filter(group => group.type === "QUANTITY" && (quantityMap[group.id] ?? 0) > 0).map(group => group.options[0]?.id).filter(Boolean)
     ]);
-    return filterUsableVouchers(availableVouchers ?? [], "ADDON").filter(v => v.addon_option_id !== null && currentAddonIds.has(v.addon_option_id) && !usedVoucherIds.has(v.id));
+    return filterUsableVouchers(availableVouchers ?? [], "ADDON").filter(v => v.addon_option_id !== null && currentAddonIds.has(v.addon_option_id) && !usedVoucherIds.has(v.qr_token));
   }, [availableVouchers, selectedOptionIds, quantityMap, addonGroups, usedVoucherIds]);
 
   const isProductVoucherApplied = selectedProductVoucherId !== null || freeVoucherId !== undefined;
@@ -222,7 +222,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
       });
 
     const finalAddonVouchers = selectedAddonVoucherIds.map(vid => {
-        const v = availableVouchers?.find(av => av.id === vid);
+        const v = availableVouchers?.find(av => av.qr_token === vid);
         return v ? { 
             addonOptionId: v.addon_option_id!, 
             voucherId: vid,
@@ -629,13 +629,13 @@ const BaseModal: React.FC<ProductModalProps> = ({
               <SectionLabel text="🎟 Ưu đãi có thể áp dụng" />
               <div className="space-y-2">
                 {applicableProductVouchers.map(v => {
-                  const isSelected = selectedProductVoucherId === v.id;
+                  const isSelected = selectedProductVoucherId === v.qr_token;
                   return (
                     <button
-                      key={v.id}
+                      key={v.qr_token}
                       onClick={() => {
                         if (!isSelected) setQuantity(1);
-                        setSelectedProductVoucherId(isSelected ? null : v.id);
+                        setSelectedProductVoucherId(isSelected ? null : v.qr_token);
                       }}
                       className={cn(
                         "w-full flex items-center justify-between p-3.5 rounded-xl border-2 text-left transition-colors",
@@ -652,19 +652,19 @@ const BaseModal: React.FC<ProductModalProps> = ({
                   );
                 })}
                 {applicableAddonVouchers.map(v => {
-                  const isSelected = selectedAddonVoucherIds.includes(v.id);
+                  const isSelected = selectedAddonVoucherIds.includes(v.qr_token);
                   return (
                     <button
-                      key={v.id}
+                      key={v.qr_token}
                       onClick={() => {
                         if (isSelected) {
-                          setSelectedAddonVoucherIds(prev => prev.filter(id => id !== v.id));
+                          setSelectedAddonVoucherIds(prev => prev.filter(id => id !== v.qr_token));
                         } else {
                           setQuantity(1);
                           const otherIdsToRemove = applicableAddonVouchers
-                            .filter(av => av.addon_option_id === v.addon_option_id && av.id !== v.id)
-                            .map(av => av.id);
-                          setSelectedAddonVoucherIds(prev => [...prev.filter(id => !otherIdsToRemove.includes(id)), v.id]);
+                            .filter(av => av.addon_option_id === v.addon_option_id && av.qr_token !== v.qr_token)
+                            .map(av => av.qr_token);
+                          setSelectedAddonVoucherIds(prev => [...prev.filter(id => !otherIdsToRemove.includes(id)), v.qr_token]);
                         }
                       }}
                       className={cn(

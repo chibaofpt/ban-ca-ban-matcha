@@ -22,6 +22,19 @@
   the user explicitly approves consumer migration, compatibility, and rollback handling.
 - Correcting documentation to match an already-existing route is not an API rename.
 
+### Public user and voucher identifiers
+
+- User and voucher response DTOs expose `qr_token` only. They remove `users.id`, `vouchers.id`,
+  ownership foreign keys, redemption actor IDs, and the corresponding nested order link IDs.
+- Existing request field and route-segment names such as `product_voucher_id`, `voucher_id`,
+  `discount_voucher_ids`, and `/api/staff/vouchers/[id]` remain unchanged for contract stability;
+  their public value is now the relevant `qr_token`.
+- For one release only, resolver-backed user/voucher inputs try `qr_token` first and then accept a
+  legacy database UUID. Ownership/role checks still apply, and fallback use is recorded without the
+  submitted identifier. This is an input migration bridge, never permission to return an internal ID.
+- Remove the legacy lookup after clients have migrated and the compatibility telemetry is quiet for
+  the agreed release window.
+
 ---
 
 ## Error Codes
@@ -34,6 +47,8 @@
 | `NOT_FOUND` | Resource does not exist |
 | `CONFLICT` | Unique constraint or state conflict |
 | `PRICE_CHANGED` | One or more item prices differ between client submission and server recompute |
+| `BUSINESS_RULE_VIOLATION` | A validated request violates a server-side business ceiling (HTTP 422) |
+| `TOO_MANY_REQUESTS` | A configured account/IP rate limit was exceeded (HTTP 429) |
 | `INSUFFICIENT_POINTS` | Not enough points for voucher redemption |
 | `VOUCHER_EXPIRED` | Voucher past expiry date |
 | `VOUCHER_REDEEMED` | Voucher already used |
@@ -100,7 +115,10 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 - Bucket: `menu-images` (public bucket)
 - Size limit: 5MB
 - Allowed types: `image/jpeg`, `image/png`, `image/webp`
-- Old image is NOT deleted on replace — deferred cleanup
+- Optional `image_filename` controls the SEO-friendly Storage object name; it is not stored in a database column
+- Replacing or renaming an image deletes the previous object only after the database update succeeds
+- Soft-deleted menu items retain their image references and are protected from cleanup
+- Daily cleanup deletes only unreferenced objects older than 48 hours; start with `IMAGE_CLEANUP_DRY_RUN=true`
 
 ---
 
@@ -111,13 +129,17 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 | Route | Method | Purpose |
 |---|---|---|
 | `/api/auth/register` | POST | Create account |
+| `/api/auth/check-phone` | POST | Check registration/login routing for a normalized phone |
 | `/api/auth/login` | POST | Login, issue tokens |
 | `/api/auth/logout` | POST | Delete session, clear cookies |
 | `/api/auth/refresh` | POST | Swap refresh token → new access token |
+| `/api/auth/me` | GET | Return the current authenticated session profile |
 | `/api/menu` | GET | All available items with computed prices |
 | `/api/powders` | GET | Full powder catalogue with pricing and size config |
 | `/api/store-status` | GET | Current store open/closed status, today + weekly schedule |
 | `/api/voucher-packages` | GET | Active voucher packages available for redemption |
+
+Auth mutation routes are rate-limited by hashed IP. Read-only `/api/auth/me` and logout are excluded.
 
 ### Customer — CUSTOMER role
 
@@ -131,6 +153,12 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 | `/api/profile/vouchers` | GET | Own vouchers in all lifecycle statuses |
 | `/api/profile/vouchers/exchange` | POST | Spend points on a voucher package to receive a Voucher |
 | `/api/profile/vouchers/refund` | POST | Auto-refund points if the voucher's target item is no longer available |
+| `/api/push/subscribe` | POST | Upsert the current account's browser push subscription |
+| `/api/push/unsubscribe` | POST | Remove the current account's browser push subscription |
+| `/api/delivery/autocomplete` | GET | Authenticated Goong address suggestions (`q=2..200` chars) |
+| `/api/delivery/geocode` | GET | Authenticated forward geocode (`address=5..500` chars) |
+| `/api/delivery/reverse-geocode` | GET | Authenticated reverse geocode (finite bounded `lat`/`lng`) |
+| `/api/delivery/estimate` | GET | Authenticated road distance, duration, and authoritative fee estimate |
 
 ### Staff — STAFF or ADMIN
 
@@ -140,9 +168,62 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 | `/api/staff/orders` | GET | List orders for current staff member |
 | `/api/staff/orders/[id]` | PATCH | Update order status (auto-award points on COMPLETED) |
 | `/api/staff/scan` | GET | Resolve QR token → user or voucher |
-| `/api/staff/vouchers/[id]/redeem` | PATCH | Mark voucher REDEEMED offline |
+| `/api/staff/scan-fallback` | POST | Privacy-safe manual QR short-code recovery |
+| `/api/staff/vouchers/[id]/redeem` | PATCH | Mark voucher REDEEMED offline; `[id]` carries voucher `qr_token` |
 | `/api/staff/users` | GET | Search customers by name or last digits of phone |
-| `/api/staff/users/[id]/vouchers` | GET | List ACTIVE vouchers of a customer |
+| `/api/staff/users/[id]/vouchers` | GET | List ACTIVE vouchers; `[id]` carries customer `qr_token` |
+| `/api/staff/users/[id]/vouchers/exchange` | POST | Staff-assisted exchange; `[id]` carries customer `qr_token` |
+
+### Payload and value ceilings
+
+Payload cap failures return `400 VALIDATION_ERROR`.
+
+| Cap | Customer order | Staff order |
+|---|---:|---:|
+| Order lines | 20 | 50 |
+| Total cups | 20 | 100 |
+| Cups per line | 10 | 50 |
+| Addon selections per line | 20 | 50 |
+| Quantity per addon selection | 10 | 50 |
+| ADDON voucher entries per line | 10 | 50 |
+| Order-level DISCOUNT/FREESHIP entries | 10 | 10 |
+
+A server-calculated `grand_total_vnd > 20,000,000` returns
+`422 BUSINESS_RULE_VIOLATION` with `details.reason = "ORDER_VALUE_EXCEEDED"` before any
+order or voucher write.
+
+### Distributed rate limits
+
+| Scope | Limit |
+|---|---:|
+| Auth mutations (`login`, `register`, `check-phone`, `refresh`) | 10/min/IP |
+| Failed login attempts | 5/15 min/IP |
+| Failed normalized login identifier | 10/15 min/identifier |
+| Customer order creation | 5/10 min/account and 50/10 min/IP |
+| Staff order creation | 30/min/account |
+| Voucher exchange | 5/min/account |
+| Push subscribe + unsubscribe combined | 20/10 min/account |
+| All delivery proxies combined | 60/min/account and 120/min/IP |
+
+The implementation uses fixed-window Upstash counters, HMAC-hashes every identifier before it
+becomes a Redis key, and returns `429 TOO_MANY_REQUESTS` with deterministic `Retry-After`. It fails
+open and reports the infrastructure error to Sentry if Redis is absent or unavailable. This is the
+only approved pre-Phase-5 Upstash use: a security control, not application caching or an OTP,
+promotion, or messaging feature.
+
+### Cron — `CRON_SECRET` required
+
+| Route | Schedule | Purpose |
+|---|---|---|
+| `/api/cron/cancel-expired-orders` | Supabase `*/5 * * * *` UTC; Vercel `0 0 * * *` UTC backup | Cancel expired PENDING orders in bounded batches and release reservations |
+| `/api/cron/clean-sessions` | Supabase `15 20 * * *` UTC | Delete expired sessions in at most 5 batches of 500 |
+| `/api/cron/cleanup-menu-images` | Supabase `0 17 * * *` UTC | Dry-run/delete orphaned menu images older than 48 hours |
+
+Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-side
+`CRON_SECRET` fails closed with `500 INTERNAL_ERROR`; a missing or incorrect bearer token returns
+`401 UNAUTHORIZED`. No worker starts unless this check succeeds.
+
+`/api/push/test` has been deleted and is not a supported development or production contract.
 
 ### Admin — ADMIN only
 
@@ -428,21 +509,21 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
     coldwhisk?: boolean
     note?: string
     addon_option_ids: { option_id: string, quantity: number }[]
-    product_voucher_id?: string
+    product_voucher_id?: string       // voucher qr_token; legacy UUID accepted for one release
     addon_voucher_ids?: {
-      voucher_id: string
+      voucher_id: string              // voucher qr_token; legacy UUID accepted for one release
       addon_option_id: string
     }[]
     selected_powder_id?: string       // Fusion only
     selected_milk_type_id?: string    // Latte only, optional (defaults to sữa bò)
     client_price_vnd: number          // REQUIRED — frontend computed price. Missing = VALIDATION_ERROR.
   }[]
-  discount_voucher_ids?: string[]
-  freeship_voucher_id?: string       // DELIVERY only; max 1
+  discount_voucher_ids?: string[]    // voucher qr_token values
+  freeship_voucher_id?: string       // voucher qr_token; DELIVERY only; max 1
   pickup_time?: string
   note?: string
   delivery_address?: string
-  address_id?: string
+  address_id?: string                 // owned saved-address database ID; never accepted across users
   delivery_lat?: number
   delivery_lng?: number
   delivery_receiver_name?: string
@@ -485,17 +566,17 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
     coldwhisk?: boolean
     note?: string
     addon_option_ids: { option_id: string, quantity: number }[]
-    product_voucher_id?: string
+    product_voucher_id?: string       // voucher qr_token; legacy UUID accepted for one release
     addon_voucher_ids?: {
-      voucher_id: string
+      voucher_id: string              // voucher qr_token; legacy UUID accepted for one release
       addon_option_id: string
     }[]
     selected_powder_id?: string
     selected_milk_type_id?: string
     client_price_vnd: number          // REQUIRED
   }[]
-  discount_voucher_ids?: string[]
-  customer_qr_token?: string          // required for STAFF when a known customer uses vouchers
+  discount_voucher_ids?: string[]    // voucher qr_token values
+  customer_qr_token?: string          // user qr_token; required for STAFF with known-customer vouchers
 }
 ```
 
@@ -546,11 +627,11 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
 ```ts
 // Fuzzy search: all-digits → phone suffix match; has-letters → ILIKE on name
 // Min 2 chars, max 10 results, sorted by created_at DESC, CUSTOMER role only
-{ data: { items: { id: string, name: string, phone_number: string, points_balance: number }[] } }
+{ data: { items: { qr_token: string, name: string, phone_number: string, points_balance: number }[] } }
 
 // Legacy exact match (backward compat)
 // GET /api/staff/users?phone=0987654321
-{ data: { items: { id: string, name: string, phone_number: string, points_balance: number }[] } }
+{ data: { items: { qr_token: string, name: string, phone_number: string, points_balance: number }[] } }
 ```
 
 ### `GET /api/staff/scan?token=xxx`
@@ -598,6 +679,17 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
   and staff views. Do not display `total_vnd` as the final DELIVERY amount.
 - Staff counter order: status = COMPLETED immediately; redeem applied vouchers and award order
   plus aggregate surplus points in the creation transaction.
+- Delivery input is validated before proxy/database work. If `address_id` is present, the server
+  loads a row owned by the session and treats its full address, coordinates, and stored distance as
+  authoritative; request address/coordinate values cannot override it. Receiver name/phone may be
+  overridden explicitly. Without `address_id`, bounded coordinates plus receiver name/phone are
+  required, Goong road distance is recalculated, radius is enforced, and the server recalculates the
+  shipping fee. A mismatching `client_shipping_fee_vnd` returns `409 SHIPPING_FEE_CHANGED`.
+- The client map uses lazy MapLibre rendering with Goong style/tiles. Goong API-backed search and
+  geocoding remain usable when rendering fails, providing the manual address-selection fallback.
+- Persisted customer cart schema is version `3`. Migrating any older cart keeps its items (and the
+  earlier size conversion) but clears PRODUCT/ADDON/order-level voucher identifiers and credits,
+  then recomputes client item prices so legacy database UUIDs cannot be resubmitted.
 - **Anonymous orders** (`phone_number` omitted):
   - `orders.user_id = NULL`
   - `points_earned = 0` — no points awarded, no `points_log` entry

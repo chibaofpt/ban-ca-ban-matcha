@@ -17,6 +17,13 @@ import type { IceOption } from "@/src/lib/types/cart";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 
 import { logSystemEvent } from "@/lib/logger";
+import { checkRateLimit } from "@/lib/rateLimit";
+import {
+  resolveCustomerIdentifier,
+  resolveOwnedVoucherIdentifier,
+} from "@/lib/publicIdentifiers";
+import { toPublicOrderDto } from "@/lib/orderPublicDto";
+import { getOrderValueViolation } from "@/lib/orderLimits";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +50,17 @@ export async function POST(req: NextRequest) {
   // 4. Role check
   if (!["STAFF", "ADMIN"].includes(session.role)) {
     return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+  }
+
+  const accountRateLimit = await checkRateLimit("staffOrderAccount", session.id);
+  if (!accountRateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Quá nhiều yêu cầu, vui lòng thử lại sau.", code: "TOO_MANY_REQUESTS" },
+      {
+        status: 429,
+        headers: { "Retry-After": String(accountRateLimit.retryAfterSeconds) },
+      },
+    );
   }
 
   try {
@@ -121,10 +139,7 @@ export async function POST(req: NextRequest) {
             { status: 400 }
           );
         }
-        const qrUser = await prisma.user.findUnique({
-          where: { qr_token: data.customer_qr_token },
-          select: { id: true },
-        });
+        const qrUser = await resolveCustomerIdentifier(data.customer_qr_token);
         if (!qrUser || qrUser.id !== existingUser.id) {
           return NextResponse.json(
             { error: "QR không khớp với khách hàng", code: "VALIDATION_ERROR" },
@@ -139,13 +154,16 @@ export async function POST(req: NextRequest) {
     if (existingUserForVoucher) {
       for (const item of data.items) {
         if (item.product_voucher_id) {
-          if (productVoucherMap.has(item.product_voucher_id)) {
+          const pv = await resolveOwnedVoucherIdentifier(
+            item.product_voucher_id,
+            existingUserForVoucher.id,
+          );
+          if (pv && productVoucherMap.has(pv.id)) {
             return NextResponse.json(
               { error: "The same product voucher cannot be applied to multiple items", code: "VALIDATION_ERROR" },
               { status: 400 }
             );
           }
-          const pv = await prisma.voucher.findUnique({ where: { id: item.product_voucher_id } });
           try {
             assertVoucherUsable(pv, existingUserForVoucher.id, "PRODUCT");
           } catch (e) {
@@ -171,6 +189,7 @@ export async function POST(req: NextRequest) {
             menu_item_id: pv!.menu_item_id,
             covered_price_vnd: pv!.covered_price_vnd,
           });
+          item.product_voucher_id = pv!.id;
           voucherQrTokens.set(pv!.id, pv!.qr_token);
         }
       }
@@ -186,7 +205,8 @@ export async function POST(req: NextRequest) {
         if (item.addon_voucher_ids && item.addon_voucher_ids.length > 0) {
           const itemAddonOptionIds = new Set<string>();
           for (const av of item.addon_voucher_ids) {
-            if (addonVoucherIds.has(av.voucher_id)) {
+            const dbAv = await resolveOwnedVoucherIdentifier(av.voucher_id, existingUser.id);
+            if (dbAv && addonVoucherIds.has(dbAv.id)) {
               return NextResponse.json(
                 { error: "The same addon voucher cannot be applied to multiple items", code: "VALIDATION_ERROR" },
                 { status: 400 }
@@ -210,7 +230,6 @@ export async function POST(req: NextRequest) {
               );
             }
 
-            const dbAv = await prisma.voucher.findUnique({ where: { id: av.voucher_id } });
             try {
               assertVoucherUsable(dbAv, existingUser.id, "ADDON");
             } catch (e) {
@@ -228,6 +247,7 @@ export async function POST(req: NextRequest) {
             }
             addonVoucherMap.set(dbAv!.id, dbAv!.addon_option_id);
             addonVoucherIds.add(dbAv!.id);
+            av.voucher_id = dbAv!.id;
             voucherQrTokens.set(dbAv!.id, dbAv!.qr_token);
           }
         }
@@ -276,7 +296,7 @@ export async function POST(req: NextRequest) {
     if (existingUser && data.discount_voucher_ids.length > 0) {
       const uniqueDiscountIds = Array.from(new Set(data.discount_voucher_ids));
       for (const dvId of uniqueDiscountIds) {
-        const dv = await prisma.voucher.findUnique({ where: { id: dvId } });
+        const dv = await resolveOwnedVoucherIdentifier(dvId, existingUser.id);
         try {
           assertVoucherUsable(dv, existingUser.id, "DISCOUNT");
         } catch (e) {
@@ -322,6 +342,10 @@ export async function POST(req: NextRequest) {
       shipping_fee_vnd: 0,
     });
     const { subtotal_vnd, total_voucher_discount_vnd, total_vnd } = calculation;
+    const orderValueViolation = getOrderValueViolation(calculation.grand_total_vnd);
+    if (orderValueViolation) {
+      return NextResponse.json(orderValueViolation, { status: 422 });
+    }
     const appliedVoucherIds = new Set(calculation.appliedVoucherIds);
     const appliedDiscountVouchers = validatedDiscountVouchers.filter((voucher) =>
       appliedVoucherIds.has(voucher.id)
@@ -545,18 +569,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const errMsg = err instanceof Error ? err.message : String(err);
-    const errStack = err instanceof Error ? err.stack : undefined;
     const errName = err instanceof Error ? err.name : typeof err;
     
     // Fallback to console + save to SystemLog
-    console.error("[POST /api/staff/orders] UNHANDLED ERROR:", { name: errName, message: errMsg, stack: errStack });
+    console.error("[POST /api/staff/orders] UNHANDLED ERROR:", { name: errName });
     await logSystemEvent({
       level: "error",
       source: "POST /api/staff/orders",
-      message: errMsg,
-      error: err,
-      context: { body },
+      message: "Unhandled staff order creation error",
     });
 
     return NextResponse.json(
@@ -725,7 +745,7 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({ 
-      data: orders, 
+      data: orders.map((order) => toPublicOrderDto(order)),
       meta: { total, page, totalPages } 
     });
   } catch (err) {

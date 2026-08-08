@@ -13,10 +13,12 @@ import { NextRequest } from "next/server";
 const mockGetSession = vi.fn();
 const mockVoucherFindMany = vi.fn();
 const mockVoucherUpdateMany = vi.fn();
+const mockUserFindUnique = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ getSession: () => mockGetSession() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    user: { findUnique: (...args: unknown[]) => mockUserFindUnique(...args) },
     voucher: {
       findMany: (...args: unknown[]) => mockVoucherFindMany(...args),
       updateMany: (...args: unknown[]) => mockVoucherUpdateMany(...args),
@@ -47,6 +49,7 @@ function makeParams(userId: string) {
 // Sample voucher data
 const sampleActiveVoucher = {
   id: "v-001",
+  qr_token: "voucher-public-token",
   user_id: CUSTOMER_ID,
   status: "ACTIVE",
   voucher_type: "DISCOUNT",
@@ -66,6 +69,11 @@ describe("GET /api/staff/users/[id]/vouchers", () => {
     vi.clearAllMocks();
     mockVoucherFindMany.mockResolvedValue([]);
     mockVoucherUpdateMany.mockResolvedValue({ count: 0 });
+    mockUserFindUnique.mockResolvedValue({
+      id: CUSTOMER_ID,
+      qr_token: "customer-public-token",
+      role: "CUSTOMER",
+    });
   });
 
   it("trả 401 khi chưa đăng nhập", async () => {
@@ -92,7 +100,8 @@ describe("GET /api/staff/users/[id]/vouchers", () => {
     const json = await res.json();
     expect(Array.isArray(json.data)).toBe(true);
     expect(json.data).toHaveLength(1);
-    expect(json.data[0].id).toBe("v-001");
+    expect(json.data[0].qr_token).toBe("voucher-public-token");
+    expect(json.data[0]).not.toHaveProperty("id");
   });
 
   it("ADMIN lấy voucher của khách → 200", async () => {
@@ -108,6 +117,7 @@ describe("GET /api/staff/users/[id]/vouchers", () => {
     // No 404 — prevents info leak about user existence
     mockGetSession.mockResolvedValue(STAFF_SESSION);
     mockVoucherFindMany.mockResolvedValue([]);
+    mockUserFindUnique.mockResolvedValue(null);
     const unknownId = "550e8400-e29b-41d4-a716-446655440999";
     const res = await GET(makeReq(unknownId), makeParams(unknownId));
     expect(res.status).toBe(200);

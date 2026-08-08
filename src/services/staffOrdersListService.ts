@@ -51,8 +51,6 @@ export interface OrderRes {
   created_at: string;
   /** Null for anonymous (walk-in) orders that have no linked customer. */
   user: { name: string; phone_number: string } | null;
-  handled_by: string | null;
-  voucher_id: string | null;
   discountVouchers?: Array<{
     voucher: {
       discount_value: number | null;

@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
       const normalized = normalizePhone(phone);
       const user = await prisma.user.findUnique({
         where: { phone_number: normalized },
-        select: { id: true, name: true, phone_number: true, points_balance: true },
+        select: { qr_token: true, name: true, phone_number: true, points_balance: true },
       });
       return NextResponse.json(
         { data: { items: user ? [user] : [] } },
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
           ? { phone_number: { endsWith: q } }
           : { name: { contains: q, mode: "insensitive" } }),
       },
-      select: { id: true, name: true, phone_number: true, points_balance: true },
+      select: { qr_token: true, name: true, phone_number: true, points_balance: true },
       orderBy: { created_at: "desc" },
       take: 10,
     });

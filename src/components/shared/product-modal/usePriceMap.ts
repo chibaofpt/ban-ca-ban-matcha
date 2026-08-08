@@ -112,7 +112,7 @@ export function usePriceMap({
 
     // 1. Apply Addon Vouchers deduction
     for (const vid of selectedAddonVoucherIds) {
-      const v = availableVouchers?.find(av => av.id === vid);
+      const v = availableVouchers?.find(av => av.qr_token === vid);
       if (v && v.addon_option_id) {
         const addonPrice = currentPriceContext.addonPricesMap[v.addon_option_id] ?? 0;
         finalAddonsCost = Math.max(0, finalAddonsCost - addonPrice);
@@ -121,7 +121,7 @@ export function usePriceMap({
     }
 
     // 2. Apply Product Voucher deduction
-    const activeProductVoucher = availableVouchers?.find(v => v.id === selectedProductVoucherId);
+    const activeProductVoucher = availableVouchers?.find(v => v.qr_token === selectedProductVoucherId);
     const effectiveFreeVoucherId = freeVoucherId || selectedProductVoucherId;
     const effectiveFreeCoveredPrice = freeVoucherCoveredPriceVnd ?? activeProductVoucher?.covered_price_vnd ?? undefined;
 

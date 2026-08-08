@@ -3,7 +3,7 @@
  *
  * This module replaces the self-fetch anti-pattern in middleware.ts.
  * Prisma does not work in Edge Runtime — PostgREST is zero-dependency
- * and works with the existing NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY.
+ * and works with NEXT_PUBLIC_SUPABASE_URL + a server-only Supabase secret key.
  *
  * Redis session caching: findSessionWithUser caches the PostgREST result for
  * CACHE_TTL.SESSION seconds (900s = 15 min). On token rotation, old cache key
@@ -37,19 +37,28 @@ export interface NewSession {
  */
 function getSupabaseConfig(): { baseUrl: string; headers: Record<string, string> } {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // One-release compatibility bridge; remove the legacy fallback after rollout.
+  const secretKey = process.env.SUPABASE_SECRET_KEY;
+  const legacyServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceKey = secretKey || legacyServiceRoleKey;
 
   if (!supabaseUrl || !serviceKey) {
-    throw new Error("Supabase env vars missing: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required");
+    throw new Error(
+      "Supabase env vars missing: NEXT_PUBLIC_SUPABASE_URL and a server secret key are required",
+    );
+  }
+
+  const headers: Record<string, string> = {
+    "apikey": serviceKey,
+    "Content-Type": "application/json",
+  };
+  if (!secretKey && legacyServiceRoleKey) {
+    headers["Authorization"] = `Bearer ${legacyServiceRoleKey}`;
   }
 
   return {
     baseUrl: `${supabaseUrl}/rest/v1`,
-    headers: {
-      "apikey": serviceKey,
-      "Authorization": `Bearer ${serviceKey}`,
-      "Content-Type": "application/json",
-    },
+    headers,
   };
 }
 

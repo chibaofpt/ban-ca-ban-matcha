@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
-import AddonGroupForm, {
+import AddonGroupForm from "@/src/components/admin/AddonGroupForm";
+import {
   buildAddonGroupDefaultValues,
   type AddonGroupFormPayload,
-} from "@/src/components/admin/AddonGroupForm";
+} from "@/src/components/admin/addonGroupFormModel";
 import { createAddonGroup, updateAddonGroup } from "@/src/services/adminAddonService";
 import type { AdminAddonGroup } from "@/src/lib/types/addonGroup";
 import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";

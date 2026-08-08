@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -19,19 +20,27 @@ const exchangeSchema = z.object({
 
 /** POST /api/profile/vouchers/exchange — Redeem points for a voucher package. */
 export async function POST(req: NextRequest) {
-  // 1. Auth
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
-  }
-
-  // 2. Parse body
+  // 1. Parse body
   const body = await req.json().catch(() => null);
   const parsed = exchangeSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Validation failed", code: "VALIDATION_ERROR" },
       { status: 400 }
+    );
+  }
+
+  // 2. Auth
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
+  }
+
+  const rateLimit = await checkRateLimit("voucherExchangeAccount", session.id);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests", code: "TOO_MANY_REQUESTS" },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } },
     );
   }
 
@@ -153,7 +162,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         data: {
-          id: voucher.id,
           qr_token: voucher.qr_token,
           voucher_type: voucher.voucher_type,
           status: voucher.status,
@@ -183,7 +191,9 @@ export async function POST(req: NextRequest) {
         );
       }
     }
-    console.error("[POST /api/profile/vouchers/exchange]", err);
+    console.error("[POST /api/profile/vouchers/exchange]", {
+      name: err instanceof Error ? err.name : typeof err,
+    });
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },
       { status: 500 }

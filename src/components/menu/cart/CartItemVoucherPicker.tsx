@@ -73,19 +73,19 @@ export const CartItemVoucherPicker = ({
                   v,
                   activeItem.originalClientPriceVnd - activeItem.addonsPrice
                 );
-                const isSelected = activeItem.productVoucherId === v.id;
-                const isAlreadyUsed = items.some(c => c.cartId !== activeItem.cartId && c.productVoucherId === v.id);
+                const isSelected = activeItem.productVoucherId === v.qr_token;
+                const isAlreadyUsed = items.some(c => c.cartId !== activeItem.cartId && c.productVoucherId === v.qr_token);
                 
                 return (
                   <button
-                    key={v.id}
+                    key={v.qr_token}
                     disabled={isAlreadyUsed}
                     onClick={() => {
                       if (isAlreadyUsed) return;
                       if (isSelected) {
                         onRemoveProductVoucher(activeItem.cartId);
                       } else {
-                        onApplyProductVoucher(activeItem.cartId, v.id, v.covered_price_vnd ?? 0);
+                        onApplyProductVoucher(activeItem.cartId, v.qr_token, v.covered_price_vnd ?? 0);
                       }
                       onClose();
                     }}
@@ -125,19 +125,19 @@ export const CartItemVoucherPicker = ({
             <p className="text-xs font-bold text-primary/50 uppercase tracking-widest">Free Topping</p>
             <div className="space-y-2">
                 {applicableAddonVouchersMap.get(activeItem.cartId)?.map(v => {
-                  const isSelected = activeItem.addonVouchers?.some(av => av.voucherId === v.id);
-                  const isAlreadyUsed = items.some(c => c.cartId !== activeItem.cartId && c.addonVouchers?.some(av => av.voucherId === v.id));
+                  const isSelected = activeItem.addonVouchers?.some(av => av.voucherId === v.qr_token);
+                  const isAlreadyUsed = items.some(c => c.cartId !== activeItem.cartId && c.addonVouchers?.some(av => av.voucherId === v.qr_token));
                   
                   return (
                     <button
-                      key={v.id}
+                      key={v.qr_token}
                       disabled={isAlreadyUsed}
                       onClick={() => {
                         if (isAlreadyUsed) return;
                         if (isSelected) {
-                          onRemoveAddonVoucher(activeItem.cartId, v.id);
+                          onRemoveAddonVoucher(activeItem.cartId, v.qr_token);
                         } else {
-                          onApplyAddonVoucher(activeItem.cartId, v.id, v.addon_option_id!);
+                          onApplyAddonVoucher(activeItem.cartId, v.qr_token, v.addon_option_id!);
                         }
                         onClose();
                       }}

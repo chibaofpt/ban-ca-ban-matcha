@@ -5,8 +5,17 @@
  * Pure function, no React rendering needed.
  */
 
-import { describe, it, expect } from "vitest";
-import { computeFinalClientPrice } from "@/src/lib/store/cartStore";
+import { beforeEach, describe, it, expect, vi } from "vitest";
+
+const { mockAddBusinessBreadcrumb } = vi.hoisted(() => ({
+  mockAddBusinessBreadcrumb: vi.fn(),
+}));
+
+vi.mock("@/src/lib/observability", () => ({
+  addBusinessBreadcrumb: (...args: unknown[]) => mockAddBusinessBreadcrumb(...args),
+}));
+
+import { computeFinalClientPrice, migrateCartState, useCartStore } from "@/src/lib/store/cartStore";
 import type { CartItem } from "@/src/lib/types/cart";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -103,5 +112,67 @@ describe("computeFinalClientPrice — PRODUCT credit không spill vào addon", (
     // PRODUCT remaining 0 (80k credit capped at 70k drink), no spill
     // total = 0 + 5k = 5k
     expect(result).toBe(5000);
+  });
+});
+
+describe("Cart breadcrumbs ẩn danh", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useCartStore.setState({ items: [], selectedVoucherIds: [], isCartOpen: false });
+  });
+
+  it("ghi cart.add và cart.remove mà không gửi product ID", () => {
+    const item = makeCartItem({ unitPrice: 50_000, addonsPrice: 0 });
+    const { cartId: _cartId, ...newItem } = item;
+    void _cartId;
+
+    const cartId = useCartStore.getState().addItem(newItem);
+    useCartStore.getState().removeItem(cartId);
+
+    expect(mockAddBusinessBreadcrumb).toHaveBeenCalledWith("cart.add", {
+      category: "latte",
+      quantity: 1,
+    });
+    expect(mockAddBusinessBreadcrumb).toHaveBeenCalledWith("cart.remove", {
+      remaining_items: 0,
+    });
+  });
+
+  it("ghi voucher.apply và voucher.remove mà không gửi voucher ID", () => {
+    const item = makeCartItem({ unitPrice: 50_000, addonsPrice: 0 });
+    useCartStore.setState({ items: [item] });
+
+    useCartStore.getState().applyProductVoucher(item.cartId, "voucher-secret", 30_000);
+    useCartStore.getState().removeProductVoucher(item.cartId);
+
+    expect(mockAddBusinessBreadcrumb).toHaveBeenCalledWith("voucher.apply", {
+      voucher_type: "PRODUCT",
+    });
+    expect(mockAddBusinessBreadcrumb).toHaveBeenCalledWith("voucher.remove", {
+      voucher_type: "PRODUCT",
+    });
+  });
+});
+
+describe("Cart persisted-state privacy migration", () => {
+  it("giữ món nhưng xoá voucher legacy và phục hồi giá trước voucher", () => {
+    const item = makeCartItem({
+      unitPrice: 55_000,
+      addonsPrice: 0,
+      productVoucherDiscountVnd: 50_000,
+      addonVouchers: [{ voucherId: "legacy-addon-id", addonOptionId: "addon-kem", discountVnd: 15_000 }],
+    });
+    const migrated = migrateCartState(
+      { items: [{ ...item, productVoucherId: "legacy-product-id" }], selectedVoucherIds: ["legacy-discount-id"] },
+      2,
+    );
+
+    const migratedItems = migrated.items ?? [];
+    expect(migratedItems).toHaveLength(1);
+    expect(migratedItems[0].clientPriceVnd).toBe(55_000);
+    expect(migratedItems[0].productVoucherId).toBeUndefined();
+    expect(migratedItems[0].productVoucherDiscountVnd).toBeUndefined();
+    expect(migratedItems[0].addonVouchers).toEqual([]);
+    expect(migrated.selectedVoucherIds).toEqual([]);
   });
 });

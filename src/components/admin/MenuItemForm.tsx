@@ -68,9 +68,9 @@ export function buildDefaultValues(item: AdminMenuItem): MenuItemFormValues {
     is_seasonal: item.is_seasonal,
     is_available: item.is_available,
     sort_order: String(item.sort_order),
-    size_m: sizeMap["M"] != null ? String(sizeMap["M"]! / 1000) : "",
-    size_l: sizeMap["L"] != null ? String(sizeMap["L"]! / 1000) : "",
-    size_xl: sizeMap["XL"] != null ? String(sizeMap["XL"]! / 1000) : "",
+    size_m: sizeMap["SMALL"] != null ? String(sizeMap["SMALL"]! / 1000) : "",
+    size_l: sizeMap["MEDIUM"] != null ? String(sizeMap["MEDIUM"]! / 1000) : "",
+    size_xl: sizeMap["LARGE"] != null ? String(sizeMap["LARGE"]! / 1000) : "",
     matcha_powder_id: item.matcha_powder_id ?? "",
     default_powder_id: item.default_powder_id ?? "",
     base_liquid_note: item.base_liquid_note ?? "",
@@ -103,6 +103,8 @@ export default function MenuItemForm({
     handleSubmit,
     control,
     setValue,
+    setError,
+    clearErrors,
     formState: { errors },
   } = useForm<FormFields>({
     defaultValues: {
@@ -170,30 +172,41 @@ export default function MenuItemForm({
 
   const onFormSubmit = async (values: FormFields) => {
     setFormError(null);
+    let hasError = false;
+
+    // Validate: At least one size must be provided
+    if (!values.size_m && !values.size_l && !values.size_xl) {
+      setError("size_m", { type: "atLeastOne", message: "Vui lòng nhập giá cho ít nhất một size (S, M hoặc L)." });
+      hasError = true;
+    } else {
+      clearErrors("size_m");
+    }
 
     // Validate: Latte requires a powder
     if (values.category === "latte" && mode === "create") {
       if (values.powder_mode === "existing" && !values.matcha_powder_id) {
-        setFormError("Vui lòng chọn bột matcha cho món Latte.");
-        return;
+        setError("matcha_powder_id", { message: "Vui lòng chọn bột matcha cho món Latte." });
+        hasError = true;
+      } else {
+        clearErrors("matcha_powder_id");
       }
       if (values.powder_mode === "new") {
         if (!values.new_powder_name.trim()) {
-          setFormError("Vui lòng nhập tên bột mới.");
-          return;
+          setError("new_powder_name", { message: "Vui lòng nhập tên bột mới." });
+          hasError = true;
+        } else {
+          clearErrors("new_powder_name");
         }
         if (!values.new_powder_price_per_gram.trim()) {
-          setFormError("Vui lòng nhập giá bột mới.");
-          return;
+          setError("new_powder_price_per_gram", { message: "Vui lòng nhập giá bột mới." });
+          hasError = true;
+        } else {
+          clearErrors("new_powder_price_per_gram");
         }
       }
     }
 
-    // Validate: At least one size must be provided
-    if (!values.size_m && !values.size_l && !values.size_xl) {
-      setFormError("Vui lòng nhập giá cho ít nhất một size.");
-      return;
-    }
+    if (hasError) return;
 
     setPendingValues(values);
     setShowConfirm(true);
@@ -253,13 +266,14 @@ export default function MenuItemForm({
     }
 
     // Custom gram overrides — only non-empty values
+    // Keys must match Prisma Size enum (SMALL/MEDIUM/LARGE) used by resolveGram()
     const gmM = parseGrams(values.grams_m);
     const gmL = parseGrams(values.grams_l);
     const gmXL = parseGrams(values.grams_xl);
     const cpg: Record<string, number> = {};
-    if (gmM != null) cpg.M = gmM;
-    if (gmL != null) cpg.L = gmL;
-    if (gmXL != null) cpg.XL = gmXL;
+    if (gmM != null) cpg.SMALL = gmM;
+    if (gmL != null) cpg.MEDIUM = gmL;
+    if (gmXL != null) cpg.LARGE = gmXL;
     if (Object.keys(cpg).length > 0) fd.append("custom_powder_grams", JSON.stringify(cpg));
 
     if (imageFile) fd.append("image", imageFile);
@@ -367,14 +381,26 @@ export default function MenuItemForm({
                     type="number"
                     min="0"
                     step="1"
-                    {...register(field)}
+                    {...register(field, {
+                      min: { value: 0, message: "Giá không được âm" },
+                    })}
                     placeholder="—"
-                    className={cn(inputClass, "text-center font-medium")}
+                    className={cn(
+                      inputClass,
+                      "text-center font-medium",
+                      errors[field] && "border-destructive focus:ring-destructive/40"
+                    )}
                   />
+                  {errors[field] && errors[field]?.type !== "atLeastOne" && (
+                    <p className={errorClass}>{errors[field]?.message}</p>
+                  )}
                 </div>
               );
             })}
           </div>
+          {errors.size_m?.type === "atLeastOne" && (
+            <p className={errorClass}>{errors.size_m.message}</p>
+          )}
         </div>
 
         <div className="w-full h-px bg-border/50" />
@@ -423,7 +449,10 @@ export default function MenuItemForm({
 
                   {powderMode === "existing" && (
                     <div className="animate-in slide-in-from-top-2 duration-200">
-                      <select {...register("matcha_powder_id")} className={inputClass}>
+                      <select
+                        {...register("matcha_powder_id")}
+                        className={cn(inputClass, errors.matcha_powder_id && "border-destructive focus:ring-destructive/40")}
+                      >
                         <option value="">— Chọn bột từ danh sách —</option>
                         {sortedPowders.map((p) => (
                           <option key={p.id} value={p.id}>
@@ -431,6 +460,7 @@ export default function MenuItemForm({
                           </option>
                         ))}
                       </select>
+                      {errors.matcha_powder_id && <p className={errorClass}>{errors.matcha_powder_id.message}</p>}
                     </div>
                   )}
 
@@ -442,8 +472,9 @@ export default function MenuItemForm({
                           <input
                             {...register("new_powder_name")}
                             placeholder="Ví dụ: Meyumi Premium"
-                            className={inputClass}
+                            className={cn(inputClass, errors.new_powder_name && "border-destructive focus:ring-destructive/40")}
                           />
+                          {errors.new_powder_name && <p className={errorClass}>{errors.new_powder_name.message}</p>}
                         </div>
                         <div>
                           <label className="text-xs font-medium text-foreground mb-1 block">Giá (VND/gram) <span className="text-destructive">*</span></label>
@@ -453,8 +484,9 @@ export default function MenuItemForm({
                             step="1"
                             {...register("new_powder_price_per_gram")}
                             placeholder="Ví dụ: 6000"
-                            className={inputClass}
+                            className={cn(inputClass, errors.new_powder_price_per_gram && "border-destructive focus:ring-destructive/40")}
                           />
+                          {errors.new_powder_price_per_gram && <p className={errorClass}>{errors.new_powder_price_per_gram.message}</p>}
                         </div>
                       </div>
                     </div>

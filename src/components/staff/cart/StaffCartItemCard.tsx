@@ -146,7 +146,7 @@ const StaffCartItemCard = ({
           {(appliedProductVoucherId || appliedAddonVouchers.length > 0) && (
             <div className="flex flex-col gap-1.5 w-full">
               {appliedProductVoucherId && (() => {
-                const pv = customerVouchers.find(v => v.id === appliedProductVoucherId);
+                const pv = customerVouchers.find(v => v.qr_token === appliedProductVoucherId);
                 return (
                   <div className="text-[11px] font-medium bg-orange-50 border border-orange-200 text-orange-700 dark:bg-orange-900/20 dark:border-orange-500/30 dark:text-orange-400 px-2.5 py-1.5 rounded-lg flex items-center justify-between w-full shadow-sm">
                     <span className="flex items-center gap-1.5 truncate pr-2">
@@ -160,7 +160,7 @@ const StaffCartItemCard = ({
                 )
               })()}
               {appliedAddonVouchers.map((av, idx) => {
-                const voucherInfo = customerVouchers.find(v => v.id === av.voucherId);
+                const voucherInfo = customerVouchers.find(v => v.qr_token === av.voucherId);
                 return (
                   <div key={`${av.voucherId}-${idx}`} className="text-[11px] font-medium bg-green-50 border border-green-200 text-green-700 dark:bg-green-900/20 dark:border-green-500/30 dark:text-green-400 px-2.5 py-1.5 rounded-lg flex items-center justify-between w-full shadow-sm">
                     <span className="flex items-center gap-1.5 truncate pr-2">

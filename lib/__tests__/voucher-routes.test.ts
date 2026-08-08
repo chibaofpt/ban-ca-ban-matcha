@@ -11,9 +11,14 @@ import { NextRequest } from "next/server";
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
 const mockGetSession = vi.fn();
+const mockCheckRateLimit = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
+}));
+
+vi.mock("@/lib/rateLimit", () => ({
+  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
 }));
 
 const mockVoucherFindUnique = vi.fn();
@@ -75,7 +80,7 @@ const activePackage = {
   discount_type: null,
   discount_value: null,
   menu_item_id: MENU_ITEM_ID,
-  size: "M",
+  size: "SMALL",
   matcha_powder_id: null,
   milk_type_id: null,
   included_addon_option_ids: [],
@@ -145,6 +150,7 @@ describe("POST /api/profile/vouchers/exchange", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSession.mockResolvedValue(customerSession);
+    mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 4, retryAfterSeconds: 0 });
     // Default: unlimited quantity, user hasn't redeemed yet
     mockVoucherCount.mockResolvedValue(0);
   });
@@ -154,6 +160,17 @@ describe("POST /api/profile/vouchers/exchange", () => {
     const res = await exchangePOST(makeRequest({ package_id: PKG_ID }));
     expect(res.status).toBe(401);
     expect((await res.json()).code).toBe("UNAUTHORIZED");
+  });
+
+  it("trả 429 với Retry-After khi tài khoản đổi quá 5 voucher mỗi phút", async () => {
+    mockCheckRateLimit.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSeconds: 37 });
+
+    const res = await exchangePOST(makeRequest({ package_id: PKG_ID }));
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("37");
+    expect(mockCheckRateLimit).toHaveBeenCalledWith("voucherExchangeAccount", USER_ID);
+    expect(mockVoucherPackageFindUnique).not.toHaveBeenCalled();
   });
 
   it("returns 400 for missing package_id", async () => {
@@ -264,7 +281,7 @@ describe("POST /api/profile/vouchers/exchange", () => {
         data: expect.objectContaining({
           voucher_type: "PRODUCT",
           menu_item_id: MENU_ITEM_ID,
-          size: "M",
+          size: "SMALL",
           covered_price_vnd: 65000,
         }),
       })
@@ -336,7 +353,7 @@ describe("POST /api/profile/vouchers/refund", () => {
     status: "ACTIVE",
     menu_item_id: MENU_ITEM_ID,
     // size + matcha_powder_id required by refund route L101-L112
-    size: "M",
+    size: "SMALL",
     matcha_powder_id: null,
     package: { points_cost: 5 },
   };
@@ -417,7 +434,7 @@ describe("POST /api/profile/vouchers/refund", () => {
       category: "latte",
       default_powder_id: null,
       // sizes + fusionAllowedPowders required by refund route L101-L112
-      sizes: [{ size: "M", base_price_vnd: 45000 }],
+      sizes: [{ size: "SMALL", base_price_vnd: 45000 }],
       fusionAllowedPowders: [],
     });
     const res = await refundPOST(makeRefundReq(refundPayload));

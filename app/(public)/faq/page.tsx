@@ -1,6 +1,8 @@
 import React from 'react';
 import { Metadata } from 'next';
+import { headers } from 'next/headers';
 import Footer from '@/src/components/common/Footer';
+import { serializeJsonLd } from '@/src/utils/jsonLd';
 
 export const metadata: Metadata = {
   title: 'Câu Hỏi Thường Gặp (FAQ) — Bạn Cá Bán Matcha',
@@ -47,12 +49,15 @@ const jsonLd = {
   }))
 };
 
-export default function FAQPage() {
+/** Render the FAQ page and nonce-authorized structured data. */
+export default async function FAQPage() {
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
   return (
     <main className="min-h-screen bg-background pt-10">
       <script
+        nonce={nonce}
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
       
       <div className="max-w-3xl mx-auto px-6 py-12 md:py-20 space-y-12">

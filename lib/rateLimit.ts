@@ -1,204 +1,250 @@
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
-import { getRedisClient } from '@/lib/redis';
+import { captureServerException } from "@/lib/observability";
+import { getRedisClient } from "@/lib/redis";
+import {
+  RATE_LIMIT_RULES,
+  resolveAuthRateLimitRule,
+  type RateLimitRuleName,
+} from "@/lib/rateLimitConfig";
+export { getClientIp } from "@/lib/clientIp";
 
-// ---------------------------------------------------------------------------
-// Distributed rate limiting via Upstash — Edge Runtime compatible.
-// Replaces the broken in-memory Map-based rate limiter.
-// ---------------------------------------------------------------------------
-
-/** Lazy-initialized Redis client for rate limiting (separate from lib/redis.ts to stay Edge-safe) */
-let redis: Redis | null = null;
-
-/** Returns Redis client for rate limiting, or null if env vars missing */
-function getRateLimitRedis(): Redis | null {
-  if (redis) return redis;
-
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-
-  if (!url || !token) return null;
-
-  redis = new Redis({ url, token });
-  return redis;
+interface RateLimitRedis {
+  get(key: string): Promise<number | null>;
+  incr(key: string): Promise<number>;
+  expire(key: string, seconds: number): Promise<number>;
+  ttl(key: string): Promise<number>;
+  del(key: string): Promise<number>;
 }
 
-/** Auth routes: 10 requests per 60 seconds per IP (sliding window) */
-export function getAuthRateLimit(): Ratelimit | null {
-  const client = getRateLimitRedis();
-  if (!client) return null;
-
-  return new Ratelimit({
-    redis: client,
-    limiter: Ratelimit.slidingWindow(10, '60 s'),
-    prefix: 'rl:auth',
-    analytics: false, // save commands on free tier
-  });
+/** Result returned by every configured rate limit check. */
+export interface RateLimitResult {
+  allowed: boolean;
+  remaining: number;
+  retryAfterSeconds: number;
 }
 
-/**
- * Check rate limit for a given identifier (e.g. IP address).
- * Returns { allowed, remaining } or { allowed: true } if Redis is unavailable (fail-open).
- */
+/** One configured limiter check in a shared multi-limit policy. */
+export interface RateLimitCheck {
+  ruleName: RateLimitRuleName;
+  identifier: string;
+}
+
+/** Aggregate limiter results with a deterministic maximum Retry-After. */
+export function aggregateRateLimitResults(results: RateLimitResult[]): RateLimitResult {
+  const blocked = results.filter((result) => !result.allowed);
+  if (blocked.length === 0) {
+    return {
+      allowed: true,
+      remaining: Math.min(...results.map((result) => result.remaining)),
+      retryAfterSeconds: 0,
+    };
+  }
+  return {
+    allowed: false,
+    remaining: 0,
+    retryAfterSeconds: Math.max(...blocked.map((result) => result.retryAfterSeconds)),
+  };
+}
+
+/** Supported login identifiers for the distributed credential flood guard. */
+export type LoginIdentifierKind = "phone" | "instagram";
+
+function redisClient(): RateLimitRedis | null {
+  return getRedisClient() as unknown as RateLimitRedis | null;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+/** HMAC an identifier before it is used in an external Redis key. */
+export async function hashRateLimitIdentifier(
+  scope: string,
+  identifier: string,
+): Promise<string> {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new Error("JWT_SECRET environment variable is required");
+
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(`${scope}:${identifier}`),
+  );
+  return bytesToHex(new Uint8Array(signature));
+}
+
+/** Resolve whether an auth request should consume the shared mutation limiter. */
+export function getAuthRateLimitRule(
+  method: string,
+  pathname: string,
+): RateLimitRuleName | null {
+  return resolveAuthRateLimitRule(method, pathname);
+}
+
+/** Execute a low-command fixed-window counter and fail open on Redis errors. */
+export async function checkRateLimit(
+  ruleName: RateLimitRuleName,
+  identifier: string,
+): Promise<RateLimitResult> {
+  const client = redisClient();
+  if (!client) return { allowed: true, remaining: -1, retryAfterSeconds: 0 };
+
+  const rule = RATE_LIMIT_RULES[ruleName];
+  try {
+    const digest = await hashRateLimitIdentifier(ruleName, identifier);
+    const key = `${rule.prefix}:${digest}`;
+    const count = Number(await client.incr(key));
+
+    if (count === 1) await client.expire(key, rule.windowSeconds);
+
+    const allowed = count <= rule.limit;
+    const retryAfterSeconds = allowed
+      ? 0
+      : Math.max(1, Number(await client.ttl(key)) || rule.windowSeconds);
+
+    return {
+      allowed,
+      remaining: allowed ? Math.max(0, rule.limit - count) : 0,
+      retryAfterSeconds,
+    };
+  } catch (error) {
+    captureServerException(error, { operation: "rate_limit", rule: ruleName });
+    return { allowed: true, remaining: -1, retryAfterSeconds: 0 };
+  }
+}
+
+/** Execute every required limiter in a shared policy and aggregate the result. */
+export async function checkRateLimits(checks: RateLimitCheck[]): Promise<RateLimitResult> {
+  const results = await Promise.all(
+    checks.map(({ ruleName, identifier }) => checkRateLimit(ruleName, identifier)),
+  );
+  return aggregateRateLimitResults(results);
+}
+
+/** Backward-compatible auth mutation limiter wrapper. */
 export async function checkDistributedRateLimit(
   identifier: string,
 ): Promise<{ allowed: boolean; remaining: number }> {
-  const limiter = getAuthRateLimit();
-
-  if (!limiter) {
-    // Redis unavailable → fail-open (allow request through)
-    return { allowed: true, remaining: -1 };
-  }
-
-  try {
-    const result = await limiter.limit(identifier);
-    return { allowed: result.success, remaining: result.remaining };
-  } catch (err) {
-    console.error('[RateLimit] Redis check failed, failing open:', err);
-    return { allowed: true, remaining: -1 };
-  }
+  const result = await checkRateLimit("authMutationIp", identifier);
+  return { allowed: result.allowed, remaining: result.remaining };
 }
 
-// ---------------------------------------------------------------------------
-// Login-specific rate limits — keyed by IP and phone separately.
-// Uses raw Redis incr/expire/del so counters only increment on wrong password.
-// ---------------------------------------------------------------------------
+async function loginCounterKey(
+  ruleName: "loginFailedIp" | "loginIdentifier",
+  identifier: string,
+): Promise<string> {
+  const digest = await hashRateLimitIdentifier(ruleName, identifier);
+  return `${RATE_LIMIT_RULES[ruleName].prefix}:${digest}`;
+}
 
-/** Max failed login attempts per IP before that IP is blocked. */
-const IP_LOGIN_FAIL_LIMIT = 5;
+async function readLoginCounter(
+  ruleName: "loginFailedIp" | "loginIdentifier",
+  identifier: string,
+): Promise<number | null> {
+  const client = redisClient();
+  if (!client) return null;
+  return Number(await client.get(await loginCounterKey(ruleName, identifier))) || 0;
+}
 
-/** Max failed login attempts per identifier before it is soft-blocked. */
-const IDENTIFIER_FLOOD_LIMIT = 10;
+async function recordLoginCounter(
+  ruleName: "loginFailedIp" | "loginIdentifier",
+  identifier: string,
+): Promise<void> {
+  const client = redisClient();
+  if (!client) return;
+  const key = await loginCounterKey(ruleName, identifier);
+  const count = Number(await client.incr(key));
+  if (count === 1) await client.expire(key, RATE_LIMIT_RULES[ruleName].windowSeconds);
+}
 
-/** TTL for both counters in seconds (15 minutes). */
-const LOGIN_FAIL_TTL = 900;
+async function resetLoginCounter(
+  ruleName: "loginFailedIp" | "loginIdentifier",
+  identifier: string,
+): Promise<void> {
+  const client = redisClient();
+  if (!client) return;
+  await client.del(await loginCounterKey(ruleName, identifier));
+}
 
-/**
- * Check IP-based login fail counter. Returns allowed=false if IP has reached the limit.
- * Fail-open: returns { allowed: true, remaining: -1 } if Redis is unavailable.
- */
+/** Check the failed-login IP counter. */
 export async function checkLoginFailLimit(
   ip: string,
 ): Promise<{ allowed: boolean; remaining: number }> {
-  const client = getRedisClient();
-  if (!client) return { allowed: true, remaining: -1 };
-
   try {
-    const key = `login:fail:${ip}`;
-    const count = await (client as unknown as { get: (k: string) => Promise<number | null> }).get(key);
-    const num = count ? Number(count) : 0;
-    const allowed = num < IP_LOGIN_FAIL_LIMIT;
-    return { allowed, remaining: allowed ? IP_LOGIN_FAIL_LIMIT - num : 0 };
-  } catch (err) {
-    console.error('[RateLimit] checkLoginFailLimit failed, failing open:', err);
+    const count = await readLoginCounter("loginFailedIp", ip);
+    if (count === null) return { allowed: true, remaining: -1 };
+    const limit = RATE_LIMIT_RULES.loginFailedIp.limit;
+    return {
+      allowed: count < limit,
+      remaining: count < limit ? limit - count : 0,
+    };
+  } catch (error) {
+    captureServerException(error, { operation: "login_rate_limit", rule: "loginFailedIp" });
     return { allowed: true, remaining: -1 };
   }
 }
 
-/**
- * Increment the IP login fail counter. Call only when a login attempt fails due to wrong password.
- * Silently ignores Redis failures.
- */
+/** Record one invalid credential attempt for an IP. */
 export async function recordLoginFail(ip: string): Promise<void> {
-  const client = getRedisClient();
-  if (!client) return;
-
   try {
-    const key = `login:fail:${ip}`;
-    await (client as unknown as { incr: (k: string) => Promise<number> }).incr(key);
-    await (client as unknown as { expire: (k: string, s: number) => Promise<number> }).expire(key, LOGIN_FAIL_TTL);
-  } catch (err) {
-    console.error('[RateLimit] recordLoginFail failed:', err);
+    await recordLoginCounter("loginFailedIp", ip);
+  } catch (error) {
+    captureServerException(error, { operation: "login_rate_limit", rule: "loginFailedIp" });
   }
 }
 
-/**
- * Reset the IP login fail counter on successful login.
- * Silently ignores Redis failures.
- */
+/** Clear the invalid credential counter for an IP. */
 export async function resetLoginFail(ip: string): Promise<void> {
-  const client = getRedisClient();
-  if (!client) return;
-
   try {
-    await (client as unknown as { del: (k: string) => Promise<number> }).del(`login:fail:${ip}`);
-  } catch (err) {
-    console.error('[RateLimit] resetLoginFail failed:', err);
+    await resetLoginCounter("loginFailedIp", ip);
+  } catch (error) {
+    captureServerException(error, { operation: "login_rate_limit", rule: "loginFailedIp" });
   }
 }
 
-/**
- * Check phone-based flood guard. Returns allowed=false if this phone has received
- * too many failed attempts across all IPs (distributed attack defence).
- * Fail-open: returns { allowed: true } if Redis is unavailable.
- */
-export type LoginIdentifierKind = "phone" | "instagram";
-
-function identifierFloodKey(
-  kind: LoginIdentifierKind,
-  identifier: string,
-): string {
-  return `login:${kind}:${identifier}`;
-}
-
-/**
- * Check the distributed flood guard for a normalized phone or Instagram identifier.
- */
+/** Check the distributed failed-login counter for a normalized identifier. */
 export async function checkIdentifierFloodGuard(
   kind: LoginIdentifierKind,
   identifier: string,
 ): Promise<{ allowed: boolean }> {
-  const client = getRedisClient();
-  if (!client) return { allowed: true };
-
   try {
-    const key = identifierFloodKey(kind, identifier);
-    const count = await (client as unknown as { get: (k: string) => Promise<number | null> }).get(key);
-    const num = count ? Number(count) : 0;
-    return { allowed: num < IDENTIFIER_FLOOD_LIMIT };
-  } catch (err) {
-    console.error('[RateLimit] identifier flood check failed, failing open:', err);
+    const count = await readLoginCounter("loginIdentifier", `${kind}:${identifier}`);
+    if (count === null) return { allowed: true };
+    return { allowed: count < RATE_LIMIT_RULES.loginIdentifier.limit };
+  } catch (error) {
+    captureServerException(error, { operation: "login_rate_limit", rule: "loginIdentifier" });
     return { allowed: true };
   }
 }
 
-/**
- * Increment the normalized identifier flood counter after invalid credentials.
- * Silently ignores Redis failures.
- */
+/** Record one invalid credential attempt for a normalized identifier. */
 export async function recordIdentifierFloodAttempt(
   kind: LoginIdentifierKind,
   identifier: string,
 ): Promise<void> {
-  const client = getRedisClient();
-  if (!client) return;
-
   try {
-    const key = identifierFloodKey(kind, identifier);
-    await (client as unknown as { incr: (k: string) => Promise<number> }).incr(key);
-    await (client as unknown as { expire: (k: string, s: number) => Promise<number> }).expire(key, LOGIN_FAIL_TTL);
-  } catch (err) {
-    console.error('[RateLimit] record identifier flood failed:', err);
+    await recordLoginCounter("loginIdentifier", `${kind}:${identifier}`);
+  } catch (error) {
+    captureServerException(error, { operation: "login_rate_limit", rule: "loginIdentifier" });
   }
 }
 
-/**
- * Reset the normalized identifier flood counter on successful login.
- * Silently ignores Redis failures.
- */
+/** Clear the failed-login counter for a normalized identifier. */
 export async function resetIdentifierFlood(
   kind: LoginIdentifierKind,
   identifier: string,
 ): Promise<void> {
-  const client = getRedisClient();
-  if (!client) return;
-
   try {
-    await (client as unknown as { del: (k: string) => Promise<number> }).del(
-      identifierFloodKey(kind, identifier),
-    );
-  } catch (err) {
-    console.error('[RateLimit] reset identifier flood failed:', err);
+    await resetLoginCounter("loginIdentifier", `${kind}:${identifier}`);
+  } catch (error) {
+    captureServerException(error, { operation: "login_rate_limit", rule: "loginIdentifier" });
   }
 }
 

@@ -145,7 +145,7 @@ export function CustomerSelectModal({
               <div className="rounded-xl border border-border bg-background shadow-sm divide-y divide-border overflow-hidden max-h-60 overflow-y-auto overscroll-contain">
                 {searchResults.map((c) => (
                   <button
-                    key={c.id}
+                    key={c.qr_token}
                     type="button"
                     onClick={() => handleSelectCustomer(c)}
                     className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-secondary/40 transition text-sm"

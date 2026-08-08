@@ -44,7 +44,7 @@ export interface CreateStaffOrderPayload {
 
 /** A single customer result returned by the search endpoint. */
 export interface CustomerSearchResult {
-  id: string;
+  qr_token: string;
   name: string;
   phone_number: string;
   points_balance: number;
@@ -54,7 +54,7 @@ export type QrScanResult =
   | {
       type: "user";
       data: {
-        id: string;
+        qr_token: string;
         name: string;
         phone_number: string;
         points_balance: number;
@@ -63,7 +63,7 @@ export type QrScanResult =
   | {
       type: "voucher";
       data: {
-        id: string;
+        qr_token: string;
         voucher_type: "DISCOUNT" | "PRODUCT";
         discount_type: "PERCENT" | "FIXED" | null;
         discount_value: number | null;

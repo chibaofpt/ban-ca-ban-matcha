@@ -24,6 +24,7 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+/** Register the current browser for authenticated staff push notifications. */
 export async function subscribeToPush(): Promise<void> {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
     throw new Error("Push notifications not supported by browser");
@@ -58,6 +59,7 @@ export async function subscribeToPush(): Promise<void> {
   });
 }
 
+/** Disable the current browser push subscription locally and on the server. */
 export async function unsubscribeFromPush(): Promise<void> {
   if (!("serviceWorker" in navigator)) return;
 
@@ -75,11 +77,7 @@ export async function unsubscribeFromPush(): Promise<void> {
   await subscription.unsubscribe();
 }
 
-export async function sendTestPush(): Promise<{ sent: number }> {
-  const response = await apiClient.post<{ data: { sent: number } }>("/api/push/test", {});
-  return response.data.data;
-}
-
+/** Refresh a granted push subscription after service-worker recovery. */
 export async function checkAndResubscribe(): Promise<boolean> {
   try {
     if (!("serviceWorker" in navigator)) return false;
