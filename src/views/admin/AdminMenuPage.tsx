@@ -358,25 +358,11 @@ export default function AdminMenuPage() {
                           </div>
                           <div>
                             <div className="font-semibold text-foreground">{item.name}</div>
-                            {item.is_seasonal && (
-                              <span className="inline-block mt-0.5 rounded-full bg-amber-500/20 text-amber-800 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider">
-                                Mùa vụ
-                              </span>
-                            )}
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-3">
-                        <span
-                          className={cn(
-                            "rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border",
-                            item.category === "latte"
-                              ? "bg-emerald-500/10 text-emerald-800 border-emerald-500/20"
-                              : "bg-violet-500/10 text-violet-800 border-violet-500/20"
-                          )}
-                        >
-                          {item.category}
-                        </span>
+                      <td className="px-6 py-3 text-sm text-muted-foreground capitalize">
+                        {item.category}
                       </td>
                       <td className="px-6 py-3">
                         <div className="flex justify-center">

@@ -56,17 +56,7 @@ export const StaffProductGrid = memo(function StaffProductGrid({
                   <span className="text-3xl opacity-20">🐟</span>
                 </div>
               )}
-              <div className="absolute top-2 left-2 right-2 flex justify-between items-start">
-                <span className="px-2 py-0.5 bg-background/90 backdrop-blur-sm rounded-full text-[10px] font-bold text-primary/60 border border-border/50 uppercase tracking-wider shadow-sm">
-                  {item.category === "latte" ? "Latte" : "Fusion"}
-                </span>
-                {item.is_seasonal && (
-                  <span className="px-2 py-0.5 bg-orange-500/90 backdrop-blur-sm rounded-full text-[10px] font-bold text-white shadow-sm flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-yellow-300 animate-pulse" />
-                    Seasonal
-                  </span>
-                )}
-              </div>
+
             </div>
 
             <h3 className="font-bold text-sm text-primary mb-1 line-clamp-2 leading-tight">
