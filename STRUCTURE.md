@@ -157,6 +157,8 @@ src/                              # Frontend — never import lib/ from here
       ProfileQRSheet.tsx          # Customer loyalty QR bottom sheet
     shared/
       VoucherModalSections.tsx    # Voucher tabs + redeemed/expired history section
+      PaymentQrPanel.tsx          # Shared VietQR image, amount, transfer reference + copy action
+      PaymentMethodBadge.tsx      # CASH/BANK_TRANSFER audit badge for order lists
     admin/
       AdminMenuPage.tsx
       MenuItemCard.tsx
@@ -178,6 +180,9 @@ src/                              # Frontend — never import lib/ from here
     staff/
       StaffMenuCard.tsx
       StaffCartDrawer.tsx
+      PaymentMethodSelector.tsx   # CASH default + BANK_TRANSFER checkout selector
+      CounterTransferPaymentModal.tsx # Locked QR confirmation/cancellation dialog
+      CounterTransferOrderAction.tsx # Pending-list QR action + modal ownership
       StaffOrderForm.tsx
       AddonModal.tsx
       QRScannerModal.tsx
@@ -225,6 +230,7 @@ scratch/                          # Ignored by Git. Scratchpad for quick server 
     map/
       mapRenderer.ts              # Abortable MapLibre renderer; 30s hard timeout and typed diagnostics
     hooks/
+      useCounterTransferPayment.ts # Counter payment recovery and status orchestration
       useScrollProgress.ts
       useBodyScrollLock.ts
       useMapRendererLifecycle.ts  # Strict Mode-safe map ownership, 12s degraded state, queued flyTo
@@ -239,6 +245,7 @@ scratch/                          # Ignored by Git. Scratchpad for quick server 
       powder.ts                   # Powder, PowderSizeConfig, MilkType types
     utils/
       addressBookSheet.ts         # Pure list/form state transitions
+      counterTransferOrder.ts     # Legacy-safe method fallback + modal snapshot mapping
     validations/
       address.ts                  # Client address form schema
   utils/
@@ -271,6 +278,8 @@ lib/                              # Backend only — server-side, NEVER import i
   menuImageCleanup.ts             # Finds/deletes unreferenced images after grace period
   cancelExpiredOrders.ts          # Bounded, idempotent auto-cancel worker
   orderLimits.ts                  # 20,000,000 VND server-calculated order ceiling
+  staffOrderPayment.ts            # Isolated counter payment preparation + voucher claim rules
+  staffOrderTransition.ts         # Pure staff/admin order transition validation
   customerOrderCreation.ts        # Customer order validation + creation orchestration
   customerOrderDelivery.ts        # Authoritative saved/unsaved delivery resolution
   customerOrderDiscounts.ts       # Order-level voucher resolution and totals

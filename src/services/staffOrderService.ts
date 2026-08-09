@@ -1,6 +1,7 @@
 import { apiClient } from "@/src/lib/api/client";
 import type { ApiResponse } from "@/src/lib/types/api";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
+import type { PaymentMethod, StaffOrderResult } from "@/src/lib/types/order";
 import { normalizeCustomerSearch } from "@/src/utils/display";
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -9,6 +10,8 @@ export interface CreateStaffOrderPayload {
   /** Optional — omit entirely for anonymous (walk-in, no loyalty) orders. */
   phone_number?: string;
   customer_name?: string;
+  /** Defaults to CASH on both client and server for backward compatibility. */
+  payment_method?: PaymentMethod;
   items: {
     menu_item_id: string;
     quantity: number;
@@ -79,6 +82,7 @@ export type QrScanResult =
 const URLS = {
   users: "/api/staff/users",
   orders: "/api/staff/orders",
+  orderById: (id: string) => `/api/staff/orders/${id}`,
   scan: "/api/staff/scan",
   scanFallback: "/api/staff/scan-fallback",
   redeemVoucher: (qrToken: string) => `/api/staff/vouchers/${qrToken}/redeem`,
@@ -99,8 +103,31 @@ export async function searchCustomers(query: string): Promise<CustomerSearchResu
  * Create a counter order. Ghost user creation is handled server-side.
  * Omit phone_number for anonymous (walk-in) orders.
  */
-export async function createStaffOrder(payload: CreateStaffOrderPayload): Promise<void> {
-  await apiClient.post(URLS.orders, payload);
+export async function createStaffOrder(
+  payload: CreateStaffOrderPayload,
+): Promise<StaffOrderResult> {
+  const response = await apiClient.post<ApiResponse<StaffOrderResult>>(URLS.orders, payload);
+  return response.data.data;
+}
+
+/** Fetch one authorized staff order for pending-payment recovery. */
+export async function getStaffOrder(orderId: string): Promise<StaffOrderResult> {
+  const response = await apiClient.get<ApiResponse<StaffOrderResult>>(
+    URLS.orderById(orderId),
+  );
+  return response.data.data;
+}
+
+/** Apply an existing order status transition and return the updated public order. */
+export async function updateStaffOrderStatus(
+  orderId: string,
+  status: "COMPLETED" | "CANCELLED",
+): Promise<StaffOrderResult> {
+  const response = await apiClient.patch<ApiResponse<StaffOrderResult>>(
+    URLS.orderById(orderId),
+    { status },
+  );
+  return response.data.data;
 }
 
 /**

@@ -61,6 +61,7 @@ export async function writeCustomerOrder(params: CreateCustomerOrderParams) {
           user_id: userId,
           status: "PENDING",
           order_type: data.order_type,
+          payment_method: "BANK_TRANSFER",
           order_code: orderCode,
           subtotal_vnd: calculation.subtotal_vnd,
           total_voucher_discount_vnd: calculation.total_voucher_discount_vnd,

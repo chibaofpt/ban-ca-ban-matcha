@@ -69,6 +69,8 @@ function totalQuantityWithin(max: number) {
 export const staffOrderSchema = z.object({
   phone_number: z.string().regex(/^(0|\+84)\d{9}$/).optional(),
   customer_name: z.string().min(1).max(100).optional(),
+  /** Defaults to CASH so every existing POS client keeps its current behavior. */
+  payment_method: z.enum(["CASH", "BANK_TRANSFER"]).default("CASH"),
   items: z
     .array(staffOrderItemSchema)
     .min(1)

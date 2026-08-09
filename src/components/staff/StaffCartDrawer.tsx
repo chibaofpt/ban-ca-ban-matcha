@@ -22,6 +22,8 @@ import { VoucherCard, PackageCard } from "@/src/components/shared/VoucherCards";
 import type { VoucherPackage } from "@/src/services/customerVoucherService";
 import type { DiscountVoucher } from "@/src/lib/store/staffCartStore";
 import Image from "next/image";
+import type { PaymentMethod } from "@/src/lib/types/order";
+import { PaymentMethodSelector } from "@/src/components/staff/PaymentMethodSelector";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -45,11 +47,14 @@ interface StaffCartDrawerProps {
   discountVoucher: DiscountVoucher | null;
   customerInfo: CustomerInfo | null;
   isSubmitting?: boolean;
+  paymentMethod?: PaymentMethod;
+  isCheckoutLocked?: boolean;
   onClose: () => void;
   onRemove: (cartId: string) => void;
   onEditItem?: (item: CartItem) => void;
   onChangeQuantity: (cartId: string, newQty: number) => void;
   onCheckout: () => void;
+  onPaymentMethodChange?: (method: PaymentMethod) => void;
   onOpenCustomerSelect: () => void;
   onClearCustomer: () => void;
 
@@ -78,11 +83,14 @@ export function StaffCartDrawer({
   discountVoucher,
   customerInfo,
   isSubmitting = false,
+  paymentMethod = "CASH",
+  isCheckoutLocked = false,
   onClose,
   onRemove,
   onEditItem,
   onChangeQuantity,
   onCheckout,
+  onPaymentMethodChange = () => undefined,
   onOpenCustomerSelect,
   onClearCustomer,
   customerVouchers = [],
@@ -294,6 +302,13 @@ export function StaffCartDrawer({
         {/* Footer */}
         {cart.length > 0 && (
           <div className="px-5 pt-4 pb-6 border-t border-border/50 bg-background/50 backdrop-blur-md shrink-0 shadow-[0_-10px_20px_-15px_rgba(0,0,0,0.1)]">
+            <div className="mb-4">
+              <PaymentMethodSelector
+                value={paymentMethod}
+                bankTransferDisabled={total <= 0 || isCheckoutLocked}
+                onChange={onPaymentMethodChange}
+              />
+            </div>
             <div className="flex gap-4">
               {/* Left Column - Vouchers & Points */}
               <div className="flex-1 space-y-3">
@@ -360,6 +375,7 @@ export function StaffCartDrawer({
                 <motion.button
                   whileTap={{ scale: 0.98 }}
                   onClick={onClearCart}
+                  disabled={isCheckoutLocked}
                   className="w-[30%] bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 rounded-2xl h-12 font-bold text-sm shadow-sm transition flex items-center justify-center shrink-0"
                 >
                   Xoá tất cả
@@ -369,7 +385,7 @@ export function StaffCartDrawer({
               <motion.button
                 whileTap={{ scale: 0.98 }}
                 onClick={onCheckout}
-                disabled={isSubmitting}
+                disabled={isSubmitting || isCheckoutLocked}
                 className={cn(
                   "bg-primary text-primary-foreground rounded-2xl h-12 font-bold text-sm shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none shrink-0",
                   onClearCart ? "w-[70%]" : "w-full"

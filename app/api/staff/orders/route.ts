@@ -24,6 +24,14 @@ import {
 } from "@/lib/publicIdentifiers";
 import { toPublicOrderDto } from "@/lib/orderPublicDto";
 import { getOrderValueViolation } from "@/lib/orderLimits";
+import {
+  claimCounterVoucher,
+  getPendingPaymentQrUrl,
+  getPendingPaymentWhere,
+  prepareCounterPayment,
+  StaffPaymentBusinessError,
+  toStaffOrderPaymentResult,
+} from "@/lib/staffOrderPayment";
 
 export const dynamic = "force-dynamic";
 
@@ -358,8 +366,7 @@ export async function POST(req: NextRequest) {
     );
     // Anonymous orders never earn points
     const points_earned = isAnonymous ? 0 : Math.floor(total_vnd / 10000);
-
-
+    const payment = await prepareCounterPayment(data.payment_method, calculation.grand_total_vnd);
 
     // ── Phase 2: WRITES only (short transaction — pgBouncer compatible) ──────
     const order = await prisma.$transaction(
@@ -386,14 +393,17 @@ export async function POST(req: NextRequest) {
           data: {
             user_id: userId,       // null for anonymous orders
             handled_by: session.id,
-            status: "COMPLETED",
+            status: payment.status,
+            payment_method: payment.paymentMethod,
+            order_code: payment.orderCode,
+            auto_cancel_at: payment.autoCancelAt,
             subtotal_vnd,
             total_voucher_discount_vnd,
             total_vnd,
             shipping_fee_vnd: 0,
             freeship_discount_vnd: 0,
             grand_total_vnd: total_vnd,
-            points_earned,
+            points_earned: payment.pointsAreDeferred ? null : points_earned,
             pickup_time: null,
             note: null,
             items: {
@@ -431,59 +441,42 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        // Mark DISCOUNT vouchers as redeemed (OFFLINE for staff counter)
+        // Claim only vouchers actually applied by the shared calculator.
         for (const dv of appliedDiscountVouchers) {
-          const updated = await tx.voucher.updateMany({
-            where: { id: dv.id, status: "ACTIVE" },
-            data: {
-              status: "REDEEMED",
-              used_channel: "OFFLINE",
-              redeemed_at: new Date(),
-              redeemed_by: session.id,
-            },
-          });
-          if (updated.count === 0) {
-            throw new OrderValidationError("CONFLICT", "Voucher discount đã được sử dụng hoặc đang bị khóa.");
-          }
+          await claimCounterVoucher(
+            tx,
+            dv.id,
+            payment.paymentMethod,
+            session.id,
+            "Voucher discount đã được sử dụng hoặc đang bị khóa.",
+          );
           await tx.orderDiscountVoucher.create({
             data: { order_id: createdOrder.id, voucher_id: dv.id },
           });
         }
 
-        // Mark ADDON vouchers as redeemed (OFFLINE)
         for (const avId of appliedAddonVoucherIds) {
-          const updated = await tx.voucher.updateMany({
-            where: { id: avId, status: "ACTIVE" },
-            data: {
-              status: "REDEEMED",
-              used_channel: "OFFLINE",
-              redeemed_at: new Date(),
-              redeemed_by: session.id,
-            },
-          });
-          if (updated.count === 0) {
-            throw new OrderValidationError("CONFLICT", "Voucher addon đã được sử dụng hoặc đang bị khóa.");
-          }
+          await claimCounterVoucher(
+            tx,
+            avId,
+            payment.paymentMethod,
+            session.id,
+            "Voucher addon đã được sử dụng hoặc đang bị khóa.",
+          );
         }
 
-        // Mark ALL PRODUCT vouchers as REDEEMED immediately (counter = COMPLETED)
         for (const pvId of appliedProductVoucherIds) {
-          const updated = await tx.voucher.updateMany({
-            where: { id: pvId, status: "ACTIVE" },
-            data: {
-              status: "REDEEMED",
-              used_channel: "OFFLINE",
-              redeemed_at: new Date(),
-              redeemed_by: session.id,
-            },
-          });
-          if (updated.count === 0) {
-            throw new OrderValidationError("CONFLICT", "Voucher sản phẩm đã được sử dụng hoặc đang bị khóa.");
-          }
+          await claimCounterVoucher(
+            tx,
+            pvId,
+            payment.paymentMethod,
+            session.id,
+            "Voucher sản phẩm đã được sử dụng hoặc đang bị khóa.",
+          );
         }
 
         // Award order_complete points only for orders with a known user
-        if (userId && points_earned > 0) {
+        if (!payment.pointsAreDeferred && userId && points_earned > 0) {
           await tx.user.update({
             where: { id: userId },
             data: { points_balance: { increment: points_earned } },
@@ -502,7 +495,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Award PRODUCT voucher surplus points (aggregate)
-        if (userId) {
+        if (!payment.pointsAreDeferred && userId) {
           const surplusPoints = Math.floor(calculation.order_surplus_vnd / 10000);
           if (surplusPoints > 0) {
             await tx.user.update({
@@ -535,17 +528,22 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       {
-        data: {
-          id: order.id,
-          status: order.status,
-          total_vnd: order.total_vnd,
-          points_earned: order.points_earned,
-          skipped_vouchers,
-        },
+        data: toStaffOrderPaymentResult(order, payment, skipped_vouchers),
       },
       { status: 201 }
     );
   } catch (err) {
+    if (err instanceof StaffPaymentBusinessError) {
+      return NextResponse.json(
+        {
+          error: err.message,
+          code: "BUSINESS_RULE_VIOLATION",
+          details: { reason: err.reason },
+        },
+        { status: 422 },
+      );
+    }
+
     if (err instanceof OrderValidationError) {
       const statusMap: Record<string, number> = {
         VALIDATION_ERROR: 400,
@@ -613,8 +611,8 @@ export async function GET(req: NextRequest) {
   const limit = Math.max(1, Math.min(100, parseInt(searchParams.get("limit") || "10", 10)));
   const skip = (page - 1) * limit;
 
-  // Only ADMIN can access the "Chờ CK" (PENDING) and "Đã huỷ" (CANCELLED) tabs
-  if ((statusParam === 'PENDING' || statusParam === 'CANCELLED') && session.role === 'STAFF') {
+  // Cancelled history remains admin-only. Staff may recover only their own pending transfers.
+  if (statusParam === 'CANCELLED' && session.role === 'STAFF') {
     return NextResponse.json(
       { error: 'Forbidden — only ADMIN can view this tab', code: 'FORBIDDEN' },
       { status: 403 }
@@ -633,8 +631,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (statusParam === 'PENDING') {
-      // "Chờ CK" tab: admin-only, show all PENDING customer orders
-      where.status = 'PENDING';
+      Object.assign(where, getPendingPaymentWhere(session.role, session.id));
     } else if (statusParam === 'CANCELLED') {
       // "Đã huỷ" tab: show only CANCELLED orders (admin only — enforced above)
       where.status = 'CANCELLED';
@@ -648,7 +645,7 @@ export async function GET(req: NextRequest) {
 
 
     // Filter for STAFF: only see their own orders or unassigned ADMIN_CONFIRMED customer orders
-    if (session.role === 'STAFF') {
+    if (session.role === 'STAFF' && statusParam !== 'PENDING') {
       where.OR = [
         { handled_by: session.id },
         { 
@@ -744,8 +741,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const data = orders.map((order) => ({
+      ...toPublicOrderDto(order),
+      payment_qr_url: getPendingPaymentQrUrl(order),
+    }));
+
     return NextResponse.json({ 
-      data: orders.map((order) => toPublicOrderDto(order)),
+      data,
       meta: { total, page, totalPages } 
     });
   } catch (err) {

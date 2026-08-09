@@ -15,15 +15,15 @@ interface OrderTabsProps {
  * Reusable tab bar for Staff and Admin order pages.
  * - Tại quầy: COUNTER orders
  * - Khách đặt: PICKUP/DELIVERY orders (ADMIN_CONFIRMED and beyond)
- * - Chờ CK: PENDING orders (Admin only)
+ * - Chờ CK: Admin sees all PENDING; Staff sees only their own counter transfers
  * - Đã huỷ: CANCELLED orders (Admin only)
  */
 export function OrderTabs({ activeTab, onTabChange, pendingCount, isAdmin }: OrderTabsProps) {
   const tabs = [
     { id: "counter" as OrderTabKey, label: "Tại quầy", icon: Receipt },
     { id: "customer" as OrderTabKey, label: "Khách đặt", icon: ShoppingBag },
+    { id: "pending" as OrderTabKey, label: "Chờ CK", icon: Clock },
     ...(isAdmin ? [
-      { id: "pending" as OrderTabKey, label: "Chờ CK", icon: Clock },
       { id: "cancelled" as OrderTabKey, label: "Đã huỷ", icon: XCircle }
     ] : [])
   ];

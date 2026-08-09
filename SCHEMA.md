@@ -50,6 +50,14 @@ grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
   change is genuinely required.
 - Do not rename existing fields merely to align terminology; document legacy names where needed.
 
+### Approved one-time payment-method backfill (2026-08-09)
+
+- Migration `20260809000000_add_order_payment_method` may update the existing small `orders`
+  dataset once: historical `COUNTER` rows become `CASH`; historical `PICKUP`/`DELIVERY` rows become
+  `BANK_TRANSFER` before the column is made required.
+- This is a release-specific architect-approved exception, not permission for later data rewrites.
+- Apply it only through Vercel Preview `prisma migrate deploy`; do not execute it manually during QA.
+
 ---
 
 ## Enums
@@ -63,6 +71,7 @@ grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
 | `UsedChannel` | `ONLINE`, `OFFLINE` |
 | `OrderStatus` | `PENDING`, `ADMIN_CONFIRMED`, `STAFF_DONE`, `COMPLETED`, `CANCELLED` |
 | `OrderType` | `COUNTER`, `PICKUP`, `DELIVERY` |
+| `PaymentMethod` | `CASH`, `BANK_TRANSFER` |
 | `AddonType` | `SELECTOR`, `TOGGLE`, `QUANTITY` |
 | `SweetnessLevel` | `NONE`, `QUARTER`, `HALF`, `THREE_QUARTER`, `FULL`, `EXTRA` |
 | `Size` | `SMALL`, `MEDIUM`, `LARGE` |
@@ -272,9 +281,10 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `id` uuid PK
 - `user_id` uuid FK nullable → users — NULL for anonymous counter orders
 - `handled_by` uuid FK nullable → users — Staff who created or accepted this order. NULL if created by customer and not yet accepted.
-- `status` OrderStatus — customer default `PENDING`; staff = `COMPLETED` immediately
+- `status` OrderStatus — customer default `PENDING`; staff CASH = `COMPLETED`, staff BANK_TRANSFER = `PENDING`
 - `order_type` OrderType — customer default `DELIVERY`; staff auto `COUNTER`
-- `order_code` string UK nullable — e.g. "BCBM-A3X7K2". Null for COUNTER orders.
+- `payment_method` PaymentMethod — `CASH` or `BANK_TRANSFER`; existing staff clients default to `CASH`
+- `order_code` string UK nullable — e.g. "BCBM-A3X7K2". Present for every pending bank transfer, including COUNTER.
 - `subtotal_vnd` int — gross drinks + addons before all vouchers, excluding shipping
 - `total_voucher_discount_vnd` int — order-level DISCOUNT reduction only
 - `total_vnd` int — merchandise after PRODUCT, ADDON, and DISCOUNT; excludes shipping
@@ -284,7 +294,7 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `freeship_voucher_id` uuid FK nullable → vouchers
 - `points_earned` int nullable — `floor(total_vnd / 10000)`, set when status → COMPLETED
 - `pickup_time` timestamp nullable — customer orders only
-- `auto_cancel_at` timestamp nullable — customer orders only (+20 mins from creation)
+- `auto_cancel_at` timestamp nullable — pending bank-transfer orders only (+20 mins from creation)
 - `payment_confirmed_at` timestamp nullable
 - `payment_confirmed_by` uuid FK nullable → users
 - `address_id` uuid FK nullable → addresses

@@ -164,8 +164,9 @@ Auth mutation routes are rate-limited by hashed IP. Read-only `/api/auth/me` and
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/staff/orders` | POST | Create order at counter (COMPLETED immediately) |
+| `/api/staff/orders` | POST | Create counter order: CASH completes immediately; BANK_TRANSFER waits for payment |
 | `/api/staff/orders` | GET | List orders for current staff member |
+| `/api/staff/orders/[id]` | GET | Recover an authorized counter transfer and its pending VietQR |
 | `/api/staff/orders/[id]` | PATCH | Update order status (auto-award points on COMPLETED) |
 | `/api/staff/scan` | GET | Resolve QR token → user or voucher |
 | `/api/staff/scan-fallback` | POST | Privacy-safe manual QR short-code recovery |
@@ -538,6 +539,7 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
     order_code: string
     status: "PENDING"
     order_type: "PICKUP" | "DELIVERY"
+    payment_method: "BANK_TRANSFER"
     subtotal_vnd: number
     total_voucher_discount_vnd: number
     total_vnd: number
@@ -557,6 +559,7 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
 {
   phone_number: string
   customer_name?: string
+  payment_method?: "CASH" | "BANK_TRANSFER" // default CASH; backward compatible
   items: {
     menu_item_id: string
     quantity: number
@@ -578,7 +581,36 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
   discount_voucher_ids?: string[]    // voucher qr_token values
   customer_qr_token?: string          // user qr_token; required for STAFF with known-customer vouchers
 }
+
+// Response: CASH remains immediate COMPLETED; BANK_TRANSFER is PENDING for 20 minutes.
+{
+  data: {
+    id: string
+    status: "PENDING" | "COMPLETED"
+    order_type: "COUNTER"
+    payment_method: "CASH" | "BANK_TRANSFER"
+    order_code: string | null
+    auto_cancel_at: string | null
+    payment_qr_url: string | null
+    subtotal_vnd: number
+    total_voucher_discount_vnd: number
+    total_vnd: number
+    shipping_fee_vnd: 0
+    freeship_discount_vnd: 0
+    grand_total_vnd: number
+    points_earned: number | null
+    skipped_vouchers: string[]
+  }
+}
 ```
+
+### `GET /api/staff/orders/[id]` — Staff/Admin payment recovery
+
+- `STAFF` may read only a `COUNTER` order created by that same staff account.
+- `ADMIN` may read any order needed by the management flow.
+- The response uses the same staff order snapshot above. `payment_qr_url` is regenerated only
+  while a bank-transfer order remains `PENDING`; otherwise it is `null`.
+- Missing orders return `404 NOT_FOUND`; cross-staff access returns `403 FORBIDDEN`.
 
 ### `PRICE_CHANGED` error response
 ```ts
@@ -677,8 +709,11 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
   non-shipping vouchers; `grand_total_vnd` is the final amount including shipping and FREESHIP.
 - Use `grand_total_vnd` for VietQR and the final payable amount in customer history, admin,
   and staff views. Do not display `total_vnd` as the final DELIVERY amount.
-- Staff counter order: status = COMPLETED immediately; redeem applied vouchers and award order
-  plus aggregate surplus points in the creation transaction.
+- Staff CASH counter order: status = COMPLETED immediately; redeem applied vouchers and award
+  order plus aggregate surplus points in the creation transaction.
+- Staff BANK_TRANSFER counter order: status = PENDING, reserve applied vouchers, generate VietQR,
+  and defer points. The creating Staff or any Admin confirms it directly to COMPLETED; cancellation
+  or the 20-minute timeout restores vouchers. Existing online transitions remain unchanged.
 - Delivery input is validated before proxy/database work. If `address_id` is present, the server
   loads a row owned by the session and treats its full address, coordinates, and stored distance as
   authoritative; request address/coordinate values cannot override it. Receiver name/phone may be
@@ -715,8 +750,9 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
 - Treat `expires_at <= now` as unusable. Lazy expiry persists `ACTIVE → EXPIRED`; it never
   changes `RESERVED` vouchers until their order is cancelled.
 - Do not fabricate `discount_applied_vnd` by dividing the order discount evenly across vouchers.
-- Offline COUNTER orders are created as `COMPLETED`, then applied vouchers are marked
-  `REDEEMED` with `used_channel = OFFLINE` in the same transaction.
+- COUNTER CASH orders are created as `COMPLETED` and redeem applied vouchers as `OFFLINE` in the
+  creation transaction. COUNTER BANK_TRANSFER orders reserve vouchers at creation and redeem them
+  as `OFFLINE` only when payment is confirmed.
 
 ### Points
 - Earn order points: `floor(total_vnd / 10000)` on COMPLETED; exclude shipping.
