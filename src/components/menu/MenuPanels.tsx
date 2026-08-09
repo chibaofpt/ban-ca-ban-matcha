@@ -1,5 +1,5 @@
 import { motion, type MotionValue } from "framer-motion";
-import { Leaf } from "lucide-react";
+import { Coffee, CupSoda, Sparkles } from "lucide-react";
 import type { RefObject } from "react";
 
 import MenuCard from "@/src/components/menu/MenuCard";
@@ -57,17 +57,14 @@ export function MenuPanels(props: MenuPanelsProps) {
         )}
       </div>
       <div className="w-full pb-8 px-0.5 absolute top-0" style={{ left: "100%" }}>
-        <div className="flex gap-3 bg-amber-50 border border-amber-200/60 rounded-2xl p-4 mb-6">
-          <Leaf className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-800 leading-relaxed">
-            <span className="font-bold block mb-0.5">Seasonal là gì?</span>
-            Seasonal là những món có dùng bột matcha hoặc công thức pha sẽ được bán trong 1 thời
-            gian giới hạn nên có thể sẽ hết mà không biết trước.
+        <div className="mb-6 flex gap-3 rounded-2xl border border-green-200 bg-green-50 px-4 py-3">
+          <p className="text-sm leading-relaxed text-green-800">
+            Seasonal là những món có dùng bột matcha hoặc công thức pha sẽ được bán trong 1 thời gian giới hạn nên có thể sẽ hết mà không biết trước.
           </p>
         </div>
         {loading ? <MenuSkeleton count={3} /> : seasonalItems.length === 0 ? (
           <div className="py-24 text-center text-primary/40 space-y-4">
-            <span className="text-6xl">✨</span>
+            <Sparkles className="mx-auto h-12 w-12" aria-hidden="true" />
             <p className="font-bold text-lg italic">Hiện chưa có món seasonal</p>
             <p className="text-sm">Quay lại sau nhé!</p>
           </div>
@@ -102,7 +99,11 @@ function ItemSection({
       </div>
       {items.length === 0 ? (
         <div className="py-12 text-center text-primary/40 space-y-2">
-          <span className="text-4xl">{isFusion ? "🍲" : "🍵"}</span>
+          {isFusion ? (
+            <CupSoda className="mx-auto h-10 w-10" aria-hidden="true" />
+          ) : (
+            <Coffee className="mx-auto h-10 w-10" aria-hidden="true" />
+          )}
           <p className="text-sm font-medium">Chưa có món {title.toLowerCase()} nào</p>
         </div>
       ) : (

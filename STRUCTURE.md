@@ -308,6 +308,9 @@ prisma/migrations/20260804000000_harden_supabase_data_plane/
                                   # RLS/ACL hardening; rollback only with a compensating migration
 .env.local
 .env.local.example
+.agents/skills/nontech-mode/SKILL.md       # Guardrails for co-founder UI/report edits
+.agents/skills/nontech-push-code/SKILL.md  # QA/push workflow for the isolated nontech branch
+NONTECH_CHANGELOG.md                       # Audit log for nontech-mode changes
 ```
 
 The delivery map uses `maplibre-gl` as the primary renderer and injects the public Goong maptiles

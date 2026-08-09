@@ -47,7 +47,6 @@ export default function MenuPage() {
   const fusionSectionRef = useRef<HTMLDivElement>(null);
   const isScrollingProgrammatically = useRef(false);
   const carouselX = useMotionValue(0);
-
   const setPowderData = usePowderStore((state) => state.setPowderData);
   const isLoggedIn = useIsLoggedIn();
   const isLoggedInSynced = useIsLoggedInSynced();
@@ -171,17 +170,22 @@ export default function MenuPage() {
   return (
     <main className="min-h-screen bg-[#fdfcf7] text-foreground font-sans pt-4 pb-24 px-6">
       <div className="max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto flex flex-col h-full">
-        <div className="flex items-center justify-between mb-4">
-          <Link href="/" className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-sm border border-border/50 text-primary/60 hover:text-primary hover:shadow-md hover:scale-105 transition-all" aria-label="Về trang chủ">
-            <ArrowLeft className="w-5 h-5 -ml-0.5" />
-          </Link>
-          <h1 className="font-serif text-2xl md:text-3xl font-bold text-primary">Menu</h1>
-          <button onClick={openVoucherModal} className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-amber-500 to-orange-500 shadow-sm shadow-orange-500/20 px-3.5 py-2.5 rounded-xl hover:scale-105 transition-transform cursor-pointer">
-            <Gift size={14} />
-            <span>{isLoggedIn ? `Đổi quà${typeof points === "number" ? ` (${points} cá)` : ""}` : "Ưu đãi"}</span>
-          </button>
+
+        {/* Sticky header + tab bar — always visible */}
+        <div className="sticky top-0 z-20 bg-[#fdfcf7]/90 backdrop-blur-md pt-4 -mx-6 px-6 pb-1">
+          <div className="flex items-center justify-between mb-4">
+            <Link href="/" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/50 bg-white text-primary/60 shadow-sm transition-transform hover:text-primary hover:shadow-md active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label="Về trang chủ">
+              <ArrowLeft className="w-5 h-5 -ml-0.5" />
+            </Link>
+            <h1 className="font-serif text-2xl md:text-3xl font-bold text-primary">Menu</h1>
+            <button type="button" onClick={openVoucherModal} className="flex min-h-11 cursor-pointer items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-3.5 py-2.5 text-xs font-bold text-white shadow-sm shadow-orange-500/20 transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-2">
+              <Gift size={14} />
+              <span>{isLoggedIn ? `Đổi quà${typeof points === "number" ? ` (${points} cá)` : ""}` : "Ưu đãi"}</span>
+            </button>
+          </div>
+          <TabBar activeTab={activeTab} setActiveTab={handleTabChange} />
         </div>
-        <TabBar activeTab={activeTab} setActiveTab={handleTabChange} />
+
         <div ref={containerRef} className="flex-1 relative w-full overflow-hidden">
           <MenuPanels
             carouselX={carouselX}

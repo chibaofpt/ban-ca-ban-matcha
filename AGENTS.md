@@ -27,6 +27,8 @@
 | Order lifecycle, status, points | `.agents/skills/order-flow/SKILL.md` |
 | Voucher rules, stacking, lifecycle | `.agents/skills/voucher-flow/SKILL.md` |
 | Price formulas and rounding | `.agents/skills/pricing-logic/SKILL.md` |
+| Nontech mode (co-founder sửa UI/report) | `.agents/skills/nontech-mode/SKILL.md` |
+| Nontech push code (QA + đẩy code) | `.agents/skills/nontech-push-code/SKILL.md` |
 
 > Never skip reading the relevant file. Do not rely on memory alone.
 

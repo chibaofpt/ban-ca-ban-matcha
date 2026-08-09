@@ -2,7 +2,7 @@
 
 import React, { useCallback } from 'react';
 import Image from 'next/image';
-import { Coffee } from 'lucide-react';
+import { Coffee, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { MenuItem, MilkTypeOption } from '@/src/lib/types/menu';
 import { usePowderStore } from '@/src/lib/store/powderStore';
@@ -106,7 +106,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
             alt={item.name}
             fill
             sizes="(max-width: 640px) 50vw, 33vw"
-            className="object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+            className="object-cover transition-transform duration-300 ease-out group-hover:scale-105"
             quality={75}
             priority={priority}
             placeholder="blur"
@@ -114,7 +114,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Coffee className="w-10 h-10 text-[#b8c9b4] group-hover:scale-110 transition-transform duration-500" />
+            <Coffee className="h-10 w-10 text-[#b8c9b4] transition-transform duration-300 group-hover:scale-110" />
           </div>
         )}
       </div>
@@ -126,7 +126,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
             {item.name}
             {item.is_seasonal && (
               <span className="inline-flex items-center bg-amber-50 text-amber-600 text-[8px] font-sans font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border border-amber-200/50 align-middle ml-2 -translate-y-[1px]">
-                ✨ Theo mùa
+                <Sparkles className="mr-0.5 h-2.5 w-2.5" aria-hidden="true" /> Theo mùa
               </span>
             )}
           </h3>
@@ -138,7 +138,8 @@ const MenuCard: React.FC<MenuCardProps> = ({
         </div>
 
         {/* Sizes & Prices + Cart Button */}
-        <div className="mt-auto pt-2 flex items-end w-full gap-1">
+        {/* Fixed 44px slot; the temporary stepper expands left without shifting prices. */}
+        <div className="mt-auto pt-2 flex items-end w-full">
           <div className="flex flex-1 justify-between">
             {(['SMALL', 'MEDIUM', 'LARGE'] as const).map((sizeKey) => {
               const s = sizes.find(s => s.size === sizeKey);
@@ -162,16 +163,19 @@ const MenuCard: React.FC<MenuCardProps> = ({
             })}
           </div>
 
-          <CartQuantityButton
-            quantity={cartQuantity}
-            variantCount={cartVariantCount}
-            hasVoucher={cartHasVoucher}
-            onAdd={() => onItemClick(item)}
-            onOpenVariants={() => onItemClick(item)}
-            onIncrement={handleIncrement}
-            onDecrement={handleDecrement}
-            onRemove={handleRemove}
-          />
+          {/* Fixed-width slot so the button area never shifts prices */}
+          <div className="flex w-11 shrink-0 justify-end">
+            <CartQuantityButton
+              quantity={cartQuantity}
+              variantCount={cartVariantCount}
+              hasVoucher={cartHasVoucher}
+              onAdd={() => onItemClick(item)}
+              onOpenVariants={() => onItemClick(item)}
+              onIncrement={handleIncrement}
+              onDecrement={handleDecrement}
+              onRemove={handleRemove}
+            />
+          </div>
         </div>
       </div>
     </motion.div>
