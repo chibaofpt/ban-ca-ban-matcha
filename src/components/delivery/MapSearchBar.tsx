@@ -64,8 +64,8 @@ export function MapSearchBar({ onSelect }: Props) {
       setIsOpen(false);
       const { lat, lng } = await deliveryService.geocode(prediction.description);
       onSelect(lat, lng, prediction.description);
-    } catch (err) {
-      console.error("Geocoding failed:", err);
+    } catch {
+      // The server adapter records Goong REST failures without exposing customer input.
     } finally {
       setGeocoding(false);
     }
@@ -89,7 +89,7 @@ export function MapSearchBar({ onSelect }: Props) {
           onChange={handleInputChange}
           onBlur={() => window.scrollTo(0, 0)}
           onFocus={() => input.trim() && setIsOpen(true)}
-          className="block w-full pl-9 pr-9 py-2.5 bg-white border border-gray-200 rounded-xl text-sm shadow-lg transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+          className="block min-h-11 w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-11 text-sm shadow-lg transition-all focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
           placeholder="Tìm đường, địa điểm..."
         />
         {(loading || geocoding) && (
@@ -99,8 +99,10 @@ export function MapSearchBar({ onSelect }: Props) {
         )}
         {!loading && !geocoding && input && (
           <button
+            type="button"
             onClick={handleClear}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center"
+            aria-label="Xóa nội dung tìm kiếm"
+            className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-green-600"
           >
             <X className="h-4 w-4 text-gray-400 hover:text-gray-600" />
           </button>
@@ -113,7 +115,7 @@ export function MapSearchBar({ onSelect }: Props) {
             <li
               key={p.place_id}
               onClick={() => handleSelect(p)}
-              className="cursor-pointer select-none relative py-2.5 pl-9 pr-3 hover:bg-green-50 transition-colors"
+              className="relative min-h-11 cursor-pointer select-none py-2.5 pl-9 pr-3 transition-colors hover:bg-green-50"
             >
               <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 text-gray-400">
                 <MapPin className="h-3.5 w-3.5" />

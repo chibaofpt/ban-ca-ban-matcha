@@ -1,10 +1,27 @@
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { ErrorEvent, Map as MapLibreMap } from "maplibre-gl";
+import type { Map as MapLibreMap } from "maplibre-gl";
 import { STORE_LOCATION } from "@/src/constants/storeConfig";
 
 const GOONG_TILE_HOST = "tiles.goong.io";
 const GOONG_STYLE_URL = "https://tiles.goong.io/assets/goong_map_web.json";
-const INITIAL_LOAD_TIMEOUT_MS = 12_000;
+const HARD_LOAD_TIMEOUT_MS = 30_000;
+
+export type MapRendererFailureCategory =
+  | "missing_key"
+  | "module_load"
+  | "webgl_unavailable"
+  | "resource_error"
+  | "soft_timeout"
+  | "hard_timeout"
+  | "unknown";
+
+export type MapRendererPhase = "config" | "initial_load" | "runtime";
+
+export interface MapRendererDiagnostic {
+  category: MapRendererFailureCategory;
+  fatal: boolean;
+  phase: MapRendererPhase;
+}
 
 export interface MapCenter {
   lat: number;
@@ -16,13 +33,19 @@ export interface MapRenderer {
   destroy(): void;
 }
 
-interface MapRendererOptions {
+export interface MapRendererOptions {
   container: HTMLElement;
   initialCenter: MapCenter;
   tileKey: string;
   deliveryRadiusKm: number;
   onMoveEnd: (center: MapCenter) => void;
-  onError: (error: Error) => void;
+  onDiagnostic?: (diagnostic: MapRendererDiagnostic) => void;
+}
+
+interface WaitForMapOptions {
+  onDiagnostic?: (diagnostic: MapRendererDiagnostic) => void;
+  signal?: AbortSignal;
+  timeoutMs?: number;
 }
 
 interface TransformedRequest {
@@ -31,6 +54,28 @@ interface TransformedRequest {
 
 interface ResizableMap {
   resize(): void;
+}
+
+/** Represent a privacy-safe, typed MapLibre initialization failure. */
+export class MapRendererLoadError extends Error {
+  readonly category: MapRendererFailureCategory;
+
+  constructor(category: MapRendererFailureCategory) {
+    super(`Map renderer failed: ${category}`);
+    this.name = "MapRendererLoadError";
+    this.category = category;
+  }
+}
+
+function createAbortError(): Error {
+  const error = new Error("Map renderer initialization aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+/** Return whether an unknown failure is the expected lifecycle abort. */
+export function isMapRendererAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 /** Create a request transformer that exposes the maptiles key only to Goong's HTTPS tile host. */
@@ -43,7 +88,6 @@ export function createGoongTileTransform(
       if (parsedUrl.protocol !== "https:" || parsedUrl.hostname !== GOONG_TILE_HOST) {
         return { url };
       }
-
       parsedUrl.searchParams.set("api_key", tileKey);
       return { url: parsedUrl.toString() };
     } catch {
@@ -52,45 +96,53 @@ export function createGoongTileTransform(
   };
 }
 
-/** Wait for the first map style load, rejecting after a bounded timeout. */
+/** Wait for the first style load while treating resource errors as nonfatal diagnostics. */
 export function waitForMapInitialLoad(
   map: MapLibreMap,
-  timeoutMs = INITIAL_LOAD_TIMEOUT_MS,
+  options: WaitForMapOptions = {},
 ): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? HARD_LOAD_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
+    let settled = false;
     const cleanup = () => {
       clearTimeout(timeoutId);
       map.off("load", handleLoad);
       map.off("error", handleError);
+      options.signal?.removeEventListener("abort", handleAbort);
     };
-    const handleLoad = () => {
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
       cleanup();
-      resolve();
+      callback();
     };
-    const handleError = (event: ErrorEvent) => {
-      cleanup();
-      reject(new Error(event.error?.message ?? "Map style failed to load"));
+    const handleLoad = () => finish(resolve);
+    const handleError = () => {
+      options.onDiagnostic?.({
+        category: "resource_error",
+        fatal: false,
+        phase: "initial_load",
+      });
     };
-    const timeoutId = setTimeout(() => {
-      cleanup();
-      reject(new Error("Map style load timed out"));
-    }, timeoutMs);
+    const handleAbort = () => finish(() => reject(createAbortError()));
+    const timeoutId = setTimeout(
+      () => finish(() => reject(new MapRendererLoadError("hard_timeout"))),
+      timeoutMs,
+    );
 
-    map.once("load", handleLoad);
-    map.once("error", handleError);
+    map.on("load", handleLoad);
+    map.on("error", handleError);
+    options.signal?.addEventListener("abort", handleAbort, { once: true });
+    if (options.signal?.aborted) handleAbort();
   });
 }
 
 /** Schedule a delayed resize and return a cancellation handle for renderer teardown. */
-export function scheduleMapResize(
-  map: ResizableMap,
-  delayMs = 300,
-): () => void {
+export function scheduleMapResize(map: ResizableMap, delayMs = 300): () => void {
   let active = true;
   const timerId = setTimeout(() => {
     if (active) map.resize();
   }, delayMs);
-
   return () => {
     active = false;
     clearTimeout(timerId);
@@ -112,31 +164,90 @@ function addDeliveryOverlay(
     id: "delivery-radius-border",
     type: "line",
     source: "delivery-radius",
-    paint: {
-      "line-color": "#22c55e",
-      "line-width": 2,
-      "line-dasharray": [3, 2],
-    },
+    paint: { "line-color": "#22c55e", "line-dasharray": [3, 2], "line-width": 2 },
   });
 }
 
-/** Lazily initialize the primary MapLibre renderer against Goong's existing style and tiles. */
+function classifyConstructorError(error: unknown): MapRendererFailureCategory {
+  if (!(error instanceof Error)) return "unknown";
+  return /webgl|canvas.*context|gpu/i.test(error.message)
+    ? "webgl_unavailable"
+    : "unknown";
+}
+
+/** Configure MapLibre's separately emitted module worker before creating a map. */
+export function configureMapLibreWorker(setWorkerUrl: (url: string) => void): void {
+  setWorkerUrl("/vendor/maplibre/maplibre-gl-worker.mjs");
+}
+
+/** Notify location changes only after a pointer drag has fully settled. */
+export function bindUserDragMoveEnd(
+  map: MapLibreMap,
+  onMoveEnd: (center: MapCenter) => void,
+): () => void {
+  let pendingUserDrag = false;
+  const handleDragStart = () => {
+    pendingUserDrag = true;
+  };
+  const handleMoveEnd = () => {
+    if (!pendingUserDrag) return;
+    pendingUserDrag = false;
+    const center = map.getCenter();
+    onMoveEnd({ lat: center.lat, lng: center.lng });
+  };
+
+  map.on("dragstart", handleDragStart);
+  map.on("moveend", handleMoveEnd);
+
+  return () => {
+    pendingUserDrag = false;
+    map.off("dragstart", handleDragStart);
+    map.off("moveend", handleMoveEnd);
+  };
+}
+
+/** Lazily initialize the primary MapLibre renderer against Goong's style and tiles. */
 export async function createMapRenderer(
   options: MapRendererOptions,
+  signal?: AbortSignal,
 ): Promise<MapRenderer> {
-  const [{ Map, Marker, NavigationControl }, { default: turfCircle }] =
-    await Promise.all([import("maplibre-gl"), import("@turf/circle")]);
-  const map = new Map({
-    container: options.container,
-    style: GOONG_STYLE_URL,
-    center: [options.initialCenter.lng, options.initialCenter.lat],
-    zoom: 14,
-    attributionControl: false,
-    transformRequest: createGoongTileTransform(options.tileKey),
-  });
+  if (signal?.aborted) throw createAbortError();
+
+  let modules: [typeof import("maplibre-gl"), typeof import("@turf/circle")];
+  try {
+    modules = await Promise.all([import("maplibre-gl"), import("@turf/circle")]);
+  } catch {
+    throw new MapRendererLoadError("module_load");
+  }
+  if (signal?.aborted) throw createAbortError();
+
+  const [maplibre, { default: turfCircle }] = modules;
+  configureMapLibreWorker(maplibre.setWorkerUrl);
+  const { Map, Marker, NavigationControl } = maplibre;
+  let map: MapLibreMap;
+  try {
+    map = new Map({
+      attributionControl: false,
+      center: [options.initialCenter.lng, options.initialCenter.lat],
+      container: options.container,
+      style: GOONG_STYLE_URL,
+      transformRequest: createGoongTileTransform(options.tileKey),
+      zoom: 14,
+    });
+  } catch (error: unknown) {
+    throw new MapRendererLoadError(classifyConstructorError(error));
+  }
+
+  let removed = false;
+  const removeOnce = () => {
+    if (removed) return;
+    removed = true;
+    map.remove();
+  };
 
   try {
-    await waitForMapInitialLoad(map);
+    await waitForMapInitialLoad(map, { onDiagnostic: options.onDiagnostic, signal });
+    if (signal?.aborted) throw createAbortError();
     const circleData = turfCircle(
       [STORE_LOCATION.lng, STORE_LOCATION.lat],
       options.deliveryRadiusKm,
@@ -151,32 +262,31 @@ export async function createMapRenderer(
     new Marker({ element: storeMarker })
       .setLngLat([STORE_LOCATION.lng, STORE_LOCATION.lat])
       .addTo(map);
-
     map.addControl(new NavigationControl({ showCompass: false }), "bottom-right");
-    map.on("moveend", () => {
-      const center = map.getCenter();
-      options.onMoveEnd({ lat: center.lat, lng: center.lng });
-    });
-    map.on("error", (event: ErrorEvent) => {
-      options.onError(new Error(event.error?.message ?? "Map renderer failed"));
-    });
   } catch (error: unknown) {
-    map.remove();
+    removeOnce();
     throw error;
   }
 
+  const handleRuntimeError = () => {
+    options.onDiagnostic?.({ category: "resource_error", fatal: false, phase: "runtime" });
+  };
+  const cleanupUserDrag = bindUserDragMoveEnd(map, options.onMoveEnd);
+  map.on("error", handleRuntimeError);
   const cancelResize = scheduleMapResize(map);
   let destroyed = false;
 
   return {
     flyTo: (center, zoom = 16) => {
-      map.flyTo({ center: [center.lng, center.lat], zoom, speed: 1.2, essential: true });
+      map.flyTo({ center: [center.lng, center.lat], essential: true, speed: 1.2, zoom });
     },
     destroy: () => {
       if (destroyed) return;
       destroyed = true;
       cancelResize();
-      map.remove();
+      cleanupUserDrag();
+      map.off("error", handleRuntimeError);
+      removeOnce();
     },
   };
 }

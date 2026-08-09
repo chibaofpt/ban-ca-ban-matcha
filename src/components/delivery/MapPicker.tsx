@@ -5,7 +5,7 @@ import { AlertTriangle, ArrowLeft, Loader2, LocateFixed, MapPin } from "lucide-r
 import { MapSearchBar } from "./MapSearchBar";
 import { STORE_LOCATION } from "@/src/constants/storeConfig";
 import { DELIVERY_CONFIG } from "@/src/constants/delivery";
-import { createMapRenderer, type MapRenderer } from "@/src/lib/map/mapRenderer";
+import { useMapRendererLifecycle } from "@/src/hooks/useMapRendererLifecycle";
 import { deliveryService } from "@/src/services/deliveryService";
 import { getDistanceKm } from "@/src/utils/distance";
 
@@ -16,17 +16,18 @@ interface MapPickerProps {
   initialLng?: number;
 }
 
-type RendererStatus = "loading" | "ready" | "unavailable";
-
-/** Let customers choose a delivery location with a resilient search-only fallback. */
+/** Let customers choose a delivery location while the map loads independently. */
 export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPickerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const rendererRef = useRef<MapRenderer | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reverseRequestRef = useRef(0);
+  const lastReverseKeyRef = useRef<string | null>(null);
+  const aliveRef = useRef(true);
+  const readyHandledRef = useRef(false);
+  const userSelectedRef = useRef(false);
   const [address, setAddress] = useState("");
   const [centerLat, setCenterLat] = useState(initialLat ?? STORE_LOCATION.lat);
   const [centerLng, setCenterLng] = useState(initialLng ?? STORE_LOCATION.lng);
-  const [rendererStatus, setRendererStatus] = useState<RendererStatus>("loading");
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [isOutOfRange, setIsOutOfRange] = useState(false);
@@ -45,39 +46,71 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
   const reverseGeocodeCenter = useCallback(
     async (lat: number, lng: number) => {
       setSelectedLocation(lat, lng);
+      const coordinateKey = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+      if (lastReverseKeyRef.current === coordinateKey) return;
+      lastReverseKeyRef.current = coordinateKey;
+      const requestId = ++reverseRequestRef.current;
       setIsGeocoding(true);
       try {
         const result = await deliveryService.reverseGeocode(lat, lng);
-        setAddress(result.address);
+        if (aliveRef.current && reverseRequestRef.current === requestId) {
+          setAddress(result.address);
+          setMapError(null);
+        }
       } catch {
-        setAddress("");
-        setMapError("Không thể xác định địa chỉ tại vị trí này.");
+        if (reverseRequestRef.current === requestId) {
+          lastReverseKeyRef.current = null;
+        }
+        if (aliveRef.current && reverseRequestRef.current === requestId) {
+          setAddress("");
+          setMapError("Không thể xác định địa chỉ tại vị trí này.");
+        }
       } finally {
-        setIsGeocoding(false);
+        if (aliveRef.current && reverseRequestRef.current === requestId) {
+          setIsGeocoding(false);
+        }
       }
     },
     [setSelectedLocation],
   );
 
-  const markRendererUnavailable = useCallback(() => {
-    rendererRef.current?.destroy();
-    rendererRef.current = null;
-    setRendererStatus("unavailable");
-    setMapError("Bản đồ hiện không khả dụng. Bạn vẫn có thể tìm và chọn địa chỉ.");
-  }, []);
+  const handleMapMoveEnd = useCallback(
+    ({ lat, lng }: { lat: number; lng: number }) => {
+      if (!aliveRef.current) return;
+      setSelectedLocation(lat, lng);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        if (aliveRef.current) void reverseGeocodeCenter(lat, lng);
+      }, 1_000);
+    },
+    [reverseGeocodeCenter, setSelectedLocation],
+  );
+
+  const { flyTo, hadQueuedCenter, status: rendererStatus } = useMapRendererLifecycle({
+    containerRef: mapContainerRef,
+    deliveryRadiusKm: DELIVERY_CONFIG.MAX_RADIUS_KM,
+    initialCenter: {
+      lat: initialLat ?? STORE_LOCATION.lat,
+      lng: initialLng ?? STORE_LOCATION.lng,
+    },
+    onMoveEnd: handleMapMoveEnd,
+    tileKey: process.env.NEXT_PUBLIC_GOONG_MAPTILES_KEY,
+  });
 
   const requestGps = useCallback(
-    (renderer: MapRenderer, fallBackToStore: boolean) => {
+    (fallBackToStore: boolean) => {
       if (!navigator.geolocation) return;
       setGpsLoading(true);
       navigator.geolocation.getCurrentPosition(
         ({ coords }) => {
-          if (rendererRef.current !== renderer) return;
-          renderer.flyTo({ lat: coords.latitude, lng: coords.longitude });
-          setGpsLoading(false);
+          if (!aliveRef.current || (fallBackToStore && userSelectedRef.current)) return;
+          if (flyTo({ lat: coords.latitude, lng: coords.longitude }, false)) {
+            setGpsLoading(false);
+            void reverseGeocodeCenter(coords.latitude, coords.longitude);
+          }
         },
         () => {
-          if (rendererRef.current !== renderer) return;
+          if (!aliveRef.current || (fallBackToStore && userSelectedRef.current)) return;
           setGpsLoading(false);
           if (fallBackToStore) {
             void reverseGeocodeCenter(STORE_LOCATION.lat, STORE_LOCATION.lng);
@@ -85,81 +118,49 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
             setMapError("Không thể truy cập vị trí. Hãy kiểm tra quyền GPS của trình duyệt.");
           }
         },
-        { enableHighAccuracy: true, timeout: 10_000, maximumAge: 60_000 },
+        { enableHighAccuracy: true, maximumAge: 60_000, timeout: 10_000 },
       );
     },
-    [reverseGeocodeCenter],
+    [flyTo, reverseGeocodeCenter],
   );
 
   useEffect(() => {
-    let mounted = true;
-
-    async function initializeRenderer() {
-      const container = mapContainerRef.current;
-      const tileKey = process.env.NEXT_PUBLIC_GOONG_MAPTILES_KEY;
-      if (!container || !tileKey) {
-        if (mounted) markRendererUnavailable();
-        return;
-      }
-
-      try {
-        const renderer = await createMapRenderer({
-          container,
-          initialCenter: {
-            lat: initialLat ?? STORE_LOCATION.lat,
-            lng: initialLng ?? STORE_LOCATION.lng,
-          },
-          tileKey,
-          deliveryRadiusKm: DELIVERY_CONFIG.MAX_RADIUS_KM,
-          onMoveEnd: ({ lat, lng }) => {
-            if (!mounted) return;
-            setSelectedLocation(lat, lng);
-            if (debounceRef.current) clearTimeout(debounceRef.current);
-            debounceRef.current = setTimeout(() => {
-              if (mounted) void reverseGeocodeCenter(lat, lng);
-            }, 1_000);
-          },
-          onError: () => {
-            if (mounted) markRendererUnavailable();
-          },
-        });
-
-        if (!mounted) {
-          renderer.destroy();
-          return;
-        }
-        rendererRef.current = renderer;
-        setRendererStatus("ready");
-        setMapError(null);
-        if (initialLat !== undefined && initialLng !== undefined) {
-          void reverseGeocodeCenter(initialLat, initialLng);
-        } else {
-          requestGps(renderer, true);
-        }
-      } catch {
-        if (mounted) markRendererUnavailable();
-      }
-    }
-
-    void initializeRenderer();
+    aliveRef.current = true;
     return () => {
-      mounted = false;
+      aliveRef.current = false;
+      reverseRequestRef.current += 1;
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      rendererRef.current?.destroy();
-      rendererRef.current = null;
     };
+  }, []);
+
+  useEffect(() => {
+    if (rendererStatus !== "ready" || readyHandledRef.current) return;
+    readyHandledRef.current = true;
+    setMapError(null);
+    if (hadQueuedCenter || userSelectedRef.current) return;
+    if (initialLat !== undefined && initialLng !== undefined) {
+      void reverseGeocodeCenter(initialLat, initialLng);
+    } else {
+      requestGps(true);
+    }
   }, [
+    hadQueuedCenter,
     initialLat,
     initialLng,
-    markRendererUnavailable,
+    rendererStatus,
     requestGps,
     reverseGeocodeCenter,
-    setSelectedLocation,
   ]);
 
   const handleSearchSelect = (lat: number, lng: number, selectedAddress: string) => {
+    userSelectedRef.current = true;
+    reverseRequestRef.current += 1;
+    lastReverseKeyRef.current = null;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setIsGeocoding(false);
+    setGpsLoading(false);
     setSelectedLocation(lat, lng, selectedAddress);
-    rendererRef.current?.flyTo({ lat, lng });
+    flyTo({ lat, lng });
   };
 
   const handleConfirm = () => {
@@ -187,9 +188,14 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
       </header>
 
       <main className="relative min-h-0 flex-1">
-        <div ref={mapContainerRef} className="h-full w-full" />
+        <div
+          ref={mapContainerRef}
+          data-testid="map-gesture-surface"
+          data-vaul-no-drag=""
+          className="h-full w-full touch-none overscroll-contain"
+        />
         {isLoading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-100">
+          <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center bg-gray-100">
             <div className="flex flex-col items-center gap-2">
               <Loader2 className="h-8 w-8 animate-spin text-green-600" />
               <span className="text-sm font-medium text-gray-600">Đang tải bản đồ...</span>
@@ -197,8 +203,14 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
           </div>
         )}
 
+        {rendererStatus === "degraded" && (
+          <div className="pointer-events-none absolute left-3 right-3 top-32 z-20 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 shadow-sm">
+            Bản đồ đang tải chậm, bạn vẫn có thể tìm địa chỉ.
+          </div>
+        )}
+
         {rendererStatus === "unavailable" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-50 px-6 pt-16 text-center">
+          <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center bg-gray-50 px-6 pt-16 text-center">
             <div className="max-w-sm rounded-2xl border border-amber-200 bg-amber-50 p-4">
               <AlertTriangle className="mx-auto mb-2 h-6 w-6 text-amber-600" />
               <p className="text-sm font-semibold text-amber-900">Bản đồ hiện không khả dụng</p>
@@ -209,7 +221,7 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
           </div>
         )}
 
-        {!isLoading && <MapSearchBar onSelect={handleSearchSelect} />}
+        <MapSearchBar onSelect={handleSearchSelect} />
 
         {isRendererReady && (
           <>
@@ -218,7 +230,7 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
             </div>
             <button
               type="button"
-              onClick={() => rendererRef.current && requestGps(rendererRef.current, false)}
+              onClick={() => requestGps(false)}
               disabled={gpsLoading}
               aria-label="Dùng vị trí hiện tại"
               className="absolute bottom-4 right-3 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600 disabled:opacity-50"
@@ -267,7 +279,7 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
         <button
           type="button"
           onClick={handleConfirm}
-          disabled={isOutOfRange || !address || isGeocoding || isLoading}
+          disabled={isOutOfRange || !address || isGeocoding}
           className="flex min-h-11 w-full items-center justify-center rounded-2xl bg-green-600 px-4 text-sm font-bold text-white transition-transform active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-500"
         >
           {isOutOfRange ? "Ngoài vùng giao hàng" : "Xác nhận địa chỉ này"}

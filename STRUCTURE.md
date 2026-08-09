@@ -220,13 +220,15 @@ scratch/                          # Ignored by Git. Scratchpad for quick server 
       cartStore.ts                # Zustand cart — v3 migration retains items but clears voucher IDs/credits
       powderStore.ts              # Zustand — powder catalogue cached from /api/powders
       storeStore.ts               # Zustand — store open/closed status (hydrated on HomePage, read in CartDrawer)
-    observability.ts              # Browser Sentry adapter for errors and business breadcrumbs
-    sentryPrivacy.ts              # Browser event/breadcrumb privacy scrubber
+    observability.ts              # Browser Sentry adapter, including enum-only map diagnostics
+    sentryPrivacy.ts              # Deep browser event/breadcrumb privacy scrubber
     map/
-      mapRenderer.ts              # Lazy MapLibre renderer using Goong style/tiles; search fallback survives renderer failure
+      mapRenderer.ts              # Abortable MapLibre renderer; 30s hard timeout and typed diagnostics
     hooks/
       useScrollProgress.ts
       useBodyScrollLock.ts
+      useMapRendererLifecycle.ts  # Strict Mode-safe map ownership, 12s degraded state, queued flyTo
+      useWarmMapPicker.ts          # Keeps a hidden map renderer alive for 45s before teardown
     types/
       api.ts                      # ApiResponse<T>, ApiError
       menu.ts
@@ -253,6 +255,10 @@ scratch/                          # Ignored by Git. Scratchpad for quick server 
 public/
   data/
     menu.json                     # Static — replaced by /api/menu in Phase 2
+  vendor/maplibre/                # Generated worker + shared module; ignored and synced before dev/build
+
+scripts/
+  sync-maplibre-assets.mjs        # Copies version-matched MapLibre worker assets into public/vendor
 
 lib/                              # Backend only — server-side, NEVER import in src/
   prisma.ts
@@ -307,6 +313,9 @@ prisma/migrations/20260804000000_harden_supabase_data_plane/
                                   # RLS/ACL hardening; rollback only with a compensating migration
 .env.local
 .env.local.example
+.agents/skills/nontech-mode/SKILL.md       # Guardrails for co-founder UI/report edits
+.agents/skills/nontech-push-code/SKILL.md  # QA/push workflow for the isolated nontech branch
+NONTECH_CHANGELOG.md                       # Audit log for nontech-mode changes
 ```
 
 The delivery map uses `maplibre-gl` as the primary renderer and injects the public Goong maptiles

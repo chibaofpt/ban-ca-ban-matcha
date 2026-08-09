@@ -6,9 +6,10 @@ const { mockCreateMapRenderer, mockReverseGeocode } = vi.hoisted(() => ({
   mockReverseGeocode: vi.fn(),
 }));
 
-vi.mock("@/src/lib/map/mapRenderer", () => ({
-  createMapRenderer: mockCreateMapRenderer,
-}));
+vi.mock("@/src/lib/map/mapRenderer", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/src/lib/map/mapRenderer")>();
+  return { ...original, createMapRenderer: mockCreateMapRenderer };
+});
 
 vi.mock("@/src/components/delivery/MapSearchBar", () => ({
   MapSearchBar: ({
@@ -92,6 +93,21 @@ describe("MapPicker — fallback khi renderer không khả dụng", () => {
     });
   });
 
+  it("hiện search ngay và cho xác nhận trong lúc renderer còn pending", () => {
+    mockCreateMapRenderer.mockReturnValue(new Promise(() => undefined));
+    const onConfirm = vi.fn();
+    const view = render(<MapPicker onConfirm={onConfirm} onClose={vi.fn()} />);
+
+    fireEvent.click(view.getByRole("button", { name: "Chọn địa chỉ tìm kiếm" }));
+    fireEvent.click(view.getByRole("button", { name: "Xác nhận địa chỉ này" }));
+
+    expect(onConfirm).toHaveBeenCalledWith({
+      address: "12 Đường gần cửa hàng",
+      lat: 10.99,
+      lng: 106.66,
+    });
+  });
+
   it("có nút đóng đủ nhãn truy cập khi renderer lỗi", async () => {
     const onClose = vi.fn();
     const view = render(<MapPicker onConfirm={vi.fn()} onClose={onClose} />);
@@ -104,13 +120,10 @@ describe("MapPicker — fallback khi renderer không khả dụng", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it("hiện fallback tìm kiếm khi renderer hết thời gian tải", async () => {
+  it("hiện cảnh báo tải chậm ở 12 giây nhưng chưa chuyển fallback", async () => {
     vi.useFakeTimers();
     mockCreateMapRenderer.mockImplementation(
-      () =>
-        new Promise((_resolve, reject) => {
-          setTimeout(() => reject(new Error("Map style load timed out")), 12_000);
-        }),
+      () => new Promise(() => undefined),
     );
     const view = render(<MapPicker onConfirm={vi.fn()} onClose={vi.fn()} />);
 
@@ -119,43 +132,38 @@ describe("MapPicker — fallback khi renderer không khả dụng", () => {
       await vi.advanceTimersByTimeAsync(12_000);
     });
 
-    expect(view.getByText("Bản đồ hiện không khả dụng")).toBeTruthy();
+    expect(view.getByText("Bản đồ đang tải chậm, bạn vẫn có thể tìm địa chỉ.")).toBeTruthy();
+    expect(view.queryByText("Bản đồ hiện không khả dụng")).toBeNull();
     expect(view.getByRole("button", { name: "Chọn địa chỉ tìm kiếm" })).toBeTruthy();
   });
 
-  it("bỏ qua GPS success đến muộn sau khi renderer đã lỗi", async () => {
-    const geolocation = installGeolocationMock();
+  it("không destroy renderer vì resource error sau khi load", async () => {
+    installGeolocationMock();
     const renderer: MapRenderer = { flyTo: vi.fn(), destroy: vi.fn() };
-    let failRenderer: (() => void) | undefined;
+    let reportResourceError: (() => void) | undefined;
     mockCreateMapRenderer.mockImplementation(
-      async (options: { onError: (error: Error) => void }) => {
-        failRenderer = () => options.onError(new Error("renderer failed"));
+      async (options: {
+        onDiagnostic?: (event: {
+          category: "resource_error";
+          fatal: false;
+          phase: "runtime";
+        }) => void;
+      }) => {
+        reportResourceError = () => options.onDiagnostic?.({
+          category: "resource_error",
+          fatal: false,
+          phase: "runtime",
+        });
         return renderer;
       },
     );
     const view = render(<MapPicker onConfirm={vi.fn()} onClose={vi.fn()} />);
     await waitFor(() => expect(view.getByLabelText("Dùng vị trí hiện tại")).toBeTruthy());
 
-    act(() => failRenderer?.());
-    act(() => {
-      geolocation.getSuccess()?.({
-        coords: {
-          latitude: 10.99,
-          longitude: 106.66,
-          accuracy: 5,
-          altitude: null,
-          altitudeAccuracy: null,
-          heading: null,
-          speed: null,
-          toJSON: () => ({}),
-        },
-        timestamp: Date.now(),
-        toJSON: () => ({}),
-      });
-    });
+    act(() => reportResourceError?.());
 
-    expect(renderer.destroy).toHaveBeenCalledOnce();
-    expect(renderer.flyTo).not.toHaveBeenCalled();
+    expect(renderer.destroy).not.toHaveBeenCalled();
+    expect(view.getByLabelText("Dùng vị trí hiện tại")).toBeTruthy();
   });
 
   it("bỏ qua GPS error đến muộn sau khi MapPicker unmount", async () => {
@@ -178,5 +186,51 @@ describe("MapPicker — fallback khi renderer không khả dụng", () => {
 
     expect(renderer.destroy).toHaveBeenCalledOnce();
     expect(mockReverseGeocode).not.toHaveBeenCalled();
+  });
+
+  it("cô lập thao tác kéo bản đồ khỏi gesture đóng drawer", () => {
+    mockCreateMapRenderer.mockReturnValue(new Promise(() => undefined));
+    const view = render(<MapPicker onConfirm={vi.fn()} onClose={vi.fn()} />);
+
+    const gestureSurface = view.getByTestId("map-gesture-surface");
+
+    expect(gestureSurface.getAttribute("data-vaul-no-drag")).toBe("");
+    expect(gestureSurface.className).toContain("touch-none");
+    expect(gestureSurface.className).toContain("overscroll-contain");
+  });
+
+  it("reverse-geocode GPS đúng một lần dù flyTo không còn phát moveend", async () => {
+    const geolocation = installGeolocationMock();
+    const renderer: MapRenderer = { flyTo: vi.fn(), destroy: vi.fn() };
+    mockCreateMapRenderer.mockResolvedValue(renderer);
+    mockReverseGeocode.mockResolvedValue({
+      address: "Địa chỉ GPS",
+      lat: 10.993,
+      lng: 106.663,
+    });
+    render(<MapPicker onConfirm={vi.fn()} onClose={vi.fn()} />);
+    await waitFor(() => expect(geolocation.getSuccess()).toBeTypeOf("function"));
+
+    act(() => {
+      geolocation.getSuccess()?.({
+        coords: {
+          accuracy: 5,
+          altitude: null,
+          altitudeAccuracy: null,
+          heading: null,
+          latitude: 10.993,
+          longitude: 106.663,
+          speed: null,
+          toJSON: () => ({}),
+        },
+        timestamp: Date.now(),
+        toJSON: () => ({}),
+      });
+    });
+
+    await waitFor(() => {
+      expect(mockReverseGeocode).toHaveBeenCalledOnce();
+      expect(mockReverseGeocode).toHaveBeenCalledWith(10.993, 106.663);
+    });
   });
 });

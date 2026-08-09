@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from 'framer-motion';
+import { Sparkles } from 'lucide-react';
 import { cn } from '@/src/utils/cn';
 
 export type TabId = 'latte' | 'fusion' | 'seasonal';
@@ -18,7 +19,7 @@ interface TabBarProps {
 export const tabs: Tab[] = [
   { id: 'latte', label: 'Latte' },
   { id: 'fusion', label: 'Fusion' },
-  { id: 'seasonal', label: 'Seasonal ✨' },
+  { id: 'seasonal', label: 'Seasonal' },
 ];
 
 /** Sticky 3-tab bar. Indicator position is driven by activeTab index via spring animation. */
@@ -43,14 +44,16 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, setActiveTab }) => {
 
           return (
             <button
+              type="button"
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "relative flex-1 py-2.5 text-xs sm:text-sm font-bold z-10 transition-colors duration-300",
+                "relative z-10 flex min-h-11 flex-1 items-center justify-center gap-1 py-2.5 text-xs font-bold transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:text-sm",
                 isActive ? "text-white" : "text-primary/40 hover:text-primary/60"
               )}
             >
               {tab.label}
+              {tab.id === 'seasonal' && <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />}
             </button>
           );
         })}

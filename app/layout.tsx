@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Playfair_Display } from "next/font/google";
+import { Spectral } from "next/font/google";
 import Navbar from "@/src/components/common/Navbar";
 import Footer from "@/src/components/common/Footer";
 import AuthModal from "@/src/components/common/AuthModal";
@@ -14,15 +14,12 @@ export const viewport: Viewport = {
   maximumScale: 1, // Prevents auto-zoom on iOS when focusing inputs
 };
 
-const inter = Inter({
-  variable: "--font-inter",
+const spectral = Spectral({
+  variable: "--font-spectral",
   subsets: ["latin", "vietnamese"],
-});
-
-const playfair = Playfair_Display({
-  variable: "--font-playfair",
-  subsets: ["latin", "vietnamese"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700", "800"],
+  style: ["normal", "italic"],
+  display: "swap",
 });
 
 const title = "Bạn Cá Bán Matcha – Tiên phong văn hóa Matcha tại Bình Dương";
@@ -83,7 +80,7 @@ export default function RootLayout({
   return (
     <html
       lang="vi"
-      className={`${inter.variable} ${playfair.variable} antialiased scroll-smooth scroll-pt-16`}
+      className={`${spectral.variable} antialiased scroll-smooth scroll-pt-16`}
       suppressHydrationWarning
     >
       <body className="min-h-screen flex flex-col bg-paper text-foreground font-sans border-border transition-colors duration-300 text-ink">

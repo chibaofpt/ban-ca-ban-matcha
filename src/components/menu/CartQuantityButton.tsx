@@ -13,7 +13,7 @@ interface CartQuantityButtonProps {
   hasVoucher: boolean;
   /** Called when "+" is pressed and item is not yet in cart. */
   onAdd: () => void;
-  /** Called when badge is pressed and 2+ variants exist. */
+  /** Called when inline editing is unsafe because variants or vouchers exist. */
   onOpenVariants: () => void;
   /** Called to increase quantity by 1 (single variant inline stepper). */
   onIncrement: () => void;
@@ -73,7 +73,7 @@ export const CartQuantityButton: React.FC<CartQuantityButtonProps> = ({
 
   const handleBadgeClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (variantCount >= 2) {
+    if (variantCount >= 2 || hasVoucher) {
       onOpenVariants();
     } else if (variantCount === 1 && !hasVoucher) {
       setExpanded(true);
@@ -97,12 +97,14 @@ export const CartQuantityButton: React.FC<CartQuantityButtonProps> = ({
 
   if (quantity === 0) {
     return (
-      <div
-        className="w-9 h-9 rounded-full bg-[#5b9a2b] flex items-center justify-center cursor-pointer active:scale-95 transition-transform shrink-0 shadow-sm"
+      <button
+        type="button"
+        aria-label="Thêm món vào giỏ"
+        className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-[#5b9a2b] shadow-sm transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b9a2b] focus-visible:ring-offset-2"
         onClick={handleAdd}
       >
         <Plus className="text-white" size={20} strokeWidth={3} />
-      </div>
+      </button>
     );
   }
 
@@ -110,29 +112,31 @@ export const CartQuantityButton: React.FC<CartQuantityButtonProps> = ({
     <div
       ref={containerRef}
       onClick={(e) => e.stopPropagation()}
-      className="flex justify-end shrink-0"
+      className="relative flex h-11 w-11 shrink-0 justify-end"
     >
       <motion.div
         initial={false}
-        animate={{ width: isExpanded ? 104 : 36 }}
+        animate={{ width: isExpanded ? 116 : 44 }}
         transition={{ type: "spring", stiffness: 500, damping: 35 }}
-        className="h-9 rounded-full bg-white border-2 border-[#5b9a2b] flex items-center overflow-hidden shadow-sm relative"
+        className="absolute right-0 z-10 flex h-11 items-center overflow-hidden rounded-full border-2 border-[#5b9a2b] bg-white shadow-sm"
       >
         {!isExpanded ? (
-          <div
-            className="w-full h-full flex items-center justify-center cursor-pointer absolute inset-0"
+          <button
+            type="button"
+            aria-label="Mở điều khiển số lượng"
+            className="absolute inset-0 flex h-full w-full cursor-pointer items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b9a2b]"
             onClick={handleBadgeClick}
           >
             <span className="text-sm font-bold text-[#5b9a2b] select-none">
               {quantity}
             </span>
-          </div>
+          </button>
         ) : (
-          <div className="flex items-center justify-between w-full px-1 min-w-[100px] absolute inset-0">
+          <div className="flex items-center justify-between w-full px-1 absolute inset-0">
             <button
               type="button"
               onClick={handleDecrement}
-              className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[#5b9a2b]/10 active:bg-[#5b9a2b]/20 transition-colors shrink-0"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[#5b9a2b]/10 active:bg-[#5b9a2b]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b9a2b]"
               aria-label={quantity === 1 ? "Xóa khỏi giỏ" : "Giảm số lượng"}
             >
               {quantity === 1 ? (
@@ -141,14 +145,14 @@ export const CartQuantityButton: React.FC<CartQuantityButtonProps> = ({
                 <Minus className="text-[#5b9a2b]" size={16} strokeWidth={2.5} />
               )}
             </button>
-            <span className="text-sm font-bold text-[#5b9a2b] w-6 text-center select-none shrink-0">
+            <span className="text-sm font-bold text-[#5b9a2b] w-5 text-center select-none shrink-0">
               {quantity}
             </span>
             <button
               type="button"
               onClick={handleIncrement}
               disabled={quantity >= MAX_QUANTITY}
-              className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors shrink-0 ${
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b9a2b] ${
                 quantity >= MAX_QUANTITY
                   ? "opacity-30 cursor-not-allowed"
                   : "hover:bg-[#5b9a2b]/10 active:bg-[#5b9a2b]/20"
