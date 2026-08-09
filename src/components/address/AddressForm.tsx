@@ -3,9 +3,10 @@
 import dynamic from "next/dynamic";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
-import { useState, type ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { Loader2, MapPin } from "lucide-react";
 import type { AddressPayload } from "@/src/lib/types/address";
+import { useWarmMapPicker } from "@/src/hooks/useWarmMapPicker";
 import {
   addressFormSchema,
   type AddressFormInput,
@@ -34,7 +35,8 @@ export function AddressForm({
   onCancel,
   isLoading = false,
 }: AddressFormProps) {
-  const [isMapOpen, setMapOpen] = useState(false);
+  const mapTriggerRef = useRef<HTMLButtonElement>(null);
+  const mapLifecycle = useWarmMapPicker();
   const {
     register,
     handleSubmit,
@@ -63,7 +65,13 @@ export function AddressForm({
     setValue("full_address", data.address, { shouldDirty: true, shouldValidate: true });
     setValue("lat", data.lat, { shouldDirty: true, shouldValidate: true });
     setValue("lng", data.lng, { shouldDirty: true, shouldValidate: true });
-    setMapOpen(false);
+    mapLifecycle.destroy();
+    setTimeout(() => mapTriggerRef.current?.focus(), 0);
+  };
+
+  const closeMap = () => {
+    mapLifecycle.close();
+    setTimeout(() => mapTriggerRef.current?.focus(), 0);
   };
 
   const submit = async (values: AddressFormValues) => {
@@ -106,8 +114,9 @@ export function AddressForm({
               <div className="min-w-0 flex-1">
                 <p className="line-clamp-2 text-sm font-medium leading-snug text-foreground">{fullAddress}</p>
                 <button
+                  ref={mapTriggerRef}
                   type="button"
-                  onClick={() => setMapOpen(true)}
+                  onClick={mapLifecycle.open}
                   className="mt-1 min-h-11 text-xs font-bold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Chọn lại vị trí
@@ -116,8 +125,9 @@ export function AddressForm({
             </div>
           ) : (
             <button
+              ref={mapTriggerRef}
               type="button"
-              onClick={() => setMapOpen(true)}
+              onClick={mapLifecycle.open}
               className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 px-4 text-sm font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <MapPin className="h-4 w-4" />
@@ -183,13 +193,19 @@ export function AddressForm({
         </div>
       </form>
 
-      {isMapOpen && (
-        <MapPicker
-          onConfirm={handleMapConfirm}
-          onClose={() => setMapOpen(false)}
-          initialLat={lat ?? undefined}
-          initialLng={lng ?? undefined}
-        />
+      {mapLifecycle.isMounted && (
+        <div
+          aria-hidden={!mapLifecycle.isVisible}
+          inert={!mapLifecycle.isVisible}
+          className={mapLifecycle.isVisible ? undefined : "invisible pointer-events-none"}
+        >
+          <MapPicker
+            onConfirm={handleMapConfirm}
+            onClose={closeMap}
+            initialLat={lat ?? undefined}
+            initialLng={lng ?? undefined}
+          />
+        </div>
       )}
     </>
   );

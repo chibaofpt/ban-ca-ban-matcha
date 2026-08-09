@@ -228,6 +228,7 @@ scratch/                          # Ignored by Git. Scratchpad for quick server 
       useScrollProgress.ts
       useBodyScrollLock.ts
       useMapRendererLifecycle.ts  # Strict Mode-safe map ownership, 12s degraded state, queued flyTo
+      useWarmMapPicker.ts          # Keeps a hidden map renderer alive for 45s before teardown
     types/
       api.ts                      # ApiResponse<T>, ApiError
       menu.ts
