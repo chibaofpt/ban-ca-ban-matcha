@@ -1,4 +1,4 @@
-import type { Map as MapLibreMap } from "maplibre-gl";
+import type { ErrorEvent, Map as MapLibreMap } from "maplibre-gl";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createGoongTileTransform,
@@ -45,17 +45,64 @@ describe("Map renderer — giới hạn phạm vi maptiles key", () => {
 });
 
 describe("Map renderer — timeout tải ban đầu", () => {
-  it("từ chối và gỡ listener khi MapLibre không phát load hoặc error", async () => {
-    vi.useFakeTimers();
-    const once = vi.fn();
-    const off = vi.fn();
-    const map = { once, off } as unknown as MapLibreMap;
+  function createMapEventHarness() {
+    const listeners = new Map<string, (event?: unknown) => void>();
+    const on = vi.fn((event: string, listener: (payload?: unknown) => void) => {
+      listeners.set(event, listener);
+    });
+    const off = vi.fn((event: string) => {
+      listeners.delete(event);
+    });
+    const map = { on, off } as unknown as MapLibreMap;
+    return { listeners, map, off };
+  }
 
-    const loading = waitForMapInitialLoad(map, 1_000);
-    const rejection = expect(loading).rejects.toThrow("Map style load timed out");
+  it("chỉ hard-fail sau timeout và gỡ toàn bộ listener", async () => {
+    vi.useFakeTimers();
+    const { map, off } = createMapEventHarness();
+
+    const loading = waitForMapInitialLoad(map, { timeoutMs: 1_000 });
+    const rejection = expect(loading).rejects.toMatchObject({ category: "hard_timeout" });
     await vi.advanceTimersByTimeAsync(1_000);
 
     await rejection;
+    expect(off).toHaveBeenCalledWith("load", expect.any(Function));
+    expect(off).toHaveBeenCalledWith("error", expect.any(Function));
+  });
+
+  it("coi resource error trước load là diagnostic và vẫn cho load thành công", async () => {
+    const { listeners, map } = createMapEventHarness();
+    const onDiagnostic = vi.fn();
+    const loading = waitForMapInitialLoad(map, { timeoutMs: 1_000, onDiagnostic });
+
+    listeners.get("error")?.({
+      error: new Error("https://tiles.goong.io/tile.pbf?api_key=secret failed"),
+    } satisfies Partial<ErrorEvent>);
+    listeners.get("load")?.();
+
+    await expect(loading).resolves.toBeUndefined();
+    expect(onDiagnostic).toHaveBeenCalledWith({
+      phase: "initial_load",
+      category: "resource_error",
+      fatal: false,
+    });
+    expect(JSON.stringify(onDiagnostic.mock.calls)).not.toContain("secret");
+  });
+
+  it("abort lifecycle không bị ghi nhận là renderer failure", async () => {
+    const { map, off } = createMapEventHarness();
+    const controller = new AbortController();
+    const onDiagnostic = vi.fn();
+    const loading = waitForMapInitialLoad(map, {
+      timeoutMs: 1_000,
+      signal: controller.signal,
+      onDiagnostic,
+    });
+
+    controller.abort();
+
+    await expect(loading).rejects.toMatchObject({ name: "AbortError" });
+    expect(onDiagnostic).not.toHaveBeenCalled();
     expect(off).toHaveBeenCalledWith("load", expect.any(Function));
     expect(off).toHaveBeenCalledWith("error", expect.any(Function));
   });

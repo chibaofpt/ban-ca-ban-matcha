@@ -220,13 +220,14 @@ scratch/                          # Ignored by Git. Scratchpad for quick server 
       cartStore.ts                # Zustand cart — v3 migration retains items but clears voucher IDs/credits
       powderStore.ts              # Zustand — powder catalogue cached from /api/powders
       storeStore.ts               # Zustand — store open/closed status (hydrated on HomePage, read in CartDrawer)
-    observability.ts              # Browser Sentry adapter for errors and business breadcrumbs
-    sentryPrivacy.ts              # Browser event/breadcrumb privacy scrubber
+    observability.ts              # Browser Sentry adapter, including enum-only map diagnostics
+    sentryPrivacy.ts              # Deep browser event/breadcrumb privacy scrubber
     map/
-      mapRenderer.ts              # Lazy MapLibre renderer using Goong style/tiles; search fallback survives renderer failure
+      mapRenderer.ts              # Abortable MapLibre renderer; 30s hard timeout and typed diagnostics
     hooks/
       useScrollProgress.ts
       useBodyScrollLock.ts
+      useMapRendererLifecycle.ts  # Strict Mode-safe map ownership, 12s degraded state, queued flyTo
     types/
       api.ts                      # ApiResponse<T>, ApiError
       menu.ts

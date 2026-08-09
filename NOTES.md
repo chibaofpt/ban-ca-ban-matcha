@@ -150,9 +150,11 @@ outside the application, TypeScript, and lint scope. It does not require a produ
 - **Map provider**: MapLibre is the primary browser renderer over Goong style/tiles. The public
   maptiles key is attached only to Goong HTTPS tile requests. Authenticated Goong proxy search and
   geocoding remain available as the address-selection fallback when the renderer/style is down.
-- **Push/Sentry privacy**: `/api/push/test` is deleted. Sentry does not send default PII; client and
-  server scrub user context, bodies, auth/cookie headers, query strings, phones, addresses, QR
-  tokens, and internal IDs. Replay masks all text and blocks media.
+- **Push/Sentry privacy**: `/api/push/test` is deleted. Client and server before-send scrubbers
+  remove user context, request bodies/headers/cookies/query metadata, URL query/fragment values,
+  phones, bearer/JWT credentials, addresses, coordinates, QR tokens, and internal IDs across
+  messages, exceptions, tags, contexts, extras, and nested breadcrumbs. Map telemetry accepts only
+  fixed enums and duration buckets. Replay masks all text and blocks media.
 - **Pre-Phase-5 Upstash exception**: Upstash is approved now only for distributed security rate
   limits. It remains forbidden for application caching, OTP, promotions, SMS/ZNS, or other Phase 5
   functionality. Counters are fixed-window, TTL-bound, HMAC-keyed, and fail open with a sanitized
