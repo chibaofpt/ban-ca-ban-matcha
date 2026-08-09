@@ -53,6 +53,8 @@ export default function MenuPage() {
   const isLoggedInSynced = useIsLoggedInSynced();
   const openVoucherModal = useVoucherModalStore((state) => state.openModal);
   const cartItems = useCartStore((state) => state.items);
+  const updateQuantity = useCartStore((state) => state.updateQuantity);
+  const removeItem = useCartStore((state) => state.removeItem);
   const { data: menuRes, isLoading: menuLoading, isError: menuError } = useQuery({
     queryKey: ["menu"],
     queryFn: fetchMenu,
@@ -156,6 +158,12 @@ export default function MenuPage() {
     setSelectedItem(item);
   }, [cartItems]);
 
+  // Derived: only show the sheet when the target item still has cart entries
+  const existingCartItemsForTarget = existingItemTarget
+    ? cartItems.filter((ci) => ci.menuItemId === existingItemTarget.id)
+    : [];
+  const showExistingSheet = existingItemTarget !== null && existingCartItemsForTarget.length > 0;
+
   const data = menuRes ?? null;
   const seasonalItems = [...(data?.latte ?? []), ...(data?.fusion ?? [])]
     .filter((item) => item.is_seasonal);
@@ -202,13 +210,15 @@ export default function MenuPage() {
           availableVouchers={vouchersData ?? []}
         />}
       </AnimatePresence>
-      {existingItemTarget && <ExistingCartItemSheet
+      {showExistingSheet && existingItemTarget && <ExistingCartItemSheet
         itemName={existingItemTarget.name}
-        items={cartItems.filter((item) => item.menuItemId === existingItemTarget.id)}
+        items={existingCartItemsForTarget}
         addonGroups={data?.addon_groups ?? []}
         milkTypes={data?.milk_types ?? []}
         powders={powderRes?.data ?? []}
         onClose={() => setExistingItemTarget(null)}
+        onUpdateQuantity={updateQuantity}
+        onRemoveItem={removeItem}
         onAddNew={() => {
           setEditingItem(undefined);
           setSelectedItem(existingItemTarget);
