@@ -1,19 +1,27 @@
 "use client";
 
-import React from 'react';
+import React, { useCallback } from 'react';
 import Image from 'next/image';
-import { Coffee, Plus } from 'lucide-react';
+import { Coffee } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { MenuItem, MilkTypeOption } from '@/src/lib/types/menu';
 import { usePowderStore } from '@/src/lib/store/powderStore';
+import { useCartStore } from '@/src/lib/store/cartStore';
 import { calcLattePrice, calcFusionPrice, resolveGram } from '@/src/utils/pricing';
 import { formatKa } from "@/src/utils/display";
+import { CartQuantityButton } from "@/src/components/menu/CartQuantityButton";
 
 interface MenuCardProps {
   item: MenuItem;
   milkTypes: MilkTypeOption[];
-  onClick: (item: MenuItem) => void;
+  /** Total quantity of this menu item across all cart variants. */
   cartQuantity: number;
+  /** Number of distinct cart entries (variants) for this item. */
+  cartVariantCount: number;
+  /** Whether any cart variant for this item has a voucher. */
+  cartHasVoucher: boolean;
+  /** Click handler for the card body (opens ProductModal or ExistingCartItemSheet). */
+  onItemClick: (item: MenuItem) => void;
   priority?: boolean;
 }
 
@@ -23,7 +31,16 @@ const SIZE_CARD_LABELS: Record<string, string> = {
   LARGE: "Cá Lớn",
 };
 
-const MenuCard: React.FC<MenuCardProps> = ({ item, milkTypes, onClick, cartQuantity, priority }) => {
+/** Individual product card displayed on the customer menu page. */
+const MenuCard: React.FC<MenuCardProps> = ({
+  item,
+  milkTypes,
+  cartQuantity,
+  cartVariantCount,
+  cartHasVoucher,
+  onItemClick,
+  priority,
+}) => {
   const sizes = item.sizes.filter((s) => s.base_price_vnd != null);
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
@@ -57,27 +74,32 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, milkTypes, onClick, cartQuant
     }
   };
 
-  const handleAddToCart = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onClick(item);
-  };
+  const handleIncrement = useCallback(() => {
+    const { items, updateQuantity } = useCartStore.getState();
+    const cartItem = items.find(ci => ci.menuItemId === item.id);
+    if (cartItem) updateQuantity(cartItem.cartId, cartItem.quantity + 1);
+  }, [item.id]);
+
+  const handleDecrement = useCallback(() => {
+    const { items, updateQuantity } = useCartStore.getState();
+    const cartItem = items.find(ci => ci.menuItemId === item.id);
+    if (cartItem && cartItem.quantity > 1) updateQuantity(cartItem.cartId, cartItem.quantity - 1);
+  }, [item.id]);
+
+  const handleRemove = useCallback(() => {
+    const { items, removeItem } = useCartStore.getState();
+    const cartItem = items.find(ci => ci.menuItemId === item.id);
+    if (cartItem) removeItem(cartItem.cartId);
+  }, [item.id]);
 
   return (
     <motion.div
-      onClick={() => onClick(item)}
+      onClick={() => onItemClick(item)}
       whileTap={{ scale: 0.96 }}
       className="group flex flex-row items-center justify-between gap-4 md:gap-5 w-full h-[130px] md:h-[150px] border-b border-dashed border-primary/20 last:border-0 transition-all duration-300 cursor-pointer bg-transparent"
     >
-      {/* Image Area - 4/5 height */}
+      {/* Image Area */}
       <div className="h-[80%] aspect-square bg-[#eef1eb] relative overflow-hidden flex-shrink-0 rounded-2xl">
-        {cartQuantity > 0 && (
-          <span
-            className="absolute left-2 top-2 z-10 flex min-h-6 min-w-6 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-bold text-white shadow-md"
-            aria-label={`${cartQuantity} ly trong giỏ`}
-          >
-            {cartQuantity}
-          </span>
-        )}
         {item.image_url ? (
           <Image
             src={item.image_url}
@@ -115,39 +137,41 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, milkTypes, onClick, cartQuant
           )}
         </div>
 
-        {/* Sizes & Prices */}
-        <div className="mt-auto pt-2 grid grid-cols-4 items-end w-full">
-          {(['SMALL', 'MEDIUM', 'LARGE'] as const).map((sizeKey) => {
-            const s = sizes.find(s => s.size === sizeKey);
-            const isDefault = sizeKey === 'MEDIUM';
-            
-            if (!s) {
-              return <div key={sizeKey}></div>;
-            }
+        {/* Sizes & Prices + Cart Button */}
+        <div className="mt-auto pt-2 flex items-end w-full gap-1">
+          <div className="flex flex-1 justify-between">
+            {(['SMALL', 'MEDIUM', 'LARGE'] as const).map((sizeKey) => {
+              const s = sizes.find(s => s.size === sizeKey);
+              const isDefault = sizeKey === 'MEDIUM';
 
-            const price = getDisplayPrice(s);
-            return (
-              <div key={sizeKey} className="flex flex-col items-center gap-0.5">
-                <span className={`uppercase tracking-wide whitespace-nowrap ${isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
-                  {SIZE_CARD_LABELS[sizeKey] ?? sizeKey}
-                </span>
-                <span className={`${isDefault ? 'text-base font-bold text-[#5b9a2b]' : 'text-sm font-semibold text-primary/50'}`}>
-                  {formatKa(price, "ceil")}
-                </span>
-              </div>
-            );
-          })}
-          
-          <div className="flex justify-end pb-0.5">
-            <button
-              type="button"
-              onClick={handleAddToCart}
-              className="w-11 h-11 bg-[#5b9a2b] rounded-full flex items-center justify-center text-[#fdfcf7] hover:scale-105 active:scale-95 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-              aria-label="Thêm vào giỏ"
-            >
-              <Plus size={18} strokeWidth={3} />
-            </button>
+              if (!s) {
+                return <div key={sizeKey}></div>;
+              }
+
+              const price = getDisplayPrice(s);
+              return (
+                <div key={sizeKey} className="flex flex-col items-center gap-0.5">
+                  <span className={`uppercase tracking-wide whitespace-nowrap ${isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
+                    {SIZE_CARD_LABELS[sizeKey] ?? sizeKey}
+                  </span>
+                  <span className={`${isDefault ? 'text-base font-bold text-[#5b9a2b]' : 'text-sm font-semibold text-primary/50'}`}>
+                    {formatKa(price, "ceil")}
+                  </span>
+                </div>
+              );
+            })}
           </div>
+
+          <CartQuantityButton
+            quantity={cartQuantity}
+            variantCount={cartVariantCount}
+            hasVoucher={cartHasVoucher}
+            onAdd={() => onItemClick(item)}
+            onOpenVariants={() => onItemClick(item)}
+            onIncrement={handleIncrement}
+            onDecrement={handleDecrement}
+            onRemove={handleRemove}
+          />
         </div>
       </div>
     </motion.div>

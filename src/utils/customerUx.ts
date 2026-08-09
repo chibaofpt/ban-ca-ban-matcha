@@ -8,6 +8,30 @@ export function getMenuItemCartQuantity(items: CartItem[], menuItemId: string): 
   );
 }
 
+interface MenuItemCartInfo {
+  quantity: number;
+  variantCount: number;
+  hasVoucher: boolean;
+}
+
+/** Computes quantity, variant count, and voucher status for a menu item in a single pass. */
+export function getMenuItemCartInfo(items: CartItem[], menuItemId: string): MenuItemCartInfo {
+  let quantity = 0;
+  let variantCount = 0;
+  let hasVoucher = false;
+
+  for (const item of items) {
+    if (item.menuItemId !== menuItemId) continue;
+    quantity += item.quantity;
+    variantCount++;
+    if (item.productVoucherId || (item.addonVouchers && item.addonVouchers.length > 0)) {
+      hasVoucher = true;
+    }
+  }
+
+  return { quantity, variantCount, hasVoucher };
+}
+
 /** Derives checkout points without including shipping in the order-points base. */
 export function deriveCheckoutRewards(
   items: CartItem[],

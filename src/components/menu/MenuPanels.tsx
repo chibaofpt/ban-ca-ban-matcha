@@ -5,7 +5,7 @@ import type { RefObject } from "react";
 import MenuCard from "@/src/components/menu/MenuCard";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
-import { getMenuItemCartQuantity } from "@/src/utils/customerUx";
+import { getMenuItemCartInfo } from "@/src/utils/customerUx";
 
 interface MenuPanelsProps {
   carouselX: MotionValue<number>;
@@ -130,16 +130,21 @@ function ItemGrid({
 }) {
   return (
     <div className="flex flex-col gap-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-8">
-      {items.map((item, index) => (
-        <MenuCard
-          key={item.id}
-          item={item}
-          milkTypes={milkTypes}
-          onClick={onItemClick}
-          cartQuantity={getMenuItemCartQuantity(cartItems, item.id)}
-          priority={index < priorityCount}
-        />
-      ))}
+      {items.map((item, index) => {
+        const info = getMenuItemCartInfo(cartItems, item.id);
+        return (
+          <MenuCard
+            key={item.id}
+            item={item}
+            milkTypes={milkTypes}
+            cartQuantity={info.quantity}
+            cartVariantCount={info.variantCount}
+            cartHasVoucher={info.hasVoucher}
+            onItemClick={onItemClick}
+            priority={index < priorityCount}
+          />
+        );
+      })}
     </div>
   );
 }

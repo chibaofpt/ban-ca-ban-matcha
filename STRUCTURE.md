@@ -139,6 +139,8 @@ src/                              # Frontend — never import lib/ from here
     menu/
       MenuCard.tsx
       MenuPanels.tsx              # Pure latte/fusion/seasonal panel rendering
+      CartQuantityButton.tsx      # Reusable add-to-cart / inline quantity stepper
+      ExistingCartItemSheet.tsx   # Bottom sheet for items already in cart (per-variant stepper)
       ProductModal.tsx
       CartButton.tsx
       CartDrawer.tsx

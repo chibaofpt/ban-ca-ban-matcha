@@ -142,7 +142,9 @@ export default function MenuVoucherTabs({
                     item={item}
                     milkTypes={menuData?.milk_types ?? []}
                     cartQuantity={0}
-                    onClick={() => router.push("/menu")}
+                    cartVariantCount={0}
+                    cartHasVoucher={false}
+                    onItemClick={() => router.push("/menu")}
                     priority={index < 4}
                   />
                 ))}

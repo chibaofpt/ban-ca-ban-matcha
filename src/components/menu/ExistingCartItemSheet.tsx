@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Drawer } from "vaul";
-import { Check, Plus, Settings2, X } from "lucide-react";
+import { Check, Minus, Plus, Settings2, Trash2, X } from "lucide-react";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { AddonGroup, MilkTypeOption } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
@@ -18,6 +18,8 @@ interface ExistingCartItemSheetProps {
   onClose: () => void;
   onEdit: (item: CartItem) => void;
   onAddNew: () => void;
+  onUpdateQuantity: (cartId: string, quantity: number) => void;
+  onRemoveItem: (cartId: string) => void;
 }
 
 const SWEETNESS_LABEL: Record<string, string> = {
@@ -102,6 +104,8 @@ export function ExistingCartItemSheet({
   onClose,
   onEdit,
   onAddNew,
+  onUpdateQuantity,
+  onRemoveItem,
 }: ExistingCartItemSheetProps) {
   const [selectedCartId, setSelectedCartId] = useState(items.at(-1)?.cartId ?? "");
 
@@ -136,6 +140,7 @@ export function ExistingCartItemSheet({
             {items.map((item) => {
               const isSelected = item.cartId === selectedItem?.cartId;
               const tags = buildDetailTags(item, addonGroups, milkTypes, powders);
+              const hasItemVoucher = !!(item.productVoucherId || (item.addonVouchers && item.addonVouchers.length > 0));
 
               return (
                 <button
@@ -150,7 +155,7 @@ export function ExistingCartItemSheet({
                   )}
                 >
                   {/* Top row: radio + size/qty + price */}
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     <div
                       className={cn(
                         "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2",
@@ -159,12 +164,46 @@ export function ExistingCartItemSheet({
                     >
                       {isSelected && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-primary">
-                        {formatOrderSize(item.size)} · {item.quantity} ly
-                      </p>
+                    <p className="text-sm font-bold text-primary shrink-0">
+                      {formatOrderSize(item.size)}
+                    </p>
+                    {/* Stepper */}
+                    <div className="flex items-center gap-1 bg-primary/5 rounded-full px-1 py-0.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (item.quantity <= 1) {
+                            onRemoveItem(item.cartId);
+                          } else {
+                            onUpdateQuantity(item.cartId, item.quantity - 1);
+                          }
+                        }}
+                        disabled={hasItemVoucher}
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-primary hover:bg-primary/10 transition-colors disabled:opacity-30"
+                        aria-label={item.quantity === 1 ? "Xóa khỏi giỏ" : "Giảm số lượng"}
+                      >
+                        {item.quantity === 1 ? (
+                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                        ) : (
+                          <Minus className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                      <span className="text-xs font-bold text-primary text-center w-5">{item.quantity}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onUpdateQuantity(item.cartId, item.quantity + 1);
+                        }}
+                        disabled={hasItemVoucher || item.quantity >= 10}
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-primary hover:bg-primary/10 transition-colors disabled:opacity-30"
+                        aria-label="Tăng số lượng"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                    <span className="shrink-0 text-sm font-bold text-primary">
+                    <span className="shrink-0 text-sm font-bold text-primary ml-auto">
                       {formatKa(item.clientPriceVnd * item.quantity, "ceil")}
                     </span>
                   </div>
