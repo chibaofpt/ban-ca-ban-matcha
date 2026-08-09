@@ -1,5 +1,5 @@
 {
-  "buildCommand": "prisma generate && prisma migrate deploy && next build",
+  "buildCommand": "prisma generate && prisma migrate deploy && next build --webpack",
   "crons": [
     {
       "path": "/api/cron/cancel-expired-orders",
