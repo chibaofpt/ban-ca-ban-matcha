@@ -175,6 +175,16 @@ function classifyConstructorError(error: unknown): MapRendererFailureCategory {
     : "unknown";
 }
 
+/** Configure MapLibre's separately emitted module worker before creating a map. */
+export function configureMapLibreWorker(setWorkerUrl: (url: string) => void): void {
+  setWorkerUrl(
+    new URL(
+      "maplibre-gl/dist/maplibre-gl-worker.mjs",
+      import.meta.url,
+    ).toString(),
+  );
+}
+
 /** Lazily initialize the primary MapLibre renderer against Goong's style and tiles. */
 export async function createMapRenderer(
   options: MapRendererOptions,
@@ -190,7 +200,9 @@ export async function createMapRenderer(
   }
   if (signal?.aborted) throw createAbortError();
 
-  const [{ Map, Marker, NavigationControl }, { default: turfCircle }] = modules;
+  const [maplibre, { default: turfCircle }] = modules;
+  configureMapLibreWorker(maplibre.setWorkerUrl);
+  const { Map, Marker, NavigationControl } = maplibre;
   let map: MapLibreMap;
   try {
     map = new Map({

@@ -1,6 +1,7 @@
 import type { ErrorEvent, Map as MapLibreMap } from "maplibre-gl";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  configureMapLibreWorker,
   createGoongTileTransform,
   scheduleMapResize,
   waitForMapInitialLoad,
@@ -116,5 +117,18 @@ describe("Map renderer — timeout tải ban đầu", () => {
     await vi.advanceTimersByTimeAsync(300);
 
     expect(resize).not.toHaveBeenCalled();
+  });
+});
+
+describe("Map renderer — worker module", () => {
+  it("cấu hình worker URL trước khi MapLibre khởi tạo renderer", () => {
+    const setWorkerUrl = vi.fn();
+
+    configureMapLibreWorker(setWorkerUrl);
+
+    expect(setWorkerUrl).toHaveBeenCalledTimes(1);
+    expect(setWorkerUrl).toHaveBeenCalledWith(
+      expect.stringMatching(/maplibre-gl-worker\.mjs$/),
+    );
   });
 });
