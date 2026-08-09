@@ -20,6 +20,8 @@ interface MapPickerProps {
 export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPickerProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reverseRequestRef = useRef(0);
+  const lastReverseKeyRef = useRef<string | null>(null);
   const aliveRef = useRef(true);
   const readyHandledRef = useRef(false);
   const userSelectedRef = useRef(false);
@@ -44,17 +46,29 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
   const reverseGeocodeCenter = useCallback(
     async (lat: number, lng: number) => {
       setSelectedLocation(lat, lng);
+      const coordinateKey = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+      if (lastReverseKeyRef.current === coordinateKey) return;
+      lastReverseKeyRef.current = coordinateKey;
+      const requestId = ++reverseRequestRef.current;
       setIsGeocoding(true);
       try {
         const result = await deliveryService.reverseGeocode(lat, lng);
-        if (aliveRef.current) setAddress(result.address);
+        if (aliveRef.current && reverseRequestRef.current === requestId) {
+          setAddress(result.address);
+          setMapError(null);
+        }
       } catch {
-        if (aliveRef.current) {
+        if (reverseRequestRef.current === requestId) {
+          lastReverseKeyRef.current = null;
+        }
+        if (aliveRef.current && reverseRequestRef.current === requestId) {
           setAddress("");
           setMapError("Không thể xác định địa chỉ tại vị trí này.");
         }
       } finally {
-        if (aliveRef.current) setIsGeocoding(false);
+        if (aliveRef.current && reverseRequestRef.current === requestId) {
+          setIsGeocoding(false);
+        }
       }
     },
     [setSelectedLocation],
@@ -92,6 +106,7 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
           if (!aliveRef.current || (fallBackToStore && userSelectedRef.current)) return;
           if (flyTo({ lat: coords.latitude, lng: coords.longitude }, false)) {
             setGpsLoading(false);
+            void reverseGeocodeCenter(coords.latitude, coords.longitude);
           }
         },
         () => {
@@ -113,6 +128,7 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
     aliveRef.current = true;
     return () => {
       aliveRef.current = false;
+      reverseRequestRef.current += 1;
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
@@ -138,6 +154,10 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
 
   const handleSearchSelect = (lat: number, lng: number, selectedAddress: string) => {
     userSelectedRef.current = true;
+    reverseRequestRef.current += 1;
+    lastReverseKeyRef.current = null;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setIsGeocoding(false);
     setGpsLoading(false);
     setSelectedLocation(lat, lng, selectedAddress);
     flyTo({ lat, lng });
@@ -168,7 +188,12 @@ export function MapPicker({ onConfirm, onClose, initialLat, initialLng }: MapPic
       </header>
 
       <main className="relative min-h-0 flex-1">
-        <div ref={mapContainerRef} className="h-full w-full" />
+        <div
+          ref={mapContainerRef}
+          data-testid="map-gesture-surface"
+          data-vaul-no-drag=""
+          className="h-full w-full touch-none overscroll-contain"
+        />
         {isLoading && (
           <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center bg-gray-100">
             <div className="flex flex-col items-center gap-2">

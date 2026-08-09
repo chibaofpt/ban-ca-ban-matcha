@@ -180,6 +180,32 @@ export function configureMapLibreWorker(setWorkerUrl: (url: string) => void): vo
   setWorkerUrl("/vendor/maplibre/maplibre-gl-worker.mjs");
 }
 
+/** Notify location changes only after a pointer drag has fully settled. */
+export function bindUserDragMoveEnd(
+  map: MapLibreMap,
+  onMoveEnd: (center: MapCenter) => void,
+): () => void {
+  let pendingUserDrag = false;
+  const handleDragStart = () => {
+    pendingUserDrag = true;
+  };
+  const handleMoveEnd = () => {
+    if (!pendingUserDrag) return;
+    pendingUserDrag = false;
+    const center = map.getCenter();
+    onMoveEnd({ lat: center.lat, lng: center.lng });
+  };
+
+  map.on("dragstart", handleDragStart);
+  map.on("moveend", handleMoveEnd);
+
+  return () => {
+    pendingUserDrag = false;
+    map.off("dragstart", handleDragStart);
+    map.off("moveend", handleMoveEnd);
+  };
+}
+
 /** Lazily initialize the primary MapLibre renderer against Goong's style and tiles. */
 export async function createMapRenderer(
   options: MapRendererOptions,
@@ -242,14 +268,10 @@ export async function createMapRenderer(
     throw error;
   }
 
-  const handleMoveEnd = () => {
-    const center = map.getCenter();
-    options.onMoveEnd({ lat: center.lat, lng: center.lng });
-  };
   const handleRuntimeError = () => {
     options.onDiagnostic?.({ category: "resource_error", fatal: false, phase: "runtime" });
   };
-  map.on("moveend", handleMoveEnd);
+  const cleanupUserDrag = bindUserDragMoveEnd(map, options.onMoveEnd);
   map.on("error", handleRuntimeError);
   const cancelResize = scheduleMapResize(map);
   let destroyed = false;
@@ -262,7 +284,7 @@ export async function createMapRenderer(
       if (destroyed) return;
       destroyed = true;
       cancelResize();
-      map.off("moveend", handleMoveEnd);
+      cleanupUserDrag();
       map.off("error", handleRuntimeError);
       removeOnce();
     },

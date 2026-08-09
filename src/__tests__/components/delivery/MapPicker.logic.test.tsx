@@ -187,4 +187,50 @@ describe("MapPicker — fallback khi renderer không khả dụng", () => {
     expect(renderer.destroy).toHaveBeenCalledOnce();
     expect(mockReverseGeocode).not.toHaveBeenCalled();
   });
+
+  it("cô lập thao tác kéo bản đồ khỏi gesture đóng drawer", () => {
+    mockCreateMapRenderer.mockReturnValue(new Promise(() => undefined));
+    const view = render(<MapPicker onConfirm={vi.fn()} onClose={vi.fn()} />);
+
+    const gestureSurface = view.getByTestId("map-gesture-surface");
+
+    expect(gestureSurface.getAttribute("data-vaul-no-drag")).toBe("");
+    expect(gestureSurface.className).toContain("touch-none");
+    expect(gestureSurface.className).toContain("overscroll-contain");
+  });
+
+  it("reverse-geocode GPS đúng một lần dù flyTo không còn phát moveend", async () => {
+    const geolocation = installGeolocationMock();
+    const renderer: MapRenderer = { flyTo: vi.fn(), destroy: vi.fn() };
+    mockCreateMapRenderer.mockResolvedValue(renderer);
+    mockReverseGeocode.mockResolvedValue({
+      address: "Địa chỉ GPS",
+      lat: 10.993,
+      lng: 106.663,
+    });
+    render(<MapPicker onConfirm={vi.fn()} onClose={vi.fn()} />);
+    await waitFor(() => expect(geolocation.getSuccess()).toBeTypeOf("function"));
+
+    act(() => {
+      geolocation.getSuccess()?.({
+        coords: {
+          accuracy: 5,
+          altitude: null,
+          altitudeAccuracy: null,
+          heading: null,
+          latitude: 10.993,
+          longitude: 106.663,
+          speed: null,
+          toJSON: () => ({}),
+        },
+        timestamp: Date.now(),
+        toJSON: () => ({}),
+      });
+    });
+
+    await waitFor(() => {
+      expect(mockReverseGeocode).toHaveBeenCalledOnce();
+      expect(mockReverseGeocode).toHaveBeenCalledWith(10.993, 106.663);
+    });
+  });
 });

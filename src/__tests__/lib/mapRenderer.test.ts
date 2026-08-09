@@ -1,6 +1,7 @@
 import type { ErrorEvent, Map as MapLibreMap } from "maplibre-gl";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  bindUserDragMoveEnd,
   configureMapLibreWorker,
   createGoongTileTransform,
   scheduleMapResize,
@@ -130,5 +131,38 @@ describe("Map renderer — worker module", () => {
     expect(setWorkerUrl).toHaveBeenCalledWith(
       "/vendor/maplibre/maplibre-gl-worker.mjs",
     );
+  });
+});
+
+describe("Map renderer — kéo bản đồ bằng tay", () => {
+  it("chỉ báo vị trí sau dragstart rồi moveend và không lặp lại do moveend nội bộ", () => {
+    const listeners = new Map<string, () => void>();
+    const on = vi.fn((event: string, listener: () => void) => {
+      listeners.set(event, listener);
+    });
+    const off = vi.fn((event: string) => {
+      listeners.delete(event);
+    });
+    const getCenter = vi.fn(() => ({ lat: 10.99, lng: 106.66 }));
+    const onMoveEnd = vi.fn();
+
+    const cleanupDrag = bindUserDragMoveEnd(
+      { getCenter, on, off } as unknown as MapLibreMap,
+      onMoveEnd,
+    );
+
+    listeners.get("moveend")?.();
+    expect(onMoveEnd).not.toHaveBeenCalled();
+
+    listeners.get("dragstart")?.();
+    listeners.get("moveend")?.();
+    listeners.get("moveend")?.();
+
+    expect(onMoveEnd).toHaveBeenCalledOnce();
+    expect(onMoveEnd).toHaveBeenCalledWith({ lat: 10.99, lng: 106.66 });
+
+    cleanupDrag();
+    expect(off).toHaveBeenCalledWith("dragstart", expect.any(Function));
+    expect(off).toHaveBeenCalledWith("moveend", expect.any(Function));
   });
 });
