@@ -9,6 +9,28 @@ export type OrderStatus =
 /** How the order was placed. */
 export type OrderType = "COUNTER" | "PICKUP" | "DELIVERY";
 
+/** How an order is paid. */
+export type PaymentMethod = "CASH" | "BANK_TRANSFER";
+
+/** Public order snapshot returned by staff create/detail/status APIs. */
+export interface StaffOrderResult {
+  id: string;
+  status: OrderStatus;
+  order_type: OrderType;
+  payment_method: PaymentMethod;
+  order_code: string | null;
+  auto_cancel_at: string | null;
+  payment_qr_url: string | null;
+  subtotal_vnd: number;
+  total_voucher_discount_vnd: number;
+  total_vnd: number;
+  shipping_fee_vnd: number;
+  freeship_discount_vnd: number;
+  grand_total_vnd: number;
+  points_earned: number | null;
+  skipped_vouchers: string[];
+}
+
 /** A single addon on an order item as returned by the tracking API. */
 export interface OrderItemAddonDetail {
   unit_price_vnd: number;
@@ -40,10 +62,11 @@ export interface OrderItemDetail {
 /** Full customer order detail returned by GET /api/orders/[id]. */
 export interface CustomerOrderDetail {
   id: string;
-  /** e.g. "BCBM-A3X7K2". Null for COUNTER orders. */
+  /** e.g. "BCBM-A3X7K2". Null for cash orders. */
   order_code: string | null;
   status: OrderStatus;
   order_type: OrderType;
+  payment_method?: PaymentMethod;
   subtotal_vnd: number;
   total_voucher_discount_vnd: number;
   total_vnd: number;
@@ -51,7 +74,7 @@ export interface CustomerOrderDetail {
   freeship_discount_vnd: number;
   grand_total_vnd: number;
   pickup_time: string | null;
-  /** ISO datetime of auto-cancel deadline. Null for COUNTER orders. */
+  /** ISO datetime of auto-cancel deadline. Null for cash orders. */
   auto_cancel_at: string | null;
   /** VietQR payment image URL. Only present when status = PENDING. */
   payment_qr_url: string | null;
@@ -74,6 +97,7 @@ export interface CreateOrderResult {
   order_code: string;
   status: OrderStatus;
   order_type: OrderType;
+  payment_method: PaymentMethod;
   subtotal_vnd: number;
   total_voucher_discount_vnd: number;
   total_vnd: number;
@@ -101,6 +125,7 @@ export interface CustomerHistoryOrder {
   order_code: string | null;
   status: OrderStatus;
   order_type: OrderType;
+  payment_method?: PaymentMethod;
   total_vnd: number;
   shipping_fee_vnd: number;
   freeship_discount_vnd: number;

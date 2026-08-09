@@ -7,13 +7,13 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
-  Copy,
   Fish,
   XCircle,
 } from "lucide-react";
 import { CountdownTimer } from "@/src/components/customer/CountdownTimer";
 import { OrderHistoryItems } from "@/src/components/customer/OrderHistoryItems";
 import { OrderProgressBar } from "@/src/components/shared/OrderProgressBar";
+import { PaymentQrPanel } from "@/src/components/shared/PaymentQrPanel";
 import type {
   CustomerHistoryOrder,
   CustomerHistoryOrderItem,
@@ -40,19 +40,11 @@ export function OrderHistoryCard({
   onReorder,
 }: OrderHistoryCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
   const isPending = order.status === "PENDING";
   const isCompleted = order.status === "COMPLETED";
   const isCancelled = order.status === "CANCELLED";
   const isTerminal = isCompleted || isCancelled;
   const itemCount = order.items.reduce((total, item) => total + item.quantity, 0);
-
-  const copyOrderCode = async (): Promise<void> => {
-    if (!order.order_code) return;
-    await navigator.clipboard.writeText(order.order_code);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
-  };
 
   return (
     <article
@@ -82,34 +74,13 @@ export function OrderHistoryCard({
         )}
 
         {isPending && order.payment_qr_url && (
-          <div className="space-y-3 rounded-xl border border-border/50 bg-secondary/10 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs font-semibold">Quét QR thanh toán</p>
-              {order.order_code && (
-                <motion.button
-                  type="button"
-                  whileTap={{ scale: 0.92 }}
-                  transition={{ duration: 0.18 }}
-                  onClick={() => void copyOrderCode()}
-                  className="flex min-h-11 items-center gap-1 rounded-lg border bg-background px-3 text-[11px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {copied ? <CheckCircle2 className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
-                  {copied ? "Đã chép" : "Chép mã"}
-                </motion.button>
-              )}
-            </div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={order.payment_qr_url}
-              alt={`QR thanh toán ${order.order_code ?? "đơn hàng"}`}
-              width={160}
-              height={160}
-              className="mx-auto h-40 w-40 rounded-xl border bg-white object-contain"
+          order.order_code && (
+            <PaymentQrPanel
+              qrUrl={order.payment_qr_url}
+              orderCode={order.order_code}
+              amountVnd={order.grand_total_vnd}
             />
-            <p className="text-center text-[11px] text-amber-800">
-              Nhập đúng mã đơn <strong className="font-mono">{order.order_code}</strong> vào lời nhắn.
-            </p>
-          </div>
+          )
         )}
 
         {!isTerminal && <OrderProgressBar status={order.status} />}

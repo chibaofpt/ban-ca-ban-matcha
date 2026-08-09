@@ -12,6 +12,8 @@ import { apiClient } from "@/src/lib/api/client";
 import {
   searchCustomers,
   createStaffOrder,
+  getStaffOrder,
+  updateStaffOrderStatus,
   scanQrToken,
 } from "@/src/services/staffOrderService";
 
@@ -130,6 +132,85 @@ describe("createStaffOrder", () => {
     const sent = vi.mocked(apiClient.post).mock.calls[0][1] as typeof payload;
     expect(sent.items[0].selected_powder_id).toBe("powder-abc");
     expect(sent.items[0].selected_milk_type_id).toBe("milk-xyz");
+  });
+
+  it("forward BANK_TRANSFER và trả data đơn thay vì bỏ response", async () => {
+    const order = {
+      id: "order-payment-1",
+      status: "PENDING" as const,
+      order_type: "COUNTER" as const,
+      payment_method: "BANK_TRANSFER" as const,
+      order_code: "BCBM-PAY001",
+      auto_cancel_at: "2026-08-09T10:20:00.000Z",
+      payment_qr_url: "https://img.vietqr.io/payment.jpg",
+      subtotal_vnd: 69_000,
+      total_voucher_discount_vnd: 0,
+      total_vnd: 69_000,
+      shipping_fee_vnd: 0,
+      freeship_discount_vnd: 0,
+      grand_total_vnd: 69_000,
+      points_earned: null,
+      skipped_vouchers: [],
+    };
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: order } });
+    const payload = {
+      payment_method: "BANK_TRANSFER" as const,
+      items: [
+        {
+          menu_item_id: "item-1",
+          quantity: 1,
+          size: "MEDIUM" as const,
+          sweetness: "FULL" as const,
+          ice_option: "NORMAL" as const,
+          coldwhisk: false,
+          addon_option_ids: [],
+          client_price_vnd: 69_000,
+        },
+      ],
+    };
+
+    const result = await createStaffOrder(payload);
+
+    expect(apiClient.post).toHaveBeenCalledWith("/api/staff/orders", payload);
+    expect(result).toEqual(order);
+  });
+});
+
+describe("quản lý giao dịch chuyển khoản tại quầy", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("lấy lại chi tiết đơn đang chờ theo endpoint service", async () => {
+    const order = { id: "order-payment-1", status: "PENDING" };
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { data: order } });
+
+    const result = await getStaffOrder("order-payment-1");
+
+    expect(apiClient.get).toHaveBeenCalledWith("/api/staff/orders/order-payment-1");
+    expect(result).toEqual(order);
+  });
+
+  it("xác nhận thanh toán bằng transition COMPLETED hiện có", async () => {
+    const order = { id: "order-payment-1", status: "COMPLETED" };
+    vi.mocked(apiClient.patch).mockResolvedValueOnce({ data: { data: order } });
+
+    const result = await updateStaffOrderStatus("order-payment-1", "COMPLETED");
+
+    expect(apiClient.patch).toHaveBeenCalledWith("/api/staff/orders/order-payment-1", {
+      status: "COMPLETED",
+    });
+    expect(result).toEqual(order);
+  });
+
+  it("huỷ giao dịch bằng transition CANCELLED hiện có", async () => {
+    vi.mocked(apiClient.patch).mockResolvedValueOnce({
+      data: { data: { id: "order-payment-1", status: "CANCELLED" } },
+    });
+
+    await updateStaffOrderStatus("order-payment-1", "CANCELLED");
+
+    expect(apiClient.patch).toHaveBeenCalledWith("/api/staff/orders/order-payment-1", {
+      status: "CANCELLED",
+    });
   });
 });
 

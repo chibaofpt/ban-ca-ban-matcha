@@ -129,6 +129,7 @@ export async function createCustomerOrder(
         order_code: order.order_code,
         status: order.status,
         order_type: order.order_type,
+        payment_method: order.payment_method,
         subtotal_vnd: order.subtotal_vnd,
         total_voucher_discount_vnd: order.total_voucher_discount_vnd,
         total_vnd: order.total_vnd,

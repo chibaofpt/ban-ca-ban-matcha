@@ -8,6 +8,8 @@ import { fetchAdminOrders, confirmPayment, adminCancelOrder, type AdminOrderRes 
 import { apiClient } from "@/src/lib/api/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
+import { PaymentMethodBadge } from "@/src/components/shared/PaymentMethodBadge";
+import { resolveOrderPaymentMethod } from "@/src/lib/utils/counterTransferOrder";
 import { OrderTabs, type OrderTabKey } from "@/src/components/staff/OrderTabs";
 import { toast } from "sonner";
 import { CountdownTimer } from "@/src/components/customer/CountdownTimer";
@@ -169,7 +171,8 @@ export default function AdminOrdersPage() {
   };
 
   const confirmPaymentMutation = useMutation({
-    mutationFn: confirmPayment,
+    mutationFn: (order: AdminOrderRes) =>
+      confirmPayment(order.id, order.order_type, order.payment_method),
     onSuccess: () => {
       toast.success("Xác nhận thanh toán thành công");
       refetch();
@@ -180,7 +183,7 @@ export default function AdminOrdersPage() {
     },
   });
 
-  const handleConfirmPayment = (e: React.MouseEvent, orderId: string) => {
+  const handleConfirmPayment = (e: React.MouseEvent, order: AdminOrderRes) => {
     e.stopPropagation();
     setConfirmModal({
       isOpen: true,
@@ -189,7 +192,7 @@ export default function AdminOrdersPage() {
       isDestructive: false,
       onConfirm: async () => {
         setConfirmModal((s) => ({ ...s, isOpen: false }));
-        confirmPaymentMutation.mutate(orderId);
+        confirmPaymentMutation.mutate(order);
       },
     });
   };
@@ -228,7 +231,7 @@ export default function AdminOrdersPage() {
       return (
         <div className="flex flex-col items-end gap-2 mt-2">
           <button
-            onClick={(e) => handleConfirmPayment(e, order.id)}
+            onClick={(e) => handleConfirmPayment(e, order)}
             className="flex items-center justify-center gap-1.5 px-3 py-2 w-full rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
           >
             <CheckCircle2 size={14} />
@@ -376,6 +379,9 @@ export default function AdminOrdersPage() {
                           Nhận lúc: {formatTimeOnly(order.pickup_time)}
                         </span>
                       )}
+                      <PaymentMethodBadge
+                        method={resolveOrderPaymentMethod(order.order_type, order.payment_method)}
+                      />
                     </div>
                     <div className="text-xs text-muted-foreground whitespace-nowrap">
                       <Clock size={12} className="inline mr-1" />

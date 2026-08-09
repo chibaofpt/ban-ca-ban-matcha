@@ -1,5 +1,5 @@
 import { apiClient } from '@/src/lib/api/client';
-import type { OrderStatus, OrderType } from '@/src/lib/types/order';
+import type { OrderStatus, OrderType, PaymentMethod } from '@/src/lib/types/order';
 
 export interface OrderItemRes {
   menuItem: { name: string; category: string };
@@ -37,10 +37,13 @@ export interface OrderRes {
   id: string;
   status: OrderStatus;
   order_type: OrderType;
-  /** Human-readable code for bank transfer. Null for COUNTER orders. */
+  payment_method?: PaymentMethod;
+  /** Human-readable bank-transfer reference. Null for cash orders. */
   order_code: string | null;
-  /** Auto-cancel deadline (ISO string). Null for COUNTER orders. */
+  /** Auto-cancel deadline (ISO string). Null for cash orders. */
   auto_cancel_at: string | null;
+  /** VietQR image for pending bank transfers only. */
+  payment_qr_url?: string | null;
   pickup_time: string | null;
   subtotal_vnd: number;
   total_voucher_discount_vnd: number;
@@ -64,7 +67,7 @@ export interface OrderRes {
 export interface FetchOrdersListParams {
   /** Comma-separated: "COUNTER", "PICKUP", "DELIVERY" */
   order_type?: string;
-  /** Single status: "PENDING" — admin only, for "Chờ CK" tab */
+  /** Single status. Staff PENDING scope is limited server-side to their own counter transfers. */
   status?: string;
   page?: number;
   limit?: number;

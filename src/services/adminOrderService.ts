@@ -1,5 +1,11 @@
 import { apiClient } from '@/src/lib/api/client';
 import type { OrderRes } from './staffOrdersListService';
+import type { OrderType, PaymentMethod } from '@/src/lib/types/order';
+
+const ORDER_URLS = {
+  staffById: (orderId: string) => `/api/staff/orders/${orderId}`,
+  confirmPayment: (orderId: string) => `/api/admin/orders/${orderId}/confirm-payment`,
+} as const;
 
 export interface AdminOrderRes extends OrderRes {
   handler: { name: string } | null;
@@ -43,12 +49,20 @@ export async function fetchAdminOrders(filters: AdminOrderFilters = {}): Promise
   return res.data;
 }
 
-/** Admin xác nhận thanh toán chuyển khoản cho một customer PICKUP order. */
-export async function confirmPayment(orderId: string): Promise<void> {
-  await apiClient.patch(`/api/admin/orders/${orderId}/confirm-payment`);
+/** Admin confirms online payment or completes a pending counter bank transfer. */
+export async function confirmPayment(
+  orderId: string,
+  orderType?: OrderType,
+  paymentMethod?: PaymentMethod,
+): Promise<void> {
+  if (orderType === "COUNTER" && paymentMethod === "BANK_TRANSFER") {
+    await apiClient.patch(ORDER_URLS.staffById(orderId), { status: "COMPLETED" });
+    return;
+  }
+  await apiClient.patch(ORDER_URLS.confirmPayment(orderId));
 }
 
 /** Admin huỷ một đơn hàng (bất kỳ trạng thái nào trừ COMPLETED). */
 export async function adminCancelOrder(orderId: string): Promise<void> {
-  await apiClient.patch(`/api/staff/orders/${orderId}`, { status: 'CANCELLED' });
+  await apiClient.patch(ORDER_URLS.staffById(orderId), { status: 'CANCELLED' });
 }

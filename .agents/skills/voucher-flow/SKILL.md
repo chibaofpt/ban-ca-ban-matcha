@@ -77,7 +77,9 @@ RESERVED → REDEEMED at ADMIN_CONFIRMED
 RESERVED/REDEEMED → ACTIVE when order CANCELLED (if expires_at > now)
 RESERVED/REDEEMED → EXPIRED when order CANCELLED (if expires_at <= now)
 
-ACTIVE → REDEEMED + used_channel = OFFLINE       (counter or staff offline scan)
+ACTIVE → REDEEMED + used_channel = OFFLINE       (counter CASH or staff offline scan)
+ACTIVE → RESERVED                                (counter BANK_TRANSFER creation)
+RESERVED → REDEEMED + used_channel = OFFLINE     (counter transfer confirmation)
 ACTIVE → REFUNDED                                (auto: target item soft-deleted)
 ```
 
@@ -85,8 +87,10 @@ ACTIVE → REFUNDED                                (auto: target item soft-delet
 - Redeem online vouchers exactly once at `ADMIN_CONFIRMED` with `used_channel = ONLINE`.
 - Do not perform another voucher status transition at `COMPLETED`.
 - At `COMPLETED`, award order points and aggregate PRODUCT surplus in the same transaction.
-- For COUNTER, create as `COMPLETED`, redeem applied vouchers as `OFFLINE`, and award order
+- For COUNTER CASH, create as `COMPLETED`, redeem applied vouchers as `OFFLINE`, and award order
   and surplus points in the creation transaction.
+- For COUNTER BANK_TRANSFER, create as `PENDING`, reserve applied vouchers, then redeem as
+  `OFFLINE` and award points only when the creator Staff or an Admin confirms payment.
 
 ### Expiry
 
@@ -126,7 +130,8 @@ surplus_points = floor(order_surplus_vnd / 10000)
 
 Award **one** aggregate `voucher_surplus` points entry per order:
 - For ONLINE orders: at `COMPLETED` transition in `staff/orders/[id]` route.
-- For COUNTER orders: in the creation transaction (`POST /api/staff/orders`).
+- For COUNTER CASH: in the creation transaction (`POST /api/staff/orders`).
+- For COUNTER BANK_TRANSFER: at direct `COMPLETED` payment confirmation.
 
 ```ts
 // Single log row — never per-item

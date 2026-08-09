@@ -10,8 +10,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
 import { OrderTabs, type OrderTabKey } from "@/src/components/staff/OrderTabs";
 import { OrderProgressBar } from "@/src/components/shared/OrderProgressBar";
+import { PaymentMethodBadge } from "@/src/components/shared/PaymentMethodBadge";
+import { CounterTransferOrderAction } from "@/src/components/staff/CounterTransferOrderAction";
 import { DailyReportModal } from "@/src/components/report/DailyReportModal";
 import { toast } from "sonner";
+import { updateStaffOrderStatus } from "@/src/services/staffOrderService";
+import { resolveOrderPaymentMethod } from "@/src/lib/utils/counterTransferOrder";
+import { useCounterTransferListAction } from "@/src/lib/hooks/useCounterTransferPayment";
 
 const formatDateTime = (iso: string): string => {
   const d = new Date(iso);
@@ -69,20 +74,19 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
 
   // Background polling cho pendingCount
   const fetchPendingCountAPI = useCallback(async () => {
-    if (userRole !== "ADMIN") return null;
     try {
       const res = await fetchOrdersList({ status: "PENDING", limit: 1 });
       return res;
     } catch {
       return null;
     }
-  }, [userRole]);
+  }, []);
 
   const { data: pendingRes } = useQuery({
     queryKey: ["staff", "orders", "pending-count"],
     queryFn: fetchPendingCountAPI,
     refetchInterval: 20000,
-    enabled: userRole === "ADMIN",
+    enabled: true,
   });
 
   const pendingCount = pendingRes?.meta?.total || 0;
@@ -111,7 +115,27 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
     updateStatusMutation.mutate({ orderId, newStatus });
   };
 
+  const transferAction = useCounterTransferListAction({
+    updateStatus: updateStaffOrderStatus,
+    onChanged: refetch,
+  });
+
   const renderActionButtons = (order: OrderRes) => {
+    if (
+      order.status === "PENDING" &&
+      order.order_type === "COUNTER" &&
+      order.payment_method === "BANK_TRANSFER"
+    ) {
+      return (
+        <CounterTransferOrderAction
+          order={order}
+          isProcessing={transferAction.isProcessing}
+          onConfirm={transferAction.confirm}
+          onCancel={transferAction.cancel}
+          onUnavailable={() => toast.error("Không thể tải QR thanh toán cho đơn này")}
+        />
+      );
+    }
     if (order.status === "ADMIN_CONFIRMED") {
       return (
         <button
@@ -223,6 +247,9 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
                           Nhận lúc: {formatTimeOnly(order.pickup_time)}
                         </span>
                       )}
+                      <PaymentMethodBadge
+                        method={resolveOrderPaymentMethod(order.order_type, order.payment_method)}
+                      />
                     </div>
                     <div className="text-xs text-muted-foreground whitespace-nowrap">
                       <Clock size={12} className="inline mr-1" />

@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import type { OrderStatus, OrderType, Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 import { toPublicOrderDto } from "@/lib/orderPublicDto";
 import { redeemOrderVouchers, VoucherRedeemError } from "@/lib/redeemVouchers";
+import { validateStaffOrderTransition } from "@/lib/staffOrderTransition";
+import {
+  assertCounterTransferOwnership,
+  getAuthorizedStaffPaymentOrder,
+  getPendingPaymentQrUrl,
+  isPendingCounterTransfer,
+  redeemCounterTransferVouchers,
+  StaffPaymentAccessError,
+} from "@/lib/staffOrderPayment";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -13,57 +22,28 @@ const orderStatusPatchSchema = z.object({
   status: z.enum(["ADMIN_CONFIRMED", "STAFF_DONE", "COMPLETED", "CANCELLED"]),
 });
 
-/**
- * Validates a status transition given the caller's role and order type.
- * Returns an error string if invalid, null if allowed.
- */
-function validateTransition(
-  currentStatus: OrderStatus,
-  newStatus: OrderStatus,
-  role: "STAFF" | "ADMIN",
-  orderType: OrderType
-): string | null {
-  switch (newStatus) {
-    case "ADMIN_CONFIRMED":
-      // Only admin can confirm payment, and only from PENDING
-      if (role !== "ADMIN") return "Only ADMIN can confirm payment";
-      if (currentStatus !== "PENDING") return "Can only confirm payment for PENDING orders";
-      return null;
-
-    case "STAFF_DONE":
-      // Staff or admin can mark done, but only from ADMIN_CONFIRMED
-      if (currentStatus === "COMPLETED" || currentStatus === "CANCELLED") {
-        return `Order is already ${currentStatus} — no further transitions allowed`;
-      }
-      if (currentStatus !== "ADMIN_CONFIRMED") {
-        return "Order must be ADMIN_CONFIRMED before marking as STAFF_DONE";
-      }
-      return null;
-
-    case "COMPLETED":
-      // Staff or admin can complete, but only from STAFF_DONE
-      if (currentStatus === "COMPLETED" || currentStatus === "CANCELLED") {
-        return `Order is already ${currentStatus} — no further transitions allowed`;
-      }
-      if (currentStatus !== "STAFF_DONE") {
-        return "Order must be STAFF_DONE before completing — cannot skip steps";
-      }
-      return null;
-
-    case "CANCELLED":
-      // Only ADMIN can cancel — staff is never allowed
-      if (role !== "ADMIN") return "Only ADMIN can cancel orders";
-      // Already cancelled — no-op
-      if (currentStatus === "CANCELLED") return "Order is already CANCELLED";
-      // COMPLETED online orders cannot be cancelled
-      if (currentStatus === "COMPLETED" && orderType !== "COUNTER") {
-        return "Completed online orders cannot be cancelled";
-      }
-      // Allow: COMPLETED+COUNTER (staff mistake), PENDING, ADMIN_CONFIRMED, STAFF_DONE
-      return null;
-
-    default:
-      return `Invalid target status: ${newStatus}`;
+/** GET /api/staff/orders/[id] — recover one authorized counter payment. */
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await getSession();
+  if (!session || !["STAFF", "ADMIN"].includes(session.role)) {
+    return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
+  }
+  try {
+    const { id } = await params;
+    return NextResponse.json({ data: await getAuthorizedStaffPaymentOrder(id, session) });
+  } catch (error) {
+    if (error instanceof StaffPaymentAccessError) {
+      const status = error.code === "NOT_FOUND" ? 404 : 403;
+      return NextResponse.json({ error: error.message, code: error.code }, { status });
+    }
+    console.error("[GET /api/staff/orders/[id]]", error);
+    return NextResponse.json(
+      { error: "Internal server error", code: "INTERNAL_ERROR" },
+      { status: 500 },
+    );
   }
 }
 
@@ -103,17 +83,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
       if (!order) throw new Error("NOT_FOUND");
 
+      const isPendingTransfer = isPendingCounterTransfer(order);
+      assertCounterTransferOwnership(order, session);
+
       // Validate transition rules (includes orderType for cancel logic)
-      const transitionError = validateTransition(
+      const transitionError = validateStaffOrderTransition(
         order.status,
         status,
         session.role as "STAFF" | "ADMIN",
-        order.order_type
+        order.order_type,
+        order.payment_method,
       );
       if (transitionError) throw Object.assign(new Error(transitionError), { code: "INVALID_TRANSITION" });
 
       if (
-        status === "ADMIN_CONFIRMED" &&
+        (status === "ADMIN_CONFIRMED" ||
+          (status === "COMPLETED" && isPendingTransfer)) &&
         order.auto_cancel_at !== null &&
         order.auto_cancel_at <= new Date()
       ) {
@@ -130,7 +115,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
       const claim = await tx.order.updateMany({
         where:
-          status === "ADMIN_CONFIRMED"
+          status === "ADMIN_CONFIRMED" ||
+          (status === "COMPLETED" && isPendingTransfer)
             ? {
                 id,
                 status: order.status,
@@ -170,6 +156,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         dataToUpdate.payment_confirmed_by = session.id;
 
         // NOTE: No points at ADMIN_CONFIRMED — only at COMPLETED.
+      }
+
+      // ── COUNTER TRANSFER COMPLETED: receive payment, then redeem OFFLINE ──
+      if (status === "COMPLETED" && isPendingTransfer) {
+        await redeemCounterTransferVouchers(tx, order, session.id);
+        dataToUpdate.payment_confirmed_at = new Date();
+        dataToUpdate.payment_confirmed_by = session.id;
       }
 
       // ── COMPLETED: award points + surplus ──
@@ -257,7 +250,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return result;
     }, { maxWait: 5000, timeout: 10000 });
 
-    return NextResponse.json({ data: toPublicOrderDto(updatedOrder) });
+    return NextResponse.json({
+      data: {
+        ...toPublicOrderDto(updatedOrder),
+        payment_qr_url: getPendingPaymentQrUrl(updatedOrder),
+        skipped_vouchers: [],
+      },
+    });
 
   } catch (err: unknown) {
     if (err instanceof Error) {
@@ -267,6 +266,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const code = (err as Error & { code?: string }).code;
       if (code === "INVALID_TRANSITION") {
         return NextResponse.json({ error: err.message, code: "INVALID_TRANSITION" }, { status: 400 });
+      }
+      if (code === "FORBIDDEN") {
+        return NextResponse.json({ error: err.message, code: "FORBIDDEN" }, { status: 403 });
       }
       if (code === "ORDER_EXPIRED") {
         return NextResponse.json({ error: err.message, code: "ORDER_EXPIRED" }, { status: 422 });

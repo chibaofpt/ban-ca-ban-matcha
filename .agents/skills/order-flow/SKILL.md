@@ -39,7 +39,8 @@ description: >
 
 | Type | Creator | Initial Status | order_code | auto_cancel_at | Store Check |
 |---|---|---|---|---|---|
-| `COUNTER` | Staff | `COMPLETED` | NULL | NULL | ❌ Bypass |
+| `COUNTER` + CASH | Staff | `COMPLETED` | NULL | NULL | ❌ Bypass |
+| `COUNTER` + BANK_TRANSFER | Staff | `PENDING` | Generated | +20 min | ❌ Bypass |
 | `PICKUP` | Customer | `PENDING` | Generated | +20 min | ✅ Required |
 | `DELIVERY` | Customer | `PENDING` | Generated | +20 min | ✅ Required |
 
@@ -51,7 +52,9 @@ description: >
 Customer orders:  PENDING → ADMIN_CONFIRMED → STAFF_DONE → COMPLETED
                   PENDING → CANCELLED (auto or manual)
 
-Counter orders:   COMPLETED (immediate — no intermediate states)
+Counter CASH:     COMPLETED (immediate — no intermediate states)
+Counter transfer: PENDING → COMPLETED (creator Staff or any Admin confirms payment)
+                  PENDING → CANCELLED (manual or auto-expiry)
 ```
 
 - `PENDING → ADMIN_CONFIRMED`: Admin confirms VietQR payment received.
@@ -87,9 +90,12 @@ Counter orders:   COMPLETED (immediate — no intermediate states)
    - h. Compute gross `subtotal_vnd`, merchandise-only `total_vnd`, shipping,
      `freeship_discount_vnd`, and payable `grand_total_vnd`
    - i. Create `order` + `order_items` + `order_item_addons`
-   - j. For PICKUP/DELIVERY: generate `order_code`, set `auto_cancel_at` (+20 min)
-   - k. For COUNTER: set status = `COMPLETED`, redeem applied vouchers and award order plus
+   - j. For PICKUP/DELIVERY and COUNTER BANK_TRANSFER: generate `order_code`, set
+     `auto_cancel_at` (+20 min)
+   - k. For COUNTER CASH: set status = `COMPLETED`, redeem applied vouchers and award order plus
      aggregate surplus points immediately in the same transaction
+   - l. For COUNTER BANK_TRANSFER: set status = `PENDING`, reserve applied vouchers, and defer
+     all points until the direct `COMPLETED` payment-confirmation transition
 5. **Return**: order with payment QR URL (customer) or completed order (staff)
 
 ---
@@ -101,7 +107,8 @@ Counter orders:   COMPLETED (immediate — no intermediate states)
 - PRODUCT surplus is summed in VND across the entire order, then converted once with
   `floor(order_surplus_vnd / 10000)` at `COMPLETED`.
 - Points log created in **same transaction** as status change.
-- Staff COUNTER orders: points awarded at creation (already COMPLETED).
+- Staff COUNTER CASH orders: points awarded at creation (already COMPLETED).
+- Staff COUNTER BANK_TRANSFER orders: points awarded only on payment confirmation to COMPLETED.
 - Anonymous orders: `points_earned = 0`, no `points_log` entry.
 
 ## Shared Order Calculator
@@ -120,7 +127,7 @@ Counter orders:   COMPLETED (immediate — no intermediate states)
 
 ## Auto-Cancel
 
-- PENDING customer orders have `auto_cancel_at` = `created_at + 20 minutes`.
+- PENDING customer and COUNTER BANK_TRANSFER orders have `auto_cancel_at` = `created_at + 20 minutes`.
 - Checked **lazily** on read (when fetching order details) AND **actively** via Vercel Cron.
 - Cron endpoint: `GET /api/cron/cancel-expired-orders`.
 - On cancel: revert voucher status from `RESERVED` → `ACTIVE` (see `voucher-flow` skill).

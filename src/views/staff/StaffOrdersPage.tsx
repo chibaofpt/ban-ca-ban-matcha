@@ -20,10 +20,12 @@ import { StaffProductGrid } from "@/src/components/staff/StaffProductGrid";
 import { QRScannerModal } from "@/src/components/staff/QRScannerModal";
 import { VoucherQRVerifyModal } from "@/src/components/staff/VoucherQRVerifyModal";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
+import { CounterTransferPaymentModal } from "@/src/components/staff/CounterTransferPaymentModal";
 import * as staffOrderService from "@/src/services/staffOrderService";
 import type { CreateStaffOrderPayload } from "@/src/services/staffOrderService";
 import type { MenuItem } from "@/src/lib/types/menu";
 import type { CartItem } from "@/src/lib/types/cart";
+import { useStaffCounterCheckoutPayment } from "@/src/lib/hooks/useCounterTransferPayment";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -324,10 +326,20 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     toast.success("Đã tạo đơn hàng thành công!");
   };
 
+  const counterPayment = useStaffCounterCheckoutPayment({
+    getOrder: staffOrderService.getStaffOrder,
+    updateStatus: staffOrderService.updateStaffOrderStatus,
+    onCheckoutCompleted: handleSuccess,
+    onOrdersChanged: () => {
+      queryClient.invalidateQueries({ queryKey: ["staff", "orders"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
+    },
+  });
+
   // ── Checkout flow ─────────────────────────────────────────────────────
 
   const handleCheckoutClick = () => {
-    if (cart.length === 0) return;
+    if (cart.length === 0 || counterPayment.pendingPayment) return;
 
     if (hasAnyVoucher && customerInfo?.type === "existing") {
       if (userRole === "ADMIN") {
@@ -342,8 +354,8 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
 
   const createOrderMutation = useMutation({
     mutationFn: staffOrderService.createStaffOrder,
-    onSuccess: () => {
-      handleSuccess();
+    onSuccess: (order) => {
+      counterPayment.handleOrderCreated(order);
       queryClient.invalidateQueries({ queryKey: ["staff", "orders"] });
       queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
     },
@@ -377,10 +389,11 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     ]));
 
     if (!customerInfo) {
-      payload = { items };
+      payload = { items, payment_method: counterPayment.paymentMethod };
     } else if (customerInfo.type === "existing") {
       payload = {
         phone_number: customerInfo.data.phone_number,
+        payment_method: counterPayment.paymentMethod,
         items,
         ...(discountVoucherIds.length > 0 ? { discount_voucher_ids: discountVoucherIds } : {}),
         ...(customerQrToken ? { customer_qr_token: customerQrToken } : {}),
@@ -389,6 +402,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
       payload = {
         phone_number: customerInfo.phone_number,
         customer_name: customerInfo.name,
+        payment_method: counterPayment.paymentMethod,
         items,
       };
     }
@@ -576,11 +590,14 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         discountVoucher={discountVoucher}
         customerInfo={customerInfo}
         isSubmitting={isSubmitting}
+        paymentMethod={counterPayment.paymentMethod}
+        isCheckoutLocked={counterPayment.pendingPayment !== null}
         onClose={() => setCartOpen(false)}
         onRemove={handleRemove}
         onEditItem={handleEditItem}
         onChangeQuantity={handleChangeQuantity}
         onCheckout={handleCheckoutClick}
+        onPaymentMethodChange={counterPayment.setPaymentMethod}
         onOpenCustomerSelect={() => setCustomerSelectOpen(true)}
         onClearCustomer={() => {
           setCustomerVouchers([]);
@@ -592,7 +609,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         availableVoucherPackages={availableVoucherPackages}
         onExchangeVoucher={handleExchangeVoucher}
         isExchanging={exchangeMutation.isPending}
-        preventCloseOutside={customerSelectOpen || confirmCheckoutOpen || qrVerifyOpen || !!itemToRemove || clearCartConfirmOpen}
+        preventCloseOutside={customerSelectOpen || confirmCheckoutOpen || qrVerifyOpen || !!itemToRemove || clearCartConfirmOpen || counterPayment.pendingPayment !== null}
         onApplyProduct={handleApplyProduct}
         onRemoveProduct={removeProductVoucher}
         onApplyAddon={handleApplyAddon}
@@ -621,6 +638,13 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
             />
           )
         }
+      />
+
+      <CounterTransferPaymentModal
+        payment={counterPayment.pendingPayment}
+        isProcessing={counterPayment.isProcessing}
+        onConfirm={counterPayment.confirm}
+        onCancel={counterPayment.cancel}
       />
 
       {/* ProductModal for adding a NEW item (rendered outside the drawer) */}

@@ -173,6 +173,24 @@ describe("GET /api/staff/orders — lọc đơn CANCELLED ra khỏi tab thông t
     expect(body.code).toBe("FORBIDDEN");
   });
 
+  it("Staff xem Chờ CK chỉ nhận COUNTER BANK_TRANSFER do mình tạo", async () => {
+    mockGetSession.mockResolvedValue(staffSession);
+    mockTransaction.mockImplementation(async (operations: Array<Promise<unknown>>) =>
+      Promise.all(operations),
+    );
+
+    const res = await GET(makeReq({ status: "PENDING" }));
+
+    expect(res.status).toBe(200);
+    const whereArg = mockOrderCount.mock.calls[0]?.[0]?.where;
+    expect(whereArg).toMatchObject({
+      status: "PENDING",
+      order_type: "COUNTER",
+      payment_method: "BANK_TRANSFER",
+      handled_by: "staff-id",
+    });
+  });
+
   it("trả 401 khi chưa đăng nhập", async () => {
     mockGetSession.mockResolvedValue(null);
 

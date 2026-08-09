@@ -282,7 +282,9 @@ model Order {
   status               OrderStatus @default(PENDING)
   /// COUNTER = staff-created at register; PICKUP = customer self-order pick-up; DELIVERY = future phase
   order_type           OrderType   @default(COUNTER)
-  /// Human-readable order code for bank transfer reference. Format: BCBM-XXXXXX. NULL for COUNTER orders.
+  /// How the order is paid. Customer online orders always use BANK_TRANSFER.
+  payment_method       PaymentMethod @default(CASH)
+  /// Human-readable order code for bank transfer reference. Format: BCBM-XXXXXX. NULL for cash orders.
   order_code           String?     @unique
   subtotal_vnd              Int
   total_voucher_discount_vnd Int         @default(0)
@@ -292,9 +294,9 @@ model Order {
   note                 String?
   /// Timestamp when admin confirmed customer bank transfer. NULL until confirmed.
   payment_confirmed_at DateTime?   @db.Timestamptz(6)
-  /// Admin user who confirmed the payment.
+  /// Admin or creating staff user who confirmed the bank transfer.
   payment_confirmed_by String?     @db.Uuid
-  /// Auto-cancel deadline for PENDING PICKUP/DELIVERY orders. NULL for COUNTER orders.
+  /// Auto-cancel deadline for pending bank transfers, including COUNTER orders. NULL for cash orders.
   auto_cancel_at       DateTime?   @db.Timestamptz(6)
   
   // -- DELIVERY FIELDS --
@@ -527,6 +529,11 @@ enum OrderType {
   PICKUP
   /// Customer self-order for delivery — Phase 5+.
   DELIVERY
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
 }
 
 enum AddonType {
