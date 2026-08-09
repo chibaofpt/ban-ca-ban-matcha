@@ -128,7 +128,7 @@ describe("Map renderer — worker module", () => {
 
     expect(setWorkerUrl).toHaveBeenCalledTimes(1);
     expect(setWorkerUrl).toHaveBeenCalledWith(
-      expect.stringMatching(/maplibre-gl-worker\.mjs$/),
+      "/vendor/maplibre/maplibre-gl-worker.mjs",
     );
   });
 });

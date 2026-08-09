@@ -254,6 +254,10 @@ scratch/                          # Ignored by Git. Scratchpad for quick server 
 public/
   data/
     menu.json                     # Static — replaced by /api/menu in Phase 2
+  vendor/maplibre/                # Generated worker + shared module; ignored and synced before dev/build
+
+scripts/
+  sync-maplibre-assets.mjs        # Copies version-matched MapLibre worker assets into public/vendor
 
 lib/                              # Backend only — server-side, NEVER import in src/
   prisma.ts

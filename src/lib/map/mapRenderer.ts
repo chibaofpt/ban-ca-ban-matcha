@@ -177,12 +177,7 @@ function classifyConstructorError(error: unknown): MapRendererFailureCategory {
 
 /** Configure MapLibre's separately emitted module worker before creating a map. */
 export function configureMapLibreWorker(setWorkerUrl: (url: string) => void): void {
-  setWorkerUrl(
-    new URL(
-      "maplibre-gl/dist/maplibre-gl-worker.mjs",
-      import.meta.url,
-    ).toString(),
-  );
+  setWorkerUrl("/vendor/maplibre/maplibre-gl-worker.mjs");
 }
 
 /** Lazily initialize the primary MapLibre renderer against Goong's style and tiles. */

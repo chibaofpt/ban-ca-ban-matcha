@@ -1,5 +1,5 @@
 {
-  "buildCommand": "prisma generate && prisma migrate deploy && next build --webpack",
+  "buildCommand": "npm run sync:maplibre-assets && prisma generate && prisma migrate deploy && next build",
   "crons": [
     {
       "path": "/api/cron/cancel-expired-orders",

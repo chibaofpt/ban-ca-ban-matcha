@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated third-party runtime assets are verified during sync, not linted.
+    "public/vendor/maplibre/**",
     // Local scratch/repair scripts are excluded from TypeScript and application builds.
     "scratch/**",
     "backup_vouchers.js",
