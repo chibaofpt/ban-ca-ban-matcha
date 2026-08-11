@@ -141,17 +141,23 @@ export async function POST(req: NextRequest) {
     if (data.voucher_type === "ADDON") {
       const addonOption = await prisma.addonOption.findUnique({
         where: { id: data.addon_option_id },
-        select: { gram_value: true, price_vnd: true, label: true },
+        select: {
+          gram_value: true,
+          price_vnd: true,
+          label: true,
+          is_active: true,
+          group: { select: { is_active: true } },
+        },
       });
 
-      if (!addonOption) {
+      if (!addonOption || !addonOption.is_active || !addonOption.group.is_active) {
         return NextResponse.json(
           { error: "Addon option not found", code: "NOT_FOUND" },
           { status: 404 }
         );
       }
 
-      if (addonOption.gram_value !== null && Number(addonOption.gram_value) > 0) {
+      if (addonOption.gram_value !== null) {
         return NextResponse.json(
           {
             error: "ADDON vouchers cannot target Extra Matcha options (dynamic price)",
@@ -268,12 +274,14 @@ export async function POST(req: NextRequest) {
         pricingCtx
       );
 
-      // Compute total included addon price
-      let total_addon_price = 0;
       if (data.included_addon_option_ids.length > 0) {
         const addonOptions = await prisma.addonOption.findMany({
-          where: { id: { in: data.included_addon_option_ids } },
-          select: { id: true, price_vnd: true, gram_value: true },
+          where: {
+            id: { in: data.included_addon_option_ids },
+            is_active: true,
+            group: { is_active: true },
+          },
+          select: { id: true, gram_value: true },
         });
 
         if (addonOptions.length !== data.included_addon_option_ids.length) {
@@ -283,18 +291,13 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        for (const addon of addonOptions) {
-          if (addon.gram_value !== null && Number(addon.gram_value) > 0) {
-            // Extra matcha: price = ceil(gram_value × price_per_gram, 1000)
-            const pricePerGram = pricingCtx.powderPriceMap[powder_id] ?? 0;
-            const rawCost = Number(addon.gram_value) * pricePerGram;
-            total_addon_price += Math.ceil(rawCost / 1000) * 1000;
-          } else {
-            total_addon_price += addon.price_vnd;
-          }
+        if (addonOptions.some((addon) => addon.gram_value !== null)) {
+          return NextResponse.json(
+            { error: "PRODUCT vouchers cannot include dynamic-price addons", code: "VALIDATION_ERROR" },
+            { status: 400 },
+          );
         }
       }
-      void total_addon_price;
 
       // covered_price_vnd = drink price only (PRODUCT covers drink, not addons)
       const covered_price_vnd = drink_price;

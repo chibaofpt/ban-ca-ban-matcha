@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Drawer } from "vaul";
 import { X } from "lucide-react";
 import { cn } from "@/src/utils/cn";
@@ -11,6 +11,7 @@ import PowderForm, {
 import { createPowder, updatePowder, togglePowderAvailability } from "@/src/services/adminPowderService";
 import type { Powder } from "@/src/lib/types/powder";
 import type { AdminMenuItem } from "@/src/lib/types/menu";
+import CatalogImageFields from "@/src/components/admin/CatalogImageFields";
 
 interface PowderDrawerProps {
   open: boolean;
@@ -37,16 +38,33 @@ export default function PowderDrawer({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageFilename, setImageFilename] = useState("");
+
+  useEffect(() => {
+    setImageFile(null);
+    setImageFilename("");
+    setErrorMsg(null);
+  }, [open, mode, item?.id]);
 
   const handleSubmit = async (payload: PowderFormPayload) => {
+    const requestedFilename = imageFilename.trim();
+    if (/\.\.|[/\\\0]/.test(requestedFilename)) {
+      setErrorMsg("Tên file ảnh không hợp lệ.");
+      return;
+    }
+    if (requestedFilename && !imageFile && !item?.image_url) {
+      setErrorMsg("Vui lòng chọn ảnh trước khi đặt tên file SEO.");
+      return;
+    }
     setIsSubmitting(true);
     setErrorMsg(null);
     try {
       let saved: Powder;
       if (mode === "edit" && item) {
-        saved = await updatePowder(item.id, payload);
+        saved = await updatePowder(item.id, payload, imageFile, requestedFilename);
       } else {
-        saved = await createPowder(payload);
+        saved = await createPowder(payload, imageFile, requestedFilename);
       }
       onSuccess(saved);
       onClose();
@@ -156,6 +174,16 @@ export default function PowderDrawer({
                 </button>
               </div>
             )}
+
+            <CatalogImageFields
+              currentImageUrl={item?.image_url}
+              label="Ảnh bột matcha"
+              imageFilename={imageFilename}
+              disabled={isSubmitting}
+              onFileChange={setImageFile}
+              onFilenameChange={setImageFilename}
+              onError={setErrorMsg}
+            />
 
             {/* Form */}
             <PowderForm

@@ -64,14 +64,34 @@ export function migrateCartState(
     const sizedItem = fromVersion < 2
       ? { ...item, size: sizeMap[item.size] ?? "SMALL" }
       : item;
-    if (fromVersion >= 3) return sizedItem;
-
-    return {
+    const voucherSafeItem = fromVersion < 3 ? {
       ...sizedItem,
       clientPriceVnd: sizedItem.originalClientPriceVnd ?? sizedItem.unitPrice,
       productVoucherId: undefined,
       productVoucherDiscountVnd: undefined,
       addonVouchers: [],
+    } : sizedItem;
+    if (fromVersion >= 4) return voucherSafeItem;
+
+    const retainedOptionIds = voucherSafeItem.selectedOptionIds.filter(
+      (optionId) => (voucherSafeItem.addonPrices[optionId] ?? 0) > 0,
+    );
+    const retainedOptionIdSet = new Set([
+      ...retainedOptionIds,
+      ...voucherSafeItem.quantityAddonOptions.map((option) => option.option_id),
+    ]);
+    const retainedPrices = Object.fromEntries(
+      Object.entries(voucherSafeItem.addonPrices).filter(
+        ([optionId, price]) => price > 0 || retainedOptionIdSet.has(optionId),
+      ),
+    );
+    return {
+      ...voucherSafeItem,
+      selectedOptionIds: retainedOptionIds,
+      addonPrices: retainedPrices,
+      addonVouchers: voucherSafeItem.addonVouchers?.filter(
+        (voucher) => retainedOptionIdSet.has(voucher.addonOptionId),
+      ),
     };
   });
 
@@ -253,7 +273,7 @@ export const useCartStore = create<CartState>()(
     }),
     {
       name: "bcbm-cart",
-      version: 3,
+      version: 4,
       /**
        * Auto-migrate old localStorage cart data:
        * Size M → SMALL, L → MEDIUM, XL → LARGE (Big-Bang strategy).

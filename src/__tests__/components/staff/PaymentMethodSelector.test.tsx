@@ -14,6 +14,7 @@ describe("PaymentMethodSelector — chọn phương thức thanh toán", () => {
 
     expect((screen.getByRole("radio", { name: "Tiền mặt" }) as HTMLInputElement).checked).toBe(true);
     expect((screen.getByRole("radio", { name: "Chuyển khoản" }) as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByText("Phương thức thanh toán")).toBeNull();
   });
 
   it("gọi onChange khi chọn Chuyển khoản", () => {
@@ -41,6 +42,6 @@ describe("PaymentMethodSelector — chọn phương thức thanh toán", () => {
     );
 
     expect((screen.getByRole("radio", { name: "Chuyển khoản" }) as HTMLInputElement).disabled).toBe(true);
-    expect(screen.getByText("Đơn 0đ không cần chuyển khoản")).toBeTruthy();
+    expect(screen.queryByText("Đơn 0đ không cần chuyển khoản")).toBeNull();
   });
 });

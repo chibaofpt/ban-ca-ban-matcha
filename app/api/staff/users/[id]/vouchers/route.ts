@@ -10,6 +10,10 @@ import { getSession } from "@/lib/auth";
 import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
 import { resolveCustomerIdentifier } from "@/lib/publicIdentifiers";
 import { toPublicVoucherDto } from "@/lib/voucherPublicDto";
+import {
+  ensureAutoGrantedVouchers,
+  type VoucherIssuanceDatabase,
+} from "@/lib/voucherIssuance";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +38,7 @@ export async function GET(
     if (!user) return NextResponse.json({ data: [] });
 
     const userId = user.id;
+    await ensureAutoGrantedVouchers(prisma as unknown as VoucherIssuanceDatabase, userId);
     await lazyExpireVouchers(userId);
     const vouchers = await prisma.voucher.findMany({
       where: {
@@ -42,7 +47,34 @@ export async function GET(
       },
       orderBy: { created_at: "desc" },
       include: {
-        package: { select: { name: true, description: true, points_cost: true } },
+        package: {
+          select: {
+            name: true,
+            description: true,
+            points_cost: true,
+            acquisition_mode: true,
+            promotion: {
+              select: {
+                title: true,
+                starts_at: true,
+                ends_at: true,
+                bundleRule: {
+                  select: {
+                    buy_quantity: true,
+                    reward_quantity: true,
+                    reward_kind: true,
+                    reward_mode: true,
+                    benefit_scaling: true,
+                    max_applications_order: true,
+                    max_reward_units_order: true,
+                    productScopes: { select: { role: true, menu_item_id: true } },
+                    addonRewards: { select: { addon_option_id: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
         menuItem: { select: { name: true, is_available: true } },
         addonOption: { select: { label: true } },
         staff: { select: { name: true, role: true } },

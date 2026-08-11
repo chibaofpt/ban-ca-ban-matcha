@@ -15,10 +15,16 @@ import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
 export async function GET() {
   try {
     // Cache the base package list (no user-specific data)
-    const packages = await withCache(
+    const cachedPackages = await withCache(
       CACHE_KEYS.VOUCHER_PACKAGES,
       CACHE_TTL.VOUCHER_PACKAGES,
       fetchVoucherPackages,
+    );
+    // Campaign windows and activation are live state; never put BUNDLE packages in app cache.
+    const bundlePackages = await fetchActiveBundlePackages(new Date());
+    const packages = [...cachedPackages, ...bundlePackages].sort(
+      (left, right) =>
+        new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
     );
 
     const session = await getSession();
@@ -62,7 +68,28 @@ export async function GET() {
 /** Fetches active voucher packages from DB. Called by withCache on cache miss. */
 async function fetchVoucherPackages() {
   return prisma.voucherPackage.findMany({
-    where: { is_active: true },
+    where: { is_active: true, voucher_type: { not: "BUNDLE" } },
+    orderBy: { created_at: "asc" },
+    include: {
+      menuItem: { select: { name: true, is_available: true } },
+      addonOption: { select: { label: true } },
+    },
+  });
+}
+
+/** Fetch active BUNDLE packages live so campaign windows are never stale in Redis. */
+async function fetchActiveBundlePackages(now: Date) {
+  return prisma.voucherPackage.findMany({
+    where: {
+      is_active: true,
+      voucher_type: "BUNDLE",
+      promotion: {
+        is_active: true,
+        published_at: { not: null },
+        starts_at: { lte: now },
+        ends_at: { gt: now },
+      },
+    },
     orderBy: { created_at: "asc" },
     include: {
       menuItem: { select: { name: true, is_available: true } },

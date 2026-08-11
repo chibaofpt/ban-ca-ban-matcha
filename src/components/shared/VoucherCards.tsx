@@ -138,7 +138,9 @@ export function PackageCard({
   const highlight = getTicketHighlightText(pkg.voucher_type, pkg.discount_type, pkg.discount_value);
 
   // Calculate progress for insufficient points
-  const progressPercent = Math.min(100, Math.round((userBalance / pkg.points_cost) * 100));
+  const progressPercent = pkg.points_cost > 0
+    ? Math.min(100, Math.round((userBalance / pkg.points_cost) * 100))
+    : 100;
 
   return (
     <motion.div
@@ -189,7 +191,7 @@ export function PackageCard({
             {(() => {
               if (isExchanging) {
                 return (
-                  <div className="flex items-center justify-center h-7 w-20 bg-primary/10 text-primary rounded-md">
+                  <div className="flex min-h-11 min-w-20 items-center justify-center rounded-md bg-primary/10 text-primary">
                     <Loader2 size={14} className="animate-spin" />
                   </div>
                 );
@@ -212,9 +214,9 @@ export function PackageCard({
               return (
                 <button
                   onClick={() => onExchange(pkg)}
-                  className="bg-primary text-primary-foreground text-[10px] font-bold px-3 py-1.5 rounded-md hover:bg-primary/90 transition shadow-sm whitespace-nowrap"
+                  className="min-h-11 bg-primary text-primary-foreground text-xs font-bold px-3 py-2 rounded-md hover:bg-primary/90 transition shadow-sm whitespace-nowrap"
                 >
-                  Đổi {pkg.points_cost} 🐟
+                  {pkg.acquisition_mode === "FREE_CLAIM" ? "Nhận miễn phí" : `Đổi ${pkg.points_cost} 🐟`}
                 </button>
               );
             })()}

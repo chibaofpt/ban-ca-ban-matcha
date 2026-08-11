@@ -24,6 +24,8 @@ import type { DiscountVoucher } from "@/src/lib/store/staffCartStore";
 import Image from "next/image";
 import type { PaymentMethod } from "@/src/lib/types/order";
 import { PaymentMethodSelector } from "@/src/components/staff/PaymentMethodSelector";
+import { CartBundleVoucherPanel } from "@/src/components/menu/cart/CartBundleVoucherPanel";
+import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -48,7 +50,6 @@ interface StaffCartDrawerProps {
   customerInfo: CustomerInfo | null;
   isSubmitting?: boolean;
   paymentMethod?: PaymentMethod;
-  isCheckoutLocked?: boolean;
   onClose: () => void;
   onRemove: (cartId: string) => void;
   onEditItem?: (item: CartItem) => void;
@@ -57,6 +58,10 @@ interface StaffCartDrawerProps {
   onPaymentMethodChange?: (method: PaymentMethod) => void;
   onOpenCustomerSelect: () => void;
   onClearCustomer: () => void;
+  selectedBundleToken?: string | null;
+  bundleAllocations?: BundleSelectionAllocation[];
+  onBundleVoucherChange?: (token: string | null) => void;
+  onBundleAllocationsChange?: (allocations: BundleSelectionAllocation[]) => void;
 
   customerVouchers?: MyVoucher[];
   selectedDiscountIds?: string[];
@@ -84,7 +89,6 @@ export function StaffCartDrawer({
   customerInfo,
   isSubmitting = false,
   paymentMethod = "CASH",
-  isCheckoutLocked = false,
   onClose,
   onRemove,
   onEditItem,
@@ -93,6 +97,10 @@ export function StaffCartDrawer({
   onPaymentMethodChange = () => undefined,
   onOpenCustomerSelect,
   onClearCustomer,
+  selectedBundleToken = null,
+  bundleAllocations = [],
+  onBundleVoucherChange = () => undefined,
+  onBundleAllocationsChange = () => undefined,
   customerVouchers = [],
   selectedDiscountIds = [],
   onToggleDiscount,
@@ -123,6 +131,19 @@ export function StaffCartDrawer({
   const discountVouchers = useMemo(() => filterUsableVouchers(customerVouchers, "DISCOUNT"), [customerVouchers]);
   const applicableProductVouchers = useMemo(() => buildProductVoucherMap(customerVouchers, cart), [customerVouchers, cart]);
   const applicableAddonVouchersMap = useMemo(() => buildAddonVoucherMap(customerVouchers, cart), [customerVouchers, cart]);
+  const bundleVouchers = useMemo(
+    () => customerVouchers.filter((voucher) => voucher.voucher_type === "BUNDLE"),
+    [customerVouchers],
+  );
+  const addonLabels = useMemo(
+    () =>
+      new Map(
+        (menuData?.addon_groups ?? []).flatMap((group) =>
+          group.options.map((option) => [option.id, option.label] as const),
+        ),
+      ),
+    [menuData?.addon_groups],
+  );
 
   // Discounts
   const selectedDiscountVouchersList = useMemo(
@@ -187,6 +208,7 @@ export function StaffCartDrawer({
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-50 bg-black/40" />
         <Drawer.Content 
+          data-testid="staff-cart-sheet"
           onInteractOutside={(e) => {
             const target = e.target as HTMLElement;
             // Prevent closing if the clicked element was removed from the DOM (e.g. clicking a button inside a modal that unmounts)
@@ -203,7 +225,7 @@ export function StaffCartDrawer({
               e.preventDefault();
             }
           }}
-          className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl max-h-[85vh] flex flex-col shadow-2xl outline-none after:content-[''] after:absolute after:inset-x-0 after:top-full after:h-[50vh] after:bg-inherit"
+          className="fixed bottom-0 left-0 right-0 z-50 flex h-auto max-h-[100dvh] flex-col rounded-t-3xl bg-card shadow-2xl outline-none after:absolute after:inset-x-0 after:top-full after:h-[50vh] after:bg-inherit after:content-['']"
         >
           <div className="flex justify-center pt-3 pb-1 w-full shrink-0">
             <div className="w-12 h-1.5 bg-border rounded-full" />
@@ -215,8 +237,10 @@ export function StaffCartDrawer({
               </h2>
             </div>
             <button
+              type="button"
               onClick={handleClose}
-              className="w-8 h-8 rounded-full bg-secondary/50 flex items-center justify-center hover:bg-secondary transition"
+              aria-label="Đóng giỏ hàng"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-secondary/50 transition hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <X size={16} />
             </button>
@@ -260,7 +284,8 @@ export function StaffCartDrawer({
 
         {/* Item list */}
         <div
-          className="overflow-y-auto overscroll-contain flex-1 min-h-0 p-4 space-y-4"
+          data-testid="staff-cart-items"
+          className="min-h-0 flex-[0_1_auto] space-y-4 overflow-y-auto overscroll-contain p-4"
         >
           {cart.length === 0 ? (
              <div className="text-center py-10 text-muted-foreground space-y-3">
@@ -297,6 +322,17 @@ export function StaffCartDrawer({
               );
             })
           )}
+          {cart.length > 0 && customerInfo?.type === "existing" ? (
+            <CartBundleVoucherPanel
+              vouchers={bundleVouchers}
+              cart={cart}
+              addonLabels={addonLabels}
+              selectedVoucherToken={selectedBundleToken}
+              allocations={bundleAllocations}
+              onVoucherChange={onBundleVoucherChange}
+              onAllocationsChange={onBundleAllocationsChange}
+            />
+          ) : null}
         </div>
 
         {/* Footer */}
@@ -305,7 +341,7 @@ export function StaffCartDrawer({
             <div className="mb-4">
               <PaymentMethodSelector
                 value={paymentMethod}
-                bankTransferDisabled={total <= 0 || isCheckoutLocked}
+                bankTransferDisabled={total <= 0}
                 onChange={onPaymentMethodChange}
               />
             </div>
@@ -375,7 +411,6 @@ export function StaffCartDrawer({
                 <motion.button
                   whileTap={{ scale: 0.98 }}
                   onClick={onClearCart}
-                  disabled={isCheckoutLocked}
                   className="w-[30%] bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 rounded-2xl h-12 font-bold text-sm shadow-sm transition flex items-center justify-center shrink-0"
                 >
                   Xoá tất cả
@@ -385,7 +420,7 @@ export function StaffCartDrawer({
               <motion.button
                 whileTap={{ scale: 0.98 }}
                 onClick={onCheckout}
-                disabled={isSubmitting || isCheckoutLocked}
+                disabled={isSubmitting}
                 className={cn(
                   "bg-primary text-primary-foreground rounded-2xl h-12 font-bold text-sm shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none shrink-0",
                   onClearCart ? "w-[70%]" : "w-full"

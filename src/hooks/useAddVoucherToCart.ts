@@ -153,9 +153,7 @@ export function useAddVoucherToCart() {
         void details;
 
         // Determine selected option ids (use voucher config as selected)
-        const defaultOptionIds = menuData.addon_groups
-          .flatMap((group) => group.options.filter((option) => option.is_default).map((option) => option.id));
-        const selectedOptionIds = [...new Set([...defaultOptionIds, ...includedAddonIds])];
+        const selectedOptionIds = [...new Set(includedAddonIds)];
         const addonPrices: Record<string, number> = {};
         const activePowderId = menuItem.category === "latte"
           ? (menuItem.powder?.id ?? voucher.matcha_powder_id ?? "")

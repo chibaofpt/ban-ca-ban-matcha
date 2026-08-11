@@ -83,20 +83,38 @@ Counter transfer: PENDING → COMPLETED (creator Staff or any Admin confirms pay
      - Fusion → validate `selected_powder_id` is default OR in `fusion_allowed_powder`
    - d. Resolve milk:
      - If `selected_milk_type_id` not sent for Latte → use `milk_type WHERE is_default = true`
-   - e. **Compute server prices** — see `pricing-logic` skill for formulas and COALESCE rules
-   - f. Compare `client_price_vnd` vs server price per item. Mismatch → abort with `PRICE_CHANGED`
-   - g. **Apply vouchers** using the shared calculator — see `voucher-flow`; strict order is
-     PRODUCT → ADDON → DISCOUNT → FREESHIP
-   - h. Compute gross `subtotal_vnd`, merchandise-only `total_vnd`, shipping,
+   - e. Resolve addons as opt-in selections:
+     - Empty `addon_option_ids` is valid and means no addons.
+     - Re-fetch option + group lifecycle; reject inactive groups/options and duplicate option IDs.
+     - `SELECTOR`: at most one option per group, quantity exactly 1.
+     - `TOGGLE`: exactly one active configured option, request quantity exactly 1.
+     - `QUANTITY`: exactly one active configured option, quantity from 1 through `max_quantity`.
+   - f. **Compute server prices** — see `pricing-logic` skill for formulas and COALESCE rules
+   - g. Compare `client_price_vnd` vs server price per item. Mismatch → abort with `PRICE_CHANGED`
+   - h. **Apply vouchers** using the shared calculator — see `voucher-flow`; strict order is
+     BUNDLE → PRODUCT → ADDON → DISCOUNT → FREESHIP
+   - i. Compute gross `subtotal_vnd`, merchandise-only `total_vnd`, shipping,
      `freeship_discount_vnd`, and payable `grand_total_vnd`
-   - i. Create `order` + `order_items` + `order_item_addons`
-   - j. For PICKUP/DELIVERY and COUNTER BANK_TRANSFER: generate `order_code`, set
+   - j. Create `order` + `order_items` + `order_item_addons`
+   - k. For PICKUP/DELIVERY and COUNTER BANK_TRANSFER: generate `order_code`, set
      `auto_cancel_at` (+20 min)
-   - k. For COUNTER CASH: set status = `COMPLETED`, redeem applied vouchers and award order plus
+   - l. For COUNTER CASH: set status = `COMPLETED`, redeem applied vouchers and award order plus
      aggregate surplus points immediately in the same transaction
-   - l. For COUNTER BANK_TRANSFER: set status = `PENDING`, reserve applied vouchers, and defer
+   - m. For COUNTER BANK_TRANSFER: set status = `PENDING`, reserve applied vouchers, and defer
      all points until the direct `COMPLETED` payment-confirmation transition
-5. **Return**: order with payment QR URL (customer) or completed order (staff)
+5. **Return**: customer/pending counter transfer with payment QR URL, or completed cash order
+
+## Counter Transfer POS Recovery
+
+- After creating a COUNTER BANK_TRANSFER order, clear and close the submitted cart before opening
+  its QR modal. The QR opens after the cart drawer releases its focus/pointer lock.
+- Do not bind a pending transfer to the cart store. The server-authoritative source is
+  `GET /api/staff/orders?status=PENDING&order_type=COUNTER&mine=true`.
+- This allows one Staff/Admin account to create multiple pending transfers. The POS launcher is
+  hidden for zero orders, opens the QR directly for one order, and opens a selection bottom sheet
+  for two or more orders.
+- Closing a QR does not change order status. Confirm moves that order to `COMPLETED`; cancel moves
+  it to `CANCELLED`. Both actions refresh the current-user pending list.
 
 ---
 
@@ -130,7 +148,8 @@ Counter transfer: PENDING → COMPLETED (creator Staff or any Admin confirms pay
 - PENDING customer and COUNTER BANK_TRANSFER orders have `auto_cancel_at` = `created_at + 20 minutes`.
 - Checked **lazily** on read (when fetching order details) AND **actively** via Vercel Cron.
 - Cron endpoint: `GET /api/cron/cancel-expired-orders`.
-- On cancel: revert voucher status from `RESERVED` → `ACTIVE` (see `voucher-flow` skill).
+- On cancel: revert voucher status from `RESERVED` → `ACTIVE` and mark any BUNDLE order
+  application `CANCELLED` (see `voucher-flow` skill).
 
 ---
 
@@ -139,7 +158,7 @@ Counter transfer: PENDING → COMPLETED (creator Staff or any Admin confirms pay
 - `orders.user_id` is nullable — `NULL` = anonymous walk-in, no loyalty tracking.
 - `points_earned = 0` — no points awarded, no `points_log` entry.
 - Vouchers rejected: if `product_voucher_id`, `addon_voucher_ids`, `discount_voucher_ids`,
-  or `freeship_voucher_id` are sent → `VALIDATION_ERROR`.
+  `freeship_voucher_id`, or `bundle_voucher_qr_token` are sent → `VALIDATION_ERROR`.
 - Display as **"Khách vãng lai"** in all order list views.
 - Staff search customers: `GET /api/staff/users?q=xxx`:
   - All-digits → phone suffix match

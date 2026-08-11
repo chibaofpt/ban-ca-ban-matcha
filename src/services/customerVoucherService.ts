@@ -16,7 +16,8 @@ export interface VoucherPackage {
   id: string;
   name: string;
   description: string | null;
-  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP";
+  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
+  acquisition_mode?: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
   points_cost: number;
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
@@ -43,7 +44,7 @@ export interface VoucherPackage {
 
 export interface MyVoucher {
   qr_token: string;
-  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP";
+  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
   menu_item_id: string | null;
@@ -65,7 +66,28 @@ export interface MyVoucher {
   expires_at: string | null;
   redeemed_at: string | null;
   created_at: string;
-  package: { name: string; description: string | null; points_cost: number };
+  package: {
+    name: string;
+    description: string | null;
+    points_cost: number;
+    acquisition_mode?: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
+    promotion?: {
+      title: string;
+      starts_at: string;
+      ends_at: string;
+      bundleRule: {
+        buy_quantity: number;
+        reward_quantity: number;
+        reward_kind: "PRODUCT" | "ADDON";
+        reward_mode: "SAME_CONFIG" | "FIXED_CONFIG" | "ALLOWED_SCOPE";
+        benefit_scaling: "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM";
+        max_applications_order: number;
+        max_reward_units_order: number | null;
+        productScopes: Array<{ role: "QUALIFIER" | "REWARD"; menu_item_id: string }>;
+        addonRewards: Array<{ addon_option_id: string }>;
+      } | null;
+    } | null;
+  };
   menuItem: { name: string; is_available: boolean } | null;
   addonOption: { label: string } | null;
   /** Staff/admin who redeemed this voucher offline. null = user redeemed themselves online. */
@@ -74,7 +96,7 @@ export interface MyVoucher {
 
 export interface ExchangedVoucher {
   qr_token: string;
-  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP";
+  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
   status: "ACTIVE";
   expires_at: string | null;
 }
@@ -114,5 +136,15 @@ export async function exchangeVoucher(packageId: string): Promise<ExchangedVouch
     "/api/profile/vouchers/exchange",
     { package_id: packageId }
   );
+  return res.data.data;
+}
+
+/** Claim a FREE_CLAIM package without points; repeated calls are idempotent. */
+export async function claimFreeVoucher(
+  packageId: string,
+): Promise<{ qr_token?: string; already_granted?: true }> {
+  const res = await apiClient.post<
+    ApiResponse<{ qr_token?: string; already_granted?: true }>
+  >("/api/profile/vouchers/claim", { package_id: packageId });
   return res.data.data;
 }

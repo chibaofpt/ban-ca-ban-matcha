@@ -110,15 +110,16 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 
 ## Image Upload Flow
 
-- Client calls `POST /api/admin/menu` or `PUT /api/admin/menu/[id]` with `multipart/form-data`
+- Client calls the menu, addon-group, or powder admin create/update route with `multipart/form-data`
 - Route handler uploads to Supabase Storage via `lib/storage.ts`
 - Bucket: `menu-images` (public bucket)
 - Size limit: 5MB
 - Allowed types: `image/jpeg`, `image/png`, `image/webp`
 - Optional `image_filename` controls the SEO-friendly Storage object name; it is not stored in a database column
+- Addon/powder multipart requests keep their existing JSON contract inside the `payload` field and remain backward-compatible with direct JSON requests
 - Replacing or renaming an image deletes the previous object only after the database update succeeds
-- Soft-deleted menu items retain their image references and are protected from cleanup
-- Daily cleanup deletes only unreferenced objects older than 48 hours; start with `IMAGE_CLEANUP_DRY_RUN=true`
+- Soft-deleted menu items, addon groups, and powders retain their image references and are protected from cleanup
+- Daily cleanup deletes only objects unreferenced by all three catalog tables and older than 48 hours; start with `IMAGE_CLEANUP_DRY_RUN=true`
 
 ---
 
@@ -165,7 +166,7 @@ Auth mutation routes are rate-limited by hashed IP. Read-only `/api/auth/me` and
 | Route | Method | Purpose |
 |---|---|---|
 | `/api/staff/orders` | POST | Create counter order: CASH completes immediately; BANK_TRANSFER waits for payment |
-| `/api/staff/orders` | GET | List orders for current staff member |
+| `/api/staff/orders` | GET | List authorized orders; supports current-creator pending-transfer recovery |
 | `/api/staff/orders/[id]` | GET | Recover an authorized counter transfer and its pending VietQR |
 | `/api/staff/orders/[id]` | PATCH | Update order status (auto-award points on COMPLETED) |
 | `/api/staff/scan` | GET | Resolve QR token → user or voucher |
@@ -247,10 +248,10 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
 | `/api/admin/voucher-packages/[id]` | DELETE | Deactivate (`is_active = false`) |
 | `/api/admin/points-log` | GET | All manual adjustment logs |
 | `/api/admin/points-log/[id]/reverse` | POST | Reverse a manual points entry |
-| `/api/admin/matcha-powders` | GET | List all powders |
-| `/api/admin/matcha-powders` | POST | Create powder |
-| `/api/admin/matcha-powders/[id]` | PUT | Update powder |
-| `/api/admin/matcha-powders/[id]` | DELETE | Soft delete (`is_available = false`) |
+| `/api/admin/powders` | GET | List all powders |
+| `/api/admin/powders` | POST | Create powder |
+| `/api/admin/powders/[id]` | PUT | Update powder |
+| `/api/admin/powders/[id]` | DELETE | Soft delete (`is_available = false`) |
 | `/api/admin/milk-types` | GET | List all milk types |
 | `/api/admin/milk-types` | POST | Create milk type |
 | `/api/admin/milk-types/[id]` | PUT | Update milk type |
@@ -262,7 +263,9 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
 | `/api/admin/store-schedule` | GET | Get weekly opening hours (0–14 rows grouped by day) |
 | `/api/admin/store-schedule` | PUT | Replace entire schedule (deleteMany + createMany in transaction) |
 | `/api/admin/store-closure` | POST | Temporarily close (`action=close`) or reopen (`action=open`) the store |
-| `/api/admin/promotions` | POST/PUT/DELETE | Phase 5 only |
+| `/api/admin/promotions` | GET/POST | List or publish immutable BUNDLE campaigns |
+| `/api/admin/promotions/[id]` | PATCH | Activate/deactivate a published campaign |
+| `/api/profile/vouchers/claim` | POST | Idempotently claim a FREE_CLAIM package |
 
 ---
 
@@ -356,6 +359,7 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
     name: string
     manufacturer: string | null
     description: string | null
+    image_url: string | null
     price_per_gram: number
     type: "RECOMMEND" | "NEW" | "SEASONAL" | "NONE"
     fragrance: number | null
@@ -431,18 +435,58 @@ type MilkType = {
 type AddonGroup = {
   id: string
   name: string
+  image_url: string | null
   type: "SELECTOR" | "TOGGLE" | "QUANTITY"
-  is_required: boolean
-  min_quantity: number | null
   max_quantity: number | null
   options: {
     id: string
     label: string
     price_vnd: number               // extra matcha: 0 — actual price = gram_value × powder.price_per_gram
-    gram_value: number | null       // extra matcha only: gram amount (0, 1, 2, 3, 4). null for others.
-    is_default: boolean
+    gram_value: number | null       // extra matcha only: positive gram amount. null for fixed-price addons.
     sort_order: number
   }[]
+}
+```
+
+All addon groups are optional. The client sends no row for an unselected group. Public menu data
+contains only active groups with at least one active option and only active options. The public
+contract intentionally omits rollout-only DB fields `is_required`, `min_quantity`, `is_default`,
+and option `is_active`.
+
+### Admin addon group mutation
+```ts
+// POST/PUT /api/admin/addon-groups[/id]
+{
+  name: string
+  description?: string | null
+  type: "SELECTOR" | "TOGGLE" | "QUANTITY"
+  max_quantity?: number | null      // required positive only for QUANTITY
+  is_active: boolean
+  options: {
+    id?: string
+    label: string
+    price_vnd: number
+    gram_value?: number | null
+    is_active: boolean              // soft-delete lifecycle
+    sort_order: number
+  }[]
+}
+```
+
+`SELECTOR` accepts at most one selected option per order line. `TOGGLE` and `QUANTITY` must each
+have exactly one active option. Dynamic-gram options are valid only in `SELECTOR`, must all have a
+positive `gram_value` and `price_vnd = 0`, and cannot be mixed with fixed-price active options.
+Omitting an existing option from an update does not delete it; retire it with `is_active = false`.
+
+### Admin addon/powder image mutations
+```ts
+// POST/PUT /api/admin/addon-groups[/id]
+// POST/PUT /api/admin/powders[/id]
+// multipart/form-data; direct application/json remains supported when no image is uploaded
+{
+  payload: string        // JSON.stringify(existing request payload)
+  image?: File          // JPEG, PNG, or WebP; max 5MB
+  image_filename?: string // optional SEO object name; may rename an existing image
 }
 ```
 
@@ -476,6 +520,47 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
 // Addons apply globally — no junction rows needed
 ```
 
+### `POST /api/admin/promotions`
+```ts
+{
+  title: string
+  description?: string
+  starts_at: string                 // ISO datetime
+  ends_at: string                   // ISO datetime, after starts_at
+  max_redemptions: number | null
+  package: {
+    name: string
+    acquisition_mode: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT"
+    points_cost: number             // zero unless POINTS_EXCHANGE
+    expires_after_days?: number | null
+    quantity?: number | null
+    max_per_user: number
+  }
+  bundle_rule: {
+    buy_quantity: number
+    reward_quantity: number
+    reward_kind: "PRODUCT" | "ADDON"
+    reward_mode: "SAME_CONFIG" | "FIXED_CONFIG" | "ALLOWED_SCOPE"
+    benefit_scaling: "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM"
+    max_applications_per_order: number
+    max_reward_units_per_order?: number | null
+    qualifier_scopes: ProductScope[]
+    reward_product_scopes: ProductScope[]
+    reward_addon_option_ids: string[]
+  }
+}
+// ProductScope = { menu_item_id, size?, powder_id?, milk_type_id?, reference_price_vnd? }
+// FIXED_CONFIG requires exact size + powder; Latte also requires milk.
+// Published rules are immutable. PATCH /api/admin/promotions/[id] only changes is_active.
+```
+
+### `POST /api/profile/vouchers/claim`
+```ts
+{ package_id: string }
+// FREE_CLAIM only. Repeated/concurrent claims are idempotent.
+// Response: { data: { qr_token?: string, already_granted?: true } }
+```
+
 ### `PUT /api/admin/menu/[id]`
 ```ts
 // multipart/form-data, all fields optional
@@ -502,6 +587,7 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
 {
   order_type: "PICKUP" | "DELIVERY"
   items: {
+    client_line_id?: string           // required when bundle_voucher_qr_token is sent
     menu_item_id: string
     quantity: number
     size: "SMALL" | "MEDIUM" | "LARGE"
@@ -521,6 +607,12 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
   }[]
   discount_voucher_ids?: string[]    // voucher qr_token values
   freeship_voucher_id?: string       // voucher qr_token; DELIVERY only; max 1
+  bundle_voucher_qr_token?: string   // max 1 BUNDLE voucher per order
+  bundle_reward_allocations?: {
+    client_line_id: string
+    quantity: number
+    addon_option_id?: string
+  }[]                                // required with a BUNDLE voucher
   pickup_time?: string
   note?: string
   delivery_address?: string
@@ -561,6 +653,7 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
   customer_name?: string
   payment_method?: "CASH" | "BANK_TRANSFER" // default CASH; backward compatible
   items: {
+    client_line_id?: string           // required with BUNDLE
     menu_item_id: string
     quantity: number
     size: "SMALL" | "MEDIUM" | "LARGE"
@@ -579,6 +672,12 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
     client_price_vnd: number          // REQUIRED
   }[]
   discount_voucher_ids?: string[]    // voucher qr_token values
+  bundle_voucher_qr_token?: string
+  bundle_reward_allocations?: {
+    client_line_id: string
+    quantity: number
+    addon_option_id?: string
+  }[]
   customer_qr_token?: string          // user qr_token; required for STAFF with known-customer vouchers
 }
 
@@ -603,6 +702,13 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
   }
 }
 ```
+
+### `GET /api/staff/orders?status=PENDING&order_type=COUNTER&mine=true`
+
+- Returns only `COUNTER + BANK_TRANSFER + PENDING` orders created by the current Staff/Admin.
+- Used by the POS “Chờ CK” launcher; `limit=100` is sufficient because each order expires after 20 minutes.
+- Expired rows are lazily cancelled and excluded client-side when no longer recoverable.
+- Omitting `mine=true` preserves the existing management-list behavior.
 
 ### `GET /api/staff/orders/[id]` — Staff/Admin payment recovery
 
@@ -672,7 +778,7 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
 { data: { type: "user", data: { qr_token: string, name: string, phone_number: string, points_balance: number } } }
 
 // voucher
-{ data: { type: "voucher", data: { qr_token: string, voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED", expires_at: string | null } } }
+{ data: { type: "voucher", data: { qr_token: string, voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED", expires_at: string | null } } }
 ```
 
 ### `PATCH /api/admin/orders/[id]/status`
@@ -732,7 +838,7 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
   - Display as "Khách vãng lai" in all order list views
 
 ### Vouchers
-- Apply vouchers strictly in this order: `PRODUCT → ADDON → DISCOUNT → FREESHIP`.
+- Apply vouchers strictly in this order: `BUNDLE → PRODUCT → ADDON → DISCOUNT → FREESHIP`.
 - PRODUCT: match `menu_item_id` only. Apply one voucher to one drink unit. Limit
   `covered_price_vnd` to base + powder + milk + Premium Latte; never spill credit into addons.
   Compute the package snapshot from those drink components only; included addon IDs are

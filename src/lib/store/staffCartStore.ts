@@ -3,7 +3,6 @@ import { persist } from "zustand/middleware";
 import type { CartItem } from "@/src/lib/types/cart";
 import { computeFinalClientPrice } from "./cartStore";
 import type { CustomerInfo } from "@/src/components/staff/CustomerSelectModal";
-import type { StaffOrderResult } from "@/src/lib/types/order";
 
 export interface DiscountVoucher {
   qr_token: string;
@@ -16,7 +15,6 @@ interface StaffCartState {
   customerInfo: CustomerInfo | null;
   discountVoucher: DiscountVoucher | null;
   selectedDiscountIds: string[];
-  pendingPayment: StaffOrderResult | null;
   
   addItem: (newItem: Omit<CartItem, "cartId">) => void;
   insertItemAfter: (targetCartId: string, newItem: Omit<CartItem, "cartId">) => void;
@@ -24,8 +22,6 @@ interface StaffCartState {
   updateItem: (cartId: string, updates: Partial<CartItem>) => void;
   updateQuantity: (cartId: string, quantity: number) => void;
   clearCart: () => void;
-  setPendingPayment: (payment: StaffOrderResult) => void;
-  clearPendingPayment: () => void;
   
   setCustomerInfo: (info: CustomerInfo | null) => void;
   setDiscountVoucher: (voucher: DiscountVoucher | null) => void;
@@ -38,6 +34,38 @@ interface StaffCartState {
   removeAddonVoucher: (cartId: string, voucherId: string) => void;
 }
 
+type PersistedStaffCartState = Partial<StaffCartState>;
+
+/** Remove legacy zero-price sentinel addons from persisted staff carts. */
+export function migrateStaffCartState(persistedState: unknown): PersistedStaffCartState {
+  const old = persistedState as PersistedStaffCartState;
+  if (!old.items) return old;
+  return {
+    ...old,
+    items: old.items.map((item) => {
+      const selectedOptionIds = item.selectedOptionIds.filter(
+        (optionId) => (item.addonPrices[optionId] ?? 0) > 0,
+      );
+      const selectedOptionIdSet = new Set([
+        ...selectedOptionIds,
+        ...item.quantityAddonOptions.map((option) => option.option_id),
+      ]);
+      return {
+        ...item,
+        selectedOptionIds,
+        addonPrices: Object.fromEntries(
+          Object.entries(item.addonPrices).filter(
+            ([optionId, price]) => price > 0 || selectedOptionIdSet.has(optionId),
+          ),
+        ),
+        addonVouchers: item.addonVouchers?.filter(
+          (voucher) => selectedOptionIdSet.has(voucher.addonOptionId),
+        ),
+      };
+    }),
+  };
+}
+
 export const useStaffCartStore = create<StaffCartState>()(
   persist(
     (set, get) => ({
@@ -45,7 +73,6 @@ export const useStaffCartStore = create<StaffCartState>()(
       customerInfo: null,
       discountVoucher: null,
       selectedDiscountIds: [],
-      pendingPayment: null,
 
       setCustomerInfo: (info) => {
         const currentInfo = get().customerInfo;
@@ -124,10 +151,7 @@ export const useStaffCartStore = create<StaffCartState>()(
         discountVoucher: null,
         selectedDiscountIds: [],
         customerInfo: null,
-        pendingPayment: null,
       }),
-      setPendingPayment: (pendingPayment) => set({ pendingPayment }),
-      clearPendingPayment: () => set({ pendingPayment: null }),
 
       applyProductVoucher: (cartId, voucherId, coveredPriceVnd) => {
         const currentItems = get().items.map((i) => {
@@ -232,7 +256,7 @@ export const useStaffCartStore = create<StaffCartState>()(
         });
       },
     }),
-    { name: "bcbm-staff-cart" }
+    { name: "bcbm-staff-cart", version: 1, migrate: migrateStaffCartState }
   )
 );
 

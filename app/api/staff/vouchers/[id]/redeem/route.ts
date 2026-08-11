@@ -29,6 +29,16 @@ export async function PATCH(
       );
     }
 
+    if (voucher.voucher_type === "BUNDLE") {
+      return NextResponse.json(
+        {
+          error: "Bundle vouchers must be applied to an order",
+          code: "BUNDLE_ORDER_REQUIRED",
+        },
+        { status: 422 },
+      );
+    }
+
     if (voucher.status === "REDEEMED") {
       return NextResponse.json(
         { error: "Voucher already redeemed", code: "VOUCHER_REDEEMED" },

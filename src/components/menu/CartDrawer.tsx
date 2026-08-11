@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useRef, Profiler } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef, Profiler } from "react";
 import { onRenderCallback } from "@/src/utils/dev/renderProfiler";
 import { motion, AnimatePresence, type PanInfo } from "framer-motion";
 import { Drawer } from "vaul";
@@ -24,10 +24,18 @@ import CartItemCard from "./cart/CartItemCard";
 import { CartItemVoucherPicker } from "./cart/CartItemVoucherPicker";
 import { CartDiscountPicker } from "./cart/CartDiscountPicker";
 import { CartFooter } from "./cart/CartFooter";
+import {
+  CartBundleVoucherPanel,
+  getBundleVoucherSummary,
+} from "./cart/CartBundleVoucherPanel";
 import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
 import type { MenuData, MenuItem } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
 import { deriveCheckoutRewards } from "@/src/utils/customerUx";
+import {
+  deriveBundleSelectionState,
+  type BundleSelectionAllocation,
+} from "@/src/lib/utils/bundleVoucher";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -105,6 +113,8 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   /** IDs of selected DISCOUNT vouchers. Server rule: max 1 PERCENT + unlimited FIXED. */
   const selectedVoucherIds = useCartStore((s) => s.selectedVoucherIds);
   const setSelectedVoucherIds = useCartStore((s) => s.setSelectedVoucherIds);
+  const [selectedBundleToken, setSelectedBundleToken] = useState<string | null>(null);
+  const [bundleAllocations, setBundleAllocations] = useState<BundleSelectionAllocation[]>([]);
 
   // ── UI overlay state ──
     const [isDiscountPickerOpen, setIsDiscountPickerOpen] = useState(false);
@@ -140,6 +150,38 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   const freeshipVouchers = filterUsableVouchers(allVouchers, "FREESHIP");
   const applicableAddonVouchersMap = buildAddonVoucherMap(allVouchers, items);
   const applicableProductVouchers = buildProductVoucherMap(allVouchers, items);
+  const bundleVouchers = allVouchers.filter(
+    (voucher) =>
+      voucher.voucher_type === "BUNDLE" &&
+      voucher.status === "ACTIVE" &&
+      voucher.package.promotion?.bundleRule,
+  );
+  const selectedBundleVoucher = bundleVouchers.find(
+    (voucher) => voucher.qr_token === selectedBundleToken,
+  );
+  const selectedBundleSummary = selectedBundleVoucher
+    ? getBundleVoucherSummary(selectedBundleVoucher)
+    : null;
+  const bundleSelectionState = selectedBundleSummary
+    ? deriveBundleSelectionState({
+        voucher: selectedBundleSummary,
+        cart: items.map((item) => ({
+          client_line_id: item.cartId,
+          menu_item_id: item.menuItemId,
+          quantity: item.quantity,
+        })),
+        allocations: bundleAllocations,
+      })
+    : null;
+  const addonLabels = useMemo(
+    () =>
+      new Map(
+        menuData.addon_groups.flatMap((group) =>
+          group.options.map((option) => [option.id, option.label] as const),
+        ),
+      ),
+    [menuData.addon_groups],
+  );
 
   // Calculate final display price using multi-voucher estimator
   const selectedDiscountVouchers = selectedVoucherIds.flatMap((id) => {
@@ -230,6 +272,8 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
       setAllVouchers([]);
       setAvailableVoucherPackages([]);
       setSelectedVoucherIds([]);
+      setSelectedBundleToken(null);
+      setBundleAllocations([]);
       return;
     }
     Promise.all([
@@ -300,7 +344,16 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
     }
   }, [orderType, deliveryAddress, isLoggedIn]);
 
-  const handleCheckout = () => setShowSubmitConfirm(true);
+  const handleCheckout = () => {
+    if (selectedBundleToken && bundleSelectionState?.status !== "READY") {
+      setCheckout({
+        status: "error",
+        message: bundleSelectionState?.message ?? "Vui lòng chọn đủ quà của ưu đãi.",
+      });
+      return;
+    }
+    setShowSubmitConfirm(true);
+  };
 
   const executeCheckout = useCallback(async () => {
     if (items.length === 0) return;
@@ -354,6 +407,12 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
           orderType,
           pickupTime: finalPickupTime,
           discountVoucherIds: selectedDiscountVouchers.map((voucher) => voucher.qr_token),
+          ...(selectedBundleToken
+            ? {
+                bundleVoucherQrToken: selectedBundleToken,
+                bundleRewardAllocations: bundleAllocations,
+              }
+            : {}),
           ...(orderType === "DELIVERY" && deliveryAddress ? {
             addressId: deliveryAddress.id,
             deliveryAddress: deliveryAddress.full_address,
@@ -391,6 +450,8 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
     resetCheckout,
     pickupTime,
     selectedDiscountVouchers,
+    selectedBundleToken,
+    bundleAllocations,
     orderType,
     deliveryAddress,
     shippingFee,
@@ -407,6 +468,8 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
     setCartOpen(false);
     resetCheckout();
     setSelectedVoucherIds([]);
+    setSelectedBundleToken(null);
+    setBundleAllocations([]);
     setIsDiscountPickerOpen(false);
     setActiveItemForVoucher(null);
     setIsAddressPickerOpen(false);
@@ -569,6 +632,17 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
                         />
                       ))
                     )}
+                    {items.length > 0 ? (
+                      <CartBundleVoucherPanel
+                        vouchers={bundleVouchers}
+                        cart={items}
+                        addonLabels={addonLabels}
+                        selectedVoucherToken={selectedBundleToken}
+                        allocations={bundleAllocations}
+                        onVoucherChange={setSelectedBundleToken}
+                        onAllocationsChange={setBundleAllocations}
+                      />
+                    ) : null}
                   </motion.div>
                 )}
               </AnimatePresence>

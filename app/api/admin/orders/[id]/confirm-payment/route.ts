@@ -123,6 +123,12 @@ export async function PATCH(
           where: { orderItem: { order_id: id } },
           select: { voucher_id: true }
         });
+        const promotionApplication = tx.orderPromotionApplication
+          ? await tx.orderPromotionApplication.findUnique({
+              where: { order_id: id },
+              select: { voucher_id: true },
+            })
+          : null;
 
         // 3. Build unique set of all voucher IDs
         const allVoucherIds = new Set<string>();
@@ -139,9 +145,22 @@ export async function PATCH(
         if (order.freeship_voucher_id) {
           allVoucherIds.add(order.freeship_voucher_id);
         }
+        if (promotionApplication) allVoucherIds.add(promotionApplication.voucher_id);
 
         // ── Conditional batch redeem: RESERVED → REDEEMED ──
         await redeemOrderVouchers(tx, Array.from(allVoucherIds), "ONLINE", session.id);
+        if (promotionApplication) {
+          const promoted = await tx.orderPromotionApplication.updateMany({
+            where: { order_id: id, status: "RESERVED" },
+            data: { status: "REDEEMED" },
+          });
+          if (promoted.count !== 1) {
+            throw new VoucherRedeemError(
+              "VOUCHER_MISMATCH",
+              "BUNDLE promotion application changed concurrently",
+            );
+          }
+        }
 
         // NOTE: No order_complete or voucher_surplus points at ADMIN_CONFIRMED.
         // Points are awarded only at COMPLETED in the generic PATCH endpoint.

@@ -116,9 +116,13 @@ For each item + size, resolve grams in this order:
 ## Addon Pricing
 
 - `addon_options.price_vnd` is global — changing it affects all items immediately.
+- Every addon group is opt-in. No selection is the canonical zero state; do not create zero-value
+  sentinel/default options.
 - Active addon groups are returned once as `MenuData.addon_groups`, never duplicated inside each menu item.
+- Only active options are public and orderable. Retire referenced options with `is_active = false`.
 - **Extra matcha** is special:
   - `price_vnd = 0` in DB (placeholder).
+  - Active options have positive `gram_value`; the legacy 0g row remains inactive during rollout.
   - Actual price = `addon_option.gram_value × selected_powder.price_per_gram`.
   - Server computes at order time → snapshot into `order_item_addons.unit_price_vnd`.
   - Frontend estimates in real-time using `price_per_gram` from `/api/powders` cached state + `gram_value` from menu response.

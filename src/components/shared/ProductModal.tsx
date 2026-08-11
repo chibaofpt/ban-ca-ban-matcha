@@ -92,9 +92,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
     if (editingItem) {
       return editingItem.selectedOptionIds.filter((id) => validOptionIds.has(id));
     }
-    return addonGroups.flatMap((group) =>
-      group.options.filter((option) => option.is_default).map((option) => option.id)
-    );
+    return [];
   });
   const [quantityMap, setQuantityMap] = useState<Record<string, number>>(() => {
     if (editingItem) return editingItem.quantityMap;
@@ -155,8 +153,14 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const selectorGroups = useMemo(() => addonGroups.filter((group) => group.type === "SELECTOR"), [addonGroups]);
   const toggleGroups = useMemo(() => addonGroups.filter((group) => group.type === "TOGGLE"), [addonGroups]);
 
-  const matchaSelectorGroups = useMemo(() => selectorGroups.filter(g => g.name.toLowerCase().includes("matcha")), [selectorGroups]);
-  const otherSelectorGroups = useMemo(() => selectorGroups.filter(g => !g.name.toLowerCase().includes("matcha")), [selectorGroups]);
+  const matchaSelectorGroups = useMemo(
+    () => selectorGroups.filter((group) => group.options.every((option) => option.gram_value != null)),
+    [selectorGroups],
+  );
+  const otherSelectorGroups = useMemo(
+    () => selectorGroups.filter((group) => group.options.some((option) => option.gram_value == null)),
+    [selectorGroups],
+  );
   const defaultMilkId = useMemo(() => milkTypes.find((milk) => milk.is_default)?.id ?? "", [milkTypes]);
 
   const powderList = useMemo(() => {
@@ -182,15 +186,13 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const defaultPowderPriceCtx = getPriceForContext(selectedSize, item.resolved_default_powder_id ?? "");
 
   // ── Handlers ─────────────────────────────────────────────────────────────
-  const handleSelectorToggle = useCallback((groupId: string, optionId: string, defaultOptId?: string) => {
+  const handleSelectorToggle = useCallback((groupId: string, optionId: string) => {
     const group = addonGroups.find(candidate => candidate.id === groupId);
     if (!group) return;
     const groupOptionIds = group.options.map((o) => o.id);
     setSelectedOptionIds((prev) => {
       if (prev.includes(optionId)) {
-        const next = prev.filter((id) => id !== optionId);
-        if (defaultOptId) next.push(defaultOptId);
-        return next;
+        return prev.filter((id) => id !== optionId);
       }
       return [...prev.filter((id) => !groupOptionIds.includes(id)), optionId];
     });
@@ -507,15 +509,16 @@ const BaseModal: React.FC<ProductModalProps> = ({
               <SectionLabel text="Topping" />
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {otherSelectorGroups.map((group) =>
-                  group.options.filter(o => !o.is_default).map((opt) => {
-                    const defaultOpt = group.options.find(o => o.is_default);
+                  group.options.map((opt) => {
                     return (
                       <OptionCard
                         key={opt.id}
                         label={opt.label}
+                        imageUrl={group.image_url}
+                        imageAlt={`Ảnh ${group.name}`}
                         sub={opt.price_vnd > 0 ? `+${formatKa(opt.price_vnd, "ceil")}` : undefined}
                         isActive={selectedOptionIds.includes(opt.id)}
-                        onClick={() => handleSelectorToggle(group.id, opt.id, defaultOpt?.id)}
+                        onClick={() => handleSelectorToggle(group.id, opt.id)}
                       />
                     );
                   })
@@ -527,6 +530,8 @@ const BaseModal: React.FC<ProductModalProps> = ({
                     <OptionCard
                       key={group.id}
                       label={group.name}
+                      imageUrl={group.image_url}
+                      imageAlt={`Ảnh ${group.name}`}
                       sub={opt.price_vnd > 0 ? `+${formatKa(opt.price_vnd, "ceil")}` : undefined}
                       isActive={selectedOptionIds.includes(opt.id)}
                       onClick={() => handleToggleChange(opt.id)}
@@ -542,16 +547,17 @@ const BaseModal: React.FC<ProductModalProps> = ({
             <div key={group.id} className="mt-7">
               <SectionLabel text={group.name} />
               <div className="grid grid-cols-4 gap-2">
-                {group.options.filter(o => !o.is_default).map((opt) => {
-                  const defaultOpt = group.options.find(o => o.is_default);
+                {group.options.map((opt) => {
                   const price = ceilTo1000(opt.gram_value != null ? opt.gram_value * activePowderPricePerGram : opt.price_vnd);
                   return (
                     <OptionCard
                       key={opt.id}
                       label={opt.label}
-                      sub={price > 0 ? `+${formatKa(price, "ceil")}` : (opt.is_default ? "Mặc định" : "0 ká")}
+                      imageUrl={group.image_url}
+                      imageAlt={`Ảnh ${group.name}`}
+                      sub={price > 0 ? `+${formatKa(price, "ceil")}` : "0 ká"}
                       isActive={selectedOptionIds.includes(opt.id)}
-                      onClick={() => handleSelectorToggle(group.id, opt.id, defaultOpt?.id)}
+                      onClick={() => handleSelectorToggle(group.id, opt.id)}
                     />
                   );
                 })}

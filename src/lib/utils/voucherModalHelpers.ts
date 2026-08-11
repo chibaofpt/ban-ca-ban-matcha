@@ -62,7 +62,9 @@ export function canInteract(voucher: MyVoucher): boolean {
  */
 export function filterModalPackages(packages: VoucherPackage[]): VoucherPackage[] {
   return packages.filter(
-    (pkg) => pkg.user_redeemed_count === undefined || pkg.user_redeemed_count < pkg.max_per_user
+    (pkg) =>
+      pkg.acquisition_mode !== "AUTO_GRANT" &&
+      (pkg.user_redeemed_count === undefined || pkg.user_redeemed_count < pkg.max_per_user)
   );
 }
 
@@ -193,6 +195,7 @@ export function getTicketHighlightText(
   if (vType === "FREESHIP") {
     return { text: "SHIP", subtext: "FREE" };
   }
+  if (vType === "BUNDLE") return { text: "X+Y", subtext: "COMBO" };
   return { text: "GIFT", subtext: "VOUCHER" };
 }
 
@@ -216,6 +219,7 @@ export function getVoucherBenefitText(v: MyVoucher): string {
   if (v.voucher_type === "FREESHIP") {
     return `Freeship tối đa ${(v.covered_delivery_fee_vnd ?? 0).toLocaleString("vi-VN")}đ`;
   }
+  if (v.voucher_type === "BUNDLE") return v.package.description ?? "Ưu đãi mua X tặng Y";
   return v.package.name;
 }
 
@@ -240,11 +244,12 @@ export function getPackageBenefitText(pkg: VoucherPackage): string {
 
 /** Badge config for voucher types */
 export const VOUCHER_TYPE_CONFIG: Record<
-  "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP",
+  "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE",
   { label: string; badgeCls: string }
 > = {
   DISCOUNT: { label: "Giảm giá", badgeCls: "bg-blue-100 text-blue-800" },
   PRODUCT: { label: "Sản phẩm", badgeCls: "bg-green-100 text-green-800" },
   ADDON: { label: "Topping", badgeCls: "bg-purple-100 text-purple-800" },
   FREESHIP: { label: "Freeship", badgeCls: "bg-orange-100 text-orange-800" },
+  BUNDLE: { label: "Mua X tặng Y", badgeCls: "bg-rose-100 text-rose-800" },
 };

@@ -229,8 +229,9 @@ export function getPendingPaymentQrUrl(order: PaymentQrOrder): string | null {
 export function getPendingPaymentWhere(
   role: string,
   staffId: string,
+  mineOnly = false,
 ): Prisma.OrderWhereInput {
-  if (role === "STAFF") {
+  if (role === "STAFF" || mineOnly) {
     return {
       status: "PENDING",
       order_type: "COUNTER",

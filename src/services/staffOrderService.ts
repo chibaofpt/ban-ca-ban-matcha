@@ -13,6 +13,7 @@ export interface CreateStaffOrderPayload {
   /** Defaults to CASH on both client and server for backward compatibility. */
   payment_method?: PaymentMethod;
   items: {
+    client_line_id?: string;
     menu_item_id: string;
     quantity: number;
     /** Required — all items have SMALL/MEDIUM/LARGE. */
@@ -38,6 +39,12 @@ export interface CreateStaffOrderPayload {
   }[];
   /** DISCOUNT voucher IDs (multiple allowed, max 1 PERCENT). Omit for anonymous orders. */
   discount_voucher_ids?: string[];
+  bundle_voucher_qr_token?: string;
+  bundle_reward_allocations?: Array<{
+    client_line_id: string;
+    quantity: number;
+    addon_option_id?: string;
+  }>;
   /**
    * Customer QR token (‘qr_token’ from users table). Required for STAFF when any voucher is used.
    * Admin auto-bypasses QR verification — omit for admin orders.
@@ -67,7 +74,7 @@ export type QrScanResult =
       type: "voucher";
       data: {
         qr_token: string;
-        voucher_type: "DISCOUNT" | "PRODUCT";
+        voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
         discount_type: "PERCENT" | "FIXED" | null;
         discount_value: number | null;
         menu_item_id: string | null;

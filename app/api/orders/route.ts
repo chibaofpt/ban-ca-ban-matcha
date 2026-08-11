@@ -6,6 +6,7 @@ import { logSystemEvent } from "@/lib/logger";
 import { OrderValidationError, PriceChangedError } from "@/lib/orders";
 import { checkRateLimits, getClientIp } from "@/lib/rateLimit";
 import { customerOrderSchema } from "@/lib/validations/order";
+import { BundlePromotionError } from "@/lib/promotionBundle";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     return await createCustomerOrder(parsed.data, session.id);
   } catch (error) {
+    if (error instanceof BundlePromotionError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: "BUNDLE_NOT_ELIGIBLE",
+          details: { reason: error.reason },
+        },
+        { status: error.reason === "BUNDLE_VOUCHER_NOT_FOUND" ? 404 : 422 },
+      );
+    }
     if (error instanceof OrderValidationError) {
       const statusMap: Record<string, number> = {
         VALIDATION_ERROR: 400,

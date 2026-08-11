@@ -20,16 +20,14 @@ export interface AddonOption {
   price_vnd: number;
   /** gram amount for extra matcha options; null for all other addon types */
   gram_value: number | null;
-  is_default: boolean;
   sort_order: number;
 }
 
 export interface AddonGroup {
   id: string;
   name: string;
+  image_url: string | null;
   type: "SELECTOR" | "TOGGLE" | "QUANTITY";
-  is_required: boolean;
-  min_quantity: number | null;
   max_quantity: number | null;
   options: AddonOption[];
 }

@@ -76,7 +76,7 @@ function buildDetailTags(
     const allOptions = addonGroups.flatMap((g) => g.options);
     for (const optId of item.selectedOptionIds) {
       const opt = allOptions.find((o) => o.id === optId);
-      if (opt && !opt.is_default) tags.push(opt.label);
+      if (opt) tags.push(opt.label);
     }
   }
 

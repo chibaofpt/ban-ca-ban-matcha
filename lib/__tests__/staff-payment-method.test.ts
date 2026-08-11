@@ -51,6 +51,7 @@ vi.mock("@/lib/prisma", () => ({
     menuItem: { findUnique: vi.fn() },
     addonOption: { findUnique: vi.fn() },
     voucher: { findUnique: vi.fn(), updateMany: vi.fn() },
+    voucherPackage: { findMany: vi.fn().mockResolvedValue([]) },
     user: { findUnique: vi.fn(), update: vi.fn(), create: vi.fn() },
     pointsLog: { create: vi.fn() },
     order: { create: vi.fn(), findUnique: vi.fn() },

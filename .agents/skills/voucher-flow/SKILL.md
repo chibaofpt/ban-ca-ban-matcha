@@ -49,7 +49,7 @@ calculator for customer and staff orders; never duplicate or reorder these calcu
 
 **Application order** (strict — never reorder):
 ```
-PRODUCT → ADDON → DISCOUNT → FREESHIP
+BUNDLE → PRODUCT → ADDON → DISCOUNT → FREESHIP
 ```
 
 ### Canonical money terms
@@ -58,7 +58,7 @@ PRODUCT → ADDON → DISCOUNT → FREESHIP
   Premium Latte where applicable; exclude all addons.
 - `subtotal_vnd`: gross merchandise subtotal before vouchers; include drinks and addons;
   exclude shipping.
-- `item_discount_vnd`: total PRODUCT and ADDON reductions.
+- `item_discount_vnd`: total BUNDLE, PRODUCT, and ADDON reductions.
 - `discountable_subtotal_vnd = max(0, subtotal_vnd - item_discount_vnd)`.
 - `total_voucher_discount_vnd`: order-level DISCOUNT reduction only.
 - `total_vnd = max(0, discountable_subtotal_vnd - total_voucher_discount_vnd)`.
@@ -151,9 +151,31 @@ and `order_discount_vouchers.discount_applied_vnd` have been **dropped** (migrat
 
 ---
 
+## BUNDLE Voucher Details
+
+- A published promotion owns one immutable BUNDLE rule and one voucher package. Deactivation is
+  allowed; editing a published rule is not.
+- Acquisition modes are `POINTS_EXCHANGE`, `FREE_CLAIM`, and `AUTO_GRANT`. Free/auto modes cost
+  zero points. `voucher_grants` makes free issuance idempotent under concurrent requests.
+- Registration attempts AUTO_GRANT immediately. Wallet and authenticated order entry points retry
+  lazily, covering accounts created while a campaign is active. Anonymous orders never receive or
+  use BUNDLE vouchers; ghost users are eligible after their user row exists.
+- Accept at most one BUNDLE voucher per order. The client must send stable `client_line_id` values
+  and explicit reward allocations. The server re-resolves products, configuration, addons, and
+  prices before evaluating them.
+- `SAME_CONFIG` means product, size, powder, and milk match; sweetness, ice, and coldwhisk may
+  differ. `FIXED_CONFIG` requires exact size and powder, plus milk for Latte. `ALLOWED_SCOPE`
+  covers at most its reference credit and creates no surplus points.
+- Addon rewards may scale per bundle, once per order, or per qualifying item. Pool allocations
+  across eligible items, reject Extra Matcha, and never overlap PRODUCT/ADDON voucher benefits.
+- Reserve at order creation, redeem on payment confirmation/completion, and restore on cancellation.
+  Direct offline QR redemption of BUNDLE vouchers is forbidden.
+
 ## ADDON Voucher Details
 
 - Match the exact `addon_option_id` on the selected order item.
+- New issuance, exchange, and package reactivation require the target option and its group to be
+  active. Dynamic-gram options are never eligible.
 - Cover the current price of one addon unit only. For quantity three, one voucher discounts
   one unit and the customer pays for two units.
 - Allow multiple ADDON vouchers on one menu item only when their `addon_option_id` values

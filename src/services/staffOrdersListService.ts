@@ -71,6 +71,8 @@ export interface FetchOrdersListParams {
   status?: string;
   page?: number;
   limit?: number;
+  /** Limit pending counter transfers to orders created by the current staff/admin account. */
+  mine?: boolean;
 }
 
 export interface PaginatedOrdersListRes {
@@ -89,6 +91,7 @@ export async function fetchOrdersList(params: FetchOrdersListParams = {}): Promi
   if (params.status) query.append('status', params.status);
   if (params.page) query.append('page', params.page.toString());
   if (params.limit) query.append('limit', params.limit.toString());
+  if (params.mine) query.append('mine', 'true');
   const qs = query.toString();
   const res = await apiClient.get(`/api/staff/orders${qs ? `?${qs}` : ''}`);
   return res.data;

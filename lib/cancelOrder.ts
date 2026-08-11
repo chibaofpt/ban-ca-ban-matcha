@@ -12,7 +12,12 @@ import type { PrismaClient } from "@prisma/client";
 type CancelTxClient = Pick<
   PrismaClient,
   "order" | "orderItem" | "voucher" | "user" | "pointsLog" | "orderDiscountVoucher" | "orderItemAddonVoucher"
->;
+> & {
+  orderPromotionApplication?: Pick<
+    PrismaClient["orderPromotionApplication"],
+    "findUnique" | "updateMany"
+  >;
+};
 
 interface RestoreOptions {
   /** If true, also reverses order_complete points. Use when cancelling a COMPLETED order. */
@@ -149,6 +154,39 @@ export async function restoreVouchersOnCancel(
           redeemed_by: null,
           used_channel: null,
         },
+      });
+    }
+  }
+
+  // 2c. BUNDLE only exists through an order application, never standalone redemption.
+  if (tx.orderPromotionApplication) {
+    const bundleApplication = await tx.orderPromotionApplication.findUnique({
+      where: { order_id: orderId },
+      select: { voucher_id: true },
+    });
+    if (bundleApplication) {
+      const bundleVoucher = await tx.voucher.findUnique({
+        where: { id: bundleApplication.voucher_id },
+        select: { status: true, expires_at: true },
+      });
+      if (
+        bundleVoucher &&
+        (bundleVoucher.status === "RESERVED" || bundleVoucher.status === "REDEEMED")
+      ) {
+        const isExpired = bundleVoucher.expires_at && bundleVoucher.expires_at <= new Date();
+        await tx.voucher.update({
+          where: { id: bundleApplication.voucher_id },
+          data: {
+            status: isExpired ? "EXPIRED" : "ACTIVE",
+            redeemed_at: null,
+            redeemed_by: null,
+            used_channel: null,
+          },
+        });
+      }
+      await tx.orderPromotionApplication.updateMany({
+        where: { order_id: orderId, status: { in: ["RESERVED", "REDEEMED"] } },
+        data: { status: "CANCELLED" },
       });
     }
   }

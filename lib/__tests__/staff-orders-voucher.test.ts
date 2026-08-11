@@ -61,6 +61,7 @@ vi.mock("@/lib/prisma", () => ({
       update: (...args: unknown[]) => mockVoucherUpdate(...args),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
+    voucherPackage: { findMany: vi.fn().mockResolvedValue([]) },
     user: {
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),

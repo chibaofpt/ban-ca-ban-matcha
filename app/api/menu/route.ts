@@ -40,7 +40,10 @@ async function fetchMenuData(): Promise<MenuData> {
         prisma.addonGroup.findMany({
           where: { is_active: true },
           include: {
-            options: { orderBy: { sort_order: "asc" } },
+            options: {
+              where: { is_active: true },
+              orderBy: { sort_order: "asc" },
+            },
           },
         }),
         prisma.milkType.findMany({
@@ -61,19 +64,19 @@ async function fetchMenuData(): Promise<MenuData> {
     }
 
     // Global addon groups shape returned once at MenuData level
-    const globalAddonGroups: AddonGroup[] = addonGroups.map((g) => ({
+    const globalAddonGroups: AddonGroup[] = addonGroups
+      .filter((g) => g.options.length > 0)
+      .map((g) => ({
       id: g.id,
       name: g.name,
+      image_url: g.image_url ?? null,
       type: g.type,
-      is_required: g.is_required,
-      min_quantity: g.min_quantity ?? null,
       max_quantity: g.max_quantity ?? null,
       options: g.options.map((o): AddonOption => ({
         id: o.id,
         label: o.label,
         price_vnd: o.price_vnd,
         gram_value: o.gram_value !== null ? Number(o.gram_value) : null,
-        is_default: o.is_default,
         sort_order: o.sort_order,
       })),
     }));

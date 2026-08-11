@@ -12,6 +12,7 @@ export type { CreateOrderResult } from "@/src/lib/types/order";
 export interface CreateOrderPayload {
   order_type: "PICKUP" | "DELIVERY";
   items: {
+    client_line_id?: string;
     menu_item_id: string;
     quantity: number;
     size: "SMALL" | "MEDIUM" | "LARGE";
@@ -39,6 +40,12 @@ export interface CreateOrderPayload {
   delivery_receiver_phone?: string;
   client_shipping_fee_vnd?: number;
   freeship_voucher_id?: string;
+  bundle_voucher_qr_token?: string;
+  bundle_reward_allocations?: Array<{
+    client_line_id: string;
+    quantity: number;
+    addon_option_id?: string;
+  }>;
 }
 
 export interface PriceConflict {
@@ -107,6 +114,12 @@ export async function createOrder(
     deliveryReceiverPhone?: string;
     clientShippingFeeVnd?: number;
     freeshipVoucherId?: string;
+    bundleVoucherQrToken?: string;
+    bundleRewardAllocations?: Array<{
+      client_line_id: string;
+      quantity: number;
+      addon_option_id?: string;
+    }>;
   }
 ): Promise<CreateOrderResult> {
   const payload: CreateOrderPayload = {
@@ -123,6 +136,16 @@ export async function createOrder(
     ...(options?.deliveryReceiverPhone ? { delivery_receiver_phone: options.deliveryReceiverPhone } : {}),
     ...(options?.clientShippingFeeVnd !== undefined ? { client_shipping_fee_vnd: options.clientShippingFeeVnd } : {}),
     ...(options?.freeshipVoucherId ? { freeship_voucher_id: options.freeshipVoucherId } : {}),
+    ...(options?.bundleVoucherQrToken
+      ? {
+          bundle_voucher_qr_token: options.bundleVoucherQrToken,
+          bundle_reward_allocations: options.bundleRewardAllocations ?? [],
+          items: buildPayloadItems(cart).map((item, index) => ({
+            ...item,
+            client_line_id: cart[index]?.cartId,
+          })),
+        }
+      : {}),
   };
 
   try {

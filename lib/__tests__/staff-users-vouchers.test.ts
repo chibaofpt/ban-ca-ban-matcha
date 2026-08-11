@@ -23,6 +23,7 @@ vi.mock("@/lib/prisma", () => ({
       findMany: (...args: unknown[]) => mockVoucherFindMany(...args),
       updateMany: (...args: unknown[]) => mockVoucherUpdateMany(...args),
     },
+    voucherPackage: { findMany: vi.fn().mockResolvedValue([]) },
   },
 }));
 

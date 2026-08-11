@@ -82,9 +82,21 @@ function makeTx(overrides: {
       findUnique: vi.fn().mockResolvedValue(overrides.menuItemResult ?? null),
     },
     addonOption: {
-      findUnique: vi.fn().mockImplementation(({ where }: { where: { id: string } }) =>
-        Promise.resolve(overrides.addonResults?.[where.id] ?? null)
-      ),
+      findUnique: vi.fn().mockImplementation(({ where }: { where: { id: string } }) => {
+        const result = overrides.addonResults?.[where.id] ?? null;
+        if (!result || "group" in result) return Promise.resolve(result);
+        return Promise.resolve({
+          ...result,
+          is_active: true,
+          group: {
+            id: "group-default",
+            type: "TOGGLE",
+            is_active: true,
+            max_quantity: null,
+            options: [{ id: where.id, is_active: true }],
+          },
+        });
+      }),
     },
   };
 }
@@ -282,7 +294,7 @@ describe("processOrderItems", () => {
     expect(result[0].addons_price_vnd).toBe(12000);
   });
 
-  it("extra matcha with gram_value=0 (option 'khÃ´ng thÃªm') â†’ price = 0", async () => {
+  it("từ chối option Extra Matcha 0g đã inactive", async () => {
     mockResolveOrderItemPrice.mockReturnValue(69000);
     const tx = makeTx({
       menuItemResult: latteMenuItem,
@@ -291,28 +303,90 @@ describe("processOrderItems", () => {
           id: ADDON_EXTRA_MATCHA_ID,
           price_vnd: 0,
           gram_value: new Decimal("0"), // 0g â€” default option
+          is_active: false,
+          group: {
+            id: "group-extra",
+            type: "SELECTOR",
+            is_active: true,
+            max_quantity: null,
+            options: [{ id: ADDON_EXTRA_MATCHA_ID, is_active: false }],
+          },
         },
       },
     });
 
-    const result = await processOrderItems(
-      [
-        {
-          menu_item_id: MENU_ITEM_ID,
-          quantity: 1,
-          size: "MEDIUM",
-          sweetness: "QUARTER",
-          addon_option_ids: [{ option_id: ADDON_EXTRA_MATCHA_ID, quantity: 1 }],
-          client_price_vnd: 69000,
-        },
-      ],
-      tx as never
-    );
+    await expect(processOrderItems(
+      [{
+        menu_item_id: MENU_ITEM_ID,
+        quantity: 1,
+        size: "MEDIUM",
+        sweetness: "QUARTER",
+        addon_option_ids: [{ option_id: ADDON_EXTRA_MATCHA_ID, quantity: 1 }],
+        client_price_vnd: 69000,
+      }],
+      tx as never,
+    )).rejects.toMatchObject({ name: "OrderValidationError", code: "NOT_FOUND" });
+  });
 
-    expect(result[0].resolvedAddons[0].unit_price_vnd).toBe(0);
-    expect(result[0].resolvedAddons[0].discount_applied_vnd).toBe(0);
-    expect(result[0].addons_price_vnd).toBe(0);
-    expect(result[0].total_discount_vnd).toBe(0);
+  it("từ chối hai option thuộc cùng SELECTOR", async () => {
+    mockResolveOrderItemPrice.mockReturnValue(69_000);
+    const group = {
+      id: "group-cream",
+      type: "SELECTOR",
+      is_active: true,
+      max_quantity: null,
+      options: [{ id: "cream-half", is_active: true }, { id: "cream-one", is_active: true }],
+    };
+    const tx = makeTx({
+      menuItemResult: latteMenuItem,
+      addonResults: {
+        "cream-half": { id: "cream-half", price_vnd: 20_000, gram_value: null, is_active: true, group },
+        "cream-one": { id: "cream-one", price_vnd: 40_000, gram_value: null, is_active: true, group },
+      },
+    });
+
+    await expect(processOrderItems([{
+      menu_item_id: MENU_ITEM_ID,
+      quantity: 1,
+      size: "MEDIUM",
+      sweetness: "FULL",
+      addon_option_ids: [
+        { option_id: "cream-half", quantity: 1 },
+        { option_id: "cream-one", quantity: 1 },
+      ],
+      client_price_vnd: 129_000,
+    }], tx as never)).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+  });
+
+  it("từ chối quantity khác 1 cho SELECTOR", async () => {
+    mockResolveOrderItemPrice.mockReturnValue(69_000);
+    const tx = makeTx({
+      menuItemResult: latteMenuItem,
+      addonResults: {
+        [ADDON_KEM_ID]: {
+          id: ADDON_KEM_ID,
+          price_vnd: 20_000,
+          gram_value: null,
+          is_active: true,
+          group: {
+            id: "group-cream",
+            type: "SELECTOR",
+            is_active: true,
+            max_quantity: null,
+            options: [{ id: ADDON_KEM_ID, is_active: true }],
+          },
+        },
+      },
+    });
+
+    await expect(processOrderItems([{
+      menu_item_id: MENU_ITEM_ID,
+      quantity: 1,
+      size: "MEDIUM",
+      sweetness: "FULL",
+      addon_option_ids: [{ option_id: ADDON_KEM_ID, quantity: 2 }],
+      client_price_vnd: 109_000,
+    }], tx as never)).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   });
 
   it("PRODUCT voucher â†’ drink discount applied, customer pays diff, addons still charged", async () => {

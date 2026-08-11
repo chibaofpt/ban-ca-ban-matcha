@@ -71,7 +71,7 @@ export function addonsDetails(
   for (const g of addonGroups) {
     if (g.type === "SELECTOR" || g.type === "TOGGLE") {
       for (const opt of g.options) {
-        if (item.selectedOptionIds.includes(opt.id) && !opt.is_default) {
+        if (item.selectedOptionIds.includes(opt.id)) {
           // Extra matcha
           if (opt.gram_value != null) {
             if (powders) {

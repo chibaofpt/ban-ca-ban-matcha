@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  collectPendingCounterTransfers,
+  getPendingTransferLaunchMode,
   resolveOrderPaymentMethod,
   toCounterTransferPayment,
 } from "@/src/lib/utils/counterTransferOrder";
@@ -48,5 +50,22 @@ describe("mapping giao dịch chuyển khoản tại quầy", () => {
     expect(toCounterTransferPayment({ ...pendingOrder, payment_qr_url: null })).toBeNull();
     expect(toCounterTransferPayment({ ...pendingOrder, order_code: null })).toBeNull();
     expect(toCounterTransferPayment({ ...pendingOrder, auto_cancel_at: null })).toBeNull();
+  });
+
+  it("chỉ giữ các giao dịch COUNTER BANK_TRANSFER PENDING hợp lệ", () => {
+    const result = collectPendingCounterTransfers([
+      pendingOrder,
+      { ...pendingOrder, id: "cash", payment_method: "CASH" as const },
+      { ...pendingOrder, id: "done", status: "COMPLETED" as const },
+      { ...pendingOrder, id: "missing-qr", payment_qr_url: null },
+    ]);
+
+    expect(result.map((order) => order.id)).toEqual(["order-payment-1"]);
+  });
+
+  it("chọn đúng chế độ launcher cho 0, 1 và nhiều giao dịch", () => {
+    expect(getPendingTransferLaunchMode(0)).toBe("HIDDEN");
+    expect(getPendingTransferLaunchMode(1)).toBe("DIRECT");
+    expect(getPendingTransferLaunchMode(2)).toBe("LIST");
   });
 });

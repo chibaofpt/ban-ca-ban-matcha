@@ -7,6 +7,8 @@ import ImageCropModal from "@/src/components/admin/ImageCropModal";
 
 interface MenuImageCropFieldProps {
   hasExistingImage: boolean;
+  currentImageUrl?: string | null;
+  label?: string;
   onFileChange: (file: File | null) => void;
   onError: (message: string | null) => void;
 }
@@ -14,6 +16,8 @@ interface MenuImageCropFieldProps {
 /** Image picker that crops uploads to a square WebP before form submission. */
 export default function MenuImageCropField({
   hasExistingImage,
+  currentImageUrl,
+  label = "Ảnh đại diện",
   onFileChange,
   onError,
 }: MenuImageCropFieldProps) {
@@ -62,12 +66,20 @@ export default function MenuImageCropField({
 
   return (
     <div className="space-y-2">
-      <span className="text-sm font-bold text-primary">Ảnh đại diện</span>
+      <span className="text-sm font-bold text-primary">{label}</span>
       <label className="group relative mx-auto flex aspect-square max-w-[220px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-border bg-secondary/10 transition-colors hover:border-primary/50 focus-within:ring-2 focus-within:ring-ring">
         {previewUrl ? (
           <Image
             src={previewUrl}
             alt="Ảnh sản phẩm đã cắt"
+            fill
+            unoptimized
+            className="object-cover"
+          />
+        ) : currentImageUrl ? (
+          <Image
+            src={currentImageUrl}
+            alt={`${label} hiện tại`}
             fill
             unoptimized
             className="object-cover"
@@ -88,7 +100,7 @@ export default function MenuImageCropField({
           type="file"
           accept="image/jpeg,image/png,image/webp"
           onChange={selectImage}
-          aria-label="Chọn ảnh đại diện sản phẩm"
+          aria-label={`Chọn ${label.toLowerCase()}`}
           className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
         />
       </label>

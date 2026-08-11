@@ -66,6 +66,7 @@ export function CounterTransferOrderAction({
         isProcessing={isProcessing}
         onConfirm={() => void runAction(onConfirm)}
         onCancel={() => void runAction(onCancel)}
+        onClose={() => setPayment(null)}
       />
     </>
   );

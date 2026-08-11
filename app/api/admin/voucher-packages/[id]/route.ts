@@ -51,6 +51,27 @@ export async function PUT(
       );
     }
 
+    if (parsed.data.is_active === true) {
+      const target = await prisma.voucherPackage.findUnique({
+        where: { id },
+        select: {
+          voucher_type: true,
+          addonOption: {
+            select: { is_active: true, gram_value: true, group: { select: { is_active: true } } },
+          },
+        },
+      });
+      if (
+        target?.voucher_type === "ADDON" &&
+        (!target.addonOption || !target.addonOption.is_active || !target.addonOption.group.is_active || target.addonOption.gram_value !== null)
+      ) {
+        return NextResponse.json(
+          { error: "Không thể kích hoạt package trỏ tới addon không hợp lệ", code: "VALIDATION_ERROR" },
+          { status: 400 },
+        );
+      }
+    }
+
     const updated = await prisma.voucherPackage.update({
       where: { id },
       data: {

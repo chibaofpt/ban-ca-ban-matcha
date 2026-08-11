@@ -5,6 +5,7 @@ import type {
   UsedChannel,
   VoucherStatus,
   VoucherType,
+  VoucherAcquisitionMode,
 } from "@prisma/client";
 
 interface VoucherDtoSource {
@@ -30,7 +31,13 @@ interface VoucherDtoSource {
   expires_at: Date | null;
   redeemed_at: Date | null;
   created_at: Date;
-  package: { name: string; description: string | null; points_cost: number };
+  package: {
+    name: string;
+    description: string | null;
+    points_cost: number;
+    acquisition_mode?: VoucherAcquisitionMode;
+    promotion?: unknown;
+  };
   menuItem: { name: string; is_available: boolean } | null;
   addonOption: { label: string } | null;
   staff: { name: string; role: Role } | null;

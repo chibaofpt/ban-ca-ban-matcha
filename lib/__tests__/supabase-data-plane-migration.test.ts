@@ -13,6 +13,16 @@ const migration = readFileSync(
   ),
   "utf8",
 );
+const bundleMigration = readFileSync(
+  join(
+    process.cwd(),
+    "prisma",
+    "migrations",
+    "20260811221000_add_bundle_promotions",
+    "migration.sql",
+  ),
+  "utf8",
+);
 
 function prismaTableNames(): string[] {
   return [...schema.matchAll(/@@map\("([^"]+)"\)/g)]
@@ -22,14 +32,15 @@ function prismaTableNames(): string[] {
 
 describe("migration hardening Supabase Data API", () => {
   it("bật RLS, không FORCE, cho mọi bảng Prisma quản lý", () => {
-    const enabledTables = [...migration.matchAll(
-      /ALTER TABLE IF EXISTS public\."([^"]+)" ENABLE ROW LEVEL SECURITY;/g,
+    const hardenedMigrations = `${migration}\n${bundleMigration}`;
+    const enabledTables = [...hardenedMigrations.matchAll(
+      /ALTER TABLE (?:IF EXISTS )?public\."([^"]+)" ENABLE ROW LEVEL SECURITY;/g,
     )].map((match) => match[1]).sort();
 
     expect(enabledTables).toEqual(prismaTableNames());
-    expect(migration).not.toMatch(/FORCE ROW LEVEL SECURITY/i);
-    expect(migration).not.toMatch(/CREATE\s+POLICY/i);
-    expect(migration).not.toMatch(/auth\.uid\s*\(/i);
+    expect(hardenedMigrations).not.toMatch(/FORCE ROW LEVEL SECURITY/i);
+    expect(hardenedMigrations).not.toMatch(/CREATE\s+POLICY/i);
+    expect(hardenedMigrations).not.toMatch(/auth\.uid\s*\(/i);
   });
 
   it("thu hồi quyền Data API rộng và chỉ cấp đúng refresh-session surface", () => {

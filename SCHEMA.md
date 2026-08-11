@@ -21,11 +21,11 @@
 
 ## Canonical Order Totals
 
-Apply vouchers in this strict order: `PRODUCT → ADDON → DISCOUNT → FREESHIP`.
+Apply vouchers in this strict order: `BUNDLE → PRODUCT → ADDON → DISCOUNT → FREESHIP`.
 
 ```text
 subtotal_vnd = gross drinks + gross addons
-item_discount_vnd = PRODUCT reductions + ADDON reductions
+item_discount_vnd = BUNDLE reductions + PRODUCT reductions + ADDON reductions
 discountable_subtotal_vnd = max(0, subtotal_vnd - item_discount_vnd)
 total_vnd = max(0, discountable_subtotal_vnd - total_voucher_discount_vnd)
 grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
@@ -65,7 +65,7 @@ grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
 | Enum | Values |
 |---|---|
 | `Role` | `CUSTOMER`, `STAFF`, `ADMIN` |
-| `VoucherType` | `DISCOUNT`, `PRODUCT`, `ADDON`, `FREESHIP` |
+| `VoucherType` | `DISCOUNT`, `PRODUCT`, `ADDON`, `FREESHIP`, `BUNDLE` |
 | `DiscountType` | `PERCENT`, `FIXED` |
 | `VoucherStatus` | `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, `REFUNDED` |
 | `UsedChannel` | `ONLINE`, `OFFLINE` |
@@ -150,6 +150,7 @@ Powder catalogue. Pricing input for all items.
 - `name` string
 - `manufacturer` string nullable
 - `description` string nullable
+- `image_url` string nullable — Supabase Storage public URL
 - `price_per_gram` int — VND/g (e.g. 6000 = 6,000 VND/g)
 - `type` PowderType — `RECOMMEND` | `NEW` | `SEASONAL` | `NONE`
 - `reference_latte_item_id` uuid nullable UK — FK → menu_items, **SET NULL on delete**, UNIQUE. Pricing anchor for `Premium_Latte`. If NULL → Premium = 0.
@@ -251,15 +252,19 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `id` uuid PK
 - `name` string — e.g. "Kem", "Đá dừa", "Extra Matcha"
 - `description` string nullable
+- `image_url` string nullable — Supabase Storage public URL
 - `type` AddonType — `SELECTOR` | `TOGGLE` | `QUANTITY`
-- `is_required` bool — seed: `true` for all 3 active groups (kem, đá dừa, extra matcha)
 - `is_active` bool — default true. `false` = hidden from all items globally.
-- `min_quantity` int nullable — QUANTITY type only
 - `max_quantity` int nullable — QUANTITY type only
 - `created_at` timestamp
 
 > Active groups attached to every item in `GET /api/menu` — no junction join.
 > DELETE = set `is_active = false`. Never cascade-delete `addon_options`.
+> Every group is opt-in: an empty selection means “no addon”. `SELECTOR` accepts at most one
+> option, `TOGGLE` has exactly one active option, and `QUANTITY` has exactly one active option plus
+> a required positive `max_quantity`.
+> Phase 1 retains physical columns `is_required` and `min_quantity` only for rollout safety; they
+> are always `false`/`NULL`, absent from API contracts, and scheduled for removal in Phase 2.
 
 ---
 
@@ -268,12 +273,17 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `addon_group_id` uuid FK → addon_groups (cascade delete)
 - `label` string — e.g. "½ viên", "+2g"
 - `price_vnd` int — 0 if no charge. Extra matcha: always 0 here — actual price computed from `gram_value × selected_powder.price_per_gram` at order time.
-- `gram_value` Decimal nullable — Extra matcha only: gram amount of this option (e.g. 0, 1.0, 2.0, 3.0, 4.0). Null for all other addon types.
-- `is_default` bool
+- `gram_value` Decimal nullable — Extra matcha only: positive gram amount (1.0–4.0 in the current seed). Null for all fixed-price addon types.
+- `is_active` bool — default true. Referenced options are retired by setting false, never hard deleted.
 - `sort_order` int
 
-> Extra matcha seed options: 0g (default, gram_value=0), +1g, +2g, +3g, +4g.
+> Extra Matcha active seed options: +1g, +2g, +3g, +4g. The legacy 0g option is inactive;
+> absence represents no extra matcha.
 > Server uses `gram_value` to compute: `unit_price_vnd = gram_value × selected_powder.price_per_gram`.
+> A dynamic-gram group must be `SELECTOR`; every active option must have positive `gram_value` and
+> `price_vnd = 0`. Dynamic and fixed-price active options cannot be mixed in one group.
+> Phase 1 retains physical `is_default` only for rollout safety; it is always false, absent from
+> API contracts, and scheduled for removal in Phase 2.
 
 ---
 
@@ -378,6 +388,7 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `name` string
 - `description` string nullable
 - `voucher_type` VoucherType
+- `acquisition_mode` VoucherAcquisitionMode — `POINTS_EXCHANGE`, `FREE_CLAIM`, or `AUTO_GRANT`
 - `points_cost` int
 - `discount_type` DiscountType nullable
 - `discount_value` int nullable
@@ -409,6 +420,7 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `package_id` uuid FK → voucher_packages
 - `qr_token` string UK — UUID, NEVER expose `id`
 - `voucher_type` VoucherType — copied from package
+- `issued_via` VoucherIssuedVia — immutable issuance audit (`POINTS_EXCHANGE`, `FREE_CLAIM`, `AUTO_GRANT`, `ADMIN`)
 - `discount_type` DiscountType nullable — copied from package
 - `discount_value` int nullable — copied from package
 - `menu_item_id` uuid FK nullable → menu_items — copied from package
@@ -466,15 +478,27 @@ Immutable. Reversal = insert new negative-delta row.
 
 ---
 
-### promotions — Phase 5 only
+### promotions and BUNDLE rules
 - `id` uuid PK
+- `voucher_package_id` uuid nullable UK → voucher_packages (legacy rows may be unlinked)
 - `title` string
 - `description` string nullable
 - `starts_at` timestamp
 - `ends_at` timestamp
-- `max_redemptions` int
+- `max_redemptions` int nullable
 - `is_active` bool
+- `published_at` timestamp nullable — non-null rules are immutable
 - `created_at` timestamp
+
+`promotion_bundle_rules` stores buy/reward quantity, reward kind/mode, scaling, and per-order
+caps. `promotion_product_scopes` stores qualifier/reward product configuration plus the reference
+credit used by `ALLOWED_SCOPE`. `promotion_addon_rewards` stores allowed addon options; Extra
+Matcha is never eligible.
+
+`voucher_grants` provides a unique `(promotion_id, user_id)` idempotency key for FREE_CLAIM and
+AUTO_GRANT. `order_promotion_applications` records the one BUNDLE application allowed per order,
+while `order_promotion_rewards` records each explicit product/addon allocation and its VND benefit.
+Cancellation changes the application to `CANCELLED` and restores the reserved voucher.
 
 ---
 
@@ -491,8 +515,8 @@ Immutable. Reversal = insert new negative-delta row.
 | Add `is_active` to `addon_groups` | New column, default true |
 | Add `gram_value` to `addon_options` | Decimal nullable — set for extra matcha options only |
 | Seed new tables | `default_size_config` (3 rows), `matcha_powder` (7 rows), `powder_size_config` (6 rows), `milk_type` (sữa bò) |
-| Seed addon groups | kem, đá dừa, extra matcha — all `is_required = true`, `is_active = true` |
-| Seed extra matcha options | 0g (default), +1g, +2g, +3g, +4g with correct `gram_value` |
+| Seed addon groups | kem, đá dừa, extra matcha — all opt-in and `is_active = true` |
+| Seed extra matcha options | +1g, +2g, +3g, +4g active; legacy 0g inactive |
 | Set `reference_latte_item_id` | After Latte items created — manual step |
 
 > ⚠️ Migrating `seasonal` items to `latte`/`fusion` requires manual review — cannot be automated.

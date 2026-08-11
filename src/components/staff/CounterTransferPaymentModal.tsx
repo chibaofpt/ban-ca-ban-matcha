@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Clock } from "lucide-react";
+import { Clock, X } from "lucide-react";
 import { motion } from "framer-motion";
 import { CountdownTimer } from "@/src/components/customer/CountdownTimer";
 import { PaymentQrPanel } from "@/src/components/shared/PaymentQrPanel";
@@ -18,14 +18,16 @@ interface CounterTransferPaymentModalProps {
   isProcessing: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  onClose: () => void;
 }
 
-/** Locked payment dialog for one pending counter bank transfer. */
+/** Reopenable payment dialog for one pending counter bank transfer. */
 export function CounterTransferPaymentModal({
   payment,
   isProcessing,
   onConfirm,
   onCancel,
+  onClose,
 }: CounterTransferPaymentModalProps) {
   const [confirmation, setConfirmation] = useState<"confirm" | "cancel" | null>(null);
   if (!payment || !payment.payment_qr_url || !payment.order_code || !payment.auto_cancel_at) {
@@ -43,7 +45,15 @@ export function CounterTransferPaymentModal({
           animate={{ opacity: 1, scale: 1 }}
           className="max-h-[95vh] w-full max-w-md overflow-y-auto rounded-3xl bg-card p-4 shadow-2xl"
         >
-          <div className="mb-3 text-center">
+          <div className="relative mb-3 text-center">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Đóng QR chuyển khoản"
+              className="absolute right-0 top-0 flex h-11 w-11 items-center justify-center rounded-full bg-secondary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
             <h2 id="counter-payment-title" className="font-serif text-xl font-bold">
               Chờ khách chuyển khoản
             </h2>

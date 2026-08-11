@@ -108,6 +108,27 @@ describe("createOrder — payload shape without vouchers", () => {
   });
 });
 
+describe("createOrder — payload BUNDLE công khai", () => {
+  beforeEach(() => vi.clearAllMocks());
+  it("gửi qr_token và client_line_id ổn định cho allocation", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: mockOrderResult } });
+
+    await createOrder([makeCartItem({ cartId: "line-public-1", quantity: 2 })], {
+      bundleVoucherQrToken: "bundle-public-token",
+      bundleRewardAllocations: [{ client_line_id: "line-public-1", quantity: 1 }],
+    });
+
+    const payload = vi.mocked(apiClient.post).mock.calls[0]?.[1];
+    expect(payload).toEqual(
+      expect.objectContaining({
+        bundle_voucher_qr_token: "bundle-public-token",
+        bundle_reward_allocations: [{ client_line_id: "line-public-1", quantity: 1 }],
+        items: [expect.objectContaining({ client_line_id: "line-public-1" })],
+      }),
+    );
+  });
+});
+
 // ── Multi DISCOUNT vouchers (mới) ─────────────────────────────────────────────
 
 describe("createOrder — discount_voucher_ids (thay thế voucher_id)", () => {

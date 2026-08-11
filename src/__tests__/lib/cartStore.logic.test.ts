@@ -16,6 +16,7 @@ vi.mock("@/src/lib/observability", () => ({
 }));
 
 import { computeFinalClientPrice, migrateCartState, useCartStore } from "@/src/lib/store/cartStore";
+import { migrateStaffCartState } from "@/src/lib/store/staffCartStore";
 import type { CartItem } from "@/src/lib/types/cart";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -174,5 +175,57 @@ describe("Cart persisted-state privacy migration", () => {
     expect(migratedItems[0].productVoucherDiscountVnd).toBeUndefined();
     expect(migratedItems[0].addonVouchers).toEqual([]);
     expect(migrated.selectedVoucherIds).toEqual([]);
+  });
+
+  it("bỏ addon legacy giá 0 nhưng giữ addon trả phí khi nâng lên schema opt-in", () => {
+    const item = makeCartItem({ unitPrice: 75_000, addonsPrice: 20_000 });
+    const migrated = migrateCartState(
+      {
+        items: [{
+          ...item,
+          selectedOptionIds: ["legacy-none", "paid-cream"],
+          addonPrices: { "legacy-none": 0, "paid-cream": 20_000 },
+        }],
+      },
+      3,
+    );
+
+    expect(migrated.items?.[0].selectedOptionIds).toEqual(["paid-cream"]);
+    expect(migrated.items?.[0].addonPrices).toEqual({ "paid-cream": 20_000 });
+    expect(migrated.items?.[0].clientPriceVnd).toBe(75_000);
+  });
+
+  it("giữ voucher của QUANTITY addon khi dọn sentinel trong cart khách", () => {
+    const item = makeCartItem({
+      unitPrice: 85_000,
+      addonsPrice: 30_000,
+      addonVouchers: [{ voucherId: "quantity-voucher", addonOptionId: "boba", discountVnd: 10_000 }],
+    });
+    const migrated = migrateCartState(
+      {
+        items: [{
+          ...item,
+          quantityAddonOptions: [{ option_id: "boba", quantity: 3 }],
+          addonPrices: { boba: 10_000 },
+        }],
+      },
+      3,
+    );
+
+    expect(migrated.items?.[0].addonVouchers).toEqual(item.addonVouchers);
+  });
+
+  it("staff cart cũng bỏ sentinel giá 0 và giữ lựa chọn trả phí", () => {
+    const item = makeCartItem({ unitPrice: 75_000, addonsPrice: 20_000 });
+    const migrated = migrateStaffCartState({
+      items: [{
+        ...item,
+        selectedOptionIds: ["legacy-zero", "paid-cream"],
+        addonPrices: { "legacy-zero": 0, "paid-cream": 20_000 },
+      }],
+    });
+
+    expect(migrated.items?.[0].selectedOptionIds).toEqual(["paid-cream"]);
+    expect(migrated.items?.[0].addonPrices).toEqual({ "paid-cream": 20_000 });
   });
 });

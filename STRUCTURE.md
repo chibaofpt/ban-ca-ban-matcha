@@ -98,7 +98,9 @@ app/                              # Next.js App Router — entry points only, ze
     admin/store-schedule/route.ts     # GET + PUT weekly schedule
     admin/store-closure/route.ts      # POST close/open
     store-status/route.ts             # Public — current open/closed state
-    admin/promotions/route.ts         # Phase 5 only
+    admin/promotions/route.ts         # GET + POST immutable BUNDLE campaigns
+    admin/promotions/[id]/route.ts    # PATCH active state only
+    profile/vouchers/claim/route.ts   # FREE_CLAIM issuance
 
 src/                              # Frontend — never import lib/ from here
   views/
@@ -122,6 +124,7 @@ src/                              # Frontend — never import lib/ from here
       AdminPointsLogPage.tsx
       AdminMilkTypesPage.tsx
       AdminAddonsPage.tsx
+      AdminPromotionsPage.tsx
     staff/
       StaffOrdersPage.tsx
       StaffOrdersListPage.tsx
@@ -164,6 +167,7 @@ src/                              # Frontend — never import lib/ from here
       MenuItemCard.tsx
       MenuItemModal.tsx
       MenuImageSeoField.tsx       # Optional SEO filename input; no DB field
+      CatalogImageFields.tsx      # Shared crop/upload + SEO controls for addon/powder images
       MenuSubTabs.tsx             # Horizontal sub-tab bar for /admin/menu/*
       VoucherPackageForm.tsx
       PointsLogTable.tsx
@@ -181,8 +185,9 @@ src/                              # Frontend — never import lib/ from here
       StaffMenuCard.tsx
       StaffCartDrawer.tsx
       PaymentMethodSelector.tsx   # CASH default + BANK_TRANSFER checkout selector
-      CounterTransferPaymentModal.tsx # Locked QR confirmation/cancellation dialog
+      CounterTransferPaymentModal.tsx # Reopenable QR confirmation/cancellation dialog
       CounterTransferOrderAction.tsx # Pending-list QR action + modal ownership
+      PendingCounterTransfersLauncher.tsx # POS button + multi-order recovery bottom sheet
       StaffOrderForm.tsx
       AddonModal.tsx
       QRScannerModal.tsx
@@ -230,7 +235,7 @@ scratch/                          # Ignored by Git. Scratchpad for quick server 
     map/
       mapRenderer.ts              # Abortable MapLibre renderer; 30s hard timeout and typed diagnostics
     hooks/
-      useCounterTransferPayment.ts # Counter payment recovery and status orchestration
+      useCounterTransferPayment.ts # Multi-order query, delayed QR opening, status + checkout orchestration
       useScrollProgress.ts
       useBodyScrollLock.ts
       useMapRendererLifecycle.ts  # Strict Mode-safe map ownership, 12s degraded state, queued flyTo
@@ -276,6 +281,8 @@ lib/                              # Backend only — server-side, NEVER import i
   sms.ts
   storage.ts                      # Supabase Storage helpers — bucket: menu-images
   menuImageCleanup.ts             # Finds/deletes unreferenced images after grace period
+  catalogImage.ts                 # Shared addon/powder upload and SEO-rename preparation
+  catalogRequest.ts               # Backward-compatible JSON/multipart catalog parser
   cancelExpiredOrders.ts          # Bounded, idempotent auto-cancel worker
   orderLimits.ts                  # 20,000,000 VND server-calculated order ceiling
   staffOrderPayment.ts            # Isolated counter payment preparation + voucher claim rules

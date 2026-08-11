@@ -15,6 +15,8 @@ export interface CalcOrderItem {
   addons_price_vnd: number;
   quantity: number;
   line_total: number;
+  /** Server-evaluated BUNDLE reward on this line, applied before every legacy voucher. */
+  bundle_discount_vnd?: number;
   product_voucher_id: string | null;
   product_voucher_covered_vnd: number;
   addon_vouchers: Array<{
@@ -69,6 +71,7 @@ export interface CalcOrderResult {
 
 /** Applied voucher amounts for one input order item. */
 export interface CalcItemVoucherResult {
+  bundle_discount_vnd?: number;
   product_voucher_id: string | null;
   product_voucher_discount_vnd: number;
   addon_vouchers: Array<{
@@ -97,6 +100,10 @@ function calcItemDiscounts(
   const itemResults: CalcItemVoucherResult[] = [];
 
   for (const item of items) {
+    const bundleDiscount = Math.min(
+      item.line_total,
+      Math.max(0, item.bundle_discount_vnd ?? 0),
+    );
     let productVoucherId: string | null = null;
     let productVoucherDiscount = 0;
     const addonResults: CalcItemVoucherResult["addon_vouchers"] = [];
@@ -156,13 +163,16 @@ function calcItemDiscounts(
     }
 
     itemResults.push({
+      ...(bundleDiscount > 0 ? { bundle_discount_vnd: bundleDiscount } : {}),
       product_voucher_id: productVoucherId,
       product_voucher_discount_vnd: productVoucherDiscount,
       addon_vouchers: addonResults,
       total_discount_vnd:
+        bundleDiscount +
         productVoucherDiscount +
         addonResults.reduce((sum, voucher) => sum + voucher.discount_applied_vnd, 0),
     });
+    totalItemsDiscount += bundleDiscount;
   }
 
   return { discount: totalItemsDiscount, surplus: totalSurplus, itemResults };

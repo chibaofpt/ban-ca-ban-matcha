@@ -235,7 +235,13 @@ describe("POST /api/admin/voucher-packages", () => {
   });
 
   it("creates ADDON package with non-extra-matcha addon", async () => {
-    mockAddonFindUnique.mockResolvedValue({ gram_value: null, label: "Kem", price_vnd: 8000 });
+    mockAddonFindUnique.mockResolvedValue({
+      gram_value: null,
+      label: "Kem",
+      price_vnd: 8000,
+      is_active: true,
+      group: { is_active: true },
+    });
     mockPkgCreate.mockResolvedValue({ id: PKG_ID, voucher_type: "ADDON" });
 
     const res = await POST(
@@ -259,12 +265,22 @@ describe("POST /api/admin/voucher-packages", () => {
 
   it("returns 400 when ADDON package targets Extra Matcha (gram_value > 0)", async () => {
     // Extra matcha has gram_value set (non-null, > 0)
-    mockAddonFindUnique.mockResolvedValue({ gram_value: { toNumber: () => 2 }, label: "+2g Matcha" });
+    mockAddonFindUnique.mockResolvedValue({
+      gram_value: { toNumber: () => 2 },
+      label: "+2g Matcha",
+      is_active: true,
+      group: { is_active: true },
+    });
 
     // Need to mock gram_value as Decimal-like object with non-null behavior
     const gramValueDecimal = { toString: () => "2", valueOf: () => 2 };
     Object.defineProperty(gramValueDecimal, "toNumber", { value: () => 2 });
-    mockAddonFindUnique.mockResolvedValue({ gram_value: gramValueDecimal, label: "+2g" });
+    mockAddonFindUnique.mockResolvedValue({
+      gram_value: gramValueDecimal,
+      label: "+2g",
+      is_active: true,
+      group: { is_active: true },
+    });
 
     const res = await POST(
       makeReq({
@@ -293,6 +309,28 @@ describe("POST /api/admin/voucher-packages", () => {
 
     expect(res.status).toBe(404);
     expect((await res.json()).code).toBe("NOT_FOUND");
+  });
+
+  it("returns 400 when ADDON targets a non-null legacy 0g option", async () => {
+    mockAddonFindUnique.mockResolvedValue({
+      gram_value: { valueOf: () => 0 },
+      label: "0g",
+      price_vnd: 0,
+      is_active: true,
+      group: { is_active: true },
+    });
+
+    const res = await POST(
+      makeReq({
+        voucher_type: "ADDON",
+        name: "Free 0g",
+        points_cost: 2,
+        addon_option_id: EXTRA_MATCHA_ADDON_ID,
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("VALIDATION_ERROR");
   });
 
   it("does not set discount fields for PRODUCT package", async () => {
@@ -407,6 +445,30 @@ describe("POST /api/admin/voucher-packages — validation bổ sung", () => {
     // covered_price_vnd should be 45000 (drink only), NOT 45000 + 15000 = 60000
     const createCall = mockPkgCreate.mock.calls[0][0] as { data: { covered_price_vnd: number } };
     expect(createCall.data.covered_price_vnd).toBe(45000);
+  });
+
+  it("PRODUCT package từ chối included addon có giá gram động", async () => {
+    mockMenuItemFindUnique.mockResolvedValue(latteMenuItem);
+    mockBuildPricingContext.mockResolvedValue(basePricingCtx);
+    mockResolveOrderItemPrice.mockReturnValue(45_000);
+    mockAddonFindMany.mockResolvedValue([
+      { id: EXTRA_MATCHA_ADDON_ID, price_vnd: 0, gram_value: { valueOf: () => 1 } },
+    ]);
+
+    const res = await POST(
+      makeReq({
+        voucher_type: "PRODUCT",
+        name: "Free latte + dynamic addon",
+        points_cost: 5,
+        menu_item_id: MENU_ITEM_ID,
+        size: "SMALL",
+        included_addon_option_ids: [EXTRA_MATCHA_ADDON_ID],
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("VALIDATION_ERROR");
+    expect(mockPkgCreate).not.toHaveBeenCalled();
   });
 });
 

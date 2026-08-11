@@ -21,11 +21,22 @@ import { QRScannerModal } from "@/src/components/staff/QRScannerModal";
 import { VoucherQRVerifyModal } from "@/src/components/staff/VoucherQRVerifyModal";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { CounterTransferPaymentModal } from "@/src/components/staff/CounterTransferPaymentModal";
+import { PendingCounterTransfersLauncher } from "@/src/components/staff/PendingCounterTransfersLauncher";
 import * as staffOrderService from "@/src/services/staffOrderService";
+import { fetchOrdersList } from "@/src/services/staffOrdersListService";
 import type { CreateStaffOrderPayload } from "@/src/services/staffOrderService";
 import type { MenuItem } from "@/src/lib/types/menu";
 import type { CartItem } from "@/src/lib/types/cart";
-import { useStaffCounterCheckoutPayment } from "@/src/lib/hooks/useCounterTransferPayment";
+import type { StaffOrderResult } from "@/src/lib/types/order";
+import {
+  deriveBundleSelectionState,
+  type BundleSelectionAllocation,
+} from "@/src/lib/utils/bundleVoucher";
+import { getBundleVoucherSummary } from "@/src/components/menu/cart/CartBundleVoucherPanel";
+import {
+  usePendingCounterTransfers,
+  useStaffCounterCheckoutPayment,
+} from "@/src/lib/hooks/useCounterTransferPayment";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -177,6 +188,8 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   // ── Voucher state (list-based) ────────────────────────────────────────
 
   const [customerVouchers, setCustomerVouchers] = useState<MyVoucher[]>([]);
+  const [selectedBundleToken, setSelectedBundleToken] = useState<string | null>(null);
+  const [bundleAllocations, setBundleAllocations] = useState<BundleSelectionAllocation[]>([]);
 
   // ── Category filter ───────────────────────────────────────────────────
 
@@ -260,13 +273,31 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   );
 
   const subtotal = useStaffCartTotalPrice();
+  const selectedBundleVoucher = customerVouchers.find(
+    (voucher) => voucher.qr_token === selectedBundleToken,
+  );
+  const selectedBundleSummary = selectedBundleVoucher
+    ? getBundleVoucherSummary(selectedBundleVoucher)
+    : null;
+  const bundleSelectionState = selectedBundleSummary
+    ? deriveBundleSelectionState({
+        voucher: selectedBundleSummary,
+        cart: cart.map((item) => ({
+          client_line_id: item.cartId,
+          menu_item_id: item.menuItemId,
+          quantity: item.quantity,
+        })),
+        allocations: bundleAllocations,
+      })
+    : null;
 
   /** Returns true if any voucher is applied (either scan-based or list-based). */
   const hasAnyVoucher = useMemo(() => 
     !!discountVoucher ||
+    !!selectedBundleToken ||
     selectedDiscountIds.length > 0 ||
     cart.some(c => !!c.productVoucherId || (c.addonVouchers && c.addonVouchers.length > 0)),
-  [discountVoucher, selectedDiscountIds, cart]);
+  [discountVoucher, selectedBundleToken, selectedDiscountIds, cart]);
 
   // ── Cart handlers ─────────────────────────────────────────────────────
 
@@ -318,28 +349,49 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     }
   };
 
-  const handleSuccess = () => {
+  const resetCheckout = useCallback(() => {
     clearCart();
     setInitialSearchQuery("");
     setCustomerVouchers([]);
+    setSelectedBundleToken(null);
+    setBundleAllocations([]);
     setCartOpen(false);
+  }, [clearCart]);
+
+  const handleSuccess = useCallback(() => {
+    resetCheckout();
     toast.success("Đã tạo đơn hàng thành công!");
+  }, [resetCheckout]);
+
+  const pendingTransfers = usePendingCounterTransfers({
+    fetchOrders: () => fetchOrdersList({
+      order_type: "COUNTER",
+      status: "PENDING",
+      mine: true,
+      page: 1,
+      limit: 100,
+    }),
+    updateStatus: staffOrderService.updateStaffOrderStatus,
+  });
+
+  const handlePendingCreated = (order: StaffOrderResult): void => {
+    resetCheckout();
+    pendingTransfers.selectPaymentAfterSurfaceClose(order);
   };
 
   const counterPayment = useStaffCounterCheckoutPayment({
-    getOrder: staffOrderService.getStaffOrder,
-    updateStatus: staffOrderService.updateStaffOrderStatus,
     onCheckoutCompleted: handleSuccess,
-    onOrdersChanged: () => {
-      queryClient.invalidateQueries({ queryKey: ["staff", "orders"] });
-      queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
-    },
+    onPendingCreated: handlePendingCreated,
   });
 
   // ── Checkout flow ─────────────────────────────────────────────────────
 
   const handleCheckoutClick = () => {
-    if (cart.length === 0 || counterPayment.pendingPayment) return;
+    if (cart.length === 0) return;
+    if (selectedBundleToken && bundleSelectionState?.status !== "READY") {
+      toast.error(bundleSelectionState?.message ?? "Vui lòng chọn đủ quà của ưu đãi.");
+      return;
+    }
 
     if (hasAnyVoucher && customerInfo?.type === "existing") {
       if (userRole === "ADMIN") {
@@ -382,7 +434,9 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     setIsSubmitting(true);
     
     let payload: CreateStaffOrderPayload;
-    const items = buildOrderItems(cart);
+    const items = buildOrderItems(cart).map((item, index) =>
+      selectedBundleToken ? { ...item, client_line_id: cart[index]?.cartId } : item,
+    );
     const discountVoucherIds = Array.from(new Set([
       ...(discountVoucher ? [discountVoucher.qr_token] : []),
       ...selectedDiscountIds,
@@ -396,6 +450,12 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         payment_method: counterPayment.paymentMethod,
         items,
         ...(discountVoucherIds.length > 0 ? { discount_voucher_ids: discountVoucherIds } : {}),
+        ...(selectedBundleToken
+          ? {
+              bundle_voucher_qr_token: selectedBundleToken,
+              bundle_reward_allocations: bundleAllocations,
+            }
+          : {}),
         ...(customerQrToken ? { customer_qr_token: customerQrToken } : {}),
       };
     } else {
@@ -424,6 +484,8 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   }) => {
     setScanOpen(false);
     if (name) {
+      setSelectedBundleToken(null);
+      setBundleAllocations([]);
       setCustomerInfo({
         type: "existing",
         data: {
@@ -567,18 +629,27 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         />
       </div>
 
-      {/* Floating cart button */}
-      {cart.length > 0 && (
-        <button
-          id="btn-open-cart"
-          onClick={() => setCartOpen(true)}
-          className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-40 bg-accent text-accent-foreground rounded-full shadow-xl px-5 py-3 flex items-center gap-2 hover:scale-105 transition"
-        >
-          <ShoppingBag size={18} />
-          <span className="font-medium text-sm">
-            {cart.length} món • 🐟 {subtotal / 1000} cá
-          </span>
-        </button>
+      {/* Pending-transfer launcher stays immediately left of the cart launcher. */}
+      {(pendingTransfers.payments.length > 0 || cart.length > 0) && (
+        <div className="fixed bottom-20 right-4 z-40 flex max-w-[calc(100vw-2rem)] items-center justify-end gap-2 md:bottom-6 md:right-6">
+          <PendingCounterTransfersLauncher
+            payments={pendingTransfers.payments}
+            onSelect={pendingTransfers.selectPayment}
+          />
+          {cart.length > 0 && (
+            <button
+              id="btn-open-cart"
+              type="button"
+              onClick={() => setCartOpen(true)}
+              className="flex min-h-11 min-w-0 items-center gap-2 rounded-full bg-accent px-4 py-3 text-accent-foreground shadow-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ShoppingBag className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
+              <span className="truncate text-sm font-medium">
+                {cart.length} món • 🐟 {subtotal / 1000} cá
+              </span>
+            </button>
+          )}
+        </div>
       )}
 
       {/* StaffCartDrawer */}
@@ -591,7 +662,6 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         customerInfo={customerInfo}
         isSubmitting={isSubmitting}
         paymentMethod={counterPayment.paymentMethod}
-        isCheckoutLocked={counterPayment.pendingPayment !== null}
         onClose={() => setCartOpen(false)}
         onRemove={handleRemove}
         onEditItem={handleEditItem}
@@ -601,15 +671,21 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         onOpenCustomerSelect={() => setCustomerSelectOpen(true)}
         onClearCustomer={() => {
           setCustomerVouchers([]);
+          setSelectedBundleToken(null);
+          setBundleAllocations([]);
           setCustomerInfo(null);
         }}
+        selectedBundleToken={selectedBundleToken}
+        bundleAllocations={bundleAllocations}
+        onBundleVoucherChange={setSelectedBundleToken}
+        onBundleAllocationsChange={setBundleAllocations}
         customerVouchers={customerVouchers}
         selectedDiscountIds={selectedDiscountIds}
         onToggleDiscount={toggleDiscountId}
         availableVoucherPackages={availableVoucherPackages}
         onExchangeVoucher={handleExchangeVoucher}
         isExchanging={exchangeMutation.isPending}
-        preventCloseOutside={customerSelectOpen || confirmCheckoutOpen || qrVerifyOpen || !!itemToRemove || clearCartConfirmOpen || counterPayment.pendingPayment !== null}
+        preventCloseOutside={customerSelectOpen || confirmCheckoutOpen || qrVerifyOpen || !!itemToRemove || clearCartConfirmOpen}
         onApplyProduct={handleApplyProduct}
         onRemoveProduct={removeProductVoucher}
         onApplyAddon={handleApplyAddon}
@@ -641,10 +717,11 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
       />
 
       <CounterTransferPaymentModal
-        payment={counterPayment.pendingPayment}
-        isProcessing={counterPayment.isProcessing}
-        onConfirm={counterPayment.confirm}
-        onCancel={counterPayment.cancel}
+        payment={pendingTransfers.activePayment}
+        isProcessing={pendingTransfers.isProcessing}
+        onConfirm={pendingTransfers.confirm}
+        onCancel={pendingTransfers.cancel}
+        onClose={pendingTransfers.closePayment}
       />
 
       {/* ProductModal for adding a NEW item (rendered outside the drawer) */}
@@ -674,6 +751,8 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
           initialQuery={initialSearchQuery}
           onClose={() => setCustomerSelectOpen(false)}
           onSelect={(info) => {
+            setSelectedBundleToken(null);
+            setBundleAllocations([]);
             if (info.type !== "existing") setCustomerVouchers([]);
             setCustomerInfo(info);
             setCustomerSelectOpen(false);

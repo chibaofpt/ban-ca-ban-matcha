@@ -8,6 +8,12 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
+vi.mock("@/lib/cache", () => ({
+  CACHE_KEYS: { VOUCHER_PACKAGES: "voucher-packages" },
+  CACHE_TTL: { VOUCHER_PACKAGES: 300 },
+  withCache: (_key: string, _ttl: number, loader: () => Promise<unknown>) => loader(),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     voucherPackage: { findMany: (...args: unknown[]) => mockFindManyPackages(...args) },
@@ -20,13 +26,14 @@ import { GET } from "@/app/api/voucher-packages/route";
 describe("GET /api/voucher-packages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFindManyPackages.mockReset();
   });
 
   it("trả về danh sách packages active, user_redeemed_count = 0 nếu chưa đăng nhập", async () => {
     mockGetSession.mockResolvedValue(null);
-    mockFindManyPackages.mockResolvedValue([
+    mockFindManyPackages.mockResolvedValueOnce([
       { id: "pkg-1", is_active: true, menuItem: null, addonOption: null },
-    ]);
+    ]).mockResolvedValueOnce([]);
 
     const res = await GET();
     expect(res.status).toBe(200);
@@ -38,10 +45,10 @@ describe("GET /api/voucher-packages", () => {
 
   it("trả về danh sách packages active kèm số lượng đã đổi nếu đã đăng nhập", async () => {
     mockGetSession.mockResolvedValue({ id: "user-1", role: "CUSTOMER" });
-    mockFindManyPackages.mockResolvedValue([
+    mockFindManyPackages.mockResolvedValueOnce([
       { id: "pkg-1", is_active: true, menuItem: null, addonOption: null },
       { id: "pkg-2", is_active: true, menuItem: null, addonOption: null },
-    ]);
+    ]).mockResolvedValueOnce([]);
     mockGroupByVouchers.mockResolvedValue([
       { package_id: "pkg-1", _count: { id: 2 } },
     ]);
@@ -66,5 +73,24 @@ describe("GET /api/voucher-packages", () => {
       },
       _count: { id: true },
     });
+  });
+
+  it("đọc package BUNDLE đang diễn ra trực tiếp, không lấy từ cache promotion", async () => {
+    mockGetSession.mockResolvedValue(null);
+    mockFindManyPackages
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: "bundle-1", voucher_type: "BUNDLE" }]);
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+    expect((await res.json()).data[0].id).toBe("bundle-1");
+    expect(mockFindManyPackages).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          voucher_type: "BUNDLE",
+          promotion: expect.objectContaining({ is_active: true }),
+        }),
+      }),
+    );
   });
 });

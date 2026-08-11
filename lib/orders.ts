@@ -281,15 +281,67 @@ async function resolveOneItem(
   // 5. Resolve addon prices — snapshot at order time
   let original_addons_price_vnd = 0;
   const resolvedAddons: ProcessedAddon[] = [];
+  const selectedAddonOptionIds = new Set<string>();
+  const selectedAddonGroupIds = new Set<string>();
 
   for (const addon of item.addon_option_ids) {
+    if (selectedAddonOptionIds.has(addon.option_id)) {
+      throw new OrderValidationError("VALIDATION_ERROR", "Addon option bị trùng trong cùng một món.");
+    }
+    selectedAddonOptionIds.add(addon.option_id);
+
     const option = await (client as PrismaClient).addonOption.findUnique({
       where: { id: addon.option_id },
+      include: {
+        group: {
+          include: {
+            options: {
+              where: { is_active: true },
+              select: { id: true },
+            },
+          },
+        },
+      },
     });
-    if (!option) {
+    if (!option || !option.is_active || !option.group.is_active) {
       throw new OrderValidationError(
         "NOT_FOUND",
-        `Addon option not found: ${addon.option_id}`
+        `Addon option not found or inactive: ${addon.option_id}`
+      );
+    }
+
+    if (selectedAddonGroupIds.has(option.group.id)) {
+      throw new OrderValidationError(
+        "VALIDATION_ERROR",
+        "Mỗi nhóm addon chỉ được chọn một option.",
+      );
+    }
+    selectedAddonGroupIds.add(option.group.id);
+
+    if (option.group.type === "SELECTOR" || option.group.type === "TOGGLE") {
+      if (addon.quantity !== 1) {
+        throw new OrderValidationError(
+          "VALIDATION_ERROR",
+          `${option.group.type} chỉ chấp nhận quantity = 1.`,
+        );
+      }
+    } else {
+      const maxQuantity = option.group.max_quantity;
+      if (maxQuantity == null || addon.quantity > maxQuantity) {
+        throw new OrderValidationError(
+          "VALIDATION_ERROR",
+          "Số lượng addon vượt quá giới hạn của nhóm.",
+        );
+      }
+    }
+
+    if (
+      (option.group.type === "TOGGLE" || option.group.type === "QUANTITY") &&
+      (option.group.options.length !== 1 || option.group.options[0]?.id !== option.id)
+    ) {
+      throw new OrderValidationError(
+        "VALIDATION_ERROR",
+        `Cấu hình ${option.group.type} không hợp lệ.`,
       );
     }
 

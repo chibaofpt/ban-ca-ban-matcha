@@ -52,6 +52,13 @@ Do not preserve current behavior merely because it conflicts with these approved
 
 ## Deferred — Do Not Implement
 
+### Addon opt-in rollout — Phase 2 cleanup
+
+After Phase 1 has soaked in staging/production and no old client depends on the legacy fields,
+create a separate migration to drop `addon_groups.is_required`, `addon_groups.min_quantity`, and
+`addon_options.is_default`. Until then they remain physical compatibility columns fixed at
+`false`, `NULL`, and `false`; they must not re-enter API contracts or business logic.
+
 ### Deferred Code-Size Remediation — Approved Temporary Exception (2026-07-22)
 
 The architect approved a staging-first exception for the lint remediation task:
@@ -115,7 +122,7 @@ outside the application, TypeScript, and lint scope. It does not require a produ
 
 | Issue | Status | Action |
 |---|---|---|
-| Image cleanup (old Supabase Storage files orphaned on replace/delete) | Implemented | Daily job; protects every DB reference including soft-deleted items; 48h grace; dry-run first 7 days |
+| Image cleanup (old Supabase Storage files orphaned on replace/delete) | Implemented | Daily job; protects menu, addon, and powder references including soft-deleted rows; 48h grace; dry-run first 7 days |
 | Cascade delete on `voucher_packages.menu_item_id` | Unresolved | Do NOT add cascade. Ask architect. |
 | Hard delete `menu_item` while active vouchers reference it | Deferred | Soft delete only. Ask before any hard delete. |
 | Order ready notification (Zalo ZNS via ESMS) | Phase 5 | Alongside OTP |
@@ -133,6 +140,13 @@ outside the application, TypeScript, and lint scope. It does not require a produ
 ---
 
 ## Launch Hardening Decisions
+
+- **BUNDLE promotions approved (2026-08-11)**: phase-5 promotion scope is partially activated for
+  buy-X-get-Y product/addon campaigns only; OTP, SMS/ZNS, and application caching remain deferred.
+  Campaign rules are immutable after publish. AUTO_GRANT is attempted at registration and retried
+  lazily from wallet/order flows, so a newly registered account during an active campaign receives
+  the default voucher without requiring a pre-existing ghost user. Anonymous checkouts remain
+  ineligible; staff-created ghost users become eligible once persisted.
 
 - **Public identifiers**: API/UI outputs contain `qr_token` for users and vouchers and strip their
   database IDs from nested order/voucher DTOs. Resolver-backed inputs retain a one-release,
@@ -156,7 +170,7 @@ outside the application, TypeScript, and lint scope. It does not require a produ
   messages, exceptions, tags, contexts, extras, and nested breadcrumbs. Map telemetry accepts only
   fixed enums and duration buckets. Replay masks all text and blocks media.
 - **Pre-Phase-5 Upstash exception**: Upstash is approved now only for distributed security rate
-  limits. It remains forbidden for application caching, OTP, promotions, SMS/ZNS, or other Phase 5
+  limits. It remains forbidden for application caching, promotion caching, OTP, SMS/ZNS, or other deferred Phase 5
   functionality. Counters are fixed-window, TTL-bound, HMAC-keyed, and fail open with a sanitized
   Sentry event when Redis is unavailable.
 

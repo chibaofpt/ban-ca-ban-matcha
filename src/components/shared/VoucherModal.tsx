@@ -6,6 +6,7 @@ import { Drawer } from "vaul";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X, QrCode, Star, Loader2, Ticket, Gift, LogIn } from "lucide-react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
 import { useIsLoggedIn } from "@/src/lib/store/authStore";
@@ -17,6 +18,7 @@ import { useExchangeVoucher } from "@/src/hooks/useExchangeVoucher";
 import {
   type MyVoucher,
   type VoucherPackage,
+  claimFreeVoucher,
 } from "@/src/services/customerVoucherService";
 import {
   filterModalVouchers,
@@ -52,6 +54,7 @@ export default function VoucherModal() {
   const { data: vouchers = [], isLoading: vLoading } = useCustomerVouchers({ enabled: open && isLoggedIn });
   const { data: packages = [], isLoading: pLoading } = useVoucherPackages({ enabled: open });
   const exchangeMutation = useExchangeVoucher();
+  const queryClient = useQueryClient();
 
   const loading = isLoggedIn ? (vLoading || pLoading) : pLoading;
   const [exchangingId, setExchangingId] = useState<string | null>(null);
@@ -95,8 +98,17 @@ export default function VoucherModal() {
     }
     setExchangingId(pkg.id);
     try {
-      await exchangeMutation.mutateAsync(pkg.id);
-      toast.success(`Đổi thành công: ${pkg.name} 🎉`);
+      if (pkg.acquisition_mode === "FREE_CLAIM") {
+        await claimFreeVoucher(pkg.id);
+        await queryClient.invalidateQueries({ queryKey: ["customer", "vouchers"] });
+      } else {
+        await exchangeMutation.mutateAsync(pkg.id);
+      }
+      toast.success(
+        pkg.acquisition_mode === "FREE_CLAIM"
+          ? `Đã nhận: ${pkg.name} 🎉`
+          : `Đổi thành công: ${pkg.name} 🎉`,
+      );
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: { code?: string } } };
       const code = anyErr?.response?.data?.code ?? "UNKNOWN";

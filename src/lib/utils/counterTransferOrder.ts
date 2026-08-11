@@ -64,3 +64,22 @@ export function toCounterTransferPayment(
     skipped_vouchers: order.skipped_vouchers ?? [],
   };
 }
+
+/** Keep only server-authoritative pending counter transfers that can reopen VietQR. */
+export function collectPendingCounterTransfers(
+  orders: CounterTransferOrderSummary[],
+): StaffOrderResult[] {
+  return orders.flatMap((order) => {
+    const payment = toCounterTransferPayment(order);
+    return payment ? [payment] : [];
+  });
+}
+
+/** Decide whether the pending-transfer launcher is hidden, direct, or list-first. */
+export function getPendingTransferLaunchMode(
+  paymentCount: number,
+): "HIDDEN" | "DIRECT" | "LIST" {
+  if (paymentCount <= 0) return "HIDDEN";
+  if (paymentCount === 1) return "DIRECT";
+  return "LIST";
+}
