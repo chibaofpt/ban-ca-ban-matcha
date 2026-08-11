@@ -5,6 +5,16 @@
 
 ---
 
+## [2026-08-11 15:13] — Hiển thị giá đầy đủ mỗi món trong chi tiết đơn hàng trang Staff
+
+**Yêu cầu**: Trang Quản lý đơn hàng (Staff) khi mở chi tiết đơn cũng hiển thị giá đầy đủ mỗi ly (giá gốc + addon), giống trang Admin.
+**Quyết định**: Áp dụng cùng cách hiển thị như trang Admin.
+**Thay đổi**:
+- `src/views/staff/StaffOrdersListPage.tsx`: Đổi hiển thị từ chỉ ×số lượng sang giá đầy đủ (K) + ×số lượng.
+**Kết quả QA**: ✅ lint PASS | ✅ 1149/1150 test PASS (1 test timeout cũ không liên quan)
+
+---
+
 ## [2026-08-11 10:18] — Hiển thị giá đầy đủ mỗi món (bao gồm addon) trong chi tiết đơn hàng Admin
 
 **Yêu cầu**: Khi mở chi tiết đơn hàng trong trang Quản lý đơn hàng Admin, nếu món có addon tính thêm tiền thì giá hiển thị bên phải phải là giá đầy đủ (giá ly + addon). Ví dụ: ly 55K + thêm matcha 5K = hiện 60K × 3.
