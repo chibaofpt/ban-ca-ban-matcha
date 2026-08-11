@@ -106,7 +106,7 @@ async function fetchMenuData(): Promise<MenuData> {
     // ── Build response ───────────────────────────────────────────────────────
     const latte: MenuItem[] = [];
     const fusion: MenuItem[] = [];
-    const SIZE_ORDER: Record<string, number> = { M: 0, L: 1, XL: 2 };
+    const SIZE_ORDER: Record<string, number> = { SMALL: 0, MEDIUM: 1, LARGE: 2 };
 
     let maxUpdatedAt = new Date(0);
     for (const item of items) {

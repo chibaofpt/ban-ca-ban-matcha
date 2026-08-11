@@ -5,6 +5,27 @@
 
 ---
 
+## [2026-08-11 15:47] — Đồng bộ thứ tự size (Nhỏ → Vừa → Lớn) cho tất cả các món
+
+**Yêu cầu**: Đồng bộ lại thứ tự size Nhỏ, Vừa, Lớn cho tất cả các món ở tất cả các trang Staff, Admin và Customer.
+**Quyết định**: Cập nhật logic sắp xếp (SIZE_ORDER) từ chuẩn cũ (M, L, XL) sang chuẩn mới (SMALL, MEDIUM, LARGE) tại các file API nguồn. Thay đổi này tự động áp dụng đúng thứ tự cho toàn bộ hệ thống.
+**Thay đổi**:
+- `app/api/menu/route.ts`: Sửa `SIZE_ORDER` để Customer/Staff nhận được size sắp xếp chuẩn.
+- `lib/adminMenuDto.ts`: Sửa `SIZE_ORDER` để trang Admin nhận được size sắp xếp chuẩn.
+**Kết quả QA**: ✅ lint PASS | ✅ test PASS
+
+---
+
+## [2026-08-11 15:23] — Thêm nút Xoá món vào trang Quản lý Menu Admin
+
+**Yêu cầu**: Thêm nút xoá cho từng món trong trang Admin Menu.
+**Quyết định**: Dùng tính năng xoá mềm (món bị ẩn, không xoá khỏi hệ thống). Hiện hộp thoại xác nhận trước khi xoá.
+**Thay đổi**:
+- `src/views/admin/AdminMenuPage.tsx`: Thêm nút xoá (biểu tượng thùng rác) ở cả chế độ lưới (hiện khi di chuột vào) và chế độ bảng (cột Xoá). Thêm hộp thoại xác nhận trước khi xoá.
+**Kết quả QA**: ✅ lint PASS | ✅ 1150/1150 test PASS
+
+---
+
 ## [2026-08-11 15:13] — Hiển thị giá đầy đủ mỗi món trong chi tiết đơn hàng trang Staff
 
 **Yêu cầu**: Trang Quản lý đơn hàng (Staff) khi mở chi tiết đơn cũng hiển thị giá đầy đủ mỗi ly (giá gốc + addon), giống trang Admin.
