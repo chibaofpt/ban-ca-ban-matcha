@@ -2,6 +2,8 @@
 export interface ReportSummary {
   total_orders: number;
   total_cups: number;
+  /** Breakdown tổng ly theo size */
+  cups_by_size: { SMALL: number; MEDIUM: number; LARGE: number };
   total_revenue_vnd: number;
 }
 
@@ -20,7 +22,7 @@ export interface MilkUsage {
 /** Sales breakdown per menu item, grouped by size */
 export interface ItemSales {
   name: string;
-  sizes: { M: number; L: number; XL: number };
+  sizes: { SMALL: number; MEDIUM: number; LARGE: number };
   total_cups: number;
 }
 

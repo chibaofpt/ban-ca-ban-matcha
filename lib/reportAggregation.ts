@@ -65,6 +65,8 @@ export interface MilkConfig {
 export interface ReportSummary {
   total_orders: number;
   total_cups: number;
+  /** Breakdown tổng ly theo size (SMALL/MEDIUM/LARGE) */
+  cups_by_size: { SMALL: number; MEDIUM: number; LARGE: number };
   total_revenue_vnd: number;
 }
 
@@ -149,6 +151,7 @@ export function buildReport(
   let totalOrders = 0;
   let totalCups = 0;
   let totalRevenue = 0;
+  const cupsBySize = { SMALL: 0, MEDIUM: 0, LARGE: 0 };
 
   /** powder_id → total grams */
   const powderGramMap = new Map<string, number>();
@@ -167,6 +170,7 @@ export function buildReport(
     for (const item of order.items) {
       const qty = item.quantity;
       totalCups += qty;
+      cupsBySize[item.size] += qty;
 
       // -- Powder usage --
       const powderId = item.selected_powder_id ?? item.menuItem.matcha_powder_id;
@@ -245,6 +249,7 @@ export function buildReport(
     summary: {
       total_orders: totalOrders,
       total_cups: totalCups,
+      cups_by_size: cupsBySize,
       total_revenue_vnd: totalRevenue,
     },
     powder_usage: powderUsage,

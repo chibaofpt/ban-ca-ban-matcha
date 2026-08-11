@@ -5,6 +5,17 @@
 
 ---
 
+## [2026-08-11 10:18] — Hiển thị giá đầy đủ mỗi món (bao gồm addon) trong chi tiết đơn hàng Admin
+
+**Yêu cầu**: Khi mở chi tiết đơn hàng trong trang Quản lý đơn hàng Admin, nếu món có addon tính thêm tiền thì giá hiển thị bên phải phải là giá đầy đủ (giá ly + addon). Ví dụ: ly 55K + thêm matcha 5K = hiện 60K × 3.
+**Quyết định**: Cộng tiền addon vào giá hiển thị mỗi ly.
+**Thay đổi**:
+- `src/views/admin/AdminOrdersPage.tsx`: Đổi giá hiển thị từ chỉ giá gốc sang giá gốc + tiền addon.
+- `src/__tests__/services/reportService.test.ts`: Cập nhật dữ liệu test theo đúng chuẩn mới (cups_by_size, SMALL/MEDIUM/LARGE).
+**Kết quả QA**: ✅ lint PASS | ⚠️ TypeScript có lỗi cũ từ trước (payment_method — không liên quan thay đổi này) | ✅ 1149/1150 test PASS (1 test timeout cũ không liên quan)
+
+---
+
 ## [2026-08-09 13:50] — Ẩn nhãn danh mục và mùa vụ trên trang Tạo Đơn của Admin/Staff
 
 **Yêu cầu**: Xóa nhãn season, latte, fusion trên mỗi menu items bên trang `/staff/orders` (trang order của admin và staff).

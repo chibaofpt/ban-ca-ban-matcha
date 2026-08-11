@@ -24,6 +24,7 @@ const mockReport: DailyReport = {
   summary: {
     total_orders: 10,
     total_cups: 25,
+    cups_by_size: { SMALL: 5, MEDIUM: 12, LARGE: 8 },
     total_revenue_vnd: 1_250_000,
   },
   powder_usage: [
@@ -37,14 +38,14 @@ const mockReport: DailyReport = {
   latte_sales: [
     {
       name: "Premium Matcha Latte",
-      sizes: { M: 5, L: 3, XL: 1 },
+      sizes: { SMALL: 5, MEDIUM: 3, LARGE: 1 },
       total_cups: 9,
     },
   ],
   fusion_sales: [
     {
       name: "Matcha Kem Dừa",
-      sizes: { M: 8, L: 4, XL: 2 },
+      sizes: { SMALL: 8, MEDIUM: 4, LARGE: 2 },
       total_cups: 14,
     },
   ],
@@ -145,12 +146,12 @@ describe("getReport", () => {
 
     expect(result.latte_sales).toHaveLength(1);
     expect(result.latte_sales[0].name).toBe("Premium Matcha Latte");
-    expect(result.latte_sales[0].sizes).toEqual({ M: 5, L: 3, XL: 1 });
+    expect(result.latte_sales[0].sizes).toEqual({ SMALL: 5, MEDIUM: 3, LARGE: 1 });
     expect(result.latte_sales[0].total_cups).toBe(9);
 
     expect(result.fusion_sales).toHaveLength(1);
     expect(result.fusion_sales[0].name).toBe("Matcha Kem Dừa");
-    expect(result.fusion_sales[0].sizes).toEqual({ M: 8, L: 4, XL: 2 });
+    expect(result.fusion_sales[0].sizes).toEqual({ SMALL: 8, MEDIUM: 4, LARGE: 2 });
   });
 
   it("propagates API errors", async () => {
@@ -354,7 +355,7 @@ describe("getAdminReport", () => {
       summary: { total_orders: 5, total_cups: 12, total_revenue_vnd: 350_000 },
       powder_usage: [{ powder_name: "Meyumi", total_grams: 40 }],
       milk_usage: [{ milk_name: "Sữa bò", total_ml: 2400 }],
-      latte_sales: [{ name: "Latte Test", sizes: { M: 5, L: 3, XL: 1 }, total_cups: 9 }],
+      latte_sales: [{ name: "Latte Test", sizes: { SMALL: 5, MEDIUM: 3, LARGE: 1 }, total_cups: 9 }],
       fusion_sales: [],
       addon_usage: [{ addon_label: "Nửa viên kem", group_name: "Kem", total_count: 3 }],
       revenue_by_type: [{ order_type: "COUNTER", total_revenue_vnd: 350_000, order_count: 5 }],

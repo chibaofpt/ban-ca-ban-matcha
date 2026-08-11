@@ -326,6 +326,32 @@ export function DailyReportModal({
                       <p className="text-xs text-muted-foreground">Doanh thu</p>
                     </div>
                   </div>
+                  {/* Breakdown theo size */}
+                  {adminReport.summary.cups_by_size && (
+                    <div className="mt-4 pt-3 border-t border-border">
+                      <p className="text-xs font-medium text-muted-foreground mb-2">Số ly theo size</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="flex flex-col items-center gap-0.5 rounded-xl bg-secondary/30 py-2">
+                          <span className="text-lg font-bold text-foreground">
+                            {adminReport.summary.cups_by_size.SMALL}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground font-medium">Nhỏ (S)</span>
+                        </div>
+                        <div className="flex flex-col items-center gap-0.5 rounded-xl bg-secondary/30 py-2">
+                          <span className="text-lg font-bold text-foreground">
+                            {adminReport.summary.cups_by_size.MEDIUM}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground font-medium">Vừa (M)</span>
+                        </div>
+                        <div className="flex flex-col items-center gap-0.5 rounded-xl bg-secondary/30 py-2">
+                          <span className="text-lg font-bold text-foreground">
+                            {adminReport.summary.cups_by_size.LARGE}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground font-medium">Lớn (L)</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </SectionCard>
 
                 {/* ---- Revenue by Type ---- */}
@@ -451,9 +477,9 @@ export function DailyReportModal({
                       <thead>
                         <tr className="text-xs text-muted-foreground border-b">
                           <th className="text-left pb-2 font-medium">Món</th>
-                          <th className="text-right pb-2 font-medium w-8">M</th>
-                          <th className="text-right pb-2 font-medium w-8">L</th>
-                          <th className="text-right pb-2 font-medium w-8">XL</th>
+                          <th className="text-right pb-2 font-medium w-10">S</th>
+                          <th className="text-right pb-2 font-medium w-10">M</th>
+                          <th className="text-right pb-2 font-medium w-10">L</th>
                           <th className="text-right pb-2 font-medium w-14">Tổng</th>
                         </tr>
                       </thead>
@@ -463,14 +489,14 @@ export function DailyReportModal({
                             <td className="py-2.5 font-medium text-foreground pr-2">
                               {item.name}
                             </td>
-                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-8">
-                              {item.sizes.M > 0 ? item.sizes.M : "—"}
+                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-10">
+                              {item.sizes.SMALL > 0 ? item.sizes.SMALL : "—"}
                             </td>
-                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-8">
-                              {item.sizes.L > 0 ? item.sizes.L : "—"}
+                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-10">
+                              {item.sizes.MEDIUM > 0 ? item.sizes.MEDIUM : "—"}
                             </td>
-                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-8">
-                              {item.sizes.XL > 0 ? item.sizes.XL : "—"}
+                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-10">
+                              {item.sizes.LARGE > 0 ? item.sizes.LARGE : "—"}
                             </td>
                             <td className="py-2.5 text-right font-bold text-foreground tabular-nums w-14">
                               {item.total_cups}
@@ -489,9 +515,9 @@ export function DailyReportModal({
                       <thead>
                         <tr className="text-xs text-muted-foreground border-b">
                           <th className="text-left pb-2 font-medium">Món</th>
-                          <th className="text-right pb-2 font-medium w-8">M</th>
-                          <th className="text-right pb-2 font-medium w-8">L</th>
-                          <th className="text-right pb-2 font-medium w-8">XL</th>
+                          <th className="text-right pb-2 font-medium w-10">S</th>
+                          <th className="text-right pb-2 font-medium w-10">M</th>
+                          <th className="text-right pb-2 font-medium w-10">L</th>
                           <th className="text-right pb-2 font-medium w-14">Tổng</th>
                         </tr>
                       </thead>
@@ -501,14 +527,14 @@ export function DailyReportModal({
                             <td className="py-2.5 font-medium text-foreground pr-2">
                               {item.name}
                             </td>
-                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-8">
-                              {item.sizes.M > 0 ? item.sizes.M : "—"}
+                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-10">
+                              {item.sizes.SMALL > 0 ? item.sizes.SMALL : "—"}
                             </td>
-                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-8">
-                              {item.sizes.L > 0 ? item.sizes.L : "—"}
+                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-10">
+                              {item.sizes.MEDIUM > 0 ? item.sizes.MEDIUM : "—"}
                             </td>
-                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-8">
-                              {item.sizes.XL > 0 ? item.sizes.XL : "—"}
+                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-10">
+                              {item.sizes.LARGE > 0 ? item.sizes.LARGE : "—"}
                             </td>
                             <td className="py-2.5 text-right font-bold text-foreground tabular-nums w-14">
                               {item.total_cups}
