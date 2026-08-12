@@ -9,7 +9,7 @@ interface PersistedOrderItem {
 
 type OrderBundleWriteTransaction = Pick<
   Prisma.TransactionClient,
-  "voucher" | "orderPromotionApplication" | "orderPromotionReward"
+  "voucher" | "orderBundleApplication" | "orderBundleReward"
 >;
 
 /** Persist one evaluated BUNDLE and claim its voucher inside the caller transaction. */
@@ -25,22 +25,6 @@ export async function persistOrderBundle(
   },
 ): Promise<void> {
   const { bundle } = input;
-  if (bundle.promotion_max_redemptions !== null) {
-    const used = await tx.orderPromotionApplication.aggregate({
-      where: {
-        promotion_id: bundle.promotion_id,
-        status: { in: ["RESERVED", "REDEEMED"] },
-      },
-      _sum: { application_count: true },
-    });
-    if (
-      (used._sum.application_count ?? 0) + bundle.evaluation.application_count >
-      bundle.promotion_max_redemptions
-    ) {
-      throw new OrderValidationError("BUNDLE_SOLD_OUT", "Promotion redemption limit reached.");
-    }
-  }
-
   const voucherStatus = input.redeem_immediately ? "REDEEMED" : "RESERVED";
   const voucherClaim = await tx.voucher.updateMany({
     where: { id: bundle.voucher_id, status: "ACTIVE" },
@@ -57,11 +41,10 @@ export async function persistOrderBundle(
     throw new OrderValidationError("CONFLICT", "BUNDLE voucher changed concurrently.");
   }
 
-  const application = await tx.orderPromotionApplication.create({
+  const application = await tx.orderBundleApplication.create({
     data: {
       order_id: input.order_id,
       voucher_id: bundle.voucher_id,
-      promotion_id: bundle.promotion_id,
       application_count: bundle.evaluation.application_count,
       status: voucherStatus,
     },
@@ -80,7 +63,7 @@ export async function persistOrderBundle(
     if (reward.addon_option_id && !orderItemAddon) {
       throw new OrderValidationError("VALIDATION_ERROR", "Missing persisted BUNDLE addon.");
     }
-    await tx.orderPromotionReward.create({
+    await tx.orderBundleReward.create({
       data: {
         application_id: application.id,
         order_item_id: reward.addon_option_id ? null : orderItem.id,

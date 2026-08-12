@@ -18,7 +18,7 @@ interface Tab {
   roles: Role[];
 }
 
-const TABS: Tab[] = [
+const LEGACY_TABS: Tab[] = [
   { to: "/staff/orders", label: "Tạo Order", icon: ClipboardList, roles: ["ADMIN", "STAFF"] },
   { to: "/staff/orders-list", label: "Đơn hàng", icon: Receipt, roles: ["STAFF"] },
   { to: "/admin/orders", label: "Đơn hàng", icon: Receipt, roles: ["ADMIN"] },
@@ -26,6 +26,10 @@ const TABS: Tab[] = [
   { to: "/admin/voucher-packages", label: "Điểm & Voucher", icon: Gift, roles: ["ADMIN"] },
   { to: "/admin/promotions", label: "Khuyến mãi", icon: Megaphone, roles: ["ADMIN"] },
 ];
+
+const TABS: Tab[] = LEGACY_TABS
+  .filter((tab) => tab.to !== "/admin/promotions")
+  .map((tab) => tab.to === "/admin/voucher-packages" ? { ...tab, label: "Voucher & ưu đãi" } : tab);
 
 interface AdminTabBarProps {
   /** Display name of the currently signed-in user. */

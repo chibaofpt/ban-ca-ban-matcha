@@ -96,7 +96,7 @@ const activePackage = {
   quantity: null,        // unlimited
   max_per_user: 1,
   created_at: new Date(),
-  promotion: null,
+  bundleRule: null,
 };
 
 const createdVoucher = {

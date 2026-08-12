@@ -39,26 +39,18 @@ export async function GET() {
             description: true,
             points_cost: true,
             acquisition_mode: true,
-            promotion: {
+            ends_at: true,
+            bundleRule: {
               select: {
-                title: true,
-                starts_at: true,
-                ends_at: true,
-                bundleRule: {
-                  select: {
-                    buy_quantity: true,
-                    reward_quantity: true,
-                    reward_kind: true,
-                    reward_mode: true,
-                    benefit_scaling: true,
-                    max_applications_order: true,
-                    max_reward_units_order: true,
-                    productScopes: {
-                      select: { role: true, menu_item_id: true },
-                    },
-                    addonRewards: { select: { addon_option_id: true } },
-                  },
-                },
+                buy_quantity: true,
+                reward_quantity: true,
+                reward_kind: true,
+                reward_mode: true,
+                benefit_scaling: true,
+                max_applications_order: true,
+                max_reward_units_order: true,
+                productScopes: { select: { role: true, menu_item_id: true } },
+                addonRewards: { select: { addon_option_id: true } },
               },
             },
           },

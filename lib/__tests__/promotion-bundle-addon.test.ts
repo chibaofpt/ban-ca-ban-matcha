@@ -65,6 +65,32 @@ describe("BUNDLE addon — quà chung và quà theo từng món", () => {
     expect(result.total_discount_vnd).toBe(40_000);
   });
 
+  it("giới hạn addon theo từng món bằng số nhóm tối đa mỗi đơn", () => {
+    const rule = makeRule({
+      buy_quantity: 2,
+      reward_quantity: 1,
+      reward_kind: "ADDON",
+      reward_mode: "ALLOWED_SCOPE",
+      benefit_scaling: "PER_QUALIFYING_ITEM",
+      max_applications_per_order: 1,
+      reward_addon_option_ids: [ADDON_ID],
+    });
+    const item = makeItem({
+      quantity: 4,
+      addons: [{ addon_option_id: ADDON_ID, quantity: 4, unit_price_vnd: 10_000, gram_value: null }],
+    });
+    const result = evaluateBundlePromotion({
+      rule,
+      items: [item],
+      reward_allocations: [{
+        client_line_id: item.client_line_id,
+        addon_option_id: ADDON_ID,
+        quantity: 2,
+      }],
+    });
+    expect(result.total_discount_vnd).toBe(20_000);
+  });
+
   it("từ chối addon quà không tồn tại trong addon thật của món", () => {
     expectReason(
       () =>

@@ -6,13 +6,13 @@ import {
   type BundleRewardOption,
 } from "@/src/components/shared/BundleRewardSelector";
 import type { CartItem } from "@/src/lib/types/cart";
-import type { BundleSelectionAllocation, BundleVoucherSummary } from "@/src/lib/utils/bundleVoucher";
+import { summarizeBundleCart, type BundleSelectionAllocation, type BundleVoucherSummary } from "@/src/lib/utils/bundleVoucher";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { cn } from "@/src/utils/cn";
 
 /** Convert the wallet DTO into the shared selector's minimal rule summary. */
 export function getBundleVoucherSummary(voucher: MyVoucher): BundleVoucherSummary | null {
-  const rule = voucher.package.promotion?.bundleRule;
+  const rule = voucher.package.bundleRule;
   if (!rule) return null;
   return {
     qr_token: voucher.qr_token,
@@ -29,6 +29,7 @@ export function getBundleVoucherSummary(voucher: MyVoucher): BundleVoucherSummar
     reward_menu_item_ids: rule.productScopes
       .filter((scope) => scope.role === "REWARD")
       .map((scope) => scope.menu_item_id),
+    min_order_vnd: voucher.min_order_vnd,
   };
 }
 
@@ -38,17 +39,17 @@ function getOptions(
   addonLabels: ReadonlyMap<string, string>,
 ): BundleRewardOption[] {
   const summary = getBundleVoucherSummary(voucher);
-  const rule = voucher.package.promotion?.bundleRule;
+  const rule = voucher.package.bundleRule;
   if (!summary || !rule) return [];
   if (summary.reward_kind === "PRODUCT") {
     const rewardIds = summary.reward_mode === "SAME_CONFIG"
       ? summary.eligible_menu_item_ids
       : summary.reward_menu_item_ids;
     return cart
-      .filter((item) => rewardIds.includes(item.menuItemId))
+      .filter((item) => rewardIds.includes(item.menuItemId) && item.quantity > (item.productVoucherId ? 1 : 0))
       .map((item) => ({
         client_line_id: item.cartId,
-        quantity: item.quantity,
+        quantity: item.quantity - (item.productVoucherId ? 1 : 0),
         label: `${item.name} · ${item.size}`,
       }));
   }
@@ -63,9 +64,12 @@ function getOptions(
         .map(([addonOptionId, quantity]) => ({
           client_line_id: item.cartId,
           addon_option_id: addonOptionId,
-          quantity,
+          quantity: quantity - (item.addonVouchers?.filter(
+            (voucherLink) => voucherLink.addonOptionId === addonOptionId,
+          ).length ?? 0),
           label: `${item.name} · ${addonLabels.get(addonOptionId) ?? "Addon"}`,
-        }));
+        }))
+        .filter((option) => option.quantity > 0);
     });
 }
 
@@ -91,11 +95,7 @@ export function CartBundleVoucherPanel({
   const selectedVoucher = vouchers.find((voucher) => voucher.qr_token === selectedVoucherToken);
   const summary = selectedVoucher ? getBundleVoucherSummary(selectedVoucher) : null;
   const options = selectedVoucher ? getOptions(selectedVoucher, cart, addonLabels) : [];
-  const cartSummary = cart.map((item) => ({
-    client_line_id: item.cartId,
-    menu_item_id: item.menuItemId,
-    quantity: item.quantity,
-  }));
+  const cartSummary = summarizeBundleCart(cart);
 
   return (
     <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-3">

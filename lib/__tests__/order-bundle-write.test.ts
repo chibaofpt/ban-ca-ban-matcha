@@ -1,11 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { persistOrderBundle } from "@/lib/orderBundleWrite";
 
-function bundle(maxRedemptions: number | null = null) {
+function bundle() {
   return {
     voucher_id: "voucher-1",
-    promotion_id: "promotion-1",
-    promotion_max_redemptions: maxRedemptions,
+    package_id: "package-1",
     line_discounts_vnd: [45_000],
     evaluation: {
       application_count: 1,
@@ -24,11 +23,10 @@ describe("ghi nhận BUNDLE dùng chung", () => {
     const rewardCreate = vi.fn().mockResolvedValue({});
     const tx = {
       voucher: { updateMany: voucherUpdateMany },
-      orderPromotionApplication: {
-        aggregate: vi.fn(),
+      orderBundleApplication: {
         create: applicationCreate,
       },
-      orderPromotionReward: { create: rewardCreate },
+      orderBundleReward: { create: rewardCreate },
     };
 
     await persistOrderBundle(tx as never, {
@@ -49,27 +47,27 @@ describe("ghi nhận BUNDLE dùng chung", () => {
     expect(rewardCreate).toHaveBeenCalledOnce();
   });
 
-  it("từ chối atomically khi campaign đã hết lượt", async () => {
-    const voucherUpdateMany = vi.fn();
+  it("không truy vấn quota campaign trước khi khóa voucher", async () => {
+    const voucherUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const applicationCreate = vi.fn().mockResolvedValue({ id: "application-1" });
     const tx = {
       voucher: { updateMany: voucherUpdateMany },
-      orderPromotionApplication: {
-        aggregate: vi.fn().mockResolvedValue({ _sum: { application_count: 2 } }),
-        create: vi.fn(),
+      orderBundleApplication: {
+        create: applicationCreate,
       },
-      orderPromotionReward: { create: vi.fn() },
+      orderBundleReward: { create: vi.fn().mockResolvedValue({}) },
     };
 
-    await expect(
-      persistOrderBundle(tx as never, {
-        order_id: "order-1",
-        order_items: [{ id: "item-1", addons: [] }],
-        source_items: [{ client_line_id: "line-1" }],
-        bundle: bundle(2),
-        redeem_immediately: false,
-        performed_by: "staff-1",
-      }),
-    ).rejects.toMatchObject({ code: "BUNDLE_SOLD_OUT" });
-    expect(voucherUpdateMany).not.toHaveBeenCalled();
+    await persistOrderBundle(tx as never, {
+      order_id: "order-1",
+      order_items: [{ id: "item-1", addons: [] }],
+      source_items: [{ client_line_id: "line-1" }],
+      bundle: bundle(),
+      redeem_immediately: false,
+      performed_by: "staff-1",
+    });
+
+    expect(voucherUpdateMany).toHaveBeenCalledOnce();
+    expect(applicationCreate).toHaveBeenCalledOnce();
   });
 });

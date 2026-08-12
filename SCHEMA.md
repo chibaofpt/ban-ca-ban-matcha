@@ -478,27 +478,11 @@ Immutable. Reversal = insert new negative-delta row.
 
 ---
 
-### promotions and BUNDLE rules
-- `id` uuid PK
-- `voucher_package_id` uuid nullable UK → voucher_packages (legacy rows may be unlinked)
-- `title` string
-- `description` string nullable
-- `starts_at` timestamp
-- `ends_at` timestamp
-- `max_redemptions` int nullable
-- `is_active` bool
-- `published_at` timestamp nullable — non-null rules are immutable
-- `created_at` timestamp
+### Removed legacy Promotion tables
 
-`promotion_bundle_rules` stores buy/reward quantity, reward kind/mode, scaling, and per-order
-caps. `promotion_product_scopes` stores qualifier/reward product configuration plus the reference
-credit used by `ALLOWED_SCOPE`. `promotion_addon_rewards` stores allowed addon options; Extra
-Matcha is never eligible.
-
-`voucher_grants` provides a unique `(promotion_id, user_id)` idempotency key for FREE_CLAIM and
-AUTO_GRANT. `order_promotion_applications` records the one BUNDLE application allowed per order,
-while `order_promotion_rewards` records each explicit product/addon allocation and its VND benefit.
-Cancellation changes the application to `CANCELLED` and restores the reserved voucher.
+Migration `20260812000000_merge_promotions_into_vouchers` drops the unused Promotion tables
+without backfill. They were never populated or consumed in this deployment; do not reference or
+recreate them.
 
 ---
 
@@ -553,4 +537,38 @@ Tracks admin-initiated temporary closures. At most 1 active row at any time.
 > Query: `WHERE is_active = true` — 0 or 1 row at most.
 > Close: INSERT new row `is_active = true`. Open: UPDATE `is_active = false, opened_at = now()`.
 > Temporary closure takes precedence over weekly schedule.
+
+---
+
+## Current BUNDLE voucher architecture
+
+`voucher_bundle_rules` is a one-to-one immutable child of `voucher_packages`. It stores buy/reward
+quantity, reward kind/mode, scaling, and per-order caps. Campaign issuance quantity belongs only
+to `voucher_packages.quantity`; the BUNDLE rule has no duplicate global redemption cap.
+`voucher_bundle_product_scopes` stores multiple qualifier/reward configurations and reference
+credit for `ALLOWED_SCOPE`. `voucher_bundle_addon_rewards` stores multiple allowed addon options.
+
+`voucher_grants` uses unique `(package_id, user_id)` for idempotent FREE_CLAIM and AUTO_GRANT.
+`order_bundle_applications` records the one BUNDLE voucher allowed per order, while
+`order_bundle_rewards` stores each explicit allocation and VND benefit.
+
+There is no start date and no current Promotion table. An active package is effective immediately;
+`voucher_packages.ends_at` is an exclusive instant and optionally stops new issuance. Admin date
+input is stored as 00:00 on the following day in Asia/Ho_Chi_Minh. `min_order_vnd` applies to BUNDLE,
+DISCOUNT, and FREESHIP. Issued vouchers follow their own `vouchers.expires_at` lifecycle.
+
+### Future group-order compatibility (design only)
+
+Do not add these tables until group ordering is implemented. The intended extension is:
+
+- `group_orders`: host user, share token, lifecycle, checkout order ID, timestamps.
+- `group_order_members`: group order, optional authenticated user, guest name, join token.
+- `group_order_items`: draft line ownership by member; finalized lines map to `order_items`.
+- Member PRODUCT/ADDON vouchers attach only to that member's lines.
+- Host BUNDLE/DISCOUNT/FREESHIP vouchers attach to the whole finalized order. BUNDLE qualifier
+  counts exclude line units already using a member PRODUCT voucher.
+- The resolver receives the selected voucher's explicit owner ID. Guest members cannot use a
+  personal voucher because they have no authenticated voucher owner.
+- The host pays and receives order points. Guests can join without an account and cannot own a
+  personal voucher. Preserve member ownership when copying draft lines into immutable order rows.
 

@@ -16,33 +16,28 @@ function record(overrides: Record<string, unknown> = {}) {
     status: "ACTIVE",
     expires_at: new Date("2026-08-20T00:00:00.000Z"),
     package: {
-      promotion: {
-        id: "promotion-id",
-        is_active: true,
-        starts_at: new Date("2026-08-11T00:00:00.000Z"),
-        ends_at: new Date("2026-08-19T00:00:00.000Z"),
-        published_at: new Date("2026-08-10T00:00:00.000Z"),
-        max_redemptions: null,
-        bundleRule: {
-          buy_quantity: 1,
-          reward_quantity: 1,
-          reward_kind: "PRODUCT",
-          reward_mode: "SAME_CONFIG",
-          benefit_scaling: "PER_BUNDLE",
-          max_applications_order: 1,
-          max_reward_units_order: null,
-          productScopes: [
-            {
-              role: "QUALIFIER",
-              menu_item_id: "menu-1",
-              size: null,
-              matcha_powder_id: null,
-              milk_type_id: null,
-              reference_price_vnd: null,
-            },
-          ],
-          addonRewards: [],
-        },
+      id: "package-id",
+      ends_at: new Date("2026-08-19T00:00:00.000Z"),
+      min_order_vnd: null,
+      bundleRule: {
+        buy_quantity: 1,
+        reward_quantity: 1,
+        reward_kind: "PRODUCT",
+        reward_mode: "SAME_CONFIG",
+        benefit_scaling: "PER_BUNDLE",
+        max_applications_order: 1,
+        max_reward_units_order: null,
+        productScopes: [
+          {
+            role: "QUALIFIER",
+            menu_item_id: "menu-1",
+            size: null,
+            matcha_powder_id: null,
+            milk_type_id: null,
+            reference_price_vnd: null,
+          },
+        ],
+        addonRewards: [],
       },
     },
     ...overrides,
@@ -52,7 +47,7 @@ function record(overrides: Record<string, unknown> = {}) {
 function input() {
   return {
     qr_token: qrToken,
-    user_id: "user-1",
+    voucher_owner_id: "user-1",
     now,
     items: [
       {
@@ -88,6 +83,7 @@ describe("resolve BUNDLE cho order", () => {
     );
     expect(result.line_discounts_vnd).toEqual([45_000]);
     expect(result.evaluation.application_count).toBe(1);
+    expect(result.package_id).toBe("package-id");
   });
 
   it("không cho dùng voucher của khách khác", async () => {

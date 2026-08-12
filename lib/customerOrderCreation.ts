@@ -47,7 +47,7 @@ export async function createCustomerOrder(
   const bundle = data.bundle_voucher_qr_token
     ? await resolveOrderBundle(prisma as unknown as OrderBundleDatabase, {
         qr_token: data.bundle_voucher_qr_token,
-        user_id: userId,
+        voucher_owner_id: userId,
         items: data.items,
         resolved_items: resolvedItems,
         reward_allocations: data.bundle_reward_allocations,

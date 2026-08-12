@@ -30,6 +30,7 @@ export function makeItem(overrides: Partial<BundleCartItem> = {}): BundleCartIte
 /** Build a valid baseline product BUNDLE rule for evaluator tests. */
 export function makeRule(overrides: Partial<BundlePromotionRule> = {}): BundlePromotionRule {
   return {
+    min_order_vnd: null,
     buy_quantity: 1,
     reward_quantity: 1,
     reward_kind: "PRODUCT",

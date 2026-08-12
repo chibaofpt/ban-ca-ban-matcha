@@ -30,6 +30,7 @@ import type { CartItem } from "@/src/lib/types/cart";
 import type { StaffOrderResult } from "@/src/lib/types/order";
 import {
   deriveBundleSelectionState,
+  summarizeBundleCart,
   type BundleSelectionAllocation,
 } from "@/src/lib/utils/bundleVoucher";
 import { getBundleVoucherSummary } from "@/src/components/menu/cart/CartBundleVoucherPanel";
@@ -282,11 +283,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   const bundleSelectionState = selectedBundleSummary
     ? deriveBundleSelectionState({
         voucher: selectedBundleSummary,
-        cart: cart.map((item) => ({
-          client_line_id: item.cartId,
-          menu_item_id: item.menuItemId,
-          quantity: item.quantity,
-        })),
+        cart: summarizeBundleCart(cart),
         allocations: bundleAllocations,
       })
     : null;

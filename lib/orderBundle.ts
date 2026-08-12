@@ -34,15 +34,10 @@ interface BundleVoucherRecord {
   status: string;
   expires_at: Date | null;
   package: {
-    promotion: {
-      id: string;
-      is_active: boolean;
-      starts_at: Date;
-      ends_at: Date;
-      published_at: Date | null;
-      max_redemptions: number | null;
-      bundleRule: BundleRuleRecord | null;
-    } | null;
+    id: string;
+    ends_at: Date | null;
+    min_order_vnd: number | null;
+    bundleRule: BundleRuleRecord | null;
   };
 }
 
@@ -75,13 +70,12 @@ interface BundleResolvedItem {
 
 export interface ResolvedOrderBundle {
   voucher_id: string;
-  promotion_id: string;
-  promotion_max_redemptions: number | null;
+  package_id: string;
   evaluation: BundleEvaluationResult;
   line_discounts_vnd: number[];
 }
 
-function toRule(record: BundleRuleRecord): BundlePromotionRule {
+function toRule(record: BundleRuleRecord, minOrderVnd: number | null): BundlePromotionRule {
   const scopes = record.productScopes.map((scope) => ({
     menu_item_id: scope.menu_item_id,
     size: scope.size,
@@ -92,6 +86,7 @@ function toRule(record: BundleRuleRecord): BundlePromotionRule {
       : { reference_price_vnd: scope.reference_price_vnd }),
   }));
   return {
+    min_order_vnd: minOrderVnd,
     buy_quantity: record.buy_quantity,
     reward_quantity: record.reward_quantity,
     reward_kind: record.reward_kind,
@@ -110,7 +105,7 @@ function assertVoucherUsable(
   userId: string,
   now: Date,
 ): asserts voucher is BundleVoucherRecord & {
-  package: { promotion: NonNullable<BundleVoucherRecord["package"]["promotion"]> };
+  package: BundleVoucherRecord["package"] & { bundleRule: BundleRuleRecord };
 } {
   if (!voucher || voucher.user_id !== userId) {
     throw new BundlePromotionError("BUNDLE_VOUCHER_NOT_FOUND", "Bundle voucher not found");
@@ -121,16 +116,11 @@ function assertVoucherUsable(
   if (voucher.expires_at && voucher.expires_at <= now) {
     throw new BundlePromotionError("BUNDLE_VOUCHER_EXPIRED", "Bundle voucher is expired");
   }
-  const promotion = voucher.package.promotion;
-  if (
-    !promotion ||
-    !promotion.published_at ||
-    !promotion.is_active ||
-    now < promotion.starts_at ||
-    now >= promotion.ends_at ||
-    !promotion.bundleRule
-  ) {
-    throw new BundlePromotionError("BUNDLE_PROMOTION_INACTIVE", "Bundle promotion is inactive");
+  if (voucher.package.ends_at && now >= voucher.package.ends_at) {
+    throw new BundlePromotionError("BUNDLE_VOUCHER_EXPIRED", "Bundle voucher is expired");
+  }
+  if (!voucher.package.bundleRule) {
+    throw new BundlePromotionError("BUNDLE_INVALID_RULE", "Bundle voucher rule is missing");
   }
 }
 
@@ -139,7 +129,7 @@ export async function resolveOrderBundle(
   db: OrderBundleDatabase,
   input: {
     qr_token: string;
-    user_id: string;
+    voucher_owner_id: string;
     now?: Date;
     items: BundleOrderItemInput[];
     resolved_items: BundleResolvedItem[];
@@ -151,18 +141,13 @@ export async function resolveOrderBundle(
     include: {
       package: {
         include: {
-          promotion: {
-            include: {
-              bundleRule: { include: { productScopes: true, addonRewards: true } },
-            },
-          },
+          bundleRule: { include: { productScopes: true, addonRewards: true } },
         },
       },
     },
   });
-  assertVoucherUsable(voucher, input.user_id, input.now ?? new Date());
-  const promotion = voucher.package.promotion;
-  const ruleRecord = promotion.bundleRule;
+  assertVoucherUsable(voucher, input.voucher_owner_id, input.now ?? new Date());
+  const ruleRecord = voucher.package.bundleRule;
   if (!ruleRecord || input.items.length !== input.resolved_items.length) {
     throw new BundlePromotionError("BUNDLE_INVALID_ORDER", "Bundle order lines are inconsistent");
   }
@@ -190,7 +175,7 @@ export async function resolveOrderBundle(
     };
   });
   const evaluation = evaluateBundlePromotion({
-    rule: toRule(ruleRecord),
+    rule: toRule(ruleRecord, voucher.package.min_order_vnd),
     items: cartItems,
     reward_allocations: input.reward_allocations,
   });
@@ -201,8 +186,7 @@ export async function resolveOrderBundle(
   );
   return {
     voucher_id: voucher.id,
-    promotion_id: promotion.id,
-    promotion_max_redemptions: promotion.max_redemptions,
+    package_id: voucher.package.id,
     evaluation,
     line_discounts_vnd: lineDiscounts,
   };

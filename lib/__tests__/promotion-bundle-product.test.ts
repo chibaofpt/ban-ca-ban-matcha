@@ -251,7 +251,7 @@ describe("BUNDLE sản phẩm — mua X tặng Y", () => {
           items: [makeItem({ quantity: 2, product_voucher_quantity: 1 })],
           reward_allocations: [{ client_line_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", quantity: 1 }],
         }),
-      "BUNDLE_CONFLICT",
+      "BUNDLE_NOT_ELIGIBLE",
     );
   });
 

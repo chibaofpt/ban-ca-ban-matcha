@@ -1,11 +1,5 @@
 type AcquisitionMode = "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
 
-interface PromotionWindow {
-  is_active: boolean;
-  starts_at: Date;
-  ends_at: Date;
-}
-
 interface VoucherPackageSnapshot {
   id: string;
   name: string;
@@ -32,7 +26,7 @@ interface VoucherPackageSnapshot {
   covered_price_vnd: number | null;
   covered_delivery_fee_vnd: number | null;
   min_order_vnd: number | null;
-  promotion: PromotionWindow | null;
+  ends_at: Date | null;
 }
 
 interface CreatedVoucher {
@@ -95,14 +89,14 @@ function isPrismaError(error: unknown, code: string): boolean {
 function calculateExpiry(
   now: Date,
   expiresAfterDays: number | null,
-  promotion: PromotionWindow | null,
+  packageEndsAt: Date | null,
 ): Date | null {
   const relativeExpiry =
     expiresAfterDays === null
       ? null
       : new Date(now.getTime() + expiresAfterDays * 24 * 60 * 60 * 1000);
-  if (!promotion) return relativeExpiry;
-  if (!relativeExpiry || promotion.ends_at < relativeExpiry) return promotion.ends_at;
+  if (!packageEndsAt) return relativeExpiry;
+  if (!relativeExpiry || packageEndsAt < relativeExpiry) return packageEndsAt;
   return relativeExpiry;
 }
 
@@ -126,11 +120,8 @@ function assertPackageAvailable(
       "Voucher package cannot be acquired through this flow",
     );
   }
-  if (
-    pkg.promotion &&
-    (!pkg.promotion.is_active || now < pkg.promotion.starts_at || now >= pkg.promotion.ends_at)
-  ) {
-    throw new VoucherIssuanceError("PROMOTION_NOT_ACTIVE", "Promotion is outside its active window");
+  if (pkg.ends_at && now >= pkg.ends_at) {
+    throw new VoucherIssuanceError("VOUCHER_PACKAGE_EXPIRED", "Voucher package has ended");
   }
 }
 
@@ -161,7 +152,7 @@ export async function issueVoucherInTransaction(
   const now = input.now ?? new Date();
   const pkg = await tx.voucherPackage.findUnique({
     where: { id: input.package_id },
-    include: { promotion: true, addonOption: { include: { group: true } } },
+    include: { addonOption: { include: { group: true } } },
   });
   assertPackageAvailable(pkg, input.source, now);
 
@@ -204,7 +195,7 @@ export async function issueVoucherInTransaction(
       covered_delivery_fee_vnd: pkg.covered_delivery_fee_vnd,
       min_order_vnd: pkg.min_order_vnd,
       status: "ACTIVE",
-      expires_at: calculateExpiry(now, pkg.expires_after_days, pkg.promotion),
+      expires_at: calculateExpiry(now, pkg.expires_after_days, pkg.ends_at),
     },
   });
 
@@ -260,12 +251,7 @@ export async function ensureAutoGrantedVouchers(
     where: {
       acquisition_mode: "AUTO_GRANT",
       is_active: true,
-      OR: [
-        { promotion: null },
-        {
-          promotion: { is_active: true, starts_at: { lte: now }, ends_at: { gt: now } },
-        },
-      ],
+      OR: [{ ends_at: null }, { ends_at: { gt: now } }],
     },
     select: { id: true },
     orderBy: { id: "asc" },
@@ -285,7 +271,7 @@ export async function ensureAutoGrantedVouchers(
     } catch (error) {
       if (
         error instanceof VoucherIssuanceError &&
-        ["VOUCHER_SOLD_OUT", "VOUCHER_LIMIT_REACHED", "PROMOTION_NOT_ACTIVE", "NOT_FOUND"].includes(
+        ["VOUCHER_SOLD_OUT", "VOUCHER_LIMIT_REACHED", "VOUCHER_PACKAGE_EXPIRED", "NOT_FOUND"].includes(
           error.reason,
         )
       ) {

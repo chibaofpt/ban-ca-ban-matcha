@@ -285,7 +285,7 @@ export async function POST(req: NextRequest) {
     const bundle = data.bundle_voucher_qr_token && existingUser
       ? await resolveOrderBundle(prisma as unknown as OrderBundleDatabase, {
           qr_token: data.bundle_voucher_qr_token,
-          user_id: existingUser.id,
+          voucher_owner_id: existingUser.id,
           items: data.items,
           resolved_items: resolvedItems,
           reward_allocations: data.bundle_reward_allocations,

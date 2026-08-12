@@ -5,6 +5,9 @@ import { estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
 import { exchangeVoucher, type MyVoucher, type VoucherPackage } from "@/src/services/customerVoucherService";
 import { useQueryClient } from "@tanstack/react-query";
 import { VoucherCard, PackageCard } from "@/src/components/shared/VoucherCards";
+import { CartBundleVoucherPanel } from "@/src/components/menu/cart/CartBundleVoucherPanel";
+import type { CartItem } from "@/src/lib/types/cart";
+import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
 
 interface CartDiscountPickerProps {
   discountVouchers: MyVoucher[];
@@ -20,6 +23,13 @@ interface CartDiscountPickerProps {
   onClose: () => void;
   onUpdateSelectedVouchers: React.Dispatch<React.SetStateAction<string[]>>;
   onRefreshVouchers: () => void;
+  bundleVouchers: MyVoucher[];
+  cart: CartItem[];
+  addonLabels: ReadonlyMap<string, string>;
+  selectedBundleToken: string | null;
+  bundleAllocations: BundleSelectionAllocation[];
+  onBundleVoucherChange: (token: string | null) => void;
+  onBundleAllocationsChange: (allocations: BundleSelectionAllocation[]) => void;
 }
 
 export const CartDiscountPicker = ({
@@ -35,7 +45,14 @@ export const CartDiscountPicker = ({
   shippingFee,
   onClose,
   onUpdateSelectedVouchers,
-  onRefreshVouchers
+  onRefreshVouchers,
+  bundleVouchers,
+  cart,
+  addonLabels,
+  selectedBundleToken,
+  bundleAllocations,
+  onBundleVoucherChange,
+  onBundleAllocationsChange,
 }: CartDiscountPickerProps) => {
   const [isRedeeming, setIsRedeeming] = useState<string | null>(null);
   const queryClient = useQueryClient();
@@ -110,6 +127,15 @@ export const CartDiscountPicker = ({
       </div>
 
       <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-6">
+        <CartBundleVoucherPanel
+          vouchers={bundleVouchers}
+          cart={cart}
+          addonLabels={addonLabels}
+          selectedVoucherToken={selectedBundleToken}
+          allocations={bundleAllocations}
+          onVoucherChange={onBundleVoucherChange}
+          onAllocationsChange={onBundleAllocationsChange}
+        />
         
         {/* Section 1: Ưu đãi của bạn */}
         <section>

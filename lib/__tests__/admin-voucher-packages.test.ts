@@ -494,12 +494,12 @@ describe("PUT /api/admin/voucher-packages/[id]", () => {
     expect(res.status).toBe(404);
   });
 
-  it("updates name and points_cost", async () => {
+  it("updates editable display fields without changing benefit", async () => {
     mockPkgFindUnique.mockResolvedValue(existingPkg);
-    mockPkgUpdate.mockResolvedValue({ ...existingPkg, name: "Updated Name", points_cost: 10 });
+    mockPkgUpdate.mockResolvedValue({ ...existingPkg, name: "Updated Name" });
 
     const res = await PUT(
-      makeReq({ name: "Updated Name", points_cost: 10 }),
+      makeReq({ name: "Updated Name" }),
       { params: idParams }
     );
 

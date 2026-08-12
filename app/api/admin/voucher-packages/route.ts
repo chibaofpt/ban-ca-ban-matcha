@@ -4,7 +4,6 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import {
@@ -13,79 +12,25 @@ import {
   resolveOrderItemPremiumLatte,
 } from "@/lib/pricing";
 import { invalidateVoucherCaches } from "@/lib/cacheInvalidation";
+import { createVoucherPackageSchema } from "@/lib/validations/voucherPackage";
+import {
+  createBundleVoucherPackage,
+  VoucherBundleReferenceError,
+  type AdminVoucherBundleTransaction,
+} from "@/lib/adminVoucherBundle";
+import {
+  createAddonVoucherPackage,
+  VoucherAddonReferenceError,
+  type AdminVoucherAddonDatabase,
+} from "@/lib/adminVoucherAddon";
 
 export const dynamic = "force-dynamic";
 
 // ── Validation schema ─────────────────────────────────────────────────────────
 
-const sizeEnum = z.enum(["SMALL", "MEDIUM", "LARGE"]);
-
-/** Common quantity/limit fields for all package types. */
-const quantityFields = {
-  expires_after_days: z.number().int().min(1).optional().nullable(),
-  /** NULL = unlimited. Max total vouchers that can be issued from this package. */
-  quantity: z.number().int().min(1).optional().nullable(),
-  /** Max per user. Defaults to 1. */
-  max_per_user: z.number().int().min(1).optional().nullable(),
-};
-
-const createPackageSchema = z.discriminatedUnion("voucher_type", [
-  z.object({
-    voucher_type: z.literal("DISCOUNT"),
-    name: z.string().min(1).max(200),
-    description: z.string().max(500).optional(),
-    points_cost: z.number().int().min(1),
-    discount_type: z.enum(["PERCENT", "FIXED"]),
-    discount_value: z.number().int().min(1),
-    min_order_vnd: z.number().int().min(1000).optional().nullable(),
-    ...quantityFields,
-  }).superRefine((data, ctx) => {
-    // FIXED discount must be divisible by 1000 (VND rounding rule)
-    if (data.discount_type === "FIXED" && data.discount_value % 1000 !== 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "FIXED discount_value must be divisible by 1000 VND",
-        path: ["discount_value"],
-      });
-    }
-  }),
   // PRODUCT package — server auto-calculates covered_price_vnd from pricing engine
-  z.object({
-    voucher_type: z.literal("PRODUCT"),
-    name: z.string().min(1).max(200),
-    description: z.string().max(500).optional(),
-    points_cost: z.number().int().min(1),
-    menu_item_id: z.string().uuid(),
-    size: sizeEnum,
-    /** Fusion: optional custom powder swap. Latte: ignored (server uses item's fixed powder). */
-    matcha_powder_id: z.string().uuid().optional().nullable(),
-    /** Latte: optional custom milk swap. Fusion: ignored. */
-    milk_type_id: z.string().uuid().optional().nullable(),
-    included_addon_option_ids: z.array(z.string().uuid()).default([]),
-    ...quantityFields,
-  }),
   // ADDON package — free a single addon option
-  z.object({
-    voucher_type: z.literal("ADDON"),
-    name: z.string().min(1).max(200),
-    description: z.string().max(500).optional(),
-    points_cost: z.number().int().min(1),
-    addon_option_id: z.string().uuid(),
-    ...quantityFields,
-  }),
   // FREESHIP package — covers delivery shipping fee up to covered_delivery_fee_vnd. DELIVERY only.
-  z.object({
-    voucher_type: z.literal("FREESHIP"),
-    name: z.string().min(1).max(200),
-    description: z.string().max(500).optional(),
-    points_cost: z.number().int().min(1),
-    /** Maximum delivery fee this voucher will cover in VND. Minimum 1,000. */
-    covered_delivery_fee_vnd: z.number().int().min(1000),
-    /** Minimum order total (after discount, before ship) required. NULL = no minimum. */
-    min_order_vnd: z.number().int().min(1000).optional().nullable(),
-    ...quantityFields,
-  }),
-]);
 
 // ── GET ───────────────────────────────────────────────────────────────────────
 
@@ -102,6 +47,7 @@ export async function GET() {
       include: {
         menuItem: { select: { name: true, is_available: true } },
         addonOption: { select: { label: true } },
+        bundleRule: { include: { productScopes: true, addonRewards: true } },
         _count: { select: { vouchers: true } },
       },
     });
@@ -126,7 +72,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => null);
-  const parsed = createPackageSchema.safeParse(body);
+  const parsed = createVoucherPackageSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Validation failed", code: "VALIDATION_ERROR" },
@@ -137,56 +83,40 @@ export async function POST(req: NextRequest) {
   try {
     const data = parsed.data;
 
+    if (data.voucher_type === "BUNDLE") {
+      try {
+        const pkg = await prisma.$transaction((tx) =>
+          createBundleVoucherPackage(tx as unknown as AdminVoucherBundleTransaction, data),
+        );
+        await invalidateVoucherCaches();
+        return NextResponse.json({ data: pkg }, { status: 201 });
+      } catch (error) {
+        if (error instanceof VoucherBundleReferenceError) {
+          return NextResponse.json(
+            { error: error.message, code: "BUSINESS_RULE_VIOLATION" },
+            { status: 422 },
+          );
+        }
+        throw error;
+      }
+    }
+
     // For ADDON packages — ensure the target addon is not an Extra Matcha option (dynamic price)
     if (data.voucher_type === "ADDON") {
-      const addonOption = await prisma.addonOption.findUnique({
-        where: { id: data.addon_option_id },
-        select: {
-          gram_value: true,
-          price_vnd: true,
-          label: true,
-          is_active: true,
-          group: { select: { is_active: true } },
-        },
-      });
-
-      if (!addonOption || !addonOption.is_active || !addonOption.group.is_active) {
-        return NextResponse.json(
-          { error: "Addon option not found", code: "NOT_FOUND" },
-          { status: 404 }
+      try {
+        const pkg = await createAddonVoucherPackage(
+          prisma as unknown as AdminVoucherAddonDatabase,
+          data,
         );
+        await invalidateVoucherCaches();
+        return NextResponse.json({ data: pkg }, { status: 201 });
+      } catch (error) {
+        if (error instanceof VoucherAddonReferenceError) {
+          const status = error.reason === "NOT_FOUND" ? 404 : 400;
+          return NextResponse.json({ error: error.message, code: error.reason }, { status });
+        }
+        throw error;
       }
-
-      if (addonOption.gram_value !== null) {
-        return NextResponse.json(
-          {
-            error: "ADDON vouchers cannot target Extra Matcha options (dynamic price)",
-            code: "VALIDATION_ERROR",
-          },
-          { status: 400 }
-        );
-      }
-
-      // For ADDON: covered_price_vnd = the addon's current price_vnd (snapshot)
-      const covered_price_vnd = addonOption.price_vnd;
-
-      const pkg = await prisma.voucherPackage.create({
-        data: {
-          name: data.name,
-          description: data.description ?? null,
-          voucher_type: "ADDON",
-          points_cost: data.points_cost,
-          is_active: true,
-          expires_after_days: data.expires_after_days ?? null,
-          quantity: data.quantity ?? null,
-          max_per_user: data.max_per_user ?? 1,
-          addon_option_id: data.addon_option_id,
-          covered_price_vnd,
-        },
-      });
-
-      await invalidateVoucherCaches();
-      return NextResponse.json({ data: pkg }, { status: 201 });
     }
 
     // For PRODUCT packages — auto-calculate covered_price_vnd via pricing engine
@@ -307,7 +237,9 @@ export async function POST(req: NextRequest) {
           name: data.name,
           description: data.description ?? null,
           voucher_type: "PRODUCT",
+          acquisition_mode: data.acquisition_mode,
           points_cost: data.points_cost,
+          ends_at: data.ends_at ? new Date(data.ends_at) : null,
           is_active: true,
           expires_after_days: data.expires_after_days ?? null,
           quantity: data.quantity ?? null,
@@ -332,7 +264,9 @@ export async function POST(req: NextRequest) {
           name: data.name,
           description: data.description ?? null,
           voucher_type: "FREESHIP",
+          acquisition_mode: data.acquisition_mode,
           points_cost: data.points_cost,
+          ends_at: data.ends_at ? new Date(data.ends_at) : null,
           is_active: true,
           expires_after_days: data.expires_after_days ?? null,
           quantity: data.quantity ?? null,
@@ -352,7 +286,9 @@ export async function POST(req: NextRequest) {
         name: data.name,
         description: data.description ?? null,
         voucher_type: "DISCOUNT",
+        acquisition_mode: data.acquisition_mode,
         points_cost: data.points_cost,
+        ends_at: data.ends_at ? new Date(data.ends_at) : null,
         is_active: true,
         expires_after_days: data.expires_after_days ?? null,
         quantity: data.quantity ?? null,

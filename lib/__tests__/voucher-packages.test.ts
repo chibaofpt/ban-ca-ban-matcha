@@ -87,8 +87,7 @@ describe("GET /api/voucher-packages", () => {
     expect(mockFindManyPackages).toHaveBeenLastCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          voucher_type: "BUNDLE",
-          promotion: expect.objectContaining({ is_active: true }),
+          ends_at: expect.objectContaining({ gt: expect.any(Date) }),
         }),
       }),
     );

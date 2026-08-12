@@ -19,6 +19,7 @@ export interface VoucherPackage {
   voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
   acquisition_mode?: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
   points_cost: number;
+  ends_at?: string | null;
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
   menu_item_id: string | null;
@@ -40,6 +41,19 @@ export interface VoucherPackage {
   user_redeemed_count?: number;
   menuItem?: { name: string; is_available: boolean } | null;
   addonOption?: { label: string } | null;
+  bundleRule?: BundleVoucherRule | null;
+}
+
+export interface BundleVoucherRule {
+  buy_quantity: number;
+  reward_quantity: number;
+  reward_kind: "PRODUCT" | "ADDON";
+  reward_mode: "SAME_CONFIG" | "FIXED_CONFIG" | "ALLOWED_SCOPE";
+  benefit_scaling: "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM";
+  max_applications_order: number;
+  max_reward_units_order: number | null;
+  productScopes: Array<{ role: "QUALIFIER" | "REWARD"; menu_item_id: string }>;
+  addonRewards: Array<{ addon_option_id: string }>;
 }
 
 export interface MyVoucher {
@@ -71,22 +85,8 @@ export interface MyVoucher {
     description: string | null;
     points_cost: number;
     acquisition_mode?: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
-    promotion?: {
-      title: string;
-      starts_at: string;
-      ends_at: string;
-      bundleRule: {
-        buy_quantity: number;
-        reward_quantity: number;
-        reward_kind: "PRODUCT" | "ADDON";
-        reward_mode: "SAME_CONFIG" | "FIXED_CONFIG" | "ALLOWED_SCOPE";
-        benefit_scaling: "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM";
-        max_applications_order: number;
-        max_reward_units_order: number | null;
-        productScopes: Array<{ role: "QUALIFIER" | "REWARD"; menu_item_id: string }>;
-        addonRewards: Array<{ addon_option_id: string }>;
-      } | null;
-    } | null;
+    ends_at?: string | null;
+    bundleRule?: BundleVoucherRule | null;
   };
   menuItem: { name: string; is_available: boolean } | null;
   addonOption: { label: string } | null;

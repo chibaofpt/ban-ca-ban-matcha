@@ -36,7 +36,8 @@ interface VoucherDtoSource {
     description: string | null;
     points_cost: number;
     acquisition_mode?: VoucherAcquisitionMode;
-    promotion?: unknown;
+    ends_at?: Date | null;
+    bundleRule?: unknown;
   };
   menuItem: { name: string; is_available: boolean } | null;
   addonOption: { label: string } | null;

@@ -177,11 +177,7 @@ describe("Phát hành voucher dùng chung", () => {
       makePackage({
         acquisition_mode: "AUTO_GRANT",
         points_cost: 0,
-        promotion: {
-          is_active: true,
-          starts_at: new Date("2026-08-12T00:00:00.000Z"),
-          ends_at: new Date("2026-08-20T00:00:00.000Z"),
-        },
+        ends_at: new Date("2026-08-11T09:59:59.000Z"),
       }),
     );
 
@@ -193,7 +189,7 @@ describe("Phát hành voucher dùng chung", () => {
         now: NOW,
       }),
     ).rejects.toSatisfy((error: unknown) => {
-      expectReason(error, "PROMOTION_NOT_ACTIVE");
+      expectReason(error, "VOUCHER_PACKAGE_EXPIRED");
       return true;
     });
   });
@@ -203,11 +199,7 @@ describe("Phát hành voucher dùng chung", () => {
       makePackage({
         acquisition_mode: "AUTO_GRANT",
         points_cost: 0,
-        promotion: {
-          is_active: true,
-          starts_at: new Date("2026-08-01T00:00:00.000Z"),
-          ends_at: new Date("2026-08-15T00:00:00.000Z"),
-        },
+        ends_at: new Date("2026-08-15T00:00:00.000Z"),
       }),
     );
 

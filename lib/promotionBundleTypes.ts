@@ -32,6 +32,7 @@ export interface BundleCartItem {
 }
 
 export interface BundlePromotionRule {
+  min_order_vnd: number | null;
   buy_quantity: number;
   reward_quantity: number;
   reward_kind: BundleRewardKind;

@@ -21,8 +21,8 @@ export async function GET() {
       fetchVoucherPackages,
     );
     // Campaign windows and activation are live state; never put BUNDLE packages in app cache.
-    const bundlePackages = await fetchActiveBundlePackages(new Date());
-    const packages = [...cachedPackages, ...bundlePackages].sort(
+    const scheduledPackages = await fetchScheduledVoucherPackages(new Date());
+    const packages = [...cachedPackages, ...scheduledPackages].sort(
       (left, right) =>
         new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
     );
@@ -68,32 +68,28 @@ export async function GET() {
 /** Fetches active voucher packages from DB. Called by withCache on cache miss. */
 async function fetchVoucherPackages() {
   return prisma.voucherPackage.findMany({
-    where: { is_active: true, voucher_type: { not: "BUNDLE" } },
+    where: { is_active: true, ends_at: null },
     orderBy: { created_at: "asc" },
     include: {
       menuItem: { select: { name: true, is_available: true } },
       addonOption: { select: { label: true } },
+      bundleRule: { include: { productScopes: true, addonRewards: true } },
     },
   });
 }
 
 /** Fetch active BUNDLE packages live so campaign windows are never stale in Redis. */
-async function fetchActiveBundlePackages(now: Date) {
+async function fetchScheduledVoucherPackages(now: Date) {
   return prisma.voucherPackage.findMany({
     where: {
       is_active: true,
-      voucher_type: "BUNDLE",
-      promotion: {
-        is_active: true,
-        published_at: { not: null },
-        starts_at: { lte: now },
-        ends_at: { gt: now },
-      },
+      ends_at: { gt: now },
     },
     orderBy: { created_at: "asc" },
     include: {
       menuItem: { select: { name: true, is_available: true } },
       addonOption: { select: { label: true } },
+      bundleRule: { include: { productScopes: true, addonRewards: true } },
     },
   });
 }

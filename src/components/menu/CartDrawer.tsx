@@ -24,16 +24,14 @@ import CartItemCard from "./cart/CartItemCard";
 import { CartItemVoucherPicker } from "./cart/CartItemVoucherPicker";
 import { CartDiscountPicker } from "./cart/CartDiscountPicker";
 import { CartFooter } from "./cart/CartFooter";
-import {
-  CartBundleVoucherPanel,
-  getBundleVoucherSummary,
-} from "./cart/CartBundleVoucherPanel";
+import { getBundleVoucherSummary } from "./cart/CartBundleVoucherPanel";
 import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
 import type { MenuData, MenuItem } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
 import { deriveCheckoutRewards } from "@/src/utils/customerUx";
 import {
   deriveBundleSelectionState,
+  summarizeBundleCart,
   type BundleSelectionAllocation,
 } from "@/src/lib/utils/bundleVoucher";
 
@@ -154,7 +152,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
     (voucher) =>
       voucher.voucher_type === "BUNDLE" &&
       voucher.status === "ACTIVE" &&
-      voucher.package.promotion?.bundleRule,
+      voucher.package.bundleRule,
   );
   const selectedBundleVoucher = bundleVouchers.find(
     (voucher) => voucher.qr_token === selectedBundleToken,
@@ -165,11 +163,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   const bundleSelectionState = selectedBundleSummary
     ? deriveBundleSelectionState({
         voucher: selectedBundleSummary,
-        cart: items.map((item) => ({
-          client_line_id: item.cartId,
-          menu_item_id: item.menuItemId,
-          quantity: item.quantity,
-        })),
+        cart: summarizeBundleCart(items),
         allocations: bundleAllocations,
       })
     : null;
@@ -632,17 +626,6 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
                         />
                       ))
                     )}
-                    {items.length > 0 ? (
-                      <CartBundleVoucherPanel
-                        vouchers={bundleVouchers}
-                        cart={items}
-                        addonLabels={addonLabels}
-                        selectedVoucherToken={selectedBundleToken}
-                        allocations={bundleAllocations}
-                        onVoucherChange={setSelectedBundleToken}
-                        onAllocationsChange={setBundleAllocations}
-                      />
-                    ) : null}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -719,6 +702,13 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
                 onRefreshVouchers={() => {
                   listMyVouchers().then(setAllVouchers).catch(() => {});
                 }}
+                bundleVouchers={bundleVouchers}
+                cart={items}
+                addonLabels={addonLabels}
+                selectedBundleToken={selectedBundleToken}
+                bundleAllocations={bundleAllocations}
+                onBundleVoucherChange={setSelectedBundleToken}
+                onBundleAllocationsChange={setBundleAllocations}
               />
             )}
           </AnimatePresence>

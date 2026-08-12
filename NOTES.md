@@ -7,6 +7,10 @@
 
 ## Confirmed Business Rules Awaiting Code Alignment
 
+> Superseding order for the unified architecture: `BUNDLE → PRODUCT → ADDON → DISCOUNT → FREESHIP`.
+> PRODUCT selections are resolved before BUNDLE eligibility so their units can be excluded from X,
+> but BUNDLE monetary reductions are recorded first.
+
 The following rules are approved. Treat `order-flow`, `voucher-flow`, and `pricing-logic` as
 the target behavior even where current code still differs:
 
@@ -141,9 +145,9 @@ outside the application, TypeScript, and lint scope. It does not require a produ
 
 ## Launch Hardening Decisions
 
-- **BUNDLE promotions approved (2026-08-11)**: phase-5 promotion scope is partially activated for
-  buy-X-get-Y product/addon campaigns only; OTP, SMS/ZNS, and application caching remain deferred.
-  Campaign rules are immutable after publish. AUTO_GRANT is attempted at registration and retried
+- **BUNDLE vouchers approved (2026-08-11, unified 2026-08-12)**: buy-X-get-Y product/addon rules
+  live directly under VoucherPackage; the legacy Promotion layer is removed. OTP, SMS/ZNS, and
+  application caching remain deferred. Rules are immutable after creation. AUTO_GRANT is attempted at registration and retried
   lazily from wallet/order flows, so a newly registered account during an active campaign receives
   the default voucher without requiring a pre-existing ghost user. Anonymous checkouts remain
   ineligible; staff-created ghost users become eligible once persisted.

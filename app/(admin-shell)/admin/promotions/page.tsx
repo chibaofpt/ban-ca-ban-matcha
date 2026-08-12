@@ -1,11 +1,6 @@
-import type { Metadata } from "next";
-import AdminPromotionsPage from "@/src/views/admin/AdminPromotionsPage";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Khuyến mãi mua X tặng Y | Bạn Cá Bán Matcha",
-};
-
-/** Admin promotion campaign page. */
+/** Preserves old bookmarks while promotions are managed as BUNDLE vouchers. */
 export default function PromotionsPage() {
-  return <AdminPromotionsPage />;
+  redirect("/admin/voucher-packages?type=BUNDLE");
 }

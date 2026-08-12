@@ -153,8 +153,11 @@ and `order_discount_vouchers.discount_applied_vnd` have been **dropped** (migrat
 
 ## BUNDLE Voucher Details
 
-- A published promotion owns one immutable BUNDLE rule and one voucher package. Deactivation is
-  allowed; editing a published rule is not.
+- A BUNDLE voucher package owns one immutable BUNDLE rule directly. There is no Promotion layer.
+  Deactivation stops new issuance; it does not invalidate vouchers already issued.
+- Packages are effective immediately. `ends_at` is optional; there is no `starts_at`. Admin picks
+  the final usable Vietnam calendar date; store it as the exclusive next-day 00:00 at UTC+7 and
+  require `now < ends_at`.
 - Acquisition modes are `POINTS_EXCHANGE`, `FREE_CLAIM`, and `AUTO_GRANT`. Free/auto modes cost
   zero points. `voucher_grants` makes free issuance idempotent under concurrent requests.
 - Registration attempts AUTO_GRANT immediately. Wallet and authenticated order entry points retry
@@ -163,11 +166,18 @@ and `order_discount_vouchers.discount_applied_vnd` have been **dropped** (migrat
 - Accept at most one BUNDLE voucher per order. The client must send stable `client_line_id` values
   and explicit reward allocations. The server re-resolves products, configuration, addons, and
   prices before evaluating them.
+- Resolve voucher ownership through an explicit `voucher_owner_id`, never by assuming the order
+  host owns every line. This boundary is required for future group orders.
 - `SAME_CONFIG` means product, size, powder, and milk match; sweetness, ice, and coldwhisk may
   differ. `FIXED_CONFIG` requires exact size and powder, plus milk for Latte. `ALLOWED_SCOPE`
   covers at most its reference credit and creates no surplus points.
 - Addon rewards may scale per bundle, once per order, or per qualifying item. Pool allocations
   across eligible items, reject Extra Matcha, and never overlap PRODUCT/ADDON voucher benefits.
+- `min_order_vnd` is evaluated from merchandise still eligible for BUNDLE: exclude drink units
+  with PRODUCT vouchers and exclude addon units covered by ADDON vouchers. A drink carrying only
+  an ADDON voucher still counts as a qualifying product.
+- Qualifier and reward scopes may each contain multiple products, including seasonal products.
+  One BUNDLE package has exactly one reward kind: PRODUCT or ADDON.
 - Reserve at order creation, redeem on payment confirmation/completion, and restore on cancellation.
   Direct offline QR redemption of BUNDLE vouchers is forbidden.
 

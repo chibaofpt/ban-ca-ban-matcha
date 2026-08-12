@@ -18,10 +18,14 @@ const VOUCHER: BundleVoucherSummary = {
   max_reward_units_per_order: null,
   eligible_menu_item_ids: ["latte-1"],
   reward_menu_item_ids: ["latte-1"],
+  min_order_vnd: null,
 };
 
 const CART: BundleCartSummaryItem[] = [
-  { client_line_id: "line-1", menu_item_id: "latte-1", quantity: 3 },
+  {
+    client_line_id: "line-1", menu_item_id: "latte-1", label: "Matcha Latte",
+    quantity: 3, unit_price_vnd: 45_000, product_voucher_quantity: 0, addons: [],
+  },
 ];
 
 describe("Helper chọn BUNDLE dùng chung", () => {
@@ -52,6 +56,42 @@ describe("Helper chọn BUNDLE dùng chung", () => {
   it("báo cần chọn quà khi đã đủ món nhưng chưa allocation", () => {
     const state = deriveBundleSelectionState({ voucher: VOUCHER, cart: CART, allocations: [] });
     expect(state).toEqual({ status: "NEEDS_REWARD", message: "Chọn 1 món quà" });
+  });
+
+  it("không tính món đã dùng voucher sản phẩm vào X", () => {
+    const state = deriveBundleSelectionState({
+      voucher: VOUCHER,
+      cart: [{ ...CART[0]!, quantity: 2, product_voucher_quantity: 1 }],
+      allocations: [],
+    });
+    expect(state).toEqual({
+      status: "INELIGIBLE",
+      message: "Matcha Latte đang dùng voucher sản phẩm nên không được tính; cần thêm 1 món đủ điều kiện",
+    });
+  });
+
+  it("kiểm tra đơn tối thiểu trên phần sản phẩm hợp lệ sau voucher cá nhân", () => {
+    const state = deriveBundleSelectionState({
+      voucher: { ...VOUCHER, min_order_vnd: 100_000 },
+      cart: [{
+        ...CART[0]!, quantity: 2, unit_price_vnd: 40_000,
+        addons: [{ addon_option_id: "addon-1", quantity: 2, unit_price_vnd: 10_000, voucher_discounted_quantity: 1 }],
+      }],
+      allocations: [],
+    });
+    expect(state).toEqual({
+      status: "INELIGIBLE",
+      message: "Cần thêm 10.000đ sản phẩm hợp lệ để đạt giá trị đơn tối thiểu",
+    });
+  });
+
+  it("báo xung đột nếu món quà đã dùng voucher sản phẩm", () => {
+    const state = deriveBundleSelectionState({
+      voucher: VOUCHER,
+      cart: [{ ...CART[0]!, product_voucher_quantity: 1 }],
+      allocations: [{ client_line_id: "line-1", quantity: 3 }],
+    });
+    expect(state.status).toBe("CONFLICT");
   });
 
   it("báo sẵn sàng khi giỏ và allocation hợp lệ", () => {
@@ -99,7 +139,14 @@ describe("Helper chọn BUNDLE dùng chung", () => {
         benefit_scaling: "PER_QUALIFYING_ITEM",
         reward_quantity: 2,
       },
-      cart: [{ ...CART[0]!, quantity: 2 }],
+      cart: [{
+        ...CART[0]!,
+        quantity: 2,
+        addons: [{
+          addon_option_id: "addon-1", quantity: 4, unit_price_vnd: 10_000,
+          voucher_discounted_quantity: 0,
+        }],
+      }],
       allocations: [{ client_line_id: "line-1", addon_option_id: "addon-1", quantity: 2 }],
     });
     expect(state.status).toBe("NEEDS_REWARD");

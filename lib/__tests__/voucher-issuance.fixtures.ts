@@ -41,7 +41,7 @@ export function makePackage(overrides: Record<string, unknown> = {}) {
     covered_price_vnd: null,
     covered_delivery_fee_vnd: null,
     min_order_vnd: null,
-    promotion: null,
+    ends_at: null,
     ...overrides,
   };
 }

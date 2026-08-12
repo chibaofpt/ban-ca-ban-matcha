@@ -263,8 +263,8 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
 | `/api/admin/store-schedule` | GET | Get weekly opening hours (0–14 rows grouped by day) |
 | `/api/admin/store-schedule` | PUT | Replace entire schedule (deleteMany + createMany in transaction) |
 | `/api/admin/store-closure` | POST | Temporarily close (`action=close`) or reopen (`action=open`) the store |
-| `/api/admin/promotions` | GET/POST | List or publish immutable BUNDLE campaigns |
-| `/api/admin/promotions/[id]` | PATCH | Activate/deactivate a published campaign |
+| `/api/admin/voucher-packages` | GET/POST | List or create every voucher type, including BUNDLE |
+| `/api/admin/voucher-packages/[id]` | PUT/DELETE | Rename, describe, activate, or deactivate a package |
 | `/api/profile/vouchers/claim` | POST | Idempotently claim a FREE_CLAIM package |
 
 ---
@@ -520,22 +520,25 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
 // Addons apply globally — no junction rows needed
 ```
 
-### `POST /api/admin/promotions`
+### Removed: `/api/admin/promotions`
+
+The unused Promotion API and tables are deleted without data migration. All new clients use the
+unified VoucherPackage routes below.
+
+### `POST /api/admin/voucher-packages` for BUNDLE
+
 ```ts
 {
-  title: string
+  voucher_type: "BUNDLE"
+  name: string
   description?: string
-  starts_at: string                 // ISO datetime
-  ends_at: string                   // ISO datetime, after starts_at
-  max_redemptions: number | null
-  package: {
-    name: string
-    acquisition_mode: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT"
-    points_cost: number             // zero unless POINTS_EXCHANGE
-    expires_after_days?: number | null
-    quantity?: number | null
-    max_per_user: number
-  }
+  acquisition_mode: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT"
+  points_cost: number              // positive only for POINTS_EXCHANGE
+  ends_at?: string | null          // exclusive UTC instant; no starts_at, active immediately
+  min_order_vnd?: number | null
+  expires_after_days?: number | null
+  quantity?: number | null
+  max_per_user: number
   bundle_rule: {
     buy_quantity: number
     reward_quantity: number
@@ -549,10 +552,16 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
     reward_addon_option_ids: string[]
   }
 }
-// ProductScope = { menu_item_id, size?, powder_id?, milk_type_id?, reference_price_vnd? }
-// FIXED_CONFIG requires exact size + powder; Latte also requires milk.
-// Published rules are immutable. PATCH /api/admin/promotions/[id] only changes is_active.
 ```
+
+Rules are immutable after creation; `PUT /api/admin/voucher-packages/[id]` only accepts name,
+description, and `is_active`. Qualifier/reward arrays support multiple products, including seasonal
+items. Each BUNDLE has one reward kind. Package `min_order_vnd` excludes product-vouchered drink
+units and addon-vouchered addon units from the eligible subtotal.
+
+Admin selects the final usable Vietnam calendar date. The UI sends the next day at 00:00 UTC+7;
+the server treats the package as usable only while `now < ends_at`. `quantity` is the single
+campaign issuance limit; there is no second limit inside `bundle_rule`.
 
 ### `POST /api/profile/vouchers/claim`
 ```ts
