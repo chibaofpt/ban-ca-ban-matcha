@@ -98,7 +98,7 @@ export function CartBundleVoucherPanel({
   const cartSummary = summarizeBundleCart(cart);
 
   return (
-    <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-3">
+    <section id="cart-bundle-voucher-panel" tabIndex={-1} className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-3 focus-visible:ring-2 focus-visible:ring-amber-600">
       <p className="flex items-center gap-2 text-sm font-bold text-amber-900">
         <Gift className="size-4" aria-hidden="true" /> Ưu đãi mua X tặng Y
       </p>

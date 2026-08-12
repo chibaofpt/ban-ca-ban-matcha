@@ -26,9 +26,8 @@ export function createEmptyVoucherDraft(): VoucherDraft {
     discountType: "PERCENT", discountValue: 10, menuItemId: "", size: "SMALL",
     matchaPowderId: "", milkTypeId: "", addonOptionId: "", coveredDeliveryFeeVnd: 30_000,
     buyQuantity: 2, rewardQuantity: 1, rewardKind: "PRODUCT", rewardMode: "SAME_CONFIG",
-    benefitScaling: "PER_BUNDLE", maxApplications: 1, qualifierMenuItemIds: [],
-    rewardMenuItemIds: [], rewardSize: "SMALL", rewardPowderId: "", rewardMilkTypeId: "",
-    rewardAddonOptionIds: [], referencePriceVnd: 50_000,
+    benefitScaling: "PER_BUNDLE", maxApplications: 1,
+    qualifierScopes: [], rewardProductScopes: [], rewardAddonOptionIds: [],
   };
 }
 
@@ -69,9 +68,23 @@ export function validateVoucherDraft(draft: VoucherDraft): string | null {
   if (draft.acquisitionMode === "POINTS_EXCHANGE" && draft.pointsCost < 1) return "Điểm đổi phải lớn hơn 0";
   if (draft.voucherType === "PRODUCT" && !draft.menuItemId) return "Vui lòng chọn sản phẩm";
   if (draft.voucherType === "ADDON" && !draft.addonOptionId) return "Vui lòng chọn addon";
-  if (draft.voucherType === "BUNDLE" && draft.qualifierMenuItemIds.length === 0) return "Vui lòng chọn món điều kiện";
-  if (draft.voucherType === "BUNDLE" && draft.rewardKind === "PRODUCT" && draft.rewardMode !== "SAME_CONFIG" && draft.rewardMenuItemIds.length === 0) return "Vui lòng chọn món quà";
+  if (draft.voucherType === "BUNDLE" && draft.qualifierScopes.length === 0) return "Vui lòng chọn món điều kiện";
+  if (draft.voucherType === "BUNDLE" && draft.rewardKind === "PRODUCT" && draft.rewardMode !== "SAME_CONFIG" && draft.rewardProductScopes.length === 0) return "Vui lòng chọn món quà";
+  if (draft.voucherType === "BUNDLE" && draft.rewardKind === "PRODUCT" && draft.rewardMode === "FIXED_CONFIG") {
+    if (draft.rewardProductScopes.some((scope) => scope.sizes.length === 0)) return "Vui lòng chọn ít nhất một size cho từng món quà";
+    if (draft.rewardProductScopes.some((scope) => scope.category === "fusion" && scope.powderIds.length === 0)) return "Vui lòng chọn ít nhất một loại bột cho từng món Fusion";
+    if (draft.rewardProductScopes.some((scope) => scope.category === "latte" && !scope.fixedPowderId)) return "Món Latte chưa có bột cố định hợp lệ";
+    if (draft.rewardProductScopes.some((scope) => scope.category === "latte" && scope.milkTypeIds.length === 0)) return "Vui lòng chọn sữa cho từng món Latte cố định";
+  }
   if (draft.voucherType === "BUNDLE" && draft.rewardKind === "ADDON" && draft.rewardAddonOptionIds.length === 0) return "Vui lòng chọn addon quà";
+  if (draft.voucherType === "BUNDLE" && draft.rewardMode === "ALLOWED_SCOPE" && draft.rewardProductScopes.some((scope) => scope.referencePriceVnd < 1_000 || scope.referencePriceVnd % 1_000 !== 0)) return "Hạn mức từng món phải từ 1.000đ và chia hết cho 1.000";
+  if (draft.voucherType === "BUNDLE") {
+    const scopeCount = (scope: BundleVoucherFormState["qualifierScopes"][number]) =>
+      Math.max(1, scope.sizes.length) * Math.max(1, scope.powderIds.length) *
+      (scope.category === "latte" ? Math.max(1, scope.milkTypeIds.length) : 1);
+    if (draft.qualifierScopes.reduce((sum, scope) => sum + scopeCount(scope), 0) > 100) return "Phạm vi món điều kiện vượt quá 100 cấu hình";
+    if (draft.rewardProductScopes.reduce((sum, scope) => sum + scopeCount(scope), 0) > 100) return "Phạm vi món quà vượt quá 100 cấu hình";
+  }
   return null;
 }
 
@@ -79,18 +92,44 @@ function names(ids: string[], labels: ReadonlyMap<string, string>): string {
   return ids.map((id) => labels.get(id) ?? "Món đã chọn").join(", ");
 }
 
+const SIZE_LABEL = { SMALL: "Nhỏ", MEDIUM: "Vừa", LARGE: "Lớn" } as const;
+
+function describeScope(
+  scope: BundleVoucherFormState["qualifierScopes"][number],
+  menuLabels: ReadonlyMap<string, string>,
+  powderLabels: ReadonlyMap<string, string>,
+  milkLabels: ReadonlyMap<string, string>,
+): string {
+  const details: string[] = [];
+  if (scope.sizes.length > 0) details.push(scope.sizes.map((size) => SIZE_LABEL[size]).join(" + "));
+  if (scope.category === "fusion" && scope.powderIds.length > 0) {
+    details.push(scope.powderIds.map((id) => powderLabels.get(id) ?? "Bột đã chọn").join(" + "));
+  }
+  if (scope.category === "latte" && scope.milkTypeIds.length > 0) {
+    details.push(scope.milkTypeIds.map((id) => milkLabels.get(id) ?? "Sữa đã chọn").join(" + "));
+  }
+  const name = menuLabels.get(scope.menuItemId) ?? "Món đã chọn";
+  return details.length > 0 ? `${name} (${details.join(" · ")})` : name;
+}
+
 /** Build the admin review sentence from the exact voucher rule being published. */
 export function describeVoucherDraft(
   draft: VoucherDraft,
   menuLabels: ReadonlyMap<string, string>,
   addonLabels: ReadonlyMap<string, string>,
+  powderLabels: ReadonlyMap<string, string> = new Map(),
+  milkLabels: ReadonlyMap<string, string> = new Map(),
 ): string {
   if (draft.voucherType !== "BUNDLE") return draft.description.trim() || draft.name.trim();
-  const qualifiers = names(draft.qualifierMenuItemIds, menuLabels);
+  const qualifiers = draft.qualifierScopes
+    .map((scope) => describeScope(scope, menuLabels, powderLabels, milkLabels))
+    .join(", ");
   const reward = draft.rewardKind === "PRODUCT"
     ? draft.rewardMode === "SAME_CONFIG"
       ? "cùng loại và cấu hình"
-      : names(draft.rewardMenuItemIds, menuLabels)
+      : draft.rewardProductScopes
+          .map((scope) => describeScope(scope, menuLabels, powderLabels, milkLabels))
+          .join(", ")
     : names(draft.rewardAddonOptionIds, addonLabels);
   return `Mua ${draft.buyQuantity} trong nhóm ${qualifiers}; tặng ${draft.rewardQuantity} ${reward}`;
 }
@@ -119,11 +158,11 @@ export function estimateVoucherLiabilityVnd(
   const unitPrice = draft.rewardKind === "ADDON"
     ? maxPrice(draft.rewardAddonOptionIds, addonPrices)
     : draft.rewardMode === "ALLOWED_SCOPE"
-      ? draft.referencePriceVnd
+      ? Math.max(0, ...draft.rewardProductScopes.map((scope) => scope.referencePriceVnd))
       : maxPrice(
           draft.rewardMode === "SAME_CONFIG"
-            ? draft.qualifierMenuItemIds
-            : draft.rewardMenuItemIds,
+            ? draft.qualifierScopes.map((scope) => scope.menuItemId)
+            : draft.rewardProductScopes.map((scope) => scope.menuItemId),
           menuPrices,
         );
   const rewardUnits = draft.rewardKind === "ADDON" && draft.benefitScaling === "ONCE_PER_ORDER"

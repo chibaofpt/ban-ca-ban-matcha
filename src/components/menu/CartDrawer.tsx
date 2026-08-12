@@ -276,7 +276,11 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
     ])
       .then(([vouchers, packages]) => {
         setAllVouchers(vouchers);
-        setAvailableVoucherPackages(packages.filter(p => p.voucher_type === "DISCOUNT" || p.voucher_type === "FREESHIP"));
+        setAvailableVoucherPackages(packages.filter((pkg) =>
+          pkg.voucher_type === "DISCOUNT" ||
+          pkg.voucher_type === "FREESHIP" ||
+          pkg.voucher_type === "BUNDLE"
+        ));
       })
   }, [isCartOpen, isLoggedIn, setSelectedVoucherIds]);
 
@@ -699,8 +703,9 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
                 shippingFee={shippingFee}
                 onClose={() => setIsDiscountPickerOpen(false)}
                 onUpdateSelectedVouchers={setSelectedVoucherIds}
-                onRefreshVouchers={() => {
-                  listMyVouchers().then(setAllVouchers).catch(() => {});
+                onRefreshVouchers={async () => {
+                  const refreshed = await listMyVouchers();
+                  setAllVouchers(refreshed);
                 }}
                 bundleVouchers={bundleVouchers}
                 cart={items}

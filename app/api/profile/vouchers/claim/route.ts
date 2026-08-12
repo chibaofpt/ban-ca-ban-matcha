@@ -26,6 +26,9 @@ export async function POST(req: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   }
+  if (session.role !== "CUSTOMER") {
+    return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+  }
   const rateLimit = await checkRateLimit("voucherExchangeAccount", session.id);
   if (!rateLimit.allowed) {
     return NextResponse.json(
@@ -40,10 +43,31 @@ export async function POST(req: NextRequest) {
       package_id: parsed.data.package_id,
       source: "FREE_CLAIM",
     });
+
     if ("already_granted" in voucher) {
-      return NextResponse.json({ data: { already_granted: true } });
+      const existing = await prisma.voucher.findFirst({
+        where: { user_id: session.id, package_id: parsed.data.package_id },
+        select: { qr_token: true, voucher_type: true, status: true, expires_at: true },
+        orderBy: { created_at: "desc" },
+      });
+      if (!existing) throw new Error("Granted voucher could not be resolved");
+      return NextResponse.json({
+        data: {
+          ...existing,
+          already_granted: true,
+        },
+      });
     }
-    return NextResponse.json({ data: { qr_token: voucher.qr_token } }, { status: 201 });
+
+    return NextResponse.json({
+      data: {
+        qr_token: voucher.qr_token,
+        voucher_type: voucher.voucher_type,
+        status: voucher.status,
+        expires_at: voucher.expires_at,
+        already_granted: false,
+      },
+    }, { status: 201 });
   } catch (error) {
     if (error instanceof VoucherIssuanceError) {
       const status = error.reason === "NOT_FOUND" ? 404 : error.reason.includes("ALREADY") ? 409 : 422;

@@ -2,9 +2,13 @@ import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, CheckCircle2, Coins } from "lucide-react";
 import { estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
-import { exchangeVoucher, type MyVoucher, type VoucherPackage } from "@/src/services/customerVoucherService";
-import { useQueryClient } from "@tanstack/react-query";
-import { VoucherCard, PackageCard } from "@/src/components/shared/VoucherCards";
+import { type MyVoucher, type VoucherPackage } from "@/src/services/customerVoucherService";
+import { useVoucherAcquisition } from "@/src/hooks/useVoucherAcquisition";
+import { VoucherCard } from "@/src/components/shared/VoucherCards";
+import { VoucherPackageCatalog } from "@/src/components/shared/VoucherPackageCatalog";
+import { VoucherAcquisitionConfirm } from "@/src/components/shared/VoucherAcquisitionConfirm";
+import { CartDiscountPickerFooter } from "@/src/components/menu/cart/CartDiscountPickerFooter";
+import { toast } from "sonner";
 import { CartBundleVoucherPanel } from "@/src/components/menu/cart/CartBundleVoucherPanel";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
@@ -22,7 +26,7 @@ interface CartDiscountPickerProps {
   shippingFee: number | null;
   onClose: () => void;
   onUpdateSelectedVouchers: React.Dispatch<React.SetStateAction<string[]>>;
-  onRefreshVouchers: () => void;
+  onRefreshVouchers: () => Promise<void>;
   bundleVouchers: MyVoucher[];
   cart: CartItem[];
   addonLabels: ReadonlyMap<string, string>;
@@ -54,24 +58,40 @@ export const CartDiscountPicker = ({
   onBundleVoucherChange,
   onBundleAllocationsChange,
 }: CartDiscountPickerProps) => {
-  const [isRedeeming, setIsRedeeming] = useState<string | null>(null);
-  const queryClient = useQueryClient();
+  const { acquire, isPending } = useVoucherAcquisition();
+  const [redeemingId, setRedeemingId] = useState<string | null>(null);
+  const [confirmPackage, setConfirmPackage] = useState<VoucherPackage | null>(null);
 
   const myVouchers = [...discountVouchers, ...freeshipVouchers];
 
-  const handleRedeem = async (packageId: string) => {
+  const acquirePackage = async (pkg: VoucherPackage) => {
     try {
-      setIsRedeeming(packageId);
-      const newVoucher = await exchangeVoucher(packageId);
-      onUpdateSelectedVouchers(prev => [...prev, newVoucher.qr_token]);
-      onRefreshVouchers();
-      queryClient.invalidateQueries({ queryKey: ["customer", "points"] }); // refresh points
+      setRedeemingId(pkg.id);
+      const newVoucher = await acquire(pkg);
+      await onRefreshVouchers();
+      if (newVoucher.voucher_type === "BUNDLE") {
+        onBundleVoucherChange(newVoucher.qr_token);
+        onBundleAllocationsChange([]);
+        requestAnimationFrame(() => {
+          const panel = document.getElementById("cart-bundle-voucher-panel");
+          panel?.scrollIntoView({ behavior: "smooth", block: "start" });
+          panel?.focus();
+        });
+      } else {
+        onUpdateSelectedVouchers((previous) => [...previous, newVoucher.qr_token]);
+      }
+      toast.success(pkg.acquisition_mode === "FREE_CLAIM" ? "Đã nhận voucher" : "Đổi voucher thành công");
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
-      alert("Đổi điểm thất bại: " + message);
+      toast.error(`Không thể nhận ưu đãi: ${message}`);
     } finally {
-      setIsRedeeming(null);
+      setRedeemingId(null);
     }
+  };
+
+  const handleAcquire = (pkg: VoucherPackage) => {
+    if (pkg.acquisition_mode === "POINTS_EXCHANGE") setConfirmPackage(pkg);
+    else void acquirePackage(pkg);
   };
 
   const selectedOrderDiscount = estimateMultiDiscountSavings(
@@ -238,65 +258,26 @@ export const CartDiscountPicker = ({
           )}
         </section>
 
-        {/* Section 2: Đổi điểm lấy ưu đãi */}
+        {/* Section 2: Receive or exchange a voucher */}
         {availableVoucherPackages.length > 0 && (
-          <section>
-            <div className="flex items-center gap-2 mb-3">
-              <h4 className="font-bold text-primary text-sm">Đổi điểm lấy ưu đãi</h4>
-              <span className="bg-yellow-100 text-yellow-800 text-[9px] px-1.5 py-0.5 rounded-sm font-bold uppercase tracking-wider">Mới</span>
-            </div>
-            
-            <div className="grid grid-cols-1 gap-3">
-              {availableVoucherPackages.map((p) => (
-                <PackageCard 
-                  key={p.id}
-                  pkg={p}
-                  userBalance={pointsBalance}
-                  onExchange={() => handleRedeem(p.id)}
-                  isExchanging={isRedeeming === p.id}
-                />
-              ))}
-            </div>
-          </section>
+          <VoucherPackageCatalog
+            packages={availableVoucherPackages}
+            pointsBalance={pointsBalance}
+            pendingPackageId={isPending ? redeemingId : null}
+            onAcquire={handleAcquire}
+            columns="one"
+          />
         )}
       </div>
 
-      {/* Preview total discount while overlay open */}
-      {selectedVoucherIds.length > 0 && (
-        <div className="px-5 pb-5 pt-4 border-t border-border/30 bg-white shrink-0 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.06)] z-10">
-          <div className="flex flex-col gap-1 mb-3">
-            {selectedDiscountVouchers.length > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-primary/60">Giảm giá đơn hàng:</span>
-                <span className="text-xs font-bold text-orange-600">
-                  -{Math.floor(estimateMultiDiscountSavings(selectedDiscountVouchers, subtotalPrice) / 1000).toLocaleString('vi-VN')}k
-                </span>
-              </div>
-            )}
-            {selectedFreeshipDiscount > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-primary/60">Giảm phí ship:</span>
-                <span className="text-xs font-bold text-teal-600">
-                  -{Math.floor(selectedFreeshipDiscount / 1000).toLocaleString('vi-VN')}k
-                </span>
-              </div>
-            )}
-            {selectedVoucherIds.length > 1 && <div className="border-t border-dashed border-border/40 my-1" />}
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-bold text-primary">Tổng cộng ({selectedVoucherIds.length} mã):</span>
-              <span className="text-base font-bold text-red-500">
-                -{Math.floor((selectedOrderDiscount + selectedFreeshipDiscount) / 1000).toLocaleString('vi-VN')}k
-              </span>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-full py-3.5 rounded-2xl bg-primary text-white font-bold text-sm hover:scale-[1.01] active:scale-[0.99] transition-all flex justify-center items-center"
-          >
-            Xác nhận
-          </button>
-        </div>
-      )}
+      <CartDiscountPickerFooter selectedVoucherIds={selectedVoucherIds} selectedDiscountVouchers={selectedDiscountVouchers} subtotalPrice={subtotalPrice} freeshipDiscount={selectedFreeshipDiscount} onConfirm={onClose} />
+      <VoucherAcquisitionConfirm
+        pkg={confirmPackage}
+        pointsBalance={pointsBalance}
+        isLoading={isPending}
+        onCancel={() => setConfirmPackage(null)}
+        onConfirm={() => { if (confirmPackage) void acquirePackage(confirmPackage); }}
+      />
     </motion.div>
   );
 };

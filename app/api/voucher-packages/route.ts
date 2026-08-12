@@ -29,31 +29,56 @@ export async function GET() {
 
     const session = await getSession();
 
+    let globalCountMap: Record<string, number> = {};
+    const packageIds = packages.map((p) => p.id);
+
+    if (packageIds.length > 0) {
+      const globalRedeemedCounts = await prisma.voucher.groupBy({
+        by: ["package_id"],
+        where: { package_id: { in: packageIds } },
+        _count: { id: true },
+      });
+      globalCountMap = Object.fromEntries(
+        globalRedeemedCounts.map((rc) => [rc.package_id, rc._count.id])
+      );
+    }
+
     if (!session) {
       return NextResponse.json({
-        data: packages.map((pkg) => ({ ...pkg, user_redeemed_count: 0 })),
+        data: packages.map((pkg) => {
+          const issuedCount = globalCountMap[pkg.id] ?? 0;
+          return {
+            ...pkg,
+            user_redeemed_count: 0,
+            remaining_quantity: pkg.quantity === null ? null : Math.max(0, pkg.quantity - issuedCount),
+          };
+        }),
       });
     }
 
-    // User-specific redeemed counts — always live (never cached)
-    const packageIds = packages.map((p) => p.id);
-    const redeemedCounts = await prisma.voucher.groupBy({
-      by: ["package_id"],
-      where: {
-        package_id: { in: packageIds },
-        user_id: session.id,
-      },
-      _count: { id: true },
+    let countMap: Record<string, number> = {};
+    if (packageIds.length > 0) {
+      const redeemedCounts = await prisma.voucher.groupBy({
+        by: ["package_id"],
+        where: {
+          package_id: { in: packageIds },
+          user_id: session.id,
+        },
+        _count: { id: true },
+      });
+      countMap = Object.fromEntries(
+        redeemedCounts.map((rc) => [rc.package_id, rc._count.id])
+      );
+    }
+
+    const enrichedPackages = packages.map((pkg) => {
+      const issuedCount = globalCountMap[pkg.id] ?? 0;
+      return {
+        ...pkg,
+        user_redeemed_count: countMap[pkg.id] ?? 0,
+        remaining_quantity: pkg.quantity === null ? null : Math.max(0, pkg.quantity - issuedCount),
+      };
     });
-
-    const countMap = Object.fromEntries(
-      redeemedCounts.map((rc) => [rc.package_id, rc._count.id])
-    );
-
-    const enrichedPackages = packages.map((pkg) => ({
-      ...pkg,
-      user_redeemed_count: countMap[pkg.id] ?? 0,
-    }));
 
     return NextResponse.json({ data: enrichedPackages });
   } catch (err) {
@@ -68,12 +93,15 @@ export async function GET() {
 /** Fetches active voucher packages from DB. Called by withCache on cache miss. */
 async function fetchVoucherPackages() {
   return prisma.voucherPackage.findMany({
-    where: { is_active: true, ends_at: null },
+    where: { is_active: true, ends_at: null, voucher_type: { not: "BUNDLE" } },
     orderBy: { created_at: "asc" },
     include: {
       menuItem: { select: { name: true, is_available: true } },
       addonOption: { select: { label: true } },
-      bundleRule: { include: { productScopes: true, addonRewards: true } },
+      bundleRule: { include: {
+        productScopes: { include: { menuItem: { select: { name: true } } } },
+        addonRewards: { include: { addonOption: { select: { label: true } } } },
+      } },
     },
   });
 }
@@ -83,13 +111,19 @@ async function fetchScheduledVoucherPackages(now: Date) {
   return prisma.voucherPackage.findMany({
     where: {
       is_active: true,
-      ends_at: { gt: now },
+      OR: [
+        { ends_at: { gt: now } },
+        { voucher_type: "BUNDLE", ends_at: null },
+      ],
     },
     orderBy: { created_at: "asc" },
     include: {
       menuItem: { select: { name: true, is_available: true } },
       addonOption: { select: { label: true } },
-      bundleRule: { include: { productScopes: true, addonRewards: true } },
+      bundleRule: { include: {
+        productScopes: { include: { menuItem: { select: { name: true } } } },
+        addonRewards: { include: { addonOption: { select: { label: true } } } },
+      } },
     },
   });
 }

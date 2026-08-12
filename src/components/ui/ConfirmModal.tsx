@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, AlertTriangle } from "lucide-react";
+import { X, AlertTriangle, Loader2 } from "lucide-react";
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -11,6 +11,8 @@ interface ConfirmModalProps {
   confirmLabel?: string;
   cancelLabel?: string;
   isDestructive?: boolean;
+  isLoading?: boolean;
+  children?: React.ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -22,6 +24,8 @@ export function ConfirmModal({
   confirmLabel = "Xác nhận",
   cancelLabel = "Huỷ",
   isDestructive = false,
+  isLoading = false,
+  children,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
@@ -44,7 +48,7 @@ export function ConfirmModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onCancel}
+            onClick={isLoading ? undefined : onCancel}
             className="fixed inset-0 z-[100] bg-foreground/40 backdrop-blur-sm"
           />
 
@@ -75,8 +79,9 @@ export function ConfirmModal({
                 <button
                   type="button"
                   onClick={onCancel}
+                  disabled={isLoading}
                   aria-label="Đóng"
-                  className="flex h-11 w-11 items-center justify-center rounded-full text-primary/40 transition-colors hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-primary/40 transition-colors hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:pointer-events-none"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -84,9 +89,13 @@ export function ConfirmModal({
 
               {/* Body */}
               <div className="px-6 py-5">
-                <p id="confirm-modal-description" className="text-primary/70 text-sm leading-relaxed">
-                  {message}
-                </p>
+                {children ? (
+                  children
+                ) : (
+                  <p id="confirm-modal-description" className="text-primary/70 text-sm leading-relaxed">
+                    {message}
+                  </p>
+                )}
               </div>
 
               {/* Footer */}
@@ -94,20 +103,22 @@ export function ConfirmModal({
                 <button
                   type="button"
                   onClick={onCancel}
-                  className="min-h-11 rounded-xl px-5 text-sm font-bold text-primary/60 transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  disabled={isLoading}
+                  className="min-h-11 rounded-xl px-5 text-sm font-bold text-primary/60 transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:pointer-events-none"
                 >
                   {cancelLabel}
                 </button>
                 <button
                   type="button"
                   onClick={onConfirm}
-                  className={`min-h-11 rounded-xl px-5 text-sm font-bold text-white shadow-md transition-all hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                  disabled={isLoading}
+                  className={`min-h-11 rounded-xl px-5 text-sm font-bold text-white shadow-md transition-all flex items-center justify-center min-w-[100px] hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-70 disabled:pointer-events-none ${
                     isDestructive
                       ? "bg-red-500 hover:bg-red-600 shadow-red-500/20"
                       : "bg-primary hover:bg-primary/90 shadow-primary/20"
                   }`}
                 >
-                  {confirmLabel}
+                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : confirmLabel}
                 </button>
               </div>
             </motion.div>

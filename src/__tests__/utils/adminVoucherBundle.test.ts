@@ -1,84 +1,101 @@
 import { describe, expect, it } from "vitest";
-import { buildBundleVoucherInput } from "@/src/lib/utils/adminVoucherBundle";
+import { buildBundleVoucherInput, type BundleVoucherFormState } from "@/src/lib/utils/adminVoucherBundle";
 
 const IDS = {
-  qualifier: "11111111-1111-4111-8111-111111111111",
-  reward: "22222222-2222-4222-8222-222222222222",
-  powder: "33333333-3333-4333-8333-333333333333",
-  addon: "44444444-4444-4444-8444-444444444444",
+  latte: "11111111-1111-4111-8111-111111111111",
+  fusionA: "22222222-2222-4222-8222-222222222222",
+  fusionB: "33333333-3333-4333-8333-333333333333",
+  powderA: "44444444-4444-4444-8444-444444444444",
+  powderB: "55555555-5555-4555-8555-555555555555",
+  powderC: "66666666-6666-4666-8666-666666666666",
+  milk: "77777777-7777-4777-8777-777777777777",
+  addon: "88888888-8888-4888-8888-888888888888",
 };
 
-function makeState() {
+function scope(overrides: Record<string, unknown> = {}) {
   return {
-    name: "Mua 2 tặng 1",
-    description: "",
-    endsAt: "2026-08-20",
-    acquisitionMode: "AUTO_GRANT" as const,
-    pointsCost: 0,
-    expiresAfterDays: 30,
-    quantity: null,
-    maxPerUser: 1,
-    minOrderVnd: 100_000,
-    buyQuantity: 2,
-    rewardQuantity: 1,
-    rewardKind: "PRODUCT" as const,
-    rewardMode: "SAME_CONFIG" as const,
-    benefitScaling: "PER_BUNDLE" as const,
-    maxApplications: 1,
-    qualifierMenuItemIds: [IDS.qualifier],
-    rewardMenuItemIds: [] as string[],
-    rewardSize: "SMALL" as const,
-    rewardPowderId: "",
-    rewardMilkTypeId: "",
-    rewardAddonOptionIds: [] as string[],
-    referencePriceVnd: 0,
+    menuItemId: IDS.latte,
+    category: "latte" as const,
+    sizes: [] as Array<"SMALL" | "MEDIUM" | "LARGE">,
+    powderIds: [] as string[],
+    milkTypeIds: [] as string[],
+    fixedPowderId: IDS.powderA,
+    referencePriceVnd: 50_000,
+    ...overrides,
   };
 }
 
-describe("Payload form voucher BUNDLE", () => {
-  it("không còn starts_at và hỗ trợ nhiều món điều kiện", () => {
+function makeState(): BundleVoucherFormState {
+  return {
+    name: "Mua 2 tặng 1", description: "", endsAt: "2026-08-20",
+    acquisitionMode: "AUTO_GRANT", pointsCost: 0, expiresAfterDays: 30,
+    quantity: null, maxPerUser: 1, minOrderVnd: 100_000,
+    buyQuantity: 2, rewardQuantity: 1, rewardKind: "PRODUCT",
+    rewardMode: "SAME_CONFIG", benefitScaling: "PER_BUNDLE", maxApplications: 1,
+    qualifierScopes: [scope()], rewardProductScopes: [], rewardAddonOptionIds: [],
+  };
+}
+
+describe("Payload form voucher BUNDLE theo từng món", () => {
+  it("mở rộng size MEDIUM và LARGE thành hai qualifier scope", () => {
     const state = makeState();
-    state.qualifierMenuItemIds.push(IDS.reward);
-    const result = buildBundleVoucherInput(state);
-    expect(result.voucher_type).toBe("BUNDLE");
-    expect(result.bundle_rule.qualifier_scopes).toEqual([
-      { menu_item_id: IDS.qualifier },
-      { menu_item_id: IDS.reward },
+    state.qualifierScopes = [scope({ sizes: ["MEDIUM", "LARGE"] })];
+
+    expect(buildBundleVoucherInput(state).bundle_rule.qualifier_scopes).toEqual([
+      { menu_item_id: IDS.latte, size: "MEDIUM" },
+      { menu_item_id: IDS.latte, size: "LARGE" },
     ]);
-    expect(result).not.toHaveProperty("starts_at");
-    expect(result.ends_at).toBe("2026-08-20T17:00:00.000Z");
   });
 
-  it("tự đưa điểm về 0 khi voucher cấp miễn phí", () => {
-    expect(buildBundleVoucherInput(makeState()).points_cost).toBe(0);
+  it("FIXED_CONFIG Latte tự dùng bột gốc và cấu hình sữa đã chọn", () => {
+    const state = makeState();
+    state.rewardMode = "FIXED_CONFIG";
+    state.rewardProductScopes = [scope({ sizes: ["MEDIUM"], milkTypeIds: [IDS.milk] })];
+
+    expect(buildBundleVoucherInput(state).bundle_rule.reward_product_scopes).toEqual([{
+      menu_item_id: IDS.latte,
+      size: "MEDIUM",
+      powder_id: IDS.powderA,
+      milk_type_id: IDS.milk,
+    }]);
   });
 
-  it("tạo nhiều reward scope FIXED_CONFIG đủ cấu hình", () => {
-    const state = {
-      ...makeState(),
-      rewardMode: "FIXED_CONFIG" as const,
-      rewardMenuItemIds: [IDS.reward, IDS.qualifier],
-      rewardSize: "LARGE" as const,
-      rewardPowderId: IDS.powder,
-    };
+  it("mỗi Fusion có range bột riêng và tạo đúng các reward scope", () => {
+    const state = makeState();
+    state.rewardMode = "FIXED_CONFIG";
+    state.rewardProductScopes = [
+      scope({ menuItemId: IDS.fusionA, category: "fusion", fixedPowderId: null, sizes: ["SMALL"], powderIds: [IDS.powderA, IDS.powderB] }),
+      scope({ menuItemId: IDS.fusionB, category: "fusion", fixedPowderId: null, sizes: ["LARGE"], powderIds: [IDS.powderC] }),
+    ];
+
     expect(buildBundleVoucherInput(state).bundle_rule.reward_product_scopes).toEqual([
-      { menu_item_id: IDS.reward, size: "LARGE", powder_id: IDS.powder, milk_type_id: null },
-      { menu_item_id: IDS.qualifier, size: "LARGE", powder_id: IDS.powder, milk_type_id: null },
+      { menu_item_id: IDS.fusionA, size: "SMALL", powder_id: IDS.powderA, milk_type_id: null },
+      { menu_item_id: IDS.fusionA, size: "SMALL", powder_id: IDS.powderB, milk_type_id: null },
+      { menu_item_id: IDS.fusionB, size: "LARGE", powder_id: IDS.powderC, milk_type_id: null },
     ]);
   });
 
-  it("tạo danh sách addon reward riêng", () => {
-    const state = {
-      ...makeState(),
-      acquisitionMode: "POINTS_EXCHANGE" as const,
-      pointsCost: 10,
-      rewardKind: "ADDON" as const,
-      rewardMode: "ALLOWED_SCOPE" as const,
-      rewardAddonOptionIds: [IDS.addon],
-    };
-    const result = buildBundleVoucherInput(state);
-    expect(result.points_cost).toBe(10);
-    expect(result.bundle_rule.reward_addon_option_ids).toEqual([IDS.addon]);
-    expect(result.bundle_rule.reward_product_scopes).toEqual([]);
+  it("ALLOWED_SCOPE giữ restriction riêng và hạn mức riêng của từng món", () => {
+    const state = makeState();
+    state.rewardMode = "ALLOWED_SCOPE";
+    state.rewardProductScopes = [scope({
+      menuItemId: IDS.fusionA, category: "fusion", fixedPowderId: null,
+      sizes: ["MEDIUM"], powderIds: [IDS.powderB], referencePriceVnd: 55_000,
+    })];
+
+    expect(buildBundleVoucherInput(state).bundle_rule.reward_product_scopes).toEqual([{
+      menu_item_id: IDS.fusionA,
+      size: "MEDIUM",
+      powder_id: IDS.powderB,
+      reference_price_vnd: 55_000,
+    }]);
+  });
+
+  it("tạo danh sách addon reward riêng và đưa điểm free về 0", () => {
+    const state = makeState();
+    state.rewardKind = "ADDON";
+    state.rewardAddonOptionIds = [IDS.addon];
+    expect(buildBundleVoucherInput(state).points_cost).toBe(0);
+    expect(buildBundleVoucherInput(state).bundle_rule.reward_addon_option_ids).toEqual([IDS.addon]);
   });
 });

@@ -21,7 +21,7 @@ describe("Form quản lý voucher hợp nhất", () => {
   });
 
   it("không cho qua bước review khi thiếu phạm vi BUNDLE", () => {
-    const draft = { ...createEmptyVoucherDraft(), name: "Mua 2 tặng 1", voucherType: "BUNDLE" as const, qualifierMenuItemIds: [] };
+    const draft = { ...createEmptyVoucherDraft(), name: "Mua 2 tặng 1", voucherType: "BUNDLE" as const, qualifierScopes: [] };
     expect(validateVoucherDraft(draft)).toContain("món điều kiện");
   });
 
@@ -40,8 +40,11 @@ describe("Form quản lý voucher hợp nhất", () => {
       ...createEmptyVoucherDraft(),
       voucherType: "BUNDLE" as const,
       name: "Mua hai tặng một",
-      qualifierMenuItemIds: ["latte-1", "latte-2"],
-      rewardMenuItemIds: ["latte-3"],
+      qualifierScopes: [
+        { menuItemId: "latte-1", category: "latte" as const, sizes: [], powderIds: [], milkTypeIds: [], fixedPowderId: "p1", referencePriceVnd: 50_000 },
+        { menuItemId: "latte-2", category: "latte" as const, sizes: [], powderIds: [], milkTypeIds: [], fixedPowderId: "p2", referencePriceVnd: 50_000 },
+      ],
+      rewardProductScopes: [{ menuItemId: "latte-3", category: "latte" as const, sizes: [], powderIds: [], milkTypeIds: [], fixedPowderId: "p3", referencePriceVnd: 50_000 }],
       rewardMode: "ALLOWED_SCOPE" as const,
     };
     expect(describeVoucherDraft(draft, new Map([
@@ -54,13 +57,41 @@ describe("Form quản lý voucher hợp nhất", () => {
       ...createEmptyVoucherDraft(),
       voucherType: "BUNDLE" as const,
       quantity: 100,
-      qualifierMenuItemIds: ["latte-1"],
+      qualifierScopes: [{ menuItemId: "latte-1", category: "latte" as const, sizes: [], powderIds: [], milkTypeIds: [], fixedPowderId: "p1", referencePriceVnd: 50_000 }],
       rewardMode: "ALLOWED_SCOPE" as const,
-      rewardMenuItemIds: ["latte-2"],
-      referencePriceVnd: 55_000,
+      rewardProductScopes: [{ menuItemId: "latte-2", category: "latte" as const, sizes: [], powderIds: [], milkTypeIds: [], fixedPowderId: "p2", referencePriceVnd: 55_000 }],
       maxApplications: 2,
     };
     expect(estimateVoucherLiabilityVnd(draft, new Map(), new Map())).toBe(11_000_000);
     expect(estimateVoucherLiabilityVnd({ ...draft, quantity: null }, new Map(), new Map())).toBeNull();
+  });
+
+  it("FIXED_CONFIG báo lỗi khi Fusion chưa chọn size hoặc bột", () => {
+    const draft = {
+      ...createEmptyVoucherDraft(), voucherType: "BUNDLE" as const, name: "Quà Fusion",
+      rewardMode: "FIXED_CONFIG" as const,
+      qualifierScopes: [{ menuItemId: "latte", category: "latte" as const, sizes: [], powderIds: [], milkTypeIds: [], fixedPowderId: "p1", referencePriceVnd: 50_000 }],
+      rewardProductScopes: [{ menuItemId: "fusion", category: "fusion" as const, sizes: [], powderIds: [], milkTypeIds: [], fixedPowderId: null, referencePriceVnd: 50_000 }],
+    };
+    expect(validateVoucherDraft(draft)).toContain("size");
+    expect(validateVoucherDraft({ ...draft, rewardProductScopes: [{ ...draft.rewardProductScopes[0], sizes: ["MEDIUM"] }] })).toContain("bột");
+  });
+
+  it("review hiển thị size và bột riêng của từng món Fusion", () => {
+    const draft = {
+      ...createEmptyVoucherDraft(), voucherType: "BUNDLE" as const,
+      qualifierScopes: [{ menuItemId: "latte", category: "latte" as const, sizes: ["MEDIUM", "LARGE"] as Array<"MEDIUM" | "LARGE">, powderIds: [], milkTypeIds: [], fixedPowderId: "p1", referencePriceVnd: 50_000 }],
+      rewardMode: "FIXED_CONFIG" as const,
+      rewardProductScopes: [{ menuItemId: "fusion", category: "fusion" as const, sizes: ["SMALL"] as Array<"SMALL">, powderIds: ["p2", "p3"], milkTypeIds: [], fixedPowderId: null, referencePriceVnd: 50_000 }],
+    };
+    const text = describeVoucherDraft(
+      draft,
+      new Map([["latte", "Latte"], ["fusion", "Fusion"]]),
+      new Map(),
+      new Map([["p2", "Hana"], ["p3", "Meyumi"]]),
+      new Map(),
+    );
+    expect(text).toContain("Vừa + Lớn");
+    expect(text).toContain("Hana + Meyumi");
   });
 });

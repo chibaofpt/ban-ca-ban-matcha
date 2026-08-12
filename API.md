@@ -567,7 +567,8 @@ campaign issuance limit; there is no second limit inside `bundle_rule`.
 ```ts
 { package_id: string }
 // FREE_CLAIM only. Repeated/concurrent claims are idempotent.
-// Response: { data: { qr_token?: string, already_granted?: true } }
+// Response: { data: { qr_token: string, voucher_type: VoucherType,
+//   status: "ACTIVE", expires_at: string | null, already_granted: boolean } }
 ```
 
 ### `PUT /api/admin/menu/[id]`

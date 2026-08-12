@@ -37,7 +37,7 @@ export function VoucherModalTabs({
           </button>
         )}
         <button type="button" onClick={() => onChange("packages")} className={tabClassName("packages")}>
-          Đổi thưởng
+          Nhận ưu đãi
         </button>
         {isLoggedIn && (
           <button type="button" onClick={() => onChange("history")} className={tabClassName("history")}>

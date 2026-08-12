@@ -163,6 +163,9 @@ and `order_discount_vouchers.discount_applied_vnd` have been **dropped** (migrat
 - Registration attempts AUTO_GRANT immediately. Wallet and authenticated order entry points retry
   lazily, covering accounts created while a campaign is active. Anonymous orders never receive or
   use BUNDLE vouchers; ghost users are eligible after their user row exists.
+- Customer acquisition lists expose the live global `remaining_quantity`, exclude `AUTO_GRANT`,
+  and use one shared FREE_CLAIM / POINTS_EXCHANGE catalog in the wallet and cart. A points exchange
+  always requires confirmation; BUNDLE vouchers use an in-cart CTA instead of offline QR redemption.
 - Accept at most one BUNDLE voucher per order. The client must send stable `client_line_id` values
   and explicit reward allocations. The server re-resolves products, configuration, addons, and
   prices before evaluating them.
@@ -178,6 +181,10 @@ and `order_discount_vouchers.discount_applied_vnd` have been **dropped** (migrat
   an ADDON voucher still counts as a qualifying product.
 - Qualifier and reward scopes may each contain multiple products, including seasonal products.
   One BUNDLE package has exactly one reward kind: PRODUCT or ADDON.
+- Admin BUNDLE scope UI configures each selected product independently. Multiple selected sizes,
+  powders, and Latte milks expand into the existing exact product-scope combinations. Latte powder
+  is fixed by its menu item and is never shown as a swappable Admin choice; Fusion powder ranges
+  are limited to that item's resolved default and allowed powders.
 - Reserve at order creation, redeem on payment confirmation/completion, and restore on cancellation.
   Direct offline QR redemption of BUNDLE vouchers is forbidden.
 

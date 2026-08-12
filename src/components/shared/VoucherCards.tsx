@@ -169,15 +169,17 @@ export function PackageCard({
           <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold", typeConfig.badgeCls)}>
             {typeConfig.label}
           </span>
-          {pkg.quantity !== null && pkg.quantity <= 10 && pkg.quantity > 0 && (
+          {(pkg.remaining_quantity ?? pkg.quantity) !== null &&
+            (pkg.remaining_quantity ?? pkg.quantity)! <= 10 &&
+            (pkg.remaining_quantity ?? pkg.quantity)! > 0 && (
             <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-700">
-              Còn {pkg.quantity}
+              Còn {pkg.remaining_quantity ?? pkg.quantity}
             </span>
           )}
         </div>
 
         <p className="font-bold text-sm text-foreground leading-tight line-clamp-1">{pkg.name}</p>
-        <p className="text-xs text-primary font-medium mt-0.5 line-clamp-1">{getPackageBenefitText(pkg)}</p>
+        <p className="text-xs text-primary font-medium mt-0.5 line-clamp-2">{getPackageBenefitText(pkg)}</p>
 
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           {pkg.expires_after_days !== null ? (

@@ -7,6 +7,15 @@
  *  - exchangeVoucher            → POST /api/profile/vouchers/exchange
  */
 
+/**
+ * customerVoucherService — Customer-facing voucher API calls.
+ *
+ * Covers:
+ *  - listActiveVoucherPackages  → GET /api/voucher-packages
+ *  - listMyVouchers             → GET /api/profile/vouchers
+ *  - exchangeVoucher            → POST /api/profile/vouchers/exchange
+ */
+
 import { apiClient } from "@/src/lib/api/client";
 import type { ApiResponse } from "@/src/lib/types/api";
 
@@ -17,7 +26,7 @@ export interface VoucherPackage {
   name: string;
   description: string | null;
   voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
-  acquisition_mode?: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
+  acquisition_mode: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
   points_cost: number;
   ends_at?: string | null;
   discount_type: "PERCENT" | "FIXED" | null;
@@ -36,6 +45,7 @@ export interface VoucherPackage {
   is_active: boolean;
   expires_after_days: number | null;
   quantity: number | null;
+  remaining_quantity?: number | null;
   max_per_user: number;
   created_at: string;
   user_redeemed_count?: number;
@@ -52,8 +62,12 @@ export interface BundleVoucherRule {
   benefit_scaling: "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM";
   max_applications_order: number;
   max_reward_units_order: number | null;
-  productScopes: Array<{ role: "QUALIFIER" | "REWARD"; menu_item_id: string }>;
-  addonRewards: Array<{ addon_option_id: string }>;
+  productScopes: Array<{
+    role: "QUALIFIER" | "REWARD";
+    menu_item_id: string;
+    menuItem?: { name: string };
+  }>;
+  addonRewards: Array<{ addon_option_id: string; addonOption?: { label: string } }>;
 }
 
 export interface MyVoucher {
@@ -139,12 +153,17 @@ export async function exchangeVoucher(packageId: string): Promise<ExchangedVouch
   return res.data.data;
 }
 
+export interface AcquiredVoucher extends ExchangedVoucher {
+  already_granted: boolean;
+}
+
 /** Claim a FREE_CLAIM package without points; repeated calls are idempotent. */
 export async function claimFreeVoucher(
   packageId: string,
-): Promise<{ qr_token?: string; already_granted?: true }> {
-  const res = await apiClient.post<
-    ApiResponse<{ qr_token?: string; already_granted?: true }>
-  >("/api/profile/vouchers/claim", { package_id: packageId });
+): Promise<AcquiredVoucher> {
+  const res = await apiClient.post<ApiResponse<AcquiredVoucher>>(
+    "/api/profile/vouchers/claim",
+    { package_id: packageId },
+  );
   return res.data.data;
 }
