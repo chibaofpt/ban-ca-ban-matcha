@@ -166,7 +166,7 @@ export function ExistingCartItemSheet({
                       {isSelected && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
                     </div>
                     <p className="text-sm font-bold text-primary shrink-0">
-                      {formatOrderSize(item.size)}
+                      {item.size ? formatOrderSize(item.size) : "Add-on"}
                     </p>
                     {/* Stepper */}
                     <div className="flex items-center gap-1 bg-primary/5 rounded-full px-1 py-0.5">

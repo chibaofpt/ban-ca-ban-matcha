@@ -153,6 +153,7 @@ interface CounterTransferVoucherOrder {
   discountVouchers: Array<{ voucher_id: string }>;
   items: Array<{
     product_voucher_id: string | null;
+    item_voucher_id: string | null;
     addonVouchers: Array<{ voucher_id: string }>;
   }>;
 }
@@ -197,6 +198,7 @@ export async function redeemCounterTransferVouchers(
   for (const voucher of order.discountVouchers) voucherIds.add(voucher.voucher_id);
   for (const item of order.items) {
     if (item.product_voucher_id) voucherIds.add(item.product_voucher_id);
+    if (item.item_voucher_id) voucherIds.add(item.item_voucher_id);
     for (const voucher of item.addonVouchers) voucherIds.add(voucher.voucher_id);
   }
   await redeemOrderVouchers(tx, Array.from(voucherIds), "OFFLINE", performedBy);

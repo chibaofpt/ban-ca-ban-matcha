@@ -269,6 +269,29 @@ describe("POST /api/staff/orders — COUNTER integration", () => {
     expect(mockPointsLogCreate).not.toHaveBeenCalled();
   });
 
+  it("anonymous extras không được dùng ITEM voucher", async () => {
+    setupTx();
+    mockUserFindUnique.mockResolvedValue(null);
+
+    const res = await POST(makeReq(validPayload({
+      phone_number: undefined,
+      items: [{
+        menu_item_id: ITEM_ID,
+        quantity: 1,
+        size: null,
+        addon_option_ids: [],
+        client_price_vnd: 26_000,
+        item_voucher_id: V_PV,
+      }],
+    })));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("DISCOUNT min_order_vnd trả 400 khi staff thiếu minimum", async () => {
     setupTx();
 

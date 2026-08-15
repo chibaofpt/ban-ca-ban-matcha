@@ -57,28 +57,29 @@ describe("Điều kiện BUNDLE khi có voucher cá nhân", () => {
     );
   });
 
-  it("loại đúng addon unit có ADDON voucher khỏi mức tối thiểu", () => {
-    const result = evaluateBundlePromotion({
-      rule: makeRule({ min_order_vnd: 100_000 }),
-      items: [
-        makeItem({
-          client_line_id: PAID_LINE,
-          quantity: 1,
-          unit_price_vnd: 45_000,
-          addons: [{
-            addon_option_id: ADDON_ID,
-            quantity: 2,
-            unit_price_vnd: 10_000,
-            gram_value: null,
-            voucher_discounted_quantity: 1,
-          }],
-        }),
-        makeItem({ client_line_id: GIFT_LINE, quantity: 1, unit_price_vnd: 45_000 }),
-      ],
-      reward_allocations: [{ client_line_id: GIFT_LINE, quantity: 1 }],
-    });
-
-    expect(result.application_count).toBe(1);
+  it("loại addon đã có voucher và món quà khỏi mức tối thiểu", () => {
+    expectReason(
+      () => evaluateBundlePromotion({
+        rule: makeRule({ min_order_vnd: 100_000 }),
+        items: [
+          makeItem({
+            client_line_id: PAID_LINE,
+            quantity: 1,
+            unit_price_vnd: 45_000,
+            addons: [{
+              addon_option_id: ADDON_ID,
+              quantity: 2,
+              unit_price_vnd: 10_000,
+              gram_value: null,
+              voucher_discounted_quantity: 1,
+            }],
+          }),
+          makeItem({ client_line_id: GIFT_LINE, quantity: 1, unit_price_vnd: 45_000 }),
+        ],
+        reward_allocations: [{ client_line_id: GIFT_LINE, quantity: 1 }],
+      }),
+      "BUNDLE_MIN_ORDER_NOT_MET",
+    );
   });
 
   it("không tính shipping vào mức đơn tối thiểu vì evaluator không nhận shipping", () => {

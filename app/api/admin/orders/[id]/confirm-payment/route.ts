@@ -114,9 +114,9 @@ export async function PATCH(
         const voucherItems = await tx.orderItem.findMany({
           where: { 
             order_id: id,
-            product_voucher_id: { not: null },
+            OR: [{ product_voucher_id: { not: null } }, { item_voucher_id: { not: null } }],
           },
-          select: { product_voucher_id: true },
+          select: { product_voucher_id: true, item_voucher_id: true },
         });
 
         const addonVouchers = await tx.orderItemAddonVoucher.findMany({
@@ -136,6 +136,7 @@ export async function PATCH(
         }
         for (const item of voucherItems) {
           if (item.product_voucher_id) allVoucherIds.add(item.product_voucher_id);
+          if (item.item_voucher_id) allVoucherIds.add(item.item_voucher_id);
         }
         for (const av of addonVouchers) {
           allVoucherIds.add(av.voucher_id);

@@ -101,6 +101,36 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (data.voucher_type === "ITEM") {
+      const menuItem = await prisma.menuItem.findUnique({
+        where: { id: data.menu_item_id },
+        select: { id: true, category: true, is_available: true, unit_price_vnd: true },
+      });
+      if (!menuItem || !menuItem.is_available) {
+        return NextResponse.json({ error: "Menu item not found or unavailable", code: "NOT_FOUND" }, { status: 404 });
+      }
+      if (menuItem.category !== "extras") {
+        return NextResponse.json({ error: "ITEM voucher chỉ áp dụng cho món Add-on", code: "VALIDATION_ERROR" }, { status: 400 });
+      }
+      const pkg = await prisma.voucherPackage.create({
+        data: {
+          name: data.name,
+          description: data.description ?? null,
+          voucher_type: "ITEM",
+          acquisition_mode: data.acquisition_mode,
+          points_cost: data.points_cost,
+          ends_at: data.ends_at ? new Date(data.ends_at) : null,
+          is_active: true,
+          expires_after_days: data.expires_after_days ?? null,
+          quantity: data.quantity ?? null,
+          max_per_user: data.max_per_user ?? 1,
+          menu_item_id: data.menu_item_id,
+        },
+      });
+      await invalidateVoucherCaches();
+      return NextResponse.json({ data: pkg }, { status: 201 });
+    }
+
     // For ADDON packages — ensure the target addon is not an Extra Matcha option (dynamic price)
     if (data.voucher_type === "ADDON") {
       try {

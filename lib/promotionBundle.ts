@@ -36,13 +36,34 @@ function assertBaseRule(rule: BundlePromotionRule): void {
   }
 }
 
-function getBundleEligibleSubtotal(items: BundleCartItem[]): number {
+function getBundleEligibleSubtotal(
+  items: BundleCartItem[],
+  allocations: BundleRewardAllocation[],
+): number {
+  const productRewards = new Map<string, number>();
+  const addonRewards = new Map<string, number>();
+  for (const allocation of allocations) {
+    if (allocation.addon_option_id) {
+      addonRewards.set(
+        `${allocation.client_line_id}:${allocation.addon_option_id}`,
+        allocation.quantity,
+      );
+    } else {
+      productRewards.set(
+        allocation.client_line_id,
+        (productRewards.get(allocation.client_line_id) ?? 0) + allocation.quantity,
+      );
+    }
+  }
   return items.reduce((orderTotal, item) => {
-    const cleanDrinkQuantity = Math.max(0, item.quantity - item.product_voucher_quantity);
+    const cleanDrinkQuantity = Math.max(
+      0,
+      item.quantity - item.product_voucher_quantity - (item.item_voucher_quantity ?? 0) - (productRewards.get(item.client_line_id) ?? 0),
+    );
     const addonTotal = item.addons.reduce((sum, addon) => {
       const cleanAddonQuantity = Math.max(
         0,
-        addon.quantity - (addon.voucher_discounted_quantity ?? 0),
+        addon.quantity - (addon.voucher_discounted_quantity ?? 0) - (addonRewards.get(`${item.client_line_id}:${addon.addon_option_id}`) ?? 0),
       );
       return sum + cleanAddonQuantity * addon.unit_price_vnd;
     }, 0);
@@ -50,8 +71,12 @@ function getBundleEligibleSubtotal(items: BundleCartItem[]): number {
   }, 0);
 }
 
-function assertMinimumOrder(rule: BundlePromotionRule, items: BundleCartItem[]): void {
-  if (rule.min_order_vnd !== null && getBundleEligibleSubtotal(items) < rule.min_order_vnd) {
+function assertMinimumOrder(
+  rule: BundlePromotionRule,
+  items: BundleCartItem[],
+  allocations: BundleRewardAllocation[],
+): void {
+  if (rule.min_order_vnd !== null && getBundleEligibleSubtotal(items, allocations) < rule.min_order_vnd) {
     throw new BundlePromotionError(
       "BUNDLE_MIN_ORDER_NOT_MET",
       "Eligible merchandise subtotal is below the bundle minimum",
@@ -104,17 +129,18 @@ function getProductResult(
   let rewardTotal = 0;
   for (const allocation of allocations) {
     const item = itemMap.get(allocation.client_line_id);
+    const itemVoucherQuantity = item?.item_voucher_quantity ?? 0;
     if (
       item &&
-      item.product_voucher_quantity > 0 &&
-      allocation.quantity > item.quantity - item.product_voucher_quantity
+      (item.product_voucher_quantity > 0 || itemVoucherQuantity > 0) &&
+      allocation.quantity > item.quantity - item.product_voucher_quantity - itemVoucherQuantity
     ) {
       throw new BundlePromotionError(
         "BUNDLE_CONFLICT",
         "PRODUCT voucher units cannot receive bundle rewards",
       );
     }
-    if (!item || allocation.quantity > item.quantity - item.product_voucher_quantity) {
+    if (!item || allocation.quantity > item.quantity - item.product_voucher_quantity - (item.item_voucher_quantity ?? 0)) {
       throw new BundlePromotionError("BUNDLE_SCOPE_MISMATCH", "Reward item is missing from cart");
     }
     rewardByLine.set(item.client_line_id, allocation.quantity);
@@ -136,7 +162,7 @@ function getProductResult(
   );
   const totalPaidQuantity = eligibleItems.reduce(
     (sum, item) =>
-      sum + item.quantity - item.product_voucher_quantity - (rewardByLine.get(item.client_line_id) ?? 0),
+      sum + item.quantity - item.product_voucher_quantity - (item.item_voucher_quantity ?? 0) - (rewardByLine.get(item.client_line_id) ?? 0),
     0,
   );
   if (totalPaidQuantity < applicationCount * rule.buy_quantity) {
@@ -151,7 +177,7 @@ function getProductResult(
       const key = configKey(item);
       paidByConfig.set(
         key,
-        (paidByConfig.get(key) ?? 0) + item.quantity - item.product_voucher_quantity - rewardQuantity,
+        (paidByConfig.get(key) ?? 0) + item.quantity - item.product_voucher_quantity - (item.item_voucher_quantity ?? 0) - rewardQuantity,
       );
       rewardsByConfig.set(key, (rewardsByConfig.get(key) ?? 0) + rewardQuantity);
     }
@@ -224,7 +250,7 @@ function getAddonResult(
     rule.qualifier_scopes.some((scope) => matchesScope(item, scope)),
   );
   const paidQuantity = eligibleItems.reduce(
-    (sum, item) => sum + item.quantity - item.product_voucher_quantity,
+    (sum, item) => sum + item.quantity - item.product_voucher_quantity - (item.item_voucher_quantity ?? 0),
     0,
   );
   if (paidQuantity < rule.buy_quantity) {
@@ -266,7 +292,7 @@ function getAddonResult(
     if (
       !item ||
       !eligibleItems.includes(item) ||
-      item.quantity <= item.product_voucher_quantity ||
+      item.quantity <= item.product_voucher_quantity + (item.item_voucher_quantity ?? 0) ||
       !allocation.addon_option_id
     ) {
       throw new BundlePromotionError("BUNDLE_SCOPE_MISMATCH", "Addon reward target is invalid");
@@ -312,7 +338,7 @@ export function evaluateBundlePromotion(input: {
 }): BundleEvaluationResult {
   assertBaseRule(input.rule);
   assertAllocationsUnique(input.reward_allocations);
-  assertMinimumOrder(input.rule, input.items);
+  assertMinimumOrder(input.rule, input.items, input.reward_allocations);
   return input.rule.reward_kind === "PRODUCT"
     ? getProductResult(input.rule, input.items, input.reward_allocations)
     : getAddonResult(input.rule, input.items, input.reward_allocations);

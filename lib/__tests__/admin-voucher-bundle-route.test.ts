@@ -56,7 +56,13 @@ function payload() {
       max_applications_per_order: 1,
       max_reward_units_per_order: null,
       qualifier_scopes: [{ menu_item_id: MENU_ID }],
-      reward_product_scopes: [],
+      reward_product_scopes: [] as Array<{
+        menu_item_id: string;
+        size?: "SMALL" | "MEDIUM" | "LARGE" | null;
+        powder_id?: string | null;
+        milk_type_id?: string | null;
+        reference_price_vnd?: number;
+      }>,
       reward_addon_option_ids: [],
     },
   };
@@ -107,6 +113,31 @@ describe("POST /api/admin/voucher-packages — BUNDLE", () => {
 
     expect(response.status).toBe(422);
     expect((await response.json()).code).toBe("BUSINESS_RULE_VIOLATION");
+    expect(mocks.packageCreate).not.toHaveBeenCalled();
+  });
+
+  it("cho phép FIXED_CONFIG Add-on không có cấu hình đồ uống", async () => {
+    const body = payload();
+    body.bundle_rule.reward_mode = "FIXED_CONFIG";
+    body.bundle_rule.reward_product_scopes = [{ menu_item_id: MENU_ID }];
+    mocks.menuFindMany.mockResolvedValue([{ id: MENU_ID, category: "extras", is_available: true }]);
+
+    const response = await POST(request(body) as never);
+
+    expect(response.status).toBe(201);
+    expect(mocks.packageCreate).toHaveBeenCalledOnce();
+  });
+
+  it("từ chối FIXED_CONFIG đồ uống thiếu size, bột và Base Liquid", async () => {
+    const body = payload();
+    body.bundle_rule.reward_mode = "FIXED_CONFIG";
+    body.bundle_rule.reward_product_scopes = [{ menu_item_id: MENU_ID }];
+    mocks.menuFindMany.mockResolvedValue([{ id: MENU_ID, category: "latte", is_available: true }]);
+
+    const response = await POST(request(body) as never);
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ code: "BUSINESS_RULE_VIOLATION" });
     expect(mocks.packageCreate).not.toHaveBeenCalled();
   });
 });

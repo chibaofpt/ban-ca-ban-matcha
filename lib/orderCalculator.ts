@@ -11,14 +11,17 @@
 /** Input item for the calculator */
 export interface CalcOrderItem {
   menu_item_id: string;
+  category?: "latte" | "fusion" | "extras";
   unit_price_vnd: number;
   addons_price_vnd: number;
   quantity: number;
   line_total: number;
   /** Server-evaluated BUNDLE reward on this line, applied before every legacy voucher. */
   bundle_discount_vnd?: number;
-  product_voucher_id: string | null;
-  product_voucher_covered_vnd: number;
+  product_voucher_id?: string | null;
+  item_voucher_id?: string | null;
+  product_voucher_covered_vnd?: number;
+  item_voucher_covered_vnd?: number;
   addon_vouchers: Array<{
     voucher_id: string;
     addon_option_id: string;
@@ -73,7 +76,9 @@ export interface CalcOrderResult {
 export interface CalcItemVoucherResult {
   bundle_discount_vnd?: number;
   product_voucher_id: string | null;
+  item_voucher_id: string | null;
   product_voucher_discount_vnd: number;
+  item_voucher_discount_vnd: number;
   addon_vouchers: Array<{
     voucher_id: string;
     addon_option_id: string;
@@ -105,12 +110,24 @@ function calcItemDiscounts(
       Math.max(0, item.bundle_discount_vnd ?? 0),
     );
     let productVoucherId: string | null = null;
+    let itemVoucherId: string | null = null;
     let productVoucherDiscount = 0;
+    let itemVoucherDiscount = 0;
     const addonResults: CalcItemVoucherResult["addon_vouchers"] = [];
 
     // ── PRODUCT ──
-    if (item.product_voucher_id) {
-      const covered = item.product_voucher_covered_vnd;
+    const applicableItemVoucherId = item.item_voucher_id ?? item.product_voucher_id;
+    if (applicableItemVoucherId) {
+      if (appliedIds.includes(applicableItemVoucherId)) {
+        skippedIds.push(applicableItemVoucherId);
+      } else if (item.item_voucher_id) {
+        const itemDiscount = Math.min(item.unit_price_vnd, item.line_total);
+        totalItemsDiscount += itemDiscount;
+        appliedIds.push(applicableItemVoucherId);
+        itemVoucherId = applicableItemVoucherId;
+        itemVoucherDiscount = itemDiscount;
+      } else {
+        const covered = item.product_voucher_covered_vnd ?? 0;
       // Cap at drink price only — never spill into addon
       const productDiscount = Math.min(covered, item.unit_price_vnd);
       const itemSurplus = Math.max(0, covered - item.unit_price_vnd);
@@ -118,11 +135,12 @@ function calcItemDiscounts(
       if (productDiscount > 0 || itemSurplus > 0) {
         totalItemsDiscount += productDiscount;
         totalSurplus += itemSurplus;
-        appliedIds.push(item.product_voucher_id);
-        productVoucherId = item.product_voucher_id;
+        appliedIds.push(applicableItemVoucherId);
+        productVoucherId = applicableItemVoucherId;
         productVoucherDiscount = productDiscount;
       } else {
-        skippedIds.push(item.product_voucher_id);
+        skippedIds.push(applicableItemVoucherId);
+      }
       }
     }
 
@@ -165,11 +183,14 @@ function calcItemDiscounts(
     itemResults.push({
       ...(bundleDiscount > 0 ? { bundle_discount_vnd: bundleDiscount } : {}),
       product_voucher_id: productVoucherId,
+      item_voucher_id: itemVoucherId,
       product_voucher_discount_vnd: productVoucherDiscount,
+      item_voucher_discount_vnd: itemVoucherDiscount,
       addon_vouchers: addonResults,
       total_discount_vnd:
         bundleDiscount +
         productVoucherDiscount +
+        itemVoucherDiscount +
         addonResults.reduce((sum, voucher) => sum + voucher.discount_applied_vnd, 0),
     });
     totalItemsDiscount += bundleDiscount;

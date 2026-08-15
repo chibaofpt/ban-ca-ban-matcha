@@ -31,10 +31,11 @@ Also read `order-flow` for order status and `pricing-logic` for drink price comp
 
 ---
 
-## 4 Voucher Types
+## Voucher Types
 
 | Type | Level | What It Covers |
 |---|---|---|
+| `ITEM` | Item-level | One fixed-price `extras` unit at its current server price; no surplus. |
 | `PRODUCT` | Item-level | One drink unit matching `menu_item_id`; covers drink components only. |
 | `ADDON` | Addon-level | One unit of a specific `addon_option_id`; never Extra Matcha. |
 | `DISCOUNT` | Order-level | Reduces `total_vnd`. `PERCENT` or `FIXED` via `discount_type`. |
@@ -49,7 +50,7 @@ calculator for customer and staff orders; never duplicate or reorder these calcu
 
 **Application order** (strict — never reorder):
 ```
-BUNDLE → PRODUCT → ADDON → DISCOUNT → FREESHIP
+BUNDLE → ITEM/PRODUCT → ADDON → DISCOUNT → FREESHIP
 ```
 
 ### Canonical money terms
@@ -58,7 +59,7 @@ BUNDLE → PRODUCT → ADDON → DISCOUNT → FREESHIP
   Premium Latte where applicable; exclude all addons.
 - `subtotal_vnd`: gross merchandise subtotal before vouchers; include drinks and addons;
   exclude shipping.
-- `item_discount_vnd`: total BUNDLE, PRODUCT, and ADDON reductions.
+- `item_discount_vnd`: total BUNDLE, ITEM, PRODUCT, and ADDON reductions.
 - `discountable_subtotal_vnd = max(0, subtotal_vnd - item_discount_vnd)`.
 - `total_voucher_discount_vnd`: order-level DISCOUNT reduction only.
 - `total_vnd = max(0, discountable_subtotal_vnd - total_voucher_discount_vnd)`.
@@ -153,6 +154,22 @@ and `order_discount_vouchers.discount_applied_vnd` have been **dropped** (migrat
 
 ---
 
+## ITEM Voucher Details
+
+- Target `extras` menu items only; match exact `menu_item_id`.
+- Apply to one standalone unit, cover its current server price completely, and create no surplus.
+- Split a voucher-bearing quantity into its own quantity-one cart/order line.
+- A voucher token may appear on only one cart line. Customer and staff cart stores must move the
+  voucher to the newest target and restore the previous line price; persisted carts are normalized
+  during version migration before checkout.
+- Keep `covered_price_vnd`, size, powder, Base Liquid, and addon configuration null.
+- ITEM is order-only: direct offline redemption is forbidden. Reserve/redeem/restore it with the
+  same order lifecycle as PRODUCT, and refund active vouchers when the target is soft-deleted.
+- Admin price changes warn about active valid ITEM vouchers, but existing vouchers continue to
+  cover the full new current price.
+
+---
+
 ## BUNDLE Voucher Details
 
 - A BUNDLE voucher package owns one immutable BUNDLE rule directly. There is no Promotion layer.
@@ -173,13 +190,16 @@ and `order_discount_vouchers.discount_applied_vnd` have been **dropped** (migrat
   prices before evaluating them.
 - Resolve voucher ownership through an explicit `voucher_owner_id`, never by assuming the order
   host owns every line. This boundary is required for future group orders.
+- Product scopes may target drinks or `extras`. Extras have null configuration for all reward modes.
 - `SAME_CONFIG` means product, size, powder, and Base Liquid match; sweetness, ice, and coldwhisk may
   differ. `FIXED_CONFIG` requires exact size, powder, and Base Liquid for both configured categories. `ALLOWED_SCOPE`
   covers at most its reference credit and creates no surplus points.
 - Addon rewards may scale per bundle, once per order, or per qualifying item. Pool allocations
   across eligible items, reject Extra Matcha, and never overlap PRODUCT/ADDON voucher benefits.
-- `min_order_vnd` is evaluated from merchandise still eligible for BUNDLE: exclude drink units
-  with PRODUCT vouchers and exclude addon units covered by ADDON vouchers. A drink carrying only
+- Reward units never count again as qualifiers, including when the same menu item appears in both
+  roles. Qualifier and reward allocations may overlap only up to distinct paid units.
+- `min_order_vnd` is evaluated from paid merchandise: exclude units covered by ITEM/PRODUCT/BUNDLE
+  and exclude addon units covered by ADDON vouchers. A drink carrying only
   an ADDON voucher still counts as a qualifying product.
 - Qualifier and reward scopes may each contain multiple products, including seasonal products.
   One BUNDLE package has exactly one reward kind: PRODUCT or ADDON.

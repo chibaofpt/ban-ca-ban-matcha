@@ -74,7 +74,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
 
   // ── State ────────────────────────────────────────────────────────────────
   const [selectedSize, setSelectedSize] = useState<Size>(() => {
-    if (editingItem) return editingItem.size;
+    if (editingItem?.size) return editingItem.size;
     const available = item.sizes ?? [];
     return (available.find((s) => s.size === "MEDIUM") ?? available[0])?.size ?? "SMALL";
   });
@@ -743,11 +743,131 @@ const BaseModal: React.FC<ProductModalProps> = ({
   );
 };
 
+/** Minimal note/quantity editor for fixed-price Add-on menu items. */
+const ExtrasModal: React.FC<ProductModalProps> = ({
+  item,
+  onClose,
+  editingItem,
+  onConfirm,
+  freeVoucherId,
+  availableVouchers,
+  currentCartItems,
+}) => {
+  const addItem = useCartStore((state) => state.addItem);
+  const updateItem = useCartStore((state) => state.updateItem);
+  const storedCartItems = useCartStore((state) => state.items);
+  const [isOpen, setIsOpen] = useState(true);
+  const [quantity, setQuantity] = useState(editingItem?.quantity ?? 1);
+  const [note, setNote] = useState(editingItem?.note ?? "");
+  const [voucherId, setVoucherId] = useState<string | null>(
+    editingItem?.itemVoucherId ?? freeVoucherId ?? null,
+  );
+  const unitPrice = item.unit_price_vnd ?? 0;
+  const usedVoucherIds = new Set(
+    (currentCartItems ?? storedCartItems)
+      .filter((cartItem) => cartItem.cartId !== editingItem?.cartId)
+      .flatMap((cartItem) => [cartItem.productVoucherId, cartItem.itemVoucherId])
+      .filter((voucherId): voucherId is string => Boolean(voucherId)),
+  );
+  const itemVouchers = filterUsableVouchers(availableVouchers ?? [], "ITEM").filter(
+    (voucher) => voucher.menu_item_id === item.id && !usedVoucherIds.has(voucher.qr_token),
+  );
+  const hasVoucher = voucherId !== null;
+  const finalPrice = hasVoucher ? 0 : unitPrice;
+
+  const close = () => {
+    setIsOpen(false);
+    onClose();
+  };
+
+  const save = () => {
+    const cartItemData: Omit<CartItem, "cartId"> = {
+      menuItemId: item.id,
+      name: item.name,
+      category: "extras",
+      imageUrl: item.image_url,
+      size: null,
+      unitPrice,
+      quantity: hasVoucher ? 1 : quantity,
+      sweetness: "FULL",
+      iceOption: "NORMAL",
+      coldwhisk: false,
+      note,
+      selectedOptionIds: [],
+      quantityMap: {},
+      addonsPrice: 0,
+      addonPrices: {},
+      quantityAddonOptions: [],
+      clientPriceVnd: finalPrice,
+      originalClientPriceVnd: unitPrice,
+      itemVoucherId: voucherId ?? undefined,
+    };
+    const cartItem: CartItem = {
+      ...cartItemData,
+      cartId: editingItem?.cartId ?? crypto.randomUUID(),
+    };
+    if (onConfirm) onConfirm(cartItem);
+    else if (editingItem) updateItem(editingItem.cartId, cartItemData);
+    else addItem(cartItemData);
+    close();
+  };
+
+  return (
+    <Dialog.Root open={isOpen} onOpenChange={(open) => !open && close()}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm" />
+        <Dialog.Content className="fixed inset-x-4 bottom-4 z-[101] mx-auto max-w-lg rounded-[2rem] bg-[#fdfcf7] p-6 shadow-2xl outline-none md:inset-x-auto md:bottom-auto md:top-1/2 md:-translate-y-1/2">
+          <button type="button" onClick={close} aria-label="Đóng" className="absolute right-4 top-4 rounded-full p-2 text-primary/60 hover:bg-primary/10">
+            <X className="h-5 w-5" />
+          </button>
+          <div className="pr-10">
+            <h2 className="font-serif text-2xl font-bold text-primary">{item.name}</h2>
+            {item.description && <p className="mt-1 text-sm text-primary/60">{item.description}</p>}
+            <p className="mt-3 font-serif text-2xl font-bold text-primary">{formatKa(finalPrice, "ceil")}</p>
+          </div>
+          <label className="mt-6 block text-sm font-bold text-primary" htmlFor="extras-note">Ghi chú</label>
+          <textarea
+            id="extras-note"
+            value={note}
+            onChange={(event) => setNote(event.target.value.slice(0, 500))}
+            maxLength={500}
+            rows={3}
+            placeholder="Ví dụ: đóng gói riêng"
+            className="mt-2 w-full resize-none rounded-2xl border-2 border-border bg-white p-3 text-sm outline-none focus:border-primary"
+          />
+          {itemVouchers.length > 0 && (
+            <div className="mt-5">
+              <p className="text-sm font-bold text-primary">Voucher Add-on</p>
+              <button
+                type="button"
+                onClick={() => setVoucherId((current) => current ? null : itemVouchers[0]?.qr_token ?? null)}
+                className={cn("mt-2 flex min-h-12 w-full items-center justify-between rounded-2xl border-2 px-4 text-left", hasVoucher ? "border-green-500 bg-green-50" : "border-border bg-white")}
+              >
+                <span className="text-sm font-medium">{hasVoucher ? "Miễn phí 1 Add-on" : "Áp dụng voucher"}</span>
+                {hasVoucher && <CheckCircle2 className="h-5 w-5 text-green-600" />}
+              </button>
+            </div>
+          )}
+          <div className="mt-5 flex items-center justify-between rounded-2xl bg-primary/5 p-3">
+            <span className="text-sm font-bold text-primary">Số lượng</span>
+            <div className="flex items-center gap-3">
+              <button type="button" disabled={hasVoucher} onClick={() => setQuantity((value) => Math.max(1, value - 1))} className="flex h-10 w-10 items-center justify-center rounded-full bg-white disabled:opacity-40"><Minus className="h-4 w-4" /></button>
+              <span className="w-5 text-center font-bold text-primary">{hasVoucher ? 1 : quantity}</span>
+              <button type="button" disabled={hasVoucher} onClick={() => setQuantity((value) => Math.min(10, value + 1))} className="flex h-10 w-10 items-center justify-center rounded-full bg-white disabled:opacity-40"><Plus className="h-4 w-4" /></button>
+            </div>
+          </div>
+          <button type="button" onClick={save} className="mt-5 min-h-12 w-full rounded-2xl bg-primary px-4 font-bold text-white">{editingItem ? "Lưu thay đổi" : "Thêm vào giỏ"}</button>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+};
+
 const LatteModal: React.FC<ProductModalProps> = (props) => <BaseModal {...props} />;
 const FusionModal: React.FC<ProductModalProps> = (props) => <BaseModal {...props} />;
 
 export default function ProductModal(props: ProductModalProps) {
   if (props.item.category === "latte") return <LatteModal {...props} />;
   if (props.item.category === "fusion") return <FusionModal {...props} />;
-  return null;
+  return <ExtrasModal {...props} />;
 }

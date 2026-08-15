@@ -5,7 +5,7 @@ export type BundleScopeSize = "SMALL" | "MEDIUM" | "LARGE";
 
 export interface BundleProductScopeDraft {
   menuItemId: string;
-  category: "latte" | "fusion";
+  category: "latte" | "fusion" | "extras";
   sizes: BundleScopeSize[];
   powderIds: string[];
   milkTypeIds: string[];
@@ -16,7 +16,7 @@ export interface BundleProductScopeDraft {
 export interface BundleMenuConfig {
   id: string;
   name: string;
-  category: "latte" | "fusion";
+  category: "latte" | "fusion" | "extras";
   availableSizes: BundleScopeSize[];
   fixedPowderId: string | null;
   availablePowderIds: string[];

@@ -8,7 +8,7 @@ export interface RawOrderItem {
   /** FK to menu_items.id */
   menu_item_id: string;
   quantity: number;
-  size: "SMALL" | "MEDIUM" | "LARGE";
+  size: "SMALL" | "MEDIUM" | "LARGE" | null;
   /** null for Latte items (server resolves to matcha_powder_id) */
   selected_powder_id: string | null;
   /** null for Fusion items */
@@ -68,6 +68,7 @@ export interface MilkConfig {
 export interface ReportSummary {
   total_orders: number;
   total_cups: number;
+  total_extras_units: number;
   total_revenue_vnd: number;
 }
 
@@ -93,6 +94,7 @@ export interface DailyReportResult {
   milk_usage: MilkUsage[];
   latte_sales: ItemSales[];
   fusion_sales: ItemSales[];
+  extras_sales: ItemSales[];
 }
 
 // ---------------------------------------------------------------------------
@@ -111,6 +113,7 @@ export function resolveEffectiveGram(
   powderSizeEntries: PowderSizeEntry[],
   defaultSizeEntries: DefaultSizeEntry[]
 ): number {
+  if (!item.size) return 0;
   const powderId = item.selected_powder_id ?? item.menuItem.matcha_powder_id;
   if (!powderId) return 0;
 
@@ -151,6 +154,7 @@ export function buildReport(
   // -- Accumulators --
   let totalOrders = 0;
   let totalCups = 0;
+  let totalExtrasUnits = 0;
   let totalRevenue = 0;
 
   /** powder_id → total grams */
@@ -160,7 +164,7 @@ export function buildReport(
   /** menu_item_id → { name, category, sizes } */
   const salesMap = new Map<
     string,
-    { name: string; category: string; sizes: { SMALL: number; MEDIUM: number; LARGE: number } }
+    { name: string; category: string; total_cups: number; sizes: { SMALL: number; MEDIUM: number; LARGE: number } }
   >();
 
   for (const order of orders) {
@@ -169,7 +173,8 @@ export function buildReport(
 
     for (const item of order.items) {
       const qty = item.quantity;
-      totalCups += qty;
+      if (item.menuItem.category === "extras") totalExtrasUnits += qty;
+      else totalCups += qty;
 
       // -- Powder usage --
       const powderId = item.selected_powder_id ?? item.menuItem.matcha_powder_id;
@@ -205,11 +210,13 @@ export function buildReport(
       // -- Sales breakdown --
       const existing = salesMap.get(item.menu_item_id);
       if (existing) {
-        existing.sizes[item.size] += qty;
+        existing.total_cups += qty;
+        if (item.size) existing.sizes[item.size] += qty;
       } else {
         salesMap.set(item.menu_item_id, {
           name: item.menuItem.name,
           category: item.menuItem.category,
+          total_cups: qty,
           sizes: {
             SMALL: item.size === "SMALL" ? qty : 0,
             MEDIUM: item.size === "MEDIUM" ? qty : 0,
@@ -238,13 +245,16 @@ export function buildReport(
   // -- Build latte_sales and fusion_sales --
   const latteSales: ItemSales[] = [];
   const fusionSales: ItemSales[] = [];
-  for (const [, { name, category, sizes }] of salesMap) {
-    const totalCupsItem = sizes.SMALL + sizes.MEDIUM + sizes.LARGE;
+  const extrasSales: ItemSales[] = [];
+  for (const [, { name, category, sizes, total_cups }] of salesMap) {
+    const totalCupsItem = total_cups;
     const entry: ItemSales = { name, sizes, total_cups: totalCupsItem };
     if (category === "latte") {
       latteSales.push(entry);
-    } else {
+    } else if (category === "fusion") {
       fusionSales.push(entry);
+    } else if (category === "extras") {
+      extrasSales.push(entry);
     }
   }
 
@@ -252,12 +262,14 @@ export function buildReport(
     summary: {
       total_orders: totalOrders,
       total_cups: totalCups,
+      total_extras_units: totalExtrasUnits,
       total_revenue_vnd: totalRevenue,
     },
     powder_usage: powderUsage,
     milk_usage: milkUsage,
     latte_sales: latteSales,
     fusion_sales: fusionSales,
+    extras_sales: extrasSales,
   };
 }
 
@@ -400,6 +412,7 @@ export function buildAdminReport(
   const topProducts: TopProductResult[] = [
     ...base.latte_sales.map((s) => ({ name: s.name, category: "latte", total_cups: s.total_cups })),
     ...base.fusion_sales.map((s) => ({ name: s.name, category: "fusion", total_cups: s.total_cups })),
+    ...base.extras_sales.map((s) => ({ name: s.name, category: "extras", total_cups: s.total_cups })),
   ].sort((a, b) => b.total_cups - a.total_cups || a.name.localeCompare(b.name));
 
 

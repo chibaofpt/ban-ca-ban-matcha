@@ -390,6 +390,7 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
     updated_at: string              // MAX(menu_items.updated_at) — ISO timestamp for cache invalidation
     latte: MenuItem[]
     fusion: MenuItem[]
+    extras: MenuItem[]              // fixed-price merchandise; rendered below Fusion
     milk_types: BaseLiquid[]         // legacy response field; active global Base Liquid catalog
     base_liquids: BaseLiquid[]       // preferred alias, same rows as milk_types
     addon_groups: AddonGroup[]       // active global list; applies to every item
@@ -401,7 +402,8 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
   id: string
   name: string
   description: string | null
-  category: "latte" | "fusion"
+  category: "latte" | "fusion" | "extras"
+  unit_price_vnd: number | null     // required for extras; null for drinks
   is_seasonal: boolean
   image_url: string | null
   sort_order: number
@@ -499,7 +501,7 @@ Omitting an existing option from an update does not delete it; retire it with `i
 ```
 
 ### `GET /api/admin/menu`
-Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, but does not return the public global `milk_types` or `addon_groups` collections. It also:
+Uses the same `updated_at`, `latte`, `fusion`, and `extras` grouping as `GET /api/menu`, but does not return the public global `milk_types` or `addon_groups` collections. It also:
 - Includes items with `is_available = false`
 - Includes `default_powder_id` (raw, may be null) alongside `resolved_default_powder_id`
 - Includes all 3 size rows including those with `base_price_vnd = null`
@@ -511,7 +513,8 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
 {
   name: string
   description?: string
-  category: "latte" | "fusion"
+  category: "latte" | "fusion" | "extras"
+  unit_price_vnd?: number             // extras only; integer >= 1,000 and divisible by 1,000
   is_seasonal?: boolean
   image?: File
   sort_order?: number
@@ -521,7 +524,7 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
   default_base_liquid_id?: string     // required for new/edited Fusion
   allowed_base_liquid_ids?: string[]  // default is implicit; do not include it
   custom_powder_grams?: { SMALL?: number, MEDIUM?: number, LARGE?: number }
-  sizes: {
+  sizes: {                            // drink categories only; extras sends []
     size: "SMALL" | "MEDIUM" | "LARGE"
     base_price_vnd: number | null
     base_liquid_ml?: number | null    // null/omitted = system fallback
@@ -615,13 +618,14 @@ without a configured default Base Liquid. Any full edit still requires a valid a
     client_line_id?: string           // required when bundle_voucher_qr_token is sent
     menu_item_id: string
     quantity: number
-    size: "SMALL" | "MEDIUM" | "LARGE"
+    size: "SMALL" | "MEDIUM" | "LARGE" | null // null only for extras
     sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL" | "EXTRA"
     ice_option?: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE"
     coldwhisk?: boolean
     note?: string
     addon_option_ids: { option_id: string, quantity: number }[]
     product_voucher_id?: string       // voucher qr_token; legacy UUID accepted for one release
+    item_voucher_id?: string          // ITEM qr_token; extras only, mutually exclusive with PRODUCT
     addon_voucher_ids?: {
       voucher_id: string              // voucher qr_token; legacy UUID accepted for one release
       addon_option_id: string
@@ -682,13 +686,14 @@ without a configured default Base Liquid. Any full edit still requires a valid a
     client_line_id?: string           // required with BUNDLE
     menu_item_id: string
     quantity: number
-    size: "SMALL" | "MEDIUM" | "LARGE"
+    size: "SMALL" | "MEDIUM" | "LARGE" | null // null only for extras
     sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL" | "EXTRA"
     ice_option?: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE"
     coldwhisk?: boolean
     note?: string
     addon_option_ids: { option_id: string, quantity: number }[]
     product_voucher_id?: string       // voucher qr_token; legacy UUID accepted for one release
+    item_voucher_id?: string          // ITEM qr_token; extras only
     addon_voucher_ids?: {
       voucher_id: string              // voucher qr_token; legacy UUID accepted for one release
       addon_option_id: string
@@ -804,7 +809,7 @@ without a configured default Base Liquid. Any full edit still requires a valid a
 { data: { type: "user", data: { qr_token: string, name: string, phone_number: string, points_balance: number } } }
 
 // voucher
-{ data: { type: "voucher", data: { qr_token: string, voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED", expires_at: string | null } } }
+{ data: { type: "voucher", data: { qr_token: string, voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED", expires_at: string | null } } }
 ```
 
 ### `PATCH /api/admin/orders/[id]/status`
@@ -858,8 +863,8 @@ without a configured default Base Liquid. Any full edit still requires a valid a
   shipping fee. A mismatching `client_shipping_fee_vnd` returns `409 SHIPPING_FEE_CHANGED`.
 - The client map uses lazy MapLibre rendering with Goong style/tiles. Goong API-backed search and
   geocoding remain usable when rendering fails, providing the manual address-selection fallback.
-- Persisted customer cart schema is version `3`. Migrating any older cart keeps its items (and the
-  earlier size conversion) but clears PRODUCT/ADDON/order-level voucher identifiers and credits,
+- Persisted customer cart schema is version `7`. Migrating an older cart keeps compatible items but
+  clears stale PRODUCT/ITEM/ADDON and order-level voucher identifiers and credits,
   then recomputes client item prices so legacy database UUIDs cannot be resubmitted.
 - **Anonymous orders** (`phone_number` omitted):
   - `orders.user_id = NULL`
@@ -868,7 +873,10 @@ without a configured default Base Liquid. Any full edit still requires a valid a
   - Display as "Khách vãng lai" in all order list views
 
 ### Vouchers
-- Apply vouchers strictly in this order: `BUNDLE → PRODUCT → ADDON → DISCOUNT → FREESHIP`.
+- Apply vouchers strictly in this order: `BUNDLE → ITEM/PRODUCT → ADDON → DISCOUNT → FREESHIP`.
+- ITEM: extras only, matches `menu_item_id`, makes one unit free at its current server price,
+  has no surplus, and cannot be redeemed outside an order. A target price change does not change
+  eligibility or coverage; target soft-delete follows PRODUCT refund policy.
 - PRODUCT: match `menu_item_id` only. Apply one voucher to one drink unit. Limit
   `covered_price_vnd` to base + powder + milk + Premium Latte; never spill credit into addons.
   Compute the package snapshot from those drink components only; included addon IDs are

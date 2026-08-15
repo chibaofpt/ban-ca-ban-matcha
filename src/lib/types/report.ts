@@ -2,6 +2,7 @@
 export interface ReportSummary {
   total_orders: number;
   total_cups: number;
+  total_extras_units?: number;
   total_revenue_vnd: number;
 }
 
@@ -31,6 +32,7 @@ export interface DailyReport {
   milk_usage: MilkUsage[];
   latte_sales: ItemSales[];
   fusion_sales: ItemSales[];
+  extras_sales?: ItemSales[];
 }
 
 /** Staff member for admin dropdown */

@@ -82,6 +82,8 @@ export function CartBundleVoucherPanel({
   allocations,
   onVoucherChange,
   onAllocationsChange,
+  onAddExtrasReward,
+  onRemoveTransientRewards,
 }: {
   vouchers: MyVoucher[];
   cart: CartItem[];
@@ -90,12 +92,21 @@ export function CartBundleVoucherPanel({
   allocations: BundleSelectionAllocation[];
   onVoucherChange: (token: string | null) => void;
   onAllocationsChange: (allocations: BundleSelectionAllocation[]) => void;
+  onAddExtrasReward?: (menuItemId: string, voucherToken: string) => string | null;
+  onRemoveTransientRewards?: (voucherToken: string) => void;
 }) {
   if (vouchers.length === 0) return null;
   const selectedVoucher = vouchers.find((voucher) => voucher.qr_token === selectedVoucherToken);
   const summary = selectedVoucher ? getBundleVoucherSummary(selectedVoucher) : null;
   const options = selectedVoucher ? getOptions(selectedVoucher, cart, addonLabels) : [];
   const cartSummary = summarizeBundleCart(cart);
+  const extrasRewardScopes = [
+    ...new Map(
+      (selectedVoucher?.package.bundleRule?.productScopes ?? [])
+        .filter((scope) => scope.role === "REWARD" && scope.menuItem?.category === "extras" && scope.menuItem.is_available)
+        .map((scope) => [scope.menu_item_id, scope]),
+    ).values(),
+  ];
 
   return (
     <section id="cart-bundle-voucher-panel" tabIndex={-1} className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-3 focus-visible:ring-2 focus-visible:ring-amber-600">
@@ -111,6 +122,7 @@ export function CartBundleVoucherPanel({
               type="button"
               aria-pressed={isSelected}
               onClick={() => {
+                if (selectedVoucherToken) onRemoveTransientRewards?.(selectedVoucherToken);
                 onVoucherChange(isSelected ? null : voucher.qr_token);
                 onAllocationsChange([]);
               }}
@@ -125,13 +137,34 @@ export function CartBundleVoucherPanel({
         })}
       </div>
       {selectedVoucher && summary ? (
-        <BundleRewardSelector
-          voucher={summary}
-          cart={cartSummary}
-          options={options}
-          selected={allocations}
-          onChange={onAllocationsChange}
-        />
+        <>
+          {onAddExtrasReward && extrasRewardScopes.length > 0 ? (
+            <div className="grid gap-2">
+              {extrasRewardScopes.map((scope) => (
+                <button
+                  key={`add-${scope.menu_item_id}`}
+                  type="button"
+                  onClick={() => {
+                    const clientLineId = onAddExtrasReward(scope.menu_item_id, selectedVoucher.qr_token);
+                    if (clientLineId) {
+                      onAllocationsChange([...allocations, { client_line_id: clientLineId, quantity: 1 }]);
+                    }
+                  }}
+                  className="min-h-11 rounded-xl border border-dashed border-amber-500 bg-white px-3 text-left text-sm font-bold text-amber-900"
+                >
+                  + Thêm quà {scope.menuItem?.name ?? "Add-on"}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <BundleRewardSelector
+            voucher={summary}
+            cart={cartSummary}
+            options={options}
+            selected={allocations}
+            onChange={onAllocationsChange}
+          />
+        </>
       ) : null}
     </section>
   );

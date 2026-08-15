@@ -18,7 +18,8 @@ import {
 interface FormFields {
   name: string;
   description: string;
-  category: "latte" | "fusion";
+  category: "latte" | "fusion" | "extras";
+  unit_price_vnd: string;
   is_seasonal: boolean;
   is_available: boolean;
   sort_order: string;
@@ -79,6 +80,7 @@ export function buildDefaultValues(item: AdminMenuItem): MenuItemFormValues {
     name: item.name,
     description: item.description ?? "",
     category: item.category,
+    unit_price_vnd: item.unit_price_vnd != null ? String(item.unit_price_vnd / 1000) : "",
     is_seasonal: item.is_seasonal,
     is_available: item.is_available,
     sort_order: String(item.sort_order),
@@ -132,6 +134,7 @@ export default function MenuItemForm({
       name: "",
       description: "",
       category: "latte",
+      unit_price_vnd: "",
       is_seasonal: false,
       is_available: true,
       sort_order: "0",
@@ -212,7 +215,7 @@ export default function MenuItemForm({
     let hasError = false;
 
     // Validate: At least one size must be provided
-    if (!values.size_m && !values.size_l && !values.size_xl) {
+    if (values.category !== "extras" && !values.size_m && !values.size_l && !values.size_xl) {
       setError("size_m", { type: "atLeastOne", message: "Vui lòng nhập giá cho ít nhất một size (S, M hoặc L)." });
       hasError = true;
     } else {
@@ -243,6 +246,16 @@ export default function MenuItemForm({
       }
     }
 
+    if (values.category === "extras") {
+      const fixedPrice = Number(values.unit_price_vnd);
+      if (!Number.isInteger(fixedPrice) || fixedPrice < 1 || fixedPrice % 1 !== 0) {
+        setError("unit_price_vnd", { message: "Vui lòng nhập giá Add-on hợp lệ." });
+        hasError = true;
+      } else {
+        clearErrors("unit_price_vnd");
+      }
+    }
+
     if (values.category === "fusion" && !values.default_base_liquid_id) {
       setError("default_base_liquid_id", { message: "Vui lòng chọn Base Liquid mặc định." });
       hasError = true;
@@ -268,6 +281,9 @@ export default function MenuItemForm({
     fd.append("is_seasonal", String(values.is_seasonal));
     fd.append("is_available", String(values.is_available));
     fd.append("sort_order", String(Math.max(0, Number(values.sort_order) || 0)));
+    if (values.category === "extras") {
+      fd.append("unit_price_vnd", String(Math.round(Number(values.unit_price_vnd) * 1000)));
+    }
 
     // Sizes — convert from "cá" units to VND (* 1000)
     const sizeM = parseSize(values.size_m);
@@ -280,7 +296,7 @@ export default function MenuItemForm({
     };
     fd.append(
       "sizes",
-      JSON.stringify([
+      values.category === "extras" ? "[]" : JSON.stringify([
         { size: "SMALL", base_price_vnd: sizeM != null ? sizeM * 1000 : null, base_liquid_ml: parseMl(values.base_liquid_ml_m) },
         { size: "MEDIUM", base_price_vnd: sizeL != null ? sizeL * 1000 : null, base_liquid_ml: parseMl(values.base_liquid_ml_l) },
         { size: "LARGE", base_price_vnd: sizeXL != null ? sizeXL * 1000 : null, base_liquid_ml: parseMl(values.base_liquid_ml_xl) },
@@ -374,6 +390,18 @@ export default function MenuItemForm({
             >
               🍹 Fusion
             </button>
+            <button
+              type="button"
+              disabled={mode === "edit"}
+              onClick={() => setValue("category", "extras")}
+              className={cn(
+                "flex-1 py-2 text-sm font-semibold rounded-lg transition-all duration-200 flex items-center justify-center gap-2",
+                category === "extras" ? "bg-background shadow-sm text-amber-600" : "text-muted-foreground hover:text-foreground",
+                mode === "edit" && "opacity-60 cursor-not-allowed"
+              )}
+            >
+              🍰 Add-on
+            </button>
           </div>
           {mode === "edit" && (
             <p className="text-[11px] text-muted-foreground mt-1.5">
@@ -413,7 +441,7 @@ export default function MenuItemForm({
         <div className="w-full h-px bg-border/50" />
 
         {/* Định giá */}
-        <div className="space-y-4">
+        <div className={cn("space-y-4", category === "extras" && "hidden")}>
           <label className={labelClass}>
             Giá cơ sở (🐟 cá)
             <span className="text-muted-foreground font-normal ml-2 text-xs opacity-80">— Bỏ trống nếu không bán size tương ứng</span>
@@ -463,6 +491,14 @@ export default function MenuItemForm({
             labelClass={labelClass}
           />
         </div>
+
+        {category === "extras" && (
+          <div className="space-y-2">
+            <label className={labelClass}>Giá đơn vị (🐟 cá)<span className="text-destructive"> *</span></label>
+            <input type="number" min="1" step="1" {...register("unit_price_vnd", { required: "Vui lòng nhập giá Add-on" })} className={inputClass} placeholder="Ví dụ: 26" />
+            {errors.unit_price_vnd && <p className={errorClass}>{errors.unit_price_vnd.message}</p>}
+          </div>
+        )}
 
         <div className="w-full h-px bg-border/50" />
 
@@ -622,20 +658,21 @@ export default function MenuItemForm({
           )}
         </div>
 
-        <div className="w-full h-px bg-border/50" />
-
-        <MenuItemBaseLiquidFields
-          category={category}
-          baseLiquids={baseLiquids}
-          defaultBaseLiquidId={defaultBaseLiquidId}
-          allowedBaseLiquidIds={allowedBaseLiquidIds}
-          defaultRegistration={register("default_base_liquid_id")}
-          registerAllowed={() => register("allowed_base_liquid_ids")}
-          defaultError={errors.default_base_liquid_id?.message}
-          inputClass={inputClass}
-          labelClass={labelClass}
-          errorClass={errorClass}
-        />
+        {category !== "extras" && <>
+          <div className="w-full h-px bg-border/50" />
+          <MenuItemBaseLiquidFields
+            category={category}
+            baseLiquids={baseLiquids}
+            defaultBaseLiquidId={defaultBaseLiquidId}
+            allowedBaseLiquidIds={allowedBaseLiquidIds}
+            defaultRegistration={register("default_base_liquid_id")}
+            registerAllowed={() => register("allowed_base_liquid_ids")}
+            defaultError={errors.default_base_liquid_id?.message}
+            inputClass={inputClass}
+            labelClass={labelClass}
+            errorClass={errorClass}
+          />
+        </>}
 
         <div className="w-full h-px bg-border/50" />
 

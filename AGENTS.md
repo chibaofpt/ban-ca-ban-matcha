@@ -99,7 +99,9 @@
 - All final prices ceil to nearest 1,000 VND server-side
 - Never hard delete Latte `menu_item` — soft delete only. Check `reference_latte_item_id` first.
 - `menu_item_addons` junction table does not exist — do not create it
-- Categories: exactly 2 — `latte` and `fusion`. No others.
+- Categories: exactly 3 — `latte`, `fusion`, and `extras`. UI labels `extras` as “Add-on”.
+- `extras` menu items are fixed-price standalone merchandise: quantity + note only; no size,
+  powder, Base Liquid, sweetness, ice, coldwhisk, or addon configuration.
 - `addon_groups` is global — no junction table, no per-item config
 - Base Liquid catalog reuses the global `milk_type` table for both Latte and Fusion; do not add a `kind` discriminator.
 - Latte uses the global default Base Liquid. Each menu item stores only its allowed swap options; Admin is responsible for keeping Latte options milk-only.

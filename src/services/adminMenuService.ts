@@ -25,6 +25,7 @@ export interface AdminMenuData {
   updated_at: string;
   latte: AdminMenuItem[];
   fusion: AdminMenuItem[];
+  extras?: AdminMenuItem[];
   base_liquids?: MilkTypeOption[];
   default_size_config?: Array<{ size: Size; base_liquid_ml: number }>;
 }

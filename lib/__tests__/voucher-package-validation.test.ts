@@ -3,6 +3,7 @@ import { createVoucherPackageSchema } from "@/lib/validations/voucherPackage";
 
 const UUID = {
   menu: "11111111-1111-4111-8111-111111111111",
+  extra: "33333333-3333-4333-8333-333333333333",
   addon: "22222222-2222-4222-8222-222222222222",
 };
 
@@ -29,8 +30,9 @@ function makeBundle() {
       qualifier_scopes: [{ menu_item_id: UUID.menu }],
       reward_product_scopes: [] as Array<{
         menu_item_id: string;
-        size?: "SMALL" | "MEDIUM" | "LARGE";
-        powder_id?: string;
+        size?: "SMALL" | "MEDIUM" | "LARGE" | null;
+        powder_id?: string | null;
+        milk_type_id?: string | null;
         reference_price_vnd?: number;
       }>,
       reward_addon_option_ids: [] as string[],
@@ -120,16 +122,35 @@ describe("Validation gói voucher hợp nhất", () => {
     expect(createVoucherPackageSchema.safeParse(duplicated).success).toBe(false);
   });
 
-  it("yêu cầu đầy đủ size và bột cho quà PRODUCT cấu hình cố định", () => {
+  it("để validation cấu hình FIXED_CONFIG theo category cho tầng DB", () => {
     const input = makeBundle();
     input.bundle_rule.reward_mode = "FIXED_CONFIG";
     input.bundle_rule.reward_product_scopes = [{ menu_item_id: UUID.menu }];
-    expect(createVoucherPackageSchema.safeParse(input).success).toBe(false);
+    expect(createVoucherPackageSchema.safeParse(input).success).toBe(true);
 
     input.bundle_rule.reward_product_scopes = [{
       menu_item_id: UUID.menu,
       size: "MEDIUM",
       powder_id: UUID.addon,
+    }];
+    expect(createVoucherPackageSchema.safeParse(input).success).toBe(true);
+  });
+
+  it("FIXED_CONFIG nhận scope không cấu hình để server đối chiếu category từ DB", () => {
+    const input = makeBundle();
+    input.bundle_rule.reward_mode = "FIXED_CONFIG";
+    input.bundle_rule.reward_product_scopes = [{
+      menu_item_id: UUID.extra,
+      size: null,
+      powder_id: null,
+      milk_type_id: null,
+    }];
+    expect(createVoucherPackageSchema.safeParse(input).success).toBe(true);
+
+    input.bundle_rule.reward_product_scopes = [{
+      menu_item_id: UUID.menu,
+      size: null,
+      powder_id: null,
     }];
     expect(createVoucherPackageSchema.safeParse(input).success).toBe(true);
   });

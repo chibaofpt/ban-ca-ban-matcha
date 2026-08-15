@@ -32,7 +32,7 @@ export function OrderHistoryItems({
             <span className="text-[13px] font-semibold">
               {item.menuItem.name}{" "}
               <span className="font-normal text-muted-foreground">
-                {formatOrderSize(item.size)}
+                {item.size ? formatOrderSize(item.size) : "Add-on"}
               </span>
             </span>
             <OrderItemDetails item={item} />

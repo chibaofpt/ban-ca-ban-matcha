@@ -62,6 +62,8 @@ interface StaffCartDrawerProps {
   bundleAllocations?: BundleSelectionAllocation[];
   onBundleVoucherChange?: (token: string | null) => void;
   onBundleAllocationsChange?: (allocations: BundleSelectionAllocation[]) => void;
+  onAddExtrasReward?: (menuItemId: string, voucherToken: string) => string | null;
+  onRemoveTransientRewards?: (voucherToken: string) => void;
 
   customerVouchers?: MyVoucher[];
   selectedDiscountIds?: string[];
@@ -101,6 +103,8 @@ export function StaffCartDrawer({
   bundleAllocations = [],
   onBundleVoucherChange = () => undefined,
   onBundleAllocationsChange = () => undefined,
+  onAddExtrasReward,
+  onRemoveTransientRewards,
   customerVouchers = [],
   selectedDiscountIds = [],
   onToggleDiscount,
@@ -115,7 +119,7 @@ export function StaffCartDrawer({
   isExchanging = false,
   preventCloseOutside = false,
 }: StaffCartDrawerProps) {
-  const menuItems = menuData ? [...menuData.latte, ...menuData.fusion] : [];
+  const menuItems = menuData ? [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])] : [];
 
   const [activeItemForVoucher, setActiveItemForVoucher] = useState<string | null>(null);
   const [isDiscountPickerOpen, setIsDiscountPickerOpen] = useState(false);
@@ -331,6 +335,8 @@ export function StaffCartDrawer({
               allocations={bundleAllocations}
               onVoucherChange={onBundleVoucherChange}
               onAllocationsChange={onBundleAllocationsChange}
+              onAddExtrasReward={onAddExtrasReward}
+              onRemoveTransientRewards={onRemoveTransientRewards}
             />
           ) : null}
         </div>
@@ -467,7 +473,9 @@ export function StaffCartDrawer({
                   </div>
                   <div>
                     <p className="font-bold text-sm">{activeItem.name}</p>
-                    <p className="text-xs text-muted-foreground">Size {activeItem.size}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {activeItem.category === "extras" ? "Add-on" : `Size ${activeItem.size}`}
+                    </p>
                   </div>
                 </div>
 
@@ -477,15 +485,15 @@ export function StaffCartDrawer({
                     <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Miễn phí món</p>
                     <div className="space-y-2">
                       {applicableProductVouchers.get(activeItem.menuItemId)?.map(v => {
-                        const isSelected = activeItem.productVoucherId === v.qr_token;
-                        const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && c.productVoucherId === v.qr_token);
+                        const isSelected = (activeItem.productVoucherId ?? activeItem.itemVoucherId) === v.qr_token;
+                        const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && (c.productVoucherId === v.qr_token || c.itemVoucherId === v.qr_token));
                         
                         return (
                           <VoucherCard 
                             key={v.qr_token}
                             voucher={v}
                             isDisabled={isAlreadyUsed}
-                            disabledReason={isAlreadyUsed ? "Đã dùng ở ly khác" : undefined}
+                            disabledReason={isAlreadyUsed ? "Đã dùng ở món khác" : undefined}
                             onClick={() => {
                               if (isAlreadyUsed) return;
                               if (isSelected && onRemoveProduct) onRemoveProduct(activeItem.cartId);

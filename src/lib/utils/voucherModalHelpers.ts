@@ -118,11 +118,13 @@ export function getExchangeErrorMessage(
  */
 export function groupPackagesByType(packages: VoucherPackage[]): {
   DISCOUNT: VoucherPackage[];
+  ITEM: VoucherPackage[];
   PRODUCT: VoucherPackage[];
   ADDON: VoucherPackage[];
 } {
   return {
     DISCOUNT: packages.filter((p) => p.voucher_type === "DISCOUNT"),
+    ITEM: packages.filter((p) => p.voucher_type === "ITEM"),
     PRODUCT: packages.filter((p) => p.voucher_type === "PRODUCT"),
     ADDON: packages.filter((p) => p.voucher_type === "ADDON"),
   };
@@ -190,7 +192,7 @@ export function getTicketHighlightText(
       return { text: `${discountValue}`, subtext: "GIẢM" };
     }
   }
-  if (vType === "PRODUCT" || vType === "ADDON") {
+  if (vType === "ITEM" || vType === "PRODUCT" || vType === "ADDON") {
     return { text: "FREE", subtext: "TẶNG" };
   }
   if (vType === "FREESHIP") {
@@ -219,6 +221,9 @@ export function getVoucherBenefitText(v: MyVoucher): string {
   }
   if (v.voucher_type === "FREESHIP") {
     return `Freeship tối đa ${(v.covered_delivery_fee_vnd ?? 0).toLocaleString("vi-VN")}đ`;
+  }
+  if (v.voucher_type === "ITEM") {
+    return `${v.menuItem?.name ?? "Add-on"} miễn phí`;
   }
   if (v.voucher_type === "BUNDLE") return v.package.description ?? "Ưu đãi mua X tặng Y";
   return v.package.name;
@@ -253,6 +258,9 @@ export function getPackageBenefitText(pkg: VoucherPackage): string {
     if (pkg.discount_type === "FIXED")
       return `Giảm ${(pkg.discount_value ?? 0).toLocaleString("vi-VN")}đ toàn đơn`;
   }
+  if (pkg.voucher_type === "ITEM" && pkg.menuItem) {
+    return `${pkg.menuItem.name} miễn phí`;
+  }
   if (pkg.voucher_type === "PRODUCT" && pkg.menuItem) {
     return `${pkg.menuItem.name} Size ${pkg.size} miễn phí`;
   }
@@ -264,9 +272,10 @@ export function getPackageBenefitText(pkg: VoucherPackage): string {
 
 /** Badge config for voucher types */
 export const VOUCHER_TYPE_CONFIG: Record<
-  "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE",
+  "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE",
   { label: string; badgeCls: string }
 > = {
+  ITEM: { label: "Add-on", badgeCls: "bg-amber-100 text-amber-800" },
   DISCOUNT: { label: "Giảm giá", badgeCls: "bg-blue-100 text-blue-800" },
   PRODUCT: { label: "Sản phẩm", badgeCls: "bg-green-100 text-green-800" },
   ADDON: { label: "Topping", badgeCls: "bg-purple-100 text-purple-800" },

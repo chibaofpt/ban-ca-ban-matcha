@@ -144,7 +144,7 @@ src/                              # Frontend — never import lib/ from here
       FeatureCard.tsx
     menu/
       MenuCard.tsx
-      MenuPanels.tsx              # Pure latte/fusion/seasonal panel rendering
+      MenuPanels.tsx              # Pure latte/fusion/extras/seasonal panel rendering
       CartQuantityButton.tsx      # Reusable add-to-cart / inline quantity stepper
       ExistingCartItemSheet.tsx   # Bottom sheet for items already in cart (per-variant stepper)
       ProductModal.tsx
@@ -331,6 +331,7 @@ sentry.server.config.ts
 sentry.edge.config.ts
 prisma/schema.prisma
 prisma/migrations/20260804000000_harden_supabase_data_plane/
+prisma/migrations/20260815150000_add_extras_items_and_item_vouchers/ # extras + ITEM voucher contract
                                   # RLS/ACL hardening; rollback only with a compensating migration
 .env.local
 .env.local.example

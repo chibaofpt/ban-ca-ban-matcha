@@ -12,16 +12,18 @@ interface MenuPanelsProps {
   loading: boolean;
   latteItems: MenuItem[];
   fusionItems: MenuItem[];
+  extrasItems: MenuItem[];
   seasonalItems: MenuItem[];
   milkTypes: MilkTypeOption[];
   cartItems: CartItem[];
   latteSectionRef: RefObject<HTMLDivElement | null>;
   fusionSectionRef: RefObject<HTMLDivElement | null>;
+  extrasSectionRef: RefObject<HTMLDivElement | null>;
   onItemClick: (item: MenuItem) => void;
 }
 
 interface ItemSectionProps {
-  title: "Latte" | "Fusion";
+  title: "Latte" | "Fusion" | "Add-on";
   items: MenuItem[];
   milkTypes: MilkTypeOption[];
   cartItems: CartItem[];
@@ -31,7 +33,7 @@ interface ItemSectionProps {
 
 /** Renders the combined and seasonal menu panels without owning carousel state. */
 export function MenuPanels(props: MenuPanelsProps) {
-  const { carouselX, loading, latteItems, fusionItems, seasonalItems } = props;
+  const { carouselX, loading, latteItems, fusionItems, extrasItems, seasonalItems } = props;
   return (
     <motion.div style={{ x: carouselX }} className="relative w-full touch-pan-y">
       <div className="w-full pb-8 px-0.5 relative" style={{ left: "0%" }}>
@@ -51,6 +53,14 @@ export function MenuPanels(props: MenuPanelsProps) {
               milkTypes={props.milkTypes}
               cartItems={props.cartItems}
               sectionRef={props.fusionSectionRef}
+              onItemClick={props.onItemClick}
+            />
+            <ItemSection
+              title="Add-on"
+              items={extrasItems}
+              milkTypes={props.milkTypes}
+              cartItems={props.cartItems}
+              sectionRef={props.extrasSectionRef}
               onItemClick={props.onItemClick}
             />
           </>
@@ -91,15 +101,18 @@ function ItemSection({
   onItemClick,
 }: ItemSectionProps) {
   const isFusion = title === "Fusion";
+  const isExtras = title === "Add-on";
   return (
-    <div ref={sectionRef} className={`scroll-mt-24${isFusion ? " mt-8" : ""}`}>
+    <div ref={sectionRef} className={`scroll-mt-24${isFusion || isExtras ? " mt-8" : ""}`}>
       <div className={`flex items-center gap-3 mb-4${isFusion ? "" : " mt-2"}`}>
         <h2 className="font-serif text-xl font-bold text-[#2d4a22]">{title}</h2>
         <div className="flex-1 h-px bg-primary/10" />
       </div>
       {items.length === 0 ? (
         <div className="py-12 text-center text-primary/40 space-y-2">
-          {isFusion ? (
+          {isExtras ? (
+            <Sparkles className="mx-auto h-10 w-10" aria-hidden="true" />
+          ) : isFusion ? (
             <CupSoda className="mx-auto h-10 w-10" aria-hidden="true" />
           ) : (
             <Coffee className="mx-auto h-10 w-10" aria-hidden="true" />

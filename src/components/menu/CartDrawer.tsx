@@ -29,6 +29,7 @@ import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
 import type { MenuData, MenuItem } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
 import { deriveCheckoutRewards } from "@/src/utils/customerUx";
+import { buildExtrasCartItem } from "@/src/utils/cartHelpers";
 import {
   deriveBundleSelectionState,
   summarizeBundleCart,
@@ -81,6 +82,7 @@ interface CartDrawerProps {
 
 const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   const items = useCartStore((s) => s.items);
+  const addItem = useCartStore((s) => s.addItem);
   const removeItem = useCartStore((s) => s.removeItem);
   const updateQuantity = useCartStore((s) => s.updateQuantity);
   const clearCart = useCartStore((s) => s.clearCart);
@@ -136,7 +138,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
 
   const checkoutMutation = useCheckout();
 
-  const menuItems = [...menuData.latte, ...menuData.fusion];
+  const menuItems = [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])];
   const hasUnavailableItems = items.some(
     (item) => !menuItems.some((menuItem) => menuItem.id === item.menuItemId),
   );
@@ -714,6 +716,15 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
                 bundleAllocations={bundleAllocations}
                 onBundleVoucherChange={setSelectedBundleToken}
                 onBundleAllocationsChange={setBundleAllocations}
+                onAddExtrasReward={(menuItemId, voucherToken) => {
+                  const reward = (menuData.extras ?? []).find((item) => item.id === menuItemId);
+                  return reward ? addItem(buildExtrasCartItem(reward, voucherToken)) : null;
+                }}
+                onRemoveTransientRewards={(voucherToken) => {
+                  items
+                    .filter((item) => item.bundleRewardVoucherToken === voucherToken)
+                    .forEach((item) => removeItem(item.cartId));
+                }}
               />
             )}
           </AnimatePresence>

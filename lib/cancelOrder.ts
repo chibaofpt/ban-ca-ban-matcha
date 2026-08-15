@@ -95,9 +95,9 @@ export async function restoreVouchersOnCancel(
   const voucherItems = await tx.orderItem.findMany({
     where: {
       order_id: orderId,
-      product_voucher_id: { not: null },
+      OR: [{ product_voucher_id: { not: null } }, { item_voucher_id: { not: null } }],
     },
-    select: { product_voucher_id: true },
+    select: { product_voucher_id: true, item_voucher_id: true },
   });
 
   const addonVouchers = await tx.orderItemAddonVoucher.findMany({
@@ -110,6 +110,7 @@ export async function restoreVouchersOnCancel(
   const uniqueItemVoucherIds = [
     ...new Set([
       ...voucherItems.map((i) => i.product_voucher_id).filter((id): id is string => id !== null),
+      ...voucherItems.map((i) => i.item_voucher_id).filter((id): id is string => id !== null),
       ...addonVouchers.map((i) => i.voucher_id)
     ]),
   ];

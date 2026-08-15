@@ -22,14 +22,15 @@ const orderItemBaseSchema = z.object({
   client_line_id: z.string().uuid().optional(),
   menu_item_id: z.string().uuid(),
   quantity: z.number().int().min(1),
-  /** Required for all items — server validates base_price_vnd IS NOT NULL for this size. */
-  size: sizeEnum,
+  /** Required for drinks; extras intentionally omit size. */
+  size: sizeEnum.optional().nullable(),
   sweetness: sweetnessEnum.default("FULL"),
   ice_option: iceOptionEnum.default("NORMAL"),
   coldwhisk: z.boolean().default(false),
   note: z.string().max(500).optional(),
   addon_option_ids: z.array(addonOptionBaseSchema).default([]),
   product_voucher_id: z.string().uuid().optional(),
+  item_voucher_id: z.string().uuid().optional(),
   addon_voucher_ids: z.array(addonVoucherBaseSchema).default([]),
   /** Fusion only — server validates against resolved_default_powder_id + fusion_allowed_powder. */
   selected_powder_id: z.string().uuid().optional(),

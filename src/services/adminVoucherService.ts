@@ -5,7 +5,7 @@ export interface VoucherPackage {
   id: string;
   name: string;
   description: string | null;
-  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
+  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
   acquisition_mode: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
   points_cost: number;
   ends_at: string | null;
@@ -74,6 +74,10 @@ export type CreateVoucherPackageInput = VoucherPackageCommonInput & (
       discount_type: "PERCENT" | "FIXED";
       discount_value: number;
       min_order_vnd?: number | null;
+    }
+  | {
+      voucher_type: "ITEM";
+      menu_item_id: string;
     }
   | {
       voucher_type: "PRODUCT";

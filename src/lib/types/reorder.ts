@@ -23,7 +23,7 @@ export interface ReorderWarning {
 export interface HistoryOrderItem {
   menu_item_id: string;
   quantity: number;
-  size: Size;
+  size: Size | null;
   unit_price_vnd: number;
   addons_price_vnd: number;
   sweetness: SweetnessLevel;

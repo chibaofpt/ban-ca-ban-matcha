@@ -16,8 +16,8 @@ export interface CreateStaffOrderPayload {
     client_line_id?: string;
     menu_item_id: string;
     quantity: number;
-    /** Required — all items have SMALL/MEDIUM/LARGE. */
-    size: "SMALL" | "MEDIUM" | "LARGE";
+    /** Required for drinks; null for fixed-price Add-on items. */
+    size: "SMALL" | "MEDIUM" | "LARGE" | null;
     sweetness: SweetnessLevel;
     /** Defaults to NORMAL on server if omitted; explicit here for correctness. */
     ice_option: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
@@ -25,6 +25,7 @@ export interface CreateStaffOrderPayload {
     note?: string;
     addon_option_ids: { option_id: string; quantity: number }[];
     product_voucher_id?: string;
+    item_voucher_id?: string;
     /** ADDON vouchers per item — each targets a specific addon_option_id. */
     addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
     /** Fusion only — server validates against item's allowed powder list. */
@@ -76,7 +77,7 @@ export type QrScanResult =
       type: "voucher";
       data: {
         qr_token: string;
-        voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
+        voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
         discount_type: "PERCENT" | "FIXED" | null;
         discount_value: number | null;
         menu_item_id: string | null;

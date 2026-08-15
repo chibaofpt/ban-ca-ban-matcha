@@ -63,7 +63,17 @@ export async function GET(
                 benefit_scaling: true,
                 max_applications_order: true,
                 max_reward_units_order: true,
-                productScopes: { select: { role: true, menu_item_id: true } },
+                productScopes: {
+                  select: {
+                    role: true,
+                    menu_item_id: true,
+                    size: true,
+                    matcha_powder_id: true,
+                    milk_type_id: true,
+                    reference_price_vnd: true,
+                    menuItem: { select: { name: true, category: true, is_available: true } },
+                  },
+                },
                 addonRewards: { select: { addon_option_id: true } },
               },
             },

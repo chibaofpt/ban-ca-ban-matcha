@@ -471,6 +471,27 @@ describe("POST /api/profile/vouchers/refund", () => {
     expect(json.data.points_refunded).toBe(5);
   });
 
+  it("refunds an ITEM voucher for an unavailable extras item", async () => {
+    mockVoucherFindUnique.mockResolvedValue({
+      ...productVoucher,
+      voucher_type: "ITEM",
+      size: null,
+    });
+    mockMenuItemFindUnique.mockResolvedValue({
+      is_available: false,
+      name: "Bánh matcha",
+      category: "extras",
+      unit_price_vnd: 26_000,
+    });
+
+    const res = await refundPOST(makeRefundReq(refundPayload));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      data: { status: "REFUNDED", points_refunded: 5 },
+    });
+  });
+
   it("refunds successfully when menu item is null (hard deleted edge case)", async () => {
     mockVoucherFindUnique.mockResolvedValue(productVoucher);
     mockMenuItemFindUnique.mockResolvedValue(null);

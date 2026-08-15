@@ -61,8 +61,9 @@ export async function createCustomerOrder(
     line_total: item.line_total,
     bundle_discount_vnd: bundle?.line_discounts_vnd[index] ?? 0,
     product_voucher_id: item.product_voucher_id,
-    product_voucher_covered_vnd: item.product_voucher_id
-      ? (productVoucherMap.get(item.product_voucher_id)?.covered_price_vnd ?? 0)
+    item_voucher_id: item.item_voucher_id,
+    product_voucher_covered_vnd: (item.item_voucher_id ?? item.product_voucher_id)
+      ? (productVoucherMap.get(item.item_voucher_id ?? item.product_voucher_id ?? "")?.covered_price_vnd ?? 0)
       : 0,
     addon_vouchers: item.addon_voucher_ids.map((voucher) => {
       const addon = item.resolvedAddons.find(

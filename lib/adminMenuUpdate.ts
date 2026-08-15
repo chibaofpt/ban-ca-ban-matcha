@@ -23,8 +23,8 @@ export function buildMenuItemSizeUpdate(input: {
 }
 
 /** Narrow a persisted menu category before using it in storage paths. */
-export function asMenuStorageCategory(category: string): "latte" | "fusion" {
-  if (category === "latte" || category === "fusion") return category;
+export function asMenuStorageCategory(category: string): "latte" | "fusion" | "extras" {
+  if (category === "latte" || category === "fusion" || category === "extras") return category;
   throw new Error("Invalid menu category");
 }
 

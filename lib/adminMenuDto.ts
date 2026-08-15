@@ -22,7 +22,7 @@ export type AdminMenuItemRecord = Prisma.MenuItemGetPayload<{
   include: typeof ADMIN_MENU_INCLUDE;
 }>;
 
-const SIZE_ORDER: Record<string, number> = { M: 0, L: 1, XL: 2 };
+const SIZE_ORDER: Record<string, number> = { SMALL: 0, MEDIUM: 1, LARGE: 2 };
 
 /** Format a Prisma menu item row into the public admin API shape. */
 export function formatAdminMenuItem(
@@ -34,6 +34,7 @@ export function formatAdminMenuItem(
     name: item.name,
     description: item.description ?? null,
     category: item.category,
+    unit_price_vnd: item.unit_price_vnd ?? null,
     is_seasonal: item.is_seasonal,
     image_url: item.image_url ?? null,
     is_available: item.is_available,

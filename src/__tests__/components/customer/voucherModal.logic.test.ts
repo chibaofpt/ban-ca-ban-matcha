@@ -276,4 +276,12 @@ describe("formatVoucherExpiry", () => {
     const past = new Date(Date.now() - 1000).toISOString();
     expect(formatVoucherExpiry(past)).toBe("Đã hết hạn");
   });
+
+  it("ITEM với menuItem → tên Add-on miễn phí", () => {
+    const v = makeVoucher({
+      voucher_type: "ITEM",
+      menuItem: { name: "Kem vanilla", is_available: true },
+    });
+    expect(getVoucherBenefitText(v)).toBe("Kem vanilla miễn phí");
+  });
 });

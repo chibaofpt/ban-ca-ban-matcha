@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (isAnonymous && data.items.some((i) => i.product_voucher_id)) {
+    if (isAnonymous && data.items.some((i) => i.product_voucher_id || i.item_voucher_id)) {
       return NextResponse.json(
         { error: "Product voucher cannot be used for anonymous orders", code: "VALIDATION_ERROR" },
         { status: 400 }
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
     const hasAnyVoucher = (
       data.discount_voucher_ids.length > 0 ||
       Boolean(data.bundle_voucher_qr_token) ||
-      data.items.some((i) => i.product_voucher_id || (i.addon_voucher_ids && i.addon_voucher_ids.length > 0))
+      data.items.some((i) => i.product_voucher_id || i.item_voucher_id || (i.addon_voucher_ids && i.addon_voucher_ids.length > 0))
     );
 
     if (hasAnyVoucher && !existingUser) {
@@ -179,9 +179,16 @@ export async function POST(req: NextRequest) {
     const productVoucherMap = new Map<string, ProductVoucherInfo>();
     if (existingUserForVoucher) {
       for (const item of data.items) {
-        if (item.product_voucher_id) {
+        if (item.item_voucher_id && item.product_voucher_id) {
+          return NextResponse.json(
+            { error: "Chỉ được gửi một loại voucher cho mỗi món", code: "VALIDATION_ERROR" },
+            { status: 400 },
+          );
+        }
+        const submittedItemVoucherId = item.item_voucher_id ?? item.product_voucher_id;
+        if (submittedItemVoucherId) {
           const pv = await resolveOwnedVoucherIdentifier(
-            item.product_voucher_id,
+            submittedItemVoucherId,
             existingUserForVoucher.id,
           );
           if (pv && productVoucherMap.has(pv.id)) {
@@ -191,7 +198,8 @@ export async function POST(req: NextRequest) {
             );
           }
           try {
-            assertVoucherUsable(pv, existingUserForVoucher.id, "PRODUCT");
+            const expectedType = item.item_voucher_id ? "ITEM" : "PRODUCT";
+            assertVoucherUsable(pv, existingUserForVoucher.id, expectedType);
           } catch (e) {
             if (e instanceof VoucherError) {
               const statusMap: Record<string, number> = {
@@ -205,17 +213,19 @@ export async function POST(req: NextRequest) {
             }
             throw e;
           }
-          if (!pv!.covered_price_vnd || !pv!.menu_item_id) {
+          if (!pv!.menu_item_id || (pv!.voucher_type === "PRODUCT" && !pv!.covered_price_vnd)) {
             return NextResponse.json(
-              { error: "Product voucher is not properly configured", code: "VALIDATION_ERROR" },
+              { error: "ITEM voucher is not properly configured", code: "VALIDATION_ERROR" },
               { status: 400 }
             );
           }
           productVoucherMap.set(pv!.id, {
             menu_item_id: pv!.menu_item_id,
-            covered_price_vnd: pv!.covered_price_vnd,
+            covered_price_vnd: pv!.covered_price_vnd ?? 0,
+            voucher_type: pv!.voucher_type === "ITEM" ? "ITEM" : "PRODUCT",
           });
-          item.product_voucher_id = pv!.id;
+          if (item.item_voucher_id) item.item_voucher_id = pv!.id;
+          else item.product_voucher_id = pv!.id;
           voucherQrTokens.set(pv!.id, pv!.qr_token);
         }
       }
@@ -300,8 +310,9 @@ export async function POST(req: NextRequest) {
       line_total: item.line_total,
       bundle_discount_vnd: bundle?.line_discounts_vnd[index] ?? 0,
       product_voucher_id: item.product_voucher_id,
-      product_voucher_covered_vnd: item.product_voucher_id
-        ? (productVoucherMap.get(item.product_voucher_id)?.covered_price_vnd ?? 0)
+      item_voucher_id: item.item_voucher_id,
+      product_voucher_covered_vnd: (item.item_voucher_id ?? item.product_voucher_id)
+        ? (productVoucherMap.get(item.item_voucher_id ?? item.product_voucher_id ?? "")?.covered_price_vnd ?? 0)
         : 0,
       addon_vouchers: item.addon_voucher_ids.map((voucher) => {
         const addon = item.resolvedAddons.find(
@@ -446,13 +457,14 @@ export async function POST(req: NextRequest) {
                   size: item.size,
                   unit_price_vnd: item.unit_price_vnd,
                   addons_price_vnd: item.addons_price_vnd,
-                  product_voucher_discount_vnd: itemCalculation.product_voucher_discount_vnd,
+                  product_voucher_discount_vnd: itemCalculation.product_voucher_discount_vnd + itemCalculation.item_voucher_discount_vnd,
                   total_discount_vnd: itemCalculation.total_discount_vnd,
                   sweetness: item.sweetness as SweetnessLevel,
                   ice_option: item.ice_option as IceOption,
                   coldwhisk: item.coldwhisk,
                   note: item.note,
                   product_voucher_id: itemCalculation.product_voucher_id,
+                  item_voucher_id: itemCalculation.item_voucher_id,
                   addonVouchers: { create: itemCalculation.addon_vouchers },
                   selected_powder_id: item.selected_powder_id,
                   selected_milk_type_id: item.selected_milk_type_id,
@@ -726,6 +738,9 @@ export async function GET(req: NextRequest) {
           items: {
             include: {
               productVoucher: {
+                include: { package: { select: { name: true } } }
+              },
+              itemVoucher: {
                 include: { package: { select: { name: true } } }
               },
               addonVouchers: {

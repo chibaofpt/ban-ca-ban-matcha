@@ -1,5 +1,5 @@
-/** All menu categories — exactly 2 in Phase 2. */
-export type Category = "latte" | "fusion";
+/** All menu categories. Extras are fixed-price non-drink menu items. */
+export type Category = "latte" | "fusion" | "extras";
 
 export type Size = "SMALL" | "MEDIUM" | "LARGE";
 
@@ -73,6 +73,8 @@ export interface MenuItem {
   name: string;
   description: string | null;
   category: Category;
+  /** Fixed price for extras; beverage prices are resolved from sizes. */
+  unit_price_vnd?: number | null;
   is_seasonal: boolean;
   image_url: string | null;
   sort_order: number;
@@ -110,6 +112,8 @@ export interface MenuData {
   updated_at: string;
   latte: MenuItem[];
   fusion: MenuItem[];
+  /** Fixed-price non-drink items shown after drinks. */
+  extras?: MenuItem[];
   /** All active milk types; consumers apply them to Latte items only. */
   milk_types: MilkTypeOption[];
   /** Additive Base Liquid name for the global catalogue. */
@@ -124,6 +128,7 @@ export interface AdminMenuItem {
   name: string;
   description: string | null;
   category: Category;
+  unit_price_vnd?: number | null;
   is_seasonal: boolean;
   image_url: string | null;
   is_available: boolean;

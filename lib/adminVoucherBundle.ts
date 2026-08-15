@@ -49,6 +49,12 @@ function validateScopeConfigurations(
   for (const scope of scopes) {
     const menu = menus.get(scope.menu_item_id);
     if (!menu?.is_available) throw new VoucherBundleReferenceError("Bundle menu scope is unavailable");
+    if (menu.category === "extras") {
+      if (scope.size || scope.powder_id || scope.milk_type_id) {
+        throw new VoucherBundleReferenceError("Extras bundle scopes cannot include drink configuration");
+      }
+      continue;
+    }
     if (scope.size && !menu.sizes?.some((row) => row.size === scope.size && row.base_price_vnd !== null)) {
       throw new VoucherBundleReferenceError("Bundle scope size is unavailable");
     }
@@ -78,9 +84,12 @@ function validateScopeConfigurations(
   if (
     input.bundle_rule.reward_kind === "PRODUCT" &&
     input.bundle_rule.reward_mode === "FIXED_CONFIG" &&
-    input.bundle_rule.reward_product_scopes.some((scope) => !scope.milk_type_id)
+    input.bundle_rule.reward_product_scopes.some((scope) => {
+      const menu = menus.get(scope.menu_item_id);
+      return menu?.category !== "extras" && (!scope.size || !scope.powder_id || !scope.milk_type_id);
+    })
   ) {
-    throw new VoucherBundleReferenceError("Fixed product rewards require a Base Liquid");
+    throw new VoucherBundleReferenceError("Fixed product rewards require size, powder, and Base Liquid");
   }
 }
 

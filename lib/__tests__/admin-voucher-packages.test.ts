@@ -221,6 +221,44 @@ describe("POST /api/admin/voucher-packages", () => {
     );
   });
 
+  it("creates ITEM package only for extras and ignores client covered_price_vnd", async () => {
+    mockMenuItemFindUnique.mockResolvedValue({
+      id: MENU_ITEM_ID,
+      category: "extras",
+      is_available: true,
+      unit_price_vnd: 26_000,
+    });
+    mockPkgCreate.mockResolvedValue({
+      id: PKG_ID,
+      voucher_type: "ITEM",
+      menu_item_id: MENU_ITEM_ID,
+      covered_price_vnd: null,
+    });
+
+    const res = await POST(
+      makeReq({
+        voucher_type: "ITEM",
+        name: "Tặng món Add-on",
+        points_cost: 5,
+        menu_item_id: MENU_ITEM_ID,
+        // A client must not be able to choose the voucher credit/snapshot.
+        covered_price_vnd: 999_000,
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    expect(mockMenuItemFindUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: MENU_ITEM_ID },
+        select: expect.objectContaining({ unit_price_vnd: true }),
+      }),
+    );
+    const createCall = mockPkgCreate.mock.calls[0]?.[0] as {
+      data?: Record<string, unknown>;
+    };
+    expect(createCall.data).not.toHaveProperty("covered_price_vnd");
+  });
+
   it("returns 404 when PRODUCT package references nonexistent menu item", async () => {
     mockMenuItemFindUnique.mockResolvedValue(null);
 

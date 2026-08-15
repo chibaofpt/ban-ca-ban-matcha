@@ -4,6 +4,21 @@ import { Powder } from "@/src/lib/types/powder";
 import { SWEETNESS_OPTIONS, ICE_OPTIONS } from "@/src/constants/orderOptions";
 import { ceilTo1000 } from "@/src/utils/pricing";
 
+/** Build a default standalone cart row for a fixed-price Add-on menu item. */
+export function buildExtrasCartItem(
+  item: MenuItem,
+  bundleRewardVoucherToken?: string,
+): Omit<CartItem, "cartId"> {
+  const unitPrice = item.unit_price_vnd ?? 0;
+  return {
+    menuItemId: item.id, name: item.name, category: "extras", imageUrl: item.image_url,
+    size: null, unitPrice, quantity: 1, sweetness: "FULL", iceOption: "NORMAL",
+    coldwhisk: false, note: "", selectedOptionIds: [], quantityMap: {}, addonsPrice: 0,
+    addonPrices: {}, quantityAddonOptions: [], clientPriceVnd: unitPrice,
+    originalClientPriceVnd: unitPrice, bundleRewardVoucherToken,
+  };
+}
+
 export function line1ItemDetails(
   item: CartItem,
   menuItem: MenuItem | undefined,
@@ -13,8 +28,12 @@ export function line1ItemDetails(
   const chips: string[] = [];
   
   // Size
-  const sizeLabel = item.size === "SMALL" ? "cá nhỏ (360ml)" : item.size === "MEDIUM" ? "cá vừa (500ml)" : "cá lớn (700ml)";
-  chips.push(sizeLabel);
+  if (item.size) {
+    const sizeLabel = item.size === "SMALL" ? "cá nhỏ (360ml)" : item.size === "MEDIUM" ? "cá vừa (500ml)" : "cá lớn (700ml)";
+    chips.push(sizeLabel);
+  } else {
+    chips.push("Add-on");
+  }
 
   if (!menuItem) return chips;
 
@@ -36,6 +55,8 @@ export function line1ItemDetails(
 }
 
 export function line2ItemDetails(item: CartItem): string[] {
+  if (item.category === "extras") return [];
+
   const chips: string[] = [];
 
   // Sweetness

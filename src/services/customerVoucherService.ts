@@ -25,7 +25,7 @@ export interface VoucherPackage {
   id: string;
   name: string;
   description: string | null;
-  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
+  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
   acquisition_mode: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
   points_cost: number;
   ends_at?: string | null;
@@ -65,14 +65,18 @@ export interface BundleVoucherRule {
   productScopes: Array<{
     role: "QUALIFIER" | "REWARD";
     menu_item_id: string;
-    menuItem?: { name: string };
+    size: "SMALL" | "MEDIUM" | "LARGE" | null;
+    matcha_powder_id: string | null;
+    milk_type_id: string | null;
+    reference_price_vnd: number | null;
+    menuItem?: { name: string; category: "latte" | "fusion" | "extras"; is_available: boolean };
   }>;
   addonRewards: Array<{ addon_option_id: string; addonOption?: { label: string } }>;
 }
 
 export interface MyVoucher {
   qr_token: string;
-  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
+  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
   menu_item_id: string | null;
@@ -110,7 +114,7 @@ export interface MyVoucher {
 
 export interface ExchangedVoucher {
   qr_token: string;
-  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
+  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
   status: "ACTIVE";
   expires_at: string | null;
 }

@@ -22,12 +22,13 @@ export interface BundleCartAddon {
 export interface BundleCartItem {
   client_line_id: string;
   menu_item_id: string;
-  size: BundleSize;
+  size: BundleSize | null;
   selected_powder_id: string | null;
   selected_milk_type_id: string | null;
   unit_price_vnd: number;
   quantity: number;
   product_voucher_quantity: number;
+  item_voucher_quantity?: number;
   addons: BundleCartAddon[];
 }
 

@@ -96,7 +96,7 @@ Counter transfer: PENDING → COMPLETED (creator Staff or any Admin confirms pay
    - f. **Compute server prices** — see `pricing-logic` skill for formulas and COALESCE rules
    - g. Compare `client_price_vnd` vs server price per item. Mismatch → abort with `PRICE_CHANGED`
    - h. **Apply vouchers** using the shared calculator — see `voucher-flow`; strict order is
-     BUNDLE → PRODUCT → ADDON → DISCOUNT → FREESHIP
+     BUNDLE → ITEM/PRODUCT → ADDON → DISCOUNT → FREESHIP
    - i. Compute gross `subtotal_vnd`, merchandise-only `total_vnd`, shipping,
      `freeship_discount_vnd`, and payable `grand_total_vnd`
    - j. Create `order` + `order_items` + `order_item_addons`; snapshot effective Base Liquid ml in
@@ -140,7 +140,7 @@ Counter transfer: PENDING → COMPLETED (creator Staff or any Admin confirms pay
 - Keep API routes responsible for auth, request validation, DB resolution, transactions, and
   response mapping; keep price/voucher arithmetic out of route handlers.
 - Re-fetch price and voucher snapshots from DB before calculation; never trust client totals.
-- Return gross subtotal, PRODUCT discount, ADDON discount, discountable subtotal, order
+- Return gross subtotal, ITEM/PRODUCT discount, ADDON discount, discountable subtotal, order
   DISCOUNT, merchandise total, shipping, FREESHIP, grand total, aggregate surplus, applied
   voucher identifiers, and ignored no-benefit voucher identifiers.
 - Apply an item-level voucher to one unit only. Split a voucher-bearing unit into a separate

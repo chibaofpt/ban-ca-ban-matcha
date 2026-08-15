@@ -66,7 +66,7 @@ void ConfirmDialog;
 export default function AdminMenuPage() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<"all" | "latte" | "fusion">("all");
+  const [categoryFilter, setCategoryFilter] = useState<"all" | "latte" | "fusion" | "extras">("all");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [modalState, setModalState] = useState<ModalState>({ open: false });
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
@@ -116,7 +116,7 @@ export default function AdminMenuPage() {
   // ── All items (flat for filtering) ─────────────────────────────────────────
 
   const allItems: AdminMenuItem[] = menuData
-    ? [...menuData.latte, ...menuData.fusion]
+    ? [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])]
     : [];
 
   const filteredItems = allItems
@@ -139,7 +139,7 @@ export default function AdminMenuPage() {
   const handleCreateSuccess = (newItem: AdminMenuItem, powderName?: string) => {
     queryClient.setQueryData<AdminMenuData>(["admin", "menu"], (old) => {
       if (!old) return old;
-      const list = newItem.category === "latte" ? old.latte : old.fusion;
+      const list = newItem.category === "latte" ? old.latte : newItem.category === "fusion" ? old.fusion : (old.extras ?? []);
       return {
         ...old,
         [newItem.category]: [...list, newItem],
@@ -161,6 +161,7 @@ export default function AdminMenuPage() {
         ...old,
         latte: updateList(old.latte),
         fusion: updateList(old.fusion),
+        extras: updateList(old.extras ?? []),
       };
     });
     showToast(`Đã cập nhật món "${updatedItem.name}"`);
@@ -186,7 +187,7 @@ export default function AdminMenuPage() {
           if (!old) return old;
           const toggle = (list: AdminMenuItem[]) =>
             list.map((i) => (i.id === id ? { ...i, is_available: next } : i));
-          return { ...old, latte: toggle(old.latte), fusion: toggle(old.fusion) };
+          return { ...old, latte: toggle(old.latte), fusion: toggle(old.fusion), extras: toggle(old.extras ?? []) };
         });
       }
       return { previousMenu };

@@ -29,7 +29,7 @@ function voucherErrorResponse(error: VoucherError): NextResponse {
   );
 }
 
-/** Resolves PRODUCT and ADDON voucher tokens and validates item-level ownership and matching. */
+/** Resolves ITEM/legacy PRODUCT and ADDON voucher tokens with ownership checks. */
 export async function resolveCustomerItemVouchers(
   data: CustomerOrderInput,
   userId: string,
@@ -40,8 +40,18 @@ export async function resolveCustomerItemVouchers(
   const voucherQrTokens = new Map<string, string>();
 
   for (const item of data.items) {
-    if (!item.product_voucher_id) continue;
-    const voucher = await resolveOwnedVoucherIdentifier(item.product_voucher_id, userId);
+    if (item.item_voucher_id && item.product_voucher_id) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "Chỉ được gửi một loại voucher cho mỗi món", code: "VALIDATION_ERROR" },
+          { status: 400 },
+        ),
+      };
+    }
+    const submittedVoucherId = item.item_voucher_id ?? item.product_voucher_id;
+    if (!submittedVoucherId) continue;
+    const voucher = await resolveOwnedVoucherIdentifier(submittedVoucherId, userId);
     if (voucher && productVoucherMap.has(voucher.id)) {
       return {
         ok: false,
@@ -55,27 +65,30 @@ export async function resolveCustomerItemVouchers(
       };
     }
     try {
-      assertVoucherUsable(voucher, userId, "PRODUCT");
+      const expectedType = item.item_voucher_id ? "ITEM" : "PRODUCT";
+      assertVoucherUsable(voucher, userId, expectedType);
     } catch (error) {
       if (error instanceof VoucherError) {
         return { ok: false, response: voucherErrorResponse(error) };
       }
       throw error;
     }
-    if (!voucher?.covered_price_vnd || !voucher.menu_item_id) {
+    if (!voucher?.menu_item_id || (voucher.voucher_type === "PRODUCT" && !voucher.covered_price_vnd)) {
       return {
         ok: false,
         response: NextResponse.json(
-          { error: "Product voucher is not properly configured", code: "VALIDATION_ERROR" },
+            { error: "ITEM voucher is not properly configured", code: "VALIDATION_ERROR" },
           { status: 400 },
         ),
       };
     }
     productVoucherMap.set(voucher.id, {
       menu_item_id: voucher.menu_item_id,
-      covered_price_vnd: voucher.covered_price_vnd,
+      covered_price_vnd: voucher.covered_price_vnd ?? 0,
+      voucher_type: voucher.voucher_type === "ITEM" ? "ITEM" : "PRODUCT",
     });
-    item.product_voucher_id = voucher.id;
+    if (item.item_voucher_id) item.item_voucher_id = voucher.id;
+    else item.product_voucher_id = voucher.id;
     voucherQrTokens.set(voucher.id, voucher.qr_token);
   }
 

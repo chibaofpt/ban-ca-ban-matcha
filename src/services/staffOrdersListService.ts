@@ -8,7 +8,7 @@ export interface OrderItemRes {
   addons_price_vnd: number;
   total_discount_vnd?: number;
   product_voucher_discount_vnd?: number;
-  size: string;
+  size: string | null;
   sweetness: string;
   ice_option: string;
   coldwhisk: boolean;
@@ -30,6 +30,7 @@ export interface OrderItemRes {
     quantity: number;
   }[];
   productVoucher?: { package: { name: string } } | null;
+  itemVoucher?: { package: { name: string } } | null;
   addonVouchers?: Array<{ discount_applied_vnd?: number; voucher: { package: { name: string } } }>;
 }
 

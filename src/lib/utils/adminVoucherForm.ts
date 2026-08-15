@@ -4,7 +4,7 @@ import { toExclusiveEndIso } from "@/src/lib/utils/voucherDates";
 
 export { formatInclusiveEndDate, toExclusiveEndIso } from "@/src/lib/utils/voucherDates";
 
-export type VoucherType = "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
+export type VoucherType = "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
 export interface VoucherDraft extends BundleVoucherFormState {
   voucherType: VoucherType;
   discountType: "PERCENT" | "FIXED";
@@ -46,6 +46,7 @@ function common(draft: VoucherDraft) {
 export function buildVoucherInput(draft: VoucherDraft): CreateVoucherPackageInput {
   if (draft.voucherType === "BUNDLE") return buildBundleVoucherInput(draft);
   const base = common(draft);
+  if (draft.voucherType === "ITEM") return { ...base, voucher_type: "ITEM", menu_item_id: draft.menuItemId };
   if (draft.voucherType === "PRODUCT") return {
     ...base, voucher_type: "PRODUCT", menu_item_id: draft.menuItemId, size: draft.size,
     matcha_powder_id: draft.matchaPowderId || null, milk_type_id: draft.milkTypeId || null,
@@ -67,14 +68,15 @@ export function validateVoucherDraft(draft: VoucherDraft): string | null {
   if (!draft.name.trim()) return "Vui lòng nhập tên voucher";
   if (draft.acquisitionMode === "POINTS_EXCHANGE" && draft.pointsCost < 1) return "Điểm đổi phải lớn hơn 0";
   if (draft.voucherType === "PRODUCT" && !draft.menuItemId) return "Vui lòng chọn sản phẩm";
+  if (draft.voucherType === "ITEM" && !draft.menuItemId) return "Vui lòng chọn Add-on";
   if (draft.voucherType === "ADDON" && !draft.addonOptionId) return "Vui lòng chọn addon";
   if (draft.voucherType === "BUNDLE" && draft.qualifierScopes.length === 0) return "Vui lòng chọn món điều kiện";
   if (draft.voucherType === "BUNDLE" && draft.rewardKind === "PRODUCT" && draft.rewardMode !== "SAME_CONFIG" && draft.rewardProductScopes.length === 0) return "Vui lòng chọn món quà";
   if (draft.voucherType === "BUNDLE" && draft.rewardKind === "PRODUCT" && draft.rewardMode === "FIXED_CONFIG") {
-    if (draft.rewardProductScopes.some((scope) => scope.sizes.length === 0)) return "Vui lòng chọn ít nhất một size cho từng món quà";
+    if (draft.rewardProductScopes.some((scope) => scope.category !== "extras" && scope.sizes.length === 0)) return "Vui lòng chọn ít nhất một size cho từng món quà";
     if (draft.rewardProductScopes.some((scope) => scope.category === "fusion" && scope.powderIds.length === 0)) return "Vui lòng chọn ít nhất một loại bột cho từng món Fusion";
     if (draft.rewardProductScopes.some((scope) => scope.category === "latte" && !scope.fixedPowderId)) return "Món Latte chưa có bột cố định hợp lệ";
-    if (draft.rewardProductScopes.some((scope) => scope.milkTypeIds.length === 0)) return "Vui lòng chọn Base Liquid cho từng món quà cố định";
+    if (draft.rewardProductScopes.some((scope) => scope.category !== "extras" && scope.milkTypeIds.length === 0)) return "Vui lòng chọn Base Liquid cho từng món quà cố định";
   }
   if (draft.voucherType === "BUNDLE" && draft.rewardKind === "ADDON" && draft.rewardAddonOptionIds.length === 0) return "Vui lòng chọn addon quà";
   if (draft.voucherType === "BUNDLE" && draft.rewardMode === "ALLOWED_SCOPE" && draft.rewardProductScopes.some((scope) => scope.referencePriceVnd < 1_000 || scope.referencePriceVnd % 1_000 !== 0)) return "Hạn mức từng món phải từ 1.000đ và chia hết cho 1.000";
@@ -150,6 +152,9 @@ export function estimateVoucherLiabilityVnd(
   }
   if (draft.voucherType === "FREESHIP") return draft.quantity * draft.coveredDeliveryFeeVnd;
   if (draft.voucherType === "PRODUCT") {
+    return draft.quantity * (menuPrices.get(draft.menuItemId) ?? 0);
+  }
+  if (draft.voucherType === "ITEM") {
     return draft.quantity * (menuPrices.get(draft.menuItemId) ?? 0);
   }
   if (draft.voucherType === "ADDON") {

@@ -15,13 +15,14 @@ export interface CreateOrderPayload {
     client_line_id?: string;
     menu_item_id: string;
     quantity: number;
-    size: "SMALL" | "MEDIUM" | "LARGE";
+    size: "SMALL" | "MEDIUM" | "LARGE" | null;
     sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL" | "EXTRA";
     ice_option: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
     coldwhisk: boolean;
     note?: string;
     addon_option_ids: { option_id: string; quantity: number }[];
     product_voucher_id?: string;
+    item_voucher_id?: string;
     addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
     selected_powder_id?: string;
     selected_milk_type_id?: string;
@@ -79,6 +80,7 @@ function buildPayloadItems(cart: CartItem[]): CreateOrderPayload["items"] {
       ...c.quantityAddonOptions,
     ],
     ...(c.productVoucherId ? { product_voucher_id: c.productVoucherId } : {}),
+    ...(c.itemVoucherId ? { item_voucher_id: c.itemVoucherId } : {}),
     ...(c.addonVouchers && c.addonVouchers.length > 0
       ? {
           addon_voucher_ids: c.addonVouchers.map((av) => ({

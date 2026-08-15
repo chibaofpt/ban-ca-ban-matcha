@@ -31,6 +31,7 @@ type PanelIndex = 0 | 1;
 const TAB_PANEL: Record<TabId, PanelIndex> = {
   latte: 0,
   fusion: 0,
+  extras: 0,
   seasonal: 1,
 };
 
@@ -45,6 +46,7 @@ export default function MenuPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const latteSectionRef = useRef<HTMLDivElement>(null);
   const fusionSectionRef = useRef<HTMLDivElement>(null);
+  const extrasSectionRef = useRef<HTMLDivElement>(null);
   const isScrollingProgrammatically = useRef(false);
   const carouselX = useMotionValue(0);
   const setPowderData = usePowderStore((state) => state.setPowderData);
@@ -106,7 +108,11 @@ export default function MenuPage() {
     }
 
     setActiveTab(newTab);
-    const target = newTab === "fusion" ? fusionSectionRef : latteSectionRef;
+    const target = newTab === "extras"
+      ? extrasSectionRef
+      : newTab === "fusion"
+        ? fusionSectionRef
+        : latteSectionRef;
     isScrollingProgrammatically.current = true;
     if (activePanel === 1) {
       setActivePanel(0);
@@ -120,11 +126,24 @@ export default function MenuPage() {
 
   useEffect(() => {
     const fusionSection = fusionSectionRef.current;
-    if (!fusionSection) return;
-    const observer = new IntersectionObserver(([entry]) => {
+    const extrasSection = extrasSectionRef.current;
+    if (!fusionSection || !extrasSection) return;
+    const updateActiveSection = () => {
       if (isScrollingProgrammatically.current || activePanel !== 0) return;
-      setActiveTab(entry.isIntersecting ? "fusion" : "latte");
-    }, { rootMargin: "-80px 0px 0px 0px", threshold: 0 });
+      const stickyOffset = 140;
+      if (extrasSection.getBoundingClientRect().top <= stickyOffset) {
+        setActiveTab("extras");
+      } else if (fusionSection.getBoundingClientRect().top <= stickyOffset) {
+        setActiveTab("fusion");
+      } else {
+        setActiveTab("latte");
+      }
+    };
+    const observer = new IntersectionObserver(updateActiveSection, {
+      rootMargin: "-140px 0px 0px 0px",
+      threshold: 0,
+    });
+    observer.observe(extrasSection);
     observer.observe(fusionSection);
     return () => observer.disconnect();
   }, [activePanel]);
@@ -164,7 +183,7 @@ export default function MenuPage() {
   const showExistingSheet = existingItemTarget !== null && existingCartItemsForTarget.length > 0;
 
   const data = menuRes ?? null;
-  const seasonalItems = [...(data?.latte ?? []), ...(data?.fusion ?? [])]
+  const seasonalItems = [...(data?.latte ?? []), ...(data?.fusion ?? []), ...(data?.extras ?? [])]
     .filter((item) => item.is_seasonal);
 
   return (
@@ -192,11 +211,13 @@ export default function MenuPage() {
             loading={menuLoading || powderLoading}
             latteItems={data?.latte ?? []}
             fusionItems={data?.fusion ?? []}
+            extrasItems={data?.extras ?? []}
             seasonalItems={seasonalItems}
             milkTypes={data?.milk_types ?? []}
             cartItems={cartItems}
             latteSectionRef={latteSectionRef}
             fusionSectionRef={fusionSectionRef}
+            extrasSectionRef={extrasSectionRef}
             onItemClick={handleItemClick}
           />
         </div>

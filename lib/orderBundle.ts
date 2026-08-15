@@ -50,13 +50,14 @@ export interface OrderBundleDatabase {
 interface BundleOrderItemInput {
   client_line_id?: string;
   product_voucher_id?: string;
+  item_voucher_id?: string;
   addon_voucher_ids: Array<{ voucher_id: string; addon_option_id: string }>;
 }
 
 interface BundleResolvedItem {
   menu_item_id: string;
-  size: "SMALL" | "MEDIUM" | "LARGE";
-  selected_powder_id: string;
+  size: "SMALL" | "MEDIUM" | "LARGE" | null;
+  selected_powder_id: string | null;
   selected_milk_type_id: string | null;
   unit_price_vnd: number;
   quantity: number;
@@ -166,6 +167,7 @@ export async function resolveOrderBundle(
       unit_price_vnd: item.unit_price_vnd,
       quantity: item.quantity,
       product_voucher_quantity: clientItem.product_voucher_id ? item.quantity : 0,
+      item_voucher_quantity: clientItem.item_voucher_id ? item.quantity : 0,
       addons: item.resolvedAddons.map((addon) => ({
         ...addon,
         voucher_discounted_quantity: clientItem.addon_voucher_ids.filter(

@@ -32,8 +32,16 @@ describe("Logic hiển thị và nhận gói voucher", () => {
       reward_mode: "ALLOWED_SCOPE", benefit_scaling: "PER_BUNDLE",
       max_applications_order: 1, max_reward_units_order: null,
       productScopes: [
-        { role: "QUALIFIER", menu_item_id: "latte", menuItem: { name: "Latte" } },
-        { role: "REWARD", menu_item_id: "fusion", menuItem: { name: "Fusion" } },
+        {
+          role: "QUALIFIER", menu_item_id: "latte", size: null,
+          matcha_powder_id: null, milk_type_id: null, reference_price_vnd: null,
+          menuItem: { name: "Latte", category: "latte", is_available: true },
+        },
+        {
+          role: "REWARD", menu_item_id: "fusion", size: null,
+          matcha_powder_id: null, milk_type_id: null, reference_price_vnd: null,
+          menuItem: { name: "Fusion", category: "fusion", is_available: true },
+        },
       ], addonRewards: [],
     } });
     expect(getPackageBenefitText(pkg)).toBe("Mua 2 Latte · Tặng 1 Fusion");

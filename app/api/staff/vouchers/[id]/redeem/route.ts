@@ -29,11 +29,15 @@ export async function PATCH(
       );
     }
 
-    if (voucher.voucher_type === "BUNDLE") {
+    if (voucher.voucher_type === "BUNDLE" || voucher.voucher_type === "ITEM") {
       return NextResponse.json(
         {
-          error: "Bundle vouchers must be applied to an order",
-          code: "BUNDLE_ORDER_REQUIRED",
+          error: voucher.voucher_type === "ITEM"
+            ? "ITEM vouchers must be applied to an order"
+            : "Bundle vouchers must be applied to an order",
+          code: voucher.voucher_type === "ITEM"
+            ? "ITEM_ORDER_REQUIRED"
+            : "BUNDLE_ORDER_REQUIRED",
         },
         { status: 422 },
       );

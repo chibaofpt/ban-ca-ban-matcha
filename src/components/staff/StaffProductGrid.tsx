@@ -58,7 +58,7 @@ export const StaffProductGrid = memo(function StaffProductGrid({
               )}
               <div className="absolute top-2 left-2 right-2 flex justify-between items-start">
                 <span className="px-2 py-0.5 bg-background/90 backdrop-blur-sm rounded-full text-[10px] font-bold text-primary/60 border border-border/50 uppercase tracking-wider shadow-sm">
-                  {item.category === "latte" ? "Latte" : "Fusion"}
+                  {item.category === "latte" ? "Latte" : item.category === "fusion" ? "Fusion" : "Add-on"}
                 </span>
                 {item.is_seasonal && (
                   <span className="px-2 py-0.5 bg-orange-500/90 backdrop-blur-sm rounded-full text-[10px] font-bold text-white shadow-sm flex items-center gap-1">
@@ -76,7 +76,9 @@ export const StaffProductGrid = memo(function StaffProductGrid({
             {/* Size prices row */}
             <div className="mt-auto pt-2 border-t border-border/50 w-full">
               <div className="flex items-end justify-between gap-1">
-                {item.sizes.filter((s) => s.base_price_vnd != null).map((s) => (
+                {item.category === "extras" ? (
+                  <span className="text-sm font-bold text-primary">{Math.round((item.unit_price_vnd ?? 0) / 1000)}k / món</span>
+                ) : item.sizes.filter((s) => s.base_price_vnd != null).map((s) => (
                   <div key={s.size} className="flex flex-col items-center gap-0.5 flex-1">
                     <span className="text-[8px] font-bold text-primary/50 uppercase tracking-wide whitespace-nowrap">
                       {SIZE_CARD_LABELS[s.size] ?? s.size}

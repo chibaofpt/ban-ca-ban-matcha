@@ -55,7 +55,7 @@ export function summarizeBundleCart(items: readonly CartItem[]): BundleCartSumma
       label: item.name,
       quantity: item.quantity,
       unit_price_vnd: Math.max(0, item.originalClientPriceVnd - item.addonsPrice),
-      product_voucher_quantity: item.productVoucherId ? 1 : 0,
+      product_voucher_quantity: item.productVoucherId || item.itemVoucherId ? 1 : 0,
       addons: [...quantities.entries()].map(([addonOptionId, quantity]) => ({
         addon_option_id: addonOptionId,
         quantity,

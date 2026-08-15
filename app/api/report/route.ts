@@ -136,7 +136,7 @@ export async function GET(req: NextRequest) {
       items: Array<{
         menu_item_id: string;
         quantity: number;
-        size: "SMALL" | "MEDIUM" | "LARGE";
+        size: "SMALL" | "MEDIUM" | "LARGE" | null;
         selected_powder_id: string | null;
         selected_milk_type_id: string | null;
         base_liquid_ml: number | null;

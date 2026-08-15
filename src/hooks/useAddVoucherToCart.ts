@@ -137,7 +137,7 @@ export function useAddVoucherToCart() {
 
   const addToCart = useCallback(
     async (voucher: MyVoucher): Promise<AddVoucherResult> => {
-      if (voucher.voucher_type !== "PRODUCT" || !voucher.menu_item_id) {
+      if ((voucher.voucher_type !== "PRODUCT" && voucher.voucher_type !== "ITEM") || !voucher.menu_item_id) {
         return { ok: false, reason: "fetch_failed" };
       }
 
@@ -145,12 +145,41 @@ export function useAddVoucherToCart() {
       try {
         // Fetch fresh menu data (cannot rely on MenuPage cache from outside that context)
         const menuData = await fetchMenu();
-        const allItems = [...menuData.latte, ...menuData.fusion];
+        const allItems = [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])];
         const latteItems = menuData.latte;
 
         const menuItem = allItems.find((i) => i.id === voucher.menu_item_id);
         if (!menuItem) {
           return { ok: false, reason: "item_unavailable" };
+        }
+
+        if (voucher.voucher_type === "ITEM") {
+          if (menuItem.category !== "extras" || menuItem.unit_price_vnd == null) {
+            return { ok: false, reason: "item_unavailable" };
+          }
+          addItem({
+            menuItemId: menuItem.id,
+            name: menuItem.name,
+            category: "extras",
+            imageUrl: menuItem.image_url,
+            size: null,
+            unitPrice: menuItem.unit_price_vnd,
+            quantity: 1,
+            sweetness: "FULL",
+            iceOption: "NORMAL",
+            coldwhisk: false,
+            note: "",
+            selectedOptionIds: [],
+            quantityMap: {},
+            addonsPrice: 0,
+            addonPrices: {},
+            quantityAddonOptions: [],
+            clientPriceVnd: 0,
+            originalClientPriceVnd: menuItem.unit_price_vnd,
+            itemVoucherId: voucher.qr_token,
+          });
+          setCartOpen(true);
+          return { ok: true };
         }
 
         // Use voucher's size config (soft match: item must support this size)
@@ -234,7 +263,7 @@ export function useAddVoucherToCart() {
         const cartItemBase: Omit<CartItem, "cartId"> = {
           menuItemId: menuItem.id,
           name: menuItem.name,
-          category: menuItem.category as "latte" | "fusion",
+          category: menuItem.category,
           imageUrl: menuItem.image_url,
           size: voucherSize,
           unitPrice: originalPrice,

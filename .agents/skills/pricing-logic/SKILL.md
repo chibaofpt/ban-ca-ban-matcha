@@ -85,6 +85,8 @@ addons_price_vnd = sum(addon unit price × quantity)
 - When creating a PRODUCT voucher package, snapshot `covered_price_vnd` from the selected
   drink configuration only; exclude all selected or included addons.
 - Apply an ADDON voucher to one unit of its matching addon only; never to Extra Matcha.
+- Price `extras` directly from `menu_items.unit_price_vnd`; do not run drink recipe pricing.
+- ITEM vouchers cover one matching extras unit at its current server price and create no surplus.
 - Preserve gross prices as order snapshots and store reductions separately.
 - Let one shared order calculator consume resolved drink/addon prices for both customer and
   staff orders. Do not repeat voucher arithmetic in cart state or API routes.

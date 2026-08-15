@@ -21,11 +21,11 @@
 
 ## Canonical Order Totals
 
-Apply vouchers in this strict order: `BUNDLE → PRODUCT → ADDON → DISCOUNT → FREESHIP`.
+Apply vouchers in this strict order: `BUNDLE → ITEM/PRODUCT → ADDON → DISCOUNT → FREESHIP`.
 
 ```text
 subtotal_vnd = gross drinks + gross addons
-item_discount_vnd = BUNDLE reductions + PRODUCT reductions + ADDON reductions
+item_discount_vnd = BUNDLE reductions + ITEM/PRODUCT reductions + ADDON reductions
 discountable_subtotal_vnd = max(0, subtotal_vnd - item_discount_vnd)
 total_vnd = max(0, discountable_subtotal_vnd - total_voucher_discount_vnd)
 grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
@@ -65,7 +65,7 @@ grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
 | Enum | Values |
 |---|---|
 | `Role` | `CUSTOMER`, `STAFF`, `ADMIN` |
-| `VoucherType` | `DISCOUNT`, `PRODUCT`, `ADDON`, `FREESHIP`, `BUNDLE` |
+| `VoucherType` | `ITEM`, `DISCOUNT`, `PRODUCT`, `ADDON`, `FREESHIP`, `BUNDLE` |
 | `DiscountType` | `PERCENT`, `FIXED` |
 | `VoucherStatus` | `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, `REFUNDED` |
 | `UsedChannel` | `ONLINE`, `OFFLINE` |
@@ -209,7 +209,9 @@ Global Base Liquid catalog for Latte and Fusion. The physical table name is reta
 - `id` uuid PK
 - `name` string
 - `description` string nullable
-- `category` string — `"latte"` or `"fusion"` only
+- `category` string — `"latte"`, `"fusion"`, or `"extras"`
+- `unit_price_vnd` int nullable — required for `extras`, at least 1,000 and divisible by 1,000;
+  always null for drink categories
 - `is_seasonal` bool — default false
 - `matcha_powder_id` uuid FK nullable UK → matcha_powder — Latte only: the fixed powder. 1 powder can only belong to 1 Latte item.
 - `default_powder_id` uuid FK nullable → matcha_powder — Fusion only: default powder
@@ -340,7 +342,7 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `order_id` uuid FK → orders (cascade delete)
 - `menu_item_id` uuid FK → menu_items
 - `quantity` int
-- `size` Size — required. Server validates `base_price_vnd IS NOT NULL` for this size.
+- `size` Size nullable — required for drinks; null for `extras`.
 - `unit_price_vnd` int — original server-computed drink price before voucher credit
 - `addons_price_vnd` int — original addon total before voucher discounts
 - `product_voucher_discount_vnd` int — PRODUCT reduction limited to drink price
@@ -352,6 +354,7 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `coldwhisk` bool — default false
 - `sweetness` SweetnessLevel — default `FULL`
 - `product_voucher_id` uuid FK nullable → vouchers
+- `item_voucher_id` uuid FK nullable unique → vouchers — one ITEM voucher per extras order line
 - `note` string nullable
 
 > One PRODUCT voucher applies to one drink unit. Split a voucher-bearing unit into its own
@@ -409,13 +412,13 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `points_cost` int
 - `discount_type` DiscountType nullable
 - `discount_value` int nullable
-- `menu_item_id` uuid FK nullable → menu_items — PRODUCT type only
+- `menu_item_id` uuid FK nullable → menu_items — PRODUCT or ITEM target
 - `size` Size nullable — PRODUCT type only
 - `matcha_powder_id` uuid FK nullable → matcha_powder — PRODUCT type only
 - `milk_type_id` uuid FK nullable → milk_type — PRODUCT type only
 - `included_addon_option_ids` string[] — array of uuid (or jsonb) for PRODUCT type only
 - `addon_option_id` uuid FK nullable → addon_options — ADDON type only
-- `covered_price_vnd` int nullable — snapshot price for PRODUCT and ADDON
+- `covered_price_vnd` int nullable — snapshot price for PRODUCT and ADDON; ITEM uses current price
 - `covered_delivery_fee_vnd` int nullable — snapshot max delivery fee for FREESHIP
 - `min_order_vnd` int nullable — minimum for DISCOUNT or FREESHIP
 - `is_active` bool — default true
@@ -428,6 +431,9 @@ Junction table mapping multiple ADDON vouchers to an order item.
 > package display and issuance. At order application time, PRODUCT eligibility matches
 > `menu_item_id` only and its credit applies to drink components only. Compute
 > `covered_price_vnd` from the selected drink configuration without addon prices.
+>
+> ITEM packages target `extras` only. Their drink-configuration and covered-price fields are null.
+> Applying one makes one matching unit free at the current server price, with no surplus.
 
 ---
 

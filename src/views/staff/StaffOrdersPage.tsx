@@ -13,6 +13,7 @@ import { listActiveVoucherPackages } from "@/src/services/customerVoucherService
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { calcLattePrice, calcFusionPrice, resolveGram } from "@/src/utils/pricing";
 import { useStaffCartStore, useStaffCartTotalPrice } from "@/src/lib/store/staffCartStore";
+import { buildExtrasCartItem } from "@/src/utils/cartHelpers";
 import ProductModal from "@/src/components/shared/ProductModal";
 import { StaffCartDrawer } from "@/src/components/staff/StaffCartDrawer";
 import { CustomerSelectModal } from "@/src/components/staff/CustomerSelectModal";
@@ -64,6 +65,7 @@ function buildOrderItems(
         })),
       ],
       ...(productVoucherId ? { product_voucher_id: productVoucherId } : {}),
+      ...(c.itemVoucherId ? { item_voucher_id: c.itemVoucherId } : {}),
       ...(addonVouchers.length > 0
         ? {
             addon_voucher_ids: addonVouchers.map((av) => ({
@@ -109,7 +111,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     queryFn: fetchPowders,
   });
 
-  const menuItems = useMemo(() => menuData ? [...menuData.latte, ...menuData.fusion] : [], [menuData]);
+  const menuItems = useMemo(() => menuData ? [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])] : [], [menuData]);
   const status: LoadStatus = isMenuLoading || isPowderLoading ? "loading" : (menuData && pData) ? "success" : "error";
   
   const loadMenu = () => {
@@ -295,14 +297,14 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     !!discountVoucher ||
     !!selectedBundleToken ||
     selectedDiscountIds.length > 0 ||
-    cart.some(c => !!c.productVoucherId || (c.addonVouchers && c.addonVouchers.length > 0)),
+    cart.some(c => !!c.productVoucherId || !!c.itemVoucherId || (c.addonVouchers && c.addonVouchers.length > 0)),
   [discountVoucher, selectedBundleToken, selectedDiscountIds, cart]);
 
   // ── Cart handlers ─────────────────────────────────────────────────────
 
   const handleAddToCart = (item: CartItem) => {
     if (editingCartItem) {
-      const isVoucherApplied = item.productVoucherId !== undefined || (item.addonVouchers && item.addonVouchers.length > 0);
+      const isVoucherApplied = item.productVoucherId !== undefined || item.itemVoucherId !== undefined || (item.addonVouchers && item.addonVouchers.length > 0);
       if (editingCartItem.quantity > 1 && isVoucherApplied) {
         // Split logic: the edited item keeps the voucher but gets qty 1
         updateItem(editingCartItem.cartId, { ...item, quantity: 1 });
@@ -313,6 +315,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
           clientPriceVnd: item.originalClientPriceVnd || item.unitPrice,
           unitPrice: item.originalClientPriceVnd || item.unitPrice,
           productVoucherId: undefined,
+          itemVoucherId: undefined,
           productVoucherDiscountVnd: undefined,
           addonVouchers: [],
         };
@@ -529,8 +532,8 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   // ── Voucher wrappers ──────────────────────────────────────────────────
 
   const handleApplyProduct = (cartId: string, voucher: import("@/src/services/staffVoucherService").MyVoucher) => {
-    if (voucher.covered_price_vnd) {
-      applyProductVoucher(cartId, voucher.qr_token, voucher.covered_price_vnd);
+    if (voucher.voucher_type === "ITEM" || voucher.covered_price_vnd) {
+      applyProductVoucher(cartId, voucher.qr_token, voucher.covered_price_vnd ?? 0);
     }
   };
 
@@ -678,6 +681,15 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         bundleAllocations={bundleAllocations}
         onBundleVoucherChange={setSelectedBundleToken}
         onBundleAllocationsChange={setBundleAllocations}
+        onAddExtrasReward={(menuItemId, voucherToken) => {
+          const reward = (menuData?.extras ?? []).find((item) => item.id === menuItemId);
+          return reward ? addItem(buildExtrasCartItem(reward, voucherToken)) : null;
+        }}
+        onRemoveTransientRewards={(voucherToken) => {
+          cart
+            .filter((item) => item.bundleRewardVoucherToken === voucherToken)
+            .forEach((item) => removeItem(item.cartId));
+        }}
         customerVouchers={customerVouchers}
         selectedDiscountIds={selectedDiscountIds}
         onToggleDiscount={toggleDiscountId}

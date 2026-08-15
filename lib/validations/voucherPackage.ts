@@ -48,6 +48,11 @@ const rawVoucherPackageSchema = z.discriminatedUnion("voucher_type", [
   }),
   z.object({
     ...commonFields,
+    voucher_type: z.literal("ITEM"),
+    menu_item_id: z.string().uuid(),
+  }),
+  z.object({
+    ...commonFields,
     voucher_type: z.literal("PRODUCT"),
     menu_item_id: z.string().uuid(),
     size: sizeSchema,
@@ -123,16 +128,6 @@ export const createVoucherPackageSchema = rawVoucherPackageSchema.superRefine((d
     }
     if (rule.reward_mode !== "SAME_CONFIG" && rule.reward_product_scopes.length === 0) {
       ctx.addIssue({ code: "custom", path: ["bundle_rule", "reward_product_scopes"], message: "Product reward scope is required" });
-    }
-    if (
-      rule.reward_mode === "FIXED_CONFIG" &&
-      rule.reward_product_scopes.some((scope) => !scope.size || !scope.powder_id)
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["bundle_rule", "reward_product_scopes"],
-        message: "Fixed product rewards require size and powder",
-      });
     }
     if (
       rule.reward_mode === "ALLOWED_SCOPE" &&

@@ -67,9 +67,52 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     }
     const validData = validation.data;
     const availabilityOnlyUpdate = isAvailabilityOnlyMenuUpdate(raw);
+
+    if (existing.category !== "extras" && validData.unit_price_vnd != null) {
+      return NextResponse.json(
+        { error: "Đồ uống không sử dụng giá cố định", code: "VALIDATION_ERROR" },
+        { status: 422 },
+      );
+    }
+    if (existing.category === "extras" && validData.unit_price_vnd === null) {
+      return NextResponse.json(
+        { error: "Add-on phải có đơn giá", code: "VALIDATION_ERROR" },
+        { status: 422 },
+      );
+    }
+    if (
+      existing.category === "extras" &&
+      validData.unit_price_vnd !== undefined &&
+      validData.unit_price_vnd !== existing.unit_price_vnd
+    ) {
+      const now = new Date();
+      const activeItemVoucherCount = await prisma.voucher.count({
+        where: {
+          menu_item_id: id,
+          voucher_type: "ITEM",
+          status: { in: ["ACTIVE", "RESERVED"] },
+          OR: [{ expires_at: null }, { expires_at: { gt: now } }],
+        },
+      });
+      if (activeItemVoucherCount > 0 && validData.confirm_price_change !== true) {
+        return NextResponse.json(
+          {
+            error: "Add-on đang có voucher ITEM còn hiệu lực",
+            code: "CONFLICT",
+            details: {
+              reason: "ACTIVE_ITEM_VOUCHERS",
+              count: activeItemVoucherCount,
+              old_unit_price_vnd: existing.unit_price_vnd,
+              new_unit_price_vnd: validData.unit_price_vnd,
+            },
+          },
+          { status: 409 },
+        );
+      }
+    }
     let resolvedDefaultBaseLiquidId = existing.default_base_liquid_id;
     let allowedBaseLiquidIdsToSave: string[] | undefined;
-    if (!availabilityOnlyUpdate) {
+    if (!availabilityOnlyUpdate && existing.category !== "extras") {
       const activeBaseLiquids = await prisma.milkType.findMany({
         where: { is_active: true },
         select: { id: true, is_default: true },
@@ -165,6 +208,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
             ...(validData.is_seasonal !== undefined && { is_seasonal: validData.is_seasonal }),
             ...(validData.is_available !== undefined && { is_available: validData.is_available }),
             ...(validData.sort_order !== undefined && { sort_order: validData.sort_order }),
+            ...(existing.category === "extras" && validData.unit_price_vnd !== undefined && {
+              unit_price_vnd: validData.unit_price_vnd,
+            }),
             ...(validData.base_liquid_note !== undefined && {
               base_liquid_note: validData.base_liquid_note,
             }),
@@ -189,7 +235,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         });
 
         // Upsert sizes if provided
-        if (validData.sizes && validData.sizes.length > 0) {
+        if (existing.category !== "extras" && validData.sizes && validData.sizes.length > 0) {
           await Promise.all(
             validData.sizes.map((s) =>
               tx.menuItemSize.upsert({

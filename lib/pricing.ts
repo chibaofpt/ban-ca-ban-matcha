@@ -96,8 +96,8 @@ export async function buildPricingContext(client: PrismaTransactionClient = pris
 // ── Per-item price resolution ─────────────────────────────────────────────────
 
 export interface OrderItemPriceInput {
-  category: "latte" | "fusion";
-  size: Size;
+  category: "latte" | "fusion" | "extras";
+  size: Size | null;
   base_price_vnd: number;
   custom_powder_grams: CustomPowderGrams | null;
   /** Resolved powder id (server sets for Latte, client sends for Fusion). */
@@ -122,6 +122,8 @@ export function resolveOrderItemPrice(
   input: OrderItemPriceInput,
   ctx: PricingContext
 ): number {
+  if (input.category === "extras") return ceil1000(input.base_price_vnd);
+  if (!input.size) throw new Error("Drink size is required");
   const { category, size, base_price_vnd, custom_powder_grams, powder_id } = input;
 
   const powderSizeConfigs = ctx.powderSizeConfigMap[powder_id] ?? [];
@@ -170,6 +172,11 @@ export function resolveOrderItemBaseLiquidMl(
 ): number {
   const systemMl = ctx.defaultSizeConfigs.find((entry) => entry.size === size)?.milk_ml ?? 0;
   return resolveBaseLiquidMl(overrideMl, systemMl);
+}
+
+/** Ceil a fixed extras price while keeping all server prices on the VND grid. */
+function ceil1000(value: number): number {
+  return Math.ceil(value / 1000) * 1000;
 }
 
 /**

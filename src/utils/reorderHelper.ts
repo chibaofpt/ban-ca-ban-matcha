@@ -45,7 +45,11 @@ export function buildReorderItem(
   const configSummary: string[] = [];
 
   // 1. Find menu item
-  const allMenuItems = [...(menuData.latte || []), ...(menuData.fusion || [])];
+  const allMenuItems = [
+    ...(menuData.latte || []),
+    ...(menuData.fusion || []),
+    ...(menuData.extras || []),
+  ];
   const menuItem = allMenuItems.find(m => m.id === item.menu_item_id);
 
   if (!menuItem) {
@@ -57,7 +61,51 @@ export function buildReorderItem(
     return { cartItem: null, warnings, configSummary };
   }
 
-  configSummary.push(`${menuItem.name} — ${formatOrderSize(item.size)}`);
+  configSummary.push(`${menuItem.name} — ${item.size ? formatOrderSize(item.size) : "Add-on"}`);
+
+  if (menuItem.category === "extras") {
+    const fixedPrice = menuItem.unit_price_vnd ?? 0;
+    if (fixedPrice < 1000 || fixedPrice % 1000 !== 0) {
+      warnings.push({ type: "ITEM_UNAVAILABLE", itemName: menuItem.name, details: "Giá Add-on hiện không hợp lệ." });
+      return { cartItem: null, warnings, configSummary };
+    }
+    if (item.unit_price_vnd !== fixedPrice) {
+      warnings.push({
+        type: "PRICE_CHANGED",
+        itemName: menuItem.name,
+        details: `Giá đã thay đổi từ ${formatMoney(item.unit_price_vnd)}đ sang ${formatMoney(fixedPrice)}đ`,
+      });
+    }
+    return {
+      cartItem: {
+        menuItemId: menuItem.id,
+        name: menuItem.name,
+        category: "extras",
+        imageUrl: menuItem.image_url,
+        size: null,
+        quantity: item.quantity,
+        sweetness: item.sweetness,
+        iceOption: item.ice_option,
+        coldwhisk: false,
+        note: item.note || "",
+        selectedOptionIds: [],
+        quantityMap: {},
+        addonsPrice: 0,
+        addonPrices: {},
+        quantityAddonOptions: [],
+        unitPrice: fixedPrice,
+        clientPriceVnd: fixedPrice,
+        originalClientPriceVnd: fixedPrice,
+      },
+      warnings,
+      configSummary,
+    };
+  }
+
+  if (!item.size) {
+    warnings.push({ type: "SIZE_UNAVAILABLE", itemName: menuItem.name, details: "Món nước trong lịch sử thiếu size hợp lệ." });
+    return { cartItem: null, warnings, configSummary };
+  }
 
   // 2. Find size
   const sizeConfig = menuItem.sizes.find(s => s.size === item.size);

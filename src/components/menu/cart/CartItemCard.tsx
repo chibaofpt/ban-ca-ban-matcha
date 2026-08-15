@@ -44,10 +44,11 @@ const CartItemCard = ({
   onRemoveAddonVoucher,
   onOpenVoucherPicker
 }: CartItemCardProps) => {
-  const hasMoreProductVouchers = !item.productVoucherId && applicableProductVouchers.length > 0;
+  const appliedProductVoucherId = item.productVoucherId ?? item.itemVoucherId;
+  const hasMoreProductVouchers = !appliedProductVoucherId && applicableProductVouchers.length > 0;
   const hasMoreAddonVouchers = applicableAddonVouchers.length > 0;
   const hasAvailableVouchers = hasMoreProductVouchers || hasMoreAddonVouchers;
-  const hasAnyVoucher = !!item.productVoucherId || (item.addonVouchers && item.addonVouchers.length > 0);
+  const hasAnyVoucher = !!appliedProductVoucherId || (item.addonVouchers && item.addonVouchers.length > 0);
 
   const line1Chips = line1ItemDetails(item, menuItem, milkTypes, powderData?.data);
   const line2Chips = line2ItemDetails(item);
@@ -192,8 +193,8 @@ const CartItemCard = ({
           {/* Vouchers (Left side) */}
           <div className="flex flex-wrap gap-1.5 flex-1">
             {/* Applied: product voucher */}
-            {item.productVoucherId && (() => {
-              const pv = allVouchers.find(v => v.qr_token === item.productVoucherId);
+            {appliedProductVoucherId && (() => {
+              const pv = allVouchers.find(v => v.qr_token === appliedProductVoucherId);
               return (
                 <div className="text-[10px] font-bold bg-orange-50 border border-orange-200 text-orange-700 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
                   <Ticket className="w-3 h-3 text-orange-500" /> {pv?.package?.name || "Free món"}

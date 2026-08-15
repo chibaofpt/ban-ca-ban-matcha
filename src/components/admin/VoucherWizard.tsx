@@ -28,6 +28,7 @@ interface VoucherWizardProps {
 
 const TYPE_OPTIONS: Array<{ value: VoucherType; label: string; hint: string }> = [
   { value: "BUNDLE", label: "Mua X tặng Y", hint: "Tặng món hoặc addon theo nhóm điều kiện" },
+  { value: "ITEM", label: "Tặng Add-on", hint: "Miễn giá một món Add-on cố định" },
   { value: "PRODUCT", label: "Tặng sản phẩm", hint: "Miễn giá một cấu hình sản phẩm" },
   { value: "ADDON", label: "Tặng addon", hint: "Miễn giá một addon" },
   { value: "DISCOUNT", label: "Giảm giá", hint: "Giảm phần trăm hoặc số tiền" },
@@ -52,6 +53,12 @@ function BenefitFields({ draft, update, menuOptions, bundleMenuItems, addonOptio
     const allowedBaseLiquidIds = new Set(selectedMenu?.availableBaseLiquidIds ?? []);
     const itemBaseLiquids = milkOptions.filter((option) => allowedBaseLiquidIds.has(option.value));
     return <div className="space-y-4"><AdaptiveSelect label="Sản phẩm" options={menuOptions} value={draft.menuItemId} onChange={(value) => { const menu = bundleMenuItems.find((candidate) => candidate.id === value); update("menuItemId", value as string); update("milkTypeId", menu?.availableBaseLiquidIds[0] ?? ""); }} /><AdaptiveSelect label="Size" options={[{ value: "SMALL", label: "Small" }, { value: "MEDIUM", label: "Medium" }, { value: "LARGE", label: "Large" }]} value={draft.size} onChange={(value) => update("size", value as VoucherDraft["size"])} /><AdaptiveSelect label="Bột (nếu áp dụng)" options={[{ value: "", label: "Mặc định" }, ...powderOptions]} value={draft.matchaPowderId} onChange={(value) => update("matchaPowderId", value as string)} />{itemBaseLiquids.length > 0 ? <AdaptiveSelect label="Base Liquid" options={itemBaseLiquids} value={draft.milkTypeId} onChange={(value) => update("milkTypeId", value as string)} /> : null}</div>;
+  }
+  if (draft.voucherType === "ITEM") {
+    const extras = bundleMenuItems
+      .filter((menu) => menu.category === "extras")
+      .map((menu) => ({ value: menu.id, label: menu.name, description: "Add-on" }));
+    return <AdaptiveSelect label="Add-on" options={extras} value={draft.menuItemId} onChange={(value) => update("menuItemId", value as string)} />;
   }
   if (draft.voucherType === "ADDON") return <AdaptiveSelect label="Addon được tặng" options={addonOptions} value={draft.addonOptionId} onChange={(value) => update("addonOptionId", value as string)} />;
   if (draft.voucherType === "FREESHIP") return <div className="space-y-4"><NumberField label="Phí giao tối đa được hỗ trợ" value={draft.coveredDeliveryFeeVnd} min={1_000} step={1_000} onChange={(value) => update("coveredDeliveryFeeVnd", value ?? 0)} /><NumberField label="Giá trị đơn tối thiểu" value={draft.minOrderVnd} min={1_000} step={1_000} onChange={(value) => update("minOrderVnd", value)} /></div>;

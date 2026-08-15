@@ -116,7 +116,8 @@ async function fetchMenuData(): Promise<MenuData> {
     // ── Build response ───────────────────────────────────────────────────────
     const latte: MenuItem[] = [];
     const fusion: MenuItem[] = [];
-    const SIZE_ORDER: Record<string, number> = { M: 0, L: 1, XL: 2 };
+    const extras: MenuItem[] = [];
+    const SIZE_ORDER: Record<string, number> = { SMALL: 0, MEDIUM: 1, LARGE: 2 };
 
     let maxUpdatedAt = new Date(0);
     for (const item of items) {
@@ -138,7 +139,8 @@ async function fetchMenuData(): Promise<MenuData> {
         id: item.id,
         name: item.name,
         description: item.description ?? null,
-        category: item.category as "latte" | "fusion",
+        category: item.category as "latte" | "fusion" | "extras",
+        unit_price_vnd: item.unit_price_vnd ?? null,
         is_seasonal: item.is_seasonal,
         image_url: item.image_url ?? null,
         sort_order: item.sort_order,
@@ -166,7 +168,7 @@ async function fetchMenuData(): Promise<MenuData> {
             } as MenuItemPowder)
           : null;
         latte.push(menuItem);
-      } else {
+      } else if (item.category === "fusion") {
         menuItem.resolved_default_powder_id = resolveFusionDefaultPowderId(
           item.default_powder_id
         );
@@ -174,6 +176,14 @@ async function fetchMenuData(): Promise<MenuData> {
           .filter((fp) => fp.matchaPowder.is_available)
           .map((fp) => fp.powder_id);
         fusion.push(menuItem);
+      } else if (item.category === "extras") {
+        const extraMenuItem: Record<string, unknown> = { ...menuItem, sizes: [] };
+        delete extraMenuItem.powder;
+        delete extraMenuItem.resolved_default_powder_id;
+        delete extraMenuItem.allowed_powder_ids;
+        delete extraMenuItem.default_base_liquid_id;
+        delete extraMenuItem.allowed_base_liquid_ids;
+        extras.push(extraMenuItem as unknown as MenuItem);
       }
     }
 
@@ -181,6 +191,7 @@ async function fetchMenuData(): Promise<MenuData> {
       updated_at: maxUpdatedAt.toISOString(),
       latte,
       fusion,
+      extras,
       milk_types: globalMilkTypes,
       base_liquids: globalMilkTypes,
       addon_groups: globalAddonGroups,

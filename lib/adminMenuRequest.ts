@@ -58,6 +58,10 @@ export async function parseAdminMenuUpdate(
     sort_order: formData.get("sort_order")
       ? Number(formData.get("sort_order"))
       : undefined,
+    unit_price_vnd: formData.get("unit_price_vnd")
+      ? Number(formData.get("unit_price_vnd"))
+      : undefined,
+    confirm_price_change: parseOptionalBoolean(formData.get("confirm_price_change")),
     matcha_powder_id:
       typeof powderId === "string" && /^[0-9a-fA-F]{8}-/.test(powderId)
         ? powderId

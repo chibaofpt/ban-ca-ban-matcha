@@ -34,6 +34,8 @@ interface CartDiscountPickerProps {
   bundleAllocations: BundleSelectionAllocation[];
   onBundleVoucherChange: (token: string | null) => void;
   onBundleAllocationsChange: (allocations: BundleSelectionAllocation[]) => void;
+  onAddExtrasReward: (menuItemId: string, voucherToken: string) => string | null;
+  onRemoveTransientRewards: (voucherToken: string) => void;
 }
 
 export const CartDiscountPicker = ({
@@ -57,6 +59,8 @@ export const CartDiscountPicker = ({
   bundleAllocations,
   onBundleVoucherChange,
   onBundleAllocationsChange,
+  onAddExtrasReward,
+  onRemoveTransientRewards,
 }: CartDiscountPickerProps) => {
   const { acquire, isPending } = useVoucherAcquisition();
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
@@ -155,6 +159,8 @@ export const CartDiscountPicker = ({
           allocations={bundleAllocations}
           onVoucherChange={onBundleVoucherChange}
           onAllocationsChange={onBundleAllocationsChange}
+          onAddExtrasReward={onAddExtrasReward}
+          onRemoveTransientRewards={onRemoveTransientRewards}
         />
         
         {/* Section 1: Ưu đãi của bạn */}

@@ -33,6 +33,7 @@ export interface ProductVoucherInfo {
   menu_item_id: string;
   /** Fixed PRODUCT credit, capped at the server-computed drink price and never applied to addons. */
   covered_price_vnd: number;
+  voucher_type?: "PRODUCT" | "ITEM";
 }
 
 
@@ -42,13 +43,14 @@ export interface ProductVoucherInfo {
 export interface OrderItemInput {
   menu_item_id: string;
   quantity: number;
-  size: Size;
+  size?: Size | null;
   sweetness: SweetnessLevel;
   ice_option?: IceOption;
   coldwhisk?: boolean;
   note?: string;
   addon_option_ids: { option_id: string; quantity: number }[];
   product_voucher_id?: string;
+  item_voucher_id?: string;
   addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
   selected_powder_id?: string;
   selected_milk_type_id?: string;
@@ -70,17 +72,18 @@ export interface ProcessedAddon {
 export interface ProcessedOrderItem {
   menu_item_id: string;
   quantity: number;
-  size: Size;
+  size: Size | null;
   sweetness: SweetnessLevel;
   ice_option: IceOption;
   coldwhisk: boolean;
   note: string | null;
   product_voucher_id: string | null;
+  item_voucher_id: string | null;
   addon_voucher_ids: { voucher_id: string; addon_option_id: string }[];
-  selected_powder_id: string;
+  selected_powder_id: string | null;
   selected_milk_type_id: string | null;
   /** Immutable effective Base Liquid volume for historical consumption reports. */
-  base_liquid_ml: number;
+  base_liquid_ml: number | null;
   /** Server-computed drink price BEFORE any voucher credit. (Original price) */
   unit_price_vnd: number;
   /** Server-computed addons price BEFORE any voucher credit. (Original price) */
@@ -97,7 +100,7 @@ export interface ProcessedOrderItem {
 export interface PriceConflict {
   menu_item_id: string;
   name: string;
-  size: Size;
+  size: Size | null;
   client_price_vnd: number;
   server_price_vnd: number;
 }
@@ -171,7 +174,7 @@ async function resolveOneItem(
   addonVoucherMap?: Map<string, string>
 ): Promise<ProcessedOrderItem> {
   // 1. Fetch menu item — must be available
-  if ((item.product_voucher_id || (item.addon_voucher_ids && item.addon_voucher_ids.length > 0)) && item.quantity > 1) {
+  if ((item.product_voucher_id || item.item_voucher_id || (item.addon_voucher_ids && item.addon_voucher_ids.length > 0)) && item.quantity > 1) {
     throw new OrderValidationError(
       "VALIDATION_ERROR",
       "Voucher chỉ có thể áp dụng cho 1 sản phẩm. Vui lòng tách sản phẩm ra trước khi áp dụng."
@@ -198,7 +201,60 @@ async function resolveOneItem(
     );
   }
 
+  const itemVoucherId = item.item_voucher_id ?? item.product_voucher_id;
+  if (menuItem.category === "extras") {
+    if (item.size != null || item.selected_powder_id || item.selected_milk_type_id || item.selected_base_liquid_id || item.addon_option_ids.length > 0) {
+      throw new OrderValidationError("VALIDATION_ERROR", "Món Add-on chỉ hỗ trợ số lượng và ghi chú.");
+    }
+    if (menuItem.unit_price_vnd === null || menuItem.unit_price_vnd < 1000 || menuItem.unit_price_vnd % 1000 !== 0) {
+      throw new OrderValidationError("BUSINESS_RULE_VIOLATION", `Giá món Add-on không hợp lệ: ${menuItem.name}`);
+    }
+    const serverUnitPrice = menuItem.unit_price_vnd;
+    const itemVoucher = itemVoucherId ? productVoucherMap?.get(itemVoucherId) : undefined;
+    if (itemVoucher && (itemVoucher.voucher_type !== "ITEM" || itemVoucher.menu_item_id !== item.menu_item_id)) {
+      throw new OrderValidationError("VALIDATION_ERROR", "ITEM voucher không áp dụng cho món Add-on này.");
+    }
+    const itemDiscount = itemVoucher ? serverUnitPrice : 0;
+    const expectedClientPrice = serverUnitPrice - itemDiscount;
+    if (item.client_price_vnd !== expectedClientPrice) {
+      priceConflicts.push({
+        menu_item_id: item.menu_item_id,
+        name: menuItem.name,
+        size: null,
+        client_price_vnd: item.client_price_vnd,
+        server_price_vnd: expectedClientPrice,
+      });
+    }
+    return {
+      menu_item_id: item.menu_item_id,
+      quantity: item.quantity,
+      size: null,
+      sweetness: item.sweetness ?? "FULL",
+      ice_option: item.ice_option ?? "NORMAL",
+      coldwhisk: item.coldwhisk ?? false,
+      note: item.note ?? null,
+      product_voucher_id: item.product_voucher_id ?? null,
+      item_voucher_id: item.item_voucher_id ?? item.product_voucher_id ?? null,
+      addon_voucher_ids: [],
+      selected_powder_id: null,
+      selected_milk_type_id: null,
+      base_liquid_ml: null,
+      unit_price_vnd: serverUnitPrice,
+      addons_price_vnd: 0,
+      product_voucher_discount_vnd: itemDiscount,
+      total_discount_vnd: itemDiscount,
+      line_total: serverUnitPrice * item.quantity,
+      resolvedAddons: [],
+    };
+  }
+
   // 2. Validate size is sold (base_price_vnd must not be null)
+  if (!item.size) {
+    throw new OrderValidationError("VALIDATION_ERROR", `Size là bắt buộc cho đồ uống: ${menuItem.name}`);
+  }
+  if (item.item_voucher_id) {
+    throw new OrderValidationError("VALIDATION_ERROR", "ITEM voucher chỉ áp dụng cho món Add-on.");
+  }
   const sizeRow = menuItem.sizes.find((s) => s.size === item.size);
   if (!sizeRow || sizeRow.base_price_vnd === null) {
     throw new OrderValidationError(
@@ -453,10 +509,10 @@ async function resolveOneItem(
 
   // 7. Apply PRODUCT voucher credit
   let product_voucher_discount_vnd = 0;
-  if (item.product_voucher_id && productVoucherMap) {
-    const pvInfo = productVoucherMap.get(item.product_voucher_id);
+  if (itemVoucherId && productVoucherMap) {
+    const pvInfo = productVoucherMap.get(itemVoucherId);
     if (pvInfo) {
-      if (pvInfo.menu_item_id !== item.menu_item_id) {
+      if (pvInfo.voucher_type === "ITEM" || pvInfo.menu_item_id !== item.menu_item_id) {
         throw new OrderValidationError(
           "VALIDATION_ERROR",
           `Product voucher is not valid for this menu item`
@@ -495,6 +551,7 @@ async function resolveOneItem(
     coldwhisk: item.coldwhisk ?? false,
     note: item.note ?? null,
     product_voucher_id: item.product_voucher_id ?? null,
+    item_voucher_id: item.item_voucher_id ?? null,
     addon_voucher_ids: item.addon_voucher_ids || [],
     selected_powder_id: powder_id,
     selected_milk_type_id: resolvedBaseLiquidId,

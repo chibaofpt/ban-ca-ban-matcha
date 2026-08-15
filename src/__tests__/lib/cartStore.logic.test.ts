@@ -16,7 +16,7 @@ vi.mock("@/src/lib/observability", () => ({
 }));
 
 import { computeFinalClientPrice, migrateCartState, useCartStore } from "@/src/lib/store/cartStore";
-import { migrateStaffCartState } from "@/src/lib/store/staffCartStore";
+import { migrateStaffCartState, useStaffCartStore } from "@/src/lib/store/staffCartStore";
 import type { CartItem } from "@/src/lib/types/cart";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -51,6 +51,21 @@ function makeCartItem(overrides: {
     productVoucherId: overrides.productVoucherDiscountVnd ? "pv-001" : undefined,
     productVoucherDiscountVnd: overrides.productVoucherDiscountVnd,
     addonVouchers: overrides.addonVouchers,
+  };
+}
+
+/** Tạo một dòng Add-on có thể gắn ITEM voucher. */
+function makeExtrasItem(cartId: string, itemVoucherId?: string): CartItem {
+  return {
+    ...makeCartItem({ unitPrice: 20_000, addonsPrice: 0 }),
+    cartId,
+    menuItemId: `extras-${cartId}`,
+    name: "Kem vanilla",
+    category: "extras",
+    size: null,
+    clientPriceVnd: itemVoucherId ? 0 : 20_000,
+    originalClientPriceVnd: 20_000,
+    itemVoucherId,
   };
 }
 
@@ -156,6 +171,45 @@ describe("Cart breadcrumbs ẩn danh", () => {
 });
 
 describe("Cart persisted-state privacy migration", () => {
+  it("dọn ITEM voucher trùng trong giỏ cũ và giữ voucher ở dòng cuối", () => {
+    const migrated = migrateCartState(
+      {
+        items: [
+          makeExtrasItem("first", "item-token"),
+          makeExtrasItem("second", "item-token"),
+        ],
+      },
+      6,
+    );
+
+    expect(migrated.items?.[0]).toMatchObject({
+      itemVoucherId: undefined,
+      clientPriceVnd: 20_000,
+    });
+    expect(migrated.items?.[1]).toMatchObject({
+      itemVoucherId: "item-token",
+      clientPriceVnd: 0,
+    });
+  });
+
+  it("dọn ITEM voucher trùng trong giỏ staff đã lưu", () => {
+    const migrated = migrateStaffCartState({
+      items: [
+        makeExtrasItem("first", "item-token"),
+        makeExtrasItem("second", "item-token"),
+      ],
+    });
+
+    expect(migrated.items?.[0]).toMatchObject({
+      itemVoucherId: undefined,
+      clientPriceVnd: 20_000,
+    });
+    expect(migrated.items?.[1]).toMatchObject({
+      itemVoucherId: "item-token",
+      clientPriceVnd: 0,
+    });
+  });
+
   it("giữ món nhưng xoá voucher legacy và phục hồi giá trước voucher", () => {
     const item = makeCartItem({
       unitPrice: 55_000,
@@ -227,5 +281,53 @@ describe("Cart persisted-state privacy migration", () => {
 
     expect(migrated.items?.[0].selectedOptionIds).toEqual(["paid-cream"]);
     expect(migrated.items?.[0].addonPrices).toEqual({ "paid-cream": 20_000 });
+  });
+});
+
+describe("ITEM voucher chỉ được gắn vào một dòng giỏ hàng", () => {
+  beforeEach(() => {
+    useCartStore.setState({ items: [], selectedVoucherIds: [], isCartOpen: false });
+    useStaffCartStore.setState({ items: [] });
+  });
+
+  it("customer chuyển voucher khỏi dòng cũ khi thêm dòng Add-on mới", () => {
+    const first = makeExtrasItem("first", "item-token");
+    useCartStore.setState({ items: [first] });
+    const { cartId: _cartId, ...second } = makeExtrasItem("second", "item-token");
+    void _cartId;
+
+    useCartStore.getState().addItem(second);
+
+    const items = useCartStore.getState().items;
+    expect(items[0]).toMatchObject({ itemVoucherId: undefined, clientPriceVnd: 20_000 });
+    expect(items[1]).toMatchObject({ itemVoucherId: "item-token", clientPriceVnd: 0 });
+  });
+
+  it("customer chuyển voucher khỏi dòng cũ khi chỉnh sửa dòng khác", () => {
+    const first = makeExtrasItem("first", "item-token");
+    const second = makeExtrasItem("second");
+    useCartStore.setState({ items: [first, second] });
+
+    useCartStore.getState().updateItem("second", {
+      itemVoucherId: "item-token",
+      clientPriceVnd: 0,
+    });
+
+    const items = useCartStore.getState().items;
+    expect(items[0]).toMatchObject({ itemVoucherId: undefined, clientPriceVnd: 20_000 });
+    expect(items[1]).toMatchObject({ itemVoucherId: "item-token", clientPriceVnd: 0 });
+  });
+
+  it("staff cũng chuyển ITEM voucher thay vì giữ trên hai dòng", () => {
+    const first = makeExtrasItem("first", "item-token");
+    useStaffCartStore.setState({ items: [first] });
+    const { cartId: _cartId, ...second } = makeExtrasItem("second", "item-token");
+    void _cartId;
+
+    useStaffCartStore.getState().addItem(second);
+
+    const items = useStaffCartStore.getState().items;
+    expect(items[0]).toMatchObject({ itemVoucherId: undefined, clientPriceVnd: 20_000 });
+    expect(items[1]).toMatchObject({ itemVoucherId: "item-token", clientPriceVnd: 0 });
   });
 });
