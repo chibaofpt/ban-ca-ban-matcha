@@ -11,6 +11,7 @@ export type ReorderWarningType =
   | "ADDON_UNAVAILABLE"
   | "PRICE_CHANGED"
   | "MILK_UNAVAILABLE"
+  | "BASE_LIQUID_UNAVAILABLE"
   | "POWDER_UNAVAILABLE";
 
 export interface ReorderWarning {

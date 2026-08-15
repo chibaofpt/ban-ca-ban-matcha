@@ -456,6 +456,7 @@ export async function POST(req: NextRequest) {
                   addonVouchers: { create: itemCalculation.addon_vouchers },
                   selected_powder_id: item.selected_powder_id,
                   selected_milk_type_id: item.selected_milk_type_id,
+                  base_liquid_ml: item.base_liquid_ml,
                   addons: {
                     create: item.resolvedAddons.map((addon) => ({
                       addon_option_id: addon.addon_option_id,

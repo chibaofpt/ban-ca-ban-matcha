@@ -35,6 +35,8 @@ const orderItemBaseSchema = z.object({
   selected_powder_id: z.string().uuid().optional(),
   /** Latte only — server defaults to is_default milk if omitted. */
   selected_milk_type_id: z.string().uuid().optional(),
+  /** Base Liquid selection for both Latte and Fusion. */
+  selected_base_liquid_id: z.string().uuid().optional(),
   /**
    * Client-computed final price. Required.
    * Server recomputes and rejects with PRICE_CHANGED on mismatch.

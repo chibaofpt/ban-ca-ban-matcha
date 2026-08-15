@@ -1,7 +1,7 @@
 import { apiClient } from "@/src/lib/api/client";
 import axios from "axios";
 import type { ApiResponse } from "@/src/lib/types/api";
-import type { AdminMenuItem } from "@/src/lib/types/menu";
+import type { AdminMenuItem, MilkTypeOption, Size } from "@/src/lib/types/menu";
 
 // ── URL map ──────────────────────────────────────────────────────────────────
 
@@ -25,6 +25,8 @@ export interface AdminMenuData {
   updated_at: string;
   latte: AdminMenuItem[];
   fusion: AdminMenuItem[];
+  base_liquids?: MilkTypeOption[];
+  default_size_config?: Array<{ size: Size; base_liquid_ml: number }>;
 }
 
 // ── Service functions ─────────────────────────────────────────────────────────

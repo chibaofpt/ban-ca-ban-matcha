@@ -25,6 +25,7 @@ export interface CreateOrderPayload {
     addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
     selected_powder_id?: string;
     selected_milk_type_id?: string;
+    selected_base_liquid_id?: string;
     client_price_vnd: number;
   }[];
   discount_voucher_ids: string[];
@@ -87,7 +88,9 @@ function buildPayloadItems(cart: CartItem[]): CreateOrderPayload["items"] {
         }
       : {}),
     ...(c.selectedPowderId ? { selected_powder_id: c.selectedPowderId } : {}),
-    ...(c.selectedMilkTypeId ? { selected_milk_type_id: c.selectedMilkTypeId } : {}),
+    ...((c.selectedBaseLiquidId ?? c.selectedMilkTypeId)
+      ? { selected_base_liquid_id: c.selectedBaseLiquidId ?? c.selectedMilkTypeId }
+      : {}),
     client_price_vnd: c.clientPriceVnd,
   }));
 }

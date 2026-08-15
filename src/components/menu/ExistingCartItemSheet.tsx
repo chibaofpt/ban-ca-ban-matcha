@@ -59,10 +59,11 @@ function buildDetailTags(
   // Coldwhisk (latte only typically, but show if true)
   if (item.coldwhisk) tags.push("Cold whisk");
 
-  // Milk (latte only)
-  if (item.selectedMilkTypeId) {
-    const milk = milkTypes.find((m) => m.id === item.selectedMilkTypeId);
-    if (milk) tags.push(milk.name);
+  // Base Liquid (Latte or Fusion)
+  const selectedBaseLiquidId = item.selectedBaseLiquidId ?? item.selectedMilkTypeId;
+  if (selectedBaseLiquidId) {
+    const liquid = milkTypes.find((m) => m.id === selectedBaseLiquidId);
+    if (liquid) tags.push(liquid.name);
   }
 
   // Powder (fusion only)

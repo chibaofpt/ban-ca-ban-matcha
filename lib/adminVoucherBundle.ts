@@ -8,8 +8,10 @@ interface BundleReferenceMenu {
   is_available: boolean;
   matcha_powder_id?: string | null;
   default_powder_id?: string | null;
+  default_base_liquid_id?: string | null;
   sizes?: Array<{ size: string; base_price_vnd: number | null }>;
   fusionAllowedPowders?: Array<{ powder_id: string }>;
+  allowedBaseLiquids?: Array<{ base_liquid_id: string }>;
 }
 
 interface BundleReferenceAddon {
@@ -23,6 +25,7 @@ export interface AdminVoucherBundleTransaction {
   menuItem: { findMany: (args: unknown) => Promise<BundleReferenceMenu[]> };
   addonOption: { findMany: (args: unknown) => Promise<BundleReferenceAddon[]> };
   voucherPackage: { create: (args: unknown) => Promise<unknown> };
+  milkType?: { findMany: (args: unknown) => Promise<Array<{ id: string; is_default: boolean }>> };
 }
 
 /** Stable reference error raised while publishing an invalid BUNDLE package. */
@@ -36,6 +39,8 @@ export class VoucherBundleReferenceError extends Error {
 function validateScopeConfigurations(
   input: BundleInput,
   menus: Map<string, BundleReferenceMenu>,
+  activeBaseLiquidIds: Set<string>,
+  globalDefaultBaseLiquidId: string | null,
 ): void {
   const scopes = [
     ...input.bundle_rule.qualifier_scopes,
@@ -54,9 +59,28 @@ function validateScopeConfigurations(
           Boolean(menu.fusionAllowedPowders?.some((row) => row.powder_id === scope.powder_id));
       if (!powderAllowed) throw new VoucherBundleReferenceError("Bundle scope powder is unavailable");
     }
-    if (scope.milk_type_id && menu.category !== "latte") {
-      throw new VoucherBundleReferenceError("Only Latte bundle scopes can lock milk");
+    if (scope.milk_type_id) {
+      if (activeBaseLiquidIds.size > 0 && !activeBaseLiquidIds.has(scope.milk_type_id)) {
+        throw new VoucherBundleReferenceError("Bundle scope Base Liquid is unavailable");
+      }
+      const defaultBaseLiquidId = menu.category === "latte"
+        ? globalDefaultBaseLiquidId
+        : menu.default_base_liquid_id ?? null;
+      const allowedBaseLiquidIds = new Set([
+        defaultBaseLiquidId,
+        ...(menu.allowedBaseLiquids?.map((row) => row.base_liquid_id) ?? []),
+      ].filter((id): id is string => Boolean(id)));
+      if (allowedBaseLiquidIds.size > 0 && !allowedBaseLiquidIds.has(scope.milk_type_id)) {
+        throw new VoucherBundleReferenceError("Bundle scope Base Liquid is not allowed for this item");
+      }
     }
+  }
+  if (
+    input.bundle_rule.reward_kind === "PRODUCT" &&
+    input.bundle_rule.reward_mode === "FIXED_CONFIG" &&
+    input.bundle_rule.reward_product_scopes.some((scope) => !scope.milk_type_id)
+  ) {
+    throw new VoucherBundleReferenceError("Fixed product rewards require a Base Liquid");
   }
 }
 
@@ -78,14 +102,24 @@ export async function createBundleVoucherPackage(
       is_available: true,
       matcha_powder_id: true,
       default_powder_id: true,
+      default_base_liquid_id: true,
       sizes: { select: { size: true, base_price_vnd: true } },
       fusionAllowedPowders: { select: { powder_id: true } },
+      allowedBaseLiquids: { select: { base_liquid_id: true } },
     },
   });
   if (menus.length !== menuIds.length) {
     throw new VoucherBundleReferenceError("Bundle menu scope is unavailable");
   }
-  validateScopeConfigurations(input, new Map(menus.map((menu) => [menu.id, menu])));
+  const activeBaseLiquids = tx.milkType
+    ? await tx.milkType.findMany({ where: { is_active: true }, select: { id: true, is_default: true } })
+    : [];
+  validateScopeConfigurations(
+    input,
+    new Map(menus.map((menu) => [menu.id, menu])),
+    new Set(activeBaseLiquids.map((liquid) => liquid.id)),
+    activeBaseLiquids.find((liquid) => liquid.is_default)?.id ?? null,
+  );
 
   const addonIds = input.bundle_rule.reward_addon_option_ids;
   if (addonIds.length > 0) {

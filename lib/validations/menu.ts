@@ -3,6 +3,7 @@ import { z } from "zod";
 const sizeSchema = z.object({
   size: z.enum(["SMALL", "MEDIUM", "LARGE"]),
   base_price_vnd: z.number().int().min(0).nullable(),
+  base_liquid_ml: z.number().int().positive().nullable().optional(),
 });
 
 const customPowderGramsSchema = z
@@ -52,11 +53,14 @@ const baseMenuSchema = z.object({
 export const createLatteMenuSchema = baseMenuSchema.extend({
   category: z.literal("latte"),
   matcha_powder_id: z.string().uuid("matcha_powder_id phải là UUID hợp lệ").optional().nullable(),
+  allowed_base_liquid_ids: z.array(z.string().uuid()).default([]),
 });
 
 export const createFusionMenuSchema = baseMenuSchema.extend({
   category: z.literal("fusion"),
   default_powder_id: z.string().uuid("default_powder_id phải là UUID hợp lệ").optional().nullable(),
+  default_base_liquid_id: z.string().uuid("Vui lòng chọn Base Liquid mặc định"),
+  allowed_base_liquid_ids: z.array(z.string().uuid()).default([]),
   base_liquid_note: z.string().max(200).optional().nullable(),
 });
 
@@ -85,6 +89,9 @@ export const updateMenuSchema = z.object({
   // Fusion
   default_powder_id: z.string().uuid().optional().nullable(),
   base_liquid_note: z.string().max(200).optional().nullable(),
+  default_base_liquid_id: z.string().uuid().optional().nullable(),
+  /** Latte and Fusion — replaces all allowed Base Liquid rows when provided. */
+  allowed_base_liquid_ids: z.array(z.string().uuid()).optional(),
   /** Fusion only — replaces all fusionAllowedPowder rows when provided. */
   allowed_powder_ids: z.array(z.string().uuid()).optional(),
 });

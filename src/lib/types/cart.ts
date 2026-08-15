@@ -33,6 +33,8 @@ export interface CartItem {
   selectedPowderId?: string;
   /** Latte only — selected milk type id. */
   selectedMilkTypeId?: string;
+  /** Current Base Liquid selection; selectedMilkTypeId remains as a legacy alias. */
+  selectedBaseLiquidId?: string;
   /**
    * Client-computed final price (= unitPrice). Required by API.
    * Server recomputes and rejects entire order on mismatch (PRICE_CHANGED).

@@ -16,6 +16,7 @@ vi.mock("@/lib/pricing", () => ({
   buildPricingContext: vi.fn(),
   resolveOrderItemPrice: vi.fn(),
   resolveOrderItemPremiumLatte: vi.fn(),
+  resolveOrderItemBaseLiquidMl: vi.fn().mockReturnValue(200),
 }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {

@@ -7,6 +7,7 @@
 import {
   buildPricingContext,
   resolveOrderItemPrice,
+  resolveOrderItemBaseLiquidMl,
   resolveOrderItemPremiumLatte,
   type PricingContext,
 } from "@/lib/pricing";
@@ -51,6 +52,7 @@ export interface OrderItemInput {
   addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
   selected_powder_id?: string;
   selected_milk_type_id?: string;
+  selected_base_liquid_id?: string;
   client_price_vnd: number;
 }
 
@@ -77,6 +79,8 @@ export interface ProcessedOrderItem {
   addon_voucher_ids: { voucher_id: string; addon_option_id: string }[];
   selected_powder_id: string;
   selected_milk_type_id: string | null;
+  /** Immutable effective Base Liquid volume for historical consumption reports. */
+  base_liquid_ml: number;
   /** Server-computed drink price BEFORE any voucher credit. (Original price) */
   unit_price_vnd: number;
   /** Server-computed addons price BEFORE any voucher credit. (Original price) */
@@ -180,7 +184,10 @@ async function resolveOneItem(
       sizes: true, 
       fusionAllowedPowders: {
         include: { matchaPowder: { select: { is_available: true } } }
-      }
+      },
+      allowedBaseLiquids: {
+        include: { baseLiquid: { select: { is_active: true } } },
+      },
     },
   });
 
@@ -264,7 +271,54 @@ async function resolveOneItem(
     }
   }
 
-  // 4. Compute server-authoritative drink price
+  // 4. Resolve Base Liquid for both categories. The physical snapshot column
+  // keeps its legacy name for backward-compatible deployments.
+  if (
+    item.selected_base_liquid_id &&
+    item.selected_milk_type_id &&
+    item.selected_base_liquid_id !== item.selected_milk_type_id
+  ) {
+    throw new OrderValidationError(
+      "VALIDATION_ERROR",
+      "selected_base_liquid_id conflicts with selected_milk_type_id",
+    );
+  }
+  const requestedBaseLiquidId =
+    item.selected_base_liquid_id ?? item.selected_milk_type_id ?? null;
+  const resolvedDefaultBaseLiquidId = menuItem.category === "latte"
+    ? pricingCtx.defaultBaseLiquidId ?? null
+    : menuItem.default_base_liquid_id;
+  let resolvedBaseLiquidId: string | null = null;
+
+  if (menuItem.category === "fusion" && !resolvedDefaultBaseLiquidId) {
+    if (requestedBaseLiquidId) {
+      throw new OrderValidationError(
+        "VALIDATION_ERROR",
+        `Fusion legacy không hỗ trợ đổi Base Liquid: ${menuItem.name}`,
+      );
+    }
+  } else {
+    if (!resolvedDefaultBaseLiquidId) {
+      throw new OrderValidationError(
+        "BUSINESS_RULE_VIOLATION",
+        `Món chưa có Base Liquid mặc định: ${menuItem.name}`,
+      );
+    }
+    const allowedBaseLiquidIds = (menuItem.allowedBaseLiquids ?? [])
+      .filter((entry) => entry.baseLiquid.is_active)
+      .map((entry) => entry.base_liquid_id);
+    resolvedBaseLiquidId = requestedBaseLiquidId ?? resolvedDefaultBaseLiquidId;
+    const isAllowed = resolvedBaseLiquidId === resolvedDefaultBaseLiquidId
+      || allowedBaseLiquidIds.includes(resolvedBaseLiquidId);
+    if (!isAllowed || pricingCtx.milkPriceMap[resolvedBaseLiquidId] === undefined) {
+      throw new OrderValidationError(
+        "VALIDATION_ERROR",
+        `Base Liquid không được phép hoặc đã ngưng bán: ${menuItem.name}`,
+      );
+    }
+  }
+
+  // 5. Compute server-authoritative drink price
   const server_unit_price = resolveOrderItemPrice(
     {
       category: menuItem.category as "latte" | "fusion",
@@ -272,10 +326,17 @@ async function resolveOneItem(
       base_price_vnd: sizeRow.base_price_vnd,
       custom_powder_grams: menuItem.custom_powder_grams as Record<string, number> | null,
       powder_id,
-      milk_type_id: menuItem.category === "latte" ? (item.selected_milk_type_id ?? null) : null,
+      base_liquid_id: resolvedBaseLiquidId,
+      default_base_liquid_id: resolvedDefaultBaseLiquidId,
+      base_liquid_ml: sizeRow.base_liquid_ml,
       premium_latte,
     },
     pricingCtx
+  );
+  const baseLiquidMl = resolveOrderItemBaseLiquidMl(
+    sizeRow.base_liquid_ml,
+    item.size,
+    pricingCtx,
   );
 
   // 5. Resolve addon prices — snapshot at order time
@@ -436,7 +497,8 @@ async function resolveOneItem(
     product_voucher_id: item.product_voucher_id ?? null,
     addon_voucher_ids: item.addon_voucher_ids || [],
     selected_powder_id: powder_id,
-    selected_milk_type_id: item.selected_milk_type_id ?? null,
+    selected_milk_type_id: resolvedBaseLiquidId,
+    base_liquid_ml: baseLiquidMl,
     unit_price_vnd: server_unit_price,
     addons_price_vnd: original_addons_price_vnd,
     product_voucher_discount_vnd,

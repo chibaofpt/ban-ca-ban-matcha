@@ -1,6 +1,27 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+/** Return true only for the compatibility quick-toggle payload. */
+export function isAvailabilityOnlyMenuUpdate(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const keys = Object.keys(raw);
+  return keys.length === 1 && keys[0] === "is_available";
+}
+
+/** Build an upsert update without clearing an omitted Base Liquid volume override. */
+export function buildMenuItemSizeUpdate(input: {
+  size: "SMALL" | "MEDIUM" | "LARGE";
+  base_price_vnd: number | null;
+  base_liquid_ml?: number | null;
+}): { base_price_vnd: number | null; base_liquid_ml?: number | null } {
+  return {
+    base_price_vnd: input.base_price_vnd,
+    ...(input.base_liquid_ml !== undefined && {
+      base_liquid_ml: input.base_liquid_ml,
+    }),
+  };
+}
+
 /** Narrow a persisted menu category before using it in storage paths. */
 export function asMenuStorageCategory(category: string): "latte" | "fusion" {
   if (category === "latte" || category === "fusion") return category;

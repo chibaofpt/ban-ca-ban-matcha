@@ -76,10 +76,10 @@ export default function MilkTypeForm({
   return (
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
       <div>
-        <label className={labelClass}>Tên loại sữa *</label>
+        <label className={labelClass}>Tên Base Liquid *</label>
         <input
           {...register("name", { required: "Vui lòng nhập tên" })}
-          placeholder="Ví dụ: Sữa bò tươi, Sữa yến mạch..."
+          placeholder="Ví dụ: Sữa bò, sữa hạt, nước cam..."
           className={inputClass}
         />
         {errors.name && <p className={errorClass}>{errors.name.message}</p>}
@@ -110,9 +110,9 @@ export default function MilkTypeForm({
             className="w-4 h-4 rounded text-primary focus:ring-primary disabled:opacity-50"
           />
           <div className="flex flex-col">
-            <span className={cn(labelClass, isEditingDefault && "opacity-50")}>Sữa mặc định</span>
+            <span className={cn(labelClass, isEditingDefault && "opacity-50")}>Mặc định toàn hệ thống cho Latte</span>
             <span className="text-[10px] text-muted-foreground mt-0.5">
-              Loại sữa được chọn mặc định cho Latte. Các sữa khác sẽ tính giá chênh lệch.
+              Chỉ ảnh hưởng mặc định của Latte; Fusion dùng mặc định riêng theo từng món.
             </span>
           </div>
         </label>
@@ -157,7 +157,7 @@ export default function MilkTypeForm({
           disabled={isSubmitting}
           className="px-6 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition disabled:opacity-50"
         >
-          {isSubmitting ? "Đang xử lý..." : mode === "create" ? "Thêm loại sữa" : "Cập nhật"}
+          {isSubmitting ? "Đang xử lý..." : mode === "create" ? "Thêm Base Liquid" : "Cập nhật"}
         </button>
       </div>
     </form>

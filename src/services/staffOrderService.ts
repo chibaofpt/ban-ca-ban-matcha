@@ -31,6 +31,8 @@ export interface CreateStaffOrderPayload {
     selected_powder_id?: string;
     /** Latte only — server defaults to is_default milk if omitted. */
     selected_milk_type_id?: string;
+    /** Base Liquid selection for Latte or Fusion. */
+    selected_base_liquid_id?: string;
     /**
      * Client-computed final unit price. Required.
      * Server recomputes and rejects with PRICE_CHANGED on mismatch.

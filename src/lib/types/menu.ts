@@ -41,7 +41,10 @@ export interface MilkTypeOption {
   price_per_ml: number;
   is_default: boolean;
   display_order: number;
+  is_active?: boolean;
 }
+
+export type BaseLiquidOption = MilkTypeOption;
 
 // ── Powder (lightweight — for menu response only) ──────────────────────────────
 
@@ -59,6 +62,8 @@ export interface MenuItemSize {
   base_price_vnd: number;
   /** ml of default milk for this size — from default_size_config. Used for milk swap recalculation. */
   milk_ml: number;
+  /** Effective Base Liquid volume after item override and system fallback. */
+  base_liquid_ml?: number;
 }
 
 // ── MenuItem ───────────────────────────────────────────────────────────────────
@@ -90,6 +95,12 @@ export interface MenuItem {
   /** Fusion only — powder ids that can be swapped. Empty = swap UI hidden. */
   allowed_powder_ids: string[];
 
+  /** Global default for Latte, per-item default for Fusion, null for legacy Fusion. */
+  default_base_liquid_id?: string | null;
+
+  /** Active catalogue entries explicitly enabled for this item. */
+  allowed_base_liquid_ids?: string[];
+
   /** Sizes with base_price_vnd != null only (null sizes are excluded entirely). */
   sizes: MenuItemSize[];
 }
@@ -101,6 +112,8 @@ export interface MenuData {
   fusion: MenuItem[];
   /** All active milk types; consumers apply them to Latte items only. */
   milk_types: MilkTypeOption[];
+  /** Additive Base Liquid name for the global catalogue. */
+  base_liquids?: BaseLiquidOption[];
   /** All active addon groups; applies globally to every menu item. */
   addon_groups: AddonGroup[];
 }
@@ -125,6 +138,15 @@ export interface AdminMenuItem {
   default_powder_id: string | null;
   default_powder: MenuItemPowder | null;
   allowed_powder_ids: string[];
+  default_base_liquid_id?: string | null;
+  allowed_base_liquid_ids?: string[];
   /** All 3 size rows — base_price_vnd may be null (size not sold). */
-  sizes: { size: Size; base_price_vnd: number | null; milk_ml: number }[];
+  sizes: {
+    size: Size;
+    base_price_vnd: number | null;
+    milk_ml: number;
+    base_liquid_ml?: number;
+    base_liquid_ml_override?: number | null;
+    uses_system_base_liquid_ml?: boolean;
+  }[];
 }

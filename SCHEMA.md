@@ -185,18 +185,20 @@ System-wide fallback. Always exactly 3 rows (SMALL, MEDIUM, LARGE). Admin-editab
 ---
 
 ### milk_type
-Global milk options. Applies to all Latte items automatically — no junction table.
+Global Base Liquid catalog for Latte and Fusion. The physical table name is retained for backward compatibility; there is no `kind` column.
 
 - `id` uuid PK
 - `name` string — e.g. "Sữa bò", "Sữa Oat"
 - `price_per_ml` int — VND/ml (e.g. 40 for sữa bò)
-- `is_default` bool — sữa bò = true. Hidden in UI selector, always used as base for `computed_price_vnd`.
+- `is_default` bool — the single global Latte default (normally sữa bò).
 - `is_active` bool — default true
 - `display_order` int — default 0
 - `created_at` timestamp
 
-> Latte items use all `milk_type WHERE is_active = true` — determined by `category` at query time.
-> `computed_price_vnd` is always calculated using the default milk (sữa bò). Frontend recalculates on milk swap.
+> Database constraints enforce at most one `is_default = true` row and require that row to remain
+> active. Admin API does not allow unsetting the current default without selecting a replacement.
+> Each item exposes its default plus active rows from `menu_item_allowed_base_liquid`. The swap UI is hidden when the resulting list has one or zero entries.
+> Admin keeps Latte entries milk-only. Fusion entries are configured according to each drink; schema does not infer or enforce a liquid kind.
 > Seed: sữa bò, is_default=true, price_per_ml=40
 
 ---
@@ -211,6 +213,7 @@ Global milk options. Applies to all Latte items automatically — no junction ta
 - `is_seasonal` bool — default false
 - `matcha_powder_id` uuid FK nullable UK → matcha_powder — Latte only: the fixed powder. 1 powder can only belong to 1 Latte item.
 - `default_powder_id` uuid FK nullable → matcha_powder — Fusion only: default powder
+- `default_base_liquid_id` uuid FK nullable → milk_type — Fusion per-item default; Latte resolves the global `is_default = true` row
 - `custom_powder_grams` Json nullable — `{"MEDIUM": 4.5, "LARGE": 8.0}`.
   Keys: "SMALL" | "MEDIUM" | "LARGE" only.
 - `base_liquid_note` string nullable — Fusion only, display text
@@ -229,6 +232,7 @@ Always 3 rows per item (SMALL, MEDIUM, LARGE), in same transaction as parent. NU
 - `menu_item_id` uuid FK → menu_items (cascade delete)
 - `size` Size
 - `base_price_vnd` int nullable — NULL = not sold, hidden from UI. Not the final price — final price computed by `lib/pricing.ts`.
+- `base_liquid_ml` int nullable — per-item/per-size override; NULL falls back to `default_size_config.milk_ml`.
 - Composite unique: (`menu_item_id`, `size`)
 
 ---
@@ -242,6 +246,14 @@ The `default_powder_id` of the item is always implicitly allowed — no row need
 - PK: (`menu_item_id`, `powder_id`)
 
 > When building `allowed_powder_ids` for API response: filter `powder.is_available = true`.
+
+### menu_item_allowed_base_liquid
+Allowed Base Liquid swaps for either category. The item default is implicitly allowed and is not duplicated here.
+
+- `menu_item_id` uuid FK → menu_items (cascade delete)
+- `base_liquid_id` uuid FK → milk_type (restrict delete)
+- PK: (`menu_item_id`, `base_liquid_id`)
+- Reverse index on `base_liquid_id` supports safe deactivation checks and joins.
 
 ---
 
@@ -334,7 +346,8 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `product_voucher_discount_vnd` int — PRODUCT reduction limited to drink price
 - `total_discount_vnd` int — PRODUCT + ADDON reductions for this item
 - `selected_powder_id` uuid FK nullable → matcha_powder — snapshot at order time (both latte and fusion)
-- `selected_milk_type_id` uuid FK nullable → milk_type — Latte only
+- `selected_milk_type_id` uuid FK nullable → milk_type — physical Base Liquid snapshot for Latte and configured Fusion
+- `base_liquid_ml` int nullable — immutable effective ml snapshot at order creation; null only on legacy orders created before this field
 - `ice_option` IceOption — default `NORMAL`
 - `coldwhisk` bool — default false
 - `sweetness` SweetnessLevel — default `FULL`
@@ -343,6 +356,10 @@ Soft delete only — set `is_active = false`, never hard delete.
 
 > One PRODUCT voucher applies to one drink unit. Split a voucher-bearing unit into its own
 > line when the original cart line quantity is greater than one.
+>
+> Consumption reports must prefer `order_items.base_liquid_ml`. For legacy null rows only, fall
+> back to the current item-size override and then `default_size_config.milk_ml`; that fallback is
+> an estimate and cannot reconstruct a recipe that changed before snapshots existed.
 
 ---
 

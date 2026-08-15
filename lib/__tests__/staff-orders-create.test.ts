@@ -37,11 +37,13 @@ vi.mock("@/lib/pricing", () => ({
     powderPriceMap: {},
     powderSizeConfigMap: {},
     defaultMilkPricePerMl: 40,
-    milkPriceMap: {},
+    defaultBaseLiquidId: "550e8400-e29b-41d4-a716-446655440099",
+    milkPriceMap: { "550e8400-e29b-41d4-a716-446655440099": 40 },
     availablePowders: [],
   }),
   resolveOrderItemPrice: vi.fn().mockReturnValue(69000),
   resolveOrderItemPremiumLatte: vi.fn().mockResolvedValue(0),
+  resolveOrderItemBaseLiquidMl: vi.fn().mockReturnValue(200),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -194,7 +196,8 @@ describe("POST /api/staff/orders — COUNTER integration", () => {
       powderPriceMap: {},
       powderSizeConfigMap: {},
       defaultMilkPricePerMl: 40,
-      milkPriceMap: {},
+      defaultBaseLiquidId: "550e8400-e29b-41d4-a716-446655440099",
+      milkPriceMap: { "550e8400-e29b-41d4-a716-446655440099": 40 },
     availablePowders: [],
     });
     vi.mocked(resolveOrderItemPrice).mockReturnValue(69000);
@@ -363,6 +366,7 @@ describe("POST /api/staff/orders — COUNTER integration", () => {
     const createCall = mockOrderCreate.mock.calls[0][0];
     const itemData = createCall.data.items.create[0];
     expect(itemData).not.toHaveProperty("surplus_points");
+    expect(itemData.base_liquid_ml).toBe(200);
   });
 
   it("Order discount voucher junction không ghi discount_applied_vnd", async () => {

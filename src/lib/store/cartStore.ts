@@ -71,25 +71,28 @@ export function migrateCartState(
       productVoucherDiscountVnd: undefined,
       addonVouchers: [],
     } : sizedItem;
-    if (fromVersion >= 4) return voucherSafeItem;
+    const baseLiquidSafeItem = fromVersion < 5 && voucherSafeItem.selectedMilkTypeId
+      ? { ...voucherSafeItem, selectedBaseLiquidId: voucherSafeItem.selectedMilkTypeId }
+      : voucherSafeItem;
+    if (fromVersion >= 4) return baseLiquidSafeItem;
 
-    const retainedOptionIds = voucherSafeItem.selectedOptionIds.filter(
-      (optionId) => (voucherSafeItem.addonPrices[optionId] ?? 0) > 0,
+    const retainedOptionIds = baseLiquidSafeItem.selectedOptionIds.filter(
+      (optionId) => (baseLiquidSafeItem.addonPrices[optionId] ?? 0) > 0,
     );
     const retainedOptionIdSet = new Set([
       ...retainedOptionIds,
-      ...voucherSafeItem.quantityAddonOptions.map((option) => option.option_id),
+      ...baseLiquidSafeItem.quantityAddonOptions.map((option) => option.option_id),
     ]);
     const retainedPrices = Object.fromEntries(
-      Object.entries(voucherSafeItem.addonPrices).filter(
+      Object.entries(baseLiquidSafeItem.addonPrices).filter(
         ([optionId, price]) => price > 0 || retainedOptionIdSet.has(optionId),
       ),
     );
     return {
-      ...voucherSafeItem,
+      ...baseLiquidSafeItem,
       selectedOptionIds: retainedOptionIds,
       addonPrices: retainedPrices,
-      addonVouchers: voucherSafeItem.addonVouchers?.filter(
+      addonVouchers: baseLiquidSafeItem.addonVouchers?.filter(
         (voucher) => retainedOptionIdSet.has(voucher.addonOptionId),
       ),
     };
@@ -273,7 +276,7 @@ export const useCartStore = create<CartState>()(
     }),
     {
       name: "bcbm-cart",
-      version: 4,
+      version: 5,
       /**
        * Auto-migrate old localStorage cart data:
        * Size M → SMALL, L → MEDIUM, XL → LARGE (Big-Bang strategy).

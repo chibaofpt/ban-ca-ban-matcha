@@ -185,9 +185,9 @@ export default function AdminMilkTypesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-foreground">Loại sữa</h1>
+          <h1 className="text-xl font-bold text-foreground">Base Liquid</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {milkTypes.length} loại sữa · {milkTypes.filter((p) => p.is_active).length} đang bán
+            {milkTypes.length} loại · {milkTypes.filter((p) => p.is_active).length} đang dùng
           </p>
         </div>
         <div className="flex gap-2">
@@ -205,7 +205,7 @@ export default function AdminMilkTypesPage() {
             className="flex items-center gap-2 rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition"
           >
             <Plus size={15} />
-            Thêm loại sữa
+            Thêm Base Liquid
           </button>
         </div>
       </div>
@@ -218,7 +218,7 @@ export default function AdminMilkTypesPage() {
           />
           <input
             type="search"
-            placeholder="Tìm tên sữa..."
+            placeholder="Tìm Base Liquid..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-8 pr-3 py-2 rounded-xl border border-border bg-background text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40"

@@ -248,6 +248,34 @@ describe("buildReorderItem", () => {
     expect(res.cartItem?.unitPrice).toBe(37000);
   });
 
+  it("Latte không tái đặt Base Liquid đã bị gỡ khỏi allow-list của món", () => {
+    const restrictedMenuData: MenuData = {
+      ...mockMenuData,
+      latte: mockMenuData.latte.map((menuItem) => ({
+        ...menuItem,
+        default_base_liquid_id: "milk1",
+        allowed_base_liquid_ids: [],
+      })),
+    };
+    const item = {
+      menu_item_id: "latte1",
+      size: "MEDIUM",
+      selected_milk_type_id: "milk2",
+      sweetness: "FULL",
+      ice_option: "NORMAL",
+      coldwhisk: false,
+      addons: [],
+      unit_price_vnd: 40_000,
+      addons_price_vnd: 0,
+      menuItem: { name: "Latte Matcha", category: "latte" },
+    } as unknown as HistoryOrderItem;
+
+    const result = buildReorderItem(item, restrictedMenuData, mockPowderData);
+
+    expect(result.cartItem?.selectedBaseLiquidId).toBe("milk1");
+    expect(result.warnings.some((warning) => warning.type === "MILK_UNAVAILABLE")).toBe(true);
+  });
+
   it("fallback về bột mặc định khi bột cũ không còn được phép cho Fusion", () => {
     const restrictedMenuData: MenuData = {
       ...mockMenuData,

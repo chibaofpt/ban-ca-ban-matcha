@@ -37,6 +37,7 @@ app/                              # Next.js App Router — entry points only, ze
         powders/page.tsx          # → src/views/admin/AdminPowderPage
         addons/page.tsx           # → src/views/admin/AdminAddonsPage
         milk-types/page.tsx       # → src/views/admin/AdminMilkTypesPage
+                                  # Legacy URL; UI manages the shared Base Liquid catalog
         voucher-packages/page.tsx # → src/views/admin/AdminVoucherPackagesPage
       points-log/page.tsx         # → src/views/admin/AdminPointsLogPage
     staff/                        # STAFF or ADMIN
@@ -93,6 +94,8 @@ app/                              # Next.js App Router — entry points only, ze
     admin/matcha-powders/[id]/route.ts
     admin/milk-types/route.ts
     admin/milk-types/[id]/route.ts
+    admin/base-liquids/route.ts        # Preferred compatibility alias over milk-types
+    admin/base-liquids/[id]/route.ts
     admin/default-size-config/route.ts
     admin/fusion-powders/route.ts
     admin/store-schedule/route.ts     # GET + PUT weekly schedule
@@ -167,6 +170,7 @@ src/                              # Frontend — never import lib/ from here
       MenuItemCard.tsx
       MenuItemModal.tsx
       MenuImageSeoField.tsx       # Optional SEO filename input; no DB field
+      MenuItemBaseLiquidFields.tsx # Per-size volume and per-item Base Liquid controls
       CatalogImageFields.tsx      # Shared crop/upload + SEO controls for addon/powder images
       MenuSubTabs.tsx             # Horizontal sub-tab bar for /admin/menu/*
       VoucherPackageForm.tsx
@@ -256,7 +260,8 @@ scratch/                          # Ignored by Git. Scratchpad for quick server 
   utils/
     formatPrice.ts                # formatPrice(vnd: number) → "🐟 {vnd/1000} cá"
     pricing.ts                    # Pure pricing functions — NO imports from lib/ or services
-                                  # exports: resolveGram(), calcLattePrice(), calcFusionPrice(), ceilTo1000()
+                                  # includes Base Liquid volume/delta helpers and drink pricing
+    baseLiquid.ts                 # Pure default + allowed option resolution for Latte/Fusion
                                   # Used by frontend (real-time estimates) and lib/pricing.ts (order time)
     deriveTags.ts
     buildZaloMessage.ts

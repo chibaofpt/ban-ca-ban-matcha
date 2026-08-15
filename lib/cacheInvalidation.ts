@@ -12,6 +12,7 @@ export async function invalidateMenuCaches(): Promise<void> {
     CACHE_KEYS.POWDERS,
     CACHE_KEYS.ADDON_GROUPS,
     CACHE_KEYS.MILK_TYPES,
+    CACHE_KEYS.BASE_LIQUIDS,
     CACHE_KEYS.DEFAULT_SIZE_CONFIG,
   );
 }

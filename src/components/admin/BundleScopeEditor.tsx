@@ -62,6 +62,8 @@ export function BundleScopeEditor({
         const sizeOptions = SIZE_OPTIONS.filter((option) => menu.availableSizes.includes(option.value as BundleScopeSize));
         const allowedPowders = new Set(menu.availablePowderIds);
         const itemPowders = powderOptions.filter((option) => allowedPowders.has(option.value));
+        const allowedBaseLiquids = new Set(menu.availableBaseLiquidIds);
+        const itemBaseLiquids = milkOptions.filter((option) => allowedBaseLiquids.has(option.value));
         const fixedPowderName = powderOptions.find((option) => option.value === scope.fixedPowderId)?.label;
         return (
           <article key={scope.menuItemId} className="space-y-3 rounded-xl border bg-background p-3 shadow-sm">
@@ -82,10 +84,10 @@ export function BundleScopeEditor({
                 Latte dùng bột cố định{fixedPowderName ? `: ${fixedPowderName}` : " của món"}; không cần chọn bột.
               </p>
             )}
-            {scope.category === "latte" && (
+            {itemBaseLiquids.length > 0 && (
               <AdaptiveSelect
-                label={purpose === "FIXED_CONFIG" ? "Sữa quà (bắt buộc)" : "Sữa áp dụng (trống = mọi loại)"}
-                multiple options={milkOptions} value={scope.milkTypeIds}
+                label={purpose === "FIXED_CONFIG" ? "Base Liquid quà (bắt buộc)" : "Base Liquid áp dụng (trống = mọi loại hợp lệ)"}
+                multiple options={itemBaseLiquids} value={scope.milkTypeIds}
                 onChange={(value) => updateScope(scope.menuItemId, { milkTypeIds: value as string[] })}
               />
             )}

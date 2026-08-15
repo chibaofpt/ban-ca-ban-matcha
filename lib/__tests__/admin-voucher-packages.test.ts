@@ -47,6 +47,7 @@ vi.mock("@/lib/pricing", () => ({
   buildPricingContext: (...a: unknown[]) => mockBuildPricingContext(...a),
   resolveOrderItemPrice: (...a: unknown[]) => mockResolveOrderItemPrice(...a),
   resolveOrderItemPremiumLatte: (...a: unknown[]) => mockResolveOrderItemPremiumLatte(...a),
+  resolveOrderItemBaseLiquidMl: vi.fn().mockReturnValue(200),
 }));
 
 import { GET, POST } from "@/app/api/admin/voucher-packages/route";
@@ -62,6 +63,7 @@ const MENU_ITEM_ID = "550e8400-e29b-41d4-a716-446655440002";
 const ADDON_ID = "550e8400-e29b-41d4-a716-446655440003";
 const EXTRA_MATCHA_ADDON_ID = "550e8400-e29b-41d4-a716-446655440004";
 const POWDER_ID = "550e8400-e29b-41d4-a716-446655440005";
+const BASE_LIQUID_ID = "550e8400-e29b-41d4-a716-446655440006";
 
 const existingPkg = {
   id: PKG_ID,
@@ -79,6 +81,8 @@ const latteMenuItem = {
   matcha_powder_id: POWDER_ID,
   default_powder_id: null,
   custom_powder_grams: null,
+  default_base_liquid_id: null,
+  allowedBaseLiquids: [],
   fusionAllowedPowders: [],
   sizes: [
     { size: "SMALL", base_price_vnd: 33000, milk_ml: 200 },
@@ -89,7 +93,8 @@ const latteMenuItem = {
 
 const basePricingCtx = {
   powderPriceMap: { [POWDER_ID]: 5000 },
-  milkPriceMap: {},
+  milkPriceMap: { [BASE_LIQUID_ID]: 40 },
+  defaultBaseLiquidId: BASE_LIQUID_ID,
   defaultMilkPricePerMl: 40,
   powderSizeConfigs: {},
   defaultSizeConfig: {},

@@ -14,7 +14,13 @@ import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
 import { captureServerException } from "@/lib/observability";
 import { ADMIN_MENU_INCLUDE, formatAdminMenuItem } from "@/lib/adminMenuDto";
 import { parseAdminMenuUpdate } from "@/lib/adminMenuRequest";
-import { asMenuStorageCategory, validateMenuImageFile, validateUniqueLattePowder } from "@/lib/adminMenuUpdate";
+import {
+  asMenuStorageCategory,
+  buildMenuItemSizeUpdate,
+  isAvailabilityOnlyMenuUpdate,
+  validateMenuImageFile,
+  validateUniqueLattePowder,
+} from "@/lib/adminMenuUpdate";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +66,35 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       );
     }
     const validData = validation.data;
+    const availabilityOnlyUpdate = isAvailabilityOnlyMenuUpdate(raw);
+    let resolvedDefaultBaseLiquidId = existing.default_base_liquid_id;
+    let allowedBaseLiquidIdsToSave: string[] | undefined;
+    if (!availabilityOnlyUpdate) {
+      const activeBaseLiquids = await prisma.milkType.findMany({
+        where: { is_active: true },
+        select: { id: true, is_default: true },
+      });
+      const activeBaseLiquidIds = new Set(activeBaseLiquids.map((liquid) => liquid.id));
+      resolvedDefaultBaseLiquidId = existing.category === "latte"
+        ? activeBaseLiquids.find((liquid) => liquid.is_default)?.id ?? null
+        : validData.default_base_liquid_id ?? existing.default_base_liquid_id;
+      if (!resolvedDefaultBaseLiquidId || !activeBaseLiquidIds.has(resolvedDefaultBaseLiquidId)) {
+        return NextResponse.json(
+          { error: "Base Liquid mặc định không khả dụng", code: "BUSINESS_RULE_VIOLATION" },
+          { status: 422 },
+        );
+      }
+      allowedBaseLiquidIdsToSave = validData.allowed_base_liquid_ids === undefined
+        ? undefined
+        : [...new Set(validData.allowed_base_liquid_ids)]
+          .filter((baseLiquidId) => baseLiquidId !== resolvedDefaultBaseLiquidId);
+      if (allowedBaseLiquidIdsToSave?.some((baseLiquidId) => !activeBaseLiquidIds.has(baseLiquidId))) {
+        return NextResponse.json(
+          { error: "Danh sách Base Liquid có lựa chọn không khả dụng", code: "BUSINESS_RULE_VIOLATION" },
+          { status: 422 },
+        );
+      }
+    }
 
     // ── Check uniqueness of powder ──────────────────────────────────────────
     const powderConflict = await validateUniqueLattePowder({
@@ -145,6 +180,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
               validData.default_powder_id !== undefined && {
                 default_powder_id: validData.default_powder_id,
               }),
+            ...(existing.category === "fusion" && !availabilityOnlyUpdate && {
+              default_base_liquid_id: resolvedDefaultBaseLiquidId,
+            }),
             ...(image_url !== undefined && { image_url }),
             updated_at: new Date(),
           },
@@ -156,11 +194,28 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
             validData.sizes.map((s) =>
               tx.menuItemSize.upsert({
                 where: { menu_item_id_size: { menu_item_id: id, size: s.size } },
-                create: { menu_item_id: id, size: s.size, base_price_vnd: s.base_price_vnd },
-                update: { base_price_vnd: s.base_price_vnd },
+                create: {
+                  menu_item_id: id,
+                  size: s.size,
+                  base_price_vnd: s.base_price_vnd,
+                  base_liquid_ml: s.base_liquid_ml ?? null,
+                },
+                update: buildMenuItemSizeUpdate(s),
               })
             )
           );
+        }
+
+        if (allowedBaseLiquidIdsToSave !== undefined) {
+          await tx.menuItemAllowedBaseLiquid.deleteMany({ where: { menu_item_id: id } });
+          if (allowedBaseLiquidIdsToSave.length > 0) {
+            await tx.menuItemAllowedBaseLiquid.createMany({
+              data: allowedBaseLiquidIdsToSave.map((baseLiquidId) => ({
+                menu_item_id: id,
+                base_liquid_id: baseLiquidId,
+              })),
+            });
+          }
         }
 
         // Sync fusionAllowedPowders if provided (Fusion items only)

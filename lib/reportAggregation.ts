@@ -13,6 +13,8 @@ export interface RawOrderItem {
   selected_powder_id: string | null;
   /** null for Fusion items */
   selected_milk_type_id: string | null;
+  /** Immutable order-time snapshot. Missing/null only for legacy orders. */
+  base_liquid_ml?: number | null;
   menuItem: {
     name: string;
     /** "latte" | "fusion" */
@@ -21,6 +23,7 @@ export interface RawOrderItem {
     matcha_powder_id: string | null;
     /** Per-item gram overrides; null when not set */
     custom_powder_grams: Record<string, number> | null;
+    sizes?: Array<{ size: "SMALL" | "MEDIUM" | "LARGE"; base_liquid_ml: number | null }>;
   };
   addons: Array<{
     quantity: number;
@@ -185,11 +188,15 @@ export function buildReport(
         powderGramMap.set(powderId, prev + baseTotal + extraGram);
       }
 
-      // -- Milk usage (Latte only) --
-      if (item.menuItem.category === "latte" && item.selected_milk_type_id) {
+      // -- Base Liquid usage (Latte and configured Fusion) --
+      if (item.selected_milk_type_id) {
         const defaultSize = defaultSizeEntries.find((e) => e.size === item.size);
-        if (defaultSize) {
-          const mlTotal = defaultSize.milk_ml * qty;
+        const legacyRecipeMl = item.menuItem.sizes?.find(
+          (row) => row.size === item.size,
+        )?.base_liquid_ml;
+        const effectiveMl = item.base_liquid_ml ?? legacyRecipeMl ?? defaultSize?.milk_ml;
+        if (effectiveMl !== undefined) {
+          const mlTotal = effectiveMl * qty;
           const prevMl = milkMlMap.get(item.selected_milk_type_id) ?? 0;
           milkMlMap.set(item.selected_milk_type_id, prevMl + mlTotal);
         }

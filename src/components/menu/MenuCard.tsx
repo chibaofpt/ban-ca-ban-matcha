@@ -61,7 +61,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
         base_price_vnd: base,
         gram,
         powder_price_per_gram: pwdPrice,
-        milk_ml: sizeObj.milk_ml ?? 0,
+        milk_ml: sizeObj.base_liquid_ml ?? sizeObj.milk_ml ?? 0,
         milk_price_per_ml: defaultMilk?.price_per_ml ?? 40
       });
     } else {

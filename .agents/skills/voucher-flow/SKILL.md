@@ -106,13 +106,15 @@ ACTIVE → REFUNDED                                (auto: target item soft-delet
 
 ## PRODUCT Voucher Details
 
-- Match only `voucher.menu_item_id === order_item.menu_item_id`. Treat size, powder, milk,
+- Match only `voucher.menu_item_id === order_item.menu_item_id`. Treat size, powder, Base Liquid,
   and included-addon snapshots as descriptive data, not eligibility constraints.
 - Apply one PRODUCT voucher to one drink unit. Split a voucher-bearing unit into its own
   cart line when the original line quantity is greater than one.
 - At package creation, compute `covered_price_vnd` from the selected drink configuration only.
   Exclude every addon, including IDs retained in `included_addon_option_ids`.
 - Keep `covered_price_vnd` fixed from voucher issuance; never recompute an issued voucher.
+- “Dùng ngay” must resolve the voucher's saved Base Liquid against the item's current default and
+  allow-list, store the resolved selection in cart, and include the normal Latte cost/Fusion delta.
 - Limit PRODUCT credit to `drink_price_vnd`. Never spill unused credit into addons.
 
 ```text
@@ -171,8 +173,8 @@ and `order_discount_vouchers.discount_applied_vnd` have been **dropped** (migrat
   prices before evaluating them.
 - Resolve voucher ownership through an explicit `voucher_owner_id`, never by assuming the order
   host owns every line. This boundary is required for future group orders.
-- `SAME_CONFIG` means product, size, powder, and milk match; sweetness, ice, and coldwhisk may
-  differ. `FIXED_CONFIG` requires exact size and powder, plus milk for Latte. `ALLOWED_SCOPE`
+- `SAME_CONFIG` means product, size, powder, and Base Liquid match; sweetness, ice, and coldwhisk may
+  differ. `FIXED_CONFIG` requires exact size, powder, and Base Liquid for both configured categories. `ALLOWED_SCOPE`
   covers at most its reference credit and creates no surplus points.
 - Addon rewards may scale per bundle, once per order, or per qualifying item. Pool allocations
   across eligible items, reject Extra Matcha, and never overlap PRODUCT/ADDON voucher benefits.
@@ -182,7 +184,7 @@ and `order_discount_vouchers.discount_applied_vnd` have been **dropped** (migrat
 - Qualifier and reward scopes may each contain multiple products, including seasonal products.
   One BUNDLE package has exactly one reward kind: PRODUCT or ADDON.
 - Admin BUNDLE scope UI configures each selected product independently. Multiple selected sizes,
-  powders, and Latte milks expand into the existing exact product-scope combinations. Latte powder
+  powders, and per-item Base Liquids expand into the existing exact product-scope combinations. Latte powder
   is fixed by its menu item and is never shown as a swappable Admin choice; Fusion powder ranges
   are limited to that item's resolved default and allowed powders.
 - Reserve at order creation, redeem on payment confirmation/completion, and restore on cancellation.

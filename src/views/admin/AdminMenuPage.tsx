@@ -432,6 +432,8 @@ export default function AdminMenuPage() {
           mode={modalState.mode}
           item={modalState.mode === "edit" ? modalState.item : undefined}
           powders={powders}
+          baseLiquids={menuData?.base_liquids ?? []}
+          defaultSizeConfig={menuData?.default_size_config ?? []}
           onClose={() => setModalState({ open: false })}
           onSuccess={handleModalSuccess}
         />

@@ -101,7 +101,10 @@
 - `menu_item_addons` junction table does not exist — do not create it
 - Categories: exactly 2 — `latte` and `fusion`. No others.
 - `addon_groups` is global — no junction table, no per-item config
-- `milk_type` is global — latte only, determined by `category` at query time
+- Base Liquid catalog reuses the global `milk_type` table for both Latte and Fusion; do not add a `kind` discriminator.
+- Latte uses the global default Base Liquid. Each menu item stores only its allowed swap options; Admin is responsible for keeping Latte options milk-only.
+- Fusion requires a per-item default Base Liquid when created or edited. Existing unconfigured Fusion items remain legacy-compatible until edited.
+- `menu_item_sizes.base_liquid_ml = NULL` means fall back to `default_size_config.milk_ml` for that size.
 - Phone normalized to `+84` before any DB storage or comparison
 - Ghost user: `password_hash = "GHOST_USER_NO_PASSWORD"` — register updates existing row
 - Cart persisted to localStorage via Zustand — not saved to DB

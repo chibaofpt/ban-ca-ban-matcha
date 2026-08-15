@@ -42,6 +42,7 @@ function makeLatteOrder(overrides: {
   milkId?: string;
   menuItemId?: string;
   menuItemName?: string;
+  baseLiquidMl?: number | null;
 }) {
   return {
     total_vnd: overrides.total_vnd ?? 69_000,
@@ -52,6 +53,7 @@ function makeLatteOrder(overrides: {
         size: overrides.size ?? "SMALL",
         selected_powder_id: null,
         selected_milk_type_id: overrides.milkId ?? "milk-bo",
+        base_liquid_ml: overrides.baseLiquidMl,
         menuItem: {
           name: overrides.menuItemName ?? "Premium Matcha Latte",
           category: "latte",
@@ -130,6 +132,19 @@ describe("buildReport — kết quả tổng hợp cơ bản", () => {
     expect(result.milk_usage).toHaveLength(1);
     expect(result.milk_usage[0].milk_name).toBe("Sữa bò");
     expect(result.milk_usage[0].total_ml).toBe(400); // 2 × 200
+  });
+
+  it("ưu tiên snapshot ml trên order item để báo cáo lịch sử không đổi theo công thức hiện tại", () => {
+    const orders = [makeLatteOrder({
+      size: "SMALL",
+      quantity: 2,
+      milkId: "milk-bo",
+      baseLiquidMl: 175,
+    })];
+
+    const result = buildReport(orders, powders, milkTypes, powderSizeEntries, defaultSizeEntries);
+
+    expect(result.milk_usage[0].total_ml).toBe(350);
   });
 
   it("phân loại latte_sales và fusion_sales đúng", () => {

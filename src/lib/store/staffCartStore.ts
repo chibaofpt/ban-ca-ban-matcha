@@ -52,6 +52,7 @@ export function migrateStaffCartState(persistedState: unknown): PersistedStaffCa
       ]);
       return {
         ...item,
+        selectedBaseLiquidId: item.selectedBaseLiquidId ?? item.selectedMilkTypeId,
         selectedOptionIds,
         addonPrices: Object.fromEntries(
           Object.entries(item.addonPrices).filter(
@@ -256,7 +257,7 @@ export const useStaffCartStore = create<StaffCartState>()(
         });
       },
     }),
-    { name: "bcbm-staff-cart", version: 1, migrate: migrateStaffCartState }
+    { name: "bcbm-staff-cart", version: 2, migrate: migrateStaffCartState }
   )
 );
 

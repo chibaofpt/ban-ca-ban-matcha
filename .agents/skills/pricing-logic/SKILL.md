@@ -24,7 +24,7 @@ description: >
 | `lib/pricing.ts` | SERVER ONLY | Thin wrapper: fetch all pricing data from DB → call `src/utils/pricing.ts` |
 | `src/lib/store/powderStore.ts` | CLIENT | Caches `/api/powders` response for real-time price estimates |
 | `app/api/powders/route.ts` | SERVER | Public endpoint — includes `price_per_gram`, `powder_size_config`, `default_powder_gram` |
-| `app/api/menu/route.ts` | SERVER | Returns `sizes[].milk_ml` plus global `milk_types` and `addon_groups` for frontend pricing |
+| `app/api/menu/route.ts` | SERVER | Returns effective per-size Base Liquid volume, item defaults/allowed IDs, global catalog, and addon groups |
 
 > Frontend needs 2 API calls on app load: `GET /api/menu` + `GET /api/powders`. Both cached in state, not refetched per interaction.
 
@@ -37,7 +37,7 @@ description: >
 ceil(
   base_price_vnd[size]
   + effective_gram[size] × powder.price_per_gram
-  + default_size_config[size].milk_ml × milk_type.price_per_ml
+  + effective_base_liquid_ml[size] × selected_base_liquid.price_per_ml
 , 1000)
 ```
 
@@ -47,6 +47,7 @@ ceil(
   base_price_vnd[size]
   + effective_gram[size] × selected_powder.price_per_gram
   + Premium_Latte[size]
+  + effective_base_liquid_ml[size] × (selected_base_liquid.price_per_ml - item_default_base_liquid.price_per_ml)
 , 1000)
 ```
 
@@ -102,14 +103,19 @@ For each item + size, resolve grams in this order:
 
 ---
 
-## Milk Pricing
+## Base Liquid Pricing
 
-- `is_default = true` (sữa bò, 40 VND/ml): always included in Latte base price, hidden in UI selector.
-- `milk_ml` per size comes from `default_size_config` → embedded in `GET /api/menu` response as `sizes[].milk_ml`.
-- Active milk types are returned once as `MenuData.milk_types`, never duplicated inside each Latte item.
-- Frontend recalculates on milk swap: `(new_milk.price_per_ml - default_milk.price_per_ml) × milk_ml[size]`.
+- The physical `milk_type` table is the shared Base Liquid catalog; do not add a `kind` field.
+- Latte uses the global `is_default = true` row. Admin is responsible for allowing milk entries only.
+- Fusion uses `menu_items.default_base_liquid_id`; new/edited Fusion items require it. A legacy unconfigured Fusion contributes no Base Liquid delta.
+- Effective volume is `menu_item_sizes.base_liquid_ml ?? default_size_config[size].milk_ml`.
+- Persist that resolved volume to `order_items.base_liquid_ml` at order time. Historical consumption
+  must use the immutable snapshot; current recipe fallback is permitted only for pre-migration null rows.
+- Allowed swaps come from `menu_item_allowed_base_liquid`; the default is always implicitly allowed.
+- Frontend and server calculate swap delta as `(selected.price_per_ml - default.price_per_ml) × effective_ml`; Fusion may increase or decrease before the final single rounding step.
+- Active catalog rows are returned once as `MenuData.base_liquids`; `milk_types` remains a compatibility alias.
 - No pre-computed price field in API responses — frontend computes all prices client-side.
-- Milk applies to `latte` items only, determined by `category` at query time.
+- Hide the selector when default + active allowed options contains at most one entry.
 
 ---
 

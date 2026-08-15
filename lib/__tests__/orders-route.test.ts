@@ -59,10 +59,12 @@ vi.mock("@/lib/pricing", () => ({
     powderPriceMap: {},
     powderSizeConfigMap: {},
     defaultMilkPricePerMl: 40,
-    milkPriceMap: {},
+    defaultBaseLiquidId: "550e8400-e29b-41d4-a716-446655440099",
+    milkPriceMap: { "550e8400-e29b-41d4-a716-446655440099": 40 },
   }),
   resolveOrderItemPrice: vi.fn().mockReturnValue(69000),
   resolveOrderItemPremiumLatte: vi.fn().mockResolvedValue(0),
+  resolveOrderItemBaseLiquidMl: vi.fn().mockReturnValue(200),
 }));
 
 // Mock lib/prisma — $transaction must be vi.fn() so tests can mockImplementation() per test
@@ -271,7 +273,8 @@ describe("POST /api/orders", () => {
       powderPriceMap: {},
       powderSizeConfigMap: {},
       defaultMilkPricePerMl: 40,
-      milkPriceMap: {},
+      defaultBaseLiquidId: "550e8400-e29b-41d4-a716-446655440099",
+      milkPriceMap: { "550e8400-e29b-41d4-a716-446655440099": 40 },
       availablePowders: [],
     });
     vi.mocked(resolveOrderItemPrice).mockReturnValue(69000);

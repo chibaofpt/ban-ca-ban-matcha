@@ -19,12 +19,12 @@ export function line1ItemDetails(
   if (!menuItem) return chips;
 
   // Milk / Powder
-  if (item.category === "latte") {
-    if (item.selectedMilkTypeId) {
-      const milk = milkTypes.find((candidate) => candidate.id === item.selectedMilkTypeId);
-      if (milk) chips.push(milk.name);
-    }
-  } else {
+  const selectedBaseLiquidId = item.selectedBaseLiquidId ?? item.selectedMilkTypeId;
+  if (selectedBaseLiquidId) {
+    const liquid = milkTypes.find((candidate) => candidate.id === selectedBaseLiquidId);
+    if (liquid) chips.push(liquid.name);
+  }
+  if (item.category === "fusion") {
     // Fusion
     const pwd = powders?.find(p => p.id === item.selectedPowderId);
     if (pwd) {

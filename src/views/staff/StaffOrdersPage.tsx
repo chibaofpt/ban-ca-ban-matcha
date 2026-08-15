@@ -73,7 +73,9 @@ function buildOrderItems(
           }
         : {}),
       ...(c.selectedPowderId ? { selected_powder_id: c.selectedPowderId } : {}),
-      ...(c.selectedMilkTypeId ? { selected_milk_type_id: c.selectedMilkTypeId } : {}),
+      ...((c.selectedBaseLiquidId ?? c.selectedMilkTypeId)
+        ? { selected_base_liquid_id: c.selectedBaseLiquidId ?? c.selectedMilkTypeId }
+        : {}),
       client_price_vnd: c.clientPriceVnd,
     };
   });
@@ -135,7 +137,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         base_price_vnd: base,
         gram,
         powder_price_per_gram: pwdPrice,
-        milk_ml: sizeObj.milk_ml ?? 0,
+        milk_ml: sizeObj.base_liquid_ml ?? sizeObj.milk_ml ?? 0,
         milk_price_per_ml: defaultMilk?.price_per_ml ?? 40,
       });
     } else {

@@ -5,7 +5,8 @@ import type {
   HistoryOrderItem,
   ReorderWarning,
 } from "@/src/lib/types/reorder";
-import { calcLattePrice, calcFusionPrice, resolveGram, ceilTo1000, formatMoney } from "@/src/utils/pricing";
+import { calcLattePrice, calcFusionPrice, calcBaseLiquidDelta, resolveGram, ceilTo1000, formatMoney } from "@/src/utils/pricing";
+import { getBaseLiquidOptionsForItem } from "@/src/utils/baseLiquid";
 import { formatOrderSize } from "@/src/utils/display";
 
 export interface ReorderItemResult {
@@ -87,11 +88,18 @@ export function buildReorderItem(
 
   if (menuItem.category === "latte") {
     // Check milk
-    const activeMilkTypes = menuData.milk_types || [];
+    const catalogLiquids = menuData.base_liquids ?? menuData.milk_types ?? [];
+    const configuredLiquids = getBaseLiquidOptionsForItem(menuItem, catalogLiquids);
+    // Compatibility for cached menu payloads created before per-item allow-lists existed.
+    const activeMilkTypes = menuItem.default_base_liquid_id
+      ? configuredLiquids
+      : catalogLiquids;
     const requestedMilk = activeMilkTypes.find(
       (milk) => milk.id === item.selected_milk_type_id,
     );
-    const defaultMilk = activeMilkTypes.find((milk) => milk.is_default);
+    const defaultMilk = activeMilkTypes.find(
+      (milk) => milk.id === menuItem.default_base_liquid_id,
+    ) ?? activeMilkTypes.find((milk) => milk.is_default);
     const resolvedMilk = requestedMilk ?? defaultMilk;
     if (item.selected_milk_type_id && !requestedMilk) {
       warnings.push({
@@ -129,7 +137,7 @@ export function buildReorderItem(
       (powder) =>
         powder.id === item.selected_powder_id &&
         (powder.id === menuItem.resolved_default_powder_id ||
-          menuItem.allowed_powder_ids.includes(powder.id)),
+          (menuItem.allowed_powder_ids ?? []).includes(powder.id)),
     );
     const resolvedPowder = requestedPowder ?? defaultPowder;
     if (item.selected_powder_id && !requestedPowder) {
@@ -155,6 +163,29 @@ export function buildReorderItem(
           powderData.default_powder_gram
         );
       }
+    }
+
+    const baseLiquidOptions = getBaseLiquidOptionsForItem(
+      menuItem,
+      menuData.base_liquids ?? menuData.milk_types,
+    );
+    const requestedBaseLiquid = baseLiquidOptions.find(
+      (liquid) => liquid.id === item.selected_milk_type_id,
+    );
+    const defaultBaseLiquid = baseLiquidOptions.find(
+      (liquid) => liquid.id === menuItem.default_base_liquid_id,
+    );
+    const resolvedBaseLiquid = requestedBaseLiquid ?? defaultBaseLiquid;
+    if (item.selected_milk_type_id && !requestedBaseLiquid) {
+      warnings.push({
+        type: "BASE_LIQUID_UNAVAILABLE",
+        itemName: menuItem.name,
+        details: `Base Liquid cũ không còn khả dụng. Đã chuyển về ${defaultBaseLiquid?.name ?? "mặc định"}.`,
+      });
+    }
+    if (resolvedBaseLiquid) {
+      finalMilkTypeId = resolvedBaseLiquid.id;
+      baseConfigs.push(resolvedBaseLiquid.name);
     }
   }
 
@@ -244,7 +275,19 @@ export function buildReorderItem(
       base_price_vnd: sizeConfig.base_price_vnd,
       gram: powderGram,
       powder_price_per_gram: powderPricePerGram,
-      premium_latte: premiumLatte
+      premium_latte: premiumLatte,
+      base_liquid_delta_vnd: (() => {
+        const liquids = menuData.base_liquids ?? menuData.milk_types;
+        const selected = liquids.find((liquid) => liquid.id === finalMilkTypeId);
+        const fallback = liquids.find((liquid) => liquid.id === menuItem.default_base_liquid_id);
+        return selected && fallback
+          ? calcBaseLiquidDelta(
+              sizeConfig.base_liquid_ml ?? sizeConfig.milk_ml,
+              selected.price_per_ml,
+              fallback.price_per_ml,
+            )
+          : 0;
+      })(),
     });
   }
 
@@ -278,6 +321,7 @@ export function buildReorderItem(
     quantityAddonOptions,
     selectedPowderId: finalPowderId,
     selectedMilkTypeId: finalMilkTypeId,
+    selectedBaseLiquidId: finalMilkTypeId,
     unitPrice: newTotalPrice,
     clientPriceVnd: newTotalPrice,
     originalClientPriceVnd: newTotalPrice,

@@ -256,6 +256,8 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
 | `/api/admin/milk-types` | POST | Create milk type |
 | `/api/admin/milk-types/[id]` | PUT | Update milk type |
 | `/api/admin/milk-types/[id]` | DELETE | Deactivate (`is_active = false`) |
+| `/api/admin/base-liquids` | GET/POST | Compatibility-safe Base Liquid catalog alias over `milk_type` |
+| `/api/admin/base-liquids/[id]` | PUT/DELETE | Update or deactivate a Base Liquid |
 | `/api/admin/default-size-config` | GET | Get SMALL/MEDIUM/LARGE system config |
 | `/api/admin/default-size-config` | PUT | Update SMALL/MEDIUM/LARGE config (affects all prices immediately) |
 | `/api/admin/fusion-powders` | POST | Attach powder to Fusion item's allowed list |
@@ -388,7 +390,8 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
     updated_at: string              // MAX(menu_items.updated_at) — ISO timestamp for cache invalidation
     latte: MenuItem[]
     fusion: MenuItem[]
-    milk_types: MilkType[]           // active global list; Latte only at display time
+    milk_types: BaseLiquid[]         // legacy response field; active global Base Liquid catalog
+    base_liquids: BaseLiquid[]       // preferred alias, same rows as milk_types
     addon_groups: AddonGroup[]       // active global list; applies to every item
   }
 }
@@ -403,6 +406,9 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
   image_url: string | null
   sort_order: number
   base_liquid_note: string | null   // Fusion only
+  default_base_liquid_id: string | null
+  resolved_default_base_liquid_id: string | null
+  allowed_base_liquid_ids: string[] // active, excludes implicit default
 
   // Latte only
   powder: {
@@ -418,12 +424,14 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
   sizes: {
     size: "SMALL" | "MEDIUM" | "LARGE"
     base_price_vnd: number            // null sizes excluded entirely
-    milk_ml: number                   // from default_size_config — frontend uses for milk swap recalculation
+    base_liquid_ml: number            // resolved override or default_size_config fallback
+    base_liquid_ml_override: number | null
+    milk_ml: number                    // legacy alias of base_liquid_ml
   }[]
 }
 
-// MilkType — MenuData.milk_types is global, Latte only at display time
-type MilkType = {
+// BaseLiquid — physical storage remains milk_type
+type BaseLiquid = {
   id: string
   name: string
   price_per_ml: number
@@ -510,13 +518,16 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
   matcha_powder_id?: string           // Latte only
   default_powder_id?: string          // Fusion only
   base_liquid_note?: string           // Fusion only
+  default_base_liquid_id?: string     // required for new/edited Fusion
+  allowed_base_liquid_ids?: string[]  // default is implicit; do not include it
   custom_powder_grams?: { SMALL?: number, MEDIUM?: number, LARGE?: number }
   sizes: {
     size: "SMALL" | "MEDIUM" | "LARGE"
     base_price_vnd: number | null
+    base_liquid_ml?: number | null    // null/omitted = system fallback
   }[]
 }
-// Server: INSERT menu_items + 3 menu_item_sizes in prisma.$transaction()
+// Server: INSERT menu_items + 3 menu_item_sizes + allowed Base Liquids in prisma.$transaction()
 // Addons apply globally — no junction rows needed
 ```
 
@@ -588,9 +599,13 @@ campaign issuance limit; there is no second limit inside `bundle_rule`.
   sizes?: {
     size: "SMALL" | "MEDIUM" | "LARGE"
     base_price_vnd: number | null
+    base_liquid_ml?: number | null    // omitted preserves current override; null clears to system fallback
   }[]                                 // upsert on (menu_item_id, size)
 }
 ```
+
+The JSON quick-toggle payload `{ is_available: boolean }` remains valid for legacy Fusion rows
+without a configured default Base Liquid. Any full edit still requires a valid active default.
 
 ### `POST /api/orders` — Customer
 ```ts
@@ -612,7 +627,8 @@ campaign issuance limit; there is no second limit inside `bundle_rule`.
       addon_option_id: string
     }[]
     selected_powder_id?: string       // Fusion only
-    selected_milk_type_id?: string    // Latte only, optional (defaults to sữa bò)
+    selected_base_liquid_id?: string  // preferred for Latte and configured Fusion
+    selected_milk_type_id?: string    // one-release legacy alias; must not conflict with preferred field
     client_price_vnd: number          // REQUIRED — frontend computed price. Missing = VALIDATION_ERROR.
   }[]
   discount_voucher_ids?: string[]    // voucher qr_token values
@@ -801,11 +817,11 @@ campaign issuance limit; there is no second limit inside `bundle_rule`.
 ## Business Logic Notes
 
 ### Menu
-- `GET /api/menu`: query `menu_items WHERE is_available = true`, sizes `WHERE base_price_vnd IS NOT NULL`, `addon_groups WHERE is_active = true` (no junction join), and `milk_types WHERE is_active = true`. Addon groups and milk types are returned once at `data` level; consumers apply milk only when `category = "latte"`.
+- `GET /api/menu`: return the active global Base Liquid catalog once, plus each item's resolved default, active allowed IDs, and effective per-size volume. Consumers show the selector only when default + allowed contains more than one option.
 - `updated_at` in response = `MAX(menu_items.updated_at)` across all items including unavailable ones.
 - Fusion `default_powder_id = NULL`: resolve fallback (Meyumi → Hana → MH-3 → cheapest `price_per_gram` WHERE `is_available = true`). Return `resolved_default_powder_id` — never NULL.
 - `allowed_powder_ids`: join `fusion_allowed_powder` + filter `matcha_powder.is_available = true`.
-- `POST /api/admin/menu`: INSERT `menu_items` + 3 `menu_item_sizes` in one `prisma.$transaction()`. No other writes needed.
+- `POST /api/admin/menu`: INSERT `menu_items` + 3 `menu_item_sizes` + `menu_item_allowed_base_liquid` rows in one `prisma.$transaction()`.
 - `DELETE /api/admin/addon-groups/[id]`: set `is_active = false`. Never hard delete.
 - Admin soft-deleting a Latte item: check `matcha_powder.reference_latte_item_id` and warn if any powder references it.
 
@@ -819,7 +835,11 @@ campaign issuance limit; there is no second limit inside `bundle_rule`.
 ### Orders
 - Latte: server sets `selected_powder_id` from `menu_item.matcha_powder_id` — client must not send it.
 - Fusion: server validates `selected_powder_id` is either `resolved_default_powder_id` OR exists in `fusion_allowed_powder` for that item. Default powder is always accepted.
-- If `selected_milk_type_id` not sent for Latte → server uses `milk_type WHERE is_default = true` (sữa bò).
+- Latte resolves the global default Base Liquid; Fusion resolves its per-item default. A requested swap must be the default or an active item-allowed row.
+- Fusion without Base Liquid configuration remains legacy-compatible and has no selector or liquid price delta until Admin edits it.
+- On every new customer or staff order, server snapshots the effective Base Liquid volume into
+  `order_items.base_liquid_ml` together with the resolved physical liquid ID. Historical
+  consumption reports read this snapshot first and use current recipe data only for legacy null rows.
 - Customer and staff routes must call the same server order/voucher calculator.
 - `subtotal_vnd` is gross merchandise before vouchers; `total_vnd` is merchandise after all
   non-shipping vouchers; `grand_total_vnd` is the final amount including shipping and FREESHIP.
@@ -853,6 +873,8 @@ campaign issuance limit; there is no second limit inside `bundle_rule`.
   `covered_price_vnd` to base + powder + milk + Premium Latte; never spill credit into addons.
   Compute the package snapshot from those drink components only; included addon IDs are
   descriptive and never expand coverage.
+- The PRODUCT “Dùng ngay” cart flow resolves the voucher Base Liquid against the item's current
+  default/allow-list and includes the same Latte cost or Fusion swap delta as normal add-to-cart.
 - ADDON: apply to one unit of the exact `addon_option_id`. Allow multiple ADDON vouchers on one
   item only when their addon IDs differ. Never apply to Extra Matcha.
 - DISCOUNT: check `min_order_vnd` after PRODUCT and ADDON. Apply multiple FIXED vouchers first

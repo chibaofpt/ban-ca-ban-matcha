@@ -74,14 +74,14 @@ export function validateVoucherDraft(draft: VoucherDraft): string | null {
     if (draft.rewardProductScopes.some((scope) => scope.sizes.length === 0)) return "Vui lòng chọn ít nhất một size cho từng món quà";
     if (draft.rewardProductScopes.some((scope) => scope.category === "fusion" && scope.powderIds.length === 0)) return "Vui lòng chọn ít nhất một loại bột cho từng món Fusion";
     if (draft.rewardProductScopes.some((scope) => scope.category === "latte" && !scope.fixedPowderId)) return "Món Latte chưa có bột cố định hợp lệ";
-    if (draft.rewardProductScopes.some((scope) => scope.category === "latte" && scope.milkTypeIds.length === 0)) return "Vui lòng chọn sữa cho từng món Latte cố định";
+    if (draft.rewardProductScopes.some((scope) => scope.milkTypeIds.length === 0)) return "Vui lòng chọn Base Liquid cho từng món quà cố định";
   }
   if (draft.voucherType === "BUNDLE" && draft.rewardKind === "ADDON" && draft.rewardAddonOptionIds.length === 0) return "Vui lòng chọn addon quà";
   if (draft.voucherType === "BUNDLE" && draft.rewardMode === "ALLOWED_SCOPE" && draft.rewardProductScopes.some((scope) => scope.referencePriceVnd < 1_000 || scope.referencePriceVnd % 1_000 !== 0)) return "Hạn mức từng món phải từ 1.000đ và chia hết cho 1.000";
   if (draft.voucherType === "BUNDLE") {
     const scopeCount = (scope: BundleVoucherFormState["qualifierScopes"][number]) =>
       Math.max(1, scope.sizes.length) * Math.max(1, scope.powderIds.length) *
-      (scope.category === "latte" ? Math.max(1, scope.milkTypeIds.length) : 1);
+      Math.max(1, scope.milkTypeIds.length);
     if (draft.qualifierScopes.reduce((sum, scope) => sum + scopeCount(scope), 0) > 100) return "Phạm vi món điều kiện vượt quá 100 cấu hình";
     if (draft.rewardProductScopes.reduce((sum, scope) => sum + scopeCount(scope), 0) > 100) return "Phạm vi món quà vượt quá 100 cấu hình";
   }
@@ -105,8 +105,8 @@ function describeScope(
   if (scope.category === "fusion" && scope.powderIds.length > 0) {
     details.push(scope.powderIds.map((id) => powderLabels.get(id) ?? "Bột đã chọn").join(" + "));
   }
-  if (scope.category === "latte" && scope.milkTypeIds.length > 0) {
-    details.push(scope.milkTypeIds.map((id) => milkLabels.get(id) ?? "Sữa đã chọn").join(" + "));
+  if (scope.milkTypeIds.length > 0) {
+    details.push(scope.milkTypeIds.map((id) => milkLabels.get(id) ?? "Base Liquid đã chọn").join(" + "));
   }
   const name = menuLabels.get(scope.menuItemId) ?? "Món đã chọn";
   return details.length > 0 ? `${name} (${details.join(" · ")})` : name;

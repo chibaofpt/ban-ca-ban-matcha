@@ -49,6 +49,7 @@ export async function parseAdminMenuUpdate(
   const formData = await request.formData();
   const powderId = formData.get("matcha_powder_id");
   const defaultPowderId = formData.get("default_powder_id");
+  const defaultBaseLiquidId = formData.get("default_base_liquid_id");
   const raw: Record<string, unknown> = {
     name: formData.get("name") || undefined,
     description: formData.get("description") || undefined,
@@ -65,11 +66,15 @@ export async function parseAdminMenuUpdate(
       typeof defaultPowderId === "string" && /^[0-9a-fA-F]{8}-/.test(defaultPowderId)
         ? defaultPowderId
         : undefined,
+    default_base_liquid_id:
+      typeof defaultBaseLiquidId === "string" && /^[0-9a-fA-F]{8}-/.test(defaultBaseLiquidId)
+        ? defaultBaseLiquidId
+        : undefined,
     base_liquid_note: formData.get("base_liquid_note") || undefined,
     image_filename: formData.get("image_filename") || undefined,
   };
 
-  for (const field of ["sizes", "custom_powder_grams", "allowed_powder_ids"]) {
+  for (const field of ["sizes", "custom_powder_grams", "allowed_powder_ids", "allowed_base_liquid_ids"]) {
     const error = parseJsonField(formData, raw, field);
     if (error) return error;
   }

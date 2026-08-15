@@ -21,11 +21,13 @@ vi.mock("@/lib/prisma", () => ({
 const mockBuildPricingContext = vi.fn();
 const mockResolveOrderItemPrice = vi.fn();
 const mockResolveOrderItemPremiumLatte = vi.fn();
+const mockResolveOrderItemBaseLiquidMl = vi.fn();
 
 vi.mock("@/lib/pricing", () => ({
   buildPricingContext: (...args: unknown[]) => mockBuildPricingContext(...args),
   resolveOrderItemPrice: (...args: unknown[]) => mockResolveOrderItemPrice(...args),
   resolveOrderItemPremiumLatte: (...args: unknown[]) => mockResolveOrderItemPremiumLatte(...args),
+  resolveOrderItemBaseLiquidMl: (...args: unknown[]) => mockResolveOrderItemBaseLiquidMl(...args),
 }));
 
 // â”€â”€ Import after mocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -63,6 +65,7 @@ const basePricingCtx = {
   },
   powderSizeConfigMap: {},
   defaultMilkPricePerMl: 40,
+  defaultBaseLiquidId: MILK_ID,
   milkPriceMap: { [MILK_ID]: 40 },
   // Required by fusion fallback logic in lib/orders.ts L219
   availablePowders: [
@@ -110,6 +113,8 @@ const latteMenuItem = {
   matcha_powder_id: POWDER_ID,
   default_powder_id: null,
   custom_powder_grams: null,
+  default_base_liquid_id: null,
+  allowedBaseLiquids: [],
   fusionAllowedPowders: [],
   sizes: [
     { size: "SMALL", base_price_vnd: 45000 },
@@ -127,6 +132,8 @@ const fusionMenuItem = {
   matcha_powder_id: null,
   default_powder_id: FUSION_DEFAULT_POWDER,
   custom_powder_grams: null,
+  default_base_liquid_id: null,
+  allowedBaseLiquids: [],
   // matchaPowder.is_available required by fusion powder filter in lib/orders.ts L238
   fusionAllowedPowders: [
     { powder_id: FUSION_ALLOWED_POWDER, matchaPowder: { is_available: true } },
@@ -144,6 +151,10 @@ describe("processOrderItems", () => {
     vi.clearAllMocks();
     mockBuildPricingContext.mockResolvedValue(basePricingCtx);
     mockResolveOrderItemPremiumLatte.mockResolvedValue(0);
+    mockResolveOrderItemBaseLiquidMl.mockImplementation(
+      (overrideMl: number | null | undefined, _size: string, ctx: typeof basePricingCtx) =>
+        overrideMl ?? ctx.defaultSizeConfigs.find((entry) => entry.size === "MEDIUM")?.milk_ml ?? 0,
+    );
   });
 
   // â”€â”€ Happy path â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -173,6 +184,7 @@ describe("processOrderItems", () => {
     expect(result[0].total_discount_vnd).toBe(0);
     expect(result[0].line_total).toBe(SERVER_PRICE * 2);
     expect(result[0].selected_powder_id).toBe(POWDER_ID); // Latte: auto-set
+    expect(result[0].base_liquid_ml).toBe(200);
     expect(result[0].ice_option).toBe("NORMAL"); // default
     expect(result[0].coldwhisk).toBe(false); // default
   });
@@ -326,6 +338,29 @@ describe("processOrderItems", () => {
       }],
       tx as never,
     )).rejects.toMatchObject({ name: "OrderValidationError", code: "NOT_FOUND" });
+  });
+
+  it("snapshot base_liquid_ml theo override của size tại thời điểm đặt món", async () => {
+    mockResolveOrderItemPrice.mockReturnValue(69_000);
+    const tx = makeTx({
+      menuItemResult: {
+        ...latteMenuItem,
+        sizes: latteMenuItem.sizes.map((row) =>
+          row.size === "MEDIUM" ? { ...row, base_liquid_ml: 245 } : row,
+        ),
+      },
+    });
+
+    const result = await processOrderItems([{
+      menu_item_id: MENU_ITEM_ID,
+      quantity: 1,
+      size: "MEDIUM",
+      sweetness: "FULL",
+      addon_option_ids: [],
+      client_price_vnd: 69_000,
+    }], tx as never);
+
+    expect(result[0].base_liquid_ml).toBe(245);
   });
 
   it("từ chối hai option thuộc cùng SELECTOR", async () => {

@@ -35,6 +35,11 @@ async function fetchMenuData(): Promise<MenuData> {
             matchaPowder: {
               select: { id: true, name: true, type: true },
             },
+            allowedBaseLiquids: {
+              include: {
+                baseLiquid: { select: { id: true, is_active: true } },
+              },
+            },
           },
         }),
         prisma.addonGroup.findMany({
@@ -88,6 +93,8 @@ async function fetchMenuData(): Promise<MenuData> {
       is_default: m.is_default,
       display_order: m.display_order,
     }));
+    const globalDefaultBaseLiquidId =
+      globalMilkTypes.find((liquid) => liquid.is_default)?.id ?? null;
 
     // Resolve Fusion default powder fallback order: Meyumi → Hana → MH-3 → cheapest
     const FALLBACK_NAMES = ["Meyumi", "Hana", "MH-3"];
@@ -122,7 +129,8 @@ async function fetchMenuData(): Promise<MenuData> {
         .map((s) => ({
           size: s.size,
           base_price_vnd: s.base_price_vnd as number,
-          milk_ml: milkMlMap[s.size] ?? 0,
+          milk_ml: s.base_liquid_ml ?? milkMlMap[s.size] ?? 0,
+          base_liquid_ml: s.base_liquid_ml ?? milkMlMap[s.size] ?? 0,
         }))
         .sort((a, b) => SIZE_ORDER[a.size] - SIZE_ORDER[b.size]);
 
@@ -139,6 +147,13 @@ async function fetchMenuData(): Promise<MenuData> {
         powder: null,
         resolved_default_powder_id: null,
         allowed_powder_ids: [],
+        default_base_liquid_id:
+          item.category === "latte"
+            ? globalDefaultBaseLiquidId
+            : item.default_base_liquid_id,
+        allowed_base_liquid_ids: (item.allowedBaseLiquids ?? [])
+          .filter((entry) => entry.baseLiquid.is_active)
+          .map((entry) => entry.base_liquid_id),
         sizes,
       };
 
@@ -167,6 +182,7 @@ async function fetchMenuData(): Promise<MenuData> {
       latte,
       fusion,
       milk_types: globalMilkTypes,
+      base_liquids: globalMilkTypes,
       addon_groups: globalAddonGroups,
     };
 }

@@ -123,7 +123,13 @@ export async function POST(req: NextRequest) {
     if (data.voucher_type === "PRODUCT") {
       const menuItem = await prisma.menuItem.findUnique({
         where: { id: data.menu_item_id },
-        include: { sizes: true, fusionAllowedPowders: true },
+        include: {
+          sizes: true,
+          fusionAllowedPowders: true,
+          allowedBaseLiquids: {
+            include: { baseLiquid: { select: { is_active: true } } },
+          },
+        },
       });
 
       if (!menuItem || !menuItem.is_available) {
@@ -156,7 +162,6 @@ export async function POST(req: NextRequest) {
         }
         powder_id = menuItem.matcha_powder_id;
         // For Latte: milk_type_id is the custom swap (null = default milk)
-        resolved_milk_type_id = data.milk_type_id ?? null;
       } else {
         // Fusion: use provided powder or item default
         const default_powder_id = menuItem.default_powder_id;
@@ -191,6 +196,28 @@ export async function POST(req: NextRequest) {
 
       // Build pricing context and compute drink price
       const pricingCtx = await buildPricingContext();
+      const defaultBaseLiquidId = menuItem.category === "latte"
+        ? pricingCtx.defaultBaseLiquidId ?? null
+        : menuItem.default_base_liquid_id;
+      if (!defaultBaseLiquidId) {
+        return NextResponse.json(
+          { error: "Menu item has no Base Liquid default", code: "BUSINESS_RULE_VIOLATION" },
+          { status: 422 },
+        );
+      }
+      resolved_milk_type_id = data.milk_type_id ?? defaultBaseLiquidId;
+      const allowedBaseLiquidIds = menuItem.allowedBaseLiquids
+        .filter((entry) => entry.baseLiquid.is_active)
+        .map((entry) => entry.base_liquid_id);
+      if (
+        resolved_milk_type_id !== defaultBaseLiquidId &&
+        !allowedBaseLiquidIds.includes(resolved_milk_type_id)
+      ) {
+        return NextResponse.json(
+          { error: "Selected Base Liquid is not allowed for this menu item", code: "BUSINESS_RULE_VIOLATION" },
+          { status: 422 },
+        );
+      }
       const drink_price = resolveOrderItemPrice(
         {
           category: menuItem.category as "latte" | "fusion",
@@ -198,7 +225,9 @@ export async function POST(req: NextRequest) {
           base_price_vnd: sizeRow.base_price_vnd,
           custom_powder_grams: menuItem.custom_powder_grams as Record<string, number> | null,
           powder_id,
-          milk_type_id: menuItem.category === "latte" ? resolved_milk_type_id : null,
+          base_liquid_id: resolved_milk_type_id,
+          default_base_liquid_id: defaultBaseLiquidId,
+          base_liquid_ml: sizeRow.base_liquid_ml,
           premium_latte,
         },
         pricingCtx

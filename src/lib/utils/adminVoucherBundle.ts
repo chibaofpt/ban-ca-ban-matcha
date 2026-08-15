@@ -20,6 +20,7 @@ export interface BundleMenuConfig {
   availableSizes: BundleScopeSize[];
   fixedPowderId: string | null;
   availablePowderIds: string[];
+  availableBaseLiquidIds: string[];
 }
 
 export interface BundleVoucherFormState {
@@ -64,7 +65,7 @@ function expandScope(
   const powderIds = purpose === "FIXED_CONFIG" && draft.category === "latte"
     ? [draft.fixedPowderId]
     : valuesOrNull(draft.powderIds);
-  const milkIds = draft.category === "latte" ? valuesOrNull(draft.milkTypeIds) : [null];
+  const milkIds = valuesOrNull(draft.milkTypeIds);
   const scopes: VoucherBundleProductScope[] = [];
   for (const size of sizes) {
     for (const powderId of powderIds) {

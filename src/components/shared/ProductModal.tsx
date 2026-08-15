@@ -23,6 +23,7 @@ import { PowderSelector } from "./product-modal/PowderSelector";
 import { ModalBottomCTA } from "./product-modal/ModalBottomCTA";
 import { SectionLabel } from "./product-modal/SectionLabel";
 import OptionCard from "./product-modal/OptionCard";
+import { getBaseLiquidOptionsForItem } from "@/src/utils/baseLiquid";
 
 interface ProductModalProps {
   item: MenuItem;
@@ -82,8 +83,9 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const [coldwhisk, setColdwhisk] = useState(() => editingItem?.coldwhisk ?? false);
   const [selectedPowderId, setSelectedPowderId] = useState<string>(() => editingItem?.selectedPowderId ?? item.resolved_default_powder_id ?? "");
   const [selectedMilkId, setSelectedMilkId] = useState<string>(() => {
+    if (editingItem?.selectedBaseLiquidId) return editingItem.selectedBaseLiquidId;
     if (editingItem?.selectedMilkTypeId) return editingItem.selectedMilkTypeId;
-    return milkTypes.find((milk) => milk.is_default)?.id ?? milkTypes[0]?.id ?? "";
+    return item.default_base_liquid_id ?? "";
   });
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>(() => {
     const validOptionIds = new Set(
@@ -161,7 +163,11 @@ const BaseModal: React.FC<ProductModalProps> = ({
     () => selectorGroups.filter((group) => group.options.some((option) => option.gram_value == null)),
     [selectorGroups],
   );
-  const defaultMilkId = useMemo(() => milkTypes.find((milk) => milk.is_default)?.id ?? "", [milkTypes]);
+  const baseLiquidOptions = useMemo(
+    () => getBaseLiquidOptionsForItem(item, milkTypes),
+    [item, milkTypes],
+  );
+  const defaultMilkId = item.default_base_liquid_id ?? "";
 
   const powderList = useMemo(() => {
     return !isLatte && item.allowed_powder_ids.length > 0
@@ -237,6 +243,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
       size: selectedSize, unitPrice: currentPriceContext.unitPrice, quantity, sweetness, iceOption, coldwhisk,
       note, selectedOptionIds, quantityMap, addonsPrice: currentPriceContext.addonsCost, addonPrices: currentPriceContext.addonPricesMap, quantityAddonOptions,
       selectedPowderId: isLatte ? undefined : selectedPowderId,
+      selectedBaseLiquidId: selectedMilkId || undefined,
       selectedMilkTypeId: isLatte ? selectedMilkId : undefined,
       clientPriceVnd: finalUnitPrice,
       originalClientPriceVnd: currentPriceContext.unitPrice,
@@ -428,12 +435,12 @@ const BaseModal: React.FC<ProductModalProps> = ({
             </div>
           </div>
 
-          {/* 3a. LATTE: Milk */}
-          {isLatte && milkTypes.length > 0 && (
+          {/* 3a. Base Liquid shared by Latte and configured Fusion */}
+          {baseLiquidOptions.length > 1 && (
             <div className="mt-7">
-              <SectionLabel text="Loại sữa" />
+              <SectionLabel text={isLatte ? "Đổi sữa" : "Đổi nền"} />
               <MilkSelector
-                milkTypes={milkTypes}
+                milkTypes={baseLiquidOptions}
                 selectedMilkId={selectedMilkId}
                 defaultMilkId={defaultMilkId}
                 onChange={setSelectedMilkId}

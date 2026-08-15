@@ -9,6 +9,8 @@ import {
   resolveGram,
   calcLattePrice,
   calcFusionPrice,
+  calcBaseLiquidDelta,
+  resolveBaseLiquidMl,
   type DefaultSizeConfigEntry,
   type PowderSizeConfigEntry,
   type CustomPowderGrams,
@@ -38,6 +40,8 @@ export interface PricingContext {
   powderPriceMap: Record<string, number>;
   /** Default milk type price_per_ml */
   defaultMilkPricePerMl: number;
+  /** Global Latte default Base Liquid ID. */
+  defaultBaseLiquidId?: string | null;
   /** { [milk_type_id]: number } price_per_ml */
   milkPriceMap: Record<string, number>;
   /** List of all currently available powders (used for Fusion fallback logic) */
@@ -83,6 +87,7 @@ export async function buildPricingContext(client: PrismaTransactionClient = pris
     powderSizeConfigMap,
     powderPriceMap,
     defaultMilkPricePerMl: defaultMilk?.price_per_ml ?? 40,
+    defaultBaseLiquidId: defaultMilk?.id ?? null,
     milkPriceMap,
     availablePowders: allPowders.map((p) => ({ id: p.id, name: p.name })),
   };
@@ -99,6 +104,9 @@ export interface OrderItemPriceInput {
   powder_id: string;
   /** Latte only — resolved milk type id. */
   milk_type_id?: string | null;
+  base_liquid_id?: string | null;
+  default_base_liquid_id?: string | null;
+  base_liquid_ml?: number | null;
   /**
    * Fusion only — premium_latte must be pre-computed by caller.
    * Use resolveOrderItemPremiumLatte() before calling this function.
@@ -119,20 +127,20 @@ export function resolveOrderItemPrice(
   const powderSizeConfigs = ctx.powderSizeConfigMap[powder_id] ?? [];
   const gram = resolveGram(size, custom_powder_grams, powderSizeConfigs, ctx.defaultSizeConfigs);
   const powder_price_per_gram = ctx.powderPriceMap[powder_id] ?? 0;
+  const systemBaseLiquidMl =
+    ctx.defaultSizeConfigs.find((c) => c.size === size)?.milk_ml ?? 0;
+  const baseLiquidMl = resolveBaseLiquidMl(input.base_liquid_ml, systemBaseLiquidMl);
 
   if (category === "latte") {
-    const milkTypeId = input.milk_type_id;
+    const milkTypeId = input.base_liquid_id ?? input.milk_type_id;
     const milk_price_per_ml = milkTypeId
       ? (ctx.milkPriceMap[milkTypeId] ?? ctx.defaultMilkPricePerMl)
       : ctx.defaultMilkPricePerMl;
-    const milk_ml =
-      ctx.defaultSizeConfigs.find((c) => c.size === size)?.milk_ml ?? 0;
-
     return calcLattePrice({
       base_price_vnd,
       gram,
       powder_price_per_gram,
-      milk_ml,
+      milk_ml: baseLiquidMl,
       milk_price_per_ml,
     });
   }
@@ -143,7 +151,25 @@ export function resolveOrderItemPrice(
     gram,
     powder_price_per_gram,
     premium_latte: input.premium_latte ?? 0,
+    base_liquid_delta_vnd:
+      input.default_base_liquid_id && input.base_liquid_id
+        ? calcBaseLiquidDelta(
+            baseLiquidMl,
+            ctx.milkPriceMap[input.base_liquid_id] ?? 0,
+            ctx.milkPriceMap[input.default_base_liquid_id] ?? 0,
+          )
+        : 0,
   });
+}
+
+/** Resolve the effective Base Liquid volume that must be snapshotted on an order item. */
+export function resolveOrderItemBaseLiquidMl(
+  overrideMl: number | null | undefined,
+  size: Size,
+  ctx: PricingContext,
+): number {
+  const systemMl = ctx.defaultSizeConfigs.find((entry) => entry.size === size)?.milk_ml ?? 0;
+  return resolveBaseLiquidMl(overrideMl, systemMl);
 }
 
 /**

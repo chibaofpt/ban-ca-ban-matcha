@@ -65,7 +65,11 @@ export default function AdminVoucherPackagesPage() {
     fixedPowderId: item.category === "latte" ? item.powder?.id ?? null : null,
     availablePowderIds: item.category === "latte"
       ? item.powder ? [item.powder.id] : []
-      : [...new Set([item.resolved_default_powder_id, ...item.allowed_powder_ids].filter((id): id is string => Boolean(id)))],
+      : [...new Set([item.resolved_default_powder_id, ...(item.allowed_powder_ids ?? [])].filter((id): id is string => Boolean(id)))],
+    availableBaseLiquidIds: [...new Set([
+      item.default_base_liquid_id,
+      ...(item.allowed_base_liquid_ids ?? []),
+    ].filter((id): id is string => Boolean(id)))],
   }));
   const addonOptions = (menu?.addon_groups ?? []).flatMap((group) => group.options.filter((option) => option.gram_value === null).map((option) => ({ value: option.id, label: option.label, description: group.name })));
   const powderOptions = (powders?.data ?? []).map((powder) => ({ value: powder.id, label: powder.name }));

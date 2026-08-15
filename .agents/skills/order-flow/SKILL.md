@@ -81,8 +81,12 @@ Counter transfer: PENDING → COMPLETED (creator Staff or any Admin confirms pay
    - c. Resolve powder:
      - Latte → server sets `selected_powder_id` from `menu_item.matcha_powder_id`
      - Fusion → validate `selected_powder_id` is default OR in `fusion_allowed_powder`
-   - d. Resolve milk:
-     - If `selected_milk_type_id` not sent for Latte → use `milk_type WHERE is_default = true`
+   - d. Resolve Base Liquid:
+     - Prefer `selected_base_liquid_id`; accept `selected_milk_type_id` as a compatibility alias only when the values do not conflict.
+     - Latte default = global `milk_type.is_default`; Fusion default = `menu_item.default_base_liquid_id`.
+     - Validate a selection is active and either the default or in `menu_item_allowed_base_liquid`.
+     - A legacy Fusion with no default accepts no Base Liquid selection and keeps the old price behavior.
+     - Resolve effective ml as item-size override → system size fallback and carry it into the processed item.
    - e. Resolve addons as opt-in selections:
      - Empty `addon_option_ids` is valid and means no addons.
      - Re-fetch option + group lifecycle; reject inactive groups/options and duplicate option IDs.
@@ -95,7 +99,8 @@ Counter transfer: PENDING → COMPLETED (creator Staff or any Admin confirms pay
      BUNDLE → PRODUCT → ADDON → DISCOUNT → FREESHIP
    - i. Compute gross `subtotal_vnd`, merchandise-only `total_vnd`, shipping,
      `freeship_discount_vnd`, and payable `grand_total_vnd`
-   - j. Create `order` + `order_items` + `order_item_addons`
+   - j. Create `order` + `order_items` + `order_item_addons`; snapshot effective Base Liquid ml in
+     `order_items.base_liquid_ml` for both customer and staff entry points.
    - k. For PICKUP/DELIVERY and COUNTER BANK_TRANSFER: generate `order_code`, set
      `auto_cancel_at` (+20 min)
    - l. For COUNTER CASH: set status = `COMPLETED`, redeem applied vouchers and award order plus

@@ -20,6 +20,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (!existing) {
       return NextResponse.json({ error: "Loại sữa không tồn tại", code: "NOT_FOUND" }, { status: 404 });
     }
+    const activeFusionDefaultCount = await prisma.menuItem.count({
+      where: { is_available: true, category: "fusion", default_base_liquid_id: id },
+    });
 
     // Support quick toggle of is_active
     if (Object.keys(raw).length === 1 && "is_active" in raw) {
@@ -31,6 +34,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         return NextResponse.json(
           { error: "Không thể ẩn loại sữa mặc định", code: "VALIDATION_ERROR" },
           { status: 400 }
+        );
+      }
+      if (!raw.is_active && activeFusionDefaultCount > 0) {
+        return NextResponse.json(
+          { error: "Base Liquid đang là mặc định của món Fusion đang bán", code: "BUSINESS_RULE_VIOLATION" },
+          { status: 422 },
         );
       }
 
@@ -69,11 +78,32 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     const validData = validation.data;
 
+    const nextIsDefault = validData.is_default ?? existing.is_default;
+    const nextIsActive = validData.is_active ?? existing.is_active;
+    if (nextIsDefault && !nextIsActive) {
+      return NextResponse.json(
+        { error: "Base Liquid mặc định phải đang hoạt động", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+    if (existing.is_default && validData.is_default === false) {
+      return NextResponse.json(
+        { error: "Hãy chọn một Base Liquid khác làm mặc định", code: "BUSINESS_RULE_VIOLATION" },
+        { status: 422 },
+      );
+    }
+
     // Check if we are deactivating a default milk type
     if (validData.is_active === false && existing.is_default && validData.is_default !== false) {
       return NextResponse.json(
         { error: "Không thể ẩn loại sữa đang là mặc định", code: "VALIDATION_ERROR" },
         { status: 400 }
+      );
+    }
+    if (validData.is_active === false && activeFusionDefaultCount > 0) {
+      return NextResponse.json(
+        { error: "Base Liquid đang là mặc định của món Fusion đang bán", code: "BUSINESS_RULE_VIOLATION" },
+        { status: 422 },
       );
     }
 
@@ -86,7 +116,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         });
       }
 
-      return tx.milkType.update({
+      const updated = await tx.milkType.update({
         where: { id },
         data: {
           name: validData.name,
@@ -95,6 +125,17 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           is_active: validData.is_active,
         },
       });
+      await tx.menuItem.updateMany({
+        where: {
+          OR: [
+            { default_base_liquid_id: id },
+            { allowedBaseLiquids: { some: { base_liquid_id: id } } },
+            ...(existing.is_default || validData.is_default ? [{ category: "latte" }] : []),
+          ],
+        },
+        data: { updated_at: new Date() },
+      });
+      return updated;
     });
 
     await invalidateMenuCaches();
@@ -123,6 +164,15 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       return NextResponse.json(
         { error: "Không thể xóa loại sữa mặc định", code: "VALIDATION_ERROR" },
         { status: 400 }
+      );
+    }
+    const activeFusionDefaultCount = await prisma.menuItem.count({
+      where: { is_available: true, category: "fusion", default_base_liquid_id: id },
+    });
+    if (activeFusionDefaultCount > 0) {
+      return NextResponse.json(
+        { error: "Base Liquid đang là mặc định của món Fusion đang bán", code: "BUSINESS_RULE_VIOLATION" },
+        { status: 422 },
       );
     }
 

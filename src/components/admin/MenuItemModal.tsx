@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import MenuItemForm, { buildDefaultValues } from "@/src/components/admin/MenuItemForm";
 import { createMenuItem, updateMenuItem } from "@/src/services/adminMenuService";
 import { createLatteWithPowder } from "@/src/services/adminMenuService";
-import type { AdminMenuItem } from "@/src/lib/types/menu";
+import type { AdminMenuItem, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
 import MenuImageSeoField from "@/src/components/admin/MenuImageSeoField";
 
@@ -13,6 +13,8 @@ interface MenuItemModalProps {
   mode: "create" | "edit";
   item?: AdminMenuItem;  // Required when mode="edit"
   powders: Powder[];
+  baseLiquids: MilkTypeOption[];
+  defaultSizeConfig: Array<{ size: Size; base_liquid_ml: number }>;
   onClose: () => void;
   onSuccess: (item: AdminMenuItem, powderName?: string) => void;
 }
@@ -24,6 +26,8 @@ export default function MenuItemModal({
   mode,
   item,
   powders,
+  baseLiquids,
+  defaultSizeConfig,
   onClose,
   onSuccess,
 }: MenuItemModalProps) {
@@ -117,6 +121,8 @@ export default function MenuItemModal({
             mode={mode}
             defaultValues={item ? buildDefaultValues(item) : undefined}
             powders={powders}
+            baseLiquids={baseLiquids}
+            defaultSizeConfig={defaultSizeConfig}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
             onCancel={onClose}

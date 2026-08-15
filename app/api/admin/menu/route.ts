@@ -28,12 +28,13 @@ export async function GET(): Promise<NextResponse> {
     return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
 
   try {
-    const [items, defaultSizeConfigs] = await Promise.all([
+    const [items, defaultSizeConfigs, baseLiquids] = await Promise.all([
       prisma.menuItem.findMany({
         orderBy: [{ category: "asc" }, { sort_order: "asc" }],
         include: ADMIN_MENU_INCLUDE,
       }),
       prisma.defaultSizeConfig.findMany(),
+      prisma.milkType.findMany({ orderBy: { display_order: "asc" } }),
     ]);
 
     const milkMlMap: Record<string, number> = {};
@@ -55,6 +56,11 @@ export async function GET(): Promise<NextResponse> {
         updated_at: maxUpdatedAt.toISOString(),
         latte,
         fusion,
+        base_liquids: baseLiquids,
+        default_size_config: defaultSizeConfigs.map((config) => ({
+          size: config.size,
+          base_liquid_ml: config.milk_ml,
+        })),
       },
     });
   } catch (err) {
@@ -95,6 +101,10 @@ export async function POST(req: Request): Promise<NextResponse> {
       default_powder_id: formData.get("default_powder_id") && /^[0-9a-fA-F]{8}-/.test(formData.get("default_powder_id") as string)
         ? formData.get("default_powder_id") as string 
         : null,
+      default_base_liquid_id:
+        formData.get("default_base_liquid_id") && /^[0-9a-fA-F]{8}-/.test(formData.get("default_base_liquid_id") as string)
+          ? formData.get("default_base_liquid_id") as string
+          : undefined,
       base_liquid_note: formData.get("base_liquid_note") || null,
       image_filename: formData.get("image_filename") || undefined,
     };
@@ -122,6 +132,17 @@ export async function POST(req: Request): Promise<NextResponse> {
         );
       }
     }
+    const allowedBaseLiquidIds = formData.get("allowed_base_liquid_ids");
+    if (typeof allowedBaseLiquidIds === "string" && allowedBaseLiquidIds.length > 0) {
+      try {
+        raw.allowed_base_liquid_ids = JSON.parse(allowedBaseLiquidIds);
+      } catch {
+        return NextResponse.json(
+          { error: "Định dạng allowed_base_liquid_ids không hợp lệ", code: "VALIDATION_ERROR" },
+          { status: 400 },
+        );
+      }
+    }
 
     // ── Zod validation ──────────────────────────────────────────────────────
     const validation = createMenuSchema.safeParse(raw);
@@ -136,6 +157,29 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
     const validData = validation.data;
+
+    const activeBaseLiquids = await prisma.milkType.findMany({
+      where: { is_active: true },
+      select: { id: true, is_default: true },
+    });
+    const activeBaseLiquidIds = new Set(activeBaseLiquids.map((liquid) => liquid.id));
+    const resolvedDefaultBaseLiquidId = validData.category === "latte"
+      ? activeBaseLiquids.find((liquid) => liquid.is_default)?.id ?? null
+      : validData.default_base_liquid_id;
+    if (!resolvedDefaultBaseLiquidId || !activeBaseLiquidIds.has(resolvedDefaultBaseLiquidId)) {
+      return NextResponse.json(
+        { error: "Base Liquid mặc định không khả dụng", code: "BUSINESS_RULE_VIOLATION" },
+        { status: 422 },
+      );
+    }
+    const allowedBaseLiquidIdsToSave = [...new Set(validData.allowed_base_liquid_ids)]
+      .filter((id) => id !== resolvedDefaultBaseLiquidId);
+    if (allowedBaseLiquidIdsToSave.some((id) => !activeBaseLiquidIds.has(id))) {
+      return NextResponse.json(
+        { error: "Danh sách Base Liquid có lựa chọn không khả dụng", code: "BUSINESS_RULE_VIOLATION" },
+        { status: 422 },
+      );
+    }
 
     // ── Check uniqueness of powder ──────────────────────────────────────────
     if (validData.category === "latte" && validData.matcha_powder_id) {
@@ -196,6 +240,8 @@ export async function POST(req: Request): Promise<NextResponse> {
               validData.category === "latte" ? (validData.matcha_powder_id ?? null) : null,
             default_powder_id:
               validData.category === "fusion" ? (validData.default_powder_id ?? null) : null,
+            default_base_liquid_id:
+              validData.category === "fusion" ? resolvedDefaultBaseLiquidId : null,
           },
         });
 
@@ -204,8 +250,18 @@ export async function POST(req: Request): Promise<NextResponse> {
             menu_item_id: item.id,
             size: s.size,
             base_price_vnd: s.base_price_vnd,
+            base_liquid_ml: s.base_liquid_ml ?? null,
           })),
         });
+
+        if (allowedBaseLiquidIdsToSave.length > 0) {
+          await tx.menuItemAllowedBaseLiquid.createMany({
+            data: allowedBaseLiquidIdsToSave.map((baseLiquidId) => ({
+              menu_item_id: item.id,
+              base_liquid_id: baseLiquidId,
+            })),
+          });
+        }
 
         // Re-fetch with full include to return correct AdminMenuItem shape
         return tx.menuItem.findUniqueOrThrow({
