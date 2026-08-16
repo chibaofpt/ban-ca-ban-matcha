@@ -40,10 +40,12 @@ vi.mock("@/lib/pricing", () => ({
     powderPriceMap: {},
     powderSizeConfigMap: {},
     defaultMilkPricePerMl: 40,
-    milkPriceMap: {},
+    defaultBaseLiquidId: "550e8400-e29b-41d4-a716-446655440099",
+    milkPriceMap: { "550e8400-e29b-41d4-a716-446655440099": 40 },
   }),
   resolveOrderItemPrice: vi.fn().mockReturnValue(69000),
   resolveOrderItemPremiumLatte: vi.fn().mockResolvedValue(0),
+  resolveOrderItemBaseLiquidMl: vi.fn().mockReturnValue(200),
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -61,6 +63,7 @@ vi.mock("@/lib/prisma", () => ({
       update: (...args: unknown[]) => mockVoucherUpdate(...args),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
+    voucherPackage: { findMany: vi.fn().mockResolvedValue([]) },
     user: {
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),
@@ -205,7 +208,8 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
       powderPriceMap: {},
       powderSizeConfigMap: {},
       defaultMilkPricePerMl: 40,
-      milkPriceMap: {},
+      defaultBaseLiquidId: "550e8400-e29b-41d4-a716-446655440099",
+      milkPriceMap: { "550e8400-e29b-41d4-a716-446655440099": 40 },
       availablePowders: [],
     });
     vi.mocked(resolveOrderItemPrice).mockReturnValue(69000);

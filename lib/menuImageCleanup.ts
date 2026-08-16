@@ -35,10 +35,21 @@ export async function runMenuImageCleanup(options: {
   dryRun: boolean;
 }): Promise<MenuImageCleanupResult> {
   const now = options.now ?? new Date();
-  const rows = await prisma.menuItem.findMany({
-    where: { image_url: { not: null } },
-    select: { image_url: true },
-  });
+  const [menuRows, addonRows, powderRows] = await Promise.all([
+    prisma.menuItem.findMany({
+      where: { image_url: { not: null } },
+      select: { image_url: true },
+    }),
+    prisma.addonGroup.findMany({
+      where: { image_url: { not: null } },
+      select: { image_url: true },
+    }),
+    prisma.matchaPowder.findMany({
+      where: { image_url: { not: null } },
+      select: { image_url: true },
+    }),
+  ]);
+  const rows = [...menuRows, ...addonRows, ...powderRows];
   const referencedPaths = new Set(
     rows.flatMap((row) => {
       const path = row.image_url ? parseMenuImagePath(row.image_url) : null;

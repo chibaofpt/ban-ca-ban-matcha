@@ -37,11 +37,13 @@ vi.mock("@/lib/pricing", () => ({
     powderPriceMap: {},
     powderSizeConfigMap: {},
     defaultMilkPricePerMl: 40,
-    milkPriceMap: {},
+    defaultBaseLiquidId: "550e8400-e29b-41d4-a716-446655440099",
+    milkPriceMap: { "550e8400-e29b-41d4-a716-446655440099": 40 },
     availablePowders: [],
   }),
   resolveOrderItemPrice: vi.fn().mockReturnValue(69000),
   resolveOrderItemPremiumLatte: vi.fn().mockResolvedValue(0),
+  resolveOrderItemBaseLiquidMl: vi.fn().mockReturnValue(200),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -50,6 +52,7 @@ vi.mock("@/lib/prisma", () => ({
     menuItem: { findUnique: vi.fn() },
     addonOption: { findUnique: vi.fn() },
     voucher: { findUnique: vi.fn(), updateMany: vi.fn() },
+    voucherPackage: { findMany: vi.fn().mockResolvedValue([]) },
     user: { findUnique: vi.fn(), update: vi.fn(), create: vi.fn() },
     pointsLog: { create: vi.fn() },
     order: { create: vi.fn() },
@@ -193,7 +196,8 @@ describe("POST /api/staff/orders — COUNTER integration", () => {
       powderPriceMap: {},
       powderSizeConfigMap: {},
       defaultMilkPricePerMl: 40,
-      milkPriceMap: {},
+      defaultBaseLiquidId: "550e8400-e29b-41d4-a716-446655440099",
+      milkPriceMap: { "550e8400-e29b-41d4-a716-446655440099": 40 },
     availablePowders: [],
     });
     vi.mocked(resolveOrderItemPrice).mockReturnValue(69000);
@@ -263,6 +267,29 @@ describe("POST /api/staff/orders — COUNTER integration", () => {
 
     // Should NOT create any points logs
     expect(mockPointsLogCreate).not.toHaveBeenCalled();
+  });
+
+  it("anonymous extras không được dùng ITEM voucher", async () => {
+    setupTx();
+    mockUserFindUnique.mockResolvedValue(null);
+
+    const res = await POST(makeReq(validPayload({
+      phone_number: undefined,
+      items: [{
+        menu_item_id: ITEM_ID,
+        quantity: 1,
+        size: null,
+        addon_option_ids: [],
+        client_price_vnd: 26_000,
+        item_voucher_id: V_PV,
+      }],
+    })));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      code: "VALIDATION_ERROR",
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("DISCOUNT min_order_vnd trả 400 khi staff thiếu minimum", async () => {
@@ -362,6 +389,7 @@ describe("POST /api/staff/orders — COUNTER integration", () => {
     const createCall = mockOrderCreate.mock.calls[0][0];
     const itemData = createCall.data.items.create[0];
     expect(itemData).not.toHaveProperty("surplus_points");
+    expect(itemData.base_liquid_ml).toBe(200);
   });
 
   it("Order discount voucher junction không ghi discount_applied_vnd", async () => {

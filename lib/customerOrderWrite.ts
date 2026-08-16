@@ -9,6 +9,8 @@ import type { CustomerOrderInput } from "@/lib/validations/order";
 import type { IceOption } from "@/src/lib/types/cart";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { Prisma } from "@prisma/client";
+import type { ResolvedOrderBundle } from "@/lib/orderBundle";
+import { persistOrderBundle } from "@/lib/orderBundleWrite";
 
 interface CreateCustomerOrderParams {
   data: CustomerOrderInput;
@@ -22,6 +24,7 @@ interface CreateCustomerOrderParams {
   appliedFreeshipVoucherId: string | null;
   appliedAddonVoucherIds: string[];
   appliedProductVoucherIds: string[];
+  appliedBundle: ResolvedOrderBundle | null;
 }
 
 async function reserveVoucher(
@@ -52,6 +55,7 @@ export async function writeCustomerOrder(params: CreateCustomerOrderParams) {
     appliedFreeshipVoucherId,
     appliedAddonVoucherIds,
     appliedProductVoucherIds,
+    appliedBundle,
   } = params;
 
   return prisma.$transaction(
@@ -105,16 +109,18 @@ export async function writeCustomerOrder(params: CreateCustomerOrderParams) {
                 unit_price_vnd: item.unit_price_vnd,
                 addons_price_vnd: item.addons_price_vnd,
                 product_voucher_discount_vnd:
-                  itemCalculation.product_voucher_discount_vnd,
+                  itemCalculation.product_voucher_discount_vnd + itemCalculation.item_voucher_discount_vnd,
                 total_discount_vnd: itemCalculation.total_discount_vnd,
                 sweetness: item.sweetness as SweetnessLevel,
                 ice_option: item.ice_option as IceOption,
                 coldwhisk: item.coldwhisk,
                 note: item.note,
                 product_voucher_id: itemCalculation.product_voucher_id,
+                item_voucher_id: itemCalculation.item_voucher_id,
                 addonVouchers: { create: itemCalculation.addon_vouchers },
                 selected_powder_id: item.selected_powder_id,
                 selected_milk_type_id: item.selected_milk_type_id,
+                base_liquid_ml: item.base_liquid_ml,
                 addons: {
                   create: item.resolvedAddons.map((addon) => ({
                     addon_option_id: addon.addon_option_id,
@@ -126,6 +132,7 @@ export async function writeCustomerOrder(params: CreateCustomerOrderParams) {
             }),
           },
         },
+        include: { items: { include: { addons: true } } },
       });
 
       for (const voucher of appliedDiscountVouchers) {
@@ -159,8 +166,18 @@ export async function writeCustomerOrder(params: CreateCustomerOrderParams) {
           "Voucher sản phẩm đã được sử dụng hoặc đang bị khóa.",
         );
       }
+      if (appliedBundle) {
+        await persistOrderBundle(tx, {
+          order_id: order.id,
+          order_items: order.items,
+          source_items: data.items,
+          bundle: appliedBundle,
+          redeem_immediately: false,
+          performed_by: userId,
+        });
+      }
       return order;
     },
-    { maxWait: 5000, timeout: 10000 },
+    { isolationLevel: "Serializable", maxWait: 5000, timeout: 10000 },
   );
 }

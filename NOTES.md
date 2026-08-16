@@ -7,6 +7,10 @@
 
 ## Confirmed Business Rules Awaiting Code Alignment
 
+> Superseding order for the unified architecture: `BUNDLE → PRODUCT → ADDON → DISCOUNT → FREESHIP`.
+> PRODUCT selections are resolved before BUNDLE eligibility so their units can be excluded from X,
+> but BUNDLE monetary reductions are recorded first.
+
 The following rules are approved. Treat `order-flow`, `voucher-flow`, and `pricing-logic` as
 the target behavior even where current code still differs:
 
@@ -51,6 +55,13 @@ Do not preserve current behavior merely because it conflicts with these approved
 ---
 
 ## Deferred — Do Not Implement
+
+### Addon opt-in rollout — Phase 2 cleanup
+
+After Phase 1 has soaked in staging/production and no old client depends on the legacy fields,
+create a separate migration to drop `addon_groups.is_required`, `addon_groups.min_quantity`, and
+`addon_options.is_default`. Until then they remain physical compatibility columns fixed at
+`false`, `NULL`, and `false`; they must not re-enter API contracts or business logic.
 
 ### Deferred Code-Size Remediation — Approved Temporary Exception (2026-07-22)
 
@@ -115,7 +126,7 @@ outside the application, TypeScript, and lint scope. It does not require a produ
 
 | Issue | Status | Action |
 |---|---|---|
-| Image cleanup (old Supabase Storage files orphaned on replace/delete) | Implemented | Daily job; protects every DB reference including soft-deleted items; 48h grace; dry-run first 7 days |
+| Image cleanup (old Supabase Storage files orphaned on replace/delete) | Implemented | Daily job; protects menu, addon, and powder references including soft-deleted rows; 48h grace; dry-run first 7 days |
 | Cascade delete on `voucher_packages.menu_item_id` | Unresolved | Do NOT add cascade. Ask architect. |
 | Hard delete `menu_item` while active vouchers reference it | Deferred | Soft delete only. Ask before any hard delete. |
 | Order ready notification (Zalo ZNS via ESMS) | Phase 5 | Alongside OTP |
@@ -124,7 +135,7 @@ outside the application, TypeScript, and lint scope. It does not require a produ
 | Structured data JSON-LD | After Phase 2 | Add to menu item pages for product schema. |
 | **Mix bột Fusion** | Deferred | min_gram = `default_size_config[size].powder_gram`. max = min + 4g. Free allocation across available powders. Schema: add `is_mix_powder Boolean @default(false)` on `order_items` + new table `order_item_powder_blend (id, order_item_id FK, powder_id FK, grams Decimal, snapshot_price_per_gram Int)`. Additive — safe to add later. |
 | **Mix bột Latte** | Deferred | Must keep minimum 2g of the item's fixed powder. Different constraint from Fusion. Same schema additions as Fusion mix. |
-| **Per-item milk exclusions** | Deferred | If a Latte item should exclude certain milk types, add `menu_item_milk_exclusions (menu_item_id FK, milk_type_id FK)`. Do not implement until confirmed needed. |
+| **Per-item Base Liquid configuration** | Implemented 2026-08-15 | Shared `milk_type` catalog without `kind`; explicit allow-list via `menu_item_allowed_base_liquid`, Fusion per-item default, nullable per-size volume override, and immutable `order_items.base_liquid_ml` snapshots for historical consumption. Legacy null rows use an estimated current-recipe fallback. |
 | **Ice option pricing** | Deferred | Ice options are free columns on `order_items`. If any option ever needs a charge, it must move to the addon system. Confirm with business before implementing. |
 | **`default_size_config` audit log** | Deferred | No audit trail when admin edits M/L/XL config. If needed: add `updated_at` + `updated_by` columns. Changes apply globally and immediately — admin is responsible. |
 | **`PRICE_CHANGED` mid-session edge case** | Not a concern | Admin updates prices at night when shop is closed. No real-time mitigation needed beyond reject + conflict response. |
@@ -133,6 +144,13 @@ outside the application, TypeScript, and lint scope. It does not require a produ
 ---
 
 ## Launch Hardening Decisions
+
+- **BUNDLE vouchers approved (2026-08-11, unified 2026-08-12)**: buy-X-get-Y product/addon rules
+  live directly under VoucherPackage; the legacy Promotion layer is removed. OTP, SMS/ZNS, and
+  application caching remain deferred. Rules are immutable after creation. AUTO_GRANT is attempted at registration and retried
+  lazily from wallet/order flows, so a newly registered account during an active campaign receives
+  the default voucher without requiring a pre-existing ghost user. Anonymous checkouts remain
+  ineligible; staff-created ghost users become eligible once persisted.
 
 - **Public identifiers**: API/UI outputs contain `qr_token` for users and vouchers and strip their
   database IDs from nested order/voucher DTOs. Resolver-backed inputs retain a one-release,
@@ -156,7 +174,7 @@ outside the application, TypeScript, and lint scope. It does not require a produ
   messages, exceptions, tags, contexts, extras, and nested breadcrumbs. Map telemetry accepts only
   fixed enums and duration buckets. Replay masks all text and blocks media.
 - **Pre-Phase-5 Upstash exception**: Upstash is approved now only for distributed security rate
-  limits. It remains forbidden for application caching, OTP, promotions, SMS/ZNS, or other Phase 5
+  limits. It remains forbidden for application caching, promotion caching, OTP, SMS/ZNS, or other deferred Phase 5
   functionality. Counters are fixed-window, TTL-bound, HMAC-keyed, and fail open with a sanitized
   Sentry event when Redis is unavailable.
 

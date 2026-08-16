@@ -17,8 +17,7 @@ export function PaymentMethodSelector({
   onChange,
 }: PaymentMethodSelectorProps) {
   return (
-    <fieldset className="space-y-2">
-      <legend className="text-xs font-semibold text-foreground">Phương thức thanh toán</legend>
+    <fieldset aria-label="Phương thức thanh toán">
       <div className="grid grid-cols-2 gap-2">
         <label
           className={cn(
@@ -59,9 +58,6 @@ export function PaymentMethodSelector({
           Chuyển khoản
         </label>
       </div>
-      {bankTransferDisabled && (
-        <p className="text-[11px] text-muted-foreground">Đơn 0đ không cần chuyển khoản</p>
-      )}
     </fieldset>
   );
 }

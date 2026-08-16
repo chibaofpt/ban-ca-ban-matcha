@@ -12,7 +12,12 @@ import type { PrismaClient } from "@prisma/client";
 type CancelTxClient = Pick<
   PrismaClient,
   "order" | "orderItem" | "voucher" | "user" | "pointsLog" | "orderDiscountVoucher" | "orderItemAddonVoucher"
->;
+> & {
+  orderBundleApplication?: Pick<
+    PrismaClient["orderBundleApplication"],
+    "findUnique" | "updateMany"
+  >;
+};
 
 interface RestoreOptions {
   /** If true, also reverses order_complete points. Use when cancelling a COMPLETED order. */
@@ -90,9 +95,9 @@ export async function restoreVouchersOnCancel(
   const voucherItems = await tx.orderItem.findMany({
     where: {
       order_id: orderId,
-      product_voucher_id: { not: null },
+      OR: [{ product_voucher_id: { not: null } }, { item_voucher_id: { not: null } }],
     },
-    select: { product_voucher_id: true },
+    select: { product_voucher_id: true, item_voucher_id: true },
   });
 
   const addonVouchers = await tx.orderItemAddonVoucher.findMany({
@@ -105,6 +110,7 @@ export async function restoreVouchersOnCancel(
   const uniqueItemVoucherIds = [
     ...new Set([
       ...voucherItems.map((i) => i.product_voucher_id).filter((id): id is string => id !== null),
+      ...voucherItems.map((i) => i.item_voucher_id).filter((id): id is string => id !== null),
       ...addonVouchers.map((i) => i.voucher_id)
     ]),
   ];
@@ -149,6 +155,39 @@ export async function restoreVouchersOnCancel(
           redeemed_by: null,
           used_channel: null,
         },
+      });
+    }
+  }
+
+  // 2c. BUNDLE only exists through an order application, never standalone redemption.
+  if (tx.orderBundleApplication) {
+    const bundleApplication = await tx.orderBundleApplication.findUnique({
+      where: { order_id: orderId },
+      select: { voucher_id: true },
+    });
+    if (bundleApplication) {
+      const bundleVoucher = await tx.voucher.findUnique({
+        where: { id: bundleApplication.voucher_id },
+        select: { status: true, expires_at: true },
+      });
+      if (
+        bundleVoucher &&
+        (bundleVoucher.status === "RESERVED" || bundleVoucher.status === "REDEEMED")
+      ) {
+        const isExpired = bundleVoucher.expires_at && bundleVoucher.expires_at <= new Date();
+        await tx.voucher.update({
+          where: { id: bundleApplication.voucher_id },
+          data: {
+            status: isExpired ? "EXPIRED" : "ACTIVE",
+            redeemed_at: null,
+            redeemed_by: null,
+            used_channel: null,
+          },
+        });
+      }
+      await tx.orderBundleApplication.updateMany({
+        where: { order_id: orderId, status: { in: ["RESERVED", "REDEEMED"] } },
+        data: { status: "CANCELLED" },
       });
     }
   }

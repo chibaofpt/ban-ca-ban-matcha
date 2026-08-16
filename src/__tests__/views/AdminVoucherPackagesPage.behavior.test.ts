@@ -32,7 +32,9 @@ const mockPackage: VoucherPackage = {
   name: "Giảm 20%",
   description: null,
   voucher_type: "DISCOUNT",
+  acquisition_mode: "POINTS_EXCHANGE",
   points_cost: 50,
+  ends_at: null,
   expires_after_days: 30,
   discount_type: "PERCENT",
   discount_value: 20,
@@ -143,22 +145,22 @@ describe("AdminVoucherPackagesPage — Contract 3: update mutation", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("updateVoucherPackage được gọi với đúng id và fields", async () => {
-    mockUpdateVoucherPackage.mockResolvedValueOnce({ ...mockPackage, points_cost: 80 });
+    mockUpdateVoucherPackage.mockResolvedValueOnce({ ...mockPackage, name: "Giảm 20% mới" });
 
-    await mockUpdateVoucherPackage("pkg-1", { points_cost: 80 });
+    await mockUpdateVoucherPackage("pkg-1", { name: "Giảm 20% mới" });
 
-    expect(mockUpdateVoucherPackage).toHaveBeenCalledWith("pkg-1", { points_cost: 80 });
+    expect(mockUpdateVoucherPackage).toHaveBeenCalledWith("pkg-1", { name: "Giảm 20% mới" });
   });
 
   it("update thành công → package được cập nhật trong list (không refetch toàn bộ)", async () => {
-    mockUpdateVoucherPackage.mockResolvedValueOnce({ ...mockPackage, points_cost: 80 });
+    mockUpdateVoucherPackage.mockResolvedValueOnce({ ...mockPackage, is_active: false });
 
     let packages: VoucherPackage[] = [{ ...mockPackage }];
-    const updated = await mockUpdateVoucherPackage("pkg-1", { points_cost: 80 });
+    const updated = await mockUpdateVoucherPackage("pkg-1", { is_active: false });
 
     packages = packages.map((p) => (p.id === "pkg-1" ? { ...p, ...updated } : p));
 
-    expect(packages[0].points_cost).toBe(80);
+    expect(packages[0].is_active).toBe(false);
   });
 });
 

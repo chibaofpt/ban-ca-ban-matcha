@@ -16,7 +16,7 @@ interface QRScannerModalProps {
     discount_type: "PERCENT" | "FIXED";
     discount_value: number;
   }) => void;
-  /** Called when a PRODUCT voucher QR is scanned and status is ACTIVE. */
+  /** Called when an order-only PRODUCT or ITEM voucher QR is scanned. */
   onScanVoucherProduct: (data: { qr_token: string; menu_item_id: string; covered_price_vnd: number }) => void;
 }
 
@@ -85,12 +85,15 @@ export function QRScannerModal({
                     discount_value: dv,
                   });
                 }
-              } else {
-                // PRODUCT
+              } else if (result.data.voucher_type === "PRODUCT" || result.data.voucher_type === "ITEM") {
                 const mid = result.data.menu_item_id;
                 const cpv = result.data.covered_price_vnd;
-                if (mid !== null && cpv !== null) {
-                  onScanVoucherProduct({ qr_token: result.data.qr_token, menu_item_id: mid, covered_price_vnd: cpv });
+                if (mid !== null && (result.data.voucher_type === "ITEM" || cpv !== null)) {
+                  onScanVoucherProduct({
+                    qr_token: result.data.qr_token,
+                    menu_item_id: mid,
+                    covered_price_vnd: cpv ?? 0,
+                  });
                 }
               }
             } catch {

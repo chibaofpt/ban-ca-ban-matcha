@@ -1,10 +1,13 @@
 "use client";
 
+import { cn } from "@/src/utils/cn";
+
 interface MenuImageSeoFieldProps {
   currentImageUrl?: string | null;
   value: string;
   onChange: (value: string) => void;
   disabled: boolean;
+  className?: string;
 }
 
 function currentFilename(publicUrl?: string | null): string | null {
@@ -22,11 +25,12 @@ export default function MenuImageSeoField({
   value,
   onChange,
   disabled,
+  className,
 }: MenuImageSeoFieldProps) {
   const filename = currentFilename(currentImageUrl);
 
   return (
-    <div className="mx-6 mt-4 space-y-1.5 rounded-xl border border-border/60 bg-secondary/10 p-4">
+    <div className={cn("mx-6 mt-4 space-y-1.5 rounded-xl border border-border/60 bg-secondary/10 p-4", className)}>
       <label htmlFor="menu-image-seo-name" className="text-sm font-medium text-foreground">
         Tên file SEO (tuỳ chọn)
       </label>

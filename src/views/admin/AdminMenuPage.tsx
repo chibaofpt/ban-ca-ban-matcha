@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Search, RefreshCw, LayoutGrid, List } from "lucide-react";
+import { Plus, Search, RefreshCw, LayoutGrid, List, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import MenuItemCard from "@/src/components/admin/MenuItemCard";
 import MenuItemModal from "@/src/components/admin/MenuItemModal";
 import {
   listAdminMenuItems,
   toggleMenuItemAvailability,
+  deleteMenuItem,
   type AdminMenuData,
 } from "@/src/services/adminMenuService";
 import { listAdminPowders } from "@/src/services/adminPowderService";
@@ -58,7 +59,6 @@ function ConfirmDialog({ message, onConfirm, onCancel, isLoading }: ConfirmDialo
     </div>
   );
 }
-void ConfirmDialog;
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -66,11 +66,12 @@ void ConfirmDialog;
 export default function AdminMenuPage() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<"all" | "latte" | "fusion">("all");
+  const [categoryFilter, setCategoryFilter] = useState<"all" | "latte" | "fusion" | "extras">("all");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [modalState, setModalState] = useState<ModalState>({ open: false });
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
 
   // ── Data fetching ───────────────────────────────────────────────────────────
 
@@ -116,7 +117,7 @@ export default function AdminMenuPage() {
   // ── All items (flat for filtering) ─────────────────────────────────────────
 
   const allItems: AdminMenuItem[] = menuData
-    ? [...menuData.latte, ...menuData.fusion]
+    ? [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])]
     : [];
 
   const filteredItems = allItems
@@ -139,7 +140,7 @@ export default function AdminMenuPage() {
   const handleCreateSuccess = (newItem: AdminMenuItem, powderName?: string) => {
     queryClient.setQueryData<AdminMenuData>(["admin", "menu"], (old) => {
       if (!old) return old;
-      const list = newItem.category === "latte" ? old.latte : old.fusion;
+      const list = newItem.category === "latte" ? old.latte : newItem.category === "fusion" ? old.fusion : (old.extras ?? []);
       return {
         ...old,
         [newItem.category]: [...list, newItem],
@@ -161,6 +162,7 @@ export default function AdminMenuPage() {
         ...old,
         latte: updateList(old.latte),
         fusion: updateList(old.fusion),
+        extras: updateList(old.extras ?? []),
       };
     });
     showToast(`Đã cập nhật món "${updatedItem.name}"`);
@@ -186,7 +188,7 @@ export default function AdminMenuPage() {
           if (!old) return old;
           const toggle = (list: AdminMenuItem[]) =>
             list.map((i) => (i.id === id ? { ...i, is_available: next } : i));
-          return { ...old, latte: toggle(old.latte), fusion: toggle(old.fusion) };
+          return { ...old, latte: toggle(old.latte), fusion: toggle(old.fusion), extras: toggle(old.extras ?? []) };
         });
       }
       return { previousMenu };
@@ -204,6 +206,29 @@ export default function AdminMenuPage() {
 
   const handleToggleAvailable = async (id: string, next: boolean) => {
     toggleMutation.mutate({ id, next });
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteMenuItem(id),
+    onSuccess: (_, id) => {
+      queryClient.setQueryData<AdminMenuData>(["admin", "menu"], (old) => {
+        if (!old) return old;
+        const remove = (list: AdminMenuItem[]) => list.filter((i) => i.id !== id);
+        return { ...old, latte: remove(old.latte), fusion: remove(old.fusion), extras: remove(old.extras ?? []) };
+      });
+      showToast("Đã xoá món thành công");
+      setDeleteConfirm(null);
+    },
+    onError: () => {
+      showToast("Không thể xoá món. Vui lòng thử lại.", "error");
+      setDeleteConfirm(null);
+    },
+  });
+
+  /** Mở hộp thoại xác nhận xóa món. */
+  const handleDeleteClick = (e: React.MouseEvent, item: AdminMenuItem) => {
+    e.stopPropagation();
+    setDeleteConfirm({ id: item.id, name: item.name });
   };
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -327,6 +352,7 @@ export default function AdminMenuPage() {
                   <th className="px-6 py-4 font-semibold tracking-wider">Món</th>
                   <th className="px-6 py-4 font-semibold tracking-wider">Danh mục</th>
                   <th className="px-6 py-4 font-semibold tracking-wider text-center">Trạng thái</th>
+                  <th className="px-6 py-4 font-semibold tracking-wider text-center">Xoá</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
@@ -358,11 +384,27 @@ export default function AdminMenuPage() {
                           </div>
                           <div>
                             <div className="font-semibold text-foreground">{item.name}</div>
+                            {item.is_seasonal && (
+                              <span className="inline-block mt-0.5 rounded-full bg-amber-500/20 text-amber-800 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider">
+                                Mùa vụ
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-3 text-sm text-muted-foreground capitalize">
-                        {item.category}
+                      <td className="px-6 py-3">
+                        <span
+                          className={cn(
+                            "rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border",
+                            item.category === "latte"
+                              ? "bg-emerald-500/10 text-emerald-800 border-emerald-500/20"
+                              : item.category === "extras"
+                                ? "bg-amber-500/10 text-amber-800 border-amber-500/20"
+                                : "bg-violet-500/10 text-violet-800 border-violet-500/20"
+                          )}
+                        >
+                          {item.category}
+                        </span>
                       </td>
                       <td className="px-6 py-3">
                         <div className="flex justify-center">
@@ -388,6 +430,18 @@ export default function AdminMenuPage() {
                           </button>
                         </div>
                       </td>
+                      <td className="px-6 py-3">
+                        <div className="flex justify-center">
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteClick(e, item)}
+                            className="p-1.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
+                            title="Xoá món"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -400,16 +454,35 @@ export default function AdminMenuPage() {
           {filteredItems.map((item) => (
             <div
               key={item.id}
-              className={cn(togglingId === item.id && "pointer-events-none opacity-50")}
+              className={cn("relative group", togglingId === item.id && "pointer-events-none opacity-50")}
             >
               <MenuItemCard
                 item={item}
                 onClick={(i) => setModalState({ open: true, mode: "edit", item: i })}
                 onToggleAvailable={handleToggleAvailable}
               />
+              {/* Nút xoá hiện khi hover */}
+              <button
+                type="button"
+                onClick={(e) => handleDeleteClick(e, item)}
+                className="absolute top-2 left-2 z-10 p-1.5 rounded-lg bg-background/80 backdrop-blur-sm text-destructive opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 shadow-sm"
+                title="Xoá món"
+              >
+                <Trash2 size={14} />
+              </button>
             </div>
           ))}
         </div>
+      )}
+
+      {/* Confirm xoá */}
+      {deleteConfirm && (
+        <ConfirmDialog
+          message={`Xoá món "${deleteConfirm.name}"? Món sẽ bị ẩn khỏi menu và không thể đặt nữa.`}
+          isLoading={deleteMutation.isPending}
+          onConfirm={() => deleteMutation.mutate(deleteConfirm.id)}
+          onCancel={() => setDeleteConfirm(null)}
+        />
       )}
 
       {/* Modal */}
@@ -418,6 +491,8 @@ export default function AdminMenuPage() {
           mode={modalState.mode}
           item={modalState.mode === "edit" ? modalState.item : undefined}
           powders={powders}
+          baseLiquids={menuData?.base_liquids ?? []}
+          defaultSizeConfig={menuData?.default_size_config ?? []}
           onClose={() => setModalState({ open: false })}
           onSuccess={handleModalSuccess}
         />

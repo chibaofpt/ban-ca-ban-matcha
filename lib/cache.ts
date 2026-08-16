@@ -5,10 +5,11 @@ import { cacheGet, cacheSet, cacheDelete } from './redis';
 // ---------------------------------------------------------------------------
 
 export const CACHE_KEYS = {
-  MENU: 'cache:menu:v2',
+  MENU: 'cache:menu:v3',
   POWDERS: 'cache:powders',
   ADDON_GROUPS: 'cache:addon-groups',
   MILK_TYPES: 'cache:milk-types',
+  BASE_LIQUIDS: 'cache:base-liquids',
   STORE_STATUS: 'cache:store-status',
   VOUCHER_PACKAGES: 'cache:voucher-packages',
   DEFAULT_SIZE_CONFIG: 'cache:default-size-config',

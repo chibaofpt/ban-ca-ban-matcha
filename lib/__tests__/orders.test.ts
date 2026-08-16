@@ -21,11 +21,13 @@ vi.mock("@/lib/prisma", () => ({
 const mockBuildPricingContext = vi.fn();
 const mockResolveOrderItemPrice = vi.fn();
 const mockResolveOrderItemPremiumLatte = vi.fn();
+const mockResolveOrderItemBaseLiquidMl = vi.fn();
 
 vi.mock("@/lib/pricing", () => ({
   buildPricingContext: (...args: unknown[]) => mockBuildPricingContext(...args),
   resolveOrderItemPrice: (...args: unknown[]) => mockResolveOrderItemPrice(...args),
   resolveOrderItemPremiumLatte: (...args: unknown[]) => mockResolveOrderItemPremiumLatte(...args),
+  resolveOrderItemBaseLiquidMl: (...args: unknown[]) => mockResolveOrderItemBaseLiquidMl(...args),
 }));
 
 // â”€â”€ Import after mocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -63,6 +65,7 @@ const basePricingCtx = {
   },
   powderSizeConfigMap: {},
   defaultMilkPricePerMl: 40,
+  defaultBaseLiquidId: MILK_ID,
   milkPriceMap: { [MILK_ID]: 40 },
   // Required by fusion fallback logic in lib/orders.ts L219
   availablePowders: [
@@ -82,9 +85,21 @@ function makeTx(overrides: {
       findUnique: vi.fn().mockResolvedValue(overrides.menuItemResult ?? null),
     },
     addonOption: {
-      findUnique: vi.fn().mockImplementation(({ where }: { where: { id: string } }) =>
-        Promise.resolve(overrides.addonResults?.[where.id] ?? null)
-      ),
+      findUnique: vi.fn().mockImplementation(({ where }: { where: { id: string } }) => {
+        const result = overrides.addonResults?.[where.id] ?? null;
+        if (!result || "group" in result) return Promise.resolve(result);
+        return Promise.resolve({
+          ...result,
+          is_active: true,
+          group: {
+            id: "group-default",
+            type: "TOGGLE",
+            is_active: true,
+            max_quantity: null,
+            options: [{ id: where.id, is_active: true }],
+          },
+        });
+      }),
     },
   };
 }
@@ -98,6 +113,8 @@ const latteMenuItem = {
   matcha_powder_id: POWDER_ID,
   default_powder_id: null,
   custom_powder_grams: null,
+  default_base_liquid_id: null,
+  allowedBaseLiquids: [],
   fusionAllowedPowders: [],
   sizes: [
     { size: "SMALL", base_price_vnd: 45000 },
@@ -115,6 +132,8 @@ const fusionMenuItem = {
   matcha_powder_id: null,
   default_powder_id: FUSION_DEFAULT_POWDER,
   custom_powder_grams: null,
+  default_base_liquid_id: null,
+  allowedBaseLiquids: [],
   // matchaPowder.is_available required by fusion powder filter in lib/orders.ts L238
   fusionAllowedPowders: [
     { powder_id: FUSION_ALLOWED_POWDER, matchaPowder: { is_available: true } },
@@ -132,6 +151,10 @@ describe("processOrderItems", () => {
     vi.clearAllMocks();
     mockBuildPricingContext.mockResolvedValue(basePricingCtx);
     mockResolveOrderItemPremiumLatte.mockResolvedValue(0);
+    mockResolveOrderItemBaseLiquidMl.mockImplementation(
+      (overrideMl: number | null | undefined, _size: string, ctx: typeof basePricingCtx) =>
+        overrideMl ?? ctx.defaultSizeConfigs.find((entry) => entry.size === "MEDIUM")?.milk_ml ?? 0,
+    );
   });
 
   // â”€â”€ Happy path â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -161,6 +184,7 @@ describe("processOrderItems", () => {
     expect(result[0].total_discount_vnd).toBe(0);
     expect(result[0].line_total).toBe(SERVER_PRICE * 2);
     expect(result[0].selected_powder_id).toBe(POWDER_ID); // Latte: auto-set
+    expect(result[0].base_liquid_ml).toBe(200);
     expect(result[0].ice_option).toBe("NORMAL"); // default
     expect(result[0].coldwhisk).toBe(false); // default
   });
@@ -282,7 +306,7 @@ describe("processOrderItems", () => {
     expect(result[0].addons_price_vnd).toBe(12000);
   });
 
-  it("extra matcha with gram_value=0 (option 'khÃ´ng thÃªm') â†’ price = 0", async () => {
+  it("từ chối option Extra Matcha 0g đã inactive", async () => {
     mockResolveOrderItemPrice.mockReturnValue(69000);
     const tx = makeTx({
       menuItemResult: latteMenuItem,
@@ -291,28 +315,113 @@ describe("processOrderItems", () => {
           id: ADDON_EXTRA_MATCHA_ID,
           price_vnd: 0,
           gram_value: new Decimal("0"), // 0g â€” default option
+          is_active: false,
+          group: {
+            id: "group-extra",
+            type: "SELECTOR",
+            is_active: true,
+            max_quantity: null,
+            options: [{ id: ADDON_EXTRA_MATCHA_ID, is_active: false }],
+          },
         },
       },
     });
 
-    const result = await processOrderItems(
-      [
-        {
-          menu_item_id: MENU_ITEM_ID,
-          quantity: 1,
-          size: "MEDIUM",
-          sweetness: "QUARTER",
-          addon_option_ids: [{ option_id: ADDON_EXTRA_MATCHA_ID, quantity: 1 }],
-          client_price_vnd: 69000,
-        },
-      ],
-      tx as never
-    );
+    await expect(processOrderItems(
+      [{
+        menu_item_id: MENU_ITEM_ID,
+        quantity: 1,
+        size: "MEDIUM",
+        sweetness: "QUARTER",
+        addon_option_ids: [{ option_id: ADDON_EXTRA_MATCHA_ID, quantity: 1 }],
+        client_price_vnd: 69000,
+      }],
+      tx as never,
+    )).rejects.toMatchObject({ name: "OrderValidationError", code: "NOT_FOUND" });
+  });
 
-    expect(result[0].resolvedAddons[0].unit_price_vnd).toBe(0);
-    expect(result[0].resolvedAddons[0].discount_applied_vnd).toBe(0);
-    expect(result[0].addons_price_vnd).toBe(0);
-    expect(result[0].total_discount_vnd).toBe(0);
+  it("snapshot base_liquid_ml theo override của size tại thời điểm đặt món", async () => {
+    mockResolveOrderItemPrice.mockReturnValue(69_000);
+    const tx = makeTx({
+      menuItemResult: {
+        ...latteMenuItem,
+        sizes: latteMenuItem.sizes.map((row) =>
+          row.size === "MEDIUM" ? { ...row, base_liquid_ml: 245 } : row,
+        ),
+      },
+    });
+
+    const result = await processOrderItems([{
+      menu_item_id: MENU_ITEM_ID,
+      quantity: 1,
+      size: "MEDIUM",
+      sweetness: "FULL",
+      addon_option_ids: [],
+      client_price_vnd: 69_000,
+    }], tx as never);
+
+    expect(result[0].base_liquid_ml).toBe(245);
+  });
+
+  it("từ chối hai option thuộc cùng SELECTOR", async () => {
+    mockResolveOrderItemPrice.mockReturnValue(69_000);
+    const group = {
+      id: "group-cream",
+      type: "SELECTOR",
+      is_active: true,
+      max_quantity: null,
+      options: [{ id: "cream-half", is_active: true }, { id: "cream-one", is_active: true }],
+    };
+    const tx = makeTx({
+      menuItemResult: latteMenuItem,
+      addonResults: {
+        "cream-half": { id: "cream-half", price_vnd: 20_000, gram_value: null, is_active: true, group },
+        "cream-one": { id: "cream-one", price_vnd: 40_000, gram_value: null, is_active: true, group },
+      },
+    });
+
+    await expect(processOrderItems([{
+      menu_item_id: MENU_ITEM_ID,
+      quantity: 1,
+      size: "MEDIUM",
+      sweetness: "FULL",
+      addon_option_ids: [
+        { option_id: "cream-half", quantity: 1 },
+        { option_id: "cream-one", quantity: 1 },
+      ],
+      client_price_vnd: 129_000,
+    }], tx as never)).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+  });
+
+  it("từ chối quantity khác 1 cho SELECTOR", async () => {
+    mockResolveOrderItemPrice.mockReturnValue(69_000);
+    const tx = makeTx({
+      menuItemResult: latteMenuItem,
+      addonResults: {
+        [ADDON_KEM_ID]: {
+          id: ADDON_KEM_ID,
+          price_vnd: 20_000,
+          gram_value: null,
+          is_active: true,
+          group: {
+            id: "group-cream",
+            type: "SELECTOR",
+            is_active: true,
+            max_quantity: null,
+            options: [{ id: ADDON_KEM_ID, is_active: true }],
+          },
+        },
+      },
+    });
+
+    await expect(processOrderItems([{
+      menu_item_id: MENU_ITEM_ID,
+      quantity: 1,
+      size: "MEDIUM",
+      sweetness: "FULL",
+      addon_option_ids: [{ option_id: ADDON_KEM_ID, quantity: 2 }],
+      client_price_vnd: 109_000,
+    }], tx as never)).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   });
 
   it("PRODUCT voucher â†’ drink discount applied, customer pays diff, addons still charged", async () => {

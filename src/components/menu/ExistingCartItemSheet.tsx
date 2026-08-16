@@ -59,10 +59,11 @@ function buildDetailTags(
   // Coldwhisk (latte only typically, but show if true)
   if (item.coldwhisk) tags.push("Cold whisk");
 
-  // Milk (latte only)
-  if (item.selectedMilkTypeId) {
-    const milk = milkTypes.find((m) => m.id === item.selectedMilkTypeId);
-    if (milk) tags.push(milk.name);
+  // Base Liquid (Latte or Fusion)
+  const selectedBaseLiquidId = item.selectedBaseLiquidId ?? item.selectedMilkTypeId;
+  if (selectedBaseLiquidId) {
+    const liquid = milkTypes.find((m) => m.id === selectedBaseLiquidId);
+    if (liquid) tags.push(liquid.name);
   }
 
   // Powder (fusion only)
@@ -76,7 +77,7 @@ function buildDetailTags(
     const allOptions = addonGroups.flatMap((g) => g.options);
     for (const optId of item.selectedOptionIds) {
       const opt = allOptions.find((o) => o.id === optId);
-      if (opt && !opt.is_default) tags.push(opt.label);
+      if (opt) tags.push(opt.label);
     }
   }
 
@@ -165,7 +166,7 @@ export function ExistingCartItemSheet({
                       {isSelected && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
                     </div>
                     <p className="text-sm font-bold text-primary shrink-0">
-                      {formatOrderSize(item.size)}
+                      {item.size ? formatOrderSize(item.size) : "Add-on"}
                     </p>
                     {/* Stepper */}
                     <div className="flex items-center gap-1 bg-primary/5 rounded-full px-1 py-0.5">

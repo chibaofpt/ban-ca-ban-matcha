@@ -755,6 +755,8 @@ describe("calcOrderTotals — bộ tính tiền thống nhất", () => {
         {
           product_voucher_id: PRODUCT_VOUCHER_ID,
           product_voucher_discount_vnd: 70000,
+          item_voucher_id: null,
+          item_voucher_discount_vnd: 0,
           addon_vouchers: [
             {
               voucher_id: ADDON_VOUCHER_ID,

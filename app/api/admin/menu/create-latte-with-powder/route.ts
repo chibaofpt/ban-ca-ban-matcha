@@ -101,6 +101,18 @@ export async function POST(req: Request): Promise<NextResponse> {
     const rawPricePerGram = formData.get("new_powder_price_per_gram");
     const parsedPricePerGram =
       rawPricePerGram !== null && rawPricePerGram !== "" ? Number(rawPricePerGram) : NaN;
+    let parsedAllowedBaseLiquidIds: unknown = [];
+    const allowedBaseLiquidIdsRaw = formData.get("allowed_base_liquid_ids");
+    if (typeof allowedBaseLiquidIdsRaw === "string" && allowedBaseLiquidIdsRaw.length > 0) {
+      try {
+        parsedAllowedBaseLiquidIds = JSON.parse(allowedBaseLiquidIdsRaw);
+      } catch {
+        return NextResponse.json(
+          { error: "Định dạng allowed_base_liquid_ids không hợp lệ", code: "VALIDATION_ERROR" },
+          { status: 400 },
+        );
+      }
+    }
 
     const raw = {
       name: formData.get("name"),
@@ -111,6 +123,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       sizes: parsedSizes,
       custom_powder_grams: parsedCustomPowderGrams,
       image_filename: formData.get("image_filename") || undefined,
+      allowed_base_liquid_ids: parsedAllowedBaseLiquidIds,
       new_powder: {
         name: formData.get("new_powder_name"),
         price_per_gram: parsedPricePerGram,
@@ -131,6 +144,26 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
     const validData = validation.data;
+    const activeBaseLiquids = await prisma.milkType.findMany({
+      where: { is_active: true },
+      select: { id: true, is_default: true },
+    });
+    const globalDefaultBaseLiquidId = activeBaseLiquids.find((liquid) => liquid.is_default)?.id;
+    if (!globalDefaultBaseLiquidId) {
+      return NextResponse.json(
+        { error: "Chưa có Base Liquid mặc định cho Latte", code: "BUSINESS_RULE_VIOLATION" },
+        { status: 422 },
+      );
+    }
+    const activeIds = new Set(activeBaseLiquids.map((liquid) => liquid.id));
+    const allowedBaseLiquidIds = [...new Set(validData.allowed_base_liquid_ids)]
+      .filter((baseLiquidId) => baseLiquidId !== globalDefaultBaseLiquidId);
+    if (allowedBaseLiquidIds.some((baseLiquidId) => !activeIds.has(baseLiquidId))) {
+      return NextResponse.json(
+        { error: "Danh sách Base Liquid có lựa chọn không khả dụng", code: "BUSINESS_RULE_VIOLATION" },
+        { status: 422 },
+      );
+    }
 
     // ── Image upload (before transaction) ────────────────────────────────────
     let image_url: string | null = null;
@@ -221,8 +254,18 @@ export async function POST(req: Request): Promise<NextResponse> {
             menu_item_id: latte.id,
             size: s.size,
             base_price_vnd: s.base_price_vnd,
+            base_liquid_ml: s.base_liquid_ml ?? null,
           })),
         });
+
+        if (allowedBaseLiquidIds.length > 0) {
+          await tx.menuItemAllowedBaseLiquid.createMany({
+            data: allowedBaseLiquidIds.map((baseLiquidId) => ({
+              menu_item_id: latte.id,
+              base_liquid_id: baseLiquidId,
+            })),
+          });
+        }
 
         // Step 5: Update powder with reference_latte_item_id = latte.id
         await tx.matchaPowder.update({

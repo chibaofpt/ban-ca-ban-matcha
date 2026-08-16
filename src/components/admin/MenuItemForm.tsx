@@ -4,9 +4,13 @@ import { useState, useEffect } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useForm, Controller, useWatch } from "react-hook-form";
 import { cn } from "@/src/utils/cn";
-import type { AdminMenuItem } from "@/src/lib/types/menu";
+import type { AdminMenuItem, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
 import MenuImageCropField from "@/src/components/admin/MenuImageCropField";
+import {
+  MenuItemBaseLiquidFields,
+  MenuItemBaseLiquidVolumeFields,
+} from "@/src/components/admin/MenuItemBaseLiquidFields";
 
 // ── Form field types (all strings for HTML inputs) ────────────────────────────
 // RHF works with raw string inputs; we parse manually on submit.
@@ -14,7 +18,8 @@ import MenuImageCropField from "@/src/components/admin/MenuImageCropField";
 interface FormFields {
   name: string;
   description: string;
-  category: "latte" | "fusion";
+  category: "latte" | "fusion" | "extras";
+  unit_price_vnd: string;
   is_seasonal: boolean;
   is_available: boolean;
   sort_order: string;
@@ -22,6 +27,11 @@ interface FormFields {
   size_m: string;
   size_l: string;
   size_xl: string;
+  base_liquid_ml_m: string;
+  base_liquid_ml_l: string;
+  base_liquid_ml_xl: string;
+  default_base_liquid_id: string;
+  allowed_base_liquid_ids: string[];
   // Latte only
   matcha_powder_id: string;
   // Fusion only
@@ -49,6 +59,8 @@ interface MenuItemFormProps {
   mode: "create" | "edit";
   defaultValues?: Partial<FormFields>;
   powders: Powder[];
+  baseLiquids: MilkTypeOption[];
+  defaultSizeConfig: Array<{ size: Size; base_liquid_ml: number }>;
   onSubmit: (fd: FormData) => Promise<void>;
   isSubmitting: boolean;
   onCancel: () => void;
@@ -61,16 +73,25 @@ export function buildDefaultValues(item: AdminMenuItem): MenuItemFormValues {
   const sizeMap: Record<string, number | null> = {};
   for (const s of item.sizes) sizeMap[s.size] = s.base_price_vnd;
   const cpg = item.custom_powder_grams as Record<string, number> | null;
+  const sizeLiquidMap = Object.fromEntries(
+    item.sizes.map((size) => [size.size, size.base_liquid_ml_override]),
+  ) as Record<string, number | null | undefined>;
   return {
     name: item.name,
     description: item.description ?? "",
     category: item.category,
+    unit_price_vnd: item.unit_price_vnd != null ? String(item.unit_price_vnd / 1000) : "",
     is_seasonal: item.is_seasonal,
     is_available: item.is_available,
     sort_order: String(item.sort_order),
     size_m: sizeMap["SMALL"] != null ? String(sizeMap["SMALL"]! / 1000) : "",
     size_l: sizeMap["MEDIUM"] != null ? String(sizeMap["MEDIUM"]! / 1000) : "",
     size_xl: sizeMap["LARGE"] != null ? String(sizeMap["LARGE"]! / 1000) : "",
+    base_liquid_ml_m: sizeLiquidMap.SMALL != null ? String(sizeLiquidMap.SMALL) : "",
+    base_liquid_ml_l: sizeLiquidMap.MEDIUM != null ? String(sizeLiquidMap.MEDIUM) : "",
+    base_liquid_ml_xl: sizeLiquidMap.LARGE != null ? String(sizeLiquidMap.LARGE) : "",
+    default_base_liquid_id: item.default_base_liquid_id ?? "",
+    allowed_base_liquid_ids: item.allowed_base_liquid_ids ?? [],
     matcha_powder_id: item.matcha_powder_id ?? "",
     default_powder_id: item.default_powder_id ?? "",
     base_liquid_note: item.base_liquid_note ?? "",
@@ -94,6 +115,8 @@ export default function MenuItemForm({
   mode,
   defaultValues,
   powders,
+  baseLiquids,
+  defaultSizeConfig,
   onSubmit,
   isSubmitting,
   onCancel,
@@ -111,12 +134,18 @@ export default function MenuItemForm({
       name: "",
       description: "",
       category: "latte",
+      unit_price_vnd: "",
       is_seasonal: false,
       is_available: true,
       sort_order: "0",
       size_m: "",
       size_l: "",
       size_xl: "",
+      base_liquid_ml_m: "",
+      base_liquid_ml_l: "",
+      base_liquid_ml_xl: "",
+      default_base_liquid_id: "",
+      allowed_base_liquid_ids: [],
       matcha_powder_id: "",
       default_powder_id: "",
       base_liquid_note: "",
@@ -139,6 +168,8 @@ export default function MenuItemForm({
   const allowedPowderIds = useWatch({ control, name: "allowed_powder_ids" });
   const powderMode = useWatch({ control, name: "powder_mode" });
   const matchaPowderId = useWatch({ control, name: "matcha_powder_id" });
+  const defaultBaseLiquidId = useWatch({ control, name: "default_base_liquid_id" });
+  const allowedBaseLiquidIds = useWatch({ control, name: "allowed_base_liquid_ids" });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -151,6 +182,15 @@ export default function MenuItemForm({
       setValue("allowed_powder_ids", allowedPowderIds.filter(id => id !== defaultPowderId));
     }
   }, [defaultPowderId, allowedPowderIds, setValue]);
+
+  useEffect(() => {
+    if (defaultBaseLiquidId && allowedBaseLiquidIds.includes(defaultBaseLiquidId)) {
+      setValue(
+        "allowed_base_liquid_ids",
+        allowedBaseLiquidIds.filter((id) => id !== defaultBaseLiquidId),
+      );
+    }
+  }, [defaultBaseLiquidId, allowedBaseLiquidIds, setValue]);
 
   // Hiển thị tất cả bột cho Admin, đánh dấu nếu ngưng bán
   const sortedPowders = [...powders].sort((a, b) => a.name.localeCompare(b.name));
@@ -175,7 +215,7 @@ export default function MenuItemForm({
     let hasError = false;
 
     // Validate: At least one size must be provided
-    if (!values.size_m && !values.size_l && !values.size_xl) {
+    if (values.category !== "extras" && !values.size_m && !values.size_l && !values.size_xl) {
       setError("size_m", { type: "atLeastOne", message: "Vui lòng nhập giá cho ít nhất một size (S, M hoặc L)." });
       hasError = true;
     } else {
@@ -206,6 +246,23 @@ export default function MenuItemForm({
       }
     }
 
+    if (values.category === "extras") {
+      const fixedPrice = Number(values.unit_price_vnd);
+      if (!Number.isInteger(fixedPrice) || fixedPrice < 1 || fixedPrice % 1 !== 0) {
+        setError("unit_price_vnd", { message: "Vui lòng nhập giá Add-on hợp lệ." });
+        hasError = true;
+      } else {
+        clearErrors("unit_price_vnd");
+      }
+    }
+
+    if (values.category === "fusion" && !values.default_base_liquid_id) {
+      setError("default_base_liquid_id", { message: "Vui lòng chọn Base Liquid mặc định." });
+      hasError = true;
+    } else {
+      clearErrors("default_base_liquid_id");
+    }
+
     if (hasError) return;
 
     setPendingValues(values);
@@ -224,17 +281,25 @@ export default function MenuItemForm({
     fd.append("is_seasonal", String(values.is_seasonal));
     fd.append("is_available", String(values.is_available));
     fd.append("sort_order", String(Math.max(0, Number(values.sort_order) || 0)));
+    if (values.category === "extras") {
+      fd.append("unit_price_vnd", String(Math.round(Number(values.unit_price_vnd) * 1000)));
+    }
 
     // Sizes — convert from "cá" units to VND (* 1000)
     const sizeM = parseSize(values.size_m);
     const sizeL = parseSize(values.size_l);
     const sizeXL = parseSize(values.size_xl);
+    const parseMl = (value: string): number | null => {
+      if (!value.trim()) return null;
+      const parsed = Number(value);
+      return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    };
     fd.append(
       "sizes",
-      JSON.stringify([
-        { size: "SMALL", base_price_vnd: sizeM != null ? sizeM * 1000 : null },
-        { size: "MEDIUM", base_price_vnd: sizeL != null ? sizeL * 1000 : null },
-        { size: "LARGE", base_price_vnd: sizeXL != null ? sizeXL * 1000 : null },
+      values.category === "extras" ? "[]" : JSON.stringify([
+        { size: "SMALL", base_price_vnd: sizeM != null ? sizeM * 1000 : null, base_liquid_ml: parseMl(values.base_liquid_ml_m) },
+        { size: "MEDIUM", base_price_vnd: sizeL != null ? sizeL * 1000 : null, base_liquid_ml: parseMl(values.base_liquid_ml_l) },
+        { size: "LARGE", base_price_vnd: sizeXL != null ? sizeXL * 1000 : null, base_liquid_ml: parseMl(values.base_liquid_ml_xl) },
       ])
     );
 
@@ -263,7 +328,9 @@ export default function MenuItemForm({
       if (values.default_powder_id) fd.append("default_powder_id", values.default_powder_id);
       if (values.base_liquid_note.trim()) fd.append("base_liquid_note", values.base_liquid_note.trim());
       if (values.allowed_powder_ids) fd.append("allowed_powder_ids", JSON.stringify(values.allowed_powder_ids));
+      fd.append("default_base_liquid_id", values.default_base_liquid_id);
     }
+    fd.append("allowed_base_liquid_ids", JSON.stringify(values.allowed_base_liquid_ids));
 
     // Custom gram overrides — only non-empty values
     // Keys must match Prisma Size enum (SMALL/MEDIUM/LARGE) used by resolveGram()
@@ -323,6 +390,18 @@ export default function MenuItemForm({
             >
               🍹 Fusion
             </button>
+            <button
+              type="button"
+              disabled={mode === "edit"}
+              onClick={() => setValue("category", "extras")}
+              className={cn(
+                "flex-1 py-2 text-sm font-semibold rounded-lg transition-all duration-200 flex items-center justify-center gap-2",
+                category === "extras" ? "bg-background shadow-sm text-amber-600" : "text-muted-foreground hover:text-foreground",
+                mode === "edit" && "opacity-60 cursor-not-allowed"
+              )}
+            >
+              🍰 Add-on
+            </button>
           </div>
           {mode === "edit" && (
             <p className="text-[11px] text-muted-foreground mt-1.5">
@@ -362,7 +441,7 @@ export default function MenuItemForm({
         <div className="w-full h-px bg-border/50" />
 
         {/* Định giá */}
-        <div className="space-y-4">
+        <div className={cn("space-y-4", category === "extras" && "hidden")}>
           <label className={labelClass}>
             Giá cơ sở (🐟 cá)
             <span className="text-muted-foreground font-normal ml-2 text-xs opacity-80">— Bỏ trống nếu không bán size tương ứng</span>
@@ -401,7 +480,25 @@ export default function MenuItemForm({
           {errors.size_m?.type === "atLeastOne" && (
             <p className={errorClass}>{errors.size_m.message}</p>
           )}
+          <MenuItemBaseLiquidVolumeFields
+            defaultSizeConfig={defaultSizeConfig}
+            registrations={{
+              SMALL: register("base_liquid_ml_m"),
+              MEDIUM: register("base_liquid_ml_l"),
+              LARGE: register("base_liquid_ml_xl"),
+            }}
+            inputClass={inputClass}
+            labelClass={labelClass}
+          />
         </div>
+
+        {category === "extras" && (
+          <div className="space-y-2">
+            <label className={labelClass}>Giá đơn vị (🐟 cá)<span className="text-destructive"> *</span></label>
+            <input type="number" min="1" step="1" {...register("unit_price_vnd", { required: "Vui lòng nhập giá Add-on" })} className={inputClass} placeholder="Ví dụ: 26" />
+            {errors.unit_price_vnd && <p className={errorClass}>{errors.unit_price_vnd.message}</p>}
+          </div>
+        )}
 
         <div className="w-full h-px bg-border/50" />
 
@@ -515,7 +612,7 @@ export default function MenuItemForm({
               </div>
 
               <div>
-                <label className={labelClass}>Base liquid (Dung dịch nền)</label>
+                <label className={labelClass}>Ghi chú Base Liquid legacy</label>
                 <input
                   {...register("base_liquid_note")}
                   placeholder="Ví dụ: Nước ép cam, Trà nhài..."
@@ -560,6 +657,22 @@ export default function MenuItemForm({
             </div>
           )}
         </div>
+
+        {category !== "extras" && <>
+          <div className="w-full h-px bg-border/50" />
+          <MenuItemBaseLiquidFields
+            category={category}
+            baseLiquids={baseLiquids}
+            defaultBaseLiquidId={defaultBaseLiquidId}
+            allowedBaseLiquidIds={allowedBaseLiquidIds}
+            defaultRegistration={register("default_base_liquid_id")}
+            registerAllowed={() => register("allowed_base_liquid_ids")}
+            defaultError={errors.default_base_liquid_id?.message}
+            inputClass={inputClass}
+            labelClass={labelClass}
+            errorClass={errorClass}
+          />
+        </>}
 
         <div className="w-full h-px bg-border/50" />
 

@@ -6,6 +6,9 @@ import type { CartItem } from "@/src/lib/types/cart";
 import { addBusinessBreadcrumb } from "@/src/lib/observability";
 
 export function computeFinalClientPrice(item: CartItem): number {
+  if (item.category === "extras") {
+    return item.itemVoucherId ? 0 : item.unitPrice;
+  }
   const baseDrinkPrice = item.unitPrice - item.addonsPrice;
   const voucherCredit = item.productVoucherDiscountVnd ?? 0;
   
@@ -17,6 +20,48 @@ export function computeFinalClientPrice(item: CartItem): number {
   const finalAddonsPrice = Math.max(0, item.addonsPrice - addonDiscount);
   
   return drinkAfterCredit + finalAddonsPrice;
+}
+
+/** Release one voucher token from every cart line except its new target line. */
+export function releaseVoucherFromOtherCartLines(
+  items: CartItem[],
+  voucherId: string,
+  targetCartId: string | null,
+): CartItem[] {
+  return items.map((item) => {
+    if (
+      item.cartId === targetCartId ||
+      (item.productVoucherId !== voucherId && item.itemVoucherId !== voucherId)
+    ) {
+      return item;
+    }
+    const released = {
+      ...item,
+      productVoucherId: undefined,
+      productVoucherDiscountVnd: undefined,
+      itemVoucherId: undefined,
+    };
+    return { ...released, clientPriceVnd: computeFinalClientPrice(released) };
+  });
+}
+
+function normalizeUniqueCartVouchers(items: CartItem[]): CartItem[] {
+  const ownerByVoucher = new Map<string, string>();
+  for (const item of items) {
+    const voucherId = item.itemVoucherId ?? item.productVoucherId;
+    if (voucherId) ownerByVoucher.set(voucherId, item.cartId);
+  }
+  return items.map((item) => {
+    const voucherId = item.itemVoucherId ?? item.productVoucherId;
+    if (!voucherId || ownerByVoucher.get(voucherId) === item.cartId) return item;
+    const released = {
+      ...item,
+      productVoucherId: undefined,
+      productVoucherDiscountVnd: undefined,
+      itemVoucherId: undefined,
+    };
+    return { ...released, clientPriceVnd: computeFinalClientPrice(released) };
+  });
 }
 
 interface CartState {
@@ -62,18 +107,51 @@ export function migrateCartState(
 
   old.items = old.items.map((item) => {
     const sizedItem = fromVersion < 2
-      ? { ...item, size: sizeMap[item.size] ?? "SMALL" }
+      ? { ...item, size: item.size ? (sizeMap[item.size] ?? "SMALL") : null }
       : item;
-    if (fromVersion >= 3) return sizedItem;
-
-    return {
+    const voucherSafeItem = fromVersion < 3 ? {
       ...sizedItem,
       clientPriceVnd: sizedItem.originalClientPriceVnd ?? sizedItem.unitPrice,
       productVoucherId: undefined,
       productVoucherDiscountVnd: undefined,
       addonVouchers: [],
+    } : sizedItem;
+    const baseLiquidSafeItem = fromVersion < 5 && voucherSafeItem.selectedMilkTypeId
+      ? { ...voucherSafeItem, selectedBaseLiquidId: voucherSafeItem.selectedMilkTypeId }
+      : voucherSafeItem;
+    const itemVoucherSafeItem = fromVersion < 6 && baseLiquidSafeItem.itemVoucherId
+      ? {
+          ...baseLiquidSafeItem,
+          itemVoucherId: undefined,
+          clientPriceVnd: baseLiquidSafeItem.originalClientPriceVnd ?? baseLiquidSafeItem.unitPrice,
+        }
+      : baseLiquidSafeItem;
+    if (fromVersion >= 4) return itemVoucherSafeItem;
+
+    if (itemVoucherSafeItem.size === null) return itemVoucherSafeItem;
+    const retainedOptionIds = itemVoucherSafeItem.selectedOptionIds.filter(
+      (optionId) => (itemVoucherSafeItem.addonPrices[optionId] ?? 0) > 0,
+    );
+    const retainedOptionIdSet = new Set([
+      ...retainedOptionIds,
+      ...itemVoucherSafeItem.quantityAddonOptions.map((option) => option.option_id),
+    ]);
+    const retainedPrices = Object.fromEntries(
+      Object.entries(itemVoucherSafeItem.addonPrices).filter(
+        ([optionId, price]) => price > 0 || retainedOptionIdSet.has(optionId),
+      ),
+    );
+    return {
+      ...itemVoucherSafeItem,
+      selectedOptionIds: retainedOptionIds,
+      addonPrices: retainedPrices,
+      addonVouchers: itemVoucherSafeItem.addonVouchers?.filter(
+        (voucher) => retainedOptionIdSet.has(voucher.addonOptionId),
+      ),
     };
   });
+
+  old.items = normalizeUniqueCartVouchers(old.items);
 
   if (fromVersion < 3) old.selectedVoucherIds = [];
   return old;
@@ -97,7 +175,14 @@ export const useCartStore = create<CartState>()(
       addItem: (newItem) => {
         const cartId = crypto.randomUUID();
         const fullItem: CartItem = { ...newItem, cartId };
-        set((state) => ({ items: [...state.items, fullItem] }));
+        set((state) => ({
+          items: [
+            ...(newItem.itemVoucherId
+              ? releaseVoucherFromOtherCartLines(state.items, newItem.itemVoucherId, null)
+              : state.items),
+            fullItem,
+          ],
+        }));
         addBusinessBreadcrumb("cart.add", {
           category: newItem.category,
           quantity: newItem.quantity,
@@ -116,7 +201,9 @@ export const useCartStore = create<CartState>()(
 
       updateItem: (cartId, updates) => {
         set({
-          items: get().items.map((i) => {
+          items: (updates.itemVoucherId
+            ? releaseVoucherFromOtherCartLines(get().items, updates.itemVoucherId, cartId)
+            : get().items).map((i) => {
             if (i.cartId !== cartId) return i;
             return { ...i, ...updates };
           }),
@@ -128,7 +215,7 @@ export const useCartStore = create<CartState>()(
           items: get().items.map((i) => {
             if (i.cartId !== cartId) return i;
             // Prevent increasing quantity for items with vouchers
-            if ((i.productVoucherId || (i.addonVouchers && i.addonVouchers.length > 0)) && quantity > 1) {
+            if ((i.productVoucherId || i.itemVoucherId || (i.addonVouchers && i.addonVouchers.length > 0)) && quantity > 1) {
               return i;
             }
             return { ...i, quantity: Math.max(1, quantity) };
@@ -140,8 +227,8 @@ export const useCartStore = create<CartState>()(
 
       applyProductVoucher: (cartId, voucherId, coveredPriceVnd) => {
         const currentItems = get().items.map((i) => {
-          if (i.productVoucherId === voucherId) {
-            const nextI = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined };
+          if (i.productVoucherId === voucherId || i.itemVoucherId === voucherId) {
+            const nextI = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, itemVoucherId: undefined };
             nextI.clientPriceVnd = computeFinalClientPrice(nextI);
             return nextI;
           }
@@ -152,14 +239,20 @@ export const useCartStore = create<CartState>()(
         if (itemIndex === -1) return;
 
         const item = currentItems[itemIndex];
-        const nextItem = { ...item, productVoucherId: voucherId, productVoucherDiscountVnd: coveredPriceVnd };
+        const isItemVoucher = item.category === "extras";
+        const nextItem = {
+          ...item,
+          productVoucherId: isItemVoucher ? undefined : voucherId,
+          productVoucherDiscountVnd: isItemVoucher ? undefined : coveredPriceVnd,
+          itemVoucherId: isItemVoucher ? voucherId : undefined,
+        };
         const discounted = computeFinalClientPrice(nextItem);
         nextItem.clientPriceVnd = discounted;
 
         if (item.quantity === 1) {
           currentItems[itemIndex] = nextItem;
           set({ items: currentItems });
-          addBusinessBreadcrumb("voucher.apply", { voucher_type: "PRODUCT" });
+          addBusinessBreadcrumb("voucher.apply", { voucher_type: isItemVoucher ? "ITEM" : "PRODUCT" });
           return;
         }
 
@@ -174,14 +267,14 @@ export const useCartStore = create<CartState>()(
         currentItems.splice(itemIndex + 1, 0, newItem);
 
         set({ items: currentItems });
-        addBusinessBreadcrumb("voucher.apply", { voucher_type: "PRODUCT" });
+        addBusinessBreadcrumb("voucher.apply", { voucher_type: isItemVoucher ? "ITEM" : "PRODUCT" });
       },
 
       removeProductVoucher: (cartId) => {
         set({
           items: get().items.map((i) => {
             if (i.cartId !== cartId) return i;
-            const nextItem = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined };
+            const nextItem = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, itemVoucherId: undefined };
             nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
             return nextItem;
           }),
@@ -253,13 +346,18 @@ export const useCartStore = create<CartState>()(
     }),
     {
       name: "bcbm-cart",
-      version: 3,
+      version: 7,
       /**
        * Auto-migrate old localStorage cart data:
        * Size M → SMALL, L → MEDIUM, XL → LARGE (Big-Bang strategy).
        * Runs once when version upgrades from <2 to 2.
        */
       migrate: migrateCartState,
+      partialize: (state) => ({
+        items: state.items.filter((item) => !item.bundleRewardVoucherToken),
+        isCartOpen: state.isCartOpen,
+        selectedVoucherIds: state.selectedVoucherIds,
+      }),
     }
   )
 );

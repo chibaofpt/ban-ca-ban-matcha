@@ -61,7 +61,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
         base_price_vnd: base,
         gram,
         powder_price_per_gram: pwdPrice,
-        milk_ml: sizeObj.milk_ml ?? 0,
+        milk_ml: sizeObj.base_liquid_ml ?? sizeObj.milk_ml ?? 0,
         milk_price_per_ml: defaultMilk?.price_per_ml ?? 40
       });
     } else {
@@ -140,7 +140,14 @@ const MenuCard: React.FC<MenuCardProps> = ({
         {/* Sizes & Prices + Cart Button */}
         {/* Fixed 44px slot; the temporary stepper expands left without shifting prices. */}
         <div className="mt-auto pt-2 flex items-end w-full">
-          <div className="flex flex-1 justify-between">
+          {item.category === "extras" ? (
+            <div className="flex flex-1 items-end">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-[#446c35]">Đơn giá</span>
+                <span className="text-base font-bold text-[#5b9a2b]">{formatKa(item.unit_price_vnd ?? 0, "ceil")}</span>
+              </div>
+            </div>
+          ) : <div className="flex flex-1 justify-between">
             {(['SMALL', 'MEDIUM', 'LARGE'] as const).map((sizeKey) => {
               const s = sizes.find(s => s.size === sizeKey);
               const isDefault = sizeKey === 'MEDIUM';
@@ -161,7 +168,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
                 </div>
               );
             })}
-          </div>
+          </div>}
 
           {/* Fixed-width slot so the button area never shifts prices */}
           <div className="flex w-11 shrink-0 justify-end">

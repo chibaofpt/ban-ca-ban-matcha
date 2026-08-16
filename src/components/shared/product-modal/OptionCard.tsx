@@ -1,4 +1,5 @@
 import React from "react";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { cn } from "@/src/utils/cn";
 
@@ -8,9 +9,11 @@ interface OptionCardProps {
   sub?: string;
   isActive: boolean;
   onClick: () => void;
+  imageUrl?: string | null;
+  imageAlt?: string;
 }
 
-function OptionCard({ label, meta, sub, isActive, onClick }: OptionCardProps) {
+function OptionCard({ label, meta, sub, isActive, onClick, imageUrl, imageAlt }: OptionCardProps) {
   const isPriceAddition = sub?.startsWith("+");
 
   return (
@@ -23,6 +26,16 @@ function OptionCard({ label, meta, sub, isActive, onClick }: OptionCardProps) {
         isActive ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-white hover:border-primary/30"
       )}
     >
+      {imageUrl && (
+        <Image
+          src={imageUrl}
+          alt={imageAlt ?? "Ảnh tuỳ chọn"}
+          width={48}
+          height={48}
+          unoptimized
+          className="mb-2 h-12 w-12 rounded-xl object-cover"
+        />
+      )}
       <span className={cn("text-sm font-bold leading-tight", isActive ? "text-primary" : "text-primary/80")}>{label}</span>
       {meta && (
         <span className={cn("mt-1 text-xs font-medium", isActive ? "text-primary/70" : "text-primary/60")}>

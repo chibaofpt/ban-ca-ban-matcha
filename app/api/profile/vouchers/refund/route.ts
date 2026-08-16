@@ -52,11 +52,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4. Only PRODUCT vouchers can be auto-refunded
-    if (voucher.voucher_type !== "PRODUCT") {
+    // 4. ITEM and legacy PRODUCT vouchers can be auto-refunded
+    if (voucher.voucher_type !== "PRODUCT" && voucher.voucher_type !== "ITEM") {
       return NextResponse.json(
         {
-          error: "Only PRODUCT vouchers can be auto-refunded when the item is unavailable",
+          error: "Only ITEM/PRODUCT vouchers can be auto-refunded when the item is unavailable",
           code: "VALIDATION_ERROR",
         },
         { status: 400 }
@@ -96,6 +96,8 @@ export async function POST(req: NextRequest) {
       canRefund = true;
     } else if (!menuItem.is_available) {
       canRefund = true;
+    } else if (voucher.voucher_type === "ITEM") {
+      canRefund = menuItem.category !== "extras" || !menuItem.unit_price_vnd || menuItem.unit_price_vnd < 1000;
     } else {
       // Item is available. Check size and powder.
       const sizeRow = menuItem.sizes.find(s => s.size === voucher.size);

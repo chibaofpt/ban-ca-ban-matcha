@@ -75,7 +75,7 @@ export default function MenuVoucherTabs({
 
   const menuItems = useMemo<MenuItem[]>(() => {
     if (!menuData) return [];
-    const all = [...menuData.latte, ...menuData.fusion];
+    const all = [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])];
     return all.slice(0, 4);
   }, [menuData]);
 

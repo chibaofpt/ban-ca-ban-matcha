@@ -15,39 +15,70 @@ import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
 export async function GET() {
   try {
     // Cache the base package list (no user-specific data)
-    const packages = await withCache(
+    const cachedPackages = await withCache(
       CACHE_KEYS.VOUCHER_PACKAGES,
       CACHE_TTL.VOUCHER_PACKAGES,
       fetchVoucherPackages,
     );
+    // Campaign windows and activation are live state; never put BUNDLE packages in app cache.
+    const scheduledPackages = await fetchScheduledVoucherPackages(new Date());
+    const packages = [...cachedPackages, ...scheduledPackages].sort(
+      (left, right) =>
+        new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
+    );
 
     const session = await getSession();
 
+    let globalCountMap: Record<string, number> = {};
+    const packageIds = packages.map((p) => p.id);
+
+    if (packageIds.length > 0) {
+      const globalRedeemedCounts = await prisma.voucher.groupBy({
+        by: ["package_id"],
+        where: { package_id: { in: packageIds } },
+        _count: { id: true },
+      });
+      globalCountMap = Object.fromEntries(
+        globalRedeemedCounts.map((rc) => [rc.package_id, rc._count.id])
+      );
+    }
+
     if (!session) {
       return NextResponse.json({
-        data: packages.map((pkg) => ({ ...pkg, user_redeemed_count: 0 })),
+        data: packages.map((pkg) => {
+          const issuedCount = globalCountMap[pkg.id] ?? 0;
+          return {
+            ...pkg,
+            user_redeemed_count: 0,
+            remaining_quantity: pkg.quantity === null ? null : Math.max(0, pkg.quantity - issuedCount),
+          };
+        }),
       });
     }
 
-    // User-specific redeemed counts — always live (never cached)
-    const packageIds = packages.map((p) => p.id);
-    const redeemedCounts = await prisma.voucher.groupBy({
-      by: ["package_id"],
-      where: {
-        package_id: { in: packageIds },
-        user_id: session.id,
-      },
-      _count: { id: true },
+    let countMap: Record<string, number> = {};
+    if (packageIds.length > 0) {
+      const redeemedCounts = await prisma.voucher.groupBy({
+        by: ["package_id"],
+        where: {
+          package_id: { in: packageIds },
+          user_id: session.id,
+        },
+        _count: { id: true },
+      });
+      countMap = Object.fromEntries(
+        redeemedCounts.map((rc) => [rc.package_id, rc._count.id])
+      );
+    }
+
+    const enrichedPackages = packages.map((pkg) => {
+      const issuedCount = globalCountMap[pkg.id] ?? 0;
+      return {
+        ...pkg,
+        user_redeemed_count: countMap[pkg.id] ?? 0,
+        remaining_quantity: pkg.quantity === null ? null : Math.max(0, pkg.quantity - issuedCount),
+      };
     });
-
-    const countMap = Object.fromEntries(
-      redeemedCounts.map((rc) => [rc.package_id, rc._count.id])
-    );
-
-    const enrichedPackages = packages.map((pkg) => ({
-      ...pkg,
-      user_redeemed_count: countMap[pkg.id] ?? 0,
-    }));
 
     return NextResponse.json({ data: enrichedPackages });
   } catch (err) {
@@ -62,11 +93,37 @@ export async function GET() {
 /** Fetches active voucher packages from DB. Called by withCache on cache miss. */
 async function fetchVoucherPackages() {
   return prisma.voucherPackage.findMany({
-    where: { is_active: true },
+    where: { is_active: true, ends_at: null, voucher_type: { not: "BUNDLE" } },
     orderBy: { created_at: "asc" },
     include: {
       menuItem: { select: { name: true, is_available: true } },
       addonOption: { select: { label: true } },
+      bundleRule: { include: {
+        productScopes: { include: { menuItem: { select: { name: true } } } },
+        addonRewards: { include: { addonOption: { select: { label: true } } } },
+      } },
+    },
+  });
+}
+
+/** Fetch active BUNDLE packages live so campaign windows are never stale in Redis. */
+async function fetchScheduledVoucherPackages(now: Date) {
+  return prisma.voucherPackage.findMany({
+    where: {
+      is_active: true,
+      OR: [
+        { ends_at: { gt: now } },
+        { voucher_type: "BUNDLE", ends_at: null },
+      ],
+    },
+    orderBy: { created_at: "asc" },
+    include: {
+      menuItem: { select: { name: true, is_available: true } },
+      addonOption: { select: { label: true } },
+      bundleRule: { include: {
+        productScopes: { include: { menuItem: { select: { name: true } } } },
+        addonRewards: { include: { addonOption: { select: { label: true } } } },
+      } },
     },
   });
 }

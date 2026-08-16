@@ -73,12 +73,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           items: {
             select: { 
               product_voucher_id: true,
+              item_voucher_id: true,
               unit_price_vnd: true,
               productVoucher: { select: { covered_price_vnd: true } },
+              itemVoucher: { select: { covered_price_vnd: true } },
               addonVouchers: { select: { voucher_id: true } }
             }
           },
           discountVouchers: { select: { voucher_id: true } },
+          bundleApplication: { select: { voucher_id: true, status: true } },
         },
       });
       if (!order) throw new Error("NOT_FOUND");
@@ -141,7 +144,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         for (const dv of order.discountVouchers) allVoucherIds.add(dv.voucher_id);
         for (const item of order.items) {
           if (item.product_voucher_id) allVoucherIds.add(item.product_voucher_id);
+          if (item.item_voucher_id) allVoucherIds.add(item.item_voucher_id);
           for (const av of item.addonVouchers) allVoucherIds.add(av.voucher_id);
+        }
+        if (order.bundleApplication) {
+          allVoucherIds.add(order.bundleApplication.voucher_id);
         }
 
         await redeemOrderVouchers(
@@ -150,6 +157,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           "ONLINE",
           session.id
         );
+        if (order.bundleApplication) {
+          const promoted = await tx.orderBundleApplication.updateMany({
+            where: { order_id: order.id, status: "RESERVED" },
+            data: { status: "REDEEMED" },
+          });
+          if (promoted.count !== 1) {
+            throw new VoucherRedeemError(
+              "VOUCHER_MISMATCH",
+              "BUNDLE application changed concurrently",
+            );
+          }
+        }
 
         // Add payment metadata
         dataToUpdate.payment_confirmed_at = new Date();

@@ -7,6 +7,7 @@
 import {
   buildPricingContext,
   resolveOrderItemPrice,
+  resolveOrderItemBaseLiquidMl,
   resolveOrderItemPremiumLatte,
   type PricingContext,
 } from "@/lib/pricing";
@@ -32,6 +33,7 @@ export interface ProductVoucherInfo {
   menu_item_id: string;
   /** Fixed PRODUCT credit, capped at the server-computed drink price and never applied to addons. */
   covered_price_vnd: number;
+  voucher_type?: "PRODUCT" | "ITEM";
 }
 
 
@@ -41,16 +43,18 @@ export interface ProductVoucherInfo {
 export interface OrderItemInput {
   menu_item_id: string;
   quantity: number;
-  size: Size;
+  size?: Size | null;
   sweetness: SweetnessLevel;
   ice_option?: IceOption;
   coldwhisk?: boolean;
   note?: string;
   addon_option_ids: { option_id: string; quantity: number }[];
   product_voucher_id?: string;
+  item_voucher_id?: string;
   addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
   selected_powder_id?: string;
   selected_milk_type_id?: string;
+  selected_base_liquid_id?: string;
   client_price_vnd: number;
 }
 
@@ -68,15 +72,18 @@ export interface ProcessedAddon {
 export interface ProcessedOrderItem {
   menu_item_id: string;
   quantity: number;
-  size: Size;
+  size: Size | null;
   sweetness: SweetnessLevel;
   ice_option: IceOption;
   coldwhisk: boolean;
   note: string | null;
   product_voucher_id: string | null;
+  item_voucher_id: string | null;
   addon_voucher_ids: { voucher_id: string; addon_option_id: string }[];
-  selected_powder_id: string;
+  selected_powder_id: string | null;
   selected_milk_type_id: string | null;
+  /** Immutable effective Base Liquid volume for historical consumption reports. */
+  base_liquid_ml: number | null;
   /** Server-computed drink price BEFORE any voucher credit. (Original price) */
   unit_price_vnd: number;
   /** Server-computed addons price BEFORE any voucher credit. (Original price) */
@@ -93,7 +100,7 @@ export interface ProcessedOrderItem {
 export interface PriceConflict {
   menu_item_id: string;
   name: string;
-  size: Size;
+  size: Size | null;
   client_price_vnd: number;
   server_price_vnd: number;
 }
@@ -167,7 +174,7 @@ async function resolveOneItem(
   addonVoucherMap?: Map<string, string>
 ): Promise<ProcessedOrderItem> {
   // 1. Fetch menu item — must be available
-  if ((item.product_voucher_id || (item.addon_voucher_ids && item.addon_voucher_ids.length > 0)) && item.quantity > 1) {
+  if ((item.product_voucher_id || item.item_voucher_id || (item.addon_voucher_ids && item.addon_voucher_ids.length > 0)) && item.quantity > 1) {
     throw new OrderValidationError(
       "VALIDATION_ERROR",
       "Voucher chỉ có thể áp dụng cho 1 sản phẩm. Vui lòng tách sản phẩm ra trước khi áp dụng."
@@ -180,7 +187,10 @@ async function resolveOneItem(
       sizes: true, 
       fusionAllowedPowders: {
         include: { matchaPowder: { select: { is_available: true } } }
-      }
+      },
+      allowedBaseLiquids: {
+        include: { baseLiquid: { select: { is_active: true } } },
+      },
     },
   });
 
@@ -191,7 +201,60 @@ async function resolveOneItem(
     );
   }
 
+  const itemVoucherId = item.item_voucher_id ?? item.product_voucher_id;
+  if (menuItem.category === "extras") {
+    if (item.size != null || item.selected_powder_id || item.selected_milk_type_id || item.selected_base_liquid_id || item.addon_option_ids.length > 0) {
+      throw new OrderValidationError("VALIDATION_ERROR", "Món Add-on chỉ hỗ trợ số lượng và ghi chú.");
+    }
+    if (menuItem.unit_price_vnd === null || menuItem.unit_price_vnd < 1000 || menuItem.unit_price_vnd % 1000 !== 0) {
+      throw new OrderValidationError("BUSINESS_RULE_VIOLATION", `Giá món Add-on không hợp lệ: ${menuItem.name}`);
+    }
+    const serverUnitPrice = menuItem.unit_price_vnd;
+    const itemVoucher = itemVoucherId ? productVoucherMap?.get(itemVoucherId) : undefined;
+    if (itemVoucher && (itemVoucher.voucher_type !== "ITEM" || itemVoucher.menu_item_id !== item.menu_item_id)) {
+      throw new OrderValidationError("VALIDATION_ERROR", "ITEM voucher không áp dụng cho món Add-on này.");
+    }
+    const itemDiscount = itemVoucher ? serverUnitPrice : 0;
+    const expectedClientPrice = serverUnitPrice - itemDiscount;
+    if (item.client_price_vnd !== expectedClientPrice) {
+      priceConflicts.push({
+        menu_item_id: item.menu_item_id,
+        name: menuItem.name,
+        size: null,
+        client_price_vnd: item.client_price_vnd,
+        server_price_vnd: expectedClientPrice,
+      });
+    }
+    return {
+      menu_item_id: item.menu_item_id,
+      quantity: item.quantity,
+      size: null,
+      sweetness: item.sweetness ?? "FULL",
+      ice_option: item.ice_option ?? "NORMAL",
+      coldwhisk: item.coldwhisk ?? false,
+      note: item.note ?? null,
+      product_voucher_id: item.product_voucher_id ?? null,
+      item_voucher_id: item.item_voucher_id ?? item.product_voucher_id ?? null,
+      addon_voucher_ids: [],
+      selected_powder_id: null,
+      selected_milk_type_id: null,
+      base_liquid_ml: null,
+      unit_price_vnd: serverUnitPrice,
+      addons_price_vnd: 0,
+      product_voucher_discount_vnd: itemDiscount,
+      total_discount_vnd: itemDiscount,
+      line_total: serverUnitPrice * item.quantity,
+      resolvedAddons: [],
+    };
+  }
+
   // 2. Validate size is sold (base_price_vnd must not be null)
+  if (!item.size) {
+    throw new OrderValidationError("VALIDATION_ERROR", `Size là bắt buộc cho đồ uống: ${menuItem.name}`);
+  }
+  if (item.item_voucher_id) {
+    throw new OrderValidationError("VALIDATION_ERROR", "ITEM voucher chỉ áp dụng cho món Add-on.");
+  }
   const sizeRow = menuItem.sizes.find((s) => s.size === item.size);
   if (!sizeRow || sizeRow.base_price_vnd === null) {
     throw new OrderValidationError(
@@ -264,7 +327,54 @@ async function resolveOneItem(
     }
   }
 
-  // 4. Compute server-authoritative drink price
+  // 4. Resolve Base Liquid for both categories. The physical snapshot column
+  // keeps its legacy name for backward-compatible deployments.
+  if (
+    item.selected_base_liquid_id &&
+    item.selected_milk_type_id &&
+    item.selected_base_liquid_id !== item.selected_milk_type_id
+  ) {
+    throw new OrderValidationError(
+      "VALIDATION_ERROR",
+      "selected_base_liquid_id conflicts with selected_milk_type_id",
+    );
+  }
+  const requestedBaseLiquidId =
+    item.selected_base_liquid_id ?? item.selected_milk_type_id ?? null;
+  const resolvedDefaultBaseLiquidId = menuItem.category === "latte"
+    ? pricingCtx.defaultBaseLiquidId ?? null
+    : menuItem.default_base_liquid_id;
+  let resolvedBaseLiquidId: string | null = null;
+
+  if (menuItem.category === "fusion" && !resolvedDefaultBaseLiquidId) {
+    if (requestedBaseLiquidId) {
+      throw new OrderValidationError(
+        "VALIDATION_ERROR",
+        `Fusion legacy không hỗ trợ đổi Base Liquid: ${menuItem.name}`,
+      );
+    }
+  } else {
+    if (!resolvedDefaultBaseLiquidId) {
+      throw new OrderValidationError(
+        "BUSINESS_RULE_VIOLATION",
+        `Món chưa có Base Liquid mặc định: ${menuItem.name}`,
+      );
+    }
+    const allowedBaseLiquidIds = (menuItem.allowedBaseLiquids ?? [])
+      .filter((entry) => entry.baseLiquid.is_active)
+      .map((entry) => entry.base_liquid_id);
+    resolvedBaseLiquidId = requestedBaseLiquidId ?? resolvedDefaultBaseLiquidId;
+    const isAllowed = resolvedBaseLiquidId === resolvedDefaultBaseLiquidId
+      || allowedBaseLiquidIds.includes(resolvedBaseLiquidId);
+    if (!isAllowed || pricingCtx.milkPriceMap[resolvedBaseLiquidId] === undefined) {
+      throw new OrderValidationError(
+        "VALIDATION_ERROR",
+        `Base Liquid không được phép hoặc đã ngưng bán: ${menuItem.name}`,
+      );
+    }
+  }
+
+  // 5. Compute server-authoritative drink price
   const server_unit_price = resolveOrderItemPrice(
     {
       category: menuItem.category as "latte" | "fusion",
@@ -272,24 +382,83 @@ async function resolveOneItem(
       base_price_vnd: sizeRow.base_price_vnd,
       custom_powder_grams: menuItem.custom_powder_grams as Record<string, number> | null,
       powder_id,
-      milk_type_id: menuItem.category === "latte" ? (item.selected_milk_type_id ?? null) : null,
+      base_liquid_id: resolvedBaseLiquidId,
+      default_base_liquid_id: resolvedDefaultBaseLiquidId,
+      base_liquid_ml: sizeRow.base_liquid_ml,
       premium_latte,
     },
     pricingCtx
+  );
+  const baseLiquidMl = resolveOrderItemBaseLiquidMl(
+    sizeRow.base_liquid_ml,
+    item.size,
+    pricingCtx,
   );
 
   // 5. Resolve addon prices — snapshot at order time
   let original_addons_price_vnd = 0;
   const resolvedAddons: ProcessedAddon[] = [];
+  const selectedAddonOptionIds = new Set<string>();
+  const selectedAddonGroupIds = new Set<string>();
 
   for (const addon of item.addon_option_ids) {
+    if (selectedAddonOptionIds.has(addon.option_id)) {
+      throw new OrderValidationError("VALIDATION_ERROR", "Addon option bị trùng trong cùng một món.");
+    }
+    selectedAddonOptionIds.add(addon.option_id);
+
     const option = await (client as PrismaClient).addonOption.findUnique({
       where: { id: addon.option_id },
+      include: {
+        group: {
+          include: {
+            options: {
+              where: { is_active: true },
+              select: { id: true },
+            },
+          },
+        },
+      },
     });
-    if (!option) {
+    if (!option || !option.is_active || !option.group.is_active) {
       throw new OrderValidationError(
         "NOT_FOUND",
-        `Addon option not found: ${addon.option_id}`
+        `Addon option not found or inactive: ${addon.option_id}`
+      );
+    }
+
+    if (selectedAddonGroupIds.has(option.group.id)) {
+      throw new OrderValidationError(
+        "VALIDATION_ERROR",
+        "Mỗi nhóm addon chỉ được chọn một option.",
+      );
+    }
+    selectedAddonGroupIds.add(option.group.id);
+
+    if (option.group.type === "SELECTOR" || option.group.type === "TOGGLE") {
+      if (addon.quantity !== 1) {
+        throw new OrderValidationError(
+          "VALIDATION_ERROR",
+          `${option.group.type} chỉ chấp nhận quantity = 1.`,
+        );
+      }
+    } else {
+      const maxQuantity = option.group.max_quantity;
+      if (maxQuantity == null || addon.quantity > maxQuantity) {
+        throw new OrderValidationError(
+          "VALIDATION_ERROR",
+          "Số lượng addon vượt quá giới hạn của nhóm.",
+        );
+      }
+    }
+
+    if (
+      (option.group.type === "TOGGLE" || option.group.type === "QUANTITY") &&
+      (option.group.options.length !== 1 || option.group.options[0]?.id !== option.id)
+    ) {
+      throw new OrderValidationError(
+        "VALIDATION_ERROR",
+        `Cấu hình ${option.group.type} không hợp lệ.`,
       );
     }
 
@@ -340,10 +509,10 @@ async function resolveOneItem(
 
   // 7. Apply PRODUCT voucher credit
   let product_voucher_discount_vnd = 0;
-  if (item.product_voucher_id && productVoucherMap) {
-    const pvInfo = productVoucherMap.get(item.product_voucher_id);
+  if (itemVoucherId && productVoucherMap) {
+    const pvInfo = productVoucherMap.get(itemVoucherId);
     if (pvInfo) {
-      if (pvInfo.menu_item_id !== item.menu_item_id) {
+      if (pvInfo.voucher_type === "ITEM" || pvInfo.menu_item_id !== item.menu_item_id) {
         throw new OrderValidationError(
           "VALIDATION_ERROR",
           `Product voucher is not valid for this menu item`
@@ -382,9 +551,11 @@ async function resolveOneItem(
     coldwhisk: item.coldwhisk ?? false,
     note: item.note ?? null,
     product_voucher_id: item.product_voucher_id ?? null,
+    item_voucher_id: item.item_voucher_id ?? null,
     addon_voucher_ids: item.addon_voucher_ids || [],
     selected_powder_id: powder_id,
-    selected_milk_type_id: item.selected_milk_type_id ?? null,
+    selected_milk_type_id: resolvedBaseLiquidId,
+    base_liquid_ml: baseLiquidMl,
     unit_price_vnd: server_unit_price,
     addons_price_vnd: original_addons_price_vnd,
     product_voucher_discount_vnd,

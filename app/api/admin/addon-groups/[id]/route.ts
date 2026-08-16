@@ -3,6 +3,12 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { updateAddonGroupSchema } from "@/lib/validations/addonGroup";
 import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
+import { parseCatalogRequest } from "@/lib/catalogRequest";
+import {
+  catalogImageValidationMessage,
+  prepareCatalogImage,
+} from "@/lib/catalogImage";
+import { removeMenuImages } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -12,9 +18,16 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   }
 
+  let newImagePath: string | null = null;
+  let oldImagePath: string | null = null;
+  let databaseCommitted = false;
   try {
     const { id } = await params;
-    const raw = await req.json();
+    const parsedRequest = await parseCatalogRequest(req);
+    if (!parsedRequest.ok) return parsedRequest.response;
+    const raw = parsedRequest.raw && typeof parsedRequest.raw === "object" && !Array.isArray(parsedRequest.raw)
+      ? parsedRequest.raw as Record<string, unknown>
+      : {};
 
     const existing = await prisma.addonGroup.findUnique({ 
       where: { id },
@@ -37,9 +50,21 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       });
 
       const mappedUpdated = {
-        ...updated,
+        id: updated.id,
+        name: updated.name,
+        description: updated.description,
+        image_url: updated.image_url,
+        type: updated.type,
+        max_quantity: updated.max_quantity,
+        is_active: updated.is_active,
+        created_at: updated.created_at,
         options: updated.options.map(o => ({
-          ...o,
+          id: o.id,
+          addon_group_id: o.addon_group_id,
+          label: o.label,
+          price_vnd: o.price_vnd,
+          is_active: o.is_active,
+          sort_order: o.sort_order,
           gram_value: o.gram_value ? Number(o.gram_value) : null
         }))
       };
@@ -58,6 +83,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     const validData = validation.data;
+    const preparedImage = await prepareCatalogImage({
+      kind: "addons",
+      entityName: validData.name ?? existing.name,
+      requestedName: validData.image_filename,
+      imageFile: parsedRequest.imageFile,
+      currentImageUrl: existing.image_url,
+    });
+    newImagePath = preparedImage.newPath;
+    oldImagePath = preparedImage.oldPath;
 
     const result = await prisma.$transaction(async (tx) => {
       // Update group fields
@@ -66,9 +100,10 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         data: {
           name: validData.name,
           description: validData.description,
+          ...(preparedImage.imageUrl !== undefined && { image_url: preparedImage.imageUrl }),
           type: validData.type,
-          is_required: validData.is_required,
-          min_quantity: validData.min_quantity,
+          is_required: false,
+          min_quantity: null,
           max_quantity: validData.max_quantity,
           is_active: validData.is_active,
         }
@@ -77,19 +112,6 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       // Handle options diff if provided
       if (validData.options) {
         const existingOptionIds = new Set(existing.options.map(o => o.id));
-        const incomingOptionIds = new Set(validData.options.filter(o => o.id).map(o => o.id));
-
-        // Delete removed options
-        const toDeleteIds = existing.options
-          .filter(o => !incomingOptionIds.has(o.id))
-          .map(o => o.id);
-
-        if (toDeleteIds.length > 0) {
-          await tx.addonOption.deleteMany({
-            where: { id: { in: toDeleteIds } }
-          });
-        }
-
         // Upsert options
         for (let i = 0; i < validData.options.length; i++) {
           const opt = validData.options[i];
@@ -102,7 +124,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
               data: {
                 label: opt.label,
                 price_vnd: opt.price_vnd,
-                is_default: opt.is_default,
+                is_default: false,
+                is_active: opt.is_active,
                 sort_order: sortOrder,
                 gram_value: opt.gram_value,
               }
@@ -114,7 +137,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
                 addon_group_id: id,
                 label: opt.label,
                 price_vnd: opt.price_vnd,
-                is_default: opt.is_default,
+                is_default: false,
+                is_active: opt.is_active,
                 sort_order: sortOrder,
                 gram_value: opt.gram_value,
               }
@@ -130,18 +154,44 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         }
       });
     });
+    databaseCommitted = true;
 
     const mappedResult = {
-      ...result,
+      id: result.id,
+      name: result.name,
+      description: result.description,
+      image_url: result.image_url,
+      type: result.type,
+      max_quantity: result.max_quantity,
+      is_active: result.is_active,
+      created_at: result.created_at,
       options: result.options.map(o => ({
-        ...o,
+        id: o.id,
+        addon_group_id: o.addon_group_id,
+        label: o.label,
+        price_vnd: o.price_vnd,
+        is_active: o.is_active,
+        sort_order: o.sort_order,
         gram_value: o.gram_value ? Number(o.gram_value) : null
       }))
     };
 
+    if (oldImagePath) {
+      await removeMenuImages([oldImagePath]).catch(() => undefined);
+    }
     await invalidateMenuCaches();
     return NextResponse.json({ data: mappedResult });
   } catch (error: unknown) {
+    if (newImagePath && !databaseCommitted) {
+      await removeMenuImages([newImagePath]).catch(() => undefined);
+    }
+    const imageMessage = catalogImageValidationMessage(error);
+    if (imageMessage) {
+      return NextResponse.json(
+        { error: imageMessage, code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
     console.error("[PUT /api/admin/addon-groups/[id]] Error:", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: "Internal Server Error", code: "INTERNAL_ERROR" }, { status: 500 });
   }
@@ -168,7 +218,16 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     });
 
     await invalidateMenuCaches();
-    return NextResponse.json({ data: updated });
+    return NextResponse.json({ data: {
+      id: updated.id,
+      name: updated.name,
+      description: updated.description,
+      image_url: updated.image_url,
+      type: updated.type,
+      max_quantity: updated.max_quantity,
+      is_active: updated.is_active,
+      created_at: updated.created_at,
+    } });
   } catch (error: unknown) {
     console.error("[DELETE /api/admin/addon-groups/[id]] Error:", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: "Internal Server Error", code: "INTERNAL_ERROR" }, { status: 500 });

@@ -62,7 +62,9 @@ export function canInteract(voucher: MyVoucher): boolean {
  */
 export function filterModalPackages(packages: VoucherPackage[]): VoucherPackage[] {
   return packages.filter(
-    (pkg) => pkg.user_redeemed_count === undefined || pkg.user_redeemed_count < pkg.max_per_user
+    (pkg) =>
+      pkg.acquisition_mode !== "AUTO_GRANT" &&
+      (pkg.user_redeemed_count === undefined || pkg.user_redeemed_count < pkg.max_per_user)
   );
 }
 
@@ -78,7 +80,8 @@ export function canExchange(
   if (userBalance < pkg.points_cost) {
     return { ok: false, reason: "insufficient_points" };
   }
-  if (pkg.quantity !== null && pkg.quantity <= 0) {
+  const remainingQuantity = pkg.remaining_quantity ?? pkg.quantity;
+  if (remainingQuantity !== null && remainingQuantity <= 0) {
     return { ok: false, reason: "sold_out" };
   }
   if (userRedeemedCount >= pkg.max_per_user) {
@@ -115,11 +118,13 @@ export function getExchangeErrorMessage(
  */
 export function groupPackagesByType(packages: VoucherPackage[]): {
   DISCOUNT: VoucherPackage[];
+  ITEM: VoucherPackage[];
   PRODUCT: VoucherPackage[];
   ADDON: VoucherPackage[];
 } {
   return {
     DISCOUNT: packages.filter((p) => p.voucher_type === "DISCOUNT"),
+    ITEM: packages.filter((p) => p.voucher_type === "ITEM"),
     PRODUCT: packages.filter((p) => p.voucher_type === "PRODUCT"),
     ADDON: packages.filter((p) => p.voucher_type === "ADDON"),
   };
@@ -187,12 +192,13 @@ export function getTicketHighlightText(
       return { text: `${discountValue}`, subtext: "GIẢM" };
     }
   }
-  if (vType === "PRODUCT" || vType === "ADDON") {
+  if (vType === "ITEM" || vType === "PRODUCT" || vType === "ADDON") {
     return { text: "FREE", subtext: "TẶNG" };
   }
   if (vType === "FREESHIP") {
     return { text: "SHIP", subtext: "FREE" };
   }
+  if (vType === "BUNDLE") return { text: "X+Y", subtext: "COMBO" };
   return { text: "GIFT", subtext: "VOUCHER" };
 }
 
@@ -216,6 +222,10 @@ export function getVoucherBenefitText(v: MyVoucher): string {
   if (v.voucher_type === "FREESHIP") {
     return `Freeship tối đa ${(v.covered_delivery_fee_vnd ?? 0).toLocaleString("vi-VN")}đ`;
   }
+  if (v.voucher_type === "ITEM") {
+    return `${v.menuItem?.name ?? "Add-on"} miễn phí`;
+  }
+  if (v.voucher_type === "BUNDLE") return v.package.description ?? "Ưu đãi mua X tặng Y";
   return v.package.name;
 }
 
@@ -224,10 +234,32 @@ export function getVoucherBenefitText(v: MyVoucher): string {
  * Used in Section 2 (Exchange) cards.
  */
 export function getPackageBenefitText(pkg: VoucherPackage): string {
+  if (pkg.voucher_type === "BUNDLE" && pkg.bundleRule) {
+    const qualifiers = pkg.bundleRule.productScopes
+      .filter((scope) => scope.role === "QUALIFIER")
+      .map((scope) => scope.menuItem?.name)
+      .filter((name): name is string => Boolean(name));
+    const rewardNames = pkg.bundleRule.reward_kind === "PRODUCT"
+      ? pkg.bundleRule.productScopes
+          .filter((scope) => scope.role === "REWARD")
+          .map((scope) => scope.menuItem?.name)
+          .filter((name): name is string => Boolean(name))
+      : pkg.bundleRule.addonRewards
+          .map((reward) => reward.addonOption?.label)
+          .filter((name): name is string => Boolean(name));
+    const qualifierLabel = qualifiers.join(", ") || "món trong nhóm";
+    const rewardLabel = pkg.bundleRule.reward_mode === "SAME_CONFIG"
+      ? "cùng món và cấu hình"
+      : rewardNames.join(", ") || (pkg.bundleRule.reward_kind === "PRODUCT" ? "món trong nhóm" : "addon trong nhóm");
+    return `Mua ${pkg.bundleRule.buy_quantity} ${qualifierLabel} · Tặng ${pkg.bundleRule.reward_quantity} ${rewardLabel}`;
+  }
   if (pkg.voucher_type === "DISCOUNT") {
     if (pkg.discount_type === "PERCENT") return `Giảm ${pkg.discount_value}% toàn đơn`;
     if (pkg.discount_type === "FIXED")
       return `Giảm ${(pkg.discount_value ?? 0).toLocaleString("vi-VN")}đ toàn đơn`;
+  }
+  if (pkg.voucher_type === "ITEM" && pkg.menuItem) {
+    return `${pkg.menuItem.name} miễn phí`;
   }
   if (pkg.voucher_type === "PRODUCT" && pkg.menuItem) {
     return `${pkg.menuItem.name} Size ${pkg.size} miễn phí`;
@@ -240,11 +272,13 @@ export function getPackageBenefitText(pkg: VoucherPackage): string {
 
 /** Badge config for voucher types */
 export const VOUCHER_TYPE_CONFIG: Record<
-  "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP",
+  "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE",
   { label: string; badgeCls: string }
 > = {
+  ITEM: { label: "Add-on", badgeCls: "bg-amber-100 text-amber-800" },
   DISCOUNT: { label: "Giảm giá", badgeCls: "bg-blue-100 text-blue-800" },
   PRODUCT: { label: "Sản phẩm", badgeCls: "bg-green-100 text-green-800" },
   ADDON: { label: "Topping", badgeCls: "bg-purple-100 text-purple-800" },
   FREESHIP: { label: "Freeship", badgeCls: "bg-orange-100 text-orange-800" },
+  BUNDLE: { label: "Mua X tặng Y", badgeCls: "bg-rose-100 text-rose-800" },
 };

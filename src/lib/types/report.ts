@@ -4,6 +4,7 @@ export interface ReportSummary {
   total_cups: number;
   /** Breakdown tổng ly theo size */
   cups_by_size: { SMALL: number; MEDIUM: number; LARGE: number };
+  total_extras_units?: number;
   total_revenue_vnd: number;
 }
 
@@ -33,6 +34,7 @@ export interface DailyReport {
   milk_usage: MilkUsage[];
   latte_sales: ItemSales[];
   fusion_sales: ItemSales[];
+  extras_sales?: ItemSales[];
 }
 
 /** Staff member for admin dropdown */

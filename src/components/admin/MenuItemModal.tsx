@@ -2,34 +2,51 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
+import axios from "axios";
 import MenuItemForm, { buildDefaultValues } from "@/src/components/admin/MenuItemForm";
 import { createMenuItem, updateMenuItem } from "@/src/services/adminMenuService";
 import { createLatteWithPowder } from "@/src/services/adminMenuService";
-import type { AdminMenuItem } from "@/src/lib/types/menu";
+import type { AdminMenuItem, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
 import MenuImageSeoField from "@/src/components/admin/MenuImageSeoField";
+import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
+import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
 
 interface MenuItemModalProps {
   mode: "create" | "edit";
   item?: AdminMenuItem;  // Required when mode="edit"
   powders: Powder[];
+  baseLiquids: MilkTypeOption[];
+  defaultSizeConfig: Array<{ size: Size; base_liquid_ml: number }>;
   onClose: () => void;
   onSuccess: (item: AdminMenuItem, powderName?: string) => void;
 }
 
-import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
+interface PendingPriceChange {
+  formData: FormData;
+  activeVoucherCount: number;
+  oldPriceVnd: number;
+  newPriceVnd: number;
+}
+
+function formatVnd(value: number): string {
+  return `${new Intl.NumberFormat("vi-VN").format(value)}đ`;
+}
 
 /** Unified modal cho tạo mới và sửa menu item. */
 export default function MenuItemModal({
   mode,
   item,
   powders,
+  baseLiquids,
+  defaultSizeConfig,
   onClose,
   onSuccess,
 }: MenuItemModalProps) {
   useBodyScrollLock(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [pendingPriceChange, setPendingPriceChange] = useState<PendingPriceChange | null>(null);
   const [imageFilename, setImageFilename] = useState("");
 
   const handleSubmit = async (fd: FormData) => {
@@ -66,6 +83,26 @@ export default function MenuItemModal({
       onSuccess(saved, createdPowderName);
       onClose();
     } catch (err: unknown) {
+      if (
+        mode === "edit" &&
+        axios.isAxiosError(err) &&
+        err.response?.status === 409 &&
+        err.response.data?.code === "CONFLICT" &&
+        err.response.data?.details?.reason === "ACTIVE_ITEM_VOUCHERS"
+      ) {
+        const details = err.response.data.details as {
+          count?: number;
+          old_unit_price_vnd?: number;
+          new_unit_price_vnd?: number;
+        };
+        setPendingPriceChange({
+          formData: fd,
+          activeVoucherCount: details.count ?? 0,
+          oldPriceVnd: details.old_unit_price_vnd ?? 0,
+          newPriceVnd: details.new_unit_price_vnd ?? 0,
+        });
+        return;
+      }
       const message =
         err instanceof Error ? err.message : "Có lỗi xảy ra, vui lòng thử lại.";
       setErrorMsg(message);
@@ -117,12 +154,31 @@ export default function MenuItemModal({
             mode={mode}
             defaultValues={item ? buildDefaultValues(item) : undefined}
             powders={powders}
+            baseLiquids={baseLiquids}
+            defaultSizeConfig={defaultSizeConfig}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
             onCancel={onClose}
           />
         </div>
       </div>
+      <ConfirmModal
+        isOpen={pendingPriceChange !== null}
+        title="Xác nhận đổi giá Add-on?"
+        message={pendingPriceChange
+          ? `Có ${pendingPriceChange.activeVoucherCount} voucher ITEM còn hiệu lực. Giá sẽ đổi từ ${formatVnd(pendingPriceChange.oldPriceVnd)} sang ${formatVnd(pendingPriceChange.newPriceVnd)}; các voucher đã phát hành vẫn tặng miễn phí món này theo giá mới. Bạn có chắc muốn tiếp tục?`
+          : ""}
+        confirmLabel="Đổi giá"
+        onCancel={() => setPendingPriceChange(null)}
+        onConfirm={() => {
+          const retry = pendingPriceChange?.formData;
+          setPendingPriceChange(null);
+          if (retry) {
+            retry.set("confirm_price_change", "true");
+            void handleSubmit(retry);
+          }
+        }}
+      />
     </div>
   );
 }

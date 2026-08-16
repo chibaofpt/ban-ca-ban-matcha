@@ -1,9 +1,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { CartItem } from "@/src/lib/types/cart";
-import { computeFinalClientPrice } from "./cartStore";
+import { computeFinalClientPrice, releaseVoucherFromOtherCartLines } from "./cartStore";
 import type { CustomerInfo } from "@/src/components/staff/CustomerSelectModal";
-import type { StaffOrderResult } from "@/src/lib/types/order";
 
 export interface DiscountVoucher {
   qr_token: string;
@@ -16,16 +15,13 @@ interface StaffCartState {
   customerInfo: CustomerInfo | null;
   discountVoucher: DiscountVoucher | null;
   selectedDiscountIds: string[];
-  pendingPayment: StaffOrderResult | null;
   
-  addItem: (newItem: Omit<CartItem, "cartId">) => void;
+  addItem: (newItem: Omit<CartItem, "cartId">) => string;
   insertItemAfter: (targetCartId: string, newItem: Omit<CartItem, "cartId">) => void;
   removeItem: (cartId: string) => void;
   updateItem: (cartId: string, updates: Partial<CartItem>) => void;
   updateQuantity: (cartId: string, quantity: number) => void;
   clearCart: () => void;
-  setPendingPayment: (payment: StaffOrderResult) => void;
-  clearPendingPayment: () => void;
   
   setCustomerInfo: (info: CustomerInfo | null) => void;
   setDiscountVoucher: (voucher: DiscountVoucher | null) => void;
@@ -38,6 +34,56 @@ interface StaffCartState {
   removeAddonVoucher: (cartId: string, voucherId: string) => void;
 }
 
+type PersistedStaffCartState = Partial<StaffCartState>;
+
+/** Remove legacy zero-price sentinel addons from persisted staff carts. */
+export function migrateStaffCartState(persistedState: unknown): PersistedStaffCartState {
+  const old = persistedState as PersistedStaffCartState;
+  if (!old.items) return old;
+  const migrated = {
+    ...old,
+    items: old.items.map((item) => {
+      const selectedOptionIds = item.selectedOptionIds.filter(
+        (optionId) => (item.addonPrices[optionId] ?? 0) > 0,
+      );
+      const selectedOptionIdSet = new Set([
+        ...selectedOptionIds,
+        ...item.quantityAddonOptions.map((option) => option.option_id),
+      ]);
+      return {
+        ...item,
+        selectedBaseLiquidId: item.selectedBaseLiquidId ?? item.selectedMilkTypeId,
+        selectedOptionIds,
+        addonPrices: Object.fromEntries(
+          Object.entries(item.addonPrices).filter(
+            ([optionId, price]) => price > 0 || selectedOptionIdSet.has(optionId),
+          ),
+        ),
+        addonVouchers: item.addonVouchers?.filter(
+          (voucher) => selectedOptionIdSet.has(voucher.addonOptionId),
+        ),
+      };
+    }),
+  };
+  const voucherOwners = new Map<string, string>();
+  for (const item of migrated.items ?? []) {
+    const voucherId = item.itemVoucherId ?? item.productVoucherId;
+    if (voucherId) voucherOwners.set(voucherId, item.cartId);
+  }
+  migrated.items = (migrated.items ?? []).map((item) => {
+    const voucherId = item.itemVoucherId ?? item.productVoucherId;
+    if (!voucherId || voucherOwners.get(voucherId) === item.cartId) return item;
+    const released = {
+      ...item,
+      productVoucherId: undefined,
+      productVoucherDiscountVnd: undefined,
+      itemVoucherId: undefined,
+    };
+    return { ...released, clientPriceVnd: computeFinalClientPrice(released) };
+  });
+  return migrated;
+}
+
 export const useStaffCartStore = create<StaffCartState>()(
   persist(
     (set, get) => ({
@@ -45,7 +91,6 @@ export const useStaffCartStore = create<StaffCartState>()(
       customerInfo: null,
       discountVoucher: null,
       selectedDiscountIds: [],
-      pendingPayment: null,
 
       setCustomerInfo: (info) => {
         const currentInfo = get().customerInfo;
@@ -58,7 +103,7 @@ export const useStaffCartStore = create<StaffCartState>()(
           // Remove applied vouchers from existing cart
           set({
             items: get().items.map((i) => {
-              const next = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, addonVouchers: [] };
+              const next = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, itemVoucherId: undefined, addonVouchers: [] };
               next.clientPriceVnd = computeFinalClientPrice(next);
               return next;
             })
@@ -74,13 +119,18 @@ export const useStaffCartStore = create<StaffCartState>()(
       }),
 
       addItem: (newItem) => {
-        const { items } = get();
+        const items = newItem.itemVoucherId
+          ? releaseVoucherFromOtherCartLines(get().items, newItem.itemVoucherId, null)
+          : get().items;
         const cartId = crypto.randomUUID();
         set({ items: [...items, { ...newItem, cartId }] });
+        return cartId;
       },
 
       insertItemAfter: (targetCartId, newItem) => {
-        const { items } = get();
+        const items = newItem.itemVoucherId
+          ? releaseVoucherFromOtherCartLines(get().items, newItem.itemVoucherId, null)
+          : get().items;
         const targetIndex = items.findIndex((i) => i.cartId === targetCartId);
         if (targetIndex === -1) {
           get().addItem(newItem);
@@ -100,7 +150,9 @@ export const useStaffCartStore = create<StaffCartState>()(
 
       updateItem: (cartId, updates) => {
         set({
-          items: get().items.map((i) => {
+          items: (updates.itemVoucherId
+            ? releaseVoucherFromOtherCartLines(get().items, updates.itemVoucherId, cartId)
+            : get().items).map((i) => {
             if (i.cartId !== cartId) return i;
             return { ...i, ...updates };
           }),
@@ -111,7 +163,7 @@ export const useStaffCartStore = create<StaffCartState>()(
         set({
           items: get().items.map((i) => {
             if (i.cartId !== cartId) return i;
-            if ((i.productVoucherId || (i.addonVouchers && i.addonVouchers.length > 0)) && quantity > 1) {
+            if ((i.productVoucherId || i.itemVoucherId || (i.addonVouchers && i.addonVouchers.length > 0)) && quantity > 1) {
               return i;
             }
             return { ...i, quantity: Math.max(1, quantity) };
@@ -124,15 +176,12 @@ export const useStaffCartStore = create<StaffCartState>()(
         discountVoucher: null,
         selectedDiscountIds: [],
         customerInfo: null,
-        pendingPayment: null,
       }),
-      setPendingPayment: (pendingPayment) => set({ pendingPayment }),
-      clearPendingPayment: () => set({ pendingPayment: null }),
 
       applyProductVoucher: (cartId, voucherId, coveredPriceVnd) => {
         const currentItems = get().items.map((i) => {
-          if (i.productVoucherId === voucherId) {
-            const nextI = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined };
+          if (i.productVoucherId === voucherId || i.itemVoucherId === voucherId) {
+            const nextI = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, itemVoucherId: undefined };
             nextI.clientPriceVnd = computeFinalClientPrice(nextI);
             return nextI;
           }
@@ -146,10 +195,12 @@ export const useStaffCartStore = create<StaffCartState>()(
         }
 
         const item = currentItems[itemIndex];
-        const nextItem = { 
-          ...item, 
-          productVoucherId: voucherId, 
-          productVoucherDiscountVnd: coveredPriceVnd 
+        const isItemVoucher = item.category === "extras";
+        const nextItem = {
+          ...item,
+          productVoucherId: isItemVoucher ? undefined : voucherId,
+          productVoucherDiscountVnd: isItemVoucher ? undefined : coveredPriceVnd,
+          itemVoucherId: isItemVoucher ? voucherId : undefined,
         };
         nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
 
@@ -172,7 +223,7 @@ export const useStaffCartStore = create<StaffCartState>()(
         set({
           items: get().items.map((i) => {
             if (i.cartId !== cartId) return i;
-            const nextItem = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined };
+            const nextItem = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, itemVoucherId: undefined };
             nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
             return nextItem;
           }),
@@ -232,7 +283,15 @@ export const useStaffCartStore = create<StaffCartState>()(
         });
       },
     }),
-    { name: "bcbm-staff-cart" }
+    {
+      name: "bcbm-staff-cart",
+      version: 3,
+      migrate: migrateStaffCartState,
+      partialize: (state) => ({
+        ...state,
+        items: state.items.filter((item) => !item.bundleRewardVoucherToken),
+      }),
+    }
   )
 );
 

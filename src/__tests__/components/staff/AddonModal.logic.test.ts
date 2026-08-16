@@ -34,9 +34,8 @@ function calcUnitPrice(
 const quantityGroup: AddonGroup = {
   id: "grp-powder",
   name: "Extra Powder",
+  image_url: null,
   type: "QUANTITY",
-  is_required: false,
-  min_quantity: 0,
   max_quantity: 3,
   options: [
     {
@@ -44,7 +43,6 @@ const quantityGroup: AddonGroup = {
       label: "Bột matcha",
       price_vnd: 5000,
       gram_value: null,
-      is_default: false,
       sort_order: 0,
     },
   ],
@@ -53,13 +51,12 @@ const quantityGroup: AddonGroup = {
 const selectorGroup: AddonGroup = {
   id: "grp-milk",
   name: "Loại sữa",
+  image_url: null,
   type: "SELECTOR",
-  is_required: true,
-  min_quantity: null,
   max_quantity: null,
   options: [
-    { id: "opt-cow", label: "Sữa bò", price_vnd: 0, gram_value: null, is_default: true, sort_order: 0 },
-    { id: "opt-oat", label: "Sữa Oat", price_vnd: 10000, gram_value: null, is_default: false, sort_order: 1 },
+    { id: "opt-cow", label: "Sữa bò", price_vnd: 0, gram_value: null, sort_order: 0 },
+    { id: "opt-oat", label: "Sữa Oat", price_vnd: 10000, gram_value: null, sort_order: 1 },
   ],
 };
 

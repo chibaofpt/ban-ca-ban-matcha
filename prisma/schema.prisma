@@ -9,28 +9,29 @@ datasource db {
 }
 
 model User {
-  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name             String
-  phone_number     String      @unique
-  password_hash    String
-  role             Role        @default(CUSTOMER)
-  points_balance   Int         @default(0)
-  qr_token         String      @unique @default(dbgenerated("(gen_random_uuid())::text"))
-  otp_enabled      Boolean     @default(false)
-  insta_name       String?      @unique
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String
+  phone_number   String  @unique
+  password_hash  String
+  role           Role    @default(CUSTOMER)
+  points_balance Int     @default(0)
+  qr_token       String  @unique @default(dbgenerated("(gen_random_uuid())::text"))
+  otp_enabled    Boolean @default(false)
+  insta_name     String? @unique
 
-  created_at       DateTime    @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime    @default(now()) @updatedAt @db.Timestamptz(6)
-  orders             Order[]     @relation("CustomerOrders")
-  handledOrders      Order[]     @relation("HandledOrders")
-  confirmedPayments  Order[]     @relation("PaymentConfirmer")
-  performedLogs      PointsLog[] @relation("StaffPerformed")
-  pointsLogs         PointsLog[] @relation("UserPoints")
-  sessions           Session[]
-  redeemedVouchers   Voucher[]   @relation("StaffRedeemed")
-  vouchers           Voucher[]   @relation("UserVouchers")
-  pushSubscriptions  PushSubscription[]
-  addresses          Address[]
+  created_at        DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime           @default(now()) @updatedAt @db.Timestamptz(6)
+  orders            Order[]            @relation("CustomerOrders")
+  handledOrders     Order[]            @relation("HandledOrders")
+  confirmedPayments Order[]            @relation("PaymentConfirmer")
+  performedLogs     PointsLog[]        @relation("StaffPerformed")
+  pointsLogs        PointsLog[]        @relation("UserPoints")
+  sessions          Session[]
+  redeemedVouchers  Voucher[]          @relation("StaffRedeemed")
+  vouchers          Voucher[]          @relation("UserVouchers")
+  voucherGrants     VoucherGrant[]
+  pushSubscriptions PushSubscription[]
+  addresses         Address[]
 
   @@map("users")
 }
@@ -53,21 +54,21 @@ model Session {
 }
 
 model Address {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id         String   @db.Uuid
-  label           String   /// "Nhà", "Công ty", etc.
-  full_address    String   /// Full text address from Goong
-  lat             Float
-  lng             Float
-  receiver_name   String
-  receiver_phone  String   /// Normalized +84
-  is_default      Boolean  @default(false)
-  distance_km     Float?   /// Road distance from store
-  created_at      DateTime @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String   @db.Uuid
+  label          String /// "Nhà", "Công ty", etc.
+  full_address   String /// Full text address from Goong
+  lat            Float
+  lng            Float
+  receiver_name  String
+  receiver_phone String /// Normalized +84
+  is_default     Boolean  @default(false)
+  distance_km    Float? /// Road distance from store
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
-  user            User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  orders          Order[]
+  user   User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  orders Order[]
 
   @@index([user_id])
   @@map("addresses")
@@ -87,76 +88,86 @@ model OtpAttempt {
 }
 
 model VoucherPackage {
-  id                         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name                       String
-  description                String?
-  voucher_type               VoucherType
-  points_cost                Int
-  discount_type              DiscountType?
-  discount_value             Int?
-  menu_item_id               String?       @db.Uuid
-  size                       Size?
-  matcha_powder_id           String?       @db.Uuid
-  milk_type_id               String?       @db.Uuid
+  id                        String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                      String
+  description               String?
+  voucher_type              VoucherType
+  acquisition_mode          VoucherAcquisitionMode @default(POINTS_EXCHANGE)
+  points_cost               Int
+  discount_type             DiscountType?
+  discount_value            Int?
+  menu_item_id              String?                @db.Uuid
+  size                      Size?
+  matcha_powder_id          String?                @db.Uuid
+  milk_type_id              String?                @db.Uuid
   included_addon_option_ids String[]
-  addon_option_id            String?       @db.Uuid
-  covered_price_vnd          Int?
+  addon_option_id           String?                @db.Uuid
+  covered_price_vnd         Int?
   /// Max shipping fee covered for FREESHIP vouchers (VND). NULL for all other types.
-  covered_delivery_fee_vnd   Int?
+  covered_delivery_fee_vnd  Int?
   /// Minimum order total (after discount, before shipping) required to use this voucher. NULL = no minimum.
-  min_order_vnd              Int?
-  is_active                  Boolean       @default(true)
-  expires_after_days         Int?
+  min_order_vnd             Int?
+  /// Optional package issuance cutoff. Issued vouchers are capped to this timestamp.
+  ends_at                   DateTime?              @db.Timestamptz(6)
+  is_active                 Boolean                @default(true)
+  expires_after_days        Int?
   /// NULL = unlimited. Total number of vouchers that can be issued from this package.
-  quantity                   Int?
+  quantity                  Int?
   /// Maximum number of vouchers a single user can redeem from this package.
-  max_per_user               Int           @default(1)
-  created_at                 DateTime      @default(now()) @db.Timestamptz(6)
-  menuItem                   MenuItem?     @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  matchaPowder               MatchaPowder? @relation(fields: [matcha_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  milkType                   MilkType?     @relation(fields: [milk_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  addonOption                AddonOption?  @relation(fields: [addon_option_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  vouchers                   Voucher[]
+  max_per_user              Int                    @default(1)
+  created_at                DateTime               @default(now()) @db.Timestamptz(6)
+  menuItem                  MenuItem?              @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  matchaPowder              MatchaPowder?          @relation(fields: [matcha_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  milkType                  MilkType?              @relation(fields: [milk_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  addonOption               AddonOption?           @relation(fields: [addon_option_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vouchers                  Voucher[]
+  bundleRule                VoucherBundleRule?
+  grants                    VoucherGrant[]
 
   @@map("voucher_packages")
 }
 
 model Voucher {
-  id                         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id                    String         @db.Uuid
-  package_id                 String         @db.Uuid
-  qr_token                   String         @unique @default(dbgenerated("(gen_random_uuid())::text"))
-  voucher_type               VoucherType
-  discount_type              DiscountType?
-  discount_value             Int?
-  menu_item_id               String?        @db.Uuid
-  size                       Size?
-  matcha_powder_id           String?        @db.Uuid
-  milk_type_id               String?        @db.Uuid
+  id                        String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                   String                     @db.Uuid
+  package_id                String                     @db.Uuid
+  qr_token                  String                     @unique @default(dbgenerated("(gen_random_uuid())::text"))
+  voucher_type              VoucherType
+  issued_via                VoucherAcquisitionMode     @default(POINTS_EXCHANGE)
+  discount_type             DiscountType?
+  discount_value            Int?
+  menu_item_id              String?                    @db.Uuid
+  size                      Size?
+  matcha_powder_id          String?                    @db.Uuid
+  milk_type_id              String?                    @db.Uuid
   included_addon_option_ids String[]
-  addon_option_id            String?        @db.Uuid
-  covered_price_vnd          Int?
+  addon_option_id           String?                    @db.Uuid
+  covered_price_vnd         Int?
   /// Max shipping fee covered — snapshot from package at exchange time. FREESHIP only.
-  covered_delivery_fee_vnd   Int?
+  covered_delivery_fee_vnd  Int?
   /// Minimum order total required — snapshot from package. NULL = no minimum.
-  min_order_vnd              Int?
-  status                     VoucherStatus  @default(ACTIVE)
-  used_channel               UsedChannel?
-  expires_at                 DateTime?      @db.Timestamptz(6)
-  redeemed_at                DateTime?      @db.Timestamptz(6)
-  redeemed_by                String?        @db.Uuid
-  created_at                 DateTime       @default(now()) @db.Timestamptz(6)
-  orderItems                 OrderItem[]
-  discountOrderLinks         OrderDiscountVoucher[] @relation("UsedAsDiscount")
-  addonOrderItemLinks        OrderItemAddonVoucher[] @relation("OrderItemAddonVoucher")
-  pointsLogs                 PointsLog[]
-  menuItem                   MenuItem?      @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  matchaPowder               MatchaPowder?  @relation(fields: [matcha_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  milkType                   MilkType?      @relation(fields: [milk_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  addonOption                AddonOption?   @relation(fields: [addon_option_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  package                    VoucherPackage @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  staff                      User?          @relation("StaffRedeemed", fields: [redeemed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  user                       User           @relation("UserVouchers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  min_order_vnd             Int?
+  status                    VoucherStatus              @default(ACTIVE)
+  used_channel              UsedChannel?
+  expires_at                DateTime?                  @db.Timestamptz(6)
+  redeemed_at               DateTime?                  @db.Timestamptz(6)
+  redeemed_by               String?                    @db.Uuid
+  created_at                DateTime                   @default(now()) @db.Timestamptz(6)
+  /// Legacy PRODUCT voucher links retained for one-release compatibility.
+  orderItems                OrderItem[]              @relation("ProductVoucher")
+  itemOrderItems            OrderItem[]              @relation("ItemVoucher")
+  discountOrderLinks        OrderDiscountVoucher[]     @relation("UsedAsDiscount")
+  addonOrderItemLinks       OrderItemAddonVoucher[]    @relation("OrderItemAddonVoucher")
+  pointsLogs                PointsLog[]
+  menuItem                  MenuItem?                  @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  matchaPowder              MatchaPowder?              @relation(fields: [matcha_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  milkType                  MilkType?                  @relation(fields: [milk_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  addonOption               AddonOption?               @relation(fields: [addon_option_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  package                   VoucherPackage             @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff                     User?                      @relation("StaffRedeemed", fields: [redeemed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user                      User                       @relation("UserVouchers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  grant                     VoucherGrant?
+  bundleApplication         OrderBundleApplication?
 
   @@index([qr_token], map: "idx_vouchers_qr_token")
   @@index([status], map: "idx_vouchers_status")
@@ -186,45 +197,104 @@ model PointsLog {
   @@map("points_log")
 }
 
-model Promotion {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  title           String
-  description     String?
-  starts_at       DateTime @db.Timestamptz(6)
-  ends_at         DateTime @db.Timestamptz(6)
-  max_redemptions Int
-  is_active       Boolean  @default(true)
-  created_at      DateTime @default(now()) @db.Timestamptz(6)
+model VoucherBundleRule {
+  package_id             String                  @id @db.Uuid
+  buy_quantity           Int
+  reward_quantity        Int
+  reward_kind            BundleRewardKind
+  reward_mode            BundleRewardMode
+  benefit_scaling        BundleBenefitScaling    @default(PER_BUNDLE)
+  max_applications_order Int                     @default(1)
+  max_reward_units_order Int?
+  package                VoucherPackage          @relation(fields: [package_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  productScopes          VoucherBundleProductScope[]
+  addonRewards           VoucherBundleAddonReward[]
 
-  @@map("promotions")
+  @@map("voucher_bundle_rules")
+}
+
+model VoucherBundleProductScope {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  package_id          String              @db.Uuid
+  role                BundleScopeRole
+  menu_item_id        String              @db.Uuid
+  size                Size?
+  matcha_powder_id    String?             @db.Uuid
+  milk_type_id        String?             @db.Uuid
+  reference_price_vnd Int?
+  bundleRule          VoucherBundleRule   @relation(fields: [package_id], references: [package_id], onDelete: Cascade, onUpdate: NoAction)
+  menuItem            MenuItem            @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  matchaPowder        MatchaPowder?       @relation(fields: [matcha_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  milkType            MilkType?           @relation(fields: [milk_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([package_id, role, menu_item_id, size, matcha_powder_id, milk_type_id])
+  @@index([package_id, role])
+  @@index([menu_item_id])
+  @@index([matcha_powder_id])
+  @@index([milk_type_id])
+  @@map("voucher_bundle_product_scopes")
+}
+
+model VoucherBundleAddonReward {
+  package_id      String              @db.Uuid
+  addon_option_id String              @db.Uuid
+  bundleRule      VoucherBundleRule   @relation(fields: [package_id], references: [package_id], onDelete: Cascade, onUpdate: NoAction)
+  addonOption     AddonOption         @relation(fields: [addon_option_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([package_id, addon_option_id])
+  @@index([addon_option_id])
+  @@map("voucher_bundle_addon_rewards")
+}
+
+model VoucherGrant {
+  id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String         @db.Uuid
+  package_id String         @db.Uuid
+  voucher_id String         @unique @db.Uuid
+  created_at DateTime       @default(now()) @db.Timestamptz(6)
+  user       User           @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  package    VoucherPackage @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  voucher    Voucher        @relation(fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([user_id, package_id])
+  @@index([package_id])
+  @@map("voucher_grants")
 }
 
 model MenuItem {
-  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                   String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name                 String
   description          String?
   category             String
+  /// Fixed VND price used by extras/non-drink items. Beverage prices remain in menu_item_sizes.
+  unit_price_vnd       Int?
   image_url            String?
-  is_available         Boolean               @default(true)
-  sort_order           Int                   @default(0)
-  created_at           DateTime              @default(now()) @db.Timestamptz(6)
-  is_seasonal          Boolean               @default(false)
-  matcha_powder_id     String?               @unique @db.Uuid
-  default_powder_id    String?               @db.Uuid
+  is_available         Boolean                 @default(true)
+  sort_order           Int                     @default(0)
+  created_at           DateTime                @default(now()) @db.Timestamptz(6)
+  is_seasonal          Boolean                 @default(false)
+  matcha_powder_id     String?                 @unique @db.Uuid
+  default_powder_id    String?                 @db.Uuid
   custom_powder_grams  Json?
   base_liquid_note     String?
-  updated_at           DateTime              @default(now()) @db.Timestamptz(6)
+  /// Fusion-specific default. Latte resolves the global MilkType.is_default row.
+  default_base_liquid_id String?                 @db.Uuid
+  updated_at           DateTime                @default(now()) @db.Timestamptz(6)
   fusionAllowedPowders FusionAllowedPowder[]
-  referenceLatteItem   MatchaPowder?         @relation("MatchaPowder_referenceLatteItem")
+  allowedBaseLiquids   MenuItemAllowedBaseLiquid[]
+  referenceLatteItem   MatchaPowder?           @relation("MatchaPowder_referenceLatteItem")
   sizes                MenuItemSize[]
-  defaultPowder        MatchaPowder?         @relation("MenuItem_defaultPowder", fields: [default_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  matchaPowder         MatchaPowder?         @relation("MenuItem_matchaPowder", fields: [matcha_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  defaultPowder        MatchaPowder?           @relation("MenuItem_defaultPowder", fields: [default_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  matchaPowder         MatchaPowder?           @relation("MenuItem_matchaPowder", fields: [matcha_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  defaultBaseLiquid    MilkType?               @relation("MenuItem_defaultBaseLiquid", fields: [default_base_liquid_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   orderItems           OrderItem[]
   voucherPackages      VoucherPackage[]
   vouchers             Voucher[]
+  bundleScopes         VoucherBundleProductScope[]
 
   @@index([category], map: "idx_menu_items_category")
   @@index([is_available], map: "idx_menu_items_is_available")
+  @@index([default_base_liquid_id], map: "idx_menu_items_default_base_liquid_id")
   @@map("menu_items")
 }
 
@@ -232,8 +302,11 @@ model AddonGroup {
   id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name         String
   description  String?
+  image_url    String?
   type         AddonType
+  /// Deprecated during the opt-in rollout. Always false; dropped in phase 2.
   is_required  Boolean
+  /// Deprecated during the opt-in rollout. Always null; dropped in phase 2.
   min_quantity Int?
   max_quantity Int?
   created_at   DateTime      @default(now()) @db.Timestamptz(6)
@@ -244,19 +317,22 @@ model AddonGroup {
 }
 
 model AddonOption {
-  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  addon_group_id  String           @db.Uuid
-  label           String
-  price_vnd       Int              @default(0)
-  is_default      Boolean          @default(false)
-  sort_order      Int              @default(0)
+  id                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  addon_group_id    String                  @db.Uuid
+  label             String
+  price_vnd         Int                     @default(0)
+  /// Deprecated during the opt-in rollout. Always false; dropped in phase 2.
+  is_default        Boolean                 @default(false)
+  is_active         Boolean                 @default(true)
+  sort_order        Int                     @default(0)
   /// gram amount for extra matcha options; null for all other addon types
-  gram_value      Decimal?         @db.Decimal
-  group           AddonGroup       @relation(fields: [addon_group_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  orderItemAddons OrderItemAddon[]
-  voucherPackages VoucherPackage[]
-  vouchers        Voucher[]
+  gram_value        Decimal?                @db.Decimal
+  group             AddonGroup              @relation(fields: [addon_group_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  orderItemAddons   OrderItemAddon[]
+  voucherPackages   VoucherPackage[]
+  vouchers          Voucher[]
   addonVoucherLinks OrderItemAddonVoucher[]
+  bundleRewards     VoucherBundleAddonReward[]
 
   @@map("addon_options")
 }
@@ -267,6 +343,8 @@ model MenuItemSize {
   size           Size
   /// null = this size is not sold; hidden from UI entirely
   base_price_vnd Int?
+  /// Per-item override. NULL inherits default_size_config.milk_ml for the same size.
+  base_liquid_ml Int?
   menuItem       MenuItem @relation(fields: [menu_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([menu_item_id, size])
@@ -275,58 +353,59 @@ model MenuItemSize {
 }
 
 model Order {
-  id                   String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id      String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// NULL = anonymous walk-in order (no loyalty tracking). Non-null = registered or ghost customer.
-  user_id              String?     @db.Uuid
+  user_id String? @db.Uuid
 
-  status               OrderStatus @default(PENDING)
+  status                     OrderStatus   @default(PENDING)
   /// COUNTER = staff-created at register; PICKUP = customer self-order pick-up; DELIVERY = future phase
-  order_type           OrderType   @default(COUNTER)
+  order_type                 OrderType     @default(COUNTER)
   /// How the order is paid. Customer online orders always use BANK_TRANSFER.
-  payment_method       PaymentMethod @default(CASH)
+  payment_method             PaymentMethod @default(CASH)
   /// Human-readable order code for bank transfer reference. Format: BCBM-XXXXXX. NULL for cash orders.
-  order_code           String?     @unique
-  subtotal_vnd              Int
-  total_voucher_discount_vnd Int         @default(0)
-  total_vnd                 Int
-  points_earned        Int?
-  pickup_time          DateTime?   @db.Timestamptz(6)
-  note                 String?
+  order_code                 String?       @unique
+  subtotal_vnd               Int
+  total_voucher_discount_vnd Int           @default(0)
+  total_vnd                  Int
+  points_earned              Int?
+  pickup_time                DateTime?     @db.Timestamptz(6)
+  note                       String?
   /// Timestamp when admin confirmed customer bank transfer. NULL until confirmed.
-  payment_confirmed_at DateTime?   @db.Timestamptz(6)
+  payment_confirmed_at       DateTime?     @db.Timestamptz(6)
   /// Admin or creating staff user who confirmed the bank transfer.
-  payment_confirmed_by String?     @db.Uuid
+  payment_confirmed_by       String?       @db.Uuid
   /// Auto-cancel deadline for pending bank transfers, including COUNTER orders. NULL for cash orders.
-  auto_cancel_at       DateTime?   @db.Timestamptz(6)
-  
+  auto_cancel_at             DateTime?     @db.Timestamptz(6)
+
   // -- DELIVERY FIELDS --
   /// FK reference to source address — nullable, SET NULL safe. Not cascade delete.
-  address_id                String?   @db.Uuid
-  delivery_address          String?
-  delivery_lat              Float?
-  delivery_lng              Float?
-  delivery_distance_km      Float?    /// Actual distance from Distance Matrix (km)
-  delivery_receiver_name    String?
-  delivery_receiver_phone   String?
+  address_id              String? @db.Uuid
+  delivery_address        String?
+  delivery_lat            Float?
+  delivery_lng            Float?
+  delivery_distance_km    Float? /// Actual distance from Distance Matrix (km)
+  delivery_receiver_name  String?
+  delivery_receiver_phone String?
   /// Shipping fee based on distance (VND). Default 0 for non-DELIVERY.
-  shipping_fee_vnd          Int       @default(0)
+  shipping_fee_vnd        Int     @default(0)
   /// Discount from FREESHIP voucher (VND). Default 0.
-  freeship_discount_vnd     Int       @default(0)
+  freeship_discount_vnd   Int     @default(0)
   /// Grand total = total_vnd + shipping_fee_vnd - freeship_discount_vnd. Actual amount customer pays.
-  grand_total_vnd           Int       @default(0)
+  grand_total_vnd         Int     @default(0)
   /// FK to FREESHIP voucher applied on this order. Nullable.
-  freeship_voucher_id       String?   @db.Uuid
+  freeship_voucher_id     String? @db.Uuid
 
-  created_at           DateTime    @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime    @default(now()) @updatedAt @db.Timestamptz(6)
+  created_at           DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime                   @default(now()) @updatedAt @db.Timestamptz(6)
   items                OrderItem[]
-  user                 User?       @relation("CustomerOrders", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  handled_by           String?     @db.Uuid
-  handler              User?       @relation("HandledOrders", fields: [handled_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  paymentConfirmer     User?       @relation("PaymentConfirmer", fields: [payment_confirmed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  address              Address?    @relation(fields: [address_id], references: [id], onDelete: SetNull)
+  user                 User?                      @relation("CustomerOrders", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  handled_by           String?                    @db.Uuid
+  handler              User?                      @relation("HandledOrders", fields: [handled_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  paymentConfirmer     User?                      @relation("PaymentConfirmer", fields: [payment_confirmed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  address              Address?                   @relation(fields: [address_id], references: [id], onDelete: SetNull)
   discountVouchers     OrderDiscountVoucher[]
   pointsLogs           PointsLog[]
+  bundleApplication    OrderBundleApplication?
 
   @@index([created_at(sort: Desc)], map: "idx_orders_created_at")
   @@index([status], map: "idx_orders_status")
@@ -337,110 +416,155 @@ model Order {
 }
 
 model OrderItem {
-  id                    String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  order_id              String           @db.Uuid
-  menu_item_id          String           @db.Uuid
-  quantity              Int
-  unit_price_vnd             Int
-  addons_price_vnd           Int              @default(0)
-  product_voucher_discount_vnd Int            @default(0)
-  total_discount_vnd         Int              @default(0)
-  product_voucher_id         String?          @db.Uuid
+  id                           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id                     String  @db.Uuid
+  menu_item_id                 String  @db.Uuid
+  quantity                     Int
+  unit_price_vnd               Int
+  addons_price_vnd             Int     @default(0)
+  product_voucher_discount_vnd Int     @default(0)
+  total_discount_vnd           Int     @default(0)
+  product_voucher_id           String? @db.Uuid
+  /// ITEM voucher link. product_voucher_id remains readable for legacy orders.
+  item_voucher_id              String? @unique @db.Uuid
 
   note                  String?
-  sweetness             SweetnessLevel   @default(FULL)
-  size                  Size
-  selected_powder_id    String?          @db.Uuid
-  selected_milk_type_id String?          @db.Uuid
-  ice_option            IceOption        @default(NORMAL)
-  coldwhisk             Boolean          @default(false)
+  sweetness             SweetnessLevel          @default(FULL)
+  size                  Size?
+  selected_powder_id    String?                 @db.Uuid
+  selected_milk_type_id String?                 @db.Uuid
+  /// Immutable effective Base Liquid volume captured when the order is created.
+  base_liquid_ml        Int?
+  ice_option            IceOption               @default(NORMAL)
+  coldwhisk             Boolean                 @default(false)
   addons                OrderItemAddon[]
-  menuItem              MenuItem         @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  order                 Order            @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  productVoucher        Voucher?         @relation(fields: [product_voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  milkType              MilkType?        @relation(fields: [selected_milk_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  selectedPowder        MatchaPowder?    @relation(fields: [selected_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  menuItem              MenuItem                @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order                 Order                   @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  productVoucher        Voucher?                @relation("ProductVoucher", fields: [product_voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  itemVoucher            Voucher?                @relation("ItemVoucher", fields: [item_voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  milkType              MilkType?               @relation(fields: [selected_milk_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  selectedPowder        MatchaPowder?           @relation(fields: [selected_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   addonVouchers         OrderItemAddonVoucher[]
+  bundleRewards         OrderBundleReward[]
 
   @@index([order_id], map: "idx_order_items_order_id")
+  @@index([selected_milk_type_id], map: "idx_order_items_selected_milk_type_id")
   @@map("order_items")
 }
 
 model OrderItemAddon {
-  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  order_item_id   String      @db.Uuid
-  addon_option_id String      @db.Uuid
-  quantity        Int
-  unit_price_vnd  Int
-  addonOption     AddonOption @relation(fields: [addon_option_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  orderItem       OrderItem   @relation(fields: [order_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_item_id    String                 @db.Uuid
+  addon_option_id  String                 @db.Uuid
+  quantity         Int
+  unit_price_vnd   Int
+  addonOption      AddonOption            @relation(fields: [addon_option_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  orderItem        OrderItem              @relation(fields: [order_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  bundleRewards    OrderBundleReward[]
 
   @@map("order_item_addons")
 }
 
-model OrderDiscountVoucher {
-  order_id            String  @db.Uuid
-  voucher_id          String  @db.Uuid
+model OrderBundleApplication {
+  id                String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id          String                     @unique @db.Uuid
+  voucher_id        String                     @unique @db.Uuid
+  application_count Int
+  status            BundleApplicationStatus    @default(RESERVED)
+  created_at        DateTime                   @default(now()) @db.Timestamptz(6)
+  order             Order                      @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  voucher           Voucher                    @relation(fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rewards           OrderBundleReward[]
 
-  order               Order   @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  voucher    Voucher @relation("UsedAsDiscount", fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  @@index([status])
+  @@map("order_bundle_applications")
+}
+
+model OrderBundleReward {
+  id                  String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  application_id      String                    @db.Uuid
+  order_item_id       String?                   @db.Uuid
+  order_item_addon_id String?                   @db.Uuid
+  quantity            Int
+  discount_vnd        Int
+  application         OrderBundleApplication @relation(fields: [application_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  orderItem           OrderItem?                @relation(fields: [order_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  orderItemAddon      OrderItemAddon?           @relation(fields: [order_item_addon_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([application_id])
+  @@index([order_item_id])
+  @@index([order_item_addon_id])
+  @@map("order_bundle_rewards")
+}
+
+model OrderDiscountVoucher {
+  order_id   String @db.Uuid
+  voucher_id String @db.Uuid
+
+  order   Order   @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  voucher Voucher @relation("UsedAsDiscount", fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([order_id, voucher_id])
   @@map("order_discount_vouchers")
 }
 
 model OrderItemAddonVoucher {
-  order_item_id        String  @db.Uuid
-  voucher_id           String  @db.Uuid
-  addon_option_id      String  @db.Uuid
-  discount_applied_vnd Int     @default(0)
+  order_item_id        String      @db.Uuid
+  voucher_id           String      @db.Uuid
+  addon_option_id      String      @db.Uuid
+  discount_applied_vnd Int         @default(0)
   orderItem            OrderItem   @relation(fields: [order_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  voucher         Voucher     @relation("OrderItemAddonVoucher", fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  addonOption     AddonOption @relation(fields: [addon_option_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  voucher              Voucher     @relation("OrderItemAddonVoucher", fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  addonOption          AddonOption @relation(fields: [addon_option_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([order_item_id, voucher_id])
   @@map("order_item_addon_vouchers")
 }
 
 model MatchaPowder {
-  id                      String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                      String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name                    String
   manufacturer            String?
   description             String?
+  image_url               String?
   price_per_gram          Int
-  type                    PowderType            @default(NONE)
+  type                    PowderType              @default(NONE)
   /// FK → menu_items; SET NULL on soft-delete. Used as Premium_Latte pricing anchor.
-  reference_latte_item_id String?               @unique @db.Uuid
+  reference_latte_item_id String?                 @unique @db.Uuid
   fragrance               Int?
   body                    Int?
   bitterness              Int?
   umami                   Int?
   color                   Int?
-  is_available            Boolean               @default(true)
-  created_at              DateTime              @default(now()) @db.Timestamptz(6)
+  is_available            Boolean                 @default(true)
+  created_at              DateTime                @default(now()) @db.Timestamptz(6)
   fusionAllowedPowders    FusionAllowedPowder[]
-  referenceLatteItem      MenuItem?             @relation("MatchaPowder_referenceLatteItem", fields: [reference_latte_item_id], references: [id], onUpdate: NoAction)
-  defaultPowderItems      MenuItem[]            @relation("MenuItem_defaultPowder")
-  matchaPowderItems       MenuItem[]            @relation("MenuItem_matchaPowder")
+  referenceLatteItem      MenuItem?               @relation("MatchaPowder_referenceLatteItem", fields: [reference_latte_item_id], references: [id], onUpdate: NoAction)
+  defaultPowderItems      MenuItem[]              @relation("MenuItem_defaultPowder")
+  matchaPowderItems       MenuItem[]              @relation("MenuItem_matchaPowder")
   orderItems              OrderItem[]
   powderSizeConfigs       PowderSizeConfig[]
   voucherPackages         VoucherPackage[]
   vouchers                Voucher[]
+  bundleScopes            VoucherBundleProductScope[]
 
   @@map("matcha_powder")
 }
 
 model MilkType {
-  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name          String
-  price_per_ml  Int
-  is_default    Boolean     @default(false)
-  is_active     Boolean     @default(true)
-  display_order Int         @default(0)
-  created_at    DateTime    @default(now()) @db.Timestamptz(6)
-  orderItems    OrderItem[]
+  id              String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  price_per_ml    Int
+  is_default      Boolean                 @default(false)
+  is_active       Boolean                 @default(true)
+  display_order   Int                     @default(0)
+  created_at      DateTime                @default(now()) @db.Timestamptz(6)
+  orderItems      OrderItem[]
   voucherPackages VoucherPackage[]
   vouchers        Voucher[]
+  bundleScopes    VoucherBundleProductScope[]
+  defaultForItems MenuItem[]               @relation("MenuItem_defaultBaseLiquid")
+  allowedForItems MenuItemAllowedBaseLiquid[]
 
   @@map("milk_type")
 }
@@ -476,6 +600,19 @@ model FusionAllowedPowder {
   @@map("fusion_allowed_powder")
 }
 
+/// Base liquids that Admin allows customers to swap to for one menu item.
+/// Empty means the item is locked to its resolved default and the selector is hidden.
+model MenuItemAllowedBaseLiquid {
+  menu_item_id  String   @db.Uuid
+  base_liquid_id String  @db.Uuid
+  menuItem      MenuItem @relation(fields: [menu_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  baseLiquid    MilkType @relation(fields: [base_liquid_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([menu_item_id, base_liquid_id])
+  @@index([base_liquid_id], map: "idx_menu_item_allowed_base_liquid_base_liquid_id")
+  @@map("menu_item_allowed_base_liquid")
+}
+
 enum Role {
   CUSTOMER
   STAFF
@@ -483,11 +620,47 @@ enum Role {
 }
 
 enum VoucherType {
+  ITEM
   DISCOUNT
   PRODUCT
   ADDON
   /// Covers delivery shipping fee up to covered_delivery_fee_vnd. DELIVERY orders only. Phase 5+ for actual deduction.
   FREESHIP
+  BUNDLE
+}
+
+enum VoucherAcquisitionMode {
+  POINTS_EXCHANGE
+  FREE_CLAIM
+  AUTO_GRANT
+}
+
+enum BundleRewardKind {
+  PRODUCT
+  ADDON
+}
+
+enum BundleRewardMode {
+  SAME_CONFIG
+  FIXED_CONFIG
+  ALLOWED_SCOPE
+}
+
+enum BundleBenefitScaling {
+  PER_BUNDLE
+  ONCE_PER_ORDER
+  PER_QUALIFYING_ITEM
+}
+
+enum BundleScopeRole {
+  QUALIFIER
+  REWARD
+}
+
+enum BundleApplicationStatus {
+  RESERVED
+  REDEEMED
+  CANCELLED
 }
 
 enum DiscountType {
@@ -624,10 +797,9 @@ model PushSubscription {
   is_active  Boolean  @default(true)
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
-  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([user_id, endpoint])
   @@index([user_id])
   @@map("push_subscriptions")
 }
-

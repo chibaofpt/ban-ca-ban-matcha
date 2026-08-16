@@ -16,7 +16,7 @@ const SUB_TABS: SubTab[] = [
   { href: "/admin/menu", label: "Sản phẩm", exact: true },
   { href: "/admin/menu/powders", label: "Bột" },
   { href: "/admin/menu/addons", label: "Addons" },
-  { href: "/admin/menu/milk-types", label: "Sữa" },
+  { href: "/admin/menu/milk-types", label: "Base Liquid" },
 ];
 
 /** MenuSubTabs — horizontal sub-tab bar rendered inside the /admin/menu layout. */

@@ -10,6 +10,7 @@ import {
 import { createAddonGroup, updateAddonGroup } from "@/src/services/adminAddonService";
 import type { AdminAddonGroup } from "@/src/lib/types/addonGroup";
 import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
+import CatalogImageFields from "@/src/components/admin/CatalogImageFields";
 
 interface AddonGroupModalProps {
   mode: "create" | "edit";
@@ -27,16 +28,27 @@ export default function AddonGroupModal({
   useBodyScrollLock(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageFilename, setImageFilename] = useState("");
 
   const handleSubmit = async (payload: AddonGroupFormPayload) => {
+    const requestedFilename = imageFilename.trim();
+    if (/\.\.|[/\\\0]/.test(requestedFilename)) {
+      setErrorMsg("Tên file ảnh không hợp lệ.");
+      return;
+    }
+    if (requestedFilename && !imageFile && !item?.image_url) {
+      setErrorMsg("Vui lòng chọn ảnh trước khi đặt tên file SEO.");
+      return;
+    }
     setIsSubmitting(true);
     setErrorMsg(null);
     try {
       let saved: AdminAddonGroup;
       if (mode === "edit" && item) {
-        saved = await updateAddonGroup(item.id, payload);
+        saved = await updateAddonGroup(item.id, payload, imageFile, requestedFilename);
       } else {
-        saved = await createAddonGroup(payload);
+        saved = await createAddonGroup(payload, imageFile, requestedFilename);
       }
       onSuccess(saved);
       onClose();
@@ -79,6 +91,15 @@ export default function AddonGroupModal({
               {errorMsg}
             </div>
           )}
+          <CatalogImageFields
+            currentImageUrl={item?.image_url}
+            label="Ảnh addon"
+            imageFilename={imageFilename}
+            disabled={isSubmitting}
+            onFileChange={setImageFile}
+            onFilenameChange={setImageFilename}
+            onError={setErrorMsg}
+          />
           <AddonGroupForm
             mode={mode}
             defaultValues={defaultValues}

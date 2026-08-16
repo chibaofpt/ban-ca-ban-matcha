@@ -31,6 +31,8 @@ const mockPointsLogCreate = vi.fn();
 const mockMenuItemFindUnique = vi.fn();
 const mockVoucherPackageFindUnique = vi.fn();
 const mockTransaction = vi.fn();
+const mockVoucherGrantFindUnique = vi.fn();
+const mockVoucherGrantCreate = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -76,6 +78,7 @@ const activePackage = {
   name: "Free Trà Xanh Sữa M",
   description: null,
   voucher_type: "PRODUCT",
+  acquisition_mode: "POINTS_EXCHANGE",
   points_cost: 5,
   discount_type: null,
   discount_value: null,
@@ -86,11 +89,14 @@ const activePackage = {
   included_addon_option_ids: [],
   addon_option_id: null,
   covered_price_vnd: 65000,
+  covered_delivery_fee_vnd: null,
+  min_order_vnd: null,
   is_active: true,
   expires_after_days: 30,
   quantity: null,        // unlimited
   max_per_user: 1,
   created_at: new Date(),
+  bundleRule: null,
 };
 
 const createdVoucher = {
@@ -113,22 +119,28 @@ function makeRequest(body: unknown, url = "http://localhost/api/profile/vouchers
 
 function setupTransaction() {
   type TransactionMock = {
-    $queryRaw: ReturnType<typeof vi.fn>;
-    user: { update: ReturnType<typeof vi.fn> };
+    voucherPackage: { findUnique: typeof mockVoucherPackageFindUnique };
+    user: { updateMany: ReturnType<typeof vi.fn> };
     voucher: {
       create: typeof mockVoucherCreate;
       update: typeof mockVoucherUpdate;
       count: typeof mockVoucherCount;
     };
     pointsLog: { create: typeof mockPointsLogCreate };
+    voucherGrant: {
+      findUnique: typeof mockVoucherGrantFindUnique;
+      create: typeof mockVoucherGrantCreate;
+    };
   };
   mockTransaction.mockImplementation(async (fn: (tx: TransactionMock) => unknown) => {
     const tx = {
-      $queryRaw: vi.fn().mockResolvedValue([]),
+      voucherPackage: { findUnique: mockVoucherPackageFindUnique },
       user: {
-        update: vi.fn().mockImplementation(async (args) => {
+        updateMany: vi.fn().mockImplementation(async (args) => {
           await mockUserUpdate(args);
-          return { points_balance: 100 };
+          const user = await mockUserFindUnique();
+          const required = args.where.points_balance.gte as number;
+          return { count: user && user.points_balance >= required ? 1 : 0 };
         }),
       },
       voucher: {
@@ -137,6 +149,10 @@ function setupTransaction() {
         count: mockVoucherCount,
       },
       pointsLog: { create: mockPointsLogCreate },
+      voucherGrant: {
+        findUnique: mockVoucherGrantFindUnique,
+        create: mockVoucherGrantCreate,
+      },
     };
     return fn(tx);
   });
@@ -153,6 +169,8 @@ describe("POST /api/profile/vouchers/exchange", () => {
     mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 4, retryAfterSeconds: 0 });
     // Default: unlimited quantity, user hasn't redeemed yet
     mockVoucherCount.mockResolvedValue(0);
+    mockVoucherGrantFindUnique.mockResolvedValue(null);
+    setupTransaction();
   });
 
   it("returns 401 when no session", async () => {
@@ -451,6 +469,27 @@ describe("POST /api/profile/vouchers/refund", () => {
     const json = await res.json();
     expect(json.data.status).toBe("REFUNDED");
     expect(json.data.points_refunded).toBe(5);
+  });
+
+  it("refunds an ITEM voucher for an unavailable extras item", async () => {
+    mockVoucherFindUnique.mockResolvedValue({
+      ...productVoucher,
+      voucher_type: "ITEM",
+      size: null,
+    });
+    mockMenuItemFindUnique.mockResolvedValue({
+      is_available: false,
+      name: "Bánh matcha",
+      category: "extras",
+      unit_price_vnd: 26_000,
+    });
+
+    const res = await refundPOST(makeRefundReq(refundPayload));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      data: { status: "REFUNDED", points_refunded: 5 },
+    });
   });
 
   it("refunds successfully when menu item is null (hard deleted edge case)", async () => {

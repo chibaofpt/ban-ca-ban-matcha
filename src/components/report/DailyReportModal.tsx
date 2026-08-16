@@ -306,7 +306,7 @@ export function DailyReportModal({
               <>
                 {/* ---- Summary Card ---- */}
                 <SectionCard title="📊 Tổng quan">
-                  <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
                     <div className="space-y-1">
                       <p className="text-2xl font-bold text-foreground">
                         {adminReport.summary.total_orders}
@@ -318,6 +318,12 @@ export function DailyReportModal({
                         {adminReport.summary.total_cups}
                       </p>
                       <p className="text-xs text-muted-foreground">Ly bán ra</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-2xl font-bold text-foreground">
+                        {adminReport.summary.total_extras_units ?? 0}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Add-on bán ra</p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-xl font-bold text-primary">
@@ -546,6 +552,30 @@ export function DailyReportModal({
                   </SectionCard>
                 )}
 
+                {/* ---- Add-on Sales ---- */}
+                {(adminReport.extras_sales?.length ?? 0) > 0 && (
+                  <SectionCard title="🍰 Add-on — Số lượng bán ra">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-xs text-muted-foreground">
+                          <th className="pb-2 text-left font-medium">Món</th>
+                          <th className="w-20 pb-2 text-right font-medium">Số lượng</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {adminReport.extras_sales?.map((item) => (
+                          <tr key={item.name}>
+                            <td className="py-2.5 pr-2 font-medium text-foreground">{item.name}</td>
+                            <td className="w-20 py-2.5 text-right font-bold tabular-nums text-foreground">
+                              {item.total_cups}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </SectionCard>
+                )}
+
                 {/* ---- Top Products ---- */}
                 {adminReport.top_products.length > 0 && (
                   <SectionCard title="🏆 Top sản phẩm bán chạy">
@@ -576,7 +606,7 @@ export function DailyReportModal({
                               {p.name}
                             </td>
                             <td className="py-2.5 text-xs text-muted-foreground">
-                              {p.category === "latte" ? "Latte" : "Fusion"}
+                              {p.category === "latte" ? "Latte" : p.category === "fusion" ? "Fusion" : "Add-on"}
                             </td>
                             <td className="py-2.5 text-right font-bold text-foreground tabular-nums w-16">
                               {p.total_cups}
@@ -589,7 +619,9 @@ export function DailyReportModal({
                 )}
 
                 {/* Show a note if no sales breakdown exists */}
-                {adminReport.latte_sales.length === 0 && adminReport.fusion_sales.length === 0 && (
+                {adminReport.latte_sales.length === 0 &&
+                  adminReport.fusion_sales.length === 0 &&
+                  (adminReport.extras_sales?.length ?? 0) === 0 && (
                   <p className="text-center text-xs text-muted-foreground py-2">
                     Chưa có dữ liệu bán hàng theo món.
                   </p>

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Pencil, Trash2 } from "lucide-react";
+import { ChevronDown, ImageIcon, Pencil, Trash2 } from "lucide-react";
+import Image from "next/image";
 import { cn } from "@/src/utils/cn";
 import type { AdminAddonGroup } from "@/src/lib/types/addonGroup";
 import { formatMoney } from "@/src/utils/pricing";
@@ -39,7 +40,22 @@ export default function AddonGroupCard({
         onClick={() => setExpanded(!expanded)}
         className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 cursor-pointer hover:bg-secondary/20 transition"
       >
-        <div className="flex-1 flex flex-col gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/50 bg-secondary/30">
+            {item.image_url ? (
+              <Image
+                src={item.image_url}
+                alt={`Ảnh ${item.name}`}
+                width={48}
+                height={48}
+                unoptimized
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <ImageIcon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1 flex flex-col gap-2">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-semibold text-foreground text-base">{item.name}</h3>
             
@@ -52,11 +68,6 @@ export default function AddonGroupCard({
               {item.type}
             </span>
 
-            {item.is_required && (
-              <span className="px-2 py-0.5 rounded-full bg-destructive/10 text-destructive border border-destructive/20 text-[10px] font-bold tracking-wider uppercase">
-                Bắt buộc
-              </span>
-            )}
           </div>
           
           <div className="text-sm text-muted-foreground flex items-center gap-3">
@@ -67,6 +78,7 @@ export default function AddonGroupCard({
                 <span className="line-clamp-1">{item.description}</span>
               </>
             )}
+          </div>
           </div>
         </div>
 
@@ -141,14 +153,14 @@ export default function AddonGroupCard({
             ) : (
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 {item.options.map((opt) => (
-                  <div key={opt.id} className="bg-card border border-border rounded-xl p-3 flex flex-col gap-1.5 shadow-sm">
+                  <div key={opt.id} className={cn("bg-card border border-border rounded-xl p-3 flex flex-col gap-1.5 shadow-sm", !opt.is_active && "opacity-50")}>
                     <div className="flex justify-between items-start gap-2">
                       <span className="text-sm font-medium text-foreground leading-tight">
                         {opt.label}
                       </span>
-                      {opt.is_default && (
+                      {!opt.is_active && (
                         <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold bg-primary/10 text-primary uppercase">
-                          Mặc định
+                          Đã ẩn
                         </span>
                       )}
                     </div>

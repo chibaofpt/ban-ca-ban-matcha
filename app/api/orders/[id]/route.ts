@@ -6,10 +6,11 @@ import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 
 export const dynamic = "force-dynamic";
 
-function toPublicOrderItems<T extends { product_voucher_id: string | null }>(items: T[]) {
+function toPublicOrderItems<T extends { product_voucher_id: string | null; item_voucher_id: string | null }>(items: T[]) {
   return items.map((item) => {
-    const { product_voucher_id: _productVoucherId, ...publicItem } = item;
+    const { product_voucher_id: _productVoucherId, item_voucher_id: _itemVoucherId, ...publicItem } = item;
     void _productVoucherId;
+    void _itemVoucherId;
     return publicItem;
   });
 }

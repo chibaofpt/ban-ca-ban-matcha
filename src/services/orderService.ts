@@ -12,18 +12,21 @@ export type { CreateOrderResult } from "@/src/lib/types/order";
 export interface CreateOrderPayload {
   order_type: "PICKUP" | "DELIVERY";
   items: {
+    client_line_id?: string;
     menu_item_id: string;
     quantity: number;
-    size: "SMALL" | "MEDIUM" | "LARGE";
+    size: "SMALL" | "MEDIUM" | "LARGE" | null;
     sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL" | "EXTRA";
     ice_option: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
     coldwhisk: boolean;
     note?: string;
     addon_option_ids: { option_id: string; quantity: number }[];
     product_voucher_id?: string;
+    item_voucher_id?: string;
     addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
     selected_powder_id?: string;
     selected_milk_type_id?: string;
+    selected_base_liquid_id?: string;
     client_price_vnd: number;
   }[];
   discount_voucher_ids: string[];
@@ -39,6 +42,12 @@ export interface CreateOrderPayload {
   delivery_receiver_phone?: string;
   client_shipping_fee_vnd?: number;
   freeship_voucher_id?: string;
+  bundle_voucher_qr_token?: string;
+  bundle_reward_allocations?: Array<{
+    client_line_id: string;
+    quantity: number;
+    addon_option_id?: string;
+  }>;
 }
 
 export interface PriceConflict {
@@ -71,6 +80,7 @@ function buildPayloadItems(cart: CartItem[]): CreateOrderPayload["items"] {
       ...c.quantityAddonOptions,
     ],
     ...(c.productVoucherId ? { product_voucher_id: c.productVoucherId } : {}),
+    ...(c.itemVoucherId ? { item_voucher_id: c.itemVoucherId } : {}),
     ...(c.addonVouchers && c.addonVouchers.length > 0
       ? {
           addon_voucher_ids: c.addonVouchers.map((av) => ({
@@ -80,7 +90,9 @@ function buildPayloadItems(cart: CartItem[]): CreateOrderPayload["items"] {
         }
       : {}),
     ...(c.selectedPowderId ? { selected_powder_id: c.selectedPowderId } : {}),
-    ...(c.selectedMilkTypeId ? { selected_milk_type_id: c.selectedMilkTypeId } : {}),
+    ...((c.selectedBaseLiquidId ?? c.selectedMilkTypeId)
+      ? { selected_base_liquid_id: c.selectedBaseLiquidId ?? c.selectedMilkTypeId }
+      : {}),
     client_price_vnd: c.clientPriceVnd,
   }));
 }
@@ -107,6 +119,12 @@ export async function createOrder(
     deliveryReceiverPhone?: string;
     clientShippingFeeVnd?: number;
     freeshipVoucherId?: string;
+    bundleVoucherQrToken?: string;
+    bundleRewardAllocations?: Array<{
+      client_line_id: string;
+      quantity: number;
+      addon_option_id?: string;
+    }>;
   }
 ): Promise<CreateOrderResult> {
   const payload: CreateOrderPayload = {
@@ -123,6 +141,16 @@ export async function createOrder(
     ...(options?.deliveryReceiverPhone ? { delivery_receiver_phone: options.deliveryReceiverPhone } : {}),
     ...(options?.clientShippingFeeVnd !== undefined ? { client_shipping_fee_vnd: options.clientShippingFeeVnd } : {}),
     ...(options?.freeshipVoucherId ? { freeship_voucher_id: options.freeshipVoucherId } : {}),
+    ...(options?.bundleVoucherQrToken
+      ? {
+          bundle_voucher_qr_token: options.bundleVoucherQrToken,
+          bundle_reward_allocations: options.bundleRewardAllocations ?? [],
+          items: buildPayloadItems(cart).map((item, index) => ({
+            ...item,
+            client_line_id: cart[index]?.cartId,
+          })),
+        }
+      : {}),
   };
 
   try {

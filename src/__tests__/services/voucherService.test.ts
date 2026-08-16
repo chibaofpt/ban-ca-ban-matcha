@@ -23,6 +23,7 @@ import {
   listActiveVoucherPackages,
   listMyVouchers,
   exchangeVoucher,
+  claimFreeVoucher,
 } from "@/src/services/customerVoucherService";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -135,6 +136,22 @@ describe("listActiveVoucherPackages", () => {
     vi.mocked(apiClient.get).mockRejectedValueOnce(new Error("Network error"));
 
     await expect(listActiveVoucherPackages()).rejects.toThrow();
+  });
+});
+
+describe("claimFreeVoucher", () => {
+  it("gọi endpoint FREE_CLAIM và trả trạng thái idempotent", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({
+      data: { data: { already_granted: true } },
+    });
+
+    const result = await claimFreeVoucher("pkg-free-1");
+
+    expect(apiClient.post).toHaveBeenCalledWith(
+      "/api/profile/vouchers/claim",
+      { package_id: "pkg-free-1" },
+    );
+    expect(result).toEqual({ already_granted: true });
   });
 });
 

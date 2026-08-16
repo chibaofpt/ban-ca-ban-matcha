@@ -21,11 +21,11 @@
 
 ## Canonical Order Totals
 
-Apply vouchers in this strict order: `PRODUCT → ADDON → DISCOUNT → FREESHIP`.
+Apply vouchers in this strict order: `BUNDLE → ITEM/PRODUCT → ADDON → DISCOUNT → FREESHIP`.
 
 ```text
 subtotal_vnd = gross drinks + gross addons
-item_discount_vnd = PRODUCT reductions + ADDON reductions
+item_discount_vnd = BUNDLE reductions + ITEM/PRODUCT reductions + ADDON reductions
 discountable_subtotal_vnd = max(0, subtotal_vnd - item_discount_vnd)
 total_vnd = max(0, discountable_subtotal_vnd - total_voucher_discount_vnd)
 grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
@@ -65,7 +65,7 @@ grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
 | Enum | Values |
 |---|---|
 | `Role` | `CUSTOMER`, `STAFF`, `ADMIN` |
-| `VoucherType` | `DISCOUNT`, `PRODUCT`, `ADDON`, `FREESHIP` |
+| `VoucherType` | `ITEM`, `DISCOUNT`, `PRODUCT`, `ADDON`, `FREESHIP`, `BUNDLE` |
 | `DiscountType` | `PERCENT`, `FIXED` |
 | `VoucherStatus` | `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, `REFUNDED` |
 | `UsedChannel` | `ONLINE`, `OFFLINE` |
@@ -150,6 +150,7 @@ Powder catalogue. Pricing input for all items.
 - `name` string
 - `manufacturer` string nullable
 - `description` string nullable
+- `image_url` string nullable — Supabase Storage public URL
 - `price_per_gram` int — VND/g (e.g. 6000 = 6,000 VND/g)
 - `type` PowderType — `RECOMMEND` | `NEW` | `SEASONAL` | `NONE`
 - `reference_latte_item_id` uuid nullable UK — FK → menu_items, **SET NULL on delete**, UNIQUE. Pricing anchor for `Premium_Latte`. If NULL → Premium = 0.
@@ -184,18 +185,20 @@ System-wide fallback. Always exactly 3 rows (SMALL, MEDIUM, LARGE). Admin-editab
 ---
 
 ### milk_type
-Global milk options. Applies to all Latte items automatically — no junction table.
+Global Base Liquid catalog for Latte and Fusion. The physical table name is retained for backward compatibility; there is no `kind` column.
 
 - `id` uuid PK
 - `name` string — e.g. "Sữa bò", "Sữa Oat"
 - `price_per_ml` int — VND/ml (e.g. 40 for sữa bò)
-- `is_default` bool — sữa bò = true. Hidden in UI selector, always used as base for `computed_price_vnd`.
+- `is_default` bool — the single global Latte default (normally sữa bò).
 - `is_active` bool — default true
 - `display_order` int — default 0
 - `created_at` timestamp
 
-> Latte items use all `milk_type WHERE is_active = true` — determined by `category` at query time.
-> `computed_price_vnd` is always calculated using the default milk (sữa bò). Frontend recalculates on milk swap.
+> Database constraints enforce at most one `is_default = true` row and require that row to remain
+> active. Admin API does not allow unsetting the current default without selecting a replacement.
+> Each item exposes its default plus active rows from `menu_item_allowed_base_liquid`. The swap UI is hidden when the resulting list has one or zero entries.
+> Admin keeps Latte entries milk-only. Fusion entries are configured according to each drink; schema does not infer or enforce a liquid kind.
 > Seed: sữa bò, is_default=true, price_per_ml=40
 
 ---
@@ -206,10 +209,13 @@ Global milk options. Applies to all Latte items automatically — no junction ta
 - `id` uuid PK
 - `name` string
 - `description` string nullable
-- `category` string — `"latte"` or `"fusion"` only
+- `category` string — `"latte"`, `"fusion"`, or `"extras"`
+- `unit_price_vnd` int nullable — required for `extras`, at least 1,000 and divisible by 1,000;
+  always null for drink categories
 - `is_seasonal` bool — default false
 - `matcha_powder_id` uuid FK nullable UK → matcha_powder — Latte only: the fixed powder. 1 powder can only belong to 1 Latte item.
 - `default_powder_id` uuid FK nullable → matcha_powder — Fusion only: default powder
+- `default_base_liquid_id` uuid FK nullable → milk_type — Fusion per-item default; Latte resolves the global `is_default = true` row
 - `custom_powder_grams` Json nullable — `{"MEDIUM": 4.5, "LARGE": 8.0}`.
   Keys: "SMALL" | "MEDIUM" | "LARGE" only.
 - `base_liquid_note` string nullable — Fusion only, display text
@@ -228,6 +234,7 @@ Always 3 rows per item (SMALL, MEDIUM, LARGE), in same transaction as parent. NU
 - `menu_item_id` uuid FK → menu_items (cascade delete)
 - `size` Size
 - `base_price_vnd` int nullable — NULL = not sold, hidden from UI. Not the final price — final price computed by `lib/pricing.ts`.
+- `base_liquid_ml` int nullable — per-item/per-size override; NULL falls back to `default_size_config.milk_ml`.
 - Composite unique: (`menu_item_id`, `size`)
 
 ---
@@ -242,6 +249,14 @@ The `default_powder_id` of the item is always implicitly allowed — no row need
 
 > When building `allowed_powder_ids` for API response: filter `powder.is_available = true`.
 
+### menu_item_allowed_base_liquid
+Allowed Base Liquid swaps for either category. The item default is implicitly allowed and is not duplicated here.
+
+- `menu_item_id` uuid FK → menu_items (cascade delete)
+- `base_liquid_id` uuid FK → milk_type (restrict delete)
+- PK: (`menu_item_id`, `base_liquid_id`)
+- Reverse index on `base_liquid_id` supports safe deactivation checks and joins.
+
 ---
 
 ### addon_groups
@@ -251,15 +266,19 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `id` uuid PK
 - `name` string — e.g. "Kem", "Đá dừa", "Extra Matcha"
 - `description` string nullable
+- `image_url` string nullable — Supabase Storage public URL
 - `type` AddonType — `SELECTOR` | `TOGGLE` | `QUANTITY`
-- `is_required` bool — seed: `true` for all 3 active groups (kem, đá dừa, extra matcha)
 - `is_active` bool — default true. `false` = hidden from all items globally.
-- `min_quantity` int nullable — QUANTITY type only
 - `max_quantity` int nullable — QUANTITY type only
 - `created_at` timestamp
 
 > Active groups attached to every item in `GET /api/menu` — no junction join.
 > DELETE = set `is_active = false`. Never cascade-delete `addon_options`.
+> Every group is opt-in: an empty selection means “no addon”. `SELECTOR` accepts at most one
+> option, `TOGGLE` has exactly one active option, and `QUANTITY` has exactly one active option plus
+> a required positive `max_quantity`.
+> Phase 1 retains physical columns `is_required` and `min_quantity` only for rollout safety; they
+> are always `false`/`NULL`, absent from API contracts, and scheduled for removal in Phase 2.
 
 ---
 
@@ -268,12 +287,17 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `addon_group_id` uuid FK → addon_groups (cascade delete)
 - `label` string — e.g. "½ viên", "+2g"
 - `price_vnd` int — 0 if no charge. Extra matcha: always 0 here — actual price computed from `gram_value × selected_powder.price_per_gram` at order time.
-- `gram_value` Decimal nullable — Extra matcha only: gram amount of this option (e.g. 0, 1.0, 2.0, 3.0, 4.0). Null for all other addon types.
-- `is_default` bool
+- `gram_value` Decimal nullable — Extra matcha only: positive gram amount (1.0–4.0 in the current seed). Null for all fixed-price addon types.
+- `is_active` bool — default true. Referenced options are retired by setting false, never hard deleted.
 - `sort_order` int
 
-> Extra matcha seed options: 0g (default, gram_value=0), +1g, +2g, +3g, +4g.
+> Extra Matcha active seed options: +1g, +2g, +3g, +4g. The legacy 0g option is inactive;
+> absence represents no extra matcha.
 > Server uses `gram_value` to compute: `unit_price_vnd = gram_value × selected_powder.price_per_gram`.
+> A dynamic-gram group must be `SELECTOR`; every active option must have positive `gram_value` and
+> `price_vnd = 0`. Dynamic and fixed-price active options cannot be mixed in one group.
+> Phase 1 retains physical `is_default` only for rollout safety; it is always false, absent from
+> API contracts, and scheduled for removal in Phase 2.
 
 ---
 
@@ -318,21 +342,27 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `order_id` uuid FK → orders (cascade delete)
 - `menu_item_id` uuid FK → menu_items
 - `quantity` int
-- `size` Size — required. Server validates `base_price_vnd IS NOT NULL` for this size.
+- `size` Size nullable — required for drinks; null for `extras`.
 - `unit_price_vnd` int — original server-computed drink price before voucher credit
 - `addons_price_vnd` int — original addon total before voucher discounts
 - `product_voucher_discount_vnd` int — PRODUCT reduction limited to drink price
 - `total_discount_vnd` int — PRODUCT + ADDON reductions for this item
 - `selected_powder_id` uuid FK nullable → matcha_powder — snapshot at order time (both latte and fusion)
-- `selected_milk_type_id` uuid FK nullable → milk_type — Latte only
+- `selected_milk_type_id` uuid FK nullable → milk_type — physical Base Liquid snapshot for Latte and configured Fusion
+- `base_liquid_ml` int nullable — immutable effective ml snapshot at order creation; null only on legacy orders created before this field
 - `ice_option` IceOption — default `NORMAL`
 - `coldwhisk` bool — default false
 - `sweetness` SweetnessLevel — default `FULL`
 - `product_voucher_id` uuid FK nullable → vouchers
+- `item_voucher_id` uuid FK nullable unique → vouchers — one ITEM voucher per extras order line
 - `note` string nullable
 
 > One PRODUCT voucher applies to one drink unit. Split a voucher-bearing unit into its own
 > line when the original cart line quantity is greater than one.
+>
+> Consumption reports must prefer `order_items.base_liquid_ml`. For legacy null rows only, fall
+> back to the current item-size override and then `default_size_config.milk_ml`; that fallback is
+> an estimate and cannot reconstruct a recipe that changed before snapshots existed.
 
 ---
 
@@ -378,16 +408,17 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `name` string
 - `description` string nullable
 - `voucher_type` VoucherType
+- `acquisition_mode` VoucherAcquisitionMode — `POINTS_EXCHANGE`, `FREE_CLAIM`, or `AUTO_GRANT`
 - `points_cost` int
 - `discount_type` DiscountType nullable
 - `discount_value` int nullable
-- `menu_item_id` uuid FK nullable → menu_items — PRODUCT type only
+- `menu_item_id` uuid FK nullable → menu_items — PRODUCT or ITEM target
 - `size` Size nullable — PRODUCT type only
 - `matcha_powder_id` uuid FK nullable → matcha_powder — PRODUCT type only
 - `milk_type_id` uuid FK nullable → milk_type — PRODUCT type only
 - `included_addon_option_ids` string[] — array of uuid (or jsonb) for PRODUCT type only
 - `addon_option_id` uuid FK nullable → addon_options — ADDON type only
-- `covered_price_vnd` int nullable — snapshot price for PRODUCT and ADDON
+- `covered_price_vnd` int nullable — snapshot price for PRODUCT and ADDON; ITEM uses current price
 - `covered_delivery_fee_vnd` int nullable — snapshot max delivery fee for FREESHIP
 - `min_order_vnd` int nullable — minimum for DISCOUNT or FREESHIP
 - `is_active` bool — default true
@@ -400,6 +431,9 @@ Junction table mapping multiple ADDON vouchers to an order item.
 > package display and issuance. At order application time, PRODUCT eligibility matches
 > `menu_item_id` only and its credit applies to drink components only. Compute
 > `covered_price_vnd` from the selected drink configuration without addon prices.
+>
+> ITEM packages target `extras` only. Their drink-configuration and covered-price fields are null.
+> Applying one makes one matching unit free at the current server price, with no surplus.
 
 ---
 
@@ -409,6 +443,7 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `package_id` uuid FK → voucher_packages
 - `qr_token` string UK — UUID, NEVER expose `id`
 - `voucher_type` VoucherType — copied from package
+- `issued_via` VoucherIssuedVia — immutable issuance audit (`POINTS_EXCHANGE`, `FREE_CLAIM`, `AUTO_GRANT`, `ADMIN`)
 - `discount_type` DiscountType nullable — copied from package
 - `discount_value` int nullable — copied from package
 - `menu_item_id` uuid FK nullable → menu_items — copied from package
@@ -466,15 +501,11 @@ Immutable. Reversal = insert new negative-delta row.
 
 ---
 
-### promotions — Phase 5 only
-- `id` uuid PK
-- `title` string
-- `description` string nullable
-- `starts_at` timestamp
-- `ends_at` timestamp
-- `max_redemptions` int
-- `is_active` bool
-- `created_at` timestamp
+### Removed legacy Promotion tables
+
+Migration `20260812000000_merge_promotions_into_vouchers` drops the unused Promotion tables
+without backfill. They were never populated or consumed in this deployment; do not reference or
+recreate them.
 
 ---
 
@@ -491,8 +522,8 @@ Immutable. Reversal = insert new negative-delta row.
 | Add `is_active` to `addon_groups` | New column, default true |
 | Add `gram_value` to `addon_options` | Decimal nullable — set for extra matcha options only |
 | Seed new tables | `default_size_config` (3 rows), `matcha_powder` (7 rows), `powder_size_config` (6 rows), `milk_type` (sữa bò) |
-| Seed addon groups | kem, đá dừa, extra matcha — all `is_required = true`, `is_active = true` |
-| Seed extra matcha options | 0g (default), +1g, +2g, +3g, +4g with correct `gram_value` |
+| Seed addon groups | kem, đá dừa, extra matcha — all opt-in and `is_active = true` |
+| Seed extra matcha options | +1g, +2g, +3g, +4g active; legacy 0g inactive |
 | Set `reference_latte_item_id` | After Latte items created — manual step |
 
 > ⚠️ Migrating `seasonal` items to `latte`/`fusion` requires manual review — cannot be automated.
@@ -529,4 +560,38 @@ Tracks admin-initiated temporary closures. At most 1 active row at any time.
 > Query: `WHERE is_active = true` — 0 or 1 row at most.
 > Close: INSERT new row `is_active = true`. Open: UPDATE `is_active = false, opened_at = now()`.
 > Temporary closure takes precedence over weekly schedule.
+
+---
+
+## Current BUNDLE voucher architecture
+
+`voucher_bundle_rules` is a one-to-one immutable child of `voucher_packages`. It stores buy/reward
+quantity, reward kind/mode, scaling, and per-order caps. Campaign issuance quantity belongs only
+to `voucher_packages.quantity`; the BUNDLE rule has no duplicate global redemption cap.
+`voucher_bundle_product_scopes` stores multiple qualifier/reward configurations and reference
+credit for `ALLOWED_SCOPE`. `voucher_bundle_addon_rewards` stores multiple allowed addon options.
+
+`voucher_grants` uses unique `(package_id, user_id)` for idempotent FREE_CLAIM and AUTO_GRANT.
+`order_bundle_applications` records the one BUNDLE voucher allowed per order, while
+`order_bundle_rewards` stores each explicit allocation and VND benefit.
+
+There is no start date and no current Promotion table. An active package is effective immediately;
+`voucher_packages.ends_at` is an exclusive instant and optionally stops new issuance. Admin date
+input is stored as 00:00 on the following day in Asia/Ho_Chi_Minh. `min_order_vnd` applies to BUNDLE,
+DISCOUNT, and FREESHIP. Issued vouchers follow their own `vouchers.expires_at` lifecycle.
+
+### Future group-order compatibility (design only)
+
+Do not add these tables until group ordering is implemented. The intended extension is:
+
+- `group_orders`: host user, share token, lifecycle, checkout order ID, timestamps.
+- `group_order_members`: group order, optional authenticated user, guest name, join token.
+- `group_order_items`: draft line ownership by member; finalized lines map to `order_items`.
+- Member PRODUCT/ADDON vouchers attach only to that member's lines.
+- Host BUNDLE/DISCOUNT/FREESHIP vouchers attach to the whole finalized order. BUNDLE qualifier
+  counts exclude line units already using a member PRODUCT voucher.
+- The resolver receives the selected voucher's explicit owner ID. Guest members cannot use a
+  personal voucher because they have no authenticated voucher owner.
+- The host pays and receives order points. Guests can join without an account and cannot own a
+  personal voucher. Preserve member ownership when copying draft lines into immutable order rows.
 

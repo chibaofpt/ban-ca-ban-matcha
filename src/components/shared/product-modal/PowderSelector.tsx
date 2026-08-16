@@ -1,4 +1,5 @@
 import React from "react";
+import Image from "next/image";
 import { Check } from "lucide-react";
 import type { Powder } from "@/src/lib/types/powder";
 import type { Size } from "@/src/lib/types/menu";
@@ -64,6 +65,16 @@ export function PowderSelector({
                 : "border-border bg-white hover:border-primary/30",
             )}
           >
+            {powder.image_url && (
+              <Image
+                src={powder.image_url}
+                alt={`Ảnh bột ${powder.name}`}
+                width={48}
+                height={48}
+                unoptimized
+                className="h-12 w-12 shrink-0 rounded-xl object-cover"
+              />
+            )}
             <span
               className={cn(
                 "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2",

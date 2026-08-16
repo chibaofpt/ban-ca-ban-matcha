@@ -25,6 +25,23 @@ export interface DefaultSizeConfigEntry {
   powder_gram: number;
 }
 
+/** Resolve a menu-size Base Liquid override, falling back to the system size value. */
+export function resolveBaseLiquidMl(
+  overrideMl: number | null | undefined,
+  systemMl: number,
+): number {
+  return overrideMl ?? systemMl;
+}
+
+/** Return the exact VND delta for swapping away from an item's default Base Liquid. */
+export function calcBaseLiquidDelta(
+  ml: number,
+  selectedPricePerMl: number,
+  defaultPricePerMl: number,
+): number {
+  return ml * (selectedPricePerMl - defaultPricePerMl);
+}
+
 // ── Rounding ──────────────────────────────────────────────────────────────────
 
 /** Rounds up to nearest 1,000 VND. Math.ceil(x / 1000) * 1000. */
@@ -111,6 +128,8 @@ export interface FusionPriceParams {
   powder_price_per_gram: number;
   /** Premium_Latte[size] = BaseLatte[selectedPowder][size] − BaseLatte[defaultPowder][size] */
   premium_latte: number;
+  /** Exact positive or negative delta versus the Fusion item's default Base Liquid. */
+  base_liquid_delta_vnd?: number;
 }
 
 /**
@@ -118,8 +137,17 @@ export interface FusionPriceParams {
  * Formula: ceil(base + gram × price_per_gram + premium_latte, 1000)
  */
 export function calcFusionPrice(params: FusionPriceParams): number {
-  const { base_price_vnd, gram, powder_price_per_gram, premium_latte } = params;
-  return ceilTo1000(base_price_vnd + gram * powder_price_per_gram + premium_latte);
+  const {
+    base_price_vnd,
+    gram,
+    powder_price_per_gram,
+    premium_latte,
+    base_liquid_delta_vnd = 0,
+  } = params;
+  return ceilTo1000(Math.max(
+    0,
+    base_price_vnd + gram * powder_price_per_gram + premium_latte + base_liquid_delta_vnd,
+  ));
 }
 
 // ── Delivery price ────────────────────────────────────────────────────────────

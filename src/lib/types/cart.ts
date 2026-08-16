@@ -8,10 +8,10 @@ export interface CartItem {
   cartId: string;
   menuItemId: string;
   name: string;
-  category: "latte" | "fusion";
+  category: "latte" | "fusion" | "extras";
   imageUrl: string | null;
-  /** Always required — all items have SMALL/MEDIUM/LARGE. */
-  size: Size;
+  /** Required for drinks; null for fixed-price Add-on items. */
+  size: Size | null;
   /** Snapshot of computed final price at add time (post-ceil, post-milk, post-powder). */
   unitPrice: number;
   quantity: number;
@@ -33,6 +33,8 @@ export interface CartItem {
   selectedPowderId?: string;
   /** Latte only — selected milk type id. */
   selectedMilkTypeId?: string;
+  /** Current Base Liquid selection; selectedMilkTypeId remains as a legacy alias. */
+  selectedBaseLiquidId?: string;
   /**
    * Client-computed final price (= unitPrice). Required by API.
    * Server recomputes and rejects entire order on mismatch (PRICE_CHANGED).
@@ -47,6 +49,10 @@ export interface CartItem {
   /** Set when this item was added via a PRODUCT voucher (unit price reduced by voucher credit). */
   productVoucherId?: string;
   productVoucherDiscountVnd?: number;
+  /** New ITEM voucher identifier; productVoucherId remains a compatibility alias. */
+  itemVoucherId?: string;
+  /** In-cart BUNDLE reward line; excluded from persisted cart state. */
+  bundleRewardVoucherToken?: string;
   /** Applied ADDON vouchers. Unlimited, each targeting a different addon_option_id. */
   addonVouchers?: { voucherId: string; addonOptionId: string; discountVnd: number }[];
 }

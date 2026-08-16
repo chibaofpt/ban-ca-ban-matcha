@@ -4,6 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { createPowderSchema } from "@/lib/validations/powder";
 import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
 import { Prisma } from "@prisma/client";
+import { parseCatalogRequest } from "@/lib/catalogRequest";
+import {
+  catalogImageValidationMessage,
+  prepareCatalogImage,
+} from "@/lib/catalogImage";
+import { removeMenuImages } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -43,9 +49,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   }
 
+  let newImagePath: string | null = null;
+  let databaseCommitted = false;
   try {
-    const raw = await req.json();
-    const validation = createPowderSchema.safeParse(raw);
+    const parsedRequest = await parseCatalogRequest(req);
+    if (!parsedRequest.ok) return parsedRequest.response;
+    const validation = createPowderSchema.safeParse(parsedRequest.raw);
     
     if (!validation.success) {
       return NextResponse.json(
@@ -55,6 +64,14 @@ export async function POST(req: Request) {
     }
 
     const validData = validation.data;
+    const preparedImage = await prepareCatalogImage({
+      kind: "powders",
+      entityName: validData.name,
+      requestedName: validData.image_filename,
+      imageFile: parsedRequest.imageFile,
+      currentImageUrl: null,
+    });
+    newImagePath = preparedImage.newPath;
 
     const result = await prisma.$transaction(async (tx) => {
       // Create the powder
@@ -63,6 +80,7 @@ export async function POST(req: Request) {
           name: validData.name,
           manufacturer: validData.manufacturer,
           description: validData.description,
+          image_url: preparedImage.imageUrl ?? null,
           price_per_gram: validData.price_per_gram,
           type: validData.type,
           reference_latte_item_id: validData.reference_latte_item_id,
@@ -91,6 +109,7 @@ export async function POST(req: Request) {
         include: { powderSizeConfigs: true },
       });
     });
+    databaseCommitted = true;
 
     const mappedResult = {
       ...result,
@@ -104,6 +123,16 @@ export async function POST(req: Request) {
     await invalidateMenuCaches();
     return NextResponse.json({ data: mappedResult }, { status: 201 });
   } catch (error: unknown) {
+    if (newImagePath && !databaseCommitted) {
+      await removeMenuImages([newImagePath]).catch(() => undefined);
+    }
+    const imageMessage = catalogImageValidationMessage(error);
+    if (imageMessage) {
+      return NextResponse.json(
+        { error: imageMessage, code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
     console.error("[POST /api/admin/powders] Error:", error instanceof Error ? error.message : error);
     const target = error instanceof Prisma.PrismaClientKnownRequestError ? error.meta?.target : undefined;
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002" && Array.isArray(target) && target.includes("reference_latte_item_id")) {

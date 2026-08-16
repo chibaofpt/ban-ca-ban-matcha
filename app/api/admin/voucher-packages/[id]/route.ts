@@ -14,12 +14,8 @@ export const dynamic = "force-dynamic";
 const updatePackageSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   description: z.string().max(500).nullable().optional(),
-  points_cost: z.number().int().min(1).optional(),
-  expires_after_days: z.number().int().min(1).nullable().optional(),
-  quantity: z.number().int().min(1).nullable().optional(),
-  max_per_user: z.number().int().min(1).optional(),
   is_active: z.boolean().optional(),
-});
+}).strict();
 
 /** PUT /api/admin/voucher-packages/[id] — Update editable fields. */
 export async function PUT(
@@ -51,15 +47,32 @@ export async function PUT(
       );
     }
 
+    if (parsed.data.is_active === true) {
+      const target = await prisma.voucherPackage.findUnique({
+        where: { id },
+        select: {
+          voucher_type: true,
+          addonOption: {
+            select: { is_active: true, gram_value: true, group: { select: { is_active: true } } },
+          },
+        },
+      });
+      if (
+        target?.voucher_type === "ADDON" &&
+        (!target.addonOption || !target.addonOption.is_active || !target.addonOption.group.is_active || target.addonOption.gram_value !== null)
+      ) {
+        return NextResponse.json(
+          { error: "Không thể kích hoạt package trỏ tới addon không hợp lệ", code: "VALIDATION_ERROR" },
+          { status: 400 },
+        );
+      }
+    }
+
     const updated = await prisma.voucherPackage.update({
       where: { id },
       data: {
         ...(parsed.data.name !== undefined && { name: parsed.data.name }),
         ...(parsed.data.description !== undefined && { description: parsed.data.description }),
-        ...(parsed.data.points_cost !== undefined && { points_cost: parsed.data.points_cost }),
-        ...(parsed.data.expires_after_days !== undefined && { expires_after_days: parsed.data.expires_after_days }),
-        ...(parsed.data.quantity !== undefined && { quantity: parsed.data.quantity }),
-        ...(parsed.data.max_per_user !== undefined && { max_per_user: parsed.data.max_per_user }),
         ...(parsed.data.is_active !== undefined && { is_active: parsed.data.is_active }),
       },
     });

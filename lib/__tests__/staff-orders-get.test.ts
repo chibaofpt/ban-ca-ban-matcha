@@ -198,4 +198,22 @@ describe("GET /api/staff/orders — lọc đơn CANCELLED ra khỏi tab thông t
 
     expect(res.status).toBe(401);
   });
+
+  it("Admin gọi mine=true chỉ nhận COUNTER BANK_TRANSFER do chính mình tạo", async () => {
+    mockGetSession.mockResolvedValue(adminSession);
+    mockTransaction.mockImplementation(async (operations: Array<Promise<unknown>>) =>
+      Promise.all(operations),
+    );
+
+    const res = await GET(makeReq({ status: "PENDING", order_type: "COUNTER", mine: "true" }));
+
+    expect(res.status).toBe(200);
+    const whereArg = mockOrderCount.mock.calls[0]?.[0]?.where;
+    expect(whereArg).toMatchObject({
+      status: "PENDING",
+      order_type: "COUNTER",
+      payment_method: "BANK_TRANSFER",
+      handled_by: "admin-id",
+    });
+  });
 });

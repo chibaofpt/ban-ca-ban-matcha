@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
 import { cn } from '@/src/utils/cn';
 
-export type TabId = 'latte' | 'fusion' | 'seasonal';
+export type TabId = 'latte' | 'fusion' | 'extras' | 'seasonal';
 
 interface Tab {
   id: TabId;
@@ -19,10 +19,11 @@ interface TabBarProps {
 export const tabs: Tab[] = [
   { id: 'latte', label: 'Latte' },
   { id: 'fusion', label: 'Fusion' },
+  { id: 'extras', label: 'Add-on' },
   { id: 'seasonal', label: 'Seasonal' },
 ];
 
-/** Sticky 3-tab bar. Indicator position is driven by activeTab index via spring animation. */
+/** Sticky menu tab bar. Indicator position is driven by activeTab index via spring animation. */
 const TabBar: React.FC<TabBarProps> = ({ activeTab, setActiveTab }) => {
   const tabIndex = tabs.findIndex(t => t.id === activeTab);
 
@@ -32,7 +33,7 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, setActiveTab }) => {
 
         {/* Sliding indicator — position driven by activeTab index */}
         <motion.div
-          className="absolute top-1 bottom-1 left-0 w-1/3 z-0 px-1 pointer-events-none"
+          className="absolute top-1 bottom-1 left-0 w-1/4 z-0 px-1 pointer-events-none"
           animate={{ x: `${tabIndex * 100}%` }}
           transition={{ type: 'spring', stiffness: 350, damping: 32 }}
         >

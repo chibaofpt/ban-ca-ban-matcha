@@ -58,7 +58,10 @@ export async function POST(
 
     // 3. Read: validate package + user balance
     const [pkg, user] = await Promise.all([
-      prisma.voucherPackage.findUnique({ where: { id: package_id } }),
+      prisma.voucherPackage.findUnique({
+        where: { id: package_id },
+        include: { addonOption: { include: { group: true } } },
+      }),
       prisma.user.findUnique({
         where: { id: userId },
         select: { id: true, points_balance: true },
@@ -69,6 +72,16 @@ export async function POST(
       return NextResponse.json(
         { error: "Voucher package not found or inactive", code: "NOT_FOUND" },
         { status: 404 }
+      );
+    }
+
+    if (
+      pkg.voucher_type === "ADDON" &&
+      (!pkg.addonOption || !pkg.addonOption.is_active || !pkg.addonOption.group.is_active || pkg.addonOption.gram_value !== null)
+    ) {
+      return NextResponse.json(
+        { error: "Voucher package targets an unavailable addon", code: "NOT_FOUND" },
+        { status: 404 },
       );
     }
 

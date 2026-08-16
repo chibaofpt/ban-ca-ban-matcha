@@ -53,7 +53,11 @@ export function buildProductVoucherMap(
   vouchers: MyVoucher[],
   cartItems: CartItem[]
 ): Map<string, MyVoucher[]> {
-  const usable = filterUsableVouchers(vouchers, "PRODUCT");
+  const usable = vouchers.filter(
+    (voucher) =>
+      (voucher.voucher_type === "PRODUCT" || voucher.voucher_type === "ITEM") &&
+      isVoucherUsable(voucher),
+  );
   const result = new Map<string, MyVoucher[]>();
   for (const item of cartItems) {
     const matches = usable.filter((v) => v.menu_item_id === item.menuItemId);

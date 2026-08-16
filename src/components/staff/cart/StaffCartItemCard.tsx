@@ -44,11 +44,11 @@ const StaffCartItemCard = ({
   onRemoveAddon,
   onOpenVoucherPicker
 }: StaffCartItemCardProps) => {
-  const hasMoreProductVouchers = !c.productVoucherId && applicableProductVouchers.length > 0;
+  const hasMoreProductVouchers = !c.productVoucherId && !c.itemVoucherId && applicableProductVouchers.length > 0;
   const hasMoreAddonVouchers = applicableAddonVouchers.length > 0;
   const hasAvailableVouchers = hasMoreProductVouchers || hasMoreAddonVouchers;
   
-  const appliedProductVoucherId = c.productVoucherId;
+  const appliedProductVoucherId = c.productVoucherId ?? c.itemVoucherId;
   const appliedAddonVouchers = c.addonVouchers ?? [];
 
   const line1Chips = line1ItemDetails(c, menuItem, milkTypes, powderData?.data);

@@ -37,6 +37,7 @@ app/                              # Next.js App Router — entry points only, ze
         powders/page.tsx          # → src/views/admin/AdminPowderPage
         addons/page.tsx           # → src/views/admin/AdminAddonsPage
         milk-types/page.tsx       # → src/views/admin/AdminMilkTypesPage
+                                  # Legacy URL; UI manages the shared Base Liquid catalog
         voucher-packages/page.tsx # → src/views/admin/AdminVoucherPackagesPage
       points-log/page.tsx         # → src/views/admin/AdminPointsLogPage
     staff/                        # STAFF or ADMIN
@@ -93,12 +94,16 @@ app/                              # Next.js App Router — entry points only, ze
     admin/matcha-powders/[id]/route.ts
     admin/milk-types/route.ts
     admin/milk-types/[id]/route.ts
+    admin/base-liquids/route.ts        # Preferred compatibility alias over milk-types
+    admin/base-liquids/[id]/route.ts
     admin/default-size-config/route.ts
     admin/fusion-powders/route.ts
     admin/store-schedule/route.ts     # GET + PUT weekly schedule
     admin/store-closure/route.ts      # POST close/open
     store-status/route.ts             # Public — current open/closed state
-    admin/promotions/route.ts         # Phase 5 only
+    admin/promotions/route.ts         # GET + POST immutable BUNDLE campaigns
+    admin/promotions/[id]/route.ts    # PATCH active state only
+    profile/vouchers/claim/route.ts   # FREE_CLAIM issuance
 
 src/                              # Frontend — never import lib/ from here
   views/
@@ -122,6 +127,7 @@ src/                              # Frontend — never import lib/ from here
       AdminPointsLogPage.tsx
       AdminMilkTypesPage.tsx
       AdminAddonsPage.tsx
+      AdminPromotionsPage.tsx
     staff/
       StaffOrdersPage.tsx
       StaffOrdersListPage.tsx
@@ -138,7 +144,7 @@ src/                              # Frontend — never import lib/ from here
       FeatureCard.tsx
     menu/
       MenuCard.tsx
-      MenuPanels.tsx              # Pure latte/fusion/seasonal panel rendering
+      MenuPanels.tsx              # Pure latte/fusion/extras/seasonal panel rendering
       CartQuantityButton.tsx      # Reusable add-to-cart / inline quantity stepper
       ExistingCartItemSheet.tsx   # Bottom sheet for items already in cart (per-variant stepper)
       ProductModal.tsx
@@ -164,6 +170,8 @@ src/                              # Frontend — never import lib/ from here
       MenuItemCard.tsx
       MenuItemModal.tsx
       MenuImageSeoField.tsx       # Optional SEO filename input; no DB field
+      MenuItemBaseLiquidFields.tsx # Per-size volume and per-item Base Liquid controls
+      CatalogImageFields.tsx      # Shared crop/upload + SEO controls for addon/powder images
       MenuSubTabs.tsx             # Horizontal sub-tab bar for /admin/menu/*
       VoucherPackageForm.tsx
       PointsLogTable.tsx
@@ -181,8 +189,9 @@ src/                              # Frontend — never import lib/ from here
       StaffMenuCard.tsx
       StaffCartDrawer.tsx
       PaymentMethodSelector.tsx   # CASH default + BANK_TRANSFER checkout selector
-      CounterTransferPaymentModal.tsx # Locked QR confirmation/cancellation dialog
+      CounterTransferPaymentModal.tsx # Reopenable QR confirmation/cancellation dialog
       CounterTransferOrderAction.tsx # Pending-list QR action + modal ownership
+      PendingCounterTransfersLauncher.tsx # POS button + multi-order recovery bottom sheet
       StaffOrderForm.tsx
       AddonModal.tsx
       QRScannerModal.tsx
@@ -230,7 +239,7 @@ scratch/                          # Ignored by Git. Scratchpad for quick server 
     map/
       mapRenderer.ts              # Abortable MapLibre renderer; 30s hard timeout and typed diagnostics
     hooks/
-      useCounterTransferPayment.ts # Counter payment recovery and status orchestration
+      useCounterTransferPayment.ts # Multi-order query, delayed QR opening, status + checkout orchestration
       useScrollProgress.ts
       useBodyScrollLock.ts
       useMapRendererLifecycle.ts  # Strict Mode-safe map ownership, 12s degraded state, queued flyTo
@@ -251,7 +260,8 @@ scratch/                          # Ignored by Git. Scratchpad for quick server 
   utils/
     formatPrice.ts                # formatPrice(vnd: number) → "🐟 {vnd/1000} cá"
     pricing.ts                    # Pure pricing functions — NO imports from lib/ or services
-                                  # exports: resolveGram(), calcLattePrice(), calcFusionPrice(), ceilTo1000()
+                                  # includes Base Liquid volume/delta helpers and drink pricing
+    baseLiquid.ts                 # Pure default + allowed option resolution for Latte/Fusion
                                   # Used by frontend (real-time estimates) and lib/pricing.ts (order time)
     deriveTags.ts
     buildZaloMessage.ts
@@ -276,6 +286,8 @@ lib/                              # Backend only — server-side, NEVER import i
   sms.ts
   storage.ts                      # Supabase Storage helpers — bucket: menu-images
   menuImageCleanup.ts             # Finds/deletes unreferenced images after grace period
+  catalogImage.ts                 # Shared addon/powder upload and SEO-rename preparation
+  catalogRequest.ts               # Backward-compatible JSON/multipart catalog parser
   cancelExpiredOrders.ts          # Bounded, idempotent auto-cancel worker
   orderLimits.ts                  # 20,000,000 VND server-calculated order ceiling
   staffOrderPayment.ts            # Isolated counter payment preparation + voucher claim rules
@@ -319,6 +331,7 @@ sentry.server.config.ts
 sentry.edge.config.ts
 prisma/schema.prisma
 prisma/migrations/20260804000000_harden_supabase_data_plane/
+prisma/migrations/20260815150000_add_extras_items_and_item_vouchers/ # extras + ITEM voucher contract
                                   # RLS/ACL hardening; rollback only with a compensating migration
 .env.local
 .env.local.example

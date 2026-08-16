@@ -23,6 +23,7 @@ const mockUploadMenuImage = vi.fn();
 const mockRemoveMenuImages = vi.fn();
 const mockBuildMenuImagePath = vi.fn();
 const mockDefaultSizeConfigFindMany = vi.fn();
+const mockMilkTypeFindMany = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
@@ -39,6 +40,9 @@ vi.mock("@/lib/prisma", () => ({
     $transaction: (...args: unknown[]) => mockTransaction(...args),
     defaultSizeConfig: {
       findMany: (...args: unknown[]) => mockDefaultSizeConfigFindMany(...args),
+    },
+    milkType: {
+      findMany: (...args: unknown[]) => mockMilkTypeFindMany(...args),
     },
   },
 }));
@@ -82,19 +86,21 @@ const mockMenuItem = {
   sort_order: 0,
   matcha_powder_id: POWDER_ID,
   default_powder_id: null,
+  default_base_liquid_id: null,
   base_liquid_note: null,
   custom_powder_grams: null,
   image_url: null,
   description: null,
   updated_at: new Date(),
   sizes: [
-    { size: "SMALL", base_price_vnd: 55000, milk_ml: 130 },
-    { size: "MEDIUM", base_price_vnd: 65000, milk_ml: 200 },
-    { size: "LARGE", base_price_vnd: 75000, milk_ml: 300 },
+    { size: "SMALL", base_price_vnd: 55000, base_liquid_ml: null },
+    { size: "MEDIUM", base_price_vnd: 65000, base_liquid_ml: null },
+    { size: "LARGE", base_price_vnd: 75000, base_liquid_ml: null },
   ],
   matchaPowder: { id: POWDER_ID, name: "Meyumi", type: "NONE" },
   defaultPowder: null,
   fusionAllowedPowders: [],
+  allowedBaseLiquids: [],
 };
 
 const defaultSizeConfigs = [
@@ -178,6 +184,9 @@ describe("POST /api/admin/menu/create-latte-with-powder", () => {
     mockUploadMenuImage.mockResolvedValue("https://example.com/image.jpg");
     mockRemoveMenuImages.mockResolvedValue(undefined);
     mockBuildMenuImagePath.mockReturnValue("products/latte/matcha-seo-12345678.webp");
+    mockMilkTypeFindMany.mockResolvedValue([
+      { id: "550e8400-e29b-41d4-a716-446655440099", is_default: true },
+    ]);
   });
 
   // â”€â”€ Auth & Role â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

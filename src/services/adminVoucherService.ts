@@ -5,8 +5,10 @@ export interface VoucherPackage {
   id: string;
   name: string;
   description: string | null;
-  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP";
+  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
+  acquisition_mode: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
   points_cost: number;
+  ends_at: string | null;
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
   menu_item_id: string | null;
@@ -32,65 +34,91 @@ export interface VoucherPackage {
   addonOption?: {
     label: string;
   } | null;
+  bundleRule?: VoucherBundleRule | null;
 }
 
-export type CreateVoucherPackageInput =
+export interface VoucherBundleProductScope {
+  menu_item_id: string;
+  size?: "SMALL" | "MEDIUM" | "LARGE" | null;
+  powder_id?: string | null;
+  milk_type_id?: string | null;
+  reference_price_vnd?: number | null;
+}
+
+export interface VoucherBundleRule {
+  buy_quantity: number;
+  reward_quantity: number;
+  reward_kind: "PRODUCT" | "ADDON";
+  reward_mode: "SAME_CONFIG" | "FIXED_CONFIG" | "ALLOWED_SCOPE";
+  benefit_scaling: "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM";
+  max_applications_per_order: number;
+  max_reward_units_per_order?: number | null;
+  productScopes: Array<VoucherBundleProductScope & { role: "QUALIFIER" | "REWARD" }>;
+  addonRewards: Array<{ addon_option_id: string }>;
+}
+
+interface VoucherPackageCommonInput {
+  name: string;
+  description?: string;
+  acquisition_mode: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
+  points_cost: number;
+  ends_at?: string | null;
+  expires_after_days?: number | null;
+  quantity?: number | null;
+  max_per_user?: number | null;
+}
+
+export type CreateVoucherPackageInput = VoucherPackageCommonInput & (
   | {
       voucher_type: "DISCOUNT";
-      name: string;
-      description?: string;
-      points_cost: number;
       discount_type: "PERCENT" | "FIXED";
       discount_value: number;
-      expires_after_days?: number | null;
-      quantity?: number | null;
-      max_per_user?: number | null;
+      min_order_vnd?: number | null;
+    }
+  | {
+      voucher_type: "ITEM";
+      menu_item_id: string;
     }
   | {
       voucher_type: "PRODUCT";
-      name: string;
-      description?: string;
-      points_cost: number;
       menu_item_id: string;
       size: "SMALL" | "MEDIUM" | "LARGE";
       matcha_powder_id?: string | null;
       milk_type_id?: string | null;
       included_addon_option_ids?: string[];
-      expires_after_days?: number | null;
-      quantity?: number | null;
-      max_per_user?: number | null;
     }
   | {
       voucher_type: "ADDON";
-      name: string;
-      description?: string;
-      points_cost: number;
       addon_option_id: string;
-      expires_after_days?: number | null;
-      quantity?: number | null;
-      max_per_user?: number | null;
     }
   | {
       voucher_type: "FREESHIP";
-      name: string;
-      description?: string;
-      points_cost: number;
       covered_delivery_fee_vnd: number;
       min_order_vnd?: number | null;
-      expires_after_days?: number | null;
-      quantity?: number | null;
-      max_per_user?: number | null;
-    };
+    }
+  | {
+      voucher_type: "BUNDLE";
+      min_order_vnd?: number | null;
+      bundle_rule: {
+        buy_quantity: number;
+        reward_quantity: number;
+        reward_kind: "PRODUCT" | "ADDON";
+        reward_mode: "SAME_CONFIG" | "FIXED_CONFIG" | "ALLOWED_SCOPE";
+        benefit_scaling: "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM";
+        max_applications_per_order: number;
+        max_reward_units_per_order?: number | null;
+        qualifier_scopes: VoucherBundleProductScope[];
+        reward_product_scopes: VoucherBundleProductScope[];
+        reward_addon_option_ids: string[];
+      };
+    }
+);
 
 
 export type UpdateVoucherPackageInput = {
   name?: string;
   description?: string | null;
-  points_cost?: number;
   is_active?: boolean;
-  expires_after_days?: number | null;
-  quantity?: number | null;
-  max_per_user?: number | null;
 };
 
 const URL = {

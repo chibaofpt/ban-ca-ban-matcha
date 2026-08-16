@@ -27,6 +27,7 @@ const mockPowder: Powder = {
   is_available: true,
   price_per_gram: 300,
   description: null,
+  image_url: null,
   fragrance: null,
   body: null,
   bitterness: null,

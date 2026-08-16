@@ -36,6 +36,7 @@ async function fetchPowdersData(): Promise<PowderApiResponse> {
       name: p.name,
       manufacturer: p.manufacturer ?? null,
       description: p.description ?? null,
+      image_url: p.image_url ?? null,
       price_per_gram: p.price_per_gram,
       type: p.type,
       fragrance: p.fragrance ?? null,

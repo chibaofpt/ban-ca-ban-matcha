@@ -8,6 +8,12 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
+vi.mock("@/lib/cache", () => ({
+  CACHE_KEYS: { VOUCHER_PACKAGES: "voucher-packages" },
+  CACHE_TTL: { VOUCHER_PACKAGES: 300 },
+  withCache: (_key: string, _ttl: number, loader: () => Promise<unknown>) => loader(),
+}));
+
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     voucherPackage: { findMany: (...args: unknown[]) => mockFindManyPackages(...args) },
@@ -20,13 +26,27 @@ import { GET } from "@/app/api/voucher-packages/route";
 describe("GET /api/voucher-packages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFindManyPackages.mockReset();
+    mockGroupByVouchers.mockResolvedValue([]);
+  });
+
+  it("trả remaining_quantity theo tổng voucher đã phát hành", async () => {
+    mockGetSession.mockResolvedValue(null);
+    mockFindManyPackages
+      .mockResolvedValueOnce([{ id: "pkg-1", quantity: 10, created_at: new Date().toISOString() }])
+      .mockResolvedValueOnce([]);
+    mockGroupByVouchers.mockResolvedValueOnce([{ package_id: "pkg-1", _count: { id: 7 } }]);
+
+    const json = await (await GET()).json();
+
+    expect(json.data[0].remaining_quantity).toBe(3);
   });
 
   it("trả về danh sách packages active, user_redeemed_count = 0 nếu chưa đăng nhập", async () => {
     mockGetSession.mockResolvedValue(null);
-    mockFindManyPackages.mockResolvedValue([
+    mockFindManyPackages.mockResolvedValueOnce([
       { id: "pkg-1", is_active: true, menuItem: null, addonOption: null },
-    ]);
+    ]).mockResolvedValueOnce([]);
 
     const res = await GET();
     expect(res.status).toBe(200);
@@ -38,10 +58,10 @@ describe("GET /api/voucher-packages", () => {
 
   it("trả về danh sách packages active kèm số lượng đã đổi nếu đã đăng nhập", async () => {
     mockGetSession.mockResolvedValue({ id: "user-1", role: "CUSTOMER" });
-    mockFindManyPackages.mockResolvedValue([
+    mockFindManyPackages.mockResolvedValueOnce([
       { id: "pkg-1", is_active: true, menuItem: null, addonOption: null },
       { id: "pkg-2", is_active: true, menuItem: null, addonOption: null },
-    ]);
+    ]).mockResolvedValueOnce([]);
     mockGroupByVouchers.mockResolvedValue([
       { package_id: "pkg-1", _count: { id: 2 } },
     ]);
@@ -66,5 +86,32 @@ describe("GET /api/voucher-packages", () => {
       },
       _count: { id: true },
     });
+  });
+
+  it("đọc package BUNDLE đang diễn ra trực tiếp, không lấy từ cache promotion", async () => {
+    mockGetSession.mockResolvedValue(null);
+    mockFindManyPackages
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: "bundle-1", voucher_type: "BUNDLE" }]);
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+    expect((await res.json()).data[0].id).toBe("bundle-1");
+    expect(mockFindManyPackages).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            { ends_at: expect.objectContaining({ gt: expect.any(Date) }) },
+            { voucher_type: "BUNDLE", ends_at: null },
+          ]),
+        }),
+      }),
+    );
+    expect(mockFindManyPackages).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: { is_active: true, ends_at: null, voucher_type: { not: "BUNDLE" } },
+      }),
+    );
   });
 });

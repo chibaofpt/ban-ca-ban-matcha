@@ -61,6 +61,9 @@ export async function getCustomerOrderHistory(
             productVoucher: {
               include: { package: { select: { name: true } } },
             },
+            itemVoucher: {
+              include: { package: { select: { name: true } } },
+            },
             addonVouchers: {
               include: {
                 voucher: { include: { package: { select: { name: true } } } },
@@ -121,14 +124,16 @@ export async function getCustomerOrderHistory(
       items: (items ?? []).map((item) => {
         const {
           product_voucher_id: productVoucherIdToRemove,
+          item_voucher_id: itemVoucherIdToRemove,
           addonVouchers,
           ...publicItem
         } = item;
         void productVoucherIdToRemove;
+        void itemVoucherIdToRemove;
         return {
           ...publicItem,
-          productVoucher: item.productVoucher
-            ? { package: item.productVoucher.package }
+          productVoucher: (item.productVoucher ?? item.itemVoucher)
+            ? { package: (item.productVoucher ?? item.itemVoucher)!.package }
             : null,
           addonVouchers: (addonVouchers ?? []).map(({ voucher }) => ({
             voucher: { package: voucher.package },

@@ -37,6 +37,7 @@ const mockSessionDelete = vi.fn();
 const mockSessionDeleteMany = vi.fn();
 const mockPointsLogCreate = vi.fn();
 const mockTransaction = vi.fn();
+const mockEnsureAutoGrantedVouchers = vi.fn();
 
 const mockBcryptCompare = vi.fn();
 const mockBcryptHash = vi.fn();
@@ -93,6 +94,10 @@ vi.mock("bcryptjs", () => ({
     compare: (...args: unknown[]) => mockBcryptCompare(...args),
     hash: (...args: unknown[]) => mockBcryptHash(...args),
   },
+}));
+
+vi.mock("@/lib/voucherIssuance", () => ({
+  ensureAutoGrantedVouchers: (...args: unknown[]) => mockEnsureAutoGrantedVouchers(...args),
 }));
 
 // ── Import SAU mock ───────────────────────────────────────────────────────────
@@ -202,6 +207,7 @@ describe("POST /api/auth/login — ghost user guard", () => {
     mockSignJwt.mockResolvedValue("access-token-xyz");
     mockCreateSession.mockResolvedValue("refresh-token-xyz");
     mockSetAuthCookies.mockResolvedValue(undefined);
+    mockEnsureAutoGrantedVouchers.mockResolvedValue({ granted: 0, already_granted: 0 });
     // Default: rate limits allow through
     mockCheckLoginFailLimit.mockResolvedValue({ allowed: true, remaining: 4 });
     mockCheckPhoneFloodGuard.mockResolvedValue({ allowed: true });
@@ -549,6 +555,7 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
     expect(res.status).toBe(201);
     expect(body.data.role).toBe("CUSTOMER");
     expect(mockSetAuthCookies).toHaveBeenCalledOnce();
+    expect(mockEnsureAutoGrantedVouchers).toHaveBeenCalledWith(expect.anything(), "new-user-id");
   });
 
   it("trả 409 CONFLICT khi số điện thoại đã đăng ký (không phải ghost)", async () => {

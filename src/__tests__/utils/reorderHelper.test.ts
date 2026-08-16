@@ -15,16 +15,16 @@ const mockMenuData: MenuData = {
   ],
   addon_groups: [
     {
-      id: "ag1", name: "Kem", type: "SELECTOR", is_required: false, min_quantity: null, max_quantity: null,
+      id: "ag1", name: "Kem", image_url: null, type: "SELECTOR", max_quantity: null,
       options: [
-        { id: "opt1", label: "Kem cheese", price_vnd: 15000, gram_value: null, is_default: false, sort_order: 1 },
-        { id: "opt2", label: "Trân châu", price_vnd: 10000, gram_value: null, is_default: false, sort_order: 2 }
+        { id: "opt1", label: "Kem cheese", price_vnd: 15000, gram_value: null, sort_order: 1 },
+        { id: "opt2", label: "Trân châu", price_vnd: 10000, gram_value: null, sort_order: 2 }
       ]
     },
     {
-      id: "ag2", name: "Extra Matcha", type: "SELECTOR", is_required: false, min_quantity: null, max_quantity: null,
+      id: "ag2", name: "Extra Matcha", image_url: null, type: "SELECTOR", max_quantity: null,
       options: [
-        { id: "opt_extra1", label: "Extra 2g", price_vnd: 0, gram_value: 2, is_default: false, sort_order: 1 }
+        { id: "opt_extra1", label: "Extra 2g", price_vnd: 0, gram_value: 2, sort_order: 1 }
       ]
     }
   ],
@@ -52,12 +52,12 @@ const mockMenuData: MenuData = {
 const mockPowderData: PowderApiResponse = {
   data: [
     {
-      id: "p1", name: "Yuri", manufacturer: null, description: null, price_per_gram: 2000, type: "RECOMMEND",
+      id: "p1", name: "Yuri", manufacturer: null, description: null, image_url: null, price_per_gram: 2000, type: "RECOMMEND",
       fragrance: null, body: null, bitterness: null, umami: null, color: null, is_available: true, reference_latte_item_id: "latte1",
       size_config: []
     },
     {
-      id: "p2", name: "Kaze", manufacturer: null, description: null, price_per_gram: 3000, type: "RECOMMEND",
+      id: "p2", name: "Kaze", manufacturer: null, description: null, image_url: null, price_per_gram: 3000, type: "RECOMMEND",
       fragrance: null, body: null, bitterness: null, umami: null, color: null, is_available: true, reference_latte_item_id: "latte1",
       size_config: []
     }
@@ -246,6 +246,34 @@ describe("buildReorderItem", () => {
 
     expect(res.cartItem?.selectedMilkTypeId).toBe("milk1");
     expect(res.cartItem?.unitPrice).toBe(37000);
+  });
+
+  it("Latte không tái đặt Base Liquid đã bị gỡ khỏi allow-list của món", () => {
+    const restrictedMenuData: MenuData = {
+      ...mockMenuData,
+      latte: mockMenuData.latte.map((menuItem) => ({
+        ...menuItem,
+        default_base_liquid_id: "milk1",
+        allowed_base_liquid_ids: [],
+      })),
+    };
+    const item = {
+      menu_item_id: "latte1",
+      size: "MEDIUM",
+      selected_milk_type_id: "milk2",
+      sweetness: "FULL",
+      ice_option: "NORMAL",
+      coldwhisk: false,
+      addons: [],
+      unit_price_vnd: 40_000,
+      addons_price_vnd: 0,
+      menuItem: { name: "Latte Matcha", category: "latte" },
+    } as unknown as HistoryOrderItem;
+
+    const result = buildReorderItem(item, restrictedMenuData, mockPowderData);
+
+    expect(result.cartItem?.selectedBaseLiquidId).toBe("milk1");
+    expect(result.warnings.some((warning) => warning.type === "MILK_UNAVAILABLE")).toBe(true);
   });
 
   it("fallback về bột mặc định khi bột cũ không còn được phép cho Fusion", () => {

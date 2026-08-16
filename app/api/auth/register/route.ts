@@ -4,6 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { normalizePhone, signJwt, setAuthCookies } from "@/lib/auth";
 import { isUniqueConstraintError } from "@/lib/prisma-errors";
 import bcrypt from "bcryptjs";
+import {
+  ensureAutoGrantedVouchers,
+  type VoucherIssuanceDatabase,
+} from "@/lib/voucherIssuance";
 
 /**
  * Handle POST request for user registration.
@@ -112,6 +116,15 @@ export async function POST(req: Request) {
 
     // Set cookies
     await setAuthCookies(accessToken, refreshToken, user.role);
+
+    // Registration remains successful on a transient grant error; wallet access retries lazily.
+    try {
+      await ensureAutoGrantedVouchers(prisma as unknown as VoucherIssuanceDatabase, user.id);
+    } catch (grantError) {
+      console.error("[POST /api/auth/register] auto-grant deferred", {
+        name: grantError instanceof Error ? grantError.name : typeof grantError,
+      });
+    }
 
     return NextResponse.json(
       {

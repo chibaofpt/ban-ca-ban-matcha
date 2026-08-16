@@ -14,7 +14,14 @@ import { useState, useCallback } from "react";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { fetchMenu } from "@/src/services/menuService";
-import { calcLattePrice, calcFusionPrice, resolveGram, ceilTo1000 } from "@/src/utils/pricing";
+import {
+  calcBaseLiquidDelta,
+  calcLattePrice,
+  calcFusionPrice,
+  resolveGram,
+  ceilTo1000,
+} from "@/src/utils/pricing";
+import { getBaseLiquidOptionsForItem } from "@/src/utils/baseLiquid";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { AddonGroup, MenuItem, MilkTypeOption, Size } from "@/src/lib/types/menu";
@@ -28,7 +35,7 @@ export type AddVoucherResult =
  * Resolves the price of a menu item with a given configuration.
  * Returns drink and addon prices separately for correct PRODUCT credit capping.
  */
-function computeVoucherItemPrice(
+export function computeVoucherItemPrice(
   menuItem: MenuItem,
   size: Size,
   powderId: string | null,
@@ -53,7 +60,7 @@ function computeVoucherItemPrice(
 
   let drinkPrice = 0;
   if (menuItem.category === "latte") {
-    const milk_ml = sizeObj?.milk_ml ?? 0;
+    const milk_ml = sizeObj?.base_liquid_ml ?? sizeObj?.milk_ml ?? 0;
     const milk = milkTypes.find((candidate) => candidate.id === milkTypeId);
     const defaultMilk = milkTypes.find((candidate) => candidate.is_default);
     const milk_price_per_ml = (milk ?? defaultMilk)?.price_per_ml ?? 40;
@@ -67,7 +74,24 @@ function computeVoucherItemPrice(
       const defBase = latteItems.find((i) => i.id === defaultPowder.reference_latte_item_id)?.sizes.find((s) => s.size === size)?.base_price_vnd ?? 0;
       premium_latte = selBase - defBase;
     }
-    drinkPrice = calcFusionPrice({ base_price_vnd, gram, powder_price_per_gram: pwd_price_per_gram, premium_latte });
+    const selectedLiquid = milkTypes.find((candidate) => candidate.id === milkTypeId);
+    const defaultLiquid = milkTypes.find(
+      (candidate) => candidate.id === menuItem.default_base_liquid_id,
+    );
+    const liquidMl = sizeObj?.base_liquid_ml ?? sizeObj?.milk_ml ?? 0;
+    drinkPrice = calcFusionPrice({
+      base_price_vnd,
+      gram,
+      powder_price_per_gram: pwd_price_per_gram,
+      premium_latte,
+      base_liquid_delta_vnd: selectedLiquid && defaultLiquid
+        ? calcBaseLiquidDelta(
+            liquidMl,
+            selectedLiquid.price_per_ml,
+            defaultLiquid.price_per_ml,
+          )
+        : 0,
+    });
   }
 
   // Resolve addon prices for included_addon_option_ids
@@ -86,6 +110,21 @@ function computeVoucherItemPrice(
   return { drinkPrice, addonsCost };
 }
 
+/** Resolve a PRODUCT voucher Base Liquid against the item's current allow-list. */
+export function resolveVoucherBaseLiquidId(
+  menuItem: MenuItem,
+  requestedId: string | null,
+  activeLiquids: MilkTypeOption[],
+): string | null {
+  const configured = getBaseLiquidOptionsForItem(menuItem, activeLiquids);
+  const options = menuItem.default_base_liquid_id ? configured : activeLiquids;
+  const requested = options.find((liquid) => liquid.id === requestedId);
+  if (requested) return requested.id;
+  return options.find((liquid) => liquid.id === menuItem.default_base_liquid_id)?.id
+    ?? options.find((liquid) => liquid.is_default)?.id
+    ?? null;
+}
+
 /**
  * Hook for the "Dùng ngay" flow.
  * Returns addToCart function and loading state.
@@ -98,7 +137,7 @@ export function useAddVoucherToCart() {
 
   const addToCart = useCallback(
     async (voucher: MyVoucher): Promise<AddVoucherResult> => {
-      if (voucher.voucher_type !== "PRODUCT" || !voucher.menu_item_id) {
+      if ((voucher.voucher_type !== "PRODUCT" && voucher.voucher_type !== "ITEM") || !voucher.menu_item_id) {
         return { ok: false, reason: "fetch_failed" };
       }
 
@@ -106,12 +145,41 @@ export function useAddVoucherToCart() {
       try {
         // Fetch fresh menu data (cannot rely on MenuPage cache from outside that context)
         const menuData = await fetchMenu();
-        const allItems = [...menuData.latte, ...menuData.fusion];
+        const allItems = [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])];
         const latteItems = menuData.latte;
 
         const menuItem = allItems.find((i) => i.id === voucher.menu_item_id);
         if (!menuItem) {
           return { ok: false, reason: "item_unavailable" };
+        }
+
+        if (voucher.voucher_type === "ITEM") {
+          if (menuItem.category !== "extras" || menuItem.unit_price_vnd == null) {
+            return { ok: false, reason: "item_unavailable" };
+          }
+          addItem({
+            menuItemId: menuItem.id,
+            name: menuItem.name,
+            category: "extras",
+            imageUrl: menuItem.image_url,
+            size: null,
+            unitPrice: menuItem.unit_price_vnd,
+            quantity: 1,
+            sweetness: "FULL",
+            iceOption: "NORMAL",
+            coldwhisk: false,
+            note: "",
+            selectedOptionIds: [],
+            quantityMap: {},
+            addonsPrice: 0,
+            addonPrices: {},
+            quantityAddonOptions: [],
+            clientPriceVnd: 0,
+            originalClientPriceVnd: menuItem.unit_price_vnd,
+            itemVoucherId: voucher.qr_token,
+          });
+          setCartOpen(true);
+          return { ok: true };
         }
 
         // Use voucher's size config (soft match: item must support this size)
@@ -125,11 +193,16 @@ export function useAddVoucherToCart() {
         const includedAddonIds = (voucher as MyVoucher & { included_addon_option_ids?: string[] }).included_addon_option_ids ?? [];
 
         // Compute the server-equivalent price for this item at its voucher configuration
+        const resolvedBaseLiquidId = resolveVoucherBaseLiquidId(
+          menuItem,
+          voucher.milk_type_id ?? null,
+          menuData.base_liquids ?? menuData.milk_types,
+        );
         const { drinkPrice, addonsCost } = computeVoucherItemPrice(
           menuItem,
           voucherSize,
           voucher.matcha_powder_id ?? null,
-          voucher.milk_type_id ?? null,
+          resolvedBaseLiquidId,
           includedAddonIds,
           powders,
           defaultPowderGram,
@@ -153,9 +226,7 @@ export function useAddVoucherToCart() {
         void details;
 
         // Determine selected option ids (use voucher config as selected)
-        const defaultOptionIds = menuData.addon_groups
-          .flatMap((group) => group.options.filter((option) => option.is_default).map((option) => option.id));
-        const selectedOptionIds = [...new Set([...defaultOptionIds, ...includedAddonIds])];
+        const selectedOptionIds = [...new Set(includedAddonIds)];
         const addonPrices: Record<string, number> = {};
         const activePowderId = menuItem.category === "latte"
           ? (menuItem.powder?.id ?? voucher.matcha_powder_id ?? "")
@@ -192,7 +263,7 @@ export function useAddVoucherToCart() {
         const cartItemBase: Omit<CartItem, "cartId"> = {
           menuItemId: menuItem.id,
           name: menuItem.name,
-          category: menuItem.category as "latte" | "fusion",
+          category: menuItem.category,
           imageUrl: menuItem.image_url,
           size: voucherSize,
           unitPrice: originalPrice,
@@ -207,7 +278,8 @@ export function useAddVoucherToCart() {
           addonPrices,
           quantityAddonOptions,
           selectedPowderId: menuItem.category === "fusion" ? (voucher.matcha_powder_id ?? undefined) : undefined,
-          selectedMilkTypeId: menuItem.category === "latte" ? (voucher.milk_type_id ?? undefined) : undefined,
+          selectedMilkTypeId: menuItem.category === "latte" ? (resolvedBaseLiquidId ?? undefined) : undefined,
+          selectedBaseLiquidId: resolvedBaseLiquidId ?? undefined,
           clientPriceVnd: originalPrice,
           originalClientPriceVnd: originalPrice,
         };

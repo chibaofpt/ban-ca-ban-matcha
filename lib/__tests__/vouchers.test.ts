@@ -29,6 +29,7 @@ function makeVoucher(overrides: Partial<Voucher> = {}): Voucher {
     package_id: "pkg-001",
     qr_token: "qr-abc",
     voucher_type: "DISCOUNT",
+    issued_via: "POINTS_EXCHANGE",
     discount_type: "PERCENT",
     discount_value: 20,
     menu_item_id: null,

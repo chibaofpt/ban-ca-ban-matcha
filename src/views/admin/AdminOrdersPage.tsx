@@ -438,7 +438,7 @@ export default function AdminOrdersPage() {
                             <span className="font-semibold">
                               {it.menuItem.name}{" "}
                               <span className="font-normal text-muted-foreground">
-                                {formatOrderSize(it.size)}
+                                {it.size ? formatOrderSize(it.size) : "Add-on"}
                               </span>
                             </span>
                             <OrderItemDetails item={it} />

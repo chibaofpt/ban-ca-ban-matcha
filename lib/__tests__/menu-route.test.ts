@@ -72,9 +72,8 @@ describe("GET /api/menu — contract dữ liệu chuẩn hóa", () => {
       {
         id: "addon-group-1",
         name: "Kem",
+        image_url: "https://cdn/menu-images/products/addons/kem.webp",
         type: "QUANTITY",
-        is_required: false,
-        min_quantity: null,
         max_quantity: 3,
         options: [
           {
@@ -82,8 +81,8 @@ describe("GET /api/menu — contract dữ liệu chuẩn hóa", () => {
             label: "Một phần kem",
             price_vnd: 5000,
             gram_value: null,
-            is_default: false,
             sort_order: 1,
+            is_active: true,
           },
         ],
       },
@@ -115,6 +114,21 @@ describe("GET /api/menu — contract dữ liệu chuẩn hóa", () => {
     };
 
     expect(body.data.addon_groups).toHaveLength(1);
+    expect(body.data.addon_groups).toEqual([
+      expect.objectContaining({
+        image_url: "https://cdn/menu-images/products/addons/kem.webp",
+      }),
+    ]);
+    expect(body.data.addon_groups).toEqual([
+      expect.not.objectContaining({ is_required: expect.anything(), min_quantity: expect.anything() }),
+    ]);
+    expect(mockAddonGroupFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: {
+          options: expect.objectContaining({ where: { is_active: true } }),
+        },
+      }),
+    );
     expect(body.data.milk_types).toHaveLength(1);
     expect(body.data.latte[0]).not.toHaveProperty("addon_groups");
     expect(body.data.latte[0]).not.toHaveProperty("milk_types");

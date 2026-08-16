@@ -15,6 +15,13 @@ import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
+import { BundlePromotionError } from "@/lib/promotionBundle";
+import { resolveOrderBundle, type OrderBundleDatabase } from "@/lib/orderBundle";
+import { persistOrderBundle } from "@/lib/orderBundleWrite";
+import {
+  ensureAutoGrantedVouchers,
+  type VoucherIssuanceDatabase,
+} from "@/lib/voucherIssuance";
 
 import { logSystemEvent } from "@/lib/logger";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -88,10 +95,16 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (isAnonymous && data.items.some((i) => i.product_voucher_id)) {
+    if (isAnonymous && data.items.some((i) => i.product_voucher_id || i.item_voucher_id)) {
       return NextResponse.json(
         { error: "Product voucher cannot be used for anonymous orders", code: "VALIDATION_ERROR" },
         { status: 400 }
+      );
+    }
+    if (isAnonymous && data.bundle_voucher_qr_token) {
+      return NextResponse.json(
+        { error: "Bundle voucher cannot be used for anonymous orders", code: "VALIDATION_ERROR" },
+        { status: 400 },
       );
     }
 
@@ -123,7 +136,8 @@ export async function POST(req: NextRequest) {
     // ── QR token verification — required for STAFF when order has any voucher ──
     const hasAnyVoucher = (
       data.discount_voucher_ids.length > 0 ||
-      data.items.some((i) => i.product_voucher_id || (i.addon_voucher_ids && i.addon_voucher_ids.length > 0))
+      Boolean(data.bundle_voucher_qr_token) ||
+      data.items.some((i) => i.product_voucher_id || i.item_voucher_id || (i.addon_voucher_ids && i.addon_voucher_ids.length > 0))
     );
 
     if (hasAnyVoucher && !existingUser) {
@@ -134,6 +148,10 @@ export async function POST(req: NextRequest) {
     }
 
     if (existingUser) {
+      await ensureAutoGrantedVouchers(
+        prisma as unknown as VoucherIssuanceDatabase,
+        existingUser.id,
+      );
       // Expire every active voucher before validating any voucher type.
       await lazyExpireVouchers(existingUser.id);
     }
@@ -161,9 +179,16 @@ export async function POST(req: NextRequest) {
     const productVoucherMap = new Map<string, ProductVoucherInfo>();
     if (existingUserForVoucher) {
       for (const item of data.items) {
-        if (item.product_voucher_id) {
+        if (item.item_voucher_id && item.product_voucher_id) {
+          return NextResponse.json(
+            { error: "Chỉ được gửi một loại voucher cho mỗi món", code: "VALIDATION_ERROR" },
+            { status: 400 },
+          );
+        }
+        const submittedItemVoucherId = item.item_voucher_id ?? item.product_voucher_id;
+        if (submittedItemVoucherId) {
           const pv = await resolveOwnedVoucherIdentifier(
-            item.product_voucher_id,
+            submittedItemVoucherId,
             existingUserForVoucher.id,
           );
           if (pv && productVoucherMap.has(pv.id)) {
@@ -173,7 +198,8 @@ export async function POST(req: NextRequest) {
             );
           }
           try {
-            assertVoucherUsable(pv, existingUserForVoucher.id, "PRODUCT");
+            const expectedType = item.item_voucher_id ? "ITEM" : "PRODUCT";
+            assertVoucherUsable(pv, existingUserForVoucher.id, expectedType);
           } catch (e) {
             if (e instanceof VoucherError) {
               const statusMap: Record<string, number> = {
@@ -187,17 +213,19 @@ export async function POST(req: NextRequest) {
             }
             throw e;
           }
-          if (!pv!.covered_price_vnd || !pv!.menu_item_id) {
+          if (!pv!.menu_item_id || (pv!.voucher_type === "PRODUCT" && !pv!.covered_price_vnd)) {
             return NextResponse.json(
-              { error: "Product voucher is not properly configured", code: "VALIDATION_ERROR" },
+              { error: "ITEM voucher is not properly configured", code: "VALIDATION_ERROR" },
               { status: 400 }
             );
           }
           productVoucherMap.set(pv!.id, {
             menu_item_id: pv!.menu_item_id,
-            covered_price_vnd: pv!.covered_price_vnd,
+            covered_price_vnd: pv!.covered_price_vnd ?? 0,
+            voucher_type: pv!.voucher_type === "ITEM" ? "ITEM" : "PRODUCT",
           });
-          item.product_voucher_id = pv!.id;
+          if (item.item_voucher_id) item.item_voucher_id = pv!.id;
+          else item.product_voucher_id = pv!.id;
           voucherQrTokens.set(pv!.id, pv!.qr_token);
         }
       }
@@ -264,16 +292,27 @@ export async function POST(req: NextRequest) {
 
     // Step 3: Validate + price-check all items (reads from DB, no writes)
     const resolvedItems = await processOrderItems(data.items, prisma, productVoucherMap, addonVoucherMap);
+    const bundle = data.bundle_voucher_qr_token && existingUser
+      ? await resolveOrderBundle(prisma as unknown as OrderBundleDatabase, {
+          qr_token: data.bundle_voucher_qr_token,
+          voucher_owner_id: existingUser.id,
+          items: data.items,
+          resolved_items: resolvedItems,
+          reward_allocations: data.bundle_reward_allocations,
+        })
+      : null;
 
-    const calculatorItems = resolvedItems.map((item) => ({
+    const calculatorItems = resolvedItems.map((item, index) => ({
       menu_item_id: item.menu_item_id,
       unit_price_vnd: item.unit_price_vnd,
       addons_price_vnd: item.addons_price_vnd,
       quantity: item.quantity,
       line_total: item.line_total,
+      bundle_discount_vnd: bundle?.line_discounts_vnd[index] ?? 0,
       product_voucher_id: item.product_voucher_id,
-      product_voucher_covered_vnd: item.product_voucher_id
-        ? (productVoucherMap.get(item.product_voucher_id)?.covered_price_vnd ?? 0)
+      item_voucher_id: item.item_voucher_id,
+      product_voucher_covered_vnd: (item.item_voucher_id ?? item.product_voucher_id)
+        ? (productVoucherMap.get(item.item_voucher_id ?? item.product_voucher_id ?? "")?.covered_price_vnd ?? 0)
         : 0,
       addon_vouchers: item.addon_voucher_ids.map((voucher) => {
         const addon = item.resolvedAddons.find(
@@ -418,16 +457,18 @@ export async function POST(req: NextRequest) {
                   size: item.size,
                   unit_price_vnd: item.unit_price_vnd,
                   addons_price_vnd: item.addons_price_vnd,
-                  product_voucher_discount_vnd: itemCalculation.product_voucher_discount_vnd,
+                  product_voucher_discount_vnd: itemCalculation.product_voucher_discount_vnd + itemCalculation.item_voucher_discount_vnd,
                   total_discount_vnd: itemCalculation.total_discount_vnd,
                   sweetness: item.sweetness as SweetnessLevel,
                   ice_option: item.ice_option as IceOption,
                   coldwhisk: item.coldwhisk,
                   note: item.note,
                   product_voucher_id: itemCalculation.product_voucher_id,
+                  item_voucher_id: itemCalculation.item_voucher_id,
                   addonVouchers: { create: itemCalculation.addon_vouchers },
                   selected_powder_id: item.selected_powder_id,
                   selected_milk_type_id: item.selected_milk_type_id,
+                  base_liquid_ml: item.base_liquid_ml,
                   addons: {
                     create: item.resolvedAddons.map((addon) => ({
                       addon_option_id: addon.addon_option_id,
@@ -439,6 +480,7 @@ export async function POST(req: NextRequest) {
               }),
             },
           },
+          include: { items: { include: { addons: true } } },
         });
 
         // Claim only vouchers actually applied by the shared calculator.
@@ -473,6 +515,16 @@ export async function POST(req: NextRequest) {
             session.id,
             "Voucher sản phẩm đã được sử dụng hoặc đang bị khóa.",
           );
+        }
+        if (bundle) {
+          await persistOrderBundle(tx, {
+            order_id: createdOrder.id,
+            order_items: createdOrder.items,
+            source_items: data.items,
+            bundle,
+            redeem_immediately: payment.status === "COMPLETED",
+            performed_by: session.id,
+          });
         }
 
         // Award order_complete points only for orders with a known user
@@ -517,7 +569,7 @@ export async function POST(req: NextRequest) {
 
         return createdOrder;
       },
-      { maxWait: 5000, timeout: 10000 }
+      { isolationLevel: "Serializable", maxWait: 5000, timeout: 10000 }
     );
     const skipped_vouchers = Array.from(new Set(calculation.skippedVoucherIds)).flatMap(
       (voucherId) => {
@@ -533,6 +585,16 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (err) {
+    if (err instanceof BundlePromotionError) {
+      return NextResponse.json(
+        {
+          error: err.message,
+          code: "BUNDLE_NOT_ELIGIBLE",
+          details: { reason: err.reason },
+        },
+        { status: err.reason === "BUNDLE_VOUCHER_NOT_FOUND" ? 404 : 422 },
+      );
+    }
     if (err instanceof StaffPaymentBusinessError) {
       return NextResponse.json(
         {
@@ -590,9 +652,10 @@ export async function POST(req: NextRequest) {
  * Query params:
  *   order_type: Comma-separated values: "COUNTER", "PICKUP", "DELIVERY"
  *               Omit to return all types.
- *   status:     Single status filter: "PENDING" (ADMIN only — for "Chờ CK" tab).
+ *   status:     Single status filter such as "PENDING" for payment recovery.
  *               Omit to return all non-PENDING statuses for PICKUP/DELIVERY,
  *               or all statuses for COUNTER.
+ *   mine:       "true" limits PENDING counter transfers to the current creator.
  */
 export async function GET(req: NextRequest) {
   const session = await getSession();
@@ -606,6 +669,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const orderTypeParam = searchParams.get('order_type'); // e.g. "COUNTER" or "PICKUP,DELIVERY"
   const statusParam = searchParams.get('status');        // e.g. "PENDING"
+  const mineOnly = searchParams.get('mine') === 'true';
   
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
   const limit = Math.max(1, Math.min(100, parseInt(searchParams.get("limit") || "10", 10)));
@@ -631,7 +695,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (statusParam === 'PENDING') {
-      Object.assign(where, getPendingPaymentWhere(session.role, session.id));
+      Object.assign(where, getPendingPaymentWhere(session.role, session.id, mineOnly));
     } else if (statusParam === 'CANCELLED') {
       // "Đã huỷ" tab: show only CANCELLED orders (admin only — enforced above)
       where.status = 'CANCELLED';
@@ -674,6 +738,9 @@ export async function GET(req: NextRequest) {
           items: {
             include: {
               productVoucher: {
+                include: { package: { select: { name: true } } }
+              },
+              itemVoucher: {
                 include: { package: { select: { name: true } } }
               },
               addonVouchers: {

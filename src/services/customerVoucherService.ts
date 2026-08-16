@@ -7,6 +7,15 @@
  *  - exchangeVoucher            → POST /api/profile/vouchers/exchange
  */
 
+/**
+ * customerVoucherService — Customer-facing voucher API calls.
+ *
+ * Covers:
+ *  - listActiveVoucherPackages  → GET /api/voucher-packages
+ *  - listMyVouchers             → GET /api/profile/vouchers
+ *  - exchangeVoucher            → POST /api/profile/vouchers/exchange
+ */
+
 import { apiClient } from "@/src/lib/api/client";
 import type { ApiResponse } from "@/src/lib/types/api";
 
@@ -16,8 +25,10 @@ export interface VoucherPackage {
   id: string;
   name: string;
   description: string | null;
-  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP";
+  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
+  acquisition_mode: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
   points_cost: number;
+  ends_at?: string | null;
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
   menu_item_id: string | null;
@@ -34,16 +45,38 @@ export interface VoucherPackage {
   is_active: boolean;
   expires_after_days: number | null;
   quantity: number | null;
+  remaining_quantity?: number | null;
   max_per_user: number;
   created_at: string;
   user_redeemed_count?: number;
   menuItem?: { name: string; is_available: boolean } | null;
   addonOption?: { label: string } | null;
+  bundleRule?: BundleVoucherRule | null;
+}
+
+export interface BundleVoucherRule {
+  buy_quantity: number;
+  reward_quantity: number;
+  reward_kind: "PRODUCT" | "ADDON";
+  reward_mode: "SAME_CONFIG" | "FIXED_CONFIG" | "ALLOWED_SCOPE";
+  benefit_scaling: "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM";
+  max_applications_order: number;
+  max_reward_units_order: number | null;
+  productScopes: Array<{
+    role: "QUALIFIER" | "REWARD";
+    menu_item_id: string;
+    size: "SMALL" | "MEDIUM" | "LARGE" | null;
+    matcha_powder_id: string | null;
+    milk_type_id: string | null;
+    reference_price_vnd: number | null;
+    menuItem?: { name: string; category: "latte" | "fusion" | "extras"; is_available: boolean };
+  }>;
+  addonRewards: Array<{ addon_option_id: string; addonOption?: { label: string } }>;
 }
 
 export interface MyVoucher {
   qr_token: string;
-  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP";
+  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
   menu_item_id: string | null;
@@ -65,7 +98,14 @@ export interface MyVoucher {
   expires_at: string | null;
   redeemed_at: string | null;
   created_at: string;
-  package: { name: string; description: string | null; points_cost: number };
+  package: {
+    name: string;
+    description: string | null;
+    points_cost: number;
+    acquisition_mode?: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
+    ends_at?: string | null;
+    bundleRule?: BundleVoucherRule | null;
+  };
   menuItem: { name: string; is_available: boolean } | null;
   addonOption: { label: string } | null;
   /** Staff/admin who redeemed this voucher offline. null = user redeemed themselves online. */
@@ -74,7 +114,7 @@ export interface MyVoucher {
 
 export interface ExchangedVoucher {
   qr_token: string;
-  voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP";
+  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
   status: "ACTIVE";
   expires_at: string | null;
 }
@@ -113,6 +153,21 @@ export async function exchangeVoucher(packageId: string): Promise<ExchangedVouch
   const res = await apiClient.post<ApiResponse<ExchangedVoucher>>(
     "/api/profile/vouchers/exchange",
     { package_id: packageId }
+  );
+  return res.data.data;
+}
+
+export interface AcquiredVoucher extends ExchangedVoucher {
+  already_granted: boolean;
+}
+
+/** Claim a FREE_CLAIM package without points; repeated calls are idempotent. */
+export async function claimFreeVoucher(
+  packageId: string,
+): Promise<AcquiredVoucher> {
+  const res = await apiClient.post<ApiResponse<AcquiredVoucher>>(
+    "/api/profile/vouchers/claim",
+    { package_id: packageId },
   );
   return res.data.data;
 }
