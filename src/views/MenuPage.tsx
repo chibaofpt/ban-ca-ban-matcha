@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { AnimatePresence, animate, useMotionValue } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import { ArrowLeft, Gift } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -26,29 +26,17 @@ import { listMyVouchers } from "@/src/services/customerVoucherService";
 import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
 
-type PanelIndex = 0 | 1;
-
-const TAB_PANEL: Record<TabId, PanelIndex> = {
-  latte: 0,
-  fusion: 0,
-  extras: 0,
-  seasonal: 1,
-};
-
-/** Displays the customer menu carousel and its cart/voucher interaction layers. */
+/** Displays the customer menu with sticky tab bar and scroll-based section navigation. */
 export default function MenuPage() {
   const [activeTab, setActiveTab] = useState<TabId>("latte");
-  const [activePanel, setActivePanel] = useState<PanelIndex>(0);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [editingItem, setEditingItem] = useState<CartItem | undefined>();
   const [existingItemTarget, setExistingItemTarget] = useState<MenuItem | null>(null);
-  const [containerWidth, setContainerWidth] = useState(1000);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const latteSectionRef = useRef<HTMLDivElement>(null);
-  const fusionSectionRef = useRef<HTMLDivElement>(null);
-  const extrasSectionRef = useRef<HTMLDivElement>(null);
+  const latteSectionRef = useRef<HTMLDivElement | null>(null);
+  const fusionSectionRef = useRef<HTMLDivElement | null>(null);
+  const extrasSectionRef = useRef<HTMLDivElement | null>(null);
+  const seasonalSectionRef = useRef<HTMLDivElement | null>(null);
   const isScrollingProgrammatically = useRef(false);
-  const carouselX = useMotionValue(0);
   const setPowderData = usePowderStore((state) => state.setPowderData);
   const isLoggedIn = useIsLoggedIn();
   const isLoggedInSynced = useIsLoggedInSynced();
@@ -83,55 +71,39 @@ export default function MenuPage() {
     if (menuError || powderError) console.error("Error fetching menu or powders");
   }, [menuError, powderError]);
 
-  const snapToPanel = useCallback((panel: PanelIndex) => {
-    const width = containerRef.current?.offsetWidth ?? containerWidth;
-    animate(carouselX, -panel * width, { type: "spring", stiffness: 300, damping: 30 });
-  }, [carouselX, containerWidth]);
-
-  const scrollToSection = useCallback((ref: RefObject<HTMLDivElement | null>, delay = 0) => {
-    const scroll = () => ref.current?.scrollIntoView({
+  const scrollToSection = useCallback((ref: RefObject<HTMLDivElement | null>) => {
+    ref.current?.scrollIntoView({
       behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
       block: "start",
     });
-    if (delay > 0) setTimeout(scroll, delay);
-    else scroll();
   }, []);
 
   const handleTabChange = useCallback((newTab: TabId) => {
-    if (TAB_PANEL[newTab] === 1) {
-      if (activePanel !== 1) {
-        setActivePanel(1);
-        snapToPanel(1);
-      }
-      setActiveTab("seasonal");
-      return;
-    }
-
     setActiveTab(newTab);
-    const target = newTab === "extras"
-      ? extrasSectionRef
-      : newTab === "fusion"
-        ? fusionSectionRef
-        : latteSectionRef;
     isScrollingProgrammatically.current = true;
-    if (activePanel === 1) {
-      setActivePanel(0);
-      snapToPanel(0);
-      scrollToSection(target, 380);
-    } else {
-      scrollToSection(target);
-    }
+    const refMap: Record<TabId, RefObject<HTMLDivElement | null>> = {
+      latte: latteSectionRef,
+      fusion: fusionSectionRef,
+      extras: extrasSectionRef,
+      seasonal: seasonalSectionRef,
+    };
+    scrollToSection(refMap[newTab]);
     setTimeout(() => { isScrollingProgrammatically.current = false; }, 900);
-  }, [activePanel, scrollToSection, snapToPanel]);
+  }, [scrollToSection]);
 
+  /** Update active tab based on which section is currently visible while scrolling. */
   useEffect(() => {
     const fusionSection = fusionSectionRef.current;
     const extrasSection = extrasSectionRef.current;
-    if (!fusionSection || !extrasSection) return;
+    const seasonalSection = seasonalSectionRef.current;
+    if (!fusionSection || !extrasSection || !seasonalSection) return;
+
     const updateActiveSection = () => {
-      if (isScrollingProgrammatically.current || activePanel !== 0) return;
+      if (isScrollingProgrammatically.current) return;
       const stickyOffset = 140;
-      if (extrasSection.getBoundingClientRect().top <= stickyOffset) {
+      if (seasonalSection.getBoundingClientRect().top <= stickyOffset) {
+        setActiveTab("seasonal");
+      } else if (extrasSection.getBoundingClientRect().top <= stickyOffset) {
         setActiveTab("extras");
       } else if (fusionSection.getBoundingClientRect().top <= stickyOffset) {
         setActiveTab("fusion");
@@ -139,31 +111,14 @@ export default function MenuPage() {
         setActiveTab("latte");
       }
     };
+
     const observer = new IntersectionObserver(updateActiveSection, {
       rootMargin: "-140px 0px 0px 0px",
       threshold: 0,
     });
-    observer.observe(extrasSection);
     observer.observe(fusionSection);
-    return () => observer.disconnect();
-  }, [activePanel]);
-
-  useEffect(() => {
-    const handleResize = () => {
-      const width = containerRef.current?.offsetWidth;
-      if (width) carouselX.set(-activePanel * width);
-    };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [activePanel, carouselX]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry) setContainerWidth(entry.contentRect.width);
-    });
-    observer.observe(container);
+    observer.observe(extrasSection);
+    observer.observe(seasonalSection);
     return () => observer.disconnect();
   }, []);
 
@@ -190,7 +145,7 @@ export default function MenuPage() {
     <main className="min-h-screen bg-[#fdfcf7] text-foreground font-sans pt-4 pb-24 px-6">
       <div className="max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto flex flex-col h-full">
 
-        {/* Sticky header + tab bar — always visible */}
+        {/* Sticky header + tab bar — always visible when scrolling */}
         <div className="sticky top-0 z-20 bg-[#fdfcf7]/90 backdrop-blur-md pt-4 -mx-6 px-6 pb-1">
           <div className="flex items-center justify-between mb-4">
             <Link href="/" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/50 bg-white text-primary/60 shadow-sm transition-transform hover:text-primary hover:shadow-md active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label="Về trang chủ">
@@ -205,9 +160,8 @@ export default function MenuPage() {
           <TabBar activeTab={activeTab} setActiveTab={handleTabChange} />
         </div>
 
-        <div ref={containerRef} className="flex-1 relative w-full overflow-hidden">
+        <div className="flex-1 relative w-full">
           <MenuPanels
-            carouselX={carouselX}
             loading={menuLoading || powderLoading}
             latteItems={data?.latte ?? []}
             fusionItems={data?.fusion ?? []}
@@ -218,6 +172,7 @@ export default function MenuPage() {
             latteSectionRef={latteSectionRef}
             fusionSectionRef={fusionSectionRef}
             extrasSectionRef={extrasSectionRef}
+            seasonalSectionRef={seasonalSectionRef}
             onItemClick={handleItemClick}
           />
         </div>
