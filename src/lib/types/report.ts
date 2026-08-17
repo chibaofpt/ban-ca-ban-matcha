@@ -60,11 +60,19 @@ export interface StaffReport {
 // Admin-only report extras
 // ---------------------------------------------------------------------------
 
+/** Chi tiết gram theo loại bột cho addon có gram_value */
+export interface AddonPowderBreakdown {
+  powder_name: string;
+  total_grams: number;
+}
+
 /** Số lượt dùng từng addon option trong khoảng thời gian */
 export interface AddonUsage {
   addon_label: string;
   group_name: string;
   total_count: number;
+  /** Breakdown theo loại bột — chỉ có nếu addon có gram_value */
+  powder_breakdown?: AddonPowderBreakdown[];
 }
 
 /** Doanh thu và số đơn theo phương thức đặt hàng */

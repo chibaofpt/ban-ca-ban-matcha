@@ -5,7 +5,20 @@
 
 ---
 
+## [2026-08-17 10:17] — Thêm chi tiết loại bột matcha khi bấm vào addon trong báo cáo admin
+
+**Yêu cầu**: Trong mục "Addon đã dùng" của báo cáo admin, bấm vào 1 addon có gram (ví dụ: Extra Matcha +1g) thì hiện chi tiết loại bột matcha nào đã dùng kèm (ví dụ: Kasuga 3g, MH3 5g...)
+**Quyết định**: Chỉ thêm breakdown theo loại bột, không hiện theo đơn hàng
+**Thay đổi**:
+- `src/lib/types/report.ts`: Thêm interface `AddonPowderBreakdown` và field `powder_breakdown?` vào `AddonUsage`
+- `app/api/admin/report/route.ts`: Thêm tính toán breakdown bột theo từng addon (không đụng `lib/reportAggregation.ts`)
+- `src/components/report/DailyReportModal.tsx`: Thêm nút mũi tên ▸ và dòng mở rộng hiển thị breakdown khi bấm vào addon có gram
+**Kết quả QA**: ✅ lint PASS · ✅ TypeScript PASS · ⚠️ 3 test fail có sẵn trước thay đổi (không liên quan: 2 addon-opt-in-migration whitespace + 1 admin-order-cancel timeout)
+
+---
+
 ## [2026-08-11 15:47] — Đồng bộ thứ tự size (Nhỏ → Vừa → Lớn) cho tất cả các món
+
 
 **Yêu cầu**: Đồng bộ lại thứ tự size Nhỏ, Vừa, Lớn cho tất cả các món ở tất cả các trang Staff, Admin và Customer.
 **Quyết định**: Cập nhật logic sắp xếp (SIZE_ORDER) từ chuẩn cũ (M, L, XL) sang chuẩn mới (SMALL, MEDIUM, LARGE) tại các file API nguồn. Thay đổi này tự động áp dụng đúng thứ tự cho toàn bộ hệ thống.

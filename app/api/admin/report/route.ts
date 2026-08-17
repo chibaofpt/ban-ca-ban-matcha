@@ -10,6 +10,20 @@ import {
   type DefaultSizeEntry,
 } from "@/lib/reportAggregation";
 
+/** Chi tiết gram theo loại bột cho addon có gram_value */
+interface AddonPowderBreakdown {
+  powder_name: string;
+  total_grams: number;
+}
+
+/** AddonUsage mở rộng với breakdown theo loại bột */
+interface AddonUsageWithBreakdown {
+  addon_label: string;
+  group_name: string;
+  total_count: number;
+  powder_breakdown?: AddonPowderBreakdown[];
+}
+
 /** GET /api/admin/report — Generate full admin report with addon usage, revenue by type, and top products */
 export async function GET(req: NextRequest) {
   // 1. Validate query params
@@ -211,7 +225,39 @@ export async function GET(req: NextRequest) {
       defaultSizeEntries
     );
 
-    return NextResponse.json({ data: report });
+    // 11. Compute per-addon powder breakdown (gram addons only)
+    const powderById = new Map<string, string>(powders.map((p) => [p.id, p.name]));
+    const addonPowderMap = new Map<string, Map<string, number>>();
+
+    for (const order of rawOrders) {
+      for (const item of order.items) {
+        const powderName = item.selected_powder_id
+          ? (powderById.get(item.selected_powder_id) ?? "Không rõ")
+          : null;
+        if (powderName == null) continue;
+        for (const addon of item.addons) {
+          if (addon.addonOption.gram_value == null) continue;
+          const gramTotal = addon.addonOption.gram_value * addon.quantity * item.quantity;
+          const label = addon.addonOption.label;
+          if (!addonPowderMap.has(label)) addonPowderMap.set(label, new Map());
+          const pm = addonPowderMap.get(label)!;
+          pm.set(powderName, (pm.get(powderName) ?? 0) + gramTotal);
+        }
+      }
+    }
+
+    const addonUsageWithBreakdown: AddonUsageWithBreakdown[] = report.addon_usage.map((entry) => {
+      const pm = addonPowderMap.get(entry.addon_label);
+      if (!pm || pm.size === 0) return entry;
+      return {
+        ...entry,
+        powder_breakdown: Array.from(pm.entries())
+          .map(([powder_name, total_grams]) => ({ powder_name, total_grams }))
+          .sort((a, b) => b.total_grams - a.total_grams),
+      };
+    });
+
+    return NextResponse.json({ data: { ...report, addon_usage: addonUsageWithBreakdown } });
   } catch {
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },

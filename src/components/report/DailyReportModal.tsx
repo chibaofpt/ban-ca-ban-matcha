@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { X, BarChart3, Loader2, RefreshCw, TrendingUp } from "lucide-react";
+import { X, BarChart3, Loader2, RefreshCw, TrendingUp, ChevronDown, ChevronRight } from "lucide-react";
 import { getStaffReport, getAdminReport, getStaffList } from "@/src/services/reportService";
 import type { StaffReport, AdminReport, StaffMember } from "@/src/lib/types/report";
 import { toast } from "sonner";
@@ -93,6 +93,7 @@ export function DailyReportModal({
   const [adminReport, setAdminReport] = useState<AdminReport | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
+  const [expandedAddon, setExpandedAddon] = useState<string | null>(null);
 
   // Fetch staff list once for admin
   useEffect(() => {
@@ -458,23 +459,57 @@ export function DailyReportModal({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
-                        {adminReport.addon_usage.map((a) => (
-                          <tr key={a.addon_label}>
-                            <td className="py-2.5 font-medium text-foreground pr-2">
-                              {a.addon_label}
-                            </td>
-                            <td className="py-2.5 text-muted-foreground text-xs">
-                              {a.group_name}
-                            </td>
-                            <td className="py-2.5 text-right font-bold text-foreground tabular-nums">
-                              {a.total_count}
-                            </td>
-                          </tr>
-                        ))}
+                        {adminReport.addon_usage.map((a) => {
+                          const hasBreakdown = (a.powder_breakdown?.length ?? 0) > 0;
+                          const isExpanded = expandedAddon === a.addon_label;
+                          return (
+                            <tr
+                              key={a.addon_label}
+                              className={hasBreakdown ? "cursor-pointer hover:bg-secondary/20 transition-colors" : undefined}
+                              onClick={hasBreakdown ? () => setExpandedAddon(isExpanded ? null : a.addon_label) : undefined}
+                            >
+                              <td className="py-2.5 font-medium text-foreground pr-2">
+                                <span className="flex items-center gap-1">
+                                  {hasBreakdown && (
+                                    isExpanded
+                                      ? <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
+                                      : <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                                  )}
+                                  {a.addon_label}
+                                </span>
+                              </td>
+                              <td className="py-2.5 text-muted-foreground text-xs">
+                                {a.group_name}
+                              </td>
+                              <td className="py-2.5 text-right font-bold text-foreground tabular-nums">
+                                {a.total_count}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {adminReport.addon_usage
+                          .filter((a) => expandedAddon === a.addon_label && (a.powder_breakdown?.length ?? 0) > 0)
+                          .map((a) => (
+                            <tr key={`${a.addon_label}-detail`} className="bg-secondary/10">
+                              <td colSpan={3} className="pb-3 pt-1 px-4">
+                                <div className="space-y-1">
+                                  {a.powder_breakdown!.map((bd) => (
+                                    <div key={bd.powder_name} className="flex justify-between text-xs text-muted-foreground">
+                                      <span className="pl-4">↳ {bd.powder_name}</span>
+                                      <span className="tabular-nums font-medium text-foreground">
+                                        {bd.total_grams % 1 === 0 ? bd.total_grams : bd.total_grams.toFixed(1)}g
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
                       </tbody>
                     </table>
                   </SectionCard>
                 )}
+
 
                 {/* ---- Latte Sales ---- */}
                 {adminReport.latte_sales.length > 0 && (
