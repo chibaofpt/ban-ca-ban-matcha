@@ -7,6 +7,7 @@ import type {
   VoucherType,
   VoucherAcquisitionMode,
 } from "@prisma/client";
+import { toBundleRuleDto, type BundleRuleDtoSource } from "@/lib/voucherBundleDto";
 
 interface VoucherDtoSource {
   id?: unknown;
@@ -37,7 +38,7 @@ interface VoucherDtoSource {
     points_cost: number;
     acquisition_mode?: VoucherAcquisitionMode;
     ends_at?: Date | null;
-    bundleRule?: unknown;
+    bundleRule?: BundleRuleDtoSource | null;
   };
   menuItem: { name: string; is_available: boolean } | null;
   addonOption: { label: string } | null;
@@ -65,7 +66,12 @@ export function toPublicVoucherDto(voucher: VoucherDtoSource) {
     expires_at: voucher.expires_at,
     redeemed_at: voucher.redeemed_at,
     created_at: voucher.created_at,
-    package: voucher.package,
+    package: {
+      ...voucher.package,
+      ...(voucher.package.bundleRule === undefined
+        ? {}
+        : { bundleRule: voucher.package.bundleRule ? toBundleRuleDto(voucher.package.bundleRule) : null }),
+    },
     menuItem: voucher.menuItem,
     addonOption: voucher.addonOption,
     staff: voucher.staff,

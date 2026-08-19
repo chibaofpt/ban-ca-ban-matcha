@@ -10,7 +10,6 @@ export interface BundleProductScopeDraft {
   powderIds: string[];
   milkTypeIds: string[];
   fixedPowderId: string | null;
-  referencePriceVnd: number;
 }
 
 export interface BundleMenuConfig {
@@ -38,58 +37,32 @@ export interface BundleVoucherFormState {
 }
 
 type BundleInput = Extract<CreateVoucherPackageInput, { voucher_type: "BUNDLE" }>;
-type ScopePurpose = "QUALIFIER" | "FIXED_CONFIG" | "ALLOWED_SCOPE";
-
 /** Create an editable product scope with safe defaults from one menu item. */
 export function createBundleScopeDraft(menu: BundleMenuConfig): BundleProductScopeDraft {
   return {
     menuItemId: menu.id,
     category: menu.category,
     sizes: [],
-    powderIds: [],
-    milkTypeIds: [],
+    powderIds: menu.availablePowderIds.slice(0, 1),
+    milkTypeIds: menu.availableBaseLiquidIds.slice(0, 1),
     fixedPowderId: menu.fixedPowderId,
-    referencePriceVnd: 50_000,
   };
 }
 
-function valuesOrNull<T>(values: T[]): Array<T | null> {
-  return values.length > 0 ? values : [null];
-}
-
-function expandScope(
-  draft: BundleProductScopeDraft,
-  purpose: ScopePurpose,
-): VoucherBundleProductScope[] {
-  const sizes = valuesOrNull(draft.sizes);
-  const powderIds = purpose === "FIXED_CONFIG" && draft.category === "latte"
-    ? [draft.fixedPowderId]
-    : valuesOrNull(draft.powderIds);
-  const milkIds = valuesOrNull(draft.milkTypeIds);
-  const scopes: VoucherBundleProductScope[] = [];
-  for (const size of sizes) {
-    for (const powderId of powderIds) {
-      for (const milkId of milkIds) {
-        scopes.push({
-          menu_item_id: draft.menuItemId,
-          ...(size ? { size } : {}),
-          ...(powderId ? { powder_id: powderId } : {}),
-          ...(purpose === "FIXED_CONFIG" ? { milk_type_id: milkId } : milkId ? { milk_type_id: milkId } : {}),
-          ...(purpose === "ALLOWED_SCOPE" ? { reference_price_vnd: draft.referencePriceVnd } : {}),
-        });
-      }
-    }
-  }
-  return scopes;
+function groupedProduct(draft: BundleProductScopeDraft): VoucherBundleProductScope {
+  const isExtra = draft.category === "extras";
+  return {
+    menu_item_id: draft.menuItemId,
+    default_powder_id: isExtra ? null : draft.fixedPowderId ?? draft.powderIds[0] ?? null,
+    default_base_liquid_id: isExtra ? null : draft.milkTypeIds[0] ?? null,
+    allowed_sizes: isExtra ? [] : draft.sizes,
+  };
 }
 
 /** Builds the unified voucher API payload from per-product BUNDLE scopes. */
 export function buildBundleVoucherInput(state: BundleVoucherFormState): BundleInput {
   const productRewards = state.rewardKind === "PRODUCT" && state.rewardMode !== "SAME_CONFIG"
-    ? state.rewardProductScopes.flatMap((scope) => expandScope(
-        scope,
-        state.rewardMode === "FIXED_CONFIG" ? "FIXED_CONFIG" : "ALLOWED_SCOPE",
-      ))
+    ? state.rewardProductScopes.map(groupedProduct)
     : [];
   return {
     voucher_type: "BUNDLE",
@@ -110,8 +83,8 @@ export function buildBundleVoucherInput(state: BundleVoucherFormState): BundleIn
       benefit_scaling: state.benefitScaling,
       max_applications_per_order: state.maxApplications,
       max_reward_units_per_order: null,
-      qualifier_scopes: state.qualifierScopes.flatMap((scope) => expandScope(scope, "QUALIFIER")),
-      reward_product_scopes: productRewards,
+      qualifier_products: state.qualifierScopes.map(groupedProduct),
+      reward_products: productRewards,
       reward_addon_option_ids: state.rewardKind === "ADDON" ? state.rewardAddonOptionIds : [],
     },
   };

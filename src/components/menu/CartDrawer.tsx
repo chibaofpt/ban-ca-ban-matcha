@@ -7,7 +7,8 @@ import { Drawer } from "vaul";
 import { X, AlertTriangle, RefreshCcw, ArrowLeft } from "lucide-react";
 import { useCartStore, useCartTotalPrice } from "@/src/lib/store/cartStore";
 import { useCheckout } from "@/src/hooks/useCheckout";
-import { PriceChangedError, type PriceConflict } from "@/src/services/orderService";
+import { PriceChangedError, BundleNotEligibleError, type PriceConflict } from "@/src/services/orderService";
+import { toast } from "sonner";
 import { useIsLoggedIn } from "@/src/lib/store/authStore";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { useStoreStatusStore } from "@/src/lib/store/storeStore";
@@ -23,6 +24,7 @@ import ProductModal from "@/src/components/shared/ProductModal";
 import CartItemCard from "./cart/CartItemCard";
 import { CartItemVoucherPicker } from "./cart/CartItemVoucherPicker";
 import { CartDiscountPicker } from "./cart/CartDiscountPicker";
+import { CartBundleSection } from "./cart/CartBundleSection";
 import { CartFooter } from "./cart/CartFooter";
 import { getBundleVoucherSummary } from "./cart/CartBundleVoucherPanel";
 import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
@@ -32,9 +34,11 @@ import { deriveCheckoutRewards } from "@/src/utils/customerUx";
 import { buildExtrasCartItem } from "@/src/utils/cartHelpers";
 import {
   deriveBundleSelectionState,
+  buildBundleApplication,
   summarizeBundleCart,
   type BundleSelectionAllocation,
 } from "@/src/lib/utils/bundleVoucher";
+
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -84,6 +88,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   const items = useCartStore((s) => s.items);
   const addItem = useCartStore((s) => s.addItem);
   const removeItem = useCartStore((s) => s.removeItem);
+  const updateItem = useCartStore((s) => s.updateItem);
   const updateQuantity = useCartStore((s) => s.updateQuantity);
   const clearCart = useCartStore((s) => s.clearCart);
   const isCartOpen = useCartStore((s) => s.isCartOpen);
@@ -92,6 +97,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   const removeProductVoucher = useCartStore((s) => s.removeProductVoucher);
   const applyAddonVoucher = useCartStore((s) => s.applyAddonVoucher);
   const removeAddonVoucher = useCartStore((s) => s.removeAddonVoucher);
+
 
   const subtotalPrice = useCartTotalPrice();
   const isLoggedIn = useIsLoggedIn();
@@ -401,16 +407,19 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
         }
       }
 
-      await checkoutMutation.mutateAsync({
+      const orderResult = await checkoutMutation.mutateAsync({
         items: payloadItems,
         options: {
           orderType,
           pickupTime: finalPickupTime,
           discountVoucherIds: selectedDiscountVouchers.map((voucher) => voucher.qr_token),
-          ...(selectedBundleToken
+          ...(selectedBundleToken && selectedBundleSummary
             ? {
-                bundleVoucherQrToken: selectedBundleToken,
-                bundleRewardAllocations: bundleAllocations,
+                bundleApplications: [buildBundleApplication({
+                  voucher: selectedBundleSummary,
+                  cart: summarizeBundleCart(items),
+                  rewardAllocations: bundleAllocations,
+                })].filter((application) => application !== null),
               }
             : {}),
           ...(orderType === "DELIVERY" && deliveryAddress ? {
@@ -425,6 +434,9 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
           } : {})
         }
       });
+      if (orderResult.skipped_vouchers.length > 0) {
+        toast.info("Voucher không tạo thêm lợi ích lần này và vẫn còn hiệu lực để dùng sau.");
+      }
       clearCart();
       setCartOpen(false);
       resetCheckout();
@@ -435,6 +447,10 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
     } catch (err) {
       if (err instanceof PriceChangedError) {
         setCheckout({ status: "price_changed", conflicts: err.conflicts });
+      } else if (err instanceof BundleNotEligibleError) {
+        setSelectedBundleToken(null);
+        setBundleAllocations([]);
+        setCheckout({ status: "error", message: err.reason });
       } else {
         const message = err instanceof Error ? err.message : "Đặt hàng thất bại. Vui lòng thử lại.";
         setCheckout({ status: "error", message });
@@ -451,6 +467,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
     pickupTime,
     selectedDiscountVouchers,
     selectedBundleToken,
+    selectedBundleSummary,
     bundleAllocations,
     orderType,
     deliveryAddress,
@@ -609,30 +626,60 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
                         <p className="text-sm">Thêm đồ uống vào giỏ nhé</p>
                       </div>
                     ) : (
-                      [...items].reverse().map((item) => (
-                        <CartItemCard
-                          key={item.cartId}
-                          item={item}
-                          menuItem={menuItems.find(m => m.id === item.menuItemId)}
-                          powderData={powderData}
-                          milkTypes={menuData.milk_types}
-                          addonGroups={menuData.addon_groups}
-                          allVouchers={allVouchers}
-                          applicableProductVouchers={applicableProductVouchers.get(item.menuItemId) || []}
-                          applicableAddonVouchers={applicableAddonVouchersMap.get(item.cartId) || []}
-                          onEdit={() => openEdit(item)}
-                          onRemove={(id) => {
-                            removeItem(id);
-                            if (items.length === 1) setCartOpen(false);
-                          }}
-                          onUpdateQuantity={updateQuantity}
-                          onOpenVoucherPicker={(id) => setActiveItemForVoucher(id)}
-                          onRemoveProductVoucher={removeProductVoucher}
-                          onRemoveAddonVoucher={removeAddonVoucher}
-                        />
-                      ))
+                      <>
+                        {/* Bundle section — shown when a BUNDLE voucher is active */}
+                        {selectedBundleToken && selectedBundleVoucher?.package.bundleRule && (() => {
+                          const bundleRule = selectedBundleVoucher.package.bundleRule!;
+                          const qualifierItems = items.filter((i) => i.bundleQualifierVoucherToken === selectedBundleToken);
+                          const rewardItems = items.filter((i) => i.bundleRewardVoucherToken === selectedBundleToken);
+                          return (
+                            <CartBundleSection
+                              qualifierItems={qualifierItems}
+                              rewardItems={rewardItems}
+                              bundleRule={bundleRule}
+                              menuData={menuData}
+                              powders={powderData.data}
+                              milkTypes={menuData.milk_types}
+                              defaultPowderGram={powderData.default_powder_gram}
+                              onEditItem={(item) => openEdit(item)}
+                              onSwapItem={(oldCartId, newData) => updateItem(oldCartId, newData)}
+                              onRemoveBundle={() => {
+                                items.filter((i) => i.bundleRewardVoucherToken === selectedBundleToken || i.bundleQualifierVoucherToken === selectedBundleToken).forEach((i) => removeItem(i.cartId));
+                                setSelectedBundleToken(null);
+                                setBundleAllocations([]);
+                              }}
+                            />
+                          );
+                        })()}
+                        {/* Regular items — exclude bundle-tagged lines */}
+                        {[...items].reverse()
+                          .filter((item) => !item.bundleRewardVoucherToken && !item.bundleQualifierVoucherToken)
+                          .map((item) => (
+                          <CartItemCard
+                            key={item.cartId}
+                            item={item}
+                            menuItem={menuItems.find(m => m.id === item.menuItemId)}
+                            powderData={powderData}
+                            milkTypes={menuData.milk_types}
+                            addonGroups={menuData.addon_groups}
+                            allVouchers={allVouchers}
+                            applicableProductVouchers={applicableProductVouchers.get(item.menuItemId) || []}
+                            applicableAddonVouchers={applicableAddonVouchersMap.get(item.cartId) || []}
+                            onEdit={() => openEdit(item)}
+                            onRemove={(id) => {
+                              removeItem(id);
+                              if (items.length === 1) setCartOpen(false);
+                            }}
+                            onUpdateQuantity={updateQuantity}
+                            onOpenVoucherPicker={(id) => setActiveItemForVoucher(id)}
+                            onRemoveProductVoucher={removeProductVoucher}
+                            onRemoveAddonVoucher={removeAddonVoucher}
+                          />
+                        ))}
+                      </>
                     )}
                   </motion.div>
+
                 )}
               </AnimatePresence>
             </div>

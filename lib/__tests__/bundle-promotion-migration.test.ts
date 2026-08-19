@@ -9,6 +9,10 @@ const migrationPath = join(
   "20260811221000_add_bundle_promotions",
   "migration.sql",
 );
+const groupedMigrationPath = join(
+  process.cwd(), "prisma", "migrations",
+  "20260817213000_group_bundle_products_and_multi_applications", "migration.sql",
+);
 
 describe("migration chương trình mua X tặng Y", () => {
   it("tạo đủ bảng nguồn-sự-thật và khóa chống cấp voucher trùng", () => {
@@ -57,5 +61,40 @@ describe("migration chương trình mua X tặng Y", () => {
     }
     expect(migration).not.toMatch(/CREATE\s+POLICY/i);
     expect(migration).not.toMatch(/GRANT\s+ALL/i);
+  });
+});
+
+describe("migration BUNDLE grouped scope và nhiều voucher mỗi order", () => {
+  it("gộp product, tách allowed sizes và loại reference price", () => {
+    const migration = readFileSync(groupedMigrationPath, "utf8");
+    expect(migration).toContain('"default_powder_id" UUID');
+    expect(migration).toContain('"default_base_liquid_id" UUID');
+    expect(migration).toContain('CREATE TABLE public."voucher_bundle_product_scope_sizes_v2"');
+    expect(migration).toContain('DROP TABLE public."voucher_bundle_product_scopes"');
+    expect(migration).not.toContain('"reference_price_vnd" INTEGER');
+  });
+
+  it("dừng và báo package ID khi cấu hình cũ mâu thuẫn", () => {
+    const migration = readFileSync(groupedMigrationPath, "utf8");
+    expect(migration).toContain("BUNDLE migration requires admin review for package IDs");
+    expect(migration).toContain("COUNT(DISTINCT COALESCE(default_powder_id::text");
+  });
+
+  it("cho một order có nhiều application và lưu qualifier allocations", () => {
+    const migration = readFileSync(groupedMigrationPath, "utf8");
+    expect(migration).toContain('DROP INDEX public."order_bundle_applications_order_id_key"');
+    expect(migration).toContain('CREATE TABLE public."order_bundle_qualifier_allocations"');
+    expect(migration).toContain('UNIQUE ("application_id", "order_item_id")');
+    expect(migration).toContain('DROP INDEX IF EXISTS public."idx_order_items_item_voucher_id"');
+    expect(migration).toContain('CREATE INDEX IF NOT EXISTS "idx_order_items_selected_milk_type_id"');
+  });
+
+  it("bật RLS, revoke và index mọi FK của bảng mới", () => {
+    const migration = readFileSync(groupedMigrationPath, "utf8");
+    for (const table of ["voucher_bundle_product_scope_sizes", "order_bundle_qualifier_allocations"]) {
+      expect(migration).toContain(`ALTER TABLE public."${table}" ENABLE ROW LEVEL SECURITY;`);
+      expect(migration).toContain(`REVOKE ALL PRIVILEGES ON TABLE public."${table}"`);
+    }
+    expect(migration).toContain('CREATE INDEX "order_bundle_qualifier_allocations_order_item_id_idx"');
   });
 });

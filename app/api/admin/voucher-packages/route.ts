@@ -23,6 +23,7 @@ import {
   VoucherAddonReferenceError,
   type AdminVoucherAddonDatabase,
 } from "@/lib/adminVoucherAddon";
+import { toVoucherPackageBundleDto } from "@/lib/voucherBundleDto";
 
 export const dynamic = "force-dynamic";
 
@@ -47,12 +48,18 @@ export async function GET() {
       include: {
         menuItem: { select: { name: true, is_available: true } },
         addonOption: { select: { label: true } },
-        bundleRule: { include: { productScopes: true, addonRewards: true } },
+        bundleRule: { include: {
+          productScopes: { include: {
+            sizes: true,
+            menuItem: { select: { name: true, category: true, is_available: true } },
+          } },
+          addonRewards: true,
+        } },
         _count: { select: { vouchers: true } },
       },
     });
 
-    return NextResponse.json({ data: packages });
+    return NextResponse.json({ data: packages.map(toVoucherPackageBundleDto) });
   } catch (err) {
     console.error("[GET /api/admin/voucher-packages]", err);
     return NextResponse.json(
@@ -89,7 +96,9 @@ export async function POST(req: NextRequest) {
           createBundleVoucherPackage(tx as unknown as AdminVoucherBundleTransaction, data),
         );
         await invalidateVoucherCaches();
-        return NextResponse.json({ data: pkg }, { status: 201 });
+        return NextResponse.json({
+          data: toVoucherPackageBundleDto(pkg as Parameters<typeof toVoucherPackageBundleDto>[0]),
+        }, { status: 201 });
       } catch (error) {
         if (error instanceof VoucherBundleReferenceError) {
           return NextResponse.json(

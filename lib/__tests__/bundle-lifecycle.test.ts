@@ -11,7 +11,7 @@ describe("lifecycle voucher BUNDLE theo order", () => {
       orderItemAddonVoucher: { findMany: vi.fn().mockResolvedValue([]) },
       order: { findUnique: vi.fn().mockResolvedValue({ freeship_voucher_id: null }) },
       orderBundleApplication: {
-        findUnique: vi.fn().mockResolvedValue({ voucher_id: "bundle-voucher" }),
+        findMany: vi.fn().mockResolvedValue([{ voucher_id: "bundle-voucher" }]),
         updateMany: applicationUpdateMany,
       },
       voucher: {

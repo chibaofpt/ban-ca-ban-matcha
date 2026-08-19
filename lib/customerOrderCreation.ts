@@ -7,7 +7,7 @@ import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
 import { generateOrderCode } from "@/lib/orderCode";
 import { getOrderValueViolation } from "@/lib/orderLimits";
 import { processOrderItems } from "@/lib/orders";
-import { resolveOrderBundle, type OrderBundleDatabase } from "@/lib/orderBundle";
+import { resolveOrderBundles, type OrderBundleDatabase } from "@/lib/orderBundle";
 import { prisma } from "@/lib/prisma";
 import { sendPushToRoles } from "@/lib/push";
 import type { CustomerOrderInput } from "@/lib/validations/order";
@@ -44,22 +44,21 @@ export async function createCustomerOrder(
     productVoucherMap,
     addonVoucherMap,
   );
-  const bundle = data.bundle_voucher_qr_token
-    ? await resolveOrderBundle(prisma as unknown as OrderBundleDatabase, {
-        qr_token: data.bundle_voucher_qr_token,
+  const bundles = data.bundle_applications.length > 0
+    ? await resolveOrderBundles(prisma as unknown as OrderBundleDatabase, {
         voucher_owner_id: userId,
         items: data.items,
         resolved_items: resolvedItems,
-        reward_allocations: data.bundle_reward_allocations,
+        bundle_applications: data.bundle_applications,
       })
-    : null;
+    : { bundles: [], line_discounts_vnd: data.items.map(() => 0), skipped_qr_tokens: [] };
   const calculatorItems = resolvedItems.map((item, index) => ({
     menu_item_id: item.menu_item_id,
     unit_price_vnd: item.unit_price_vnd,
     addons_price_vnd: item.addons_price_vnd,
     quantity: item.quantity,
     line_total: item.line_total,
-    bundle_discount_vnd: bundle?.line_discounts_vnd[index] ?? 0,
+    bundle_discount_vnd: bundles.line_discounts_vnd[index] ?? 0,
     product_voucher_id: item.product_voucher_id,
     item_voucher_id: item.item_voucher_id,
     product_voucher_covered_vnd: (item.item_voucher_id ?? item.product_voucher_id)
@@ -111,7 +110,7 @@ export async function createCustomerOrder(
     appliedProductVoucherIds: Array.from(productVoucherMap.keys()).filter((id) =>
       appliedIds.has(id),
     ),
-    appliedBundle: bundle,
+    appliedBundles: bundles,
   });
 
   const paymentQrUrl = buildVietQRUrl({
@@ -124,6 +123,7 @@ export async function createCustomerOrder(
       return qrToken ? [qrToken] : [];
     },
   );
+  skippedVouchers.push(...bundles.skipped_qr_tokens.filter((token) => !skippedVouchers.includes(token)));
 
   after(() => {
     console.log(`[AFTER JOB] Starting background push notification for new order: ${order.order_code}`);

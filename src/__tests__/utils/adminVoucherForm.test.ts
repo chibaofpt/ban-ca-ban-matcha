@@ -62,7 +62,8 @@ describe("Form quản lý voucher hợp nhất", () => {
       rewardProductScopes: [{ menuItemId: "latte-2", category: "latte" as const, sizes: [], powderIds: [], milkTypeIds: [], fixedPowderId: "p2", referencePriceVnd: 55_000 }],
       maxApplications: 2,
     };
-    expect(estimateVoucherLiabilityVnd(draft, new Map(), new Map())).toBe(11_000_000);
+    const menuPrices = new Map([["latte-2", 55_000]]);
+    expect(estimateVoucherLiabilityVnd(draft, menuPrices, new Map())).toBe(11_000_000);
     expect(estimateVoucherLiabilityVnd({ ...draft, quantity: null }, new Map(), new Map())).toBeNull();
   });
 

@@ -117,11 +117,13 @@
 
 html {
   scroll-behavior: smooth;
-  overflow-y: scroll;
+  /* Do NOT add overflow-y: scroll here — breaks position:sticky on mobile */
 }
 
 body {
-  overflow-x: hidden;
+  /* Do NOT add overflow-x: hidden here — on mobile Safari/Chrome this shifts
+     the scroll container from window to body, which breaks position:sticky.
+     Horizontal overflow is handled by overflow-x-hidden on inner wrappers instead. */
 }
 
 .dismissable-sheet {

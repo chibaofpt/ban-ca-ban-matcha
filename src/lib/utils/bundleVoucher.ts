@@ -39,6 +39,12 @@ export interface BundleSelectionAllocation {
   addon_option_id?: string;
 }
 
+export interface BundleApplicationPayload {
+  voucher_qr_token: string;
+  qualifier_allocations: BundleSelectionAllocation[];
+  reward_allocations: BundleSelectionAllocation[];
+}
+
 export type BundleSelectionState = {
   status: "INELIGIBLE" | "NEEDS_REWARD" | "READY" | "STALE" | "CONFLICT";
   message: string;
@@ -208,5 +214,71 @@ export function deriveBundleSelectionState(input: {
   return {
     status: "READY",
     message: `Đã áp dụng ${formatBundleBenefit(input.voucher).toLowerCase()}`,
+  };
+}
+
+/** Build explicit qualifier pools for one selected BUNDLE without reusing masked or reward units. */
+export function buildBundleApplication(input: {
+  voucher: BundleVoucherSummary;
+  cart: BundleCartSummaryItem[];
+  rewardAllocations: BundleSelectionAllocation[];
+}): BundleApplicationPayload | null {
+  const rewardTotal = input.rewardAllocations.reduce(
+    (sum, allocation) => sum + allocation.quantity,
+    0,
+  );
+  let qualifierQuantity: number;
+  if (input.voucher.reward_kind === "ADDON" && input.voucher.benefit_scaling === "ONCE_PER_ORDER") {
+    qualifierQuantity = input.voucher.buy_quantity;
+  } else if (
+    input.voucher.reward_kind === "ADDON" &&
+    input.voucher.benefit_scaling === "PER_QUALIFYING_ITEM"
+  ) {
+    const eligibleQuantity = input.cart.reduce(
+      (sum, line) => sum + (input.voucher.eligible_menu_item_ids.includes(line.menu_item_id)
+        ? Math.max(0, line.quantity - line.product_voucher_quantity)
+        : 0),
+      0,
+    );
+    qualifierQuantity = Math.min(
+      eligibleQuantity,
+      input.voucher.buy_quantity * input.voucher.max_applications_per_order,
+    );
+  } else {
+    const applicationCount = rewardTotal / input.voucher.reward_quantity;
+    if (!Number.isInteger(applicationCount) || applicationCount < 1) return null;
+    qualifierQuantity = applicationCount * input.voucher.buy_quantity;
+  }
+
+  const productRewardsByLine = new Map<string, number>();
+  if (input.voucher.reward_kind === "PRODUCT") {
+    for (const allocation of input.rewardAllocations) {
+      productRewardsByLine.set(
+        allocation.client_line_id,
+        (productRewardsByLine.get(allocation.client_line_id) ?? 0) + allocation.quantity,
+      );
+    }
+  }
+  const qualifierAllocations: BundleSelectionAllocation[] = [];
+  let remaining = qualifierQuantity;
+  for (const line of input.cart) {
+    if (!input.voucher.eligible_menu_item_ids.includes(line.menu_item_id)) continue;
+    const available = Math.max(
+      0,
+      line.quantity - line.product_voucher_quantity -
+        (productRewardsByLine.get(line.client_line_id) ?? 0),
+    );
+    const quantity = Math.min(available, remaining);
+    if (quantity > 0) {
+      qualifierAllocations.push({ client_line_id: line.client_line_id, quantity });
+      remaining -= quantity;
+    }
+    if (remaining === 0) break;
+  }
+  if (remaining > 0) return null;
+  return {
+    voucher_qr_token: input.voucher.qr_token,
+    qualifier_allocations: qualifierAllocations,
+    reward_allocations: input.rewardAllocations,
   };
 }

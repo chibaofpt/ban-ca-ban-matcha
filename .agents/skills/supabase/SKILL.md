@@ -1,12 +1,17 @@
 ---
 name: supabase
-description: "Use when doing ANY task involving Supabase. Triggers: Supabase products (Database, Auth, Edge Functions, Realtime, Storage, Vectors, Cron, Queues); client libraries and SSR integrations (supabase-js, @supabase/ssr) in Next.js, React, SvelteKit, Astro, Remix; auth issues (login, logout, sessions, JWT, cookies, getSession, getUser, getClaims, RLS); Supabase CLI or MCP server; schema changes, migrations, security audits, Postgres extensions (pg_graphql, pg_cron, pg_vector)."
-metadata:
-  author: supabase
-  version: "0.1.0"
+description: Apply project-specific Supabase boundaries for Database, Storage, Realtime, RLS, Cron, keys and data-plane security in Bạn Cá Bán Matcha. Use for any Supabase or PostgreSQL platform task.
 ---
 
 # Supabase
+
+## Project ownership override
+
+- This project uses custom phone/password auth; do not introduce Supabase Auth.
+- Prisma owns application schema and migration history. Inspect `prisma/schema.prisma` and committed migrations first.
+- Never use `prisma db push`, Supabase migration files, `db pull`, direct SQL iteration or MCP SQL as an alternate application-schema workflow.
+- Supabase tools may inspect RLS, grants, Storage, Realtime, Cron and data-plane state. Remote mutations require explicit task authority.
+- If generic guidance below conflicts with this section or `AGENTS.md`, this project override wins.
 
 ## Core Principles
 
@@ -88,9 +93,9 @@ Before implementing any Supabase feature, find the relevant documentation. Use t
 2. **Fetch docs pages as markdown** — any docs page can be fetched by appending `.md` to the URL path.
 3. **Web search** for Supabase-specific topics when you don't know which page to look at.
 
-## Making and Committing Schema Changes
+## Generic schema guidance — not used for this project's application schema
 
-**To make schema changes, use `execute_sql` (MCP) or `supabase db query` (CLI).** These run SQL directly on the database without creating migration history entries, so you can iterate freely and generate a clean migration when ready.
+Do not follow this section for application tables. Use the Prisma workflow routed by `AGENTS.md`.
 
 Do NOT use `apply_migration` to change a local database schema — it writes a migration history entry on every call, which means you can't iterate, and `supabase db diff` / `supabase db pull` will produce empty or conflicting diffs. If you use it, you'll be stuck with whatever SQL you passed on the first try.
 

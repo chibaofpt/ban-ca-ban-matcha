@@ -53,12 +53,12 @@ Chạy tuần tự các check sau:
 npm.cmd run lint
 npx.cmd tsc --noEmit
 npm.cmd run test
+npm.cmd run resources:check
 ```
 
 - Nếu **TẤT CẢ PASS** → tiếp tục Bước 4
 - Nếu có lỗi:
-  - Thử sửa tự động (tối đa **2 lần**)
-  - Nếu vẫn fail → DỪNG
+  - DỪNG; skill QA/push không tự sửa production code
   - Thông báo: "Có lỗi khi kiểm tra code. Cần Bảo xem lại trước khi đẩy lên."
   - Liệt kê lỗi bằng tiếng Việt đơn giản (không thuật ngữ)
 
@@ -80,11 +80,10 @@ git diff --staged
 - [ ] API response format đúng `{ data: T }` hoặc `{ error, code }`
 - [ ] Không có import `lib/` trong `src/`
 - [ ] Không có `window.confirm`
-- [ ] File không vượt 300 dòng
+- [ ] File mới không vượt 300 dòng; file lớn hiện có không bị opportunistic refactor
 
 Nếu phát hiện vấn đề:
-- Vấn đề nhỏ (console.log thừa, format) → tự sửa
-- Vấn đề lớn (logic sai, vùng cấm) → DỪNG + thông báo + "Cần Bảo xem lại"
+- Mọi vấn đề → DỪNG, báo finding và chuyển lại agent implement; không cleanup/refactor trong skill push
 
 ### Bước 5 — Commit
 

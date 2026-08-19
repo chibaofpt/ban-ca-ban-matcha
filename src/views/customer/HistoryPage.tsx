@@ -22,6 +22,8 @@ import {
 } from "@/src/lib/utils/historyTab";
 import { cancelOrder, fetchCustomerOrders } from "@/src/services/orderService";
 
+type OrderFilter = "active" | "cancelled";
+
 /** Customer history page combining order tracking and grouped point transactions. */
 export default function HistoryPage() {
   const router = useRouter();
@@ -32,6 +34,7 @@ export default function HistoryPage() {
   const { data: points } = useCustomerPoints();
   const [orderPage, setOrderPage] = useState(1);
   const [pointsPage, setPointsPage] = useState(1);
+  const [orderFilter, setOrderFilter] = useState<OrderFilter>("active");
   const [cancelModal, setCancelModal] = useState({
     isOpen: false,
     orderId: "",
@@ -44,11 +47,11 @@ export default function HistoryPage() {
   } = useReorderItem();
 
   const fetchOrders = useCallback(
-    () => fetchCustomerOrders({ page: orderPage, limit: 10 }),
-    [orderPage],
+    () => fetchCustomerOrders({ page: orderPage, limit: 10, statusFilter: orderFilter }),
+    [orderPage, orderFilter],
   );
   const { data: ordersData, isLoading: ordersLoading } = useQuery({
-    queryKey: ["customer", "orders", { page: orderPage }],
+    queryKey: ["customer", "orders", { page: orderPage, filter: orderFilter }],
     queryFn: fetchOrders,
     refetchInterval: 15_000,
     enabled: activeTab === "orders",
@@ -94,6 +97,11 @@ export default function HistoryPage() {
     if (tab === "orders") setOrderPage(1);
     else setPointsPage(1);
     router.replace(getHistoryTabHref(tab), { scroll: false });
+  };
+
+  const changeOrderFilter = (filter: OrderFilter): void => {
+    setOrderFilter(filter);
+    setOrderPage(1);
   };
 
   const confirmCancel = (): void => {
@@ -166,6 +174,8 @@ export default function HistoryPage() {
               isLoading={ordersLoading}
               page={orderPage}
               totalPages={totalOrderPages}
+              filter={orderFilter}
+              onFilterChange={changeOrderFilter}
               onPageChange={setOrderPage}
               onCancel={(orderId) => setCancelModal({ isOpen: true, orderId })}
               onReorder={reorder}

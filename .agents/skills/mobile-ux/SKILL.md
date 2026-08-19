@@ -10,7 +10,7 @@ Use this skill whenever building or reviewing UI components, pages, or optimizin
 ## Core Stack
 - **Framer Motion**: Used for all micro-interactions, gestures (drag/swipe), and animations.
 - **Tailwind CSS**: Used for responsive layouts, sticky positioning, scroll-snapping, and styling.
-- *Note*: Do not introduce other gesture or modal libraries unless explicitly requested.
+- Use the project overlay primitives from `SPECIFICATION.md`: Radix for dialog semantics and Vaul for mobile sheets. Do not add another overlay library.
 - *Icons*: Use `lucide-react` (SVG icons). **Never use emojis as structural icons.**
 
 ## 1. Touch & Interaction
@@ -27,6 +27,9 @@ Use this skill whenever building or reviewing UI components, pages, or optimizin
 - **Meaningful Motion**: State changes (expanded, modal open) should animate smoothly, not snap.
 
 ## 3. Swipe-to-Dismiss (Bottom Sheets)
+
+Prefer the shared project overlay/Vaul implementation. Vaul owns drag thresholds, focus, portal
+and swipe behavior; do not copy the custom Framer Motion sample below into new code.
 - **Rule**: Bottom-sheet style modals must support drag/swipe-to-dismiss on mobile.
 - **Implementation**:
   ```tsx
@@ -68,7 +71,7 @@ Use this skill whenever building or reviewing UI components, pages, or optimizin
 - **Lazy Loading**: Use dynamic imports (`next/dynamic`) for heavy components or below-the-fold content.
 
 ## 8. Light/Dark Mode Contrast
-- **Theme Tokens**: Use semantic Tailwind classes (e.g., `text-slate-900 dark:text-white`), avoid hardcoded raw hex values in components.
+- **Theme Tokens**: Use project semantic Tailwind tokens, avoid hardcoded raw hex values in components.
 - **State Clarity**: Ensure pressed, focused, and disabled states are clearly distinguishable in *both* light and dark modes.
 
 ## 9. Haptic Feedback (STRICT NEGATIVE RULE)

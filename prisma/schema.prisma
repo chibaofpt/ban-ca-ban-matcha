@@ -214,25 +214,33 @@ model VoucherBundleRule {
 }
 
 model VoucherBundleProductScope {
-  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  package_id          String              @db.Uuid
-  role                BundleScopeRole
-  menu_item_id        String              @db.Uuid
-  size                Size?
-  matcha_powder_id    String?             @db.Uuid
-  milk_type_id        String?             @db.Uuid
-  reference_price_vnd Int?
-  bundleRule          VoucherBundleRule   @relation(fields: [package_id], references: [package_id], onDelete: Cascade, onUpdate: NoAction)
-  menuItem            MenuItem            @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  matchaPowder        MatchaPowder?       @relation(fields: [matcha_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  milkType            MilkType?           @relation(fields: [milk_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                     String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  package_id             String              @db.Uuid
+  role                   BundleScopeRole
+  menu_item_id           String              @db.Uuid
+  default_powder_id      String?             @db.Uuid
+  default_base_liquid_id String?             @db.Uuid
+  bundleRule             VoucherBundleRule   @relation(fields: [package_id], references: [package_id], onDelete: Cascade, onUpdate: NoAction)
+  menuItem               MenuItem            @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  defaultPowder          MatchaPowder?       @relation(fields: [default_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  defaultBaseLiquid      MilkType?           @relation(fields: [default_base_liquid_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sizes                  VoucherBundleProductScopeSize[]
 
-  @@unique([package_id, role, menu_item_id, size, matcha_powder_id, milk_type_id])
+  @@unique([package_id, role, menu_item_id])
   @@index([package_id, role])
   @@index([menu_item_id])
-  @@index([matcha_powder_id])
-  @@index([milk_type_id])
+  @@index([default_powder_id])
+  @@index([default_base_liquid_id])
   @@map("voucher_bundle_product_scopes")
+}
+
+model VoucherBundleProductScopeSize {
+  scope_id String                    @db.Uuid
+  size     Size
+  scope    VoucherBundleProductScope @relation(fields: [scope_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([scope_id, size])
+  @@map("voucher_bundle_product_scope_sizes")
 }
 
 model VoucherBundleAddonReward {
@@ -405,7 +413,7 @@ model Order {
   address              Address?                   @relation(fields: [address_id], references: [id], onDelete: SetNull)
   discountVouchers     OrderDiscountVoucher[]
   pointsLogs           PointsLog[]
-  bundleApplication    OrderBundleApplication?
+  bundleApplications   OrderBundleApplication[]
 
   @@index([created_at(sort: Desc)], map: "idx_orders_created_at")
   @@index([status], map: "idx_orders_status")
@@ -446,6 +454,7 @@ model OrderItem {
   selectedPowder        MatchaPowder?           @relation(fields: [selected_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   addonVouchers         OrderItemAddonVoucher[]
   bundleRewards         OrderBundleReward[]
+  bundleQualifiers      OrderBundleQualifierAllocation[]
 
   @@index([order_id], map: "idx_order_items_order_id")
   @@index([selected_milk_type_id], map: "idx_order_items_selected_milk_type_id")
@@ -467,7 +476,7 @@ model OrderItemAddon {
 
 model OrderBundleApplication {
   id                String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  order_id          String                     @unique @db.Uuid
+  order_id          String                     @db.Uuid
   voucher_id        String                     @unique @db.Uuid
   application_count Int
   status            BundleApplicationStatus    @default(RESERVED)
@@ -475,9 +484,24 @@ model OrderBundleApplication {
   order             Order                      @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   voucher           Voucher                    @relation(fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   rewards           OrderBundleReward[]
+  qualifiers        OrderBundleQualifierAllocation[]
 
+  @@index([order_id])
   @@index([status])
   @@map("order_bundle_applications")
+}
+
+model OrderBundleQualifierAllocation {
+  id             String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  application_id String                 @db.Uuid
+  order_item_id  String                 @db.Uuid
+  quantity       Int
+  application    OrderBundleApplication @relation(fields: [application_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  orderItem      OrderItem              @relation(fields: [order_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([application_id, order_item_id])
+  @@index([order_item_id])
+  @@map("order_bundle_qualifier_allocations")
 }
 
 model OrderBundleReward {
@@ -494,6 +518,8 @@ model OrderBundleReward {
   @@index([application_id])
   @@index([order_item_id])
   @@index([order_item_addon_id])
+  @@unique([application_id, order_item_id])
+  @@unique([application_id, order_item_addon_id])
   @@map("order_bundle_rewards")
 }
 
@@ -546,7 +572,7 @@ model MatchaPowder {
   powderSizeConfigs       PowderSizeConfig[]
   voucherPackages         VoucherPackage[]
   vouchers                Voucher[]
-  bundleScopes            VoucherBundleProductScope[]
+  bundleDefaultScopes     VoucherBundleProductScope[]
 
   @@map("matcha_powder")
 }
@@ -562,7 +588,7 @@ model MilkType {
   orderItems      OrderItem[]
   voucherPackages VoucherPackage[]
   vouchers        Voucher[]
-  bundleScopes    VoucherBundleProductScope[]
+  bundleDefaultScopes VoucherBundleProductScope[]
   defaultForItems MenuItem[]               @relation("MenuItem_defaultBaseLiquid")
   allowedForItems MenuItemAllowedBaseLiquid[]
 

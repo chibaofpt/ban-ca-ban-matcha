@@ -48,13 +48,15 @@ Run only checks that do not modify a database:
 npm.cmd run lint
 npx.cmd tsc --noEmit
 npm.cmd run test
+npm.cmd run resources:check
 npx.cmd dotenv -e .env.staging -- prisma validate
 git diff --check
 ```
 
 - Do not run `npm run build`, `npm run build:staging`, `db push`, `migrate reset`, or any production migration during QA.
 - Treat failed checks, whitespace errors, secrets in the diff, unexplained API/schema changes, or business-rule risks as **BLOCKED**.
-- Report all QA findings in Vietnamese and stop when blocked.
+- Report all QA findings in Vietnamese and stop when blocked. QA/push does not modify production
+  code, auto-fix lint or expand scope; return failures to the implementer.
 
 ## 4. Schema Changes on Staging
 

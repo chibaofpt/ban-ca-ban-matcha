@@ -12,6 +12,7 @@
     "build:prod": "npm run sync:maplibre-assets && dotenv -e .env.prod -- prisma generate && dotenv -e .env.prod -- prisma migrate deploy && dotenv -e .env.prod -- next build",
     "start": "next start",
     "lint": "eslint",
+    "resources:check": "node scripts/check-resources.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "postinstall": "prisma generate",

@@ -1,6 +1,9 @@
-# Bạn Cá Bán Matcha — API Routes
+# Bạn Cá Bán Matcha — API Contracts
 
-> Read this file when implementing or modifying any API route.
+> **Authority:** public API paths, HTTP methods, request/response contracts and compatibility.
+> **Read when:** creating or changing a route, service, DTO or API consumer.
+> **Update when:** a supported path/method/field/response behavior changes.
+> **Does not own:** domain formulas, physical database fields or frontend architecture.
 
 ---
 
@@ -104,7 +107,8 @@ Both set as `httpOnly`, `secure`, `sameSite=strict`.
 }
 ```
 
-Applied to: `GET /api/orders`, `GET /api/admin/points-log`
+Applied where the endpoint contract below explicitly exposes `limit` and `offset`; `GET /api/orders`
+is the canonical current example.
 
 ---
 
@@ -123,58 +127,72 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 
 ---
 
-## Routes
+## Route inventory
 
-### Public
+This table is exhaustive and machine-checked by `npm run resources:check`. Detailed contracts remain below.
 
-| Route | Method | Purpose |
-|---|---|---|
-| `/api/auth/register` | POST | Create account |
-| `/api/auth/check-phone` | POST | Check registration/login routing for a normalized phone |
-| `/api/auth/login` | POST | Login, issue tokens |
-| `/api/auth/logout` | POST | Delete session, clear cookies |
-| `/api/auth/refresh` | POST | Swap refresh token → new access token |
-| `/api/auth/me` | GET | Return the current authenticated session profile |
-| `/api/menu` | GET | All available items with computed prices |
-| `/api/powders` | GET | Full powder catalogue with pricing and size config |
-| `/api/store-status` | GET | Current store open/closed status, today + weekly schedule |
-| `/api/voucher-packages` | GET | Active voucher packages available for redemption |
+| Route | Method |
+|---|---|
+| `/api/admin/addon-groups` | GET, POST |
+| `/api/admin/addon-groups/[id]` | PUT, DELETE |
+| `/api/admin/base-liquids` | GET, POST |
+| `/api/admin/base-liquids/[id]` | PUT, DELETE |
+| `/api/admin/logs` | GET |
+| `/api/admin/menu` | GET, POST |
+| `/api/admin/menu/[id]` | PUT, DELETE |
+| `/api/admin/menu/create-latte-with-powder` | POST |
+| `/api/admin/milk-types` | GET, POST |
+| `/api/admin/milk-types/[id]` | PUT, DELETE |
+| `/api/admin/orders` | GET |
+| `/api/admin/orders/[id]/confirm-payment` | PATCH |
+| `/api/admin/powders` | GET, POST |
+| `/api/admin/powders/[id]` | PUT, DELETE |
+| `/api/admin/report` | GET |
+| `/api/admin/staff` | GET |
+| `/api/admin/store-closure` | POST |
+| `/api/admin/store-schedule` | GET, PUT |
+| `/api/admin/voucher-packages` | GET, POST |
+| `/api/admin/voucher-packages/[id]` | PUT, DELETE |
+| `/api/auth/check-phone` | POST |
+| `/api/auth/login` | POST |
+| `/api/auth/logout` | POST |
+| `/api/auth/me` | GET |
+| `/api/auth/refresh` | POST |
+| `/api/auth/register` | POST |
+| `/api/cron/cancel-expired-orders` | GET |
+| `/api/cron/clean-sessions` | GET |
+| `/api/cron/cleanup-menu-images` | GET |
+| `/api/delivery/autocomplete` | GET |
+| `/api/delivery/estimate` | GET |
+| `/api/delivery/geocode` | GET |
+| `/api/delivery/reverse-geocode` | GET |
+| `/api/menu` | GET |
+| `/api/orders` | GET, POST |
+| `/api/orders/[id]` | GET, PATCH |
+| `/api/powders` | GET |
+| `/api/profile` | GET, PATCH |
+| `/api/profile/addresses` | GET, POST |
+| `/api/profile/addresses/[id]` | PUT, DELETE |
+| `/api/profile/points` | GET |
+| `/api/profile/vouchers` | GET |
+| `/api/profile/vouchers/claim` | POST |
+| `/api/profile/vouchers/exchange` | POST |
+| `/api/profile/vouchers/refund` | POST |
+| `/api/push/subscribe` | POST |
+| `/api/push/unsubscribe` | POST |
+| `/api/report` | GET |
+| `/api/staff/orders` | GET, POST |
+| `/api/staff/orders/[id]` | GET, PATCH |
+| `/api/staff/scan` | GET |
+| `/api/staff/scan-fallback` | POST |
+| `/api/staff/users` | GET |
+| `/api/staff/users/[id]/vouchers` | GET |
+| `/api/staff/users/[id]/vouchers/exchange` | POST |
+| `/api/staff/vouchers/[id]/redeem` | PATCH |
+| `/api/store-status` | GET |
+| `/api/voucher-packages` | GET |
 
-Auth mutation routes are rate-limited by hashed IP. Read-only `/api/auth/me` and logout are excluded.
-
-### Customer — CUSTOMER role
-
-| Route | Method | Purpose |
-|---|---|---|
-| `/api/orders` | POST | Create order from cart |
-| `/api/orders` | GET | List own orders (newest first, limit 20) |
-| `/api/orders/[id]` | GET | Own order detail |
-| `/api/profile` | GET/PATCH | Read or update own profile info |
-| `/api/profile/points` | GET | Balance + grouped point events (10 events/page) |
-| `/api/profile/vouchers` | GET | Own vouchers in all lifecycle statuses |
-| `/api/profile/vouchers/exchange` | POST | Spend points on a voucher package to receive a Voucher |
-| `/api/profile/vouchers/refund` | POST | Auto-refund points if the voucher's target item is no longer available |
-| `/api/push/subscribe` | POST | Upsert the current account's browser push subscription |
-| `/api/push/unsubscribe` | POST | Remove the current account's browser push subscription |
-| `/api/delivery/autocomplete` | GET | Authenticated Goong address suggestions (`q=2..200` chars) |
-| `/api/delivery/geocode` | GET | Authenticated forward geocode (`address=5..500` chars) |
-| `/api/delivery/reverse-geocode` | GET | Authenticated reverse geocode (finite bounded `lat`/`lng`) |
-| `/api/delivery/estimate` | GET | Authenticated road distance, duration, and authoritative fee estimate |
-
-### Staff — STAFF or ADMIN
-
-| Route | Method | Purpose |
-|---|---|---|
-| `/api/staff/orders` | POST | Create counter order: CASH completes immediately; BANK_TRANSFER waits for payment |
-| `/api/staff/orders` | GET | List authorized orders; supports current-creator pending-transfer recovery |
-| `/api/staff/orders/[id]` | GET | Recover an authorized counter transfer and its pending VietQR |
-| `/api/staff/orders/[id]` | PATCH | Update order status (auto-award points on COMPLETED) |
-| `/api/staff/scan` | GET | Resolve QR token → user or voucher |
-| `/api/staff/scan-fallback` | POST | Privacy-safe manual QR short-code recovery |
-| `/api/staff/vouchers/[id]/redeem` | PATCH | Mark voucher REDEEMED offline; `[id]` carries voucher `qr_token` |
-| `/api/staff/users` | GET | Search customers by name or last digits of phone |
-| `/api/staff/users/[id]/vouchers` | GET | List ACTIVE vouchers; `[id]` carries customer `qr_token` |
-| `/api/staff/users/[id]/vouchers/exchange` | POST | Staff-assisted exchange; `[id]` carries customer `qr_token` |
+Auth mutations are rate-limited by hashed IP. Authorization details are defined by each contract and middleware.
 
 ### Payload and value ceilings
 
@@ -226,48 +244,6 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
 `401 UNAUTHORIZED`. No worker starts unless this check succeeds.
 
 `/api/push/test` has been deleted and is not a supported development or production contract.
-
-### Admin — ADMIN only
-
-| Route | Method | Purpose |
-|---|---|---|
-| `/api/admin/points/add` | POST | Manually add points (max 100) |
-| `/api/admin/orders/[id]/status` | PATCH | Update order status |
-| `/api/admin/orders/[id]/confirm-payment` | PATCH | Confirm VietQR payment for PENDING order |
-| `/api/admin/menu` | GET | All items including unavailable |
-| `/api/admin/menu` | POST | Create menu item |
-| `/api/admin/menu/[id]` | PUT | Update menu item |
-| `/api/admin/menu/[id]` | DELETE | Soft delete (`is_available = false`) |
-| `/api/admin/addon-groups` | GET | List all addon groups |
-| `/api/admin/addon-groups` | POST | Create addon group |
-| `/api/admin/addon-groups/[id]` | PUT | Update addon group |
-| `/api/admin/addon-groups/[id]` | DELETE | Soft delete (`is_active = false`) |
-| `/api/admin/voucher-packages` | GET | List all voucher packages |
-| `/api/admin/voucher-packages` | POST | Create voucher package |
-| `/api/admin/voucher-packages/[id]` | PUT | Update voucher package |
-| `/api/admin/voucher-packages/[id]` | DELETE | Deactivate (`is_active = false`) |
-| `/api/admin/points-log` | GET | All manual adjustment logs |
-| `/api/admin/points-log/[id]/reverse` | POST | Reverse a manual points entry |
-| `/api/admin/powders` | GET | List all powders |
-| `/api/admin/powders` | POST | Create powder |
-| `/api/admin/powders/[id]` | PUT | Update powder |
-| `/api/admin/powders/[id]` | DELETE | Soft delete (`is_available = false`) |
-| `/api/admin/milk-types` | GET | List all milk types |
-| `/api/admin/milk-types` | POST | Create milk type |
-| `/api/admin/milk-types/[id]` | PUT | Update milk type |
-| `/api/admin/milk-types/[id]` | DELETE | Deactivate (`is_active = false`) |
-| `/api/admin/base-liquids` | GET/POST | Compatibility-safe Base Liquid catalog alias over `milk_type` |
-| `/api/admin/base-liquids/[id]` | PUT/DELETE | Update or deactivate a Base Liquid |
-| `/api/admin/default-size-config` | GET | Get SMALL/MEDIUM/LARGE system config |
-| `/api/admin/default-size-config` | PUT | Update SMALL/MEDIUM/LARGE config (affects all prices immediately) |
-| `/api/admin/fusion-powders` | POST | Attach powder to Fusion item's allowed list |
-| `/api/admin/fusion-powders` | DELETE | Detach powder from Fusion item's allowed list |
-| `/api/admin/store-schedule` | GET | Get weekly opening hours (0–14 rows grouped by day) |
-| `/api/admin/store-schedule` | PUT | Replace entire schedule (deleteMany + createMany in transaction) |
-| `/api/admin/store-closure` | POST | Temporarily close (`action=close`) or reopen (`action=open`) the store |
-| `/api/admin/voucher-packages` | GET/POST | List or create every voucher type, including BUNDLE |
-| `/api/admin/voucher-packages/[id]` | PUT/DELETE | Rename, describe, activate, or deactivate a package |
-| `/api/profile/vouchers/claim` | POST | Idempotently claim a FREE_CLAIM package |
 
 ---
 
@@ -534,11 +510,6 @@ Uses the same `updated_at`, `latte`, `fusion`, and `extras` grouping as `GET /ap
 // Addons apply globally — no junction rows needed
 ```
 
-### Removed: `/api/admin/promotions`
-
-The unused Promotion API and tables are deleted without data migration. All new clients use the
-unified VoucherPackage routes below.
-
 ### `POST /api/admin/voucher-packages` for BUNDLE
 
 ```ts
@@ -561,10 +532,17 @@ unified VoucherPackage routes below.
     benefit_scaling: "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM"
     max_applications_per_order: number
     max_reward_units_per_order?: number | null
-    qualifier_scopes: ProductScope[]
-    reward_product_scopes: ProductScope[]
+    qualifier_products: ProductScope[]
+    reward_products: ProductScope[]
     reward_addon_option_ids: string[]
   }
+}
+
+type ProductScope = {
+  menu_item_id: string
+  default_powder_id?: string | null
+  default_base_liquid_id?: string | null
+  allowed_sizes: ("SMALL" | "MEDIUM" | "LARGE")[]
 }
 ```
 
@@ -572,6 +550,12 @@ Rules are immutable after creation; `PUT /api/admin/voucher-packages/[id]` only 
 description, and `is_active`. Qualifier/reward arrays support multiple products, including seasonal
 items. Each BUNDLE has one reward kind. Package `min_order_vnd` excludes product-vouchered drink
 units and addon-vouchered addon units from the eligible subtotal.
+
+All package/wallet voucher responses expose the same grouped `qualifier_products` and
+`reward_products`. Each product additionally contains
+`menu_item: { name, category, is_available }`. There is no public `reference_price_vnd`; the
+server resolves the immutable default configuration snapshot against current menu pricing at
+checkout.
 
 Admin selects the final usable Vietnam calendar date. The UI sends the next day at 00:00 UTC+7;
 the server treats the package as usable only while `now < ends_at`. `quantity` is the single
@@ -615,7 +599,7 @@ without a configured default Base Liquid. Any full edit still requires a valid a
 {
   order_type: "PICKUP" | "DELIVERY"
   items: {
-    client_line_id?: string           // required when bundle_voucher_qr_token is sent
+    client_line_id?: string           // required when bundle_applications is non-empty
     menu_item_id: string
     quantity: number
     size: "SMALL" | "MEDIUM" | "LARGE" | null // null only for extras
@@ -637,12 +621,15 @@ without a configured default Base Liquid. Any full edit still requires a valid a
   }[]
   discount_voucher_ids?: string[]    // voucher qr_token values
   freeship_voucher_id?: string       // voucher qr_token; DELIVERY only; max 1
-  bundle_voucher_qr_token?: string   // max 1 BUNDLE voucher per order
-  bundle_reward_allocations?: {
-    client_line_id: string
-    quantity: number
-    addon_option_id?: string
-  }[]                                // required with a BUNDLE voucher
+  bundle_applications?: {
+    voucher_qr_token: string
+    qualifier_allocations: { client_line_id: string, quantity: number }[]
+    reward_allocations: {
+      client_line_id: string
+      quantity: number
+      addon_option_id?: string
+    }[]
+  }[]
   pickup_time?: string
   note?: string
   delivery_address?: string
@@ -703,11 +690,14 @@ without a configured default Base Liquid. Any full edit still requires a valid a
     client_price_vnd: number          // REQUIRED
   }[]
   discount_voucher_ids?: string[]    // voucher qr_token values
-  bundle_voucher_qr_token?: string
-  bundle_reward_allocations?: {
-    client_line_id: string
-    quantity: number
-    addon_option_id?: string
+  bundle_applications?: {
+    voucher_qr_token: string
+    qualifier_allocations: { client_line_id: string, quantity: number }[]
+    reward_allocations: {
+      client_line_id: string
+      quantity: number
+      addon_option_id?: string
+    }[]
   }[]
   customer_qr_token?: string          // user qr_token; required for STAFF with known-customer vouchers
 }
@@ -767,26 +757,6 @@ without a configured default Base Liquid. Any full edit still requires a valid a
 }
 ```
 
-### `POST /api/admin/fusion-powders`
-```ts
-{ menu_item_id: string, powder_id: string }
-```
-
-### `DELETE /api/admin/fusion-powders`
-```ts
-{ menu_item_id: string, powder_id: string }
-```
-
-### `GET /api/admin/default-size-config`
-```ts
-{ data: { size: "SMALL" | "MEDIUM" | "LARGE", milk_ml: number, powder_gram: number }[] }
-```
-
-### `PUT /api/admin/default-size-config`
-```ts
-{ sizes: { size: "SMALL" | "MEDIUM" | "LARGE", milk_ml?: number, powder_gram?: number }[] }
-```
-
 ### `POST /api/profile/vouchers/exchange`
 ```ts
 { package_id: string }
@@ -810,11 +780,6 @@ without a configured default Base Liquid. Any full edit still requires a valid a
 
 // voucher
 { data: { type: "voucher", data: { qr_token: string, voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED", expires_at: string | null } } }
-```
-
-### `PATCH /api/admin/orders/[id]/status`
-```ts
-{ status: "PENDING" | "ADMIN_CONFIRMED" | "STAFF_DONE" | "COMPLETED" | "CANCELLED" }
 ```
 
 ---

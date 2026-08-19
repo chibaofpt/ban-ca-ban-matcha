@@ -187,11 +187,11 @@ export default function MenuPage() {
     .filter((item) => item.is_seasonal);
 
   return (
-    <main className="min-h-screen bg-[#fdfcf7] text-foreground font-sans pt-4 pb-24 px-6">
-      <div className="max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto flex flex-col h-full">
+    <main className="min-h-screen bg-[#fdfcf7] text-foreground font-sans pb-24 px-6">
 
-        {/* Sticky header + tab bar — always visible */}
-        <div className="sticky top-0 z-20 bg-[#fdfcf7]/90 backdrop-blur-md pt-4 -mx-6 px-6 pb-1">
+      {/* Sticky header + tab bar — direct child of <main>, no h-full ancestor, so sticky sticks on window scroll */}
+      <div className="sticky top-0 z-20 bg-[#fdfcf7]/90 backdrop-blur-md pt-4 -mx-6 px-6 pb-1">
+        <div className="max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-4">
             <Link href="/" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/50 bg-white text-primary/60 shadow-sm transition-transform hover:text-primary hover:shadow-md active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label="Về trang chủ">
               <ArrowLeft className="w-5 h-5 -ml-0.5" />
@@ -204,8 +204,11 @@ export default function MenuPage() {
           </div>
           <TabBar activeTab={activeTab} setActiveTab={handleTabChange} />
         </div>
+      </div>
 
-        <div ref={containerRef} className="flex-1 relative w-full overflow-hidden">
+      {/* Content — separate from sticky header, scrolls normally */}
+      <div className="max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto pt-4">
+        <div ref={containerRef} className="relative w-full overflow-x-clip">
           <MenuPanels
             carouselX={carouselX}
             loading={menuLoading || powderLoading}

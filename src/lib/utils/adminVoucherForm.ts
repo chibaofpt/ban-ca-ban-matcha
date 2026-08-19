@@ -73,17 +73,23 @@ export function validateVoucherDraft(draft: VoucherDraft): string | null {
   if (draft.voucherType === "BUNDLE" && draft.qualifierScopes.length === 0) return "Vui lòng chọn món điều kiện";
   if (draft.voucherType === "BUNDLE" && draft.rewardKind === "PRODUCT" && draft.rewardMode !== "SAME_CONFIG" && draft.rewardProductScopes.length === 0) return "Vui lòng chọn món quà";
   if (draft.voucherType === "BUNDLE" && draft.rewardKind === "PRODUCT" && draft.rewardMode === "FIXED_CONFIG") {
+    if (draft.rewardProductScopes.length !== 1) return "Quà cố định chỉ được chọn một món";
     if (draft.rewardProductScopes.some((scope) => scope.category !== "extras" && scope.sizes.length === 0)) return "Vui lòng chọn ít nhất một size cho từng món quà";
     if (draft.rewardProductScopes.some((scope) => scope.category === "fusion" && scope.powderIds.length === 0)) return "Vui lòng chọn ít nhất một loại bột cho từng món Fusion";
     if (draft.rewardProductScopes.some((scope) => scope.category === "latte" && !scope.fixedPowderId)) return "Món Latte chưa có bột cố định hợp lệ";
     if (draft.rewardProductScopes.some((scope) => scope.category !== "extras" && scope.milkTypeIds.length === 0)) return "Vui lòng chọn Base Liquid cho từng món quà cố định";
   }
+  if (draft.voucherType === "BUNDLE") {
+    const missingDefaults = [...draft.qualifierScopes, ...draft.rewardProductScopes].some((scope) =>
+      scope.category !== "extras" &&
+      ((!scope.fixedPowderId && scope.powderIds.length !== 1) || scope.milkTypeIds.length !== 1),
+    );
+    if (missingDefaults) return "Mỗi món BUNDLE cần đúng một bột và một Base Liquid mặc định";
+  }
   if (draft.voucherType === "BUNDLE" && draft.rewardKind === "ADDON" && draft.rewardAddonOptionIds.length === 0) return "Vui lòng chọn addon quà";
-  if (draft.voucherType === "BUNDLE" && draft.rewardMode === "ALLOWED_SCOPE" && draft.rewardProductScopes.some((scope) => scope.referencePriceVnd < 1_000 || scope.referencePriceVnd % 1_000 !== 0)) return "Hạn mức từng món phải từ 1.000đ và chia hết cho 1.000";
   if (draft.voucherType === "BUNDLE") {
     const scopeCount = (scope: BundleVoucherFormState["qualifierScopes"][number]) =>
-      Math.max(1, scope.sizes.length) * Math.max(1, scope.powderIds.length) *
-      Math.max(1, scope.milkTypeIds.length);
+      Math.max(1, scope.sizes.length);
     if (draft.qualifierScopes.reduce((sum, scope) => sum + scopeCount(scope), 0) > 100) return "Phạm vi món điều kiện vượt quá 100 cấu hình";
     if (draft.rewardProductScopes.reduce((sum, scope) => sum + scopeCount(scope), 0) > 100) return "Phạm vi món quà vượt quá 100 cấu hình";
   }
@@ -162,14 +168,12 @@ export function estimateVoucherLiabilityVnd(
   }
   const unitPrice = draft.rewardKind === "ADDON"
     ? maxPrice(draft.rewardAddonOptionIds, addonPrices)
-    : draft.rewardMode === "ALLOWED_SCOPE"
-      ? Math.max(0, ...draft.rewardProductScopes.map((scope) => scope.referencePriceVnd))
-      : maxPrice(
-          draft.rewardMode === "SAME_CONFIG"
-            ? draft.qualifierScopes.map((scope) => scope.menuItemId)
-            : draft.rewardProductScopes.map((scope) => scope.menuItemId),
-          menuPrices,
-        );
+    : maxPrice(
+        draft.rewardMode === "SAME_CONFIG"
+          ? draft.qualifierScopes.map((scope) => scope.menuItemId)
+          : draft.rewardProductScopes.map((scope) => scope.menuItemId),
+        menuPrices,
+      );
   const rewardUnits = draft.rewardKind === "ADDON" && draft.benefitScaling === "ONCE_PER_ORDER"
     ? draft.rewardQuantity
     : draft.rewardKind === "ADDON" && draft.benefitScaling === "PER_QUALIFYING_ITEM"

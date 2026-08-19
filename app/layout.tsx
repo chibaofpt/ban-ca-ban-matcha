@@ -88,10 +88,10 @@ export default function RootLayout({
           <AuthGuardProvider>
             <Navbar />
             <AuthModal />
-            <main className="flex-1 flex flex-col">
+            <div className="flex-1">
               <StoreStatusBanner />
               {children}
-            </main>
+            </div>
             <Footer />
             <Toaster richColors position="top-center" />
             {process.env.NODE_ENV === "development" && (

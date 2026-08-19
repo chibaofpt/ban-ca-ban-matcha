@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   packageUpdate: vi.fn(),
   menuFindMany: vi.fn(),
   addonFindMany: vi.fn(),
+  milkFindMany: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ getSession: mocks.getSession }));
@@ -29,6 +30,7 @@ vi.mock("@/lib/prisma", () => ({
     },
     menuItem: { findMany: mocks.menuFindMany, findUnique: vi.fn() },
     addonOption: { findMany: mocks.addonFindMany, findUnique: vi.fn() },
+    milkType: { findMany: mocks.milkFindMany },
   },
 }));
 
@@ -36,6 +38,8 @@ import { POST } from "@/app/api/admin/voucher-packages/route";
 import { PUT } from "@/app/api/admin/voucher-packages/[id]/route";
 
 const MENU_ID = "22222222-2222-4222-8222-222222222222";
+const POWDER_ID = "33333333-3333-4333-8333-333333333333";
+const MILK_ID = "44444444-4444-4444-8444-444444444444";
 
 function payload() {
   return {
@@ -55,13 +59,14 @@ function payload() {
       benefit_scaling: "PER_BUNDLE",
       max_applications_per_order: 1,
       max_reward_units_per_order: null,
-      qualifier_scopes: [{ menu_item_id: MENU_ID }],
-      reward_product_scopes: [] as Array<{
+      qualifier_products: [{ menu_item_id: MENU_ID, allowed_sizes: ["MEDIUM"],
+        default_powder_id: POWDER_ID as string | null,
+        default_base_liquid_id: MILK_ID as string | null }],
+      reward_products: [] as Array<{
         menu_item_id: string;
-        size?: "SMALL" | "MEDIUM" | "LARGE" | null;
-        powder_id?: string | null;
-        milk_type_id?: string | null;
-        reference_price_vnd?: number;
+        allowed_sizes: Array<"SMALL" | "MEDIUM" | "LARGE">;
+        default_powder_id?: string | null;
+        default_base_liquid_id?: string | null;
       }>,
       reward_addon_option_ids: [],
     },
@@ -79,14 +84,17 @@ describe("POST /api/admin/voucher-packages — BUNDLE", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSession.mockResolvedValue({ id: "admin", role: "ADMIN" });
-    mocks.menuFindMany.mockResolvedValue([{ id: MENU_ID, category: "latte", is_available: true }]);
+    mocks.menuFindMany.mockResolvedValue([{ id: MENU_ID, category: "latte", is_available: true,
+      matcha_powder_id: POWDER_ID, sizes: [{ size: "MEDIUM", base_price_vnd: 45_000 }] }]);
     mocks.addonFindMany.mockResolvedValue([]);
+    mocks.milkFindMany.mockResolvedValue([{ id: MILK_ID, is_default: true }]);
     mocks.packageCreate.mockResolvedValue({ id: "package-id", voucher_type: "BUNDLE" });
     mocks.transaction.mockImplementation(
       async (callback: (tx: unknown) => Promise<unknown>) => callback({
         voucherPackage: { create: mocks.packageCreate },
         menuItem: { findMany: mocks.menuFindMany },
         addonOption: { findMany: mocks.addonFindMany },
+        milkType: { findMany: mocks.milkFindMany },
       }),
     );
   });
@@ -119,7 +127,10 @@ describe("POST /api/admin/voucher-packages — BUNDLE", () => {
   it("cho phép FIXED_CONFIG Add-on không có cấu hình đồ uống", async () => {
     const body = payload();
     body.bundle_rule.reward_mode = "FIXED_CONFIG";
-    body.bundle_rule.reward_product_scopes = [{ menu_item_id: MENU_ID }];
+    body.bundle_rule.qualifier_products = [{ menu_item_id: MENU_ID, allowed_sizes: [],
+      default_powder_id: null, default_base_liquid_id: null }];
+    body.bundle_rule.reward_products = [{ menu_item_id: MENU_ID, allowed_sizes: [],
+      default_powder_id: null, default_base_liquid_id: null }];
     mocks.menuFindMany.mockResolvedValue([{ id: MENU_ID, category: "extras", is_available: true }]);
 
     const response = await POST(request(body) as never);
@@ -131,7 +142,8 @@ describe("POST /api/admin/voucher-packages — BUNDLE", () => {
   it("từ chối FIXED_CONFIG đồ uống thiếu size, bột và Base Liquid", async () => {
     const body = payload();
     body.bundle_rule.reward_mode = "FIXED_CONFIG";
-    body.bundle_rule.reward_product_scopes = [{ menu_item_id: MENU_ID }];
+    body.bundle_rule.reward_products = [{ menu_item_id: MENU_ID, allowed_sizes: [],
+      default_powder_id: null, default_base_liquid_id: null }];
     mocks.menuFindMany.mockResolvedValue([{ id: MENU_ID, category: "latte", is_available: true }]);
 
     const response = await POST(request(body) as never);

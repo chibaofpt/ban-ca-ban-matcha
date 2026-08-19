@@ -1,4 +1,9 @@
-# Bạn Cá Bán Matcha — Database Schema
+# Bạn Cá Bán Matcha — Database Semantics
+
+> **Authority:** meaning, invariant, snapshot and compatibility semantics of persisted data.
+> **Read when:** changing Prisma schema, migrations or data interpretation.
+> **Update when:** an approved schema change alters those semantics.
+> **Does not own:** physical fields/indexes (see `prisma/schema.prisma` and migrations), API contract or domain workflow.
 
 > Read this file for any Prisma schema, migration, or DB-level task.
 > Read `AGENTS.md` for hard rules and the order/voucher/pricing skills for authoritative
@@ -568,12 +573,17 @@ Tracks admin-initiated temporary closures. At most 1 active row at any time.
 `voucher_bundle_rules` is a one-to-one immutable child of `voucher_packages`. It stores buy/reward
 quantity, reward kind/mode, scaling, and per-order caps. Campaign issuance quantity belongs only
 to `voucher_packages.quantity`; the BUNDLE rule has no duplicate global redemption cap.
-`voucher_bundle_product_scopes` stores multiple qualifier/reward configurations and reference
-credit for `ALLOWED_SCOPE`. `voucher_bundle_addon_rewards` stores multiple allowed addon options.
+`voucher_bundle_product_scopes` stores one immutable default powder/Base Liquid snapshot per
+`(package, role, menu item)`. `voucher_bundle_product_scope_sizes` stores that product's allowed
+sizes. There is no stored reference credit: checkout resolves the snapshot with current canonical
+pricing. `voucher_bundle_addon_rewards` stores multiple allowed addon options.
 
 `voucher_grants` uses unique `(package_id, user_id)` for idempotent FREE_CLAIM and AUTO_GRANT.
-`order_bundle_applications` records the one BUNDLE voucher allowed per order, while
-`order_bundle_rewards` stores each explicit allocation and VND benefit.
+`order_bundle_applications` is one-to-many from an order and unique by voucher; an order may apply
+multiple distinct BUNDLE voucher instances. `order_bundle_qualifier_allocations` persists the
+client-selected qualifier unit pools. `order_bundle_rewards` stores each explicit reward allocation
+and VND benefit. Product unit quantities cannot overlap across applications; one source line may be
+split only while its total allocated quantity remains within the line quantity.
 
 There is no start date and no current Promotion table. An active package is effective immediately;
 `voucher_packages.ends_at` is an exclusive instant and optionally stops new issuance. Admin date

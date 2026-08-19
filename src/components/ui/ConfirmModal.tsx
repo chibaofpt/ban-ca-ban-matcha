@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { X, AlertTriangle, Loader2 } from "lucide-react";
+import * as AlertDialog from "@radix-ui/react-alert-dialog";
+import { AlertTriangle, Loader2, X } from "lucide-react";
+import type { ReactNode } from "react";
+
+import { Button } from "@/src/components/ui/button";
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -12,11 +14,12 @@ interface ConfirmModalProps {
   cancelLabel?: string;
   isDestructive?: boolean;
   isLoading?: boolean;
-  children?: React.ReactNode;
+  children?: ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
+/** Renders the canonical confirmation alert dialog without changing existing caller contracts. */
 export function ConfirmModal({
   isOpen,
   title,
@@ -29,102 +32,59 @@ export function ConfirmModal({
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
-  useEffect(() => {
-    if (isOpen) {
-      const originalStyle = window.getComputedStyle(document.body).overflow;
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = originalStyle;
-      };
-    }
-  }, [isOpen]);
+  const handleOpenChange = (open: boolean) => {
+    if (!open && !isLoading) onCancel();
+  };
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={isLoading ? undefined : onCancel}
-            className="fixed inset-0 z-[100] bg-foreground/40 backdrop-blur-sm"
-          />
+    <AlertDialog.Root open={isOpen} onOpenChange={handleOpenChange}>
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay className="fixed inset-0 z-[100] bg-foreground/40 backdrop-blur-sm data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out data-[state=open]:fade-in" />
+        <AlertDialog.Content
+          data-confirm-modal="true"
+          onEscapeKeyDown={(event) => {
+            if (isLoading) event.preventDefault();
+          }}
+          className="fixed left-1/2 top-1/2 z-[101] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-3xl bg-background shadow-2xl outline-none data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out data-[state=open]:fade-in data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+        >
+          <header className="flex items-center justify-between border-b border-border/50 px-6 py-4">
+            <AlertDialog.Title className="flex items-center gap-2 text-lg font-bold text-primary">
+              {isDestructive ? <AlertTriangle className="h-5 w-5 text-destructive" /> : null}
+              {title}
+            </AlertDialog.Title>
+            <AlertDialog.Cancel asChild>
+              <Button variant="ghost" size="icon" disabled={isLoading} aria-label="Đóng" className="rounded-full">
+                <X className="h-4 w-4" />
+              </Button>
+            </AlertDialog.Cancel>
+          </header>
 
-          {/* Modal */}
-          <div
-            data-confirm-modal="true"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="confirm-modal-title"
-            aria-describedby="confirm-modal-description"
-            className="pointer-events-none fixed inset-0 z-[101] flex items-center justify-center p-4"
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              transition={{ type: "spring", duration: 0.25, bounce: 0.2 }}
-              className="w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden pointer-events-auto"
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-border/50">
-                <h3 id="confirm-modal-title" className="font-bold text-primary text-lg flex items-center gap-2">
-                  {isDestructive ? (
-                    <AlertTriangle className="w-5 h-5 text-red-500" />
-                  ) : null}
-                  {title}
-                </h3>
-                <button
-                  type="button"
-                  onClick={onCancel}
-                  disabled={isLoading}
-                  aria-label="Đóng"
-                  className="flex h-11 w-11 items-center justify-center rounded-full text-primary/40 transition-colors hover:bg-primary/5 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:pointer-events-none"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Body */}
-              <div className="px-6 py-5">
-                {children ? (
-                  children
-                ) : (
-                  <p id="confirm-modal-description" className="text-primary/70 text-sm leading-relaxed">
-                    {message}
-                  </p>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div className="px-6 py-4 bg-primary/5 flex items-center gap-3 justify-end border-t border-border/50">
-                <button
-                  type="button"
-                  onClick={onCancel}
-                  disabled={isLoading}
-                  className="min-h-11 rounded-xl px-5 text-sm font-bold text-primary/60 transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:pointer-events-none"
-                >
-                  {cancelLabel}
-                </button>
-                <button
-                  type="button"
-                  onClick={onConfirm}
-                  disabled={isLoading}
-                  className={`min-h-11 rounded-xl px-5 text-sm font-bold text-white shadow-md transition-all flex items-center justify-center min-w-[100px] hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-70 disabled:pointer-events-none ${
-                    isDestructive
-                      ? "bg-red-500 hover:bg-red-600 shadow-red-500/20"
-                      : "bg-primary hover:bg-primary/90 shadow-primary/20"
-                  }`}
-                >
-                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : confirmLabel}
-                </button>
-              </div>
-            </motion.div>
+          <div className="px-6 py-5">
+            {children ?? (
+              <AlertDialog.Description className="text-sm leading-relaxed text-primary/70">
+                {message}
+              </AlertDialog.Description>
+            )}
+            {children ? <AlertDialog.Description className="sr-only">{message}</AlertDialog.Description> : null}
           </div>
-        </>
-      )}
-    </AnimatePresence>
+
+          <footer className="flex items-center justify-end gap-3 border-t border-border/50 bg-primary/5 px-6 py-4">
+            <AlertDialog.Cancel asChild>
+              <Button variant="ghost" disabled={isLoading}>
+                {cancelLabel}
+              </Button>
+            </AlertDialog.Cancel>
+            <Button
+              variant={isDestructive ? "destructive" : "primary"}
+              disabled={isLoading}
+              onClick={onConfirm}
+              className="min-w-[100px]"
+            >
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" aria-label="Đang xử lý" /> : confirmLabel}
+            </Button>
+          </footer>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
   );
 }

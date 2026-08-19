@@ -3,6 +3,7 @@ import type { ApiResponse } from "@/src/lib/types/api";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { PaymentMethod, StaffOrderResult } from "@/src/lib/types/order";
 import { normalizeCustomerSearch } from "@/src/utils/display";
+import type { BundleApplicationPayload } from "@/src/lib/utils/bundleVoucher";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -42,12 +43,7 @@ export interface CreateStaffOrderPayload {
   }[];
   /** DISCOUNT voucher IDs (multiple allowed, max 1 PERCENT). Omit for anonymous orders. */
   discount_voucher_ids?: string[];
-  bundle_voucher_qr_token?: string;
-  bundle_reward_allocations?: Array<{
-    client_line_id: string;
-    quantity: number;
-    addon_option_id?: string;
-  }>;
+  bundle_applications?: BundleApplicationPayload[];
   /**
    * Customer QR token (‘qr_token’ from users table). Required for STAFF when any voucher is used.
    * Admin auto-bypasses QR verification — omit for admin orders.

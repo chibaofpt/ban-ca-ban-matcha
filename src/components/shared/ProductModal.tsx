@@ -41,6 +41,9 @@ interface ProductModalProps {
   // ── Drawer UI ──
   nested?: boolean;
   currentCartItems?: CartItem[];
+  // ── Bundle Selection ──
+  allowedSizes?: Size[];
+  disableVoucherApplication?: boolean;
 }
 
 const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
@@ -56,7 +59,8 @@ const getDesktopServerSnapshot = () => false;
 
 const BaseModal: React.FC<ProductModalProps> = ({ 
   item, latteItems, milkTypes, addonGroups, onClose, editingItem, onConfirm, freeVoucherId,
-  freeVoucherCoveredPriceVnd, availableVouchers, nested = false, currentCartItems 
+  freeVoucherCoveredPriceVnd, availableVouchers, nested = false, currentCartItems,
+  allowedSizes, disableVoucherApplication
 }) => {
   const [isOpen, setIsOpen] = useState(true);
   // Global state
@@ -76,7 +80,8 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const [selectedSize, setSelectedSize] = useState<Size>(() => {
     if (editingItem?.size) return editingItem.size;
     const available = item.sizes ?? [];
-    return (available.find((s) => s.size === "MEDIUM") ?? available[0])?.size ?? "SMALL";
+    const displaySizes = allowedSizes ? available.filter(s => allowedSizes.includes(s.size)) : available;
+    return (displaySizes.find((s) => s.size === "MEDIUM") ?? displaySizes[0])?.size ?? "SMALL";
   });
   const [sweetness, setSweetness] = useState<SweetnessLevel>(() => editingItem?.sweetness ?? "FULL");
   const [iceOption, setIceOption] = useState<IceOption>(() => editingItem?.iceOption ?? "NORMAL");
@@ -140,7 +145,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
   }, [availableVouchers, selectedOptionIds, quantityMap, addonGroups, usedVoucherIds]);
 
   const isProductVoucherApplied = selectedProductVoucherId !== null || freeVoucherId !== undefined;
-  const isVoucherApplied = isProductVoucherApplied || selectedAddonVoucherIds.length > 0;
+  const isVoucherApplied = !disableVoucherApplication && (isProductVoucherApplied || selectedAddonVoucherIds.length > 0);
   
   // ── Edit Validation ──────────────────────────────────────────────────────
   const lockQuantity = isVoucherApplied;
@@ -260,7 +265,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
       } as CartItem);
     } else if (editingItem) {
       // Customer Edit mode
-      const isVoucherApplied = effectiveFreeVoucherId !== undefined || finalAddonVouchers.length > 0;
+      const isVoucherApplied = !disableVoucherApplication && (effectiveFreeVoucherId !== undefined || finalAddonVouchers.length > 0);
       if (editingItem.quantity > 1 && isVoucherApplied) {
         // Split item: 1 item with voucher, remainder without voucher
         updateItem(editingItem.cartId, { ...cartItemData, quantity: 1 });
@@ -288,7 +293,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
     selectedSize, finalUnitPrice, quantity, sweetness, iceOption, coldwhisk, note,
     selectedOptionIds, isLatte, selectedPowderId, selectedMilkId, effectiveFreeVoucherId,
     effectiveFreeCoveredPrice, onConfirm, editingItem, updateItem, addItem, handleClose,
-    addonGroups
+    addonGroups, disableVoucherApplication,
   ]);
 
   const sweetnessIdx = useMemo(() => SWEETNESS_OPTIONS.findIndex((o) => o.value === sweetness), [sweetness]);
@@ -373,7 +378,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
             <div className="mt-7">
               <SectionLabel text="Chọn size *" />
               <SizeSelector
-                sizes={item.sizes}
+                sizes={allowedSizes ? item.sizes.filter(s => allowedSizes.includes(s.size)) : item.sizes}
                 selectedSize={selectedSize}
                 onChange={setSelectedSize}
                 getPriceForContext={getPriceForContext}
@@ -637,7 +642,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
           </div>
 
           {/* 9. ƯU ĐÃI CỦA BẠN */}
-          {(applicableProductVouchers.length > 0 || applicableAddonVouchers.length > 0) && (
+          {!disableVoucherApplication && (applicableProductVouchers.length > 0 || applicableAddonVouchers.length > 0) && (
             <div className="mt-7">
               <SectionLabel text="🎟 Ưu đãi có thể áp dụng" />
               <div className="space-y-2">

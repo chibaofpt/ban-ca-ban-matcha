@@ -37,14 +37,16 @@ function makeState(): BundleVoucherFormState {
 }
 
 describe("Payload form voucher BUNDLE theo từng món", () => {
-  it("mở rộng size MEDIUM và LARGE thành hai qualifier scope", () => {
+  it("gộp MEDIUM và LARGE vào một qualifier product", () => {
     const state = makeState();
     state.qualifierScopes = [scope({ sizes: ["MEDIUM", "LARGE"] })];
 
-    expect(buildBundleVoucherInput(state).bundle_rule.qualifier_scopes).toEqual([
-      { menu_item_id: IDS.latte, size: "MEDIUM" },
-      { menu_item_id: IDS.latte, size: "LARGE" },
-    ]);
+    expect(buildBundleVoucherInput(state).bundle_rule.qualifier_products).toEqual([{
+      menu_item_id: IDS.latte,
+      default_powder_id: IDS.powderA,
+      default_base_liquid_id: null,
+      allowed_sizes: ["MEDIUM", "LARGE"],
+    }]);
   });
 
   it("FIXED_CONFIG Latte tự dùng bột gốc và cấu hình sữa đã chọn", () => {
@@ -52,30 +54,29 @@ describe("Payload form voucher BUNDLE theo từng món", () => {
     state.rewardMode = "FIXED_CONFIG";
     state.rewardProductScopes = [scope({ sizes: ["MEDIUM"], milkTypeIds: [IDS.milk] })];
 
-    expect(buildBundleVoucherInput(state).bundle_rule.reward_product_scopes).toEqual([{
+    expect(buildBundleVoucherInput(state).bundle_rule.reward_products).toEqual([{
       menu_item_id: IDS.latte,
-      size: "MEDIUM",
-      powder_id: IDS.powderA,
-      milk_type_id: IDS.milk,
+      allowed_sizes: ["MEDIUM"],
+      default_powder_id: IDS.powderA,
+      default_base_liquid_id: IDS.milk,
     }]);
   });
 
-  it("mỗi Fusion có range bột riêng và tạo đúng các reward scope", () => {
+  it("mỗi Fusion lưu đúng một cấu hình mặc định và nhiều allowed sizes", () => {
     const state = makeState();
     state.rewardMode = "FIXED_CONFIG";
     state.rewardProductScopes = [
-      scope({ menuItemId: IDS.fusionA, category: "fusion", fixedPowderId: null, sizes: ["SMALL"], powderIds: [IDS.powderA, IDS.powderB] }),
+      scope({ menuItemId: IDS.fusionA, category: "fusion", fixedPowderId: null, sizes: ["SMALL"], powderIds: [IDS.powderA] }),
       scope({ menuItemId: IDS.fusionB, category: "fusion", fixedPowderId: null, sizes: ["LARGE"], powderIds: [IDS.powderC] }),
     ];
 
-    expect(buildBundleVoucherInput(state).bundle_rule.reward_product_scopes).toEqual([
-      { menu_item_id: IDS.fusionA, size: "SMALL", powder_id: IDS.powderA, milk_type_id: null },
-      { menu_item_id: IDS.fusionA, size: "SMALL", powder_id: IDS.powderB, milk_type_id: null },
-      { menu_item_id: IDS.fusionB, size: "LARGE", powder_id: IDS.powderC, milk_type_id: null },
+    expect(buildBundleVoucherInput(state).bundle_rule.reward_products).toEqual([
+      { menu_item_id: IDS.fusionA, allowed_sizes: ["SMALL"], default_powder_id: IDS.powderA, default_base_liquid_id: null },
+      { menu_item_id: IDS.fusionB, allowed_sizes: ["LARGE"], default_powder_id: IDS.powderC, default_base_liquid_id: null },
     ]);
   });
 
-  it("ALLOWED_SCOPE giữ restriction riêng và hạn mức riêng của từng món", () => {
+  it("ALLOWED_SCOPE không gửi reference price do server tự resolve", () => {
     const state = makeState();
     state.rewardMode = "ALLOWED_SCOPE";
     state.rewardProductScopes = [scope({
@@ -83,11 +84,11 @@ describe("Payload form voucher BUNDLE theo từng món", () => {
       sizes: ["MEDIUM"], powderIds: [IDS.powderB], referencePriceVnd: 55_000,
     })];
 
-    expect(buildBundleVoucherInput(state).bundle_rule.reward_product_scopes).toEqual([{
+    expect(buildBundleVoucherInput(state).bundle_rule.reward_products).toEqual([{
       menu_item_id: IDS.fusionA,
-      size: "MEDIUM",
-      powder_id: IDS.powderB,
-      reference_price_vnd: 55_000,
+      allowed_sizes: ["MEDIUM"],
+      default_powder_id: IDS.powderB,
+      default_base_liquid_id: null,
     }]);
   });
 

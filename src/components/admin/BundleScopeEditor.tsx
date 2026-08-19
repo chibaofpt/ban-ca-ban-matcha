@@ -75,9 +75,11 @@ export function BundleScopeEditor({
             />
             {scope.category === "fusion" ? (
               <AdaptiveSelect
-                label={purpose === "FIXED_CONFIG" ? "Bột được nhận (bắt buộc)" : "Bột áp dụng (trống = mọi bột hợp lệ)"}
-                multiple options={itemPowders} value={scope.powderIds}
-                onChange={(value) => updateScope(scope.menuItemId, { powderIds: value as string[] })}
+                label="Bột mặc định (bắt buộc)"
+                options={itemPowders} value={scope.powderIds[0] ?? ""}
+                onChange={(value) => updateScope(scope.menuItemId, {
+                  powderIds: value ? [value as string] : [],
+                })}
               />
             ) : (
               <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
@@ -86,18 +88,12 @@ export function BundleScopeEditor({
             )}
             {itemBaseLiquids.length > 0 && (
               <AdaptiveSelect
-                label={purpose === "FIXED_CONFIG" ? "Base Liquid quà (bắt buộc)" : "Base Liquid áp dụng (trống = mọi loại hợp lệ)"}
-                multiple options={itemBaseLiquids} value={scope.milkTypeIds}
-                onChange={(value) => updateScope(scope.menuItemId, { milkTypeIds: value as string[] })}
+                label="Base Liquid mặc định (bắt buộc)"
+                options={itemBaseLiquids} value={scope.milkTypeIds[0] ?? ""}
+                onChange={(value) => updateScope(scope.menuItemId, {
+                  milkTypeIds: value ? [value as string] : [],
+                })}
               />
-            )}
-            {purpose === "ALLOWED_SCOPE" && (
-              <label className="space-y-1.5">
-                <span className="text-sm font-semibold">Hạn mức miễn cho món này (VND)</span>
-                <input type="number" min={1_000} step={1_000} value={scope.referencePriceVnd}
-                  onChange={(event) => updateScope(scope.menuItemId, { referencePriceVnd: Number(event.target.value) || 0 })}
-                  className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary" />
-              </label>
             )}
           </article>
         );

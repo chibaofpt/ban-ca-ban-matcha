@@ -8,11 +8,22 @@ import axios from "axios";
 import { cn } from "@/src/utils/cn";
 import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
-import { fetchCustomerVouchers, exchangeCustomerVoucher, type MyVoucher } from "@/src/services/staffVoucherService";
+import {
+  fetchCustomerVouchers,
+  exchangeCustomerVoucher,
+  type MyVoucher,
+} from "@/src/services/staffVoucherService";
 import { listActiveVoucherPackages } from "@/src/services/customerVoucherService";
 import { usePowderStore } from "@/src/lib/store/powderStore";
-import { calcLattePrice, calcFusionPrice, resolveGram } from "@/src/utils/pricing";
-import { useStaffCartStore, useStaffCartTotalPrice } from "@/src/lib/store/staffCartStore";
+import {
+  calcLattePrice,
+  calcFusionPrice,
+  resolveGram,
+} from "@/src/utils/pricing";
+import {
+  useStaffCartStore,
+  useStaffCartTotalPrice,
+} from "@/src/lib/store/staffCartStore";
 import { buildExtrasCartItem } from "@/src/utils/cartHelpers";
 import ProductModal from "@/src/components/shared/ProductModal";
 import { StaffCartDrawer } from "@/src/components/staff/StaffCartDrawer";
@@ -31,6 +42,7 @@ import type { CartItem } from "@/src/lib/types/cart";
 import type { StaffOrderResult } from "@/src/lib/types/order";
 import {
   deriveBundleSelectionState,
+  buildBundleApplication,
   summarizeBundleCart,
   type BundleSelectionAllocation,
 } from "@/src/lib/utils/bundleVoucher";
@@ -42,9 +54,7 @@ import {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function buildOrderItems(
-  cart: CartItem[]
-): CreateStaffOrderPayload["items"] {
+function buildOrderItems(cart: CartItem[]): CreateStaffOrderPayload["items"] {
   return cart.map((c) => {
     const productVoucherId = c.productVoucherId;
     const addonVouchers = c.addonVouchers ?? [];
@@ -76,7 +86,10 @@ function buildOrderItems(
         : {}),
       ...(c.selectedPowderId ? { selected_powder_id: c.selectedPowderId } : {}),
       ...((c.selectedBaseLiquidId ?? c.selectedMilkTypeId)
-        ? { selected_base_liquid_id: c.selectedBaseLiquidId ?? c.selectedMilkTypeId }
+        ? {
+            selected_base_liquid_id:
+              c.selectedBaseLiquidId ?? c.selectedMilkTypeId,
+          }
         : {}),
       client_price_vnd: c.clientPriceVnd,
     };
@@ -97,7 +110,11 @@ void SIZE_CARD_LABELS;
 // ── Component ─────────────────────────────────────────────────────────────────
 
 /** Staff POS page — menu grid, cart drawer, checkout form, QR scanner. */
-export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "STAFF" | "ADMIN" }) {
+export default function StaffOrdersPage({
+  userRole = "STAFF",
+}: {
+  userRole?: "STAFF" | "ADMIN";
+}) {
   // ── Server data ───────────────────────────────────────────────────────
   const queryClient = useQueryClient();
 
@@ -111,9 +128,20 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     queryFn: fetchPowders,
   });
 
-  const menuItems = useMemo(() => menuData ? [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])] : [], [menuData]);
-  const status: LoadStatus = isMenuLoading || isPowderLoading ? "loading" : (menuData && pData) ? "success" : "error";
-  
+  const menuItems = useMemo(
+    () =>
+      menuData
+        ? [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])]
+        : [],
+    [menuData],
+  );
+  const status: LoadStatus =
+    isMenuLoading || isPowderLoading
+      ? "loading"
+      : menuData && pData
+        ? "success"
+        : "error";
+
   const loadMenu = () => {
     queryClient.invalidateQueries({ queryKey: ["staff", "menu"] });
     queryClient.invalidateQueries({ queryKey: ["staff", "powders"] });
@@ -123,34 +151,46 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
 
-  const getDisplayPrice = useCallback((item: MenuItem, sizeObj: MenuItem["sizes"][0]) => {
-    const isLatte = item.category === "latte";
-    const defaultPowderId = isLatte ? item.powder?.id : item.resolved_default_powder_id;
-    const defaultMilk = menuData?.milk_types.find((milk) => milk.is_default) ?? menuData?.milk_types[0];
+  const getDisplayPrice = useCallback(
+    (item: MenuItem, sizeObj: MenuItem["sizes"][0]) => {
+      const isLatte = item.category === "latte";
+      const defaultPowderId = isLatte
+        ? item.powder?.id
+        : item.resolved_default_powder_id;
+      const defaultMilk =
+        menuData?.milk_types.find((milk) => milk.is_default) ??
+        menuData?.milk_types[0];
 
-    const s = sizeObj.size;
-    const base = sizeObj.base_price_vnd ?? 0;
-    const pwd = powders.find((p) => p.id === defaultPowderId);
-    const pwdPrice = pwd?.price_per_gram ?? 0;
-    const gram = resolveGram(s, item.custom_powder_grams, pwd?.size_config ?? [], defaultPowderGrams);
+      const s = sizeObj.size;
+      const base = sizeObj.base_price_vnd ?? 0;
+      const pwd = powders.find((p) => p.id === defaultPowderId);
+      const pwdPrice = pwd?.price_per_gram ?? 0;
+      const gram = resolveGram(
+        s,
+        item.custom_powder_grams,
+        pwd?.size_config ?? [],
+        defaultPowderGrams,
+      );
 
-    if (isLatte) {
-      return calcLattePrice({
-        base_price_vnd: base,
-        gram,
-        powder_price_per_gram: pwdPrice,
-        milk_ml: sizeObj.base_liquid_ml ?? sizeObj.milk_ml ?? 0,
-        milk_price_per_ml: defaultMilk?.price_per_ml ?? 40,
-      });
-    } else {
-      return calcFusionPrice({
-        base_price_vnd: base,
-        gram,
-        powder_price_per_gram: pwdPrice,
-        premium_latte: 0,
-      });
-    }
-  }, [powders, defaultPowderGrams, menuData]);
+      if (isLatte) {
+        return calcLattePrice({
+          base_price_vnd: base,
+          gram,
+          powder_price_per_gram: pwdPrice,
+          milk_ml: sizeObj.base_liquid_ml ?? sizeObj.milk_ml ?? 0,
+          milk_price_per_ml: defaultMilk?.price_per_ml ?? 40,
+        });
+      } else {
+        return calcFusionPrice({
+          base_price_vnd: base,
+          gram,
+          powder_price_per_gram: pwdPrice,
+          premium_latte: 0,
+        });
+      }
+    },
+    [powders, defaultPowderGrams, menuData],
+  );
 
   // ── Modal control — only one open at a time ────────────────────────────
 
@@ -167,7 +207,10 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   // ── QR scan state ──────────────────────────────────────────
 
   const [initialSearchQuery, setInitialSearchQuery] = useState("");
-  const [scannedProductVoucher, setScannedProductVoucher] = useState<{ qr_token: string; covered_price_vnd: number } | null>(null);
+  const [scannedProductVoucher, setScannedProductVoucher] = useState<{
+    qr_token: string;
+    covered_price_vnd: number;
+  } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
 
@@ -193,8 +236,12 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   // ── Voucher state (list-based) ────────────────────────────────────────
 
   const [customerVouchers, setCustomerVouchers] = useState<MyVoucher[]>([]);
-  const [selectedBundleToken, setSelectedBundleToken] = useState<string | null>(null);
-  const [bundleAllocations, setBundleAllocations] = useState<BundleSelectionAllocation[]>([]);
+  const [selectedBundleToken, setSelectedBundleToken] = useState<string | null>(
+    null,
+  );
+  const [bundleAllocations, setBundleAllocations] = useState<
+    BundleSelectionAllocation[]
+  >([]);
 
   // ── Category filter ───────────────────────────────────────────────────
 
@@ -227,14 +274,15 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
 
   const availableVoucherPackages = useMemo(() => {
     if (userRole !== "ADMIN" || !voucherPackages) return [];
-    return voucherPackages.filter(p => p.voucher_type === "DISCOUNT");
+    return voucherPackages.filter((p) => p.voucher_type === "DISCOUNT");
   }, [userRole, voucherPackages]);
 
   const exchangeMutation = useMutation({
     mutationFn: (packageId: string) => {
-      if (customerInfo?.type !== "existing") throw new Error("Invalid customer");
+      if (customerInfo?.type !== "existing")
+        throw new Error("Invalid customer");
       return exchangeCustomerVoucher(customerInfo.data.qr_token, packageId);
-    }
+    },
   });
 
   const handleExchangeVoucher = async (packageId: string) => {
@@ -242,15 +290,18 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     try {
       await exchangeMutation.mutateAsync(packageId);
       toast.success("Đổi ưu đãi thành công!");
-      
-      const pkg = availableVoucherPackages.find(p => p.id === packageId);
+
+      const pkg = availableVoucherPackages.find((p) => p.id === packageId);
       if (pkg && customerInfo?.type === "existing") {
         setCustomerInfo({
           type: "existing",
-          data: { ...customerInfo.data, points_balance: customerInfo.data.points_balance - pkg.points_cost }
+          data: {
+            ...customerInfo.data,
+            points_balance: customerInfo.data.points_balance - pkg.points_cost,
+          },
         });
       }
-      
+
       fetchCustomerVouchers(customerInfo.data.qr_token)
         .then(setCustomerVouchers)
         .catch(() => setCustomerVouchers([]));
@@ -266,15 +317,15 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
 
   const categories = useMemo(
     () => ["Tất cả", ...new Set(menuItems.map((i) => i.category))],
-    [menuItems]
+    [menuItems],
   );
 
   const visibleItems = useMemo(
     () =>
       menuItems.filter(
-        (i) => activeCategory === "Tất cả" || i.category === activeCategory
+        (i) => activeCategory === "Tất cả" || i.category === activeCategory,
       ),
-    [menuItems, activeCategory]
+    [menuItems, activeCategory],
   );
 
   const subtotal = useStaffCartTotalPrice();
@@ -292,19 +343,16 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
       })
     : null;
 
-  /** Returns true if any voucher is applied (either scan-based or list-based). */
-  const hasAnyVoucher = useMemo(() => 
-    !!discountVoucher ||
-    !!selectedBundleToken ||
-    selectedDiscountIds.length > 0 ||
-    cart.some(c => !!c.productVoucherId || !!c.itemVoucherId || (c.addonVouchers && c.addonVouchers.length > 0)),
-  [discountVoucher, selectedBundleToken, selectedDiscountIds, cart]);
+
 
   // ── Cart handlers ─────────────────────────────────────────────────────
 
   const handleAddToCart = (item: CartItem) => {
     if (editingCartItem) {
-      const isVoucherApplied = item.productVoucherId !== undefined || item.itemVoucherId !== undefined || (item.addonVouchers && item.addonVouchers.length > 0);
+      const isVoucherApplied =
+        item.productVoucherId !== undefined ||
+        item.itemVoucherId !== undefined ||
+        (item.addonVouchers && item.addonVouchers.length > 0);
       if (editingCartItem.quantity > 1 && isVoucherApplied) {
         // Split logic: the edited item keeps the voucher but gets qty 1
         updateItem(editingCartItem.cartId, { ...item, quantity: 1 });
@@ -332,7 +380,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   };
 
   const handleEditItem = (item: CartItem) => {
-    const menuItem = menuItems.find(m => m.id === item.menuItemId);
+    const menuItem = menuItems.find((m) => m.id === item.menuItemId);
     if (!menuItem) return;
     setEditingCartItem(item);
     setSelectedItem(menuItem);
@@ -366,13 +414,14 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   }, [resetCheckout]);
 
   const pendingTransfers = usePendingCounterTransfers({
-    fetchOrders: () => fetchOrdersList({
-      order_type: "COUNTER",
-      status: "PENDING",
-      mine: true,
-      page: 1,
-      limit: 100,
-    }),
+    fetchOrders: () =>
+      fetchOrdersList({
+        order_type: "COUNTER",
+        status: "PENDING",
+        mine: true,
+        page: 1,
+        limit: 100,
+      }),
     updateStatus: staffOrderService.updateStaffOrderStatus,
   });
 
@@ -391,9 +440,22 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
   const handleCheckoutClick = () => {
     if (cart.length === 0) return;
     if (selectedBundleToken && bundleSelectionState?.status !== "READY") {
-      toast.error(bundleSelectionState?.message ?? "Vui lòng chọn đủ quà của ưu đãi.");
+      toast.error(
+        bundleSelectionState?.message ?? "Vui lòng chọn đủ quà của ưu đãi.",
+      );
       return;
     }
+
+    const hasAnyVoucher =
+      discountVoucher !== null ||
+      selectedDiscountIds.length > 0 ||
+      cart.some(
+        (c) =>
+          c.productVoucherId ||
+          c.itemVoucherId ||
+          (c.addonVouchers && c.addonVouchers.length > 0),
+      ) ||
+      selectedBundleToken !== null;
 
     if (hasAnyVoucher && customerInfo?.type === "existing") {
       if (userRole === "ADMIN") {
@@ -412,10 +474,27 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
       counterPayment.handleOrderCreated(order);
       queryClient.invalidateQueries({ queryKey: ["staff", "orders"] });
       queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
+      if (order.skipped_vouchers && order.skipped_vouchers.length > 0) {
+        toast.warning(
+          `Có ${order.skipped_vouchers.length} ưu đãi bị bỏ qua do hết hạn hoặc đã sử dụng`,
+        );
+      }
     },
     onError: (err: unknown) => {
-      const error = err as { response?: { data?: { error?: string } } };
-      if (error.response?.data?.error) {
+      const error = err as {
+        response?: {
+          data?: {
+            error?: string;
+            code?: string;
+            details?: { reason?: string };
+          };
+        };
+      };
+      if (error.response?.data?.code === "BUNDLE_NOT_ELIGIBLE") {
+        toast.error(
+          `Voucher bundle không hợp lệ: ${error.response.data.details?.reason ?? ""}`,
+        );
+      } else if (error.response?.data?.error) {
         toast.error(error.response.data.error);
       } else {
         toast.error("Tạo đơn thất bại. Vui lòng thử lại.");
@@ -424,7 +503,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     onSettled: () => {
       isSubmittingRef.current = false;
       setIsSubmitting(false);
-    }
+    },
   });
 
   const handleCheckoutConfirm = async (customerQrToken?: string) => {
@@ -434,15 +513,19 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
     setConfirmCheckoutOpen(false);
     setQrVerifyOpen(false);
     setIsSubmitting(true);
-    
+
     let payload: CreateStaffOrderPayload;
     const items = buildOrderItems(cart).map((item, index) =>
-      selectedBundleToken ? { ...item, client_line_id: cart[index]?.cartId } : item,
+      selectedBundleToken
+        ? { ...item, client_line_id: cart[index]?.cartId }
+        : item,
     );
-    const discountVoucherIds = Array.from(new Set([
-      ...(discountVoucher ? [discountVoucher.qr_token] : []),
-      ...selectedDiscountIds,
-    ]));
+    const discountVoucherIds = Array.from(
+      new Set([
+        ...(discountVoucher ? [discountVoucher.qr_token] : []),
+        ...selectedDiscountIds,
+      ]),
+    );
 
     if (!customerInfo) {
       payload = { items, payment_method: counterPayment.paymentMethod };
@@ -451,11 +534,18 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         phone_number: customerInfo.data.phone_number,
         payment_method: counterPayment.paymentMethod,
         items,
-        ...(discountVoucherIds.length > 0 ? { discount_voucher_ids: discountVoucherIds } : {}),
-        ...(selectedBundleToken
+        ...(discountVoucherIds.length > 0
+          ? { discount_voucher_ids: discountVoucherIds }
+          : {}),
+        ...(selectedBundleToken && selectedBundleSummary
           ? {
-              bundle_voucher_qr_token: selectedBundleToken,
-              bundle_reward_allocations: bundleAllocations,
+              bundle_applications: [
+                buildBundleApplication({
+                  voucher: selectedBundleSummary,
+                  cart: summarizeBundleCart(cart),
+                  rewardAllocations: bundleAllocations,
+                }),
+              ].filter((application) => application !== null),
             }
           : {}),
         ...(customerQrToken ? { customer_qr_token: customerQrToken } : {}),
@@ -531,13 +621,23 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
 
   // ── Voucher wrappers ──────────────────────────────────────────────────
 
-  const handleApplyProduct = (cartId: string, voucher: import("@/src/services/staffVoucherService").MyVoucher) => {
+  const handleApplyProduct = (
+    cartId: string,
+    voucher: import("@/src/services/staffVoucherService").MyVoucher,
+  ) => {
     if (voucher.voucher_type === "ITEM" || voucher.covered_price_vnd) {
-      applyProductVoucher(cartId, voucher.qr_token, voucher.covered_price_vnd ?? 0);
+      applyProductVoucher(
+        cartId,
+        voucher.qr_token,
+        voucher.covered_price_vnd ?? 0,
+      );
     }
   };
 
-  const handleApplyAddon = (cartId: string, voucher: import("@/src/services/staffVoucherService").MyVoucher) => {
+  const handleApplyAddon = (
+    cartId: string,
+    voucher: import("@/src/services/staffVoucherService").MyVoucher,
+  ) => {
     if (voucher.addon_option_id) {
       applyAddonVoucher(cartId, voucher.qr_token, voucher.addon_option_id);
     }
@@ -594,7 +694,7 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
                 "shrink-0 px-4 py-1.5 rounded-full text-xs font-medium transition border",
                 activeCategory === c
                   ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-card text-foreground border-border hover:bg-secondary/40"
+                  : "bg-card text-foreground border-border hover:bg-secondary/40",
               )}
             >
               {c}
@@ -624,10 +724,10 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         )}
 
         {/* Menu grid */}
-        <StaffProductGrid 
-          items={visibleItems} 
-          onItemClick={setSelectedItem} 
-          getDisplayPrice={getDisplayPrice} 
+        <StaffProductGrid
+          items={visibleItems}
+          onItemClick={setSelectedItem}
+          getDisplayPrice={getDisplayPrice}
         />
       </div>
 
@@ -645,7 +745,10 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
               onClick={() => setCartOpen(true)}
               className="flex min-h-11 min-w-0 items-center gap-2 rounded-full bg-accent px-4 py-3 text-accent-foreground shadow-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <ShoppingBag className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
+              <ShoppingBag
+                className="h-[18px] w-[18px] shrink-0"
+                aria-hidden="true"
+              />
               <span className="truncate text-sm font-medium">
                 {cart.length} món • 🐟 {subtotal / 1000} cá
               </span>
@@ -682,8 +785,12 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         onBundleVoucherChange={setSelectedBundleToken}
         onBundleAllocationsChange={setBundleAllocations}
         onAddExtrasReward={(menuItemId, voucherToken) => {
-          const reward = (menuData?.extras ?? []).find((item) => item.id === menuItemId);
-          return reward ? addItem(buildExtrasCartItem(reward, voucherToken)) : null;
+          const reward = (menuData?.extras ?? []).find(
+            (item) => item.id === menuItemId,
+          );
+          return reward
+            ? addItem(buildExtrasCartItem(reward, voucherToken))
+            : null;
         }}
         onRemoveTransientRewards={(voucherToken) => {
           cart
@@ -696,14 +803,21 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
         availableVoucherPackages={availableVoucherPackages}
         onExchangeVoucher={handleExchangeVoucher}
         isExchanging={exchangeMutation.isPending}
-        preventCloseOutside={customerSelectOpen || confirmCheckoutOpen || qrVerifyOpen || !!itemToRemove || clearCartConfirmOpen}
+        preventCloseOutside={
+          customerSelectOpen ||
+          confirmCheckoutOpen ||
+          qrVerifyOpen ||
+          !!itemToRemove ||
+          clearCartConfirmOpen
+        }
         onApplyProduct={handleApplyProduct}
         onRemoveProduct={removeProductVoucher}
         onApplyAddon={handleApplyAddon}
         onRemoveAddon={removeAddonVoucher}
         onClearCart={() => setClearCartConfirmOpen(true)}
         productModalNode={
-          selectedItem && editingCartItem && (
+          selectedItem &&
+          editingCartItem && (
             <ProductModal
               key="staff-edit-modal"
               item={selectedItem}
@@ -712,7 +826,9 @@ export default function StaffOrdersPage({ userRole = "STAFF" }: { userRole?: "ST
               addonGroups={menuData?.addon_groups ?? []}
               editingItem={editingCartItem || undefined}
               freeVoucherId={scannedProductVoucher?.qr_token}
-              freeVoucherCoveredPriceVnd={scannedProductVoucher?.covered_price_vnd}
+              freeVoucherCoveredPriceVnd={
+                scannedProductVoucher?.covered_price_vnd
+              }
               availableVouchers={customerVouchers}
               onClose={() => {
                 setSelectedItem(null);
