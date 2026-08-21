@@ -40,6 +40,7 @@ import { PUT } from "@/app/api/admin/voucher-packages/[id]/route";
 const MENU_ID = "22222222-2222-4222-8222-222222222222";
 const POWDER_ID = "33333333-3333-4333-8333-333333333333";
 const MILK_ID = "44444444-4444-4444-8444-444444444444";
+const FUTURE_ENDS_AT = "2099-08-20T16:59:59.999Z";
 
 function payload() {
   return {
@@ -47,7 +48,7 @@ function payload() {
     name: "Mua 1 tặng 1",
     acquisition_mode: "AUTO_GRANT",
     points_cost: 0,
-    ends_at: "2026-08-20T16:59:59.999Z",
+    ends_at: FUTURE_ENDS_AT,
     min_order_vnd: 80_000,
     quantity: null,
     max_per_user: 1,
@@ -107,7 +108,7 @@ describe("POST /api/admin/voucher-packages — BUNDLE", () => {
       data: expect.objectContaining({
         voucher_type: "BUNDLE",
         acquisition_mode: "AUTO_GRANT",
-        ends_at: new Date("2026-08-20T16:59:59.999Z"),
+        ends_at: new Date(FUTURE_ENDS_AT),
         min_order_vnd: 80_000,
         bundleRule: { create: expect.objectContaining({ buy_quantity: 1 }) },
       }),
