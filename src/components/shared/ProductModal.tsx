@@ -353,8 +353,25 @@ const BaseModal: React.FC<ProductModalProps> = ({
         </button>
 
         <div className="flex flex-col flex-1 min-h-0 h-full overflow-y-auto overscroll-contain px-5 md:px-8 pt-7 pb-44 md:pb-40 md:pt-0">
+          {item.image_url && (
+            <div className="md:hidden -mx-5 -mt-7">
+              <div className="relative h-[30vh] w-full overflow-hidden">
+                <Image
+                  src={item.image_url}
+                  alt={item.name}
+                  fill
+                  sizes="100vw"
+                  className="object-cover object-center"
+                  quality={80}
+                  placeholder="blur"
+                  blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+                />
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/20 to-transparent" />
+              </div>
+            </div>
+          )}
           <div
-            className="pt-7 pb-5 border-b border-border/40 md:hidden"
+            className={cn("pb-5 border-b border-border/40 md:hidden", item.image_url ? "pt-4" : "pt-7")}
           >
             <h2 className="font-serif text-2xl font-bold text-primary">{item.name}</h2>
             {item.description && <p className="text-sm text-primary/55 mt-1.5 leading-relaxed">{item.description}</p>}

@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Search, RefreshCw, LayoutGrid, List } from "lucide-react";
+import { Plus, Search, RefreshCw, LayoutGrid, List, Trash2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import MenuItemCard from "@/src/components/admin/MenuItemCard";
 import MenuItemModal from "@/src/components/admin/MenuItemModal";
 import {
   listAdminMenuItems,
+  deleteMenuItem,
   toggleMenuItemAvailability,
   type AdminMenuData,
 } from "@/src/services/adminMenuService";
@@ -14,6 +15,7 @@ import { listAdminPowders } from "@/src/services/adminPowderService";
 import type { AdminMenuItem } from "@/src/lib/types/menu";
 import { cn } from "@/src/utils/cn";
 import Image from "next/image";
+import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 
 // ── Modal state ───────────────────────────────────────────────────────────────
 
@@ -21,44 +23,6 @@ type ModalState =
   | { open: false }
   | { open: true; mode: "create" }
   | { open: true; mode: "edit"; item: AdminMenuItem };
-
-// ── Confirm dialog ────────────────────────────────────────────────────────────
-
-interface ConfirmDialogProps {
-  message: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-  isLoading?: boolean;
-}
-
-function ConfirmDialog({ message, onConfirm, onCancel, isLoading }: ConfirmDialogProps) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
-      <div className="bg-card rounded-2xl shadow-xl p-6 max-w-sm w-full space-y-4">
-        <p className="text-sm text-foreground">{message}</p>
-        <div className="flex gap-2 justify-end">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isLoading}
-            className="px-4 py-2 rounded-xl text-sm border border-border hover:bg-secondary/40 transition disabled:opacity-50"
-          >
-            Hủy
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isLoading}
-            className="px-4 py-2 rounded-xl text-sm bg-destructive text-white hover:bg-destructive/90 transition disabled:opacity-50"
-          >
-            {isLoading ? "Đang xử lý..." : "Tiếp tục"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-void ConfirmDialog;
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -71,6 +35,7 @@ export default function AdminMenuPage() {
   const [modalState, setModalState] = useState<ModalState>({ open: false });
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AdminMenuItem | null>(null);
 
   // ── Data fetching ───────────────────────────────────────────────────────────
 
@@ -207,6 +172,33 @@ export default function AdminMenuPage() {
     toggleMutation.mutate({ id, next });
   };
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteMenuItem(id),
+    onSuccess: (_, id) => {
+      queryClient.setQueryData<AdminMenuData>(["admin", "menu"], (old) => {
+        if (!old) return old;
+        const remove = (items: AdminMenuItem[]) => items.filter((item) => item.id !== id);
+        return {
+          ...old,
+          latte: remove(old.latte),
+          fusion: remove(old.fusion),
+          extras: remove(old.extras ?? []),
+        };
+      });
+      setDeleteTarget(null);
+      showToast("Đã ẩn món khỏi menu");
+    },
+    onError: () => {
+      setDeleteTarget(null);
+      showToast("Không thể xoá món. Vui lòng thử lại.", "error");
+    },
+  });
+
+  const handleDeleteClick = (event: React.MouseEvent, item: AdminMenuItem) => {
+    event.stopPropagation();
+    setDeleteTarget(item);
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -328,6 +320,7 @@ export default function AdminMenuPage() {
                   <th className="px-6 py-4 font-semibold tracking-wider">Món</th>
                   <th className="px-6 py-4 font-semibold tracking-wider">Danh mục</th>
                   <th className="px-6 py-4 font-semibold tracking-wider text-center">Trạng thái</th>
+                  <th className="px-6 py-4 font-semibold tracking-wider text-center">Xoá</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
@@ -366,6 +359,17 @@ export default function AdminMenuPage() {
                             )}
                           </div>
                         </div>
+                      </td>
+                      <td className="px-6 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={(event) => handleDeleteClick(event, item)}
+                          className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-destructive transition hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
+                          aria-label={`Xoá ${item.name}`}
+                          title="Xoá món"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </td>
                       <td className="px-6 py-3">
                         <span
@@ -415,17 +419,39 @@ export default function AdminMenuPage() {
           {filteredItems.map((item) => (
             <div
               key={item.id}
-              className={cn(togglingId === item.id && "pointer-events-none opacity-50")}
+              className={cn("relative", togglingId === item.id && "pointer-events-none opacity-50")}
             >
               <MenuItemCard
                 item={item}
                 onClick={(i) => setModalState({ open: true, mode: "edit", item: i })}
                 onToggleAvailable={handleToggleAvailable}
               />
+              <button
+                type="button"
+                onClick={(event) => handleDeleteClick(event, item)}
+                className="absolute left-2 top-2 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-background/90 text-destructive shadow-sm backdrop-blur-sm transition hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
+                aria-label={`Xoá ${item.name}`}
+                title="Xoá món"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
             </div>
           ))}
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={deleteTarget !== null}
+        title="Xoá món?"
+        message={deleteTarget ? `Món “${deleteTarget.name}” sẽ bị ẩn khỏi menu và không thể đặt thêm.` : ""}
+        confirmLabel="Xoá món"
+        isDestructive
+        isLoading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
 
       {/* Modal */}
       {modalState.open && (

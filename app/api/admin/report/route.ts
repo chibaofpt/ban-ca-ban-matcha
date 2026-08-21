@@ -84,6 +84,7 @@ export async function GET(req: NextRequest) {
             },
             addons: {
               select: {
+                addon_option_id: true,
                 quantity: true,
                 unit_price_vnd: true,
                 addonOption: {
@@ -149,6 +150,7 @@ export async function GET(req: NextRequest) {
           sizes: Array<{ size: "SMALL" | "MEDIUM" | "LARGE"; base_liquid_ml: number | null }>;
         };
         addons: Array<{
+          addon_option_id: string;
           quantity: number;
           unit_price_vnd: number;
           addonOption: {
@@ -187,6 +189,7 @@ export async function GET(req: NextRequest) {
             sizes: item.menuItem.sizes,
           },
           addons: item.addons.map((addon) => ({
+            addon_option_id: addon.addon_option_id,
             quantity: addon.quantity,
             unit_price_vnd: addon.unit_price_vnd,
             addonOption: {

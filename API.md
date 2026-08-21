@@ -249,6 +249,51 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
 
 ## Request / Response Specs
 
+### `GET /api/admin/report?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&staffId?=UUID`
+
+ADMIN-only. `startDate` and `endDate` are required; `staffId` optionally limits completed orders
+to the selected staff member. Dates are evaluated in `Asia/Ho_Chi_Minh`.
+
+```ts
+{
+  data: {
+    summary: {
+      total_orders: number
+      total_cups: number
+      total_extras_units: number
+      total_revenue_vnd: number
+    }
+    powder_usage: { powder_name: string, total_grams: number }[]
+    milk_usage: { milk_name: string, total_ml: number }[]
+    latte_sales: ItemSales[]
+    fusion_sales: ItemSales[]
+    extras_sales: ItemSales[]
+    addon_usage: {
+      addon_option_id: string
+      addon_label: string
+      group_name: string
+      total_count: number
+      powder_breakdown: {
+        powder_name: string
+        total_grams: number
+      }[]
+    }[]
+    revenue_by_type: {
+      order_type: "COUNTER" | "PICKUP" | "DELIVERY"
+      total_revenue_vnd: number
+      order_count: number
+    }[]
+    top_products: { name: string, category: string, total_cups: number }[]
+  }
+}
+```
+
+- `addon_usage` is grouped by stable `addon_option_id`, never label text. Existing display fields
+  remain for backward compatibility.
+- `total_count` and every `powder_breakdown.total_grams` include both the addon quantity and the
+  corresponding order-item quantity.
+- `powder_breakdown` is always an array; it is empty for an addon that does not consume matcha.
+
 ### `POST /api/auth/register`
 ```ts
 {

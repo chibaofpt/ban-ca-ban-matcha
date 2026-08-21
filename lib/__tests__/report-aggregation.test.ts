@@ -183,7 +183,7 @@ describe("buildReport — kết quả tổng hợp cơ bản", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildAdminReport — Admin extras (addon_usage, revenue_by_type, top_products)", () => {
-  it("tính addon_usage đúng — gộp theo addon_label", async () => {
+  it("tính addon_usage theo addon option và trả breakdown bột ổn định", async () => {
     const { buildAdminReport } = await import("@/lib/reportAggregation");
 
     const orders = [
@@ -205,11 +205,13 @@ describe("buildAdminReport — Admin extras (addon_usage, revenue_by_type, top_p
             },
             addons: [
               {
+                addon_option_id: "addon-kem",
                 quantity: 1,
                 unit_price_vnd: 0,
                 addonOption: { label: "Nửa viên kem", group: { name: "Kem" }, gram_value: null },
               },
               {
+                addon_option_id: "addon-matcha",
                 quantity: 1,
                 unit_price_vnd: 5000,
                 addonOption: { label: "Thêm matcha", group: { name: "Matcha" }, gram_value: 2 },
@@ -236,6 +238,7 @@ describe("buildAdminReport — Admin extras (addon_usage, revenue_by_type, top_p
             },
             addons: [
               {
+                addon_option_id: "addon-kem",
                 quantity: 1,
                 unit_price_vnd: 0,
                 addonOption: { label: "Nửa viên kem", group: { name: "Kem" }, gram_value: null },
@@ -251,13 +254,73 @@ describe("buildAdminReport — Admin extras (addon_usage, revenue_by_type, top_p
     // "Nửa viên kem" xuất hiện 2 lần (từ 2 đơn)
     const kemAddon = result.addon_usage.find((a) => a.addon_label === "Nửa viên kem");
     expect(kemAddon).toBeDefined();
+    expect(kemAddon?.addon_option_id).toBe("addon-kem");
     expect(kemAddon?.total_count).toBe(2);
+    expect(kemAddon?.powder_breakdown).toEqual([]);
 
     // "Thêm matcha" xuất hiện 1 lần
     const matchaAddon = result.addon_usage.find((a) => a.addon_label === "Thêm matcha");
     expect(matchaAddon).toBeDefined();
+    expect(matchaAddon?.addon_option_id).toBe("addon-matcha");
     expect(matchaAddon?.total_count).toBe(1);
     expect(matchaAddon?.group_name).toBe("Matcha");
+    expect(matchaAddon?.powder_breakdown).toEqual([
+      { powder_name: "Meyumi", total_grams: 2 },
+    ]);
+  });
+
+  it("không gộp nhầm addon trùng nhãn và nhân gram theo số ly", async () => {
+    const { buildAdminReport } = await import("@/lib/reportAggregation");
+
+    const orders = [{
+      total_vnd: 150_000,
+      order_type: "COUNTER" as const,
+      items: [
+        {
+          menu_item_id: "item-latte-1",
+          quantity: 3,
+          size: "SMALL" as const,
+          selected_powder_id: null,
+          selected_milk_type_id: "milk-bo",
+          menuItem: { name: "Latte", category: "latte", matcha_powder_id: "powder-meyumi", custom_powder_grams: null },
+          addons: [{
+            addon_option_id: "addon-matcha-regular",
+            quantity: 2,
+            unit_price_vnd: 10_000,
+            addonOption: { label: "Thêm matcha", group: { name: "Matcha" }, gram_value: 2 },
+          }],
+        },
+        {
+          menu_item_id: "item-fusion-1",
+          quantity: 1,
+          size: "SMALL" as const,
+          selected_powder_id: "powder-hana",
+          selected_milk_type_id: null,
+          menuItem: { name: "Fusion", category: "fusion", matcha_powder_id: null, custom_powder_grams: null },
+          addons: [{
+            addon_option_id: "addon-matcha-premium",
+            quantity: 1,
+            unit_price_vnd: 7_000,
+            addonOption: { label: "Thêm matcha", group: { name: "Matcha premium" }, gram_value: 1 },
+          }],
+        },
+      ],
+    }];
+
+    const result = buildAdminReport(orders, powders, milkTypes, powderSizeEntries, defaultSizeEntries);
+
+    expect(result.addon_usage).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        addon_option_id: "addon-matcha-regular",
+        total_count: 6,
+        powder_breakdown: [{ powder_name: "Meyumi", total_grams: 12 }],
+      }),
+      expect.objectContaining({
+        addon_option_id: "addon-matcha-premium",
+        total_count: 1,
+        powder_breakdown: [{ powder_name: "Hana", total_grams: 1 }],
+      }),
+    ]));
   });
 
   it("tính revenue_by_type đúng — COUNTER vs PICKUP vs DELIVERY", async () => {
@@ -354,6 +417,7 @@ describe("buildAdminReport — Admin extras (addon_usage, revenue_by_type, top_p
             addons: [
               // quantity = 0 nên không được đếm
               {
+                addon_option_id: "addon-no-cream",
                 quantity: 0,
                 unit_price_vnd: 0,
                 addonOption: { label: "Không kem", group: { name: "Kem" }, gram_value: null },

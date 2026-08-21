@@ -144,6 +144,7 @@ describe("GET /api/admin/report â€” Admin nháº­n full report", () => {
             },
             addons: [
               {
+                addon_option_id: "addon-cream",
                 quantity: 1,
                 unit_price_vnd: 0,
                 addonOption: { label: "Ná»­a viÃªn kem", group: { name: "Kem" }, gram_value: null },
@@ -172,6 +173,10 @@ describe("GET /api/admin/report â€” Admin nháº­n full report", () => {
 
     // Admin-only extras
     expect(body.data.addon_usage).toBeInstanceOf(Array);
+    expect(body.data.addon_usage[0]).toMatchObject({
+      addon_option_id: "addon-cream",
+      powder_breakdown: [],
+    });
     expect(body.data.revenue_by_type).toBeInstanceOf(Array);
     expect(body.data.top_products).toBeInstanceOf(Array);
   });

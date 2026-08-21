@@ -186,7 +186,7 @@ export function buildReport(
         const extraGram = item.addons.reduce((sum, addon) => {
           const gv = addon.addonOption.gram_value;
           if (gv == null) return sum;
-          return sum + gv * addon.quantity;
+          return sum + gv * addon.quantity * qty;
         }, 0);
 
         const prev = powderGramMap.get(powderId) ?? 0;
@@ -279,6 +279,7 @@ export function buildReport(
 
 /** Order item addon for admin report (includes label + group) */
 export interface RawAdminAddonItem {
+  addon_option_id: string;
   quantity: number;
   unit_price_vnd: number;
   addonOption: {
@@ -305,9 +306,16 @@ export interface RawAdminOrder extends Omit<RawOrder, "items"> {
 // ---------------------------------------------------------------------------
 
 export interface AddonUsageResult {
+  addon_option_id: string;
   addon_label: string;
   group_name: string;
   total_count: number;
+  powder_breakdown: AddonPowderBreakdownResult[];
+}
+
+export interface AddonPowderBreakdownResult {
+  powder_name: string;
+  total_grams: number;
 }
 
 export interface RevenueByTypeResult {
@@ -354,8 +362,14 @@ export function buildAdminReport(
     defaultSizeEntries
   );
 
-  // -- Addon usage accumulator: label → { group_name, total_count } --
-  const addonMap = new Map<string, { group_name: string; total_count: number }>();
+  // -- Addon usage accumulator: option ID → display data and powder totals --
+  const addonMap = new Map<string, {
+    addon_label: string;
+    group_name: string;
+    total_count: number;
+    powder_grams_by_id: Map<string, number>;
+  }>();
+  const powderNameById = new Map(powders.map((powder) => [powder.id, powder.name]));
 
   // -- Revenue by type accumulator --
   const revenueMap = new Map<
@@ -382,13 +396,27 @@ export function buildAdminReport(
     for (const item of order.items) {
       for (const addon of item.addons) {
         if (addon.quantity <= 0) continue;
-        const label = addon.addonOption.label;
-        const groupName = addon.addonOption.group?.name ?? "";
-        const existing = addonMap.get(label);
+        const usageQuantity = addon.quantity * item.quantity;
+        const optionId = addon.addon_option_id;
+        const existing = addonMap.get(optionId);
         if (existing) {
-          existing.total_count += addon.quantity;
+          existing.total_count += usageQuantity;
         } else {
-          addonMap.set(label, { group_name: groupName, total_count: addon.quantity });
+          addonMap.set(optionId, {
+            addon_label: addon.addonOption.label,
+            group_name: addon.addonOption.group?.name ?? "",
+            total_count: usageQuantity,
+            powder_grams_by_id: new Map<string, number>(),
+          });
+        }
+
+        const powderId = item.selected_powder_id ?? item.menuItem.matcha_powder_id;
+        const gramValue = addon.addonOption.gram_value;
+        if (powderId && gramValue != null) {
+          const entry = addonMap.get(optionId);
+          if (!entry) continue;
+          const previousGrams = entry.powder_grams_by_id.get(powderId) ?? 0;
+          entry.powder_grams_by_id.set(powderId, previousGrams + gramValue * usageQuantity);
         }
       }
     }
@@ -396,10 +424,24 @@ export function buildAdminReport(
 
   // -- Build addon_usage array (sorted descending by total_count) --
   const addonUsage: AddonUsageResult[] = [];
-  for (const [label, { group_name, total_count }] of addonMap) {
-    addonUsage.push({ addon_label: label, group_name, total_count });
+  for (const [addon_option_id, entry] of addonMap) {
+    const powder_breakdown = Array.from(entry.powder_grams_by_id, ([powderId, total_grams]) => ({
+      powder_name: powderNameById.get(powderId) ?? "Không rõ",
+      total_grams,
+    })).sort((a, b) => b.total_grams - a.total_grams || a.powder_name.localeCompare(b.powder_name));
+    addonUsage.push({
+      addon_option_id,
+      addon_label: entry.addon_label,
+      group_name: entry.group_name,
+      total_count: entry.total_count,
+      powder_breakdown,
+    });
   }
-  addonUsage.sort((a, b) => b.total_count - a.total_count || a.addon_label.localeCompare(b.addon_label));
+  addonUsage.sort((a, b) =>
+    b.total_count - a.total_count ||
+    a.addon_label.localeCompare(b.addon_label) ||
+    a.addon_option_id.localeCompare(b.addon_option_id),
+  );
 
   // -- Build revenue_by_type array (sorted descending by revenue) --
   const revenueByType: RevenueByTypeResult[] = [];
