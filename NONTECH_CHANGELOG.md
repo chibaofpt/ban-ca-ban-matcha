@@ -5,7 +5,52 @@
 
 ---
 
+## [2026-08-17 19:02] — Sửa lỗi thanh tab danh mục không trượt theo khi cuộn trang
+ 
+ **Yêu cầu**: sao lúc cuộn xuống trang dưới rồi tôi không thấy thanh category đi cùng
+ **Quyết định**: Xóa các thẻ HTML dư thừa (flex-col h-full) bao quanh thanh tab và đổi overflow body để sửa lỗi position sticky.
+ **Thay đổi**:
+ - `src/views/MenuPage.tsx`: Xóa lớp `flex flex-col h-full` bao bọc trang Menu để thanh tab có thể trượt bình thường.
+ - `app/globals.css`: Đổi `overflow-x: hidden` thành `clip` để không chặn tính năng trượt (sticky) trên toàn hệ thống.
+ **Kết quả QA**: ✅ lint + TypeScript PASS · ⚠️ 3 test fail cũ (không liên quan: 2 addon-opt-in-migration + 1 admin-order-cancel timeout)
+ 
+ ---
+ 
+ ## [2026-08-17 18:30] — Thêm hình ảnh món vào khung chọn món trên điện thoại
+
+**Yêu cầu**: Hiển thị hình ảnh của món ở phần trên cùng (khoảng 1/3) khung chọn món khi dùng điện thoại, hình cắt ngay trung tâm
+**Quyết định**: Hình chiếm 30% chiều cao màn hình, cắt từ giữa để món nằm ngay trung tâm
+**Thay đổi**:
+- `src/components/shared/ProductModal.tsx`: Thêm hình ảnh sản phẩm ở trên cùng khung chọn món (chỉ trên điện thoại), có lớp mờ nhẹ ở trên để thanh kéo vẫn nhìn thấy
+**Kết quả QA**: ✅ lint + TypeScript PASS (3 test lỗi cũ không liên quan)
+
+---
+
+## [2026-08-17 18:25] — Đồng nhất 4 danh mục menu (Latte, Fusion, Add-on, Seasonal) vào cùng 1 trang
+
+**Yêu cầu**: Các danh mục Latte, Fusion, Add-on, Seasonal đang không đồng nhất — Seasonal nhảy qua trang riêng, 3 cái kia cùng trang kéo xuống. Đồng nhất tất cả theo kiểu cùng 1 trang + tự động kéo xuống đúng mục khi bấm tab, thanh tab luôn hiện cố định
+**Quyết định**: Gộp tất cả vào 1 trang cuộn, bỏ hiệu ứng trượt ngang, thanh tab cố định trên cùng và tự đổi màu khi cuộn
+**Thay đổi**:
+- `src/components/menu/MenuPanels.tsx`: Gộp Seasonal vào cùng trang với Latte/Fusion/Add-on, bỏ panel riêng
+- `src/views/MenuPage.tsx`: Bỏ logic carousel, thêm cuộn tự động cho Seasonal, cập nhật nhận diện tab khi cuộn
+**Kết quả QA**: ✅ lint + TypeScript PASS (3 test lỗi cũ không liên quan)
+
+---
+
+## [2026-08-17 10:17] — Thêm chi tiết loại bột matcha khi bấm vào addon trong báo cáo admin
+
+**Yêu cầu**: Trong mục "Addon đã dùng" của báo cáo admin, bấm vào 1 addon có gram (ví dụ: Extra Matcha +1g) thì hiện chi tiết loại bột matcha nào đã dùng kèm (ví dụ: Kasuga 3g, MH3 5g...)
+**Quyết định**: Chỉ thêm breakdown theo loại bột, không hiện theo đơn hàng
+**Thay đổi**:
+- `src/lib/types/report.ts`: Thêm interface `AddonPowderBreakdown` và field `powder_breakdown?` vào `AddonUsage`
+- `app/api/admin/report/route.ts`: Thêm tính toán breakdown bột theo từng addon (không đụng `lib/reportAggregation.ts`)
+- `src/components/report/DailyReportModal.tsx`: Thêm nút mũi tên ▸ và dòng mở rộng hiển thị breakdown khi bấm vào addon có gram
+**Kết quả QA**: ✅ lint PASS · ✅ TypeScript PASS · ⚠️ 3 test fail có sẵn trước thay đổi (không liên quan: 2 addon-opt-in-migration whitespace + 1 admin-order-cancel timeout)
+
+---
+
 ## [2026-08-11 15:47] — Đồng bộ thứ tự size (Nhỏ → Vừa → Lớn) cho tất cả các món
+
 
 **Yêu cầu**: Đồng bộ lại thứ tự size Nhỏ, Vừa, Lớn cho tất cả các món ở tất cả các trang Staff, Admin và Customer.
 **Quyết định**: Cập nhật logic sắp xếp (SIZE_ORDER) từ chuẩn cũ (M, L, XL) sang chuẩn mới (SMALL, MEDIUM, LARGE) tại các file API nguồn. Thay đổi này tự động áp dụng đúng thứ tự cho toàn bộ hệ thống.
