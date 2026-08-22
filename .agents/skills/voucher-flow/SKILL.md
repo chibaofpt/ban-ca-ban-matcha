@@ -15,21 +15,7 @@ Also read `order-flow` for order status and `pricing-logic` for drink price comp
 
 ---
 
-## File Map
-
-| File | Layer | Purpose |
-|---|---|---|
-| `lib/vouchers.ts` | SERVER | Voucher validation, application, and redemption (8.2 KB) |
-| `src/utils/voucherMatchUtils.ts` | CLIENT | Voucher matching utilities (7.2 KB) |
-| `src/lib/utils/voucherModalHelpers.ts` | CLIENT | Modal display helpers (7.4 KB) |
-| `app/api/profile/vouchers/route.ts` | SERVER | List customer's vouchers in all lifecycle statuses |
-| `app/api/profile/vouchers/exchange/route.ts` | SERVER | Spend points → get voucher |
-| `app/api/profile/vouchers/refund/route.ts` | SERVER | Auto-refund when item unavailable |
-| `app/api/staff/scan/route.ts` | SERVER | QR scan → resolve user or voucher |
-| `app/api/staff/vouchers/[id]/redeem/route.ts` | SERVER | Offline voucher redemption |
-| `app/api/admin/voucher-packages/route.ts` | SERVER | Package CRUD (13.8 KB) |
-
----
+Inspect current files, callers and tests with `rg`; do not maintain file paths or sizes in this skill.
 
 ## Voucher Types
 
@@ -185,15 +171,21 @@ and `order_discount_vouchers.discount_applied_vnd` have been **dropped** (migrat
 - Customer acquisition lists expose the live global `remaining_quantity`, exclude `AUTO_GRANT`,
   and use one shared FREE_CLAIM / POINTS_EXCHANGE catalog in the wallet and cart. A points exchange
   always requires confirmation; BUNDLE vouchers use an in-cart CTA instead of offline QR redemption.
-- Accept at most one BUNDLE voucher per order. The client must send stable `client_line_id` values
-  and explicit reward allocations. The server re-resolves products, configuration, addons, and
-  prices before evaluating them.
+- Accept multiple distinct BUNDLE voucher instances per order through `bundle_applications`. Each
+  application owns explicit qualifier and reward allocations keyed by stable `client_line_id`.
+  A token appears once, and product/addon unit quantities cannot overlap across applications.
+  The server re-resolves products, configuration, addons, and prices before evaluating them.
 - Resolve voucher ownership through an explicit `voucher_owner_id`, never by assuming the order
   host owns every line. This boundary is required for future group orders.
 - Product scopes may target drinks or `extras`. Extras have null configuration for all reward modes.
-- `SAME_CONFIG` means product, size, powder, and Base Liquid match; sweetness, ice, and coldwhisk may
-  differ. `FIXED_CONFIG` requires exact size, powder, and Base Liquid for both configured categories. `ALLOWED_SCOPE`
-  covers at most its reference credit and creates no surplus points.
+- `SAME_CONFIG` means the qualifier and reward use the same menu item. Qualifiers may use any
+  configured allowed size; reward baseline is the current server price of the smallest selected
+  qualifier size/configuration. `FIXED_CONFIG` has exactly one configured reward product;
+  `ALLOWED_SCOPE` has one or more selectable reward products. Both use the current server price of
+  the stored default powder/Base Liquid snapshot at the actual reward size as baseline.
+- Customer powder/Base Liquid changes remain allowed. Charge only `max(actual reward drink price -
+  baseline, 0)`; a cheaper configuration has zero payable difference and creates no surplus.
+  Product BUNDLE benefits never cover addons.
 - Addon rewards may scale per bundle, once per order, or per qualifying item. Pool allocations
   across eligible items, reject Extra Matcha, and never overlap PRODUCT/ADDON voucher benefits.
 - Reward units never count again as qualifiers, including when the same menu item appears in both
@@ -201,12 +193,11 @@ and `order_discount_vouchers.discount_applied_vnd` have been **dropped** (migrat
 - `min_order_vnd` is evaluated from paid merchandise: exclude units covered by ITEM/PRODUCT/BUNDLE
   and exclude addon units covered by ADDON vouchers. A drink carrying only
   an ADDON voucher still counts as a qualifying product.
-- Qualifier and reward scopes may each contain multiple products, including seasonal products.
+- Qualifier and reward products are grouped by menu item: one default powder, one default Base
+  Liquid, and multiple allowed sizes. Qualifier eligibility matches menu item + allowed size only.
   One BUNDLE package has exactly one reward kind: PRODUCT or ADDON.
-- Admin BUNDLE scope UI configures each selected product independently. Multiple selected sizes,
-  powders, and per-item Base Liquids expand into the existing exact product-scope combinations. Latte powder
-  is fixed by its menu item and is never shown as a swappable Admin choice; Fusion powder ranges
-  are limited to that item's resolved default and allowed powders.
+- Admin BUNDLE scope configures each product independently as one immutable default configuration
+  plus its allowed sizes. Prices are never entered or stored as BUNDLE reference credit.
 - Reserve at order creation, redeem on payment confirmation/completion, and restore on cancellation.
   Direct offline QR redemption of BUNDLE vouchers is forbidden.
 

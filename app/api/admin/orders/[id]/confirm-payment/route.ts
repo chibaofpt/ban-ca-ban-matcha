@@ -123,7 +123,7 @@ export async function PATCH(
           where: { orderItem: { order_id: id } },
           select: { voucher_id: true }
         });
-        const bundleApplication = await tx.orderBundleApplication.findUnique({
+        const bundleApplications = await tx.orderBundleApplication.findMany({
               where: { order_id: id },
               select: { voucher_id: true },
             });
@@ -144,16 +144,16 @@ export async function PATCH(
         if (order.freeship_voucher_id) {
           allVoucherIds.add(order.freeship_voucher_id);
         }
-        if (bundleApplication) allVoucherIds.add(bundleApplication.voucher_id);
+        for (const application of bundleApplications) allVoucherIds.add(application.voucher_id);
 
         // ── Conditional batch redeem: RESERVED → REDEEMED ──
         await redeemOrderVouchers(tx, Array.from(allVoucherIds), "ONLINE", session.id);
-        if (bundleApplication) {
+        if (bundleApplications.length > 0) {
           const promoted = await tx.orderBundleApplication.updateMany({
             where: { order_id: id, status: "RESERVED" },
             data: { status: "REDEEMED" },
           });
-          if (promoted.count !== 1) {
+          if (promoted.count !== bundleApplications.length) {
             throw new VoucherRedeemError(
               "VOUCHER_MISMATCH",
               "BUNDLE application changed concurrently",

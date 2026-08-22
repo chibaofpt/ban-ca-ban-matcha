@@ -4,13 +4,12 @@ const acquisitionModeSchema = z.enum(["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRA
 const sizeSchema = z.enum(["SMALL", "MEDIUM", "LARGE"]);
 const nullableUuid = z.string().uuid().nullable().optional();
 
-const productScopeSchema = z.object({
+const bundleProductSchema = z.object({
   menu_item_id: z.string().uuid(),
-  size: sizeSchema.nullable().optional(),
-  powder_id: nullableUuid,
-  milk_type_id: nullableUuid,
-  reference_price_vnd: z.number().int().min(0).optional(),
-});
+  default_powder_id: nullableUuid,
+  default_base_liquid_id: nullableUuid,
+  allowed_sizes: z.array(sizeSchema).max(3).default([]),
+}).strict();
 
 const bundleRuleSchema = z.object({
   buy_quantity: z.number().int().min(1).max(100),
@@ -20,10 +19,10 @@ const bundleRuleSchema = z.object({
   benefit_scaling: z.enum(["PER_BUNDLE", "ONCE_PER_ORDER", "PER_QUALIFYING_ITEM"]),
   max_applications_per_order: z.number().int().min(1).max(100).default(1),
   max_reward_units_per_order: z.number().int().min(1).max(100).nullable().optional(),
-  qualifier_scopes: z.array(productScopeSchema).min(1).max(100),
-  reward_product_scopes: z.array(productScopeSchema).max(100).default([]),
+  qualifier_products: z.array(bundleProductSchema).min(1).max(100),
+  reward_products: z.array(bundleProductSchema).max(100).default([]),
   reward_addon_option_ids: z.array(z.string().uuid()).max(100).default([]),
-});
+}).strict();
 
 const commonFields = {
   name: z.string().trim().min(1).max(200),
@@ -79,10 +78,6 @@ const rawVoucherPackageSchema = z.discriminatedUnion("voucher_type", [
   }),
 ]);
 
-function scopeKey(scope: z.infer<typeof productScopeSchema>): string {
-  return [scope.menu_item_id, scope.size ?? "", scope.powder_id ?? "", scope.milk_type_id ?? ""].join(":");
-}
-
 /** Validates every admin voucher package before any database access. */
 export const createVoucherPackageSchema = rawVoucherPackageSchema.superRefine((data, ctx) => {
   const usesPoints = data.acquisition_mode === "POINTS_EXCHANGE";
@@ -113,40 +108,38 @@ export const createVoucherPackageSchema = rawVoucherPackageSchema.superRefine((d
   if (data.voucher_type !== "BUNDLE") return;
 
   const rule = data.bundle_rule;
-  for (const [path, values] of [
-    ["qualifier_scopes", rule.qualifier_scopes.map(scopeKey)],
-    ["reward_product_scopes", rule.reward_product_scopes.map(scopeKey)],
-    ["reward_addon_option_ids", rule.reward_addon_option_ids],
-  ] as const) {
+  for (const [path, values] of [["qualifier_products", rule.qualifier_products.map((product) => product.menu_item_id)],
+    ["reward_products", rule.reward_products.map((product) => product.menu_item_id)],
+    ["reward_addon_option_ids", rule.reward_addon_option_ids]] as const) {
     if (new Set(values).size !== values.length) {
       ctx.addIssue({ code: "custom", path: ["bundle_rule", path], message: "Duplicate bundle scope" });
+    }
+  }
+  for (const [path, products] of [["qualifier_products", rule.qualifier_products],
+    ["reward_products", rule.reward_products]] as const) {
+    if (products.some((product) => new Set(product.allowed_sizes).size !== product.allowed_sizes.length)) {
+      ctx.addIssue({ code: "custom", path: ["bundle_rule", path], message: "Duplicate allowed size" });
     }
   }
   if (rule.reward_kind === "PRODUCT") {
     if (rule.reward_addon_option_ids.length > 0) {
       ctx.addIssue({ code: "custom", path: ["bundle_rule", "reward_addon_option_ids"], message: "Product bundle cannot include addon rewards" });
     }
-    if (rule.reward_mode !== "SAME_CONFIG" && rule.reward_product_scopes.length === 0) {
-      ctx.addIssue({ code: "custom", path: ["bundle_rule", "reward_product_scopes"], message: "Product reward scope is required" });
+    if (rule.benefit_scaling !== "PER_BUNDLE") {
+      ctx.addIssue({ code: "custom", path: ["bundle_rule", "benefit_scaling"], message: "Product rewards require PER_BUNDLE scaling" });
     }
-    if (
-      rule.reward_mode === "ALLOWED_SCOPE" &&
-      rule.reward_product_scopes.some(
-        (scope) => !scope.reference_price_vnd || scope.reference_price_vnd % 1_000 !== 0,
-      )
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["bundle_rule", "reward_product_scopes"],
-        message: "Allowed product rewards require a positive 1,000 VND reference price",
-      });
+    const expectedRewards = rule.reward_mode === "SAME_CONFIG" ? 0 : rule.reward_mode === "FIXED_CONFIG" ? 1 : null;
+    if ((expectedRewards !== null && rule.reward_products.length !== expectedRewards) ||
+        (rule.reward_mode === "ALLOWED_SCOPE" && rule.reward_products.length < 1)) {
+      ctx.addIssue({ code: "custom", path: ["bundle_rule", "reward_products"],
+        message: "Reward products do not match the selected reward mode" });
     }
   } else {
     if (rule.reward_addon_option_ids.length === 0) {
       ctx.addIssue({ code: "custom", path: ["bundle_rule", "reward_addon_option_ids"], message: "Addon reward scope is required" });
     }
-    if (rule.reward_product_scopes.length > 0) {
-      ctx.addIssue({ code: "custom", path: ["bundle_rule", "reward_product_scopes"], message: "Addon bundle cannot include product rewards" });
+    if (rule.reward_products.length > 0) {
+      ctx.addIssue({ code: "custom", path: ["bundle_rule", "reward_products"], message: "Addon bundle cannot include product rewards" });
     }
   }
 });

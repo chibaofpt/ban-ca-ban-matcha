@@ -60,18 +60,19 @@ export interface BundleVoucherRule {
   reward_kind: "PRODUCT" | "ADDON";
   reward_mode: "SAME_CONFIG" | "FIXED_CONFIG" | "ALLOWED_SCOPE";
   benefit_scaling: "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM";
-  max_applications_order: number;
-  max_reward_units_order: number | null;
-  productScopes: Array<{
-    role: "QUALIFIER" | "REWARD";
+  max_applications_per_order: number;
+  max_reward_units_per_order: number | null;
+  qualifier_products: BundleVoucherProduct[];
+  reward_products: BundleVoucherProduct[];
+  reward_addon_option_ids: string[];
+}
+
+export interface BundleVoucherProduct {
     menu_item_id: string;
-    size: "SMALL" | "MEDIUM" | "LARGE" | null;
-    matcha_powder_id: string | null;
-    milk_type_id: string | null;
-    reference_price_vnd: number | null;
-    menuItem?: { name: string; category: "latte" | "fusion" | "extras"; is_available: boolean };
-  }>;
-  addonRewards: Array<{ addon_option_id: string; addonOption?: { label: string } }>;
+    default_powder_id: string | null;
+    default_base_liquid_id: string | null;
+    allowed_sizes: Array<"SMALL" | "MEDIUM" | "LARGE">;
+    menu_item: { name: string; category: "latte" | "fusion" | "extras"; is_available: boolean };
 }
 
 export interface MyVoucher {

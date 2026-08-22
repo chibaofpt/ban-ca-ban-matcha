@@ -43,12 +43,22 @@ export async function getCustomerOrderHistory(
   userId: string,
   page: number,
   limit: number,
+  /** 'cancelled' → only CANCELLED orders; 'active' → exclude CANCELLED; omit → all */
+  statusFilter?: "active" | "cancelled",
 ): Promise<NextResponse> {
   const skip = (page - 1) * limit;
+  const statusWhere =
+    statusFilter === "cancelled"
+      ? { status: "CANCELLED" as const }
+      : statusFilter === "active"
+        ? { NOT: { status: "CANCELLED" as const } }
+        : {};
+  const baseWhere = { user_id: userId, ...statusWhere };
+
   const [total, orders] = await prisma.$transaction([
-    prisma.order.count({ where: { user_id: userId } }),
+    prisma.order.count({ where: baseWhere }),
     prisma.order.findMany({
-      where: { user_id: userId },
+      where: baseWhere,
       skip,
       take: limit,
       orderBy: { created_at: "desc" },
@@ -135,7 +145,8 @@ export async function getCustomerOrderHistory(
           productVoucher: (item.productVoucher ?? item.itemVoucher)
             ? { package: (item.productVoucher ?? item.itemVoucher)!.package }
             : null,
-          addonVouchers: (addonVouchers ?? []).map(({ voucher }) => ({
+          addonVouchers: (addonVouchers ?? []).map(({ voucher, discount_applied_vnd }) => ({
+            discount_applied_vnd,
             voucher: { package: voucher.package },
           })),
         };

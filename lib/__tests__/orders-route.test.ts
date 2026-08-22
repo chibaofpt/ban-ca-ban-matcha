@@ -961,6 +961,25 @@ describe("GET /api/orders", () => {
     );
   });
 
+  it("trả discount_applied_vnd của addon voucher trong history DTO", async () => {
+    Object.assign(prisma.order, { findMany: vi.fn().mockResolvedValue([{
+      id: "o-addon", user_id: USER_ID, status: "COMPLETED", created_at: "2026-05-02",
+      order_code: null, order_type: "PICKUP", grand_total_vnd: 50_000, total_vnd: 50_000,
+      discountVouchers: [],
+      items: [{
+        product_voucher_id: null, item_voucher_id: null,
+        productVoucher: null, itemVoucher: null,
+        addonVouchers: [{ discount_applied_vnd: 8_000, voucher: { package: { name: "Free kem" } } }],
+      }],
+    }]) });
+
+    const json = await (await GET(makeGetReq())).json();
+    expect(json.data[0].items[0].addonVouchers).toEqual([{
+      discount_applied_vnd: 8_000,
+      voucher: { package: { name: "Free kem" } },
+    }]);
+  });
+
   it("returns 500 on database error", async () => {
     Object.assign(prisma.order, {
       findMany: vi.fn().mockRejectedValue(new Error("DB timeout")),

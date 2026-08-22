@@ -120,7 +120,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
       </div>
 
       {/* Content Area */}
-      <div className="flex flex-col flex-1 h-[80%] justify-between py-1 text-left items-start">
+      <div className="flex flex-col flex-1 h-[80%] justify-between py-1 text-left items-start min-w-0">
         <div className="w-full">
           <h3 className="font-serif font-medium text-lg text-[#2d4a22] leading-tight line-clamp-2 mb-1">
             {item.name}
@@ -137,52 +137,50 @@ const MenuCard: React.FC<MenuCardProps> = ({
           )}
         </div>
 
-        {/* Sizes & Prices + Cart Button */}
-        {/* Fixed 44px slot; the temporary stepper expands left without shifting prices. */}
-        <div className="mt-auto pt-2 flex items-end w-full">
+        {/* Sizes & Prices + Cart Button — inline row, stepper expands left */}
+        <div className="mt-auto pt-2 flex items-center w-full gap-2">
           {item.category === "extras" ? (
-            <div className="flex flex-1 items-end">
+            <div className="flex flex-1 items-center min-w-0">
               <div className="flex flex-col gap-0.5">
                 <span className="text-[10px] font-bold uppercase tracking-wide text-[#446c35]">Đơn giá</span>
                 <span className="text-base font-bold text-[#5b9a2b]">{formatKa(item.unit_price_vnd ?? 0, "ceil")}</span>
               </div>
             </div>
-          ) : <div className="flex flex-1 justify-between">
-            {(['SMALL', 'MEDIUM', 'LARGE'] as const).map((sizeKey) => {
-              const s = sizes.find(s => s.size === sizeKey);
-              const isDefault = sizeKey === 'MEDIUM';
+          ) : (
+            <div className="flex flex-1 justify-between min-w-0">
+              {(['SMALL', 'MEDIUM', 'LARGE'] as const).map((sizeKey) => {
+                const s = sizes.find(s => s.size === sizeKey);
+                const isDefault = sizeKey === 'MEDIUM';
 
-              if (!s) {
-                return <div key={sizeKey}></div>;
-              }
+                if (!s) {
+                  return <div key={sizeKey} />;
+                }
 
-              const price = getDisplayPrice(s);
-              return (
-                <div key={sizeKey} className="flex flex-col items-center gap-0.5">
-                  <span className={`uppercase tracking-wide whitespace-nowrap ${isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
-                    {SIZE_CARD_LABELS[sizeKey] ?? sizeKey}
-                  </span>
-                  <span className={`${isDefault ? 'text-base font-bold text-[#5b9a2b]' : 'text-sm font-semibold text-primary/50'}`}>
-                    {formatKa(price, "ceil")}
-                  </span>
-                </div>
-              );
-            })}
-          </div>}
+                const price = getDisplayPrice(s);
+                return (
+                  <div key={sizeKey} className="flex flex-col items-center gap-0.5">
+                    <span className={`uppercase tracking-wide whitespace-nowrap ${isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
+                      {SIZE_CARD_LABELS[sizeKey] ?? sizeKey}
+                    </span>
+                    <span className={`${isDefault ? 'text-base font-bold text-[#5b9a2b]' : 'text-sm font-semibold text-primary/50'}`}>
+                      {formatKa(price, "ceil")}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-          {/* Fixed-width slot so the button area never shifts prices */}
-          <div className="flex w-11 shrink-0 justify-end">
-            <CartQuantityButton
-              quantity={cartQuantity}
-              variantCount={cartVariantCount}
-              hasVoucher={cartHasVoucher}
-              onAdd={() => onItemClick(item)}
-              onOpenVariants={() => onItemClick(item)}
-              onIncrement={handleIncrement}
-              onDecrement={handleDecrement}
-              onRemove={handleRemove}
-            />
-          </div>
+          <CartQuantityButton
+            quantity={cartQuantity}
+            variantCount={cartVariantCount}
+            hasVoucher={cartHasVoucher}
+            onAdd={() => onItemClick(item)}
+            onOpenVariants={() => onItemClick(item)}
+            onIncrement={handleIncrement}
+            onDecrement={handleDecrement}
+            onRemove={handleRemove}
+          />
         </div>
       </div>
     </motion.div>

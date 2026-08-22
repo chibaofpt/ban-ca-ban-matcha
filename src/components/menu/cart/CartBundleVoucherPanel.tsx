@@ -21,14 +21,10 @@ export function getBundleVoucherSummary(voucher: MyVoucher): BundleVoucherSummar
     reward_kind: rule.reward_kind,
     reward_mode: rule.reward_mode,
     benefit_scaling: rule.benefit_scaling,
-    max_applications_per_order: rule.max_applications_order,
-    max_reward_units_per_order: rule.max_reward_units_order,
-    eligible_menu_item_ids: rule.productScopes
-      .filter((scope) => scope.role === "QUALIFIER")
-      .map((scope) => scope.menu_item_id),
-    reward_menu_item_ids: rule.productScopes
-      .filter((scope) => scope.role === "REWARD")
-      .map((scope) => scope.menu_item_id),
+    max_applications_per_order: rule.max_applications_per_order,
+    max_reward_units_per_order: rule.max_reward_units_per_order,
+    eligible_menu_item_ids: rule.qualifier_products.map((product) => product.menu_item_id),
+    reward_menu_item_ids: rule.reward_products.map((product) => product.menu_item_id),
     min_order_vnd: voucher.min_order_vnd,
   };
 }
@@ -53,7 +49,7 @@ function getOptions(
         label: `${item.name} · ${item.size}`,
       }));
   }
-  const allowedAddonIds = new Set(rule.addonRewards.map((reward) => reward.addon_option_id));
+  const allowedAddonIds = new Set(rule.reward_addon_option_ids);
   return cart
     .filter((item) => summary.eligible_menu_item_ids.includes(item.menuItemId))
     .flatMap((item) => {
@@ -102,8 +98,8 @@ export function CartBundleVoucherPanel({
   const cartSummary = summarizeBundleCart(cart);
   const extrasRewardScopes = [
     ...new Map(
-      (selectedVoucher?.package.bundleRule?.productScopes ?? [])
-        .filter((scope) => scope.role === "REWARD" && scope.menuItem?.category === "extras" && scope.menuItem.is_available)
+      (selectedVoucher?.package.bundleRule?.reward_products ?? [])
+        .filter((scope) => scope.menu_item.category === "extras" && scope.menu_item.is_available)
         .map((scope) => [scope.menu_item_id, scope]),
     ).values(),
   ];
@@ -152,7 +148,7 @@ export function CartBundleVoucherPanel({
                   }}
                   className="min-h-11 rounded-xl border border-dashed border-amber-500 bg-white px-3 text-left text-sm font-bold text-amber-900"
                 >
-                  + Thêm quà {scope.menuItem?.name ?? "Add-on"}
+                  + Thêm quà {scope.menu_item.name}
                 </button>
               ))}
             </div>

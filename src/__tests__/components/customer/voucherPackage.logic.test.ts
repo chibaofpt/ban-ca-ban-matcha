@@ -30,19 +30,21 @@ describe("Logic hiển thị và nhận gói voucher", () => {
     const pkg = makePackage({ voucher_type: "BUNDLE", bundleRule: {
       buy_quantity: 2, reward_quantity: 1, reward_kind: "PRODUCT",
       reward_mode: "ALLOWED_SCOPE", benefit_scaling: "PER_BUNDLE",
-      max_applications_order: 1, max_reward_units_order: null,
-      productScopes: [
+      max_applications_per_order: 1, max_reward_units_per_order: null,
+      qualifier_products: [
         {
-          role: "QUALIFIER", menu_item_id: "latte", size: null,
-          matcha_powder_id: null, milk_type_id: null, reference_price_vnd: null,
-          menuItem: { name: "Latte", category: "latte", is_available: true },
+          menu_item_id: "latte", default_powder_id: null,
+          default_base_liquid_id: null, allowed_sizes: [],
+          menu_item: { name: "Latte", category: "latte", is_available: true },
         },
+      ],
+      reward_products: [
         {
-          role: "REWARD", menu_item_id: "fusion", size: null,
-          matcha_powder_id: null, milk_type_id: null, reference_price_vnd: null,
-          menuItem: { name: "Fusion", category: "fusion", is_available: true },
+          menu_item_id: "fusion", default_powder_id: null,
+          default_base_liquid_id: null, allowed_sizes: [],
+          menu_item: { name: "Fusion", category: "fusion", is_available: true },
         },
-      ], addonRewards: [],
+      ], reward_addon_option_ids: [],
     } });
     expect(getPackageBenefitText(pkg)).toBe("Mua 2 Latte · Tặng 1 Fusion");
   });
@@ -69,5 +71,55 @@ describe("Logic hiển thị và nhận gói voucher", () => {
     expect(grouped.DISCOUNT).toHaveLength(1);
     expect(grouped.PRODUCT).toHaveLength(1);
     expect(grouped.ADDON).toHaveLength(1);
+  });
+
+  it("nhóm package BUNDLE theo loại voucher", () => {
+    const grouped = groupPackagesByType([
+      makePackage({ voucher_type: "DISCOUNT" }),
+      makePackage({ voucher_type: "BUNDLE" }),
+    ]);
+    expect(grouped.BUNDLE).toHaveLength(1);
+    expect(grouped.DISCOUNT).toHaveLength(1);
+  });
+
+  it("mô tả BUNDLE SAME_CONFIG bao gồm tên qualifier", () => {
+    const pkg = makePackage({
+      voucher_type: "BUNDLE",
+      bundleRule: {
+        buy_quantity: 2, reward_quantity: 1, reward_kind: "PRODUCT",
+        reward_mode: "SAME_CONFIG", benefit_scaling: "PER_BUNDLE",
+        max_applications_per_order: 1, max_reward_units_per_order: null,
+        qualifier_products: [{
+          menu_item_id: "latte", default_powder_id: null,
+          default_base_liquid_id: null, allowed_sizes: [],
+          menu_item: { name: "Latte", category: "latte" as const, is_available: true },
+        }],
+        reward_products: [],
+        reward_addon_option_ids: [],
+      },
+    });
+    const text = getPackageBenefitText(pkg);
+    expect(text).toContain("Latte");
+    expect(text).toMatch(/[Mm]ua/);
+  });
+
+  it("mô tả BUNDLE ADDON reward có tên qualifier", () => {
+    const pkg = makePackage({
+      voucher_type: "BUNDLE",
+      bundleRule: {
+        buy_quantity: 2, reward_quantity: 1, reward_kind: "ADDON",
+        reward_mode: "ALLOWED_SCOPE", benefit_scaling: "PER_BUNDLE",
+        max_applications_per_order: 1, max_reward_units_per_order: null,
+        qualifier_products: [{
+          menu_item_id: "latte", default_powder_id: null,
+          default_base_liquid_id: null, allowed_sizes: [],
+          menu_item: { name: "Latte", category: "latte" as const, is_available: true },
+        }],
+        reward_products: [],
+        reward_addon_option_ids: ["addon-jelly-id"],
+      },
+    });
+    const text = getPackageBenefitText(pkg);
+    expect(text).toContain("Latte");
   });
 });

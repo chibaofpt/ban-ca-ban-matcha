@@ -5,6 +5,7 @@ import type {
   CustomerOrderDetail,
   CreateOrderResult,
 } from "@/src/lib/types/order";
+import type { BundleApplicationPayload } from "@/src/lib/utils/bundleVoucher";
 
 // Re-export for consumers
 export type { CreateOrderResult } from "@/src/lib/types/order";
@@ -33,7 +34,7 @@ export interface CreateOrderPayload {
   pickup_time?: string;
   note?: string;
   delivery_address?: string;
-  
+
   // Delivery fields
   address_id?: string;
   delivery_lat?: number;
@@ -42,12 +43,7 @@ export interface CreateOrderPayload {
   delivery_receiver_phone?: string;
   client_shipping_fee_vnd?: number;
   freeship_voucher_id?: string;
-  bundle_voucher_qr_token?: string;
-  bundle_reward_allocations?: Array<{
-    client_line_id: string;
-    quantity: number;
-    addon_option_id?: string;
-  }>;
+  bundle_applications?: BundleApplicationPayload[];
 }
 
 export interface PriceConflict {
@@ -62,6 +58,13 @@ export class PriceChangedError extends Error {
   constructor(public readonly conflicts: PriceConflict[]) {
     super("One or more item prices have changed");
     this.name = "PriceChangedError";
+  }
+}
+
+export class BundleNotEligibleError extends Error {
+  constructor(public readonly reason: string) {
+    super(`Voucher bundle không hợp lệ: ${reason}`);
+    this.name = "BundleNotEligibleError";
   }
 }
 
@@ -110,7 +113,7 @@ export async function createOrder(
     pickupTime?: string;
     note?: string;
     deliveryAddress?: string;
-    
+
     // Delivery fields
     addressId?: string;
     deliveryLat?: number;
@@ -119,12 +122,7 @@ export async function createOrder(
     deliveryReceiverPhone?: string;
     clientShippingFeeVnd?: number;
     freeshipVoucherId?: string;
-    bundleVoucherQrToken?: string;
-    bundleRewardAllocations?: Array<{
-      client_line_id: string;
-      quantity: number;
-      addon_option_id?: string;
-    }>;
+    bundleApplications?: BundleApplicationPayload[];
   }
 ): Promise<CreateOrderResult> {
   const payload: CreateOrderPayload = {
@@ -141,10 +139,9 @@ export async function createOrder(
     ...(options?.deliveryReceiverPhone ? { delivery_receiver_phone: options.deliveryReceiverPhone } : {}),
     ...(options?.clientShippingFeeVnd !== undefined ? { client_shipping_fee_vnd: options.clientShippingFeeVnd } : {}),
     ...(options?.freeshipVoucherId ? { freeship_voucher_id: options.freeshipVoucherId } : {}),
-    ...(options?.bundleVoucherQrToken
+    ...(options?.bundleApplications?.length
       ? {
-          bundle_voucher_qr_token: options.bundleVoucherQrToken,
-          bundle_reward_allocations: options.bundleRewardAllocations ?? [],
+          bundle_applications: options.bundleApplications,
           items: buildPayloadItems(cart).map((item, index) => ({
             ...item,
             client_line_id: cart[index]?.cartId,
@@ -165,9 +162,15 @@ export async function createOrder(
       typeof err.response === "object" &&
       "data" in err.response
     ) {
-      const response = err.response as { status: number; data: { code?: string; details?: { conflicts?: PriceConflict[] }; error?: string } };
+      const response = err.response as {
+        status: number;
+        data: { code?: string; details?: { conflicts?: PriceConflict[], reason?: string }; error?: string };
+      };
       if (response.status === 409 && response.data.code === "PRICE_CHANGED") {
         throw new PriceChangedError(response.data.details?.conflicts ?? []);
+      }
+      if (response.status === 422 && response.data.code === "BUNDLE_NOT_ELIGIBLE") {
+        throw new BundleNotEligibleError(response.data.details?.reason ?? "Lỗi voucher bundle");
       }
       throw new Error(response.data.error ?? "Đặt hàng thất bại");
     }
@@ -177,15 +180,16 @@ export async function createOrder(
 
 /**
  * Fetches the paginated list of orders for the current customer.
- * Calls GET /api/orders.
+ * Calls GET /api/orders with optional status filter.
  */
 export async function fetchCustomerOrders(
-  params?: { page?: number; limit?: number },
+  params?: { page?: number; limit?: number; statusFilter?: "active" | "cancelled" },
 ): Promise<CustomerHistoryOrdersResponse> {
   const query = new URLSearchParams();
-  if (params?.page) query.append('page', params.page.toString());
-  if (params?.limit) query.append('limit', params.limit.toString());
-  
+  if (params?.page) query.append("page", params.page.toString());
+  if (params?.limit) query.append("limit", params.limit.toString());
+  if (params?.statusFilter) query.append("status", params.statusFilter);
+
   const qs = query.toString();
   const res = await apiClient.get<CustomerHistoryOrdersResponse>(
     `/api/orders${qs ? `?${qs}` : ""}`,

@@ -49,6 +49,12 @@ next-env.d.ts
 /backup_vouchers.json
 /fix.js
 /update_staff_orders.js
+/scripts/check-invalid.js
+/scripts/check-packages.js
+/scripts/check-prod-migrations.js
+/scripts/check-prod-tables.js
+/scripts/check-scopes.js
+/scripts/fix-prod.js
 
 # local logs
 .antigravitycli/

@@ -121,14 +121,17 @@ export function groupPackagesByType(packages: VoucherPackage[]): {
   ITEM: VoucherPackage[];
   PRODUCT: VoucherPackage[];
   ADDON: VoucherPackage[];
+  BUNDLE: VoucherPackage[];
 } {
   return {
     DISCOUNT: packages.filter((p) => p.voucher_type === "DISCOUNT"),
     ITEM: packages.filter((p) => p.voucher_type === "ITEM"),
     PRODUCT: packages.filter((p) => p.voucher_type === "PRODUCT"),
     ADDON: packages.filter((p) => p.voucher_type === "ADDON"),
+    BUNDLE: packages.filter((p) => p.voucher_type === "BUNDLE"),
   };
 }
+
 
 // ── Points ────────────────────────────────────────────────────────────────────
 
@@ -235,24 +238,21 @@ export function getVoucherBenefitText(v: MyVoucher): string {
  */
 export function getPackageBenefitText(pkg: VoucherPackage): string {
   if (pkg.voucher_type === "BUNDLE" && pkg.bundleRule) {
-    const qualifiers = pkg.bundleRule.productScopes
-      .filter((scope) => scope.role === "QUALIFIER")
-      .map((scope) => scope.menuItem?.name)
+    const qualifiers = pkg.bundleRule.qualifier_products
+      .map((scope) => scope.menu_item.name)
       .filter((name): name is string => Boolean(name));
     const rewardNames = pkg.bundleRule.reward_kind === "PRODUCT"
-      ? pkg.bundleRule.productScopes
-          .filter((scope) => scope.role === "REWARD")
-          .map((scope) => scope.menuItem?.name)
+      ? pkg.bundleRule.reward_products
+          .map((scope) => scope.menu_item.name)
           .filter((name): name is string => Boolean(name))
-      : pkg.bundleRule.addonRewards
-          .map((reward) => reward.addonOption?.label)
-          .filter((name): name is string => Boolean(name));
+      : [];
     const qualifierLabel = qualifiers.join(", ") || "món trong nhóm";
     const rewardLabel = pkg.bundleRule.reward_mode === "SAME_CONFIG"
       ? "cùng món và cấu hình"
       : rewardNames.join(", ") || (pkg.bundleRule.reward_kind === "PRODUCT" ? "món trong nhóm" : "addon trong nhóm");
     return `Mua ${pkg.bundleRule.buy_quantity} ${qualifierLabel} · Tặng ${pkg.bundleRule.reward_quantity} ${rewardLabel}`;
   }
+
   if (pkg.voucher_type === "DISCOUNT") {
     if (pkg.discount_type === "PERCENT") return `Giảm ${pkg.discount_value}% toàn đơn`;
     if (pkg.discount_type === "FIXED")

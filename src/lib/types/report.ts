@@ -62,9 +62,17 @@ export interface StaffReport {
 
 /** Số lượt dùng từng addon option trong khoảng thời gian */
 export interface AddonUsage {
+  addon_option_id: string;
   addon_label: string;
   group_name: string;
   total_count: number;
+  powder_breakdown: AddonPowderBreakdown[];
+}
+
+/** Số gram bột đã dùng cho một addon option, nhóm theo loại bột. */
+export interface AddonPowderBreakdown {
+  powder_name: string;
+  total_grams: number;
 }
 
 /** Doanh thu và số đơn theo phương thức đặt hàng */

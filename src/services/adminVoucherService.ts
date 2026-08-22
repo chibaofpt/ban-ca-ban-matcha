@@ -39,10 +39,10 @@ export interface VoucherPackage {
 
 export interface VoucherBundleProductScope {
   menu_item_id: string;
-  size?: "SMALL" | "MEDIUM" | "LARGE" | null;
-  powder_id?: string | null;
-  milk_type_id?: string | null;
-  reference_price_vnd?: number | null;
+  default_powder_id?: string | null;
+  default_base_liquid_id?: string | null;
+  allowed_sizes: Array<"SMALL" | "MEDIUM" | "LARGE">;
+  menu_item?: { name: string; category: "latte" | "fusion" | "extras"; is_available: boolean };
 }
 
 export interface VoucherBundleRule {
@@ -53,8 +53,9 @@ export interface VoucherBundleRule {
   benefit_scaling: "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM";
   max_applications_per_order: number;
   max_reward_units_per_order?: number | null;
-  productScopes: Array<VoucherBundleProductScope & { role: "QUALIFIER" | "REWARD" }>;
-  addonRewards: Array<{ addon_option_id: string }>;
+  qualifier_products: VoucherBundleProductScope[];
+  reward_products: VoucherBundleProductScope[];
+  reward_addon_option_ids: string[];
 }
 
 interface VoucherPackageCommonInput {
@@ -107,8 +108,8 @@ export type CreateVoucherPackageInput = VoucherPackageCommonInput & (
         benefit_scaling: "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM";
         max_applications_per_order: number;
         max_reward_units_per_order?: number | null;
-        qualifier_scopes: VoucherBundleProductScope[];
-        reward_product_scopes: VoucherBundleProductScope[];
+        qualifier_products: VoucherBundleProductScope[];
+        reward_products: VoucherBundleProductScope[];
         reward_addon_option_ids: string[];
       };
     }

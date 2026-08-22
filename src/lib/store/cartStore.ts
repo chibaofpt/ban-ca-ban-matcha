@@ -67,6 +67,7 @@ function normalizeUniqueCartVouchers(items: CartItem[]): CartItem[] {
 interface CartState {
   items: CartItem[];
   isCartOpen: boolean;
+
   setCartOpen: (open: boolean) => void;
   addItem: (newItem: Omit<CartItem, "cartId">) => string;
   removeItem: (cartId: string) => void;
@@ -87,6 +88,10 @@ interface CartState {
   removeAddonVoucher: (cartId: string, voucherId: string) => void;
   selectedVoucherIds: string[];
   setSelectedVoucherIds: (ids: string[] | ((prev: string[]) => string[])) => void;
+  selectedBundleToken: string | null;
+  bundleAllocations: import("@/src/lib/utils/bundleVoucher").BundleSelectionAllocation[];
+  setSelectedBundleToken: (token: string | null) => void;
+  setBundleAllocations: (allocations: import("@/src/lib/utils/bundleVoucher").BundleSelectionAllocation[]) => void;
 }
 
 type PersistedCartState = Partial<Pick<CartState, "items" | "isCartOpen" | "selectedVoucherIds">>;
@@ -167,10 +172,14 @@ export const useCartStore = create<CartState>()(
       items: [],
       isCartOpen: false,
       selectedVoucherIds: [],
+      selectedBundleToken: null,
+      bundleAllocations: [],
       setCartOpen: (open) => set({ isCartOpen: open }),
       setSelectedVoucherIds: (ids) => set({ 
         selectedVoucherIds: typeof ids === "function" ? ids(get().selectedVoucherIds) : ids 
       }),
+      setSelectedBundleToken: (token) => set({ selectedBundleToken: token }),
+      setBundleAllocations: (allocations) => set({ bundleAllocations: allocations }),
 
       addItem: (newItem) => {
         const cartId = crypto.randomUUID();
@@ -354,7 +363,7 @@ export const useCartStore = create<CartState>()(
        */
       migrate: migrateCartState,
       partialize: (state) => ({
-        items: state.items.filter((item) => !item.bundleRewardVoucherToken),
+        items: state.items.filter((item) => !item.bundleRewardVoucherToken && !item.bundleQualifierVoucherToken),
         isCartOpen: state.isCartOpen,
         selectedVoucherIds: state.selectedVoucherIds,
       }),

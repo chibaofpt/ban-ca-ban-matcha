@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { X, BarChart3, Loader2, RefreshCw, TrendingUp } from "lucide-react";
+import { Fragment, useState, useEffect, useCallback } from "react";
+import { X, BarChart3, ChevronDown, Loader2, RefreshCw, TrendingUp } from "lucide-react";
 import { getStaffReport, getAdminReport, getStaffList } from "@/src/services/reportService";
 import type { StaffReport, AdminReport, StaffMember } from "@/src/lib/types/report";
 import { toast } from "sonner";
@@ -93,6 +93,7 @@ export function DailyReportModal({
   const [adminReport, setAdminReport] = useState<AdminReport | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
+  const [expandedAddonIds, setExpandedAddonIds] = useState<Set<string>>(new Set());
 
   // Fetch staff list once for admin
   useEffect(() => {
@@ -151,6 +152,7 @@ export function DailyReportModal({
       setStartDate(today);
       setEndDate(today);
       setSelectedStaffId("");
+      setExpandedAddonIds(new Set());
     }
   }, [isOpen, today]);
 
@@ -458,19 +460,56 @@ export function DailyReportModal({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
-                        {adminReport.addon_usage.map((a) => (
-                          <tr key={a.addon_label}>
-                            <td className="py-2.5 font-medium text-foreground pr-2">
-                              {a.addon_label}
-                            </td>
-                            <td className="py-2.5 text-muted-foreground text-xs">
-                              {a.group_name}
-                            </td>
-                            <td className="py-2.5 text-right font-bold text-foreground tabular-nums">
-                              {a.total_count}
-                            </td>
-                          </tr>
-                        ))}
+                        {adminReport.addon_usage.map((addon) => {
+                          const isExpandable = addon.powder_breakdown.length > 0;
+                          const isExpanded = expandedAddonIds.has(addon.addon_option_id);
+                          return (
+                            <Fragment key={addon.addon_option_id}>
+                              <tr>
+                                <td className="py-2.5 pr-2 font-medium text-foreground">
+                                  {isExpandable ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setExpandedAddonIds((current) => {
+                                          const next = new Set(current);
+                                          if (next.has(addon.addon_option_id)) next.delete(addon.addon_option_id);
+                                          else next.add(addon.addon_option_id);
+                                          return next;
+                                        });
+                                      }}
+                                      className="inline-flex min-h-11 items-center gap-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                                      aria-expanded={isExpanded}
+                                    >
+                                      <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                                      {addon.addon_label}
+                                    </button>
+                                  ) : addon.addon_label}
+                                </td>
+                                <td className="py-2.5 text-xs text-muted-foreground">
+                                  {addon.group_name}
+                                </td>
+                                <td className="py-2.5 text-right font-bold tabular-nums text-foreground">
+                                  {addon.total_count}
+                                </td>
+                              </tr>
+                              {isExpanded && (
+                                <tr>
+                                  <td colSpan={3} className="bg-secondary/20 px-3 py-2">
+                                    <ul className="space-y-1 text-xs text-muted-foreground">
+                                      {addon.powder_breakdown.map((powder) => (
+                                        <li key={powder.powder_name} className="flex justify-between gap-3">
+                                          <span>{powder.powder_name}</span>
+                                          <span className="tabular-nums">{powder.total_grams}g</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </SectionCard>

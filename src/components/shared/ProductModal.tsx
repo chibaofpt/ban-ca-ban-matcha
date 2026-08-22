@@ -41,6 +41,9 @@ interface ProductModalProps {
   // ── Drawer UI ──
   nested?: boolean;
   currentCartItems?: CartItem[];
+  // ── Bundle Selection ──
+  allowedSizes?: Size[];
+  disableVoucherApplication?: boolean;
 }
 
 const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
@@ -56,7 +59,8 @@ const getDesktopServerSnapshot = () => false;
 
 const BaseModal: React.FC<ProductModalProps> = ({ 
   item, latteItems, milkTypes, addonGroups, onClose, editingItem, onConfirm, freeVoucherId,
-  freeVoucherCoveredPriceVnd, availableVouchers, nested = false, currentCartItems 
+  freeVoucherCoveredPriceVnd, availableVouchers, nested = false, currentCartItems,
+  allowedSizes, disableVoucherApplication
 }) => {
   const [isOpen, setIsOpen] = useState(true);
   // Global state
@@ -76,7 +80,8 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const [selectedSize, setSelectedSize] = useState<Size>(() => {
     if (editingItem?.size) return editingItem.size;
     const available = item.sizes ?? [];
-    return (available.find((s) => s.size === "MEDIUM") ?? available[0])?.size ?? "SMALL";
+    const displaySizes = allowedSizes ? available.filter(s => allowedSizes.includes(s.size)) : available;
+    return (displaySizes.find((s) => s.size === "MEDIUM") ?? displaySizes[0])?.size ?? "SMALL";
   });
   const [sweetness, setSweetness] = useState<SweetnessLevel>(() => editingItem?.sweetness ?? "FULL");
   const [iceOption, setIceOption] = useState<IceOption>(() => editingItem?.iceOption ?? "NORMAL");
@@ -140,7 +145,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
   }, [availableVouchers, selectedOptionIds, quantityMap, addonGroups, usedVoucherIds]);
 
   const isProductVoucherApplied = selectedProductVoucherId !== null || freeVoucherId !== undefined;
-  const isVoucherApplied = isProductVoucherApplied || selectedAddonVoucherIds.length > 0;
+  const isVoucherApplied = !disableVoucherApplication && (isProductVoucherApplied || selectedAddonVoucherIds.length > 0);
   
   // ── Edit Validation ──────────────────────────────────────────────────────
   const lockQuantity = isVoucherApplied;
@@ -260,7 +265,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
       } as CartItem);
     } else if (editingItem) {
       // Customer Edit mode
-      const isVoucherApplied = effectiveFreeVoucherId !== undefined || finalAddonVouchers.length > 0;
+      const isVoucherApplied = !disableVoucherApplication && (effectiveFreeVoucherId !== undefined || finalAddonVouchers.length > 0);
       if (editingItem.quantity > 1 && isVoucherApplied) {
         // Split item: 1 item with voucher, remainder without voucher
         updateItem(editingItem.cartId, { ...cartItemData, quantity: 1 });
@@ -288,7 +293,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
     selectedSize, finalUnitPrice, quantity, sweetness, iceOption, coldwhisk, note,
     selectedOptionIds, isLatte, selectedPowderId, selectedMilkId, effectiveFreeVoucherId,
     effectiveFreeCoveredPrice, onConfirm, editingItem, updateItem, addItem, handleClose,
-    addonGroups
+    addonGroups, disableVoucherApplication,
   ]);
 
   const sweetnessIdx = useMemo(() => SWEETNESS_OPTIONS.findIndex((o) => o.value === sweetness), [sweetness]);
@@ -348,8 +353,25 @@ const BaseModal: React.FC<ProductModalProps> = ({
         </button>
 
         <div className="flex flex-col flex-1 min-h-0 h-full overflow-y-auto overscroll-contain px-5 md:px-8 pt-7 pb-44 md:pb-40 md:pt-0">
+          {item.image_url && (
+            <div className="md:hidden -mx-5 -mt-7">
+              <div className="relative h-[30vh] w-full overflow-hidden">
+                <Image
+                  src={item.image_url}
+                  alt={item.name}
+                  fill
+                  sizes="100vw"
+                  className="object-cover object-center"
+                  quality={80}
+                  placeholder="blur"
+                  blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+                />
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/20 to-transparent" />
+              </div>
+            </div>
+          )}
           <div
-            className="pt-7 pb-5 border-b border-border/40 md:hidden"
+            className={cn("pb-5 border-b border-border/40 md:hidden", item.image_url ? "pt-4" : "pt-7")}
           >
             <h2 className="font-serif text-2xl font-bold text-primary">{item.name}</h2>
             {item.description && <p className="text-sm text-primary/55 mt-1.5 leading-relaxed">{item.description}</p>}
@@ -373,7 +395,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
             <div className="mt-7">
               <SectionLabel text="Chọn size *" />
               <SizeSelector
-                sizes={item.sizes}
+                sizes={allowedSizes ? item.sizes.filter(s => allowedSizes.includes(s.size)) : item.sizes}
                 selectedSize={selectedSize}
                 onChange={setSelectedSize}
                 getPriceForContext={getPriceForContext}
@@ -637,7 +659,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
           </div>
 
           {/* 9. ƯU ĐÃI CỦA BẠN */}
-          {(applicableProductVouchers.length > 0 || applicableAddonVouchers.length > 0) && (
+          {!disableVoucherApplication && (applicableProductVouchers.length > 0 || applicableAddonVouchers.length > 0) && (
             <div className="mt-7">
               <SectionLabel text="🎟 Ưu đãi có thể áp dụng" />
               <div className="space-y-2">

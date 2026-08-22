@@ -15,7 +15,7 @@ type CancelTxClient = Pick<
 > & {
   orderBundleApplication?: Pick<
     PrismaClient["orderBundleApplication"],
-    "findUnique" | "updateMany"
+    "findMany" | "updateMany"
   >;
 };
 
@@ -161,11 +161,12 @@ export async function restoreVouchersOnCancel(
 
   // 2c. BUNDLE only exists through an order application, never standalone redemption.
   if (tx.orderBundleApplication) {
-    const bundleApplication = await tx.orderBundleApplication.findUnique({
+    const bundleApplications = await tx.orderBundleApplication.findMany({
       where: { order_id: orderId },
       select: { voucher_id: true },
     });
-    if (bundleApplication) {
+    if (bundleApplications.length > 0) {
+      for (const bundleApplication of bundleApplications) {
       const bundleVoucher = await tx.voucher.findUnique({
         where: { id: bundleApplication.voucher_id },
         select: { status: true, expires_at: true },
@@ -184,6 +185,7 @@ export async function restoreVouchersOnCancel(
             used_channel: null,
           },
         });
+      }
       }
       await tx.orderBundleApplication.updateMany({
         where: { order_id: orderId, status: { in: ["RESERVED", "REDEEMED"] } },

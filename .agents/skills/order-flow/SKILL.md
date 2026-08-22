@@ -18,22 +18,7 @@ description: >
 
 ---
 
-## File Map
-
-| File | Layer | Purpose |
-|---|---|---|
-| `lib/orders.ts` | SERVER | Core order creation business logic (13.7 KB) |
-| `lib/cancelOrder.ts` | SERVER | Auto-cancel logic for expired PENDING orders |
-| `lib/storeSchedule.ts` | SERVER | `checkStoreOpen()` — store hours validation |
-| `lib/vietqr.ts` | SERVER | VietQR payment URL generation |
-| `lib/orderCode.ts` | SERVER | Order code generation (e.g. BCBM-A3X7K2) |
-| `lib/validations/order.ts` | SERVER | Zod schemas for order request |
-| `app/api/orders/route.ts` | SERVER | Customer order route (24.9 KB) |
-| `app/api/staff/orders/route.ts` | SERVER | Staff order route (23.7 KB) |
-| `app/api/cron/cancel-expired-orders/route.ts` | SERVER | Vercel Cron auto-cancel |
-| `src/constants/orderOptions.ts` | CLIENT | Sweetness, ice, coldwhisk constants |
-
----
+Inspect current files, callers and tests with `rg`; do not maintain file paths or sizes in this skill.
 
 ## Order Types
 
@@ -163,7 +148,7 @@ Counter transfer: PENDING → COMPLETED (creator Staff or any Admin confirms pay
 - `orders.user_id` is nullable — `NULL` = anonymous walk-in, no loyalty tracking.
 - `points_earned = 0` — no points awarded, no `points_log` entry.
 - Vouchers rejected: if `product_voucher_id`, `addon_voucher_ids`, `discount_voucher_ids`,
-  `freeship_voucher_id`, or `bundle_voucher_qr_token` are sent → `VALIDATION_ERROR`.
+  `freeship_voucher_id`, or non-empty `bundle_applications` are sent → `VALIDATION_ERROR`.
 - Display as **"Khách vãng lai"** in all order list views.
 - Staff search customers: `GET /api/staff/users?q=xxx`:
   - All-digits → phone suffix match

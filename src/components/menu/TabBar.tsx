@@ -28,7 +28,7 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, setActiveTab }) => {
   const tabIndex = tabs.findIndex(t => t.id === activeTab);
 
   return (
-    <div className="sticky top-2 z-20 w-full mb-6 mt-2">
+    <div className="w-full mb-6 mt-2">
       <div className="relative flex w-full bg-primary/5 py-1 rounded-full backdrop-blur-md border border-primary/10">
 
         {/* Sliding indicator — position driven by activeTab index */}

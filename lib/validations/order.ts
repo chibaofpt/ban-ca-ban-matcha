@@ -16,6 +16,15 @@ const bundleRewardAllocationSchema = z.object({
   quantity: z.number().int().min(1).max(100),
   addon_option_id: z.string().uuid().optional(),
 });
+const bundleQualifierAllocationSchema = z.object({
+  client_line_id: z.string().uuid(),
+  quantity: z.number().int().min(1).max(100),
+});
+const bundleApplicationSchema = z.object({
+  voucher_qr_token: z.string().uuid(),
+  qualifier_allocations: z.array(bundleQualifierAllocationSchema).min(1).max(100),
+  reward_allocations: z.array(bundleRewardAllocationSchema).min(1).max(100),
+});
 
 const orderItemBaseSchema = z.object({
   /** Ephemeral cart row identifier used only to resolve explicit BUNDLE rewards. */
@@ -72,23 +81,12 @@ function totalQuantityWithin(max: number) {
 
 function validateBundleReferences(
   data: {
-    items: Array<{ client_line_id?: string }>;
-    bundle_voucher_qr_token?: string;
-    bundle_reward_allocations: Array<{ client_line_id: string }>;
+    items: Array<{ client_line_id?: string; quantity: number }>;
+    bundle_applications: Array<z.infer<typeof bundleApplicationSchema>>;
   },
   ctx: z.RefinementCtx,
 ): void {
-  const hasVoucher = data.bundle_voucher_qr_token !== undefined;
-  const hasAllocations = data.bundle_reward_allocations.length > 0;
-  if (hasVoucher !== hasAllocations) {
-    ctx.addIssue({
-      code: "custom",
-      path: hasVoucher ? ["bundle_reward_allocations"] : ["bundle_voucher_qr_token"],
-      message: "BUNDLE voucher and reward allocations must be submitted together",
-    });
-    return;
-  }
-  if (!hasVoucher) return;
+  if (data.bundle_applications.length === 0) return;
   const lineIds = new Set(data.items.map((item) => item.client_line_id).filter(Boolean));
   if (lineIds.size !== data.items.length) {
     ctx.addIssue({
@@ -97,13 +95,37 @@ function validateBundleReferences(
       message: "Every item requires a unique client_line_id when using BUNDLE",
     });
   }
-  for (const allocation of data.bundle_reward_allocations) {
-    if (!lineIds.has(allocation.client_line_id)) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["bundle_reward_allocations"],
-        message: "BUNDLE allocation references an unknown cart line",
-      });
+  const tokens = new Set<string>();
+  const productUnits = new Map<string, number>();
+  for (const [applicationIndex, application] of data.bundle_applications.entries()) {
+    if (tokens.has(application.voucher_qr_token)) {
+      ctx.addIssue({ code: "custom", path: ["bundle_applications", applicationIndex, "voucher_qr_token"],
+        message: "A BUNDLE voucher token can appear only once" });
+    }
+    tokens.add(application.voucher_qr_token);
+    for (const allocation of application.qualifier_allocations) {
+      if (!lineIds.has(allocation.client_line_id)) {
+        ctx.addIssue({ code: "custom", path: ["bundle_applications", applicationIndex, "qualifier_allocations"],
+          message: "BUNDLE allocation references an unknown cart line" });
+      }
+      productUnits.set(allocation.client_line_id,
+        (productUnits.get(allocation.client_line_id) ?? 0) + allocation.quantity);
+    }
+    for (const allocation of application.reward_allocations) {
+      if (!lineIds.has(allocation.client_line_id)) {
+        ctx.addIssue({ code: "custom", path: ["bundle_applications", applicationIndex, "reward_allocations"],
+          message: "BUNDLE allocation references an unknown cart line" });
+      }
+      if (!allocation.addon_option_id) {
+        productUnits.set(allocation.client_line_id,
+          (productUnits.get(allocation.client_line_id) ?? 0) + allocation.quantity);
+      }
+    }
+  }
+  for (const item of data.items) {
+    if (item.client_line_id && (productUnits.get(item.client_line_id) ?? 0) > item.quantity) {
+      ctx.addIssue({ code: "custom", path: ["bundle_applications"],
+        message: "BUNDLE product allocations exceed cart line quantity" });
     }
   }
 }
@@ -126,8 +148,9 @@ export const staffOrderSchema = z.object({
     .refine(totalQuantityWithin(100), { message: "Order cannot exceed 100 cups" }),
   /** DISCOUNT vouchers — multiple allowed. Max 1 PERCENT enforced in route handler. */
   discount_voucher_ids: z.array(z.string().uuid()).max(10).default([]),
-  bundle_voucher_qr_token: z.string().uuid().optional(),
-  bundle_reward_allocations: z.array(bundleRewardAllocationSchema).max(100).default([]),
+  bundle_applications: z.array(bundleApplicationSchema).max(100).default([]),
+  bundle_voucher_qr_token: z.never().optional(),
+  bundle_reward_allocations: z.never().optional(),
   /** QR token xác thực khách — bắt buộc khi có voucher và role = STAFF. Admin tự động bypass. */
   customer_qr_token: z.string().uuid().optional(),
 }).superRefine(validateBundleReferences);
@@ -143,8 +166,9 @@ export const customerOrderSchema = z.object({
     .refine(totalQuantityWithin(20), { message: "Order cannot exceed 20 cups" }),
   /** DISCOUNT vouchers — multiple allowed. Max 1 PERCENT enforced in route handler. */
   discount_voucher_ids: z.array(z.string().uuid()).max(10).default([]),
-  bundle_voucher_qr_token: z.string().uuid().optional(),
-  bundle_reward_allocations: z.array(bundleRewardAllocationSchema).max(100).default([]),
+  bundle_applications: z.array(bundleApplicationSchema).max(100).default([]),
+  bundle_voucher_qr_token: z.never().optional(),
+  bundle_reward_allocations: z.never().optional(),
   pickup_time: z.string().datetime().optional(),
   note: z.string().max(500).optional(),
   /** Delivery address — required when order_type = DELIVERY (enforced in route handler). Phase 5+. */

@@ -24,6 +24,7 @@ describe("BUNDLE addon — quà chung và quà theo từng món", () => {
           addons: [{ addon_option_id: ADDON_ID, quantity: 2, unit_price_vnd: 10_000, gram_value: null }],
         }),
       ],
+      qualifier_allocations: [{ client_line_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", quantity: 2 }],
       reward_allocations: [
         {
           client_line_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -53,6 +54,7 @@ describe("BUNDLE addon — quà chung và quà theo từng món", () => {
           addons: [{ addon_option_id: ADDON_ID, quantity: 4, unit_price_vnd: 10_000, gram_value: null }],
         }),
       ],
+      qualifier_allocations: [{ client_line_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", quantity: 2 }],
       reward_allocations: [
         {
           client_line_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -82,6 +84,7 @@ describe("BUNDLE addon — quà chung và quà theo từng món", () => {
     const result = evaluateBundlePromotion({
       rule,
       items: [item],
+      qualifier_allocations: [{ client_line_id: item.client_line_id, quantity: 2 }],
       reward_allocations: [{
         client_line_id: item.client_line_id,
         addon_option_id: ADDON_ID,
@@ -104,6 +107,7 @@ describe("BUNDLE addon — quà chung và quà theo từng món", () => {
             reward_addon_option_ids: [ADDON_ID],
           }),
           items: [makeItem({ quantity: 2 })],
+          qualifier_allocations: [{ client_line_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", quantity: 2 }],
           reward_allocations: [
             {
               client_line_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -134,6 +138,7 @@ describe("BUNDLE addon — quà chung và quà theo từng món", () => {
               addons: [{ addon_option_id: ADDON_ID, quantity: 1, unit_price_vnd: 12_000, gram_value: 2 }],
             }),
           ],
+          qualifier_allocations: [{ client_line_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", quantity: 2 }],
           reward_allocations: [
             {
               client_line_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -172,6 +177,7 @@ describe("BUNDLE addon — quà chung và quà theo từng món", () => {
               ],
             }),
           ],
+          qualifier_allocations: [{ client_line_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", quantity: 2 }],
           reward_allocations: [
             {
               client_line_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
@@ -202,6 +208,7 @@ describe("BUNDLE addon — quà chung và quà theo từng món", () => {
               addons: [{ addon_option_id: ADDON_ID, quantity: 2, unit_price_vnd: 10_000, gram_value: null }],
             }),
           ],
+          qualifier_allocations: [{ client_line_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", quantity: 2 }],
           reward_allocations: [
             {
               client_line_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",

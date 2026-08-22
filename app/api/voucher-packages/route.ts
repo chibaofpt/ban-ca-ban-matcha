@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
+import { toVoucherPackageBundleDto } from "@/lib/voucherBundleDto";
 
 export async function GET() {
   try {
@@ -99,11 +100,14 @@ async function fetchVoucherPackages() {
       menuItem: { select: { name: true, is_available: true } },
       addonOption: { select: { label: true } },
       bundleRule: { include: {
-        productScopes: { include: { menuItem: { select: { name: true } } } },
+        productScopes: { include: {
+          sizes: true,
+          menuItem: { select: { name: true, category: true, is_available: true } },
+        } },
         addonRewards: { include: { addonOption: { select: { label: true } } } },
       } },
     },
-  });
+  }).then((packages) => packages.map(toVoucherPackageBundleDto));
 }
 
 /** Fetch active BUNDLE packages live so campaign windows are never stale in Redis. */
@@ -121,10 +125,13 @@ async function fetchScheduledVoucherPackages(now: Date) {
       menuItem: { select: { name: true, is_available: true } },
       addonOption: { select: { label: true } },
       bundleRule: { include: {
-        productScopes: { include: { menuItem: { select: { name: true } } } },
+        productScopes: { include: {
+          sizes: true,
+          menuItem: { select: { name: true, category: true, is_available: true } },
+        } },
         addonRewards: { include: { addonOption: { select: { label: true } } } },
       } },
     },
-  });
+  }).then((packages) => packages.map(toVoucherPackageBundleDto));
 }
 

@@ -121,8 +121,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     1,
     Math.min(100, parseInt(searchParams.get("limit") || "10", 10)),
   );
+  const rawStatus = searchParams.get("status");
+  const statusFilter =
+    rawStatus === "active" || rawStatus === "cancelled" ? rawStatus : undefined;
   try {
-    return await getCustomerOrderHistory(session.id, page, limit);
+    return await getCustomerOrderHistory(session.id, page, limit, statusFilter);
   } catch (error) {
     console.error("[GET /api/orders]", error);
     return NextResponse.json(

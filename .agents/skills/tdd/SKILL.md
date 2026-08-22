@@ -10,8 +10,8 @@ description: >
 
 # TDD Skill
 
-> Viết test skeleton → implement code → chạy test verify.
-> Skill này là một phần bắt buộc của workflow implement — không được skip.
+> Chọn test lane phù hợp → xác nhận failure có ý nghĩa → implement patch nhỏ → verify.
+> Không tạo `implementation_plan.md`, `task.md` hoặc change-history files.
 
 ---
 
@@ -19,7 +19,7 @@ description: >
 
 | Trigger | Mô tả |
 |---|---|
-| Implementation plan được approve | Agent viết test TRƯỚC khi implement bất kỳ file nào |
+| Implementation plan được approve | Ghi Test Plan trong task hiện tại, không tạo plan file |
 | User yêu cầu trực tiếp | "viết test", "test lại", "kiểm tra logic", "cover test cho..." |
 | Tạo feature / workflow mới | Bất kỳ feature có business logic phức tạp |
 | Bug fix có business logic | Fix bug mà cần verify nhiều nhánh logic |
@@ -28,9 +28,9 @@ description: >
 
 ## Workflow — Thứ tự bắt buộc
 
-### Bước 1: Xác định Test Scope (trong implementation plan)
+### Bước 1: Xác định Test Scope trong task/plan hiện tại
 
-Khi viết `implementation_plan.md`, PHẢI thêm section **"Test Plan"** ở cuối (trước Verification Plan).
+Ghi section **Test Plan** trong task/plan hiện tại trước khi sửa production code.
 
 ```markdown
 ## Test Plan
@@ -59,9 +59,11 @@ Khi viết `implementation_plan.md`, PHẢI thêm section **"Test Plan"** ở cu
 | State logic phức tạp (Zustand slices với side effects) | UI-only components không có logic |
 | Validation schemas có custom transforms | Re-export files |
 
-### Bước 2: User review Test Plan cùng với Implementation Plan
+### Bước 2: Chọn lane và review Test Plan
 
-Test Plan là một phần của `implementation_plan.md` → user review và approve tất cả cùng lúc.
+Business/API/security bug hoặc feature cần regression test trước. Text/style/layout/docs thuần
+không cần test giả; dùng lint/type/static checks và test hành vi hiện có nếu phù hợp. Refactor cần
+characterization tests trước khi move/split.
 
 ### Bước 3: Viết test skeleton (sau khi user approve)
 
@@ -234,7 +236,7 @@ Khi implement logic liên quan đến giới hạn (limits), số dư (balances)
 ### Khi implement xong:
 - [ ] Chạy test file riêng → ALL PASS
 - [ ] Chạy full suite → không regression
-- [ ] Cập nhật task.md ghi nhận test status
+- [ ] Completion report ghi targeted/full test status và Resource Impact
 
 ---
 

@@ -35,6 +35,7 @@ description: >
   npm.cmd run lint
   npx.cmd tsc --noEmit
   npm.cmd run test
+  npm.cmd run resources:check
   npx.cmd dotenv -e .env.prod -- prisma validate
   ```
 

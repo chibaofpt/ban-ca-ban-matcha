@@ -16,19 +16,7 @@ description: >
 
 ---
 
-## File Map
-
-| File | Layer | Purpose |
-|---|---|---|
-| `src/utils/pricing.ts` | CLIENT + SERVER | Pure pricing functions, no DB deps. Rounding, formulas, gram resolution. |
-| `lib/pricing.ts` | SERVER ONLY | Thin wrapper: fetch all pricing data from DB → call `src/utils/pricing.ts` |
-| `src/lib/store/powderStore.ts` | CLIENT | Caches `/api/powders` response for real-time price estimates |
-| `app/api/powders/route.ts` | SERVER | Public endpoint — includes `price_per_gram`, `powder_size_config`, `default_powder_gram` |
-| `app/api/menu/route.ts` | SERVER | Returns effective per-size Base Liquid volume, item defaults/allowed IDs, global catalog, and addon groups |
-
-> Frontend needs 2 API calls on app load: `GET /api/menu` + `GET /api/powders`. Both cached in state, not refetched per interaction.
-
----
+Inspect current files, callers and tests with `rg`; do not maintain file paths or sizes in this skill.
 
 ## Price Formulas
 
@@ -87,6 +75,9 @@ addons_price_vnd = sum(addon unit price × quantity)
 - Apply an ADDON voucher to one unit of its matching addon only; never to Extra Matcha.
 - Price `extras` directly from `menu_items.unit_price_vnd`; do not run drink recipe pricing.
 - ITEM vouchers cover one matching extras unit at its current server price and create no surplus.
+- BUNDLE reference prices are never admin-entered. Resolve stored default powder/Base Liquid
+  snapshots through this canonical calculator at checkout; exclude addons and charge only the
+  positive difference between actual reward drink price and baseline.
 - Preserve gross prices as order snapshots and store reductions separately.
 - Let one shared order calculator consume resolved drink/addon prices for both customer and
   staff orders. Do not repeat voucher arithmetic in cart state or API routes.

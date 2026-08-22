@@ -38,8 +38,14 @@ export function makeRule(overrides: Partial<BundlePromotionRule> = {}): BundlePr
     benefit_scaling: "PER_BUNDLE",
     max_applications_per_order: 1,
     max_reward_units_per_order: null,
-    qualifier_scopes: [{ menu_item_id: LATTE_ID, size: null, powder_id: null, milk_type_id: null }],
-    reward_product_scopes: [],
+    qualifier_products: [{
+      menu_item_id: LATTE_ID,
+      allowed_sizes: ["SMALL", "MEDIUM", "LARGE"],
+      default_powder_id: POWDER_ID,
+      default_base_liquid_id: MILK_ID,
+      baseline_prices_vnd: {},
+    }],
+    reward_products: [],
     reward_addon_option_ids: [],
     ...overrides,
   };

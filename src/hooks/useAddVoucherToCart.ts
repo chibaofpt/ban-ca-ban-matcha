@@ -284,11 +284,7 @@ export function useAddVoucherToCart() {
           originalClientPriceVnd: originalPrice,
         };
 
-        // addItem assigns cartId internally
-        addItem(cartItemBase);
-
-        // Get the newly added item's cartId (it's last in the list)
-        const newCartId = useCartStore.getState().items.at(-1)?.cartId;
+        const newCartId = addItem(cartItemBase);
         if (newCartId) {
           applyProductVoucher(newCartId, voucher.qr_token, voucher.covered_price_vnd ?? 0);
         }

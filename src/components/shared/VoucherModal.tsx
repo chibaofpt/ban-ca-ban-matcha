@@ -5,7 +5,7 @@ import axios from "axios";
 import { AnimatePresence } from "framer-motion";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Drawer } from "vaul";
-import { Loader2, LogIn, QrCode, ShoppingBag, Star, Ticket, X } from "lucide-react";
+import { Loader2, LogIn, Star, Ticket, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { useCartStore } from "@/src/lib/store/cartStore";
@@ -29,6 +29,14 @@ import { VoucherAcquisitionConfirm } from "./VoucherAcquisitionConfirm";
 import { VoucherCard } from "./VoucherCards";
 import { VoucherHistorySection, VoucherModalTabs } from "./VoucherModalSections";
 import { VoucherPackageCatalog } from "./VoucherPackageCatalog";
+import { VoucherDetailSheet } from "./VoucherDetailSheet";
+import { BundleVoucherSetupSheet } from "./BundleVoucherSetupSheet";
+import { usePowderStore } from "@/src/lib/store/powderStore";
+import { fetchMenu } from "@/src/services/menuService";
+import { useCartTotalPrice } from "@/src/lib/store/cartStore";
+import { estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
+import type { MenuData } from "@/src/lib/types/menu";
+import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
 
 /** Unified customer wallet and voucher acquisition modal. */
 export default function VoucherModal() {
@@ -47,8 +55,43 @@ export default function VoucherModal() {
   const [highlightToken, setHighlightToken] = useState<string | null>(null);
   const [qrVoucher, setQrVoucher] = useState<MyVoucher | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
+  const [detailVoucher, setDetailVoucher] = useState<MyVoucher | null>(null);
+  const [bundleSetupVoucher, setBundleSetupVoucher] = useState<MyVoucher | null>(null);
+  const [menuData, setMenuData] = useState<MenuData | undefined>();
+  const cartItems = useCartStore((s) => s.items);
+  const subtotalVnd = useCartTotalPrice();
+  const selectedVoucherIds = useCartStore((s) => s.selectedVoucherIds);
+  const powders = usePowderStore((s) => s.data);
+  const defaultPowderGram = usePowderStore((s) => s.defaultPowderGram);
   const touchStart = useRef({ x: 0, y: 0 });
   useBodyScrollLock(open);
+
+  const activeVouchers = filterModalVouchers(vouchers);
+  const selectedDiscountVouchers = activeVouchers.filter(v => selectedVoucherIds.includes(v.qr_token) && v.voucher_type === "DISCOUNT");
+  const totalAfterDiscountVnd = Math.max(0, subtotalVnd - estimateMultiDiscountSavings(selectedDiscountVouchers, subtotalVnd));
+
+  useEffect(() => {
+    if (detailVoucher || bundleSetupVoucher) {
+      if (!menuData) {
+        fetchMenu().then(setMenuData).catch(console.error);
+      }
+    }
+  }, [detailVoucher, bundleSetupVoucher, menuData]);
+
+  const handleUseNowSuccess = useCallback(() => {
+    setDetailVoucher(null);
+    close();
+    setCartOpen(true);
+  }, [close, setCartOpen]);
+
+  const handleBundleSuccess = useCallback((token: string, allocations: BundleSelectionAllocation[]) => {
+    useCartStore.getState().setSelectedBundleToken(token);
+    useCartStore.getState().setBundleAllocations(allocations);
+    setBundleSetupVoucher(null);
+    setDetailVoucher(null);
+    close();
+    setCartOpen(true);
+  }, [close, setCartOpen]);
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 768px)");
@@ -104,7 +147,7 @@ export default function VoucherModal() {
     else void acquirePackage(pkg);
   }, [acquirePackage, clearIntent, isLoggedIn, open, packages, packagesLoading, pendingIntent]);
 
-  const activeVouchers = filterModalVouchers(vouchers);
+
   const loading = packagesLoading || (isLoggedIn && vouchersLoading);
   const content = (
     <div className="relative flex h-[85vh] w-full flex-col overflow-hidden rounded-t-[2.5rem] bg-background shadow-2xl md:max-h-[85vh] md:max-w-2xl md:rounded-[2.5rem]">
@@ -128,11 +171,7 @@ export default function VoucherModal() {
         {loading ? <div className="flex h-full items-center justify-center"><Loader2 className="animate-spin text-primary" /></div> : activeTab === "my_vouchers" && isLoggedIn ? (
           activeVouchers.length === 0 ? <div className="mt-4 flex flex-col items-center gap-2 rounded-2xl border border-dashed py-16 text-center"><Ticket className="text-primary/30" /><p className="text-sm font-bold text-primary/60">Bạn chưa có voucher nào</p></div> :
           <div className="grid gap-3 pb-8 sm:grid-cols-2">{activeVouchers.map((voucher) => (
-            <VoucherCard key={voucher.qr_token} voucher={voucher} isSelected={highlightToken === voucher.qr_token} actionNode={voucher.voucher_type === "BUNDLE" ? (
-              <button type="button" onClick={(event) => { event.stopPropagation(); close(); setCartOpen(true); }} className="min-h-11 rounded-lg bg-primary px-3 text-xs font-bold text-white focus-visible:ring-2 focus-visible:ring-ring"><ShoppingBag className="mr-1 inline size-4" />Dùng trong giỏ</button>
-            ) : (
-              <button type="button" onClick={(event) => { event.stopPropagation(); setQrVoucher(voucher); }} aria-label={`Hiện mã QR của ${voucher.package.name}`} className="flex size-11 items-center justify-center rounded-lg bg-primary/10 text-primary focus-visible:ring-2 focus-visible:ring-ring"><QrCode size={16} /></button>
-            )} />
+            <VoucherCard key={voucher.qr_token} voucher={voucher} isSelected={highlightToken === voucher.qr_token} onClick={() => setDetailVoucher(voucher)} />
           ))}</div>
         ) : activeTab === "history" && isLoggedIn ? <VoucherHistorySection vouchers={filterHistoryVouchers(vouchers)} /> : (
           <div>
@@ -143,6 +182,38 @@ export default function VoucherModal() {
       </div>
       <AnimatePresence>{qrVoucher && <QrModal voucher={qrVoucher} onClose={() => setQrVoucher(null)} />}</AnimatePresence>
       <VoucherAcquisitionConfirm pkg={pendingPackage} pointsBalance={points} isLoading={isPending} onCancel={() => setPendingPackage(null)} onConfirm={() => { if (pendingPackage) void acquirePackage(pendingPackage); }} />
+
+      <AnimatePresence>
+        {detailVoucher && (
+          <VoucherDetailSheet
+            key="voucher-detail-sheet"
+            voucher={detailVoucher}
+            cartItems={cartItems}
+            subtotalVnd={subtotalVnd}
+            totalAfterDiscountVnd={totalAfterDiscountVnd}
+            myVouchers={activeVouchers}
+            orderType="PICKUP"
+            shippingFee={null}
+            menuData={menuData}
+            onBack={() => setDetailVoucher(null)}
+            onUseNowSuccess={handleUseNowSuccess}
+            onOpenBundleSetup={(v) => { setDetailVoucher(null); setBundleSetupVoucher(v); }}
+          />
+        )}
+      </AnimatePresence>
+
+      {bundleSetupVoucher && menuData && (
+        <BundleVoucherSetupSheet
+          open={!!bundleSetupVoucher}
+          voucher={bundleSetupVoucher}
+          menuData={menuData}
+          milkTypes={menuData.milk_types}
+          powders={powders}
+          defaultPowderGram={defaultPowderGram}
+          onClose={() => setBundleSetupVoucher(null)}
+          onSuccess={handleBundleSuccess}
+        />
+      )}
     </div>
   );
 

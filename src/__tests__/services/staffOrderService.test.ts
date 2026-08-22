@@ -78,6 +78,28 @@ describe("createStaffOrder", () => {
     expect(apiClient.post).toHaveBeenCalledWith("/api/staff/orders", payload);
   });
 
+  it("forward grouped BUNDLE applications thay vì field legacy", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: {} } });
+    const payload = {
+      phone_number: "+84912345678",
+      items: [{
+        client_line_id: "line-1", menu_item_id: "item-1", quantity: 2,
+        size: "MEDIUM" as const, sweetness: "QUARTER" as const,
+        ice_option: "NORMAL" as const, coldwhisk: false,
+        addon_option_ids: [], client_price_vnd: 69_000,
+      }],
+      bundle_applications: [{
+        voucher_qr_token: "bundle-token",
+        qualifier_allocations: [{ client_line_id: "line-1", quantity: 1 }],
+        reward_allocations: [{ client_line_id: "line-1", quantity: 1 }],
+      }],
+    };
+
+    await createStaffOrder(payload);
+    expect(apiClient.post).toHaveBeenCalledWith("/api/staff/orders", payload);
+    expect(payload).not.toHaveProperty("bundle_voucher_qr_token");
+  });
+
   it("payload item phải có size, ice_option, coldwhisk, client_price_vnd", async () => {
     vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: {} } });
 

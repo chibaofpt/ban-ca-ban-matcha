@@ -1,4 +1,3 @@
-import { motion, type MotionValue } from "framer-motion";
 import { Coffee, CupSoda, Sparkles } from "lucide-react";
 import type { RefObject } from "react";
 
@@ -8,7 +7,6 @@ import type { MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
 import { getMenuItemCartInfo } from "@/src/utils/customerUx";
 
 interface MenuPanelsProps {
-  carouselX: MotionValue<number>;
   loading: boolean;
   latteItems: MenuItem[];
   fusionItems: MenuItem[];
@@ -19,11 +17,12 @@ interface MenuPanelsProps {
   latteSectionRef: RefObject<HTMLDivElement | null>;
   fusionSectionRef: RefObject<HTMLDivElement | null>;
   extrasSectionRef: RefObject<HTMLDivElement | null>;
+  seasonalSectionRef: RefObject<HTMLDivElement | null>;
   onItemClick: (item: MenuItem) => void;
 }
 
 interface ItemSectionProps {
-  title: "Latte" | "Fusion" | "Add-on";
+  title: "Latte" | "Fusion" | "Add-on" | "Seasonal";
   items: MenuItem[];
   milkTypes: MilkTypeOption[];
   cartItems: CartItem[];
@@ -31,64 +30,20 @@ interface ItemSectionProps {
   onItemClick: (item: MenuItem) => void;
 }
 
-/** Renders the combined and seasonal menu panels without owning carousel state. */
+/** Renders the customer menu as vertically scrollable category sections. */
 export function MenuPanels(props: MenuPanelsProps) {
-  const { carouselX, loading, latteItems, fusionItems, extrasItems, seasonalItems } = props;
+  const { loading, latteItems, fusionItems, extrasItems, seasonalItems } = props;
   return (
-    <motion.div style={{ x: carouselX }} className="relative w-full touch-pan-y">
-      <div className="w-full pb-8 px-0.5 relative" style={{ left: "0%" }}>
-        {loading ? <MenuSkeleton count={6} /> : (
-          <>
-            <ItemSection
-              title="Latte"
-              items={latteItems}
-              milkTypes={props.milkTypes}
-              cartItems={props.cartItems}
-              sectionRef={props.latteSectionRef}
-              onItemClick={props.onItemClick}
-            />
-            <ItemSection
-              title="Fusion"
-              items={fusionItems}
-              milkTypes={props.milkTypes}
-              cartItems={props.cartItems}
-              sectionRef={props.fusionSectionRef}
-              onItemClick={props.onItemClick}
-            />
-            <ItemSection
-              title="Add-on"
-              items={extrasItems}
-              milkTypes={props.milkTypes}
-              cartItems={props.cartItems}
-              sectionRef={props.extrasSectionRef}
-              onItemClick={props.onItemClick}
-            />
-          </>
-        )}
-      </div>
-      <div className="w-full pb-8 px-0.5 absolute top-0" style={{ left: "100%" }}>
-        <div className="mb-6 flex gap-3 rounded-2xl border border-green-200 bg-green-50 px-4 py-3">
-          <p className="text-sm leading-relaxed text-green-800">
-            Seasonal là những món có dùng bột matcha hoặc công thức pha sẽ được bán trong 1 thời gian giới hạn nên có thể sẽ hết mà không biết trước.
-          </p>
-        </div>
-        {loading ? <MenuSkeleton count={3} /> : seasonalItems.length === 0 ? (
-          <div className="py-24 text-center text-primary/40 space-y-4">
-            <Sparkles className="mx-auto h-12 w-12" aria-hidden="true" />
-            <p className="font-bold text-lg italic">Hiện chưa có món seasonal</p>
-            <p className="text-sm">Quay lại sau nhé!</p>
-          </div>
-        ) : (
-          <ItemGrid
-            items={seasonalItems}
-            milkTypes={props.milkTypes}
-            cartItems={props.cartItems}
-            onItemClick={props.onItemClick}
-            priorityCount={4}
-          />
-        )}
-      </div>
-    </motion.div>
+    <div className="w-full space-y-8 pb-8 px-0.5">
+      {loading ? <MenuSkeleton count={6} /> : (
+        <>
+          <ItemSection title="Latte" items={latteItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.latteSectionRef} onItemClick={props.onItemClick} />
+          <ItemSection title="Fusion" items={fusionItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.fusionSectionRef} onItemClick={props.onItemClick} />
+          <ItemSection title="Add-on" items={extrasItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.extrasSectionRef} onItemClick={props.onItemClick} />
+          <ItemSection title="Seasonal" items={seasonalItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.seasonalSectionRef} onItemClick={props.onItemClick} />
+        </>
+      )}
+    </div>
   );
 }
 
@@ -102,15 +57,21 @@ function ItemSection({
 }: ItemSectionProps) {
   const isFusion = title === "Fusion";
   const isExtras = title === "Add-on";
+  const isSeasonal = title === "Seasonal";
   return (
-    <div ref={sectionRef} className={`scroll-mt-24${isFusion || isExtras ? " mt-8" : ""}`}>
+    <div ref={sectionRef} className="scroll-mt-32">
       <div className={`flex items-center gap-3 mb-4${isFusion ? "" : " mt-2"}`}>
         <h2 className="font-serif text-xl font-bold text-[#2d4a22]">{title}</h2>
         <div className="flex-1 h-px bg-primary/10" />
       </div>
+      {isSeasonal && (
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
+          Món theo mùa có thể hết trước khi được thông báo.
+        </p>
+      )}
       {items.length === 0 ? (
         <div className="py-12 text-center text-primary/40 space-y-2">
-          {isExtras ? (
+          {isSeasonal || isExtras ? (
             <Sparkles className="mx-auto h-10 w-10" aria-hidden="true" />
           ) : isFusion ? (
             <CupSoda className="mx-auto h-10 w-10" aria-hidden="true" />

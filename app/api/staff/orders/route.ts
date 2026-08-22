@@ -16,8 +16,8 @@ import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 import { BundlePromotionError } from "@/lib/promotionBundle";
-import { resolveOrderBundle, type OrderBundleDatabase } from "@/lib/orderBundle";
-import { persistOrderBundle } from "@/lib/orderBundleWrite";
+import { resolveOrderBundles, type OrderBundleDatabase } from "@/lib/orderBundle";
+import { persistOrderBundles } from "@/lib/orderBundleWrite";
 import {
   ensureAutoGrantedVouchers,
   type VoucherIssuanceDatabase,
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    if (isAnonymous && data.bundle_voucher_qr_token) {
+    if (isAnonymous && data.bundle_applications.length > 0) {
       return NextResponse.json(
         { error: "Bundle voucher cannot be used for anonymous orders", code: "VALIDATION_ERROR" },
         { status: 400 },
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
     // ── QR token verification — required for STAFF when order has any voucher ──
     const hasAnyVoucher = (
       data.discount_voucher_ids.length > 0 ||
-      Boolean(data.bundle_voucher_qr_token) ||
+      data.bundle_applications.length > 0 ||
       data.items.some((i) => i.product_voucher_id || i.item_voucher_id || (i.addon_voucher_ids && i.addon_voucher_ids.length > 0))
     );
 
@@ -292,15 +292,14 @@ export async function POST(req: NextRequest) {
 
     // Step 3: Validate + price-check all items (reads from DB, no writes)
     const resolvedItems = await processOrderItems(data.items, prisma, productVoucherMap, addonVoucherMap);
-    const bundle = data.bundle_voucher_qr_token && existingUser
-      ? await resolveOrderBundle(prisma as unknown as OrderBundleDatabase, {
-          qr_token: data.bundle_voucher_qr_token,
+    const bundles = data.bundle_applications.length > 0 && existingUser
+      ? await resolveOrderBundles(prisma as unknown as OrderBundleDatabase, {
           voucher_owner_id: existingUser.id,
           items: data.items,
           resolved_items: resolvedItems,
-          reward_allocations: data.bundle_reward_allocations,
+          bundle_applications: data.bundle_applications,
         })
-      : null;
+      : { bundles: [], line_discounts_vnd: data.items.map(() => 0), skipped_qr_tokens: [] };
 
     const calculatorItems = resolvedItems.map((item, index) => ({
       menu_item_id: item.menu_item_id,
@@ -308,7 +307,7 @@ export async function POST(req: NextRequest) {
       addons_price_vnd: item.addons_price_vnd,
       quantity: item.quantity,
       line_total: item.line_total,
-      bundle_discount_vnd: bundle?.line_discounts_vnd[index] ?? 0,
+      bundle_discount_vnd: bundles.line_discounts_vnd[index] ?? 0,
       product_voucher_id: item.product_voucher_id,
       item_voucher_id: item.item_voucher_id,
       product_voucher_covered_vnd: (item.item_voucher_id ?? item.product_voucher_id)
@@ -516,12 +515,12 @@ export async function POST(req: NextRequest) {
             "Voucher sản phẩm đã được sử dụng hoặc đang bị khóa.",
           );
         }
-        if (bundle) {
-          await persistOrderBundle(tx, {
+        if (bundles.bundles.length > 0) {
+          await persistOrderBundles(tx, {
             order_id: createdOrder.id,
             order_items: createdOrder.items,
             source_items: data.items,
-            bundle,
+            bundles,
             redeem_immediately: payment.status === "COMPLETED",
             performed_by: session.id,
           });
@@ -577,6 +576,7 @@ export async function POST(req: NextRequest) {
         return qrToken ? [qrToken] : [];
       }
     );
+    skipped_vouchers.push(...bundles.skipped_qr_tokens.filter((token) => !skipped_vouchers.includes(token)));
 
     return NextResponse.json(
       {

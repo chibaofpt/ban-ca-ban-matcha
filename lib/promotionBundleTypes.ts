@@ -3,12 +3,15 @@ export type BundleRewardKind = "PRODUCT" | "ADDON";
 export type BundleRewardMode = "SAME_CONFIG" | "FIXED_CONFIG" | "ALLOWED_SCOPE";
 export type BundleBenefitScaling = "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM";
 
-export interface BundleProductScope {
+export interface BundleProductDefinition {
   menu_item_id: string;
-  size: BundleSize | null;
-  powder_id: string | null;
-  milk_type_id: string | null;
-  reference_price_vnd?: number;
+  allowed_sizes: BundleSize[];
+  default_powder_id: string | null;
+  default_base_liquid_id: string | null;
+  /** Server-resolved current baseline prices; never accepted from public API. */
+  baseline_prices_vnd: Partial<Record<BundleSize, number>>;
+  /** Current fixed price for an extras item. */
+  baseline_price_vnd?: number;
 }
 
 export interface BundleCartAddon {
@@ -41,14 +44,17 @@ export interface BundlePromotionRule {
   benefit_scaling: BundleBenefitScaling;
   max_applications_per_order: number;
   max_reward_units_per_order: number | null;
-  qualifier_scopes: BundleProductScope[];
-  reward_product_scopes: BundleProductScope[];
+  qualifier_products: BundleProductDefinition[];
+  reward_products: BundleProductDefinition[];
   reward_addon_option_ids: string[];
 }
 
-export interface BundleRewardAllocation {
+export interface BundleQualifierAllocation {
   client_line_id: string;
   quantity: number;
+}
+
+export interface BundleRewardAllocation extends BundleQualifierAllocation {
   addon_option_id?: string;
 }
 
@@ -56,6 +62,7 @@ export interface BundleRewardResult {
   client_line_id: string;
   addon_option_id: string | null;
   quantity: number;
+  /** Total discount for every unit represented by this result. */
   discount_vnd: number;
 }
 

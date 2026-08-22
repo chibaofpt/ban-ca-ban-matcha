@@ -67,10 +67,9 @@ export async function GET(
                   select: {
                     role: true,
                     menu_item_id: true,
-                    size: true,
-                    matcha_powder_id: true,
-                    milk_type_id: true,
-                    reference_price_vnd: true,
+                    default_powder_id: true,
+                    default_base_liquid_id: true,
+                    sizes: { select: { size: true } },
                     menuItem: { select: { name: true, category: true, is_available: true } },
                   },
                 },

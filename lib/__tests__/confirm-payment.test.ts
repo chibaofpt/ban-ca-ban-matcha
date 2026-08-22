@@ -37,7 +37,7 @@ const mockOrderFindUniqueOrThrow = vi.fn();
 const mockOrderDiscountVoucherFindMany = vi.fn();
 const mockOrderItemFindMany = vi.fn();
 const mockOrderItemAddonVoucherFindMany = vi.fn();
-const mockOrderBundleApplicationFindUnique = vi.fn();
+const mockOrderBundleApplicationFindMany = vi.fn();
 const mockOrderBundleApplicationUpdateMany = vi.fn();
 const mockVoucherUpdate = vi.fn();
 const mockVoucherUpdateMany = vi.fn();
@@ -108,7 +108,7 @@ function setupSuccessfulConfirmation() {
         findMany: mockOrderItemAddonVoucherFindMany.mockResolvedValue([]),
       },
       orderBundleApplication: {
-        findUnique: mockOrderBundleApplicationFindUnique.mockResolvedValue(null),
+        findMany: mockOrderBundleApplicationFindMany.mockResolvedValue([]),
         updateMany: mockOrderBundleApplicationUpdateMany.mockResolvedValue({ count: 0 }),
       },
       voucher: {
@@ -295,7 +295,7 @@ function setupVoucherConfirmation(opts?: { updateManyCount?: number }) {
         ]),
       },
       orderBundleApplication: {
-        findUnique: mockOrderBundleApplicationFindUnique.mockResolvedValue(null),
+        findMany: mockOrderBundleApplicationFindMany.mockResolvedValue([]),
         updateMany: mockOrderBundleApplicationUpdateMany.mockResolvedValue({ count: 0 }),
       },
       voucher: {

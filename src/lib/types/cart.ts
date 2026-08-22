@@ -53,6 +53,8 @@ export interface CartItem {
   itemVoucherId?: string;
   /** In-cart BUNDLE reward line; excluded from persisted cart state. */
   bundleRewardVoucherToken?: string;
+  /** In-cart BUNDLE qualifier line; excluded from persisted cart state. */
+  bundleQualifierVoucherToken?: string;
   /** Applied ADDON vouchers. Unlimited, each targeting a different addon_option_id. */
   addonVouchers?: { voucherId: string; addonOptionId: string; discountVnd: number }[];
 }

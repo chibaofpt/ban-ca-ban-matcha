@@ -12,7 +12,7 @@ description: >
 
 # API Layer Skill
 
-> Folder placement decisions → `STRUCTURE.md`. If conflict: STRUCTURE.md wins.
+> `API.md` owns contracts; `SPECIFICATION.md` owns architecture; `STRUCTURE.md` owns placement.
 
 ## Contract and Schema Preservation
 
@@ -37,9 +37,11 @@ description: >
 - Only layer allowed to know API URLs — declare as `const URL = { ... } as const` at top of file
 - Always use `apiClient` from `src/lib/api/client.ts` — never create another Axios instance
 - Always declare return types explicitly — never let TypeScript infer from Axios response
-- Views call services. Components never call services directly.
+- Views and feature containers call services. Leaf UI and `src/components/ui` never call services directly.
 
-**Axios instance (`src/lib/api/client.ts`):**
+**Axios instance (`src/lib/api/client.ts`):** use the existing implementation. Do not add a
+default base URL, force a global `Content-Type`, or copy this illustrative block into production;
+multipart requests depend on per-request headers.
 ```typescript
 import axios from "axios";
 
@@ -195,6 +197,6 @@ export const registerSchema = z.object({
 
 **New view/component:**
 - [ ] View at `src/views/{Name}Page.tsx` — calls service, owns state
-- [ ] Component at `src/components/{domain}/{Name}.tsx` — props only, no service imports
+- [ ] Leaf UI receives props; a domain feature container may call a service as defined by `SPECIFICATION.md`
 - [ ] Page entry at `app/**/{route}/page.tsx` — re-exports view, zero logic
 - [ ] Page exports `metadata` with title + description

@@ -81,10 +81,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             }
           },
           discountVouchers: { select: { voucher_id: true } },
-          bundleApplication: { select: { voucher_id: true, status: true } },
+          bundleApplications: { select: { voucher_id: true, status: true } },
         },
       });
       if (!order) throw new Error("NOT_FOUND");
+      const bundleApplications = order.bundleApplications ?? [];
 
       const isPendingTransfer = isPendingCounterTransfer(order);
       assertCounterTransferOwnership(order, session);
@@ -147,8 +148,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           if (item.item_voucher_id) allVoucherIds.add(item.item_voucher_id);
           for (const av of item.addonVouchers) allVoucherIds.add(av.voucher_id);
         }
-        if (order.bundleApplication) {
-          allVoucherIds.add(order.bundleApplication.voucher_id);
+        for (const application of bundleApplications) {
+          allVoucherIds.add(application.voucher_id);
         }
 
         await redeemOrderVouchers(
@@ -157,12 +158,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           "ONLINE",
           session.id
         );
-        if (order.bundleApplication) {
+        if (bundleApplications.length > 0) {
           const promoted = await tx.orderBundleApplication.updateMany({
             where: { order_id: order.id, status: "RESERVED" },
             data: { status: "REDEEMED" },
           });
-          if (promoted.count !== 1) {
+          if (promoted.count !== bundleApplications.length) {
             throw new VoucherRedeemError(
               "VOUCHER_MISMATCH",
               "BUNDLE application changed concurrently",

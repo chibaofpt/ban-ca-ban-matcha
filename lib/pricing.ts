@@ -28,6 +28,7 @@ type PrismaTransactionClient = {
   matchaPowder: typeof prisma.matchaPowder;
   milkType: typeof prisma.milkType;
   menuItemSize: typeof prisma.menuItemSize;
+  menuItem: typeof prisma.menuItem;
 };
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -46,17 +47,38 @@ export interface PricingContext {
   milkPriceMap: Record<string, number>;
   /** List of all currently available powders (used for Fusion fallback logic) */
   availablePowders: { id: string; name: string }[];
+  referenceLatteItemMap?: Record<string, string | null>;
+  referenceLatteBasePriceMap?: Record<string, Partial<Record<Size, number>>>;
 }
 
 /**
  * Builds a pricing context by preloading all required DB data in a single pass.
  * Call once before looping over order items — avoids N+1 queries.
  */
-export async function buildPricingContext(client: PrismaTransactionClient = prisma): Promise<PricingContext> {
+export async function buildPricingContext(
+  client: PrismaTransactionClient = prisma,
+  include: { powderIds?: string[]; baseLiquidIds?: string[] } = {},
+): Promise<PricingContext> {
   const defaultSizeConfigs = await client.defaultSizeConfig.findMany();
   const allPowderConfigs = await client.powderSizeConfig.findMany();
-  const allPowders = await client.matchaPowder.findMany({ where: { is_available: true } });
-  const allMilkTypes = await client.milkType.findMany({ where: { is_active: true } });
+  const allPowders = await client.matchaPowder.findMany({
+    where: include.powderIds?.length
+      ? { OR: [{ is_available: true }, { id: { in: include.powderIds } }] }
+      : { is_available: true },
+  });
+  const allMilkTypes = await client.milkType.findMany({
+    where: include.baseLiquidIds?.length
+      ? { OR: [{ is_active: true }, { id: { in: include.baseLiquidIds } }] }
+      : { is_active: true },
+  });
+  const referenceLatteItemIds = [...new Set(allPowders.flatMap((powder) =>
+    powder.reference_latte_item_id ? [powder.reference_latte_item_id] : []))];
+  const referenceLatteSizes = referenceLatteItemIds.length > 0
+    ? await client.menuItemSize.findMany({
+        where: { menu_item_id: { in: referenceLatteItemIds } },
+        select: { menu_item_id: true, size: true, base_price_vnd: true },
+      })
+    : [];
 
   const powderSizeConfigMap: Record<string, PowderSizeConfigEntry[]> = {};
   for (const c of allPowderConfigs) {
@@ -72,10 +94,17 @@ export async function buildPricingContext(client: PrismaTransactionClient = pris
     powderPriceMap[p.id] = p.price_per_gram;
   }
 
-  const defaultMilk = allMilkTypes.find((m) => m.is_default);
+  const defaultMilk = allMilkTypes.find((m) => m.is_default && m.is_active);
   const milkPriceMap: Record<string, number> = {};
   for (const m of allMilkTypes) {
     milkPriceMap[m.id] = m.price_per_ml;
+  }
+
+  const referenceLatteBasePriceMap: Record<string, Partial<Record<Size, number>>> = {};
+  for (const row of referenceLatteSizes) {
+    if (row.base_price_vnd === null) continue;
+    referenceLatteBasePriceMap[row.menu_item_id] ??= {};
+    referenceLatteBasePriceMap[row.menu_item_id]![row.size as Size] = row.base_price_vnd;
   }
 
   return {
@@ -89,8 +118,89 @@ export async function buildPricingContext(client: PrismaTransactionClient = pris
     defaultMilkPricePerMl: defaultMilk?.price_per_ml ?? 40,
     defaultBaseLiquidId: defaultMilk?.id ?? null,
     milkPriceMap,
-    availablePowders: allPowders.map((p) => ({ id: p.id, name: p.name })),
+    availablePowders: allPowders.filter((p) => p.is_available).map((p) => ({ id: p.id, name: p.name })),
+    referenceLatteItemMap: Object.fromEntries(allPowders.map((powder) =>
+      [powder.id, powder.reference_latte_item_id])),
+    referenceLatteBasePriceMap,
   };
+}
+
+export interface BundleBaselineProductInput {
+  menu_item_id: string;
+  allowed_sizes: Size[];
+  default_powder_id: string | null;
+  default_base_liquid_id: string | null;
+}
+
+export interface ResolvedBundleBaselineProduct extends BundleBaselineProductInput {
+  baseline_prices_vnd: Partial<Record<Size, number>>;
+  baseline_price_vnd?: number;
+}
+
+function premiumLatteFromContext(
+  selectedPowderId: string,
+  defaultPowderId: string,
+  size: Size,
+  ctx: PricingContext,
+): number {
+  const selectedLatteId = ctx.referenceLatteItemMap?.[selectedPowderId];
+  const defaultLatteId = ctx.referenceLatteItemMap?.[defaultPowderId];
+  if (!selectedLatteId || !defaultLatteId) return 0;
+  return (ctx.referenceLatteBasePriceMap?.[selectedLatteId]?.[size] ?? 0) -
+    (ctx.referenceLatteBasePriceMap?.[defaultLatteId]?.[size] ?? 0);
+}
+
+/** Resolve current checkout prices for immutable BUNDLE configuration snapshots in batches. */
+export async function resolveBundleBaselineProducts(
+  client: PrismaTransactionClient,
+  products: BundleBaselineProductInput[],
+): Promise<ResolvedBundleBaselineProduct[]> {
+  if (products.length === 0) return [];
+  const menus = await client.menuItem.findMany({
+    where: { id: { in: [...new Set(products.map((product) => product.menu_item_id))] } },
+    include: { sizes: true },
+  });
+  const menuMap = new Map(menus.map((menu) => [menu.id, menu]));
+  const powderIds = products.flatMap((product) => product.default_powder_id ? [product.default_powder_id] : []);
+  const baseLiquidIds = products.flatMap((product) => product.default_base_liquid_id ? [product.default_base_liquid_id] : []);
+  for (const menu of menus) {
+    if (menu.default_powder_id) powderIds.push(menu.default_powder_id);
+    if (menu.default_base_liquid_id) baseLiquidIds.push(menu.default_base_liquid_id);
+  }
+  const ctx = await buildPricingContext(client, { powderIds, baseLiquidIds });
+  return products.map((product) => {
+    const menu = menuMap.get(product.menu_item_id);
+    if (!menu) throw new Error("BUNDLE baseline menu item is missing");
+    if (menu.category === "extras") {
+      if (menu.unit_price_vnd === null) throw new Error("BUNDLE extras baseline price is missing");
+      return { ...product, baseline_prices_vnd: {},
+        baseline_price_vnd: resolveOrderItemPrice({ category: "extras", size: null,
+          base_price_vnd: menu.unit_price_vnd, custom_powder_grams: null, powder_id: "" }, ctx) };
+    }
+    if (!product.default_powder_id || !product.default_base_liquid_id) {
+      throw new Error("BUNDLE drink baseline configuration is incomplete");
+    }
+    const baseline_prices_vnd: Partial<Record<Size, number>> = {};
+    for (const size of product.allowed_sizes) {
+      const sizeRow = menu.sizes.find((row) => row.size === size && row.base_price_vnd !== null);
+      if (!sizeRow?.base_price_vnd) throw new Error("BUNDLE baseline size is unavailable");
+      const premiumLatte = menu.category === "fusion" && menu.default_powder_id
+        ? premiumLatteFromContext(product.default_powder_id, menu.default_powder_id, size, ctx)
+        : 0;
+      baseline_prices_vnd[size] = resolveOrderItemPrice({
+        category: menu.category as "latte" | "fusion",
+        size,
+        base_price_vnd: sizeRow.base_price_vnd,
+        custom_powder_grams: menu.custom_powder_grams as CustomPowderGrams | null,
+        powder_id: product.default_powder_id,
+        base_liquid_id: product.default_base_liquid_id,
+        default_base_liquid_id: menu.category === "latte" ? ctx.defaultBaseLiquidId : menu.default_base_liquid_id,
+        base_liquid_ml: sizeRow.base_liquid_ml,
+        premium_latte: premiumLatte,
+      }, ctx);
+    }
+    return { ...product, baseline_prices_vnd };
+  });
 }
 
 // ── Per-item price resolution ─────────────────────────────────────────────────
