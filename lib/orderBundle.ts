@@ -1,6 +1,7 @@
 import {
   BundlePromotionError,
-  evaluateBundlePromotion,
+  assertBundleApplicationCapacity,
+  evaluateBundleApplications,
   type BundleEvaluationResult,
   type BundlePromotionRule,
   type BundleQualifierAllocation,
@@ -8,6 +9,11 @@ import {
   type BundleSize,
 } from "@/lib/promotionBundle";
 import { resolveBundleBaselineProducts } from "@/lib/pricing";
+import {
+  loadVoucherAvailabilityCatalog,
+  resolveBundleRuleAvailability,
+  type VoucherAvailabilityDatabase,
+} from "@/lib/voucherAvailability";
 
 interface BundleScopeRecord {
   role: "QUALIFIER" | "REWARD";
@@ -39,7 +45,7 @@ interface BundleVoucherRecord {
   package: { id: string; ends_at: Date | null; min_order_vnd: number | null; bundleRule: BundleRuleRecord | null };
 }
 
-export interface OrderBundleDatabase {
+export interface OrderBundleDatabase extends VoucherAvailabilityDatabase {
   voucher: { findMany: (args: unknown) => Promise<BundleVoucherRecord[]> };
 }
 
@@ -113,68 +119,6 @@ function cartItems(
   });
 }
 
-function assertGlobalAllocationCapacity(
-  applications: BundleApplicationInput[], items: ReturnType<typeof cartItems>,
-): void {
-  const itemMap = new Map(items.map((item) => [item.client_line_id, item]));
-  const productUsage = new Map<string, number>();
-  const addonUsage = new Map<string, number>();
-  const tokens = new Set<string>();
-  for (const application of applications) {
-    if (tokens.has(application.voucher_qr_token)) {
-      throw new BundlePromotionError("BUNDLE_DUPLICATE_VOUCHER", "Bundle token can appear only once");
-    }
-    tokens.add(application.voucher_qr_token);
-    for (const allocation of application.qualifier_allocations) {
-      productUsage.set(allocation.client_line_id, (productUsage.get(allocation.client_line_id) ?? 0) + allocation.quantity);
-    }
-    for (const allocation of application.reward_allocations) {
-      if (allocation.addon_option_id) {
-        const key = `${allocation.client_line_id}:${allocation.addon_option_id}`;
-        addonUsage.set(key, (addonUsage.get(key) ?? 0) + allocation.quantity);
-      } else {
-        productUsage.set(allocation.client_line_id, (productUsage.get(allocation.client_line_id) ?? 0) + allocation.quantity);
-      }
-    }
-  }
-  for (const [lineId, quantity] of productUsage) {
-    const item = itemMap.get(lineId);
-    const available = item ? item.quantity - item.product_voucher_quantity - item.item_voucher_quantity : 0;
-    if (!item || quantity > available) {
-      throw new BundlePromotionError("BUNDLE_ALLOCATION_OVERLAP", "Product unit is allocated more than once");
-    }
-  }
-  for (const [key, quantity] of addonUsage) {
-    const separator = key.lastIndexOf(":");
-    const lineId = key.slice(0, separator);
-    const addonId = key.slice(separator + 1);
-    const addon = itemMap.get(lineId)?.addons.find((candidate) => candidate.addon_option_id === addonId);
-    if (!addon || quantity + addon.voucher_discounted_quantity > addon.quantity) {
-      throw new BundlePromotionError("BUNDLE_ALLOCATION_OVERLAP", "Addon unit is allocated more than once");
-    }
-  }
-}
-
-function globalPaidSubtotal(
-  applications: BundleApplicationInput[], items: ReturnType<typeof cartItems>,
-): number {
-  const productRewards = new Map<string, number>();
-  const addonRewards = new Map<string, number>();
-  for (const application of applications) for (const reward of application.reward_allocations) {
-    const key = `${reward.client_line_id}:${reward.addon_option_id ?? "PRODUCT"}`;
-    const target = reward.addon_option_id ? addonRewards : productRewards;
-    target.set(key, (target.get(key) ?? 0) + reward.quantity);
-  }
-  return items.reduce((total, item) => {
-    const products = Math.max(0, item.quantity - item.product_voucher_quantity - item.item_voucher_quantity -
-      (productRewards.get(`${item.client_line_id}:PRODUCT`) ?? 0));
-    const addons = item.addons.reduce((sum, addon) => sum + Math.max(0,
-      addon.quantity - addon.voucher_discounted_quantity -
-      (addonRewards.get(`${item.client_line_id}:${addon.addon_option_id}`) ?? 0)) * addon.unit_price_vnd, 0);
-    return total + products * item.unit_price_vnd + addons;
-  }, 0);
-}
-
 function baseRule(record: BundleRuleRecord, minOrderVnd: number | null): BundlePromotionRule {
   const mapProduct = (scope: BundleScopeRecord) => ({ menu_item_id: scope.menu_item_id,
     allowed_sizes: scope.sizes.map((row) => row.size), default_powder_id: scope.default_powder_id,
@@ -198,38 +142,57 @@ export async function resolveOrderBundles(
     return { bundles: [], line_discounts_vnd: input.items.map(() => 0), skipped_qr_tokens: [] };
   }
   const items = cartItems(input.items, input.resolved_items);
-  assertGlobalAllocationCapacity(input.bundle_applications, items);
+  assertBundleApplicationCapacity({ items, applications: input.bundle_applications });
   const tokens = input.bundle_applications.map((application) => application.voucher_qr_token);
   const vouchers = await db.voucher.findMany({ where: { qr_token: { in: tokens } }, include: { package: {
     include: { bundleRule: { include: { productScopes: { include: { sizes: true } }, addonRewards: true } } },
   } } });
   const voucherMap = new Map(vouchers.map((voucher) => [voucher.qr_token, voucher]));
+  const catalog = await loadVoucherAvailabilityCatalog(db);
   const now = input.now ?? new Date();
-  const paidSubtotal = globalPaidSubtotal(input.bundle_applications, items);
-  const bundles: ResolvedOrderBundle[] = [];
+  const prepared: Array<{
+    voucher: BundleVoucherRecord;
+    application: BundleApplicationInput;
+    rule: BundlePromotionRule;
+  }> = [];
   const skipped_qr_tokens: string[] = [];
   for (const application of input.bundle_applications) {
     const voucher = voucherMap.get(application.voucher_qr_token);
     assertVoucherUsable(voucher, input.voucher_owner_id, now);
-    const record = voucher.package.bundleRule;
+    const live = resolveBundleRuleAvailability(voucher.package.bundleRule, catalog);
+    if (!live.availability.can_apply) {
+      throw new BundlePromotionError("BUNDLE_VOUCHER_UNAVAILABLE", live.availability.status);
+    }
+    const record = live.rule;
     const rule = baseRule(record, voucher.package.min_order_vnd);
-    if (rule.reward_kind === "PRODUCT" && rule.reward_mode !== "SAME_CONFIG") {
-      rule.reward_products = await resolveBundleBaselineProducts(db as unknown as Parameters<typeof resolveBundleBaselineProducts>[0],
-        rule.reward_products);
-    }
-    const evaluation = evaluateBundlePromotion({ rule, items,
-      qualifier_allocations: application.qualifier_allocations,
-      reward_allocations: application.reward_allocations,
-      paid_merchandise_subtotal_vnd: paidSubtotal });
-    if (evaluation.total_discount_vnd <= 0) {
-      skipped_qr_tokens.push(application.voucher_qr_token);
-      continue;
-    }
-    bundles.push({ voucher_id: voucher.id, package_id: voucher.package.id,
-      qualifier_allocations: application.qualifier_allocations, evaluation });
+    prepared.push({ voucher, application, rule });
   }
-  const line_discounts_vnd = items.map((item) => bundles.reduce((bundleTotal, bundle) =>
-    bundleTotal + bundle.evaluation.rewards.filter((reward) => reward.client_line_id === item.client_line_id)
-      .reduce((sum, reward) => sum + reward.discount_vnd, 0), 0));
+  const baselineEntries = prepared.flatMap((entry, preparedIndex) =>
+    entry.rule.reward_kind === "PRODUCT" && entry.rule.reward_mode !== "SAME_CONFIG"
+      ? entry.rule.reward_products.map((product, rewardIndex) => ({ preparedIndex, rewardIndex, product }))
+      : [],
+  );
+  if (baselineEntries.length > 0) {
+    const resolved = await resolveBundleBaselineProducts(
+      db as unknown as Parameters<typeof resolveBundleBaselineProducts>[0],
+      baselineEntries.map((entry) => entry.product),
+    );
+    baselineEntries.forEach((entry, index) => {
+      prepared[entry.preparedIndex]!.rule.reward_products[entry.rewardIndex] = resolved[index]!;
+    });
+  }
+  const evaluated = evaluateBundleApplications({
+    items,
+    applications: prepared.map(({ application, rule }) => ({ ...application, rule })),
+  });
+  const bundles = prepared.flatMap(({ voucher, application }) => {
+    const evaluation = evaluated.evaluations.find((item) => item.voucher_qr_token === application.voucher_qr_token)?.evaluation;
+    if (!evaluation || evaluation.total_discount_vnd <= 0) {
+      skipped_qr_tokens.push(application.voucher_qr_token);
+      return [];
+    }
+    return [{ voucher_id: voucher.id, package_id: voucher.package.id, qualifier_allocations: application.qualifier_allocations, evaluation }];
+  });
+  const line_discounts_vnd = items.map((item) => evaluated.line_discounts_vnd.get(item.client_line_id) ?? 0);
   return { bundles, line_discounts_vnd, skipped_qr_tokens };
 }

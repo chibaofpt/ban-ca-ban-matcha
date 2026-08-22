@@ -8,6 +8,7 @@ import type {
   VoucherAcquisitionMode,
 } from "@prisma/client";
 import { toBundleRuleDto, type BundleRuleDtoSource } from "@/lib/voucherBundleDto";
+import type { VoucherAvailability } from "@/lib/voucherAvailability";
 
 interface VoucherDtoSource {
   id?: unknown;
@@ -43,6 +44,7 @@ interface VoucherDtoSource {
   menuItem: { name: string; is_available: boolean } | null;
   addonOption: { label: string } | null;
   staff: { name: string; role: Role } | null;
+  availability?: VoucherAvailability;
 }
 
 /** Map a database voucher to the only voucher shape allowed across API/UI boundaries. */
@@ -75,5 +77,6 @@ export function toPublicVoucherDto(voucher: VoucherDtoSource) {
     menuItem: voucher.menuItem,
     addonOption: voucher.addonOption,
     staff: voucher.staff,
+    ...(voucher.availability ? { availability: voucher.availability } : {}),
   };
 }

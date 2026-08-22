@@ -123,6 +123,12 @@ export const BundleVoucherSetupSheet = ({
       quantityAddonOptions: [],
       clientPriceVnd: qualifierConfig.unitPriceVnd + qAddonsPrice,
       originalClientPriceVnd: qualifierConfig.unitPriceVnd + qAddonsPrice,
+      ...(qCategory === "fusion" && qualifierConfig.powderId
+        ? { selectedPowderId: qualifierConfig.powderId }
+        : {}),
+      ...(qCategory !== "extras" && qualifierConfig.baseLiquidId
+        ? { selectedBaseLiquidId: qualifierConfig.baseLiquidId }
+        : {}),
       bundleQualifierVoucherToken: voucher.qr_token,
     });
 
@@ -147,6 +153,12 @@ export const BundleVoucherSetupSheet = ({
         quantityAddonOptions: [],
         clientPriceVnd: rewardConfig.unitPriceVnd,
         originalClientPriceVnd: rewardConfig.unitPriceVnd,
+        ...(rMenuItem?.category === "fusion" && rewardConfig.powderId
+          ? { selectedPowderId: rewardConfig.powderId }
+          : {}),
+        ...(rMenuItem?.category !== "extras" && rewardConfig.baseLiquidId
+          ? { selectedBaseLiquidId: rewardConfig.baseLiquidId }
+          : {}),
         bundleRewardVoucherToken: voucher.qr_token,
       });
 

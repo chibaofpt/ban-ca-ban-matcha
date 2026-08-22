@@ -24,6 +24,7 @@ import {
   listMyVouchers,
   exchangeVoucher,
   claimFreeVoucher,
+  refundVoucher,
 } from "@/src/services/customerVoucherService";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -152,6 +153,50 @@ describe("claimFreeVoucher", () => {
       { package_id: "pkg-free-1" },
     );
     expect(result).toEqual({ already_granted: true });
+  });
+});
+
+describe("refundVoucher", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("gọi endpoint hoàn điểm bằng qr_token và trả số điểm mới", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({
+      data: {
+        data: {
+          qr_token: "bundle-refund-token",
+          status: "REFUNDED",
+          points_refunded: 80,
+        },
+      },
+    });
+
+    const result = await refundVoucher("bundle-refund-token");
+
+    expect(apiClient.post).toHaveBeenCalledWith(
+      "/api/profile/vouchers/refund",
+      { qr_token: "bundle-refund-token" },
+    );
+    expect(result).toEqual({
+      qr_token: "bundle-refund-token",
+      status: "REFUNDED",
+      points_refunded: 80,
+    });
+  });
+
+  it("giữ nguyên lỗi nghiệp vụ để UI hiển thị feedback", async () => {
+    vi.mocked(apiClient.post).mockRejectedValueOnce({
+      response: {
+        status: 422,
+        data: {
+          error: "Voucher đã có lựa chọn trở lại",
+          code: "BUSINESS_RULE_VIOLATION",
+        },
+      },
+    });
+
+    await expect(refundVoucher("bundle-refund-token")).rejects.toMatchObject({
+      response: { data: { code: "BUSINESS_RULE_VIOLATION" } },
+    });
   });
 });
 

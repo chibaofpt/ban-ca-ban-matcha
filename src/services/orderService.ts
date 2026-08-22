@@ -6,6 +6,7 @@ import type {
   CreateOrderResult,
 } from "@/src/lib/types/order";
 import type { BundleApplicationPayload } from "@/src/lib/utils/bundleVoucher";
+import { getBundleCheckoutAvailabilityReason } from "@/src/lib/utils/bundleCheckoutError";
 
 // Re-export for consumers
 export type { CreateOrderResult } from "@/src/lib/types/order";
@@ -169,8 +170,9 @@ export async function createOrder(
       if (response.status === 409 && response.data.code === "PRICE_CHANGED") {
         throw new PriceChangedError(response.data.details?.conflicts ?? []);
       }
-      if (response.status === 422 && response.data.code === "BUNDLE_NOT_ELIGIBLE") {
-        throw new BundleNotEligibleError(response.data.details?.reason ?? "Lỗi voucher bundle");
+      const bundleAvailabilityReason = getBundleCheckoutAvailabilityReason(err);
+      if (bundleAvailabilityReason) {
+        throw new BundleNotEligibleError(bundleAvailabilityReason);
       }
       throw new Error(response.data.error ?? "Đặt hàng thất bại");
     }

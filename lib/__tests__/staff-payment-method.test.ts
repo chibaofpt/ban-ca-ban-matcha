@@ -40,7 +40,7 @@ vi.mock("@/lib/pricing", () => ({
     defaultMilkPricePerMl: 40,
     defaultBaseLiquidId: "550e8400-e29b-41d4-a716-446655440099",
     milkPriceMap: { "550e8400-e29b-41d4-a716-446655440099": 40 },
-    availablePowders: [],
+    availablePowders: [{ id: "550e8400-e29b-41d4-a716-446655440002", name: "Bột test" }],
   }),
   resolveOrderItemPrice: vi.fn().mockReturnValue(69_000),
   resolveOrderItemPremiumLatte: vi.fn().mockResolvedValue(0),

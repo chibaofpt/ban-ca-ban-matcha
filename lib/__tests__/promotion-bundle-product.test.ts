@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateBundlePromotion } from "@/lib/promotionBundle";
+import { evaluateBundleApplications, evaluateBundlePromotion } from "@/lib/promotionBundle";
 import {
   ADDON_ID, OTHER_ID, POWDER_ID, expectReason, makeItem, makeRule,
 } from "@/lib/__tests__/promotion-bundle.fixtures";
@@ -131,5 +131,54 @@ describe("BUNDLE sản phẩm — cấu hình linh hoạt và baseline động",
       rule: makeRule(), items: [makeItem({ quantity: 2, product_voucher_quantity: 1 })],
       qualifier_allocations: [qualifier(PAID_M)], reward_allocations: [reward(PAID_M)],
     }), "BUNDLE_CONFLICT");
+  });
+});
+
+describe("BUNDLE sản phẩm — nhiều voucher trong một giỏ", () => {
+  it("không cho hai voucher dùng lại cùng unit qualifier hoặc reward", () => {
+    expectReason(() => evaluateBundleApplications({
+      items: [makeItem({ client_line_id: PAID_M, quantity: 3 })],
+      applications: [
+        {
+          voucher_qr_token: "bundle-a",
+          rule: makeRule(),
+          qualifier_allocations: [qualifier(PAID_M)],
+          reward_allocations: [reward(PAID_M)],
+        },
+        {
+          voucher_qr_token: "bundle-b",
+          rule: makeRule(),
+          qualifier_allocations: [qualifier(PAID_M)],
+          reward_allocations: [reward(PAID_M)],
+        },
+      ],
+    }), "BUNDLE_ALLOCATION_OVERLAP");
+  });
+
+  it("cộng discount theo client line khi các voucher dùng unit khác nhau", () => {
+    const result = evaluateBundleApplications({
+      items: [
+        makeItem({ client_line_id: PAID_M, quantity: 2 }),
+        makeItem({ client_line_id: PAID_L, quantity: 2 }),
+      ],
+      applications: [
+        {
+          voucher_qr_token: "bundle-a",
+          rule: makeRule(),
+          qualifier_allocations: [qualifier(PAID_M)],
+          reward_allocations: [reward(PAID_M)],
+        },
+        {
+          voucher_qr_token: "bundle-b",
+          rule: makeRule(),
+          qualifier_allocations: [qualifier(PAID_L)],
+          reward_allocations: [reward(PAID_L)],
+        },
+      ],
+    });
+
+    expect(result.total_discount_vnd).toBe(90_000);
+    expect(result.line_discounts_vnd.get(PAID_M)).toBe(45_000);
+    expect(result.line_discounts_vnd.get(PAID_L)).toBe(45_000);
   });
 });

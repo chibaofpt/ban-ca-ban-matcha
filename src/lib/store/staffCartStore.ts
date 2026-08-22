@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { CartItem } from "@/src/lib/types/cart";
-import { computeFinalClientPrice, releaseVoucherFromOtherCartLines } from "./cartStore";
+import type { BundleApplicationStatus, CartBundleApplication, CartItem } from "@/src/lib/types/cart";
+import { computeFinalClientPrice, markBundleApplicationsUnavailableState, releaseVoucherFromOtherCartLines, removeBundleEffects } from "./cartStore";
 import type { CustomerInfo } from "@/src/components/staff/CustomerSelectModal";
 
 export interface DiscountVoucher {
@@ -32,12 +32,20 @@ interface StaffCartState {
   removeProductVoucher: (cartId: string) => void;
   applyAddonVoucher: (cartId: string, voucherId: string, addonOptionId: string) => void;
   removeAddonVoucher: (cartId: string, voucherId: string) => void;
+  bundleApplications: CartBundleApplication[];
+  commitBundleApplication: (application: CartBundleApplication) => void;
+  removeBundleApplication: (voucherToken: string) => void;
+  clearBundleApplications: () => void;
+  reconcileBundleApplications: (ownerKey: string | null) => void;
+  setBundleApplicationStatus: (voucherToken: string, status: BundleApplicationStatus, message?: string) => void;
+  markBundleApplicationsVerifyFailed: (message: string) => void;
+  markBundleApplicationsUnavailable: (message: string, voucherTokens: string[]) => void;
 }
 
 type PersistedStaffCartState = Partial<StaffCartState>;
 
 /** Remove legacy zero-price sentinel addons from persisted staff carts. */
-export function migrateStaffCartState(persistedState: unknown): PersistedStaffCartState {
+export function migrateStaffCartState(persistedState: unknown, fromVersion = 0): PersistedStaffCartState {
   const old = persistedState as PersistedStaffCartState;
   if (!old.items) return old;
   const migrated = {
@@ -81,6 +89,14 @@ export function migrateStaffCartState(persistedState: unknown): PersistedStaffCa
     };
     return { ...released, clientPriceVnd: computeFinalClientPrice(released) };
   });
+  if (fromVersion < 4) {
+    migrated.items = migrated.items.map((item) => ({
+      ...item,
+      bundleQualifierVoucherToken: undefined,
+      bundleRewardVoucherToken: undefined,
+    }));
+    migrated.bundleApplications = [];
+  }
   return migrated;
 }
 
@@ -91,6 +107,7 @@ export const useStaffCartStore = create<StaffCartState>()(
       customerInfo: null,
       discountVoucher: null,
       selectedDiscountIds: [],
+      bundleApplications: [],
 
       setCustomerInfo: (info) => {
         const currentInfo = get().customerInfo;
@@ -108,6 +125,11 @@ export const useStaffCartStore = create<StaffCartState>()(
               return next;
             })
           });
+          const bundleApplications = get().bundleApplications;
+          set({
+            items: bundleApplications.reduce((items, application) => removeBundleEffects(items, application), get().items),
+            bundleApplications: [],
+          });
         }
       },
       setDiscountVoucher: (voucher) => set({ discountVoucher: voucher }),
@@ -117,6 +139,65 @@ export const useStaffCartStore = create<StaffCartState>()(
           ? get().selectedDiscountIds.filter(vId => vId !== id)
           : [...get().selectedDiscountIds, id]
       }),
+      commitBundleApplication: (application) => set((state) => {
+        const previous = state.bundleApplications.find((item) => item.voucher_qr_token === application.voucher_qr_token);
+        const retainedEffects = new Set(application.created_reward_effects.map((effect) => effect.kind === "LINE" ? `LINE:${effect.client_line_id}` : `ADDON:${effect.client_line_id}:${effect.addon_option_id}`));
+        const stalePrevious = previous ? {
+          ...previous,
+          created_reward_effects: previous.created_reward_effects.filter((effect) => !retainedEffects.has(effect.kind === "LINE" ? `LINE:${effect.client_line_id}` : `ADDON:${effect.client_line_id}:${effect.addon_option_id}`)),
+        } : null;
+        return {
+          items: stalePrevious ? removeBundleEffects(state.items, stalePrevious) : state.items,
+          bundleApplications: [...state.bundleApplications.filter((item) => item.voucher_qr_token !== application.voucher_qr_token), { ...application, status: application.status ?? "REVALIDATING" }],
+        };
+      }),
+      removeBundleApplication: (voucherToken) => set((state) => {
+        const application = state.bundleApplications.find((item) => item.voucher_qr_token === voucherToken);
+        return application ? {
+          items: removeBundleEffects(state.items, application),
+          bundleApplications: state.bundleApplications.filter((item) => item.voucher_qr_token !== voucherToken),
+        } : {};
+      }),
+      clearBundleApplications: () => set((state) => ({
+        items: state.bundleApplications.reduce((items, application) => removeBundleEffects(items, application), state.items),
+        bundleApplications: [],
+      })),
+      reconcileBundleApplications: (ownerKey) => set((state) => {
+        const invalid = state.bundleApplications.filter((application) => !ownerKey || application.owner_key !== ownerKey);
+        const lineIds = new Set(state.items.map((item) => item.cartId));
+        const retained = state.bundleApplications
+          .filter((application) => !invalid.includes(application))
+          .map((application) => {
+            if (application.status === "UNAVAILABLE" || application.status === "VERIFY_FAILED") return application;
+            const hasMissingLine = [...application.qualifier_allocations, ...application.reward_allocations]
+              .some((allocation) => !lineIds.has(allocation.client_line_id));
+            return hasMissingLine
+              ? { ...application, status: "CONFLICT" as const, message: "Giỏ đã thay đổi, vui lòng chọn lại ưu đãi" }
+              : { ...application, status: "REVALIDATING" as const };
+          });
+        return {
+          items: invalid.reduce((items, application) => removeBundleEffects(items, application), state.items),
+          bundleApplications: retained,
+        };
+      }),
+      setBundleApplicationStatus: (voucherToken, status, message) => set((state) => ({
+        bundleApplications: state.bundleApplications.map((application) => application.voucher_qr_token === voucherToken ? { ...application, status, message } : application),
+      })),
+      markBundleApplicationsVerifyFailed: (message) => set((state) => ({
+        bundleApplications: state.bundleApplications.map((application) => ({
+          ...application,
+          status: "VERIFY_FAILED" as const,
+          message,
+        })),
+      })),
+      markBundleApplicationsUnavailable: (message, voucherTokens) => set((state) =>
+        markBundleApplicationsUnavailableState(
+          state.items,
+          state.bundleApplications,
+          message,
+          voucherTokens,
+        ),
+      ),
 
       addItem: (newItem) => {
         const items = newItem.itemVoucherId
@@ -176,6 +257,7 @@ export const useStaffCartStore = create<StaffCartState>()(
         discountVoucher: null,
         selectedDiscountIds: [],
         customerInfo: null,
+        bundleApplications: [],
       }),
 
       applyProductVoucher: (cartId, voucherId, coveredPriceVnd) => {
@@ -285,11 +367,11 @@ export const useStaffCartStore = create<StaffCartState>()(
     }),
     {
       name: "bcbm-staff-cart",
-      version: 3,
+      version: 4,
       migrate: migrateStaffCartState,
       partialize: (state) => ({
         ...state,
-        items: state.items.filter((item) => !item.bundleRewardVoucherToken),
+        items: state.items,
       }),
     }
   )

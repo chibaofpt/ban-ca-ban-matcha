@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   menuFindMany: vi.fn(),
   addonFindMany: vi.fn(),
   milkFindMany: vi.fn(),
+  powderFindMany: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ getSession: mocks.getSession }));
@@ -31,6 +32,7 @@ vi.mock("@/lib/prisma", () => ({
     menuItem: { findMany: mocks.menuFindMany, findUnique: vi.fn() },
     addonOption: { findMany: mocks.addonFindMany, findUnique: vi.fn() },
     milkType: { findMany: mocks.milkFindMany },
+    matchaPowder: { findMany: mocks.powderFindMany },
   },
 }));
 
@@ -89,6 +91,7 @@ describe("POST /api/admin/voucher-packages — BUNDLE", () => {
       matcha_powder_id: POWDER_ID, sizes: [{ size: "MEDIUM", base_price_vnd: 45_000 }] }]);
     mocks.addonFindMany.mockResolvedValue([]);
     mocks.milkFindMany.mockResolvedValue([{ id: MILK_ID, is_default: true }]);
+    mocks.powderFindMany.mockResolvedValue([{ id: POWDER_ID }]);
     mocks.packageCreate.mockResolvedValue({ id: "package-id", voucher_type: "BUNDLE" });
     mocks.transaction.mockImplementation(
       async (callback: (tx: unknown) => Promise<unknown>) => callback({
@@ -96,6 +99,7 @@ describe("POST /api/admin/voucher-packages — BUNDLE", () => {
         menuItem: { findMany: mocks.menuFindMany },
         addonOption: { findMany: mocks.addonFindMany },
         milkType: { findMany: mocks.milkFindMany },
+        matchaPowder: { findMany: mocks.powderFindMany },
       }),
     );
   });
@@ -122,6 +126,13 @@ describe("POST /api/admin/voucher-packages — BUNDLE", () => {
 
     expect(response.status).toBe(422);
     expect((await response.json()).code).toBe("BUSINESS_RULE_VIOLATION");
+    expect(mocks.packageCreate).not.toHaveBeenCalled();
+  });
+
+  it("trả 422 khi Latte fixed powder đã inactive và không swap bột", async () => {
+    mocks.powderFindMany.mockResolvedValue([]);
+    const response = await POST(request(payload()) as never);
+    expect(response.status).toBe(422);
     expect(mocks.packageCreate).not.toHaveBeenCalled();
   });
 
@@ -167,5 +178,57 @@ describe("PUT /api/admin/voucher-packages/[id] — bất biến sau phát hành"
     expect(response.status).toBe(400);
     expect((await response.json()).code).toBe("VALIDATION_ERROR");
     expect(mocks.packageUpdate).not.toHaveBeenCalled();
+  });
+
+  it("từ chối kích hoạt lại BUNDLE không còn lựa chọn live", async () => {
+    mocks.getSession.mockResolvedValue({ id: "admin", role: "ADMIN" });
+    mocks.packageFindUnique
+      .mockResolvedValueOnce({ id: "package-id", voucher_type: "BUNDLE" })
+      .mockResolvedValueOnce({
+        voucher_type: "BUNDLE",
+        addonOption: null,
+        bundleRule: {
+          reward_kind: "PRODUCT", reward_mode: "SAME_CONFIG",
+          productScopes: [{ role: "QUALIFIER", menu_item_id: MENU_ID, default_powder_id: POWDER_ID,
+            default_base_liquid_id: MILK_ID, sizes: [{ size: "MEDIUM" }] }],
+          addonRewards: [],
+        },
+      });
+    mocks.menuFindMany.mockResolvedValue([]);
+    mocks.powderFindMany.mockResolvedValue([]);
+    mocks.milkFindMany.mockResolvedValue([]);
+    mocks.addonFindMany.mockResolvedValue([]);
+    const response = await PUT(
+      request({ is_active: true }) as never,
+      { params: Promise.resolve({ id: "package-id" }) },
+    );
+    expect(response.status).toBe(422);
+    expect((await response.json()).details.reason).toBe("NO_ACTIVE_QUALIFIER");
+    expect(mocks.packageUpdate).not.toHaveBeenCalled();
+  });
+
+  it("từ chối kích hoạt lại PRODUCT có target unavailable", async () => {
+    vi.clearAllMocks();
+    mocks.getSession.mockResolvedValue({ id: "admin", role: "ADMIN" });
+    mocks.packageFindUnique
+      .mockResolvedValueOnce({ id: "package-product", voucher_type: "PRODUCT" })
+      .mockResolvedValueOnce({
+        voucher_type: "PRODUCT", menu_item_id: MENU_ID, size: "SMALL",
+        matcha_powder_id: null, milk_type_id: null, addon_option_id: null,
+        addonOption: null, bundleRule: null,
+      });
+    mocks.menuFindMany.mockResolvedValue([]);
+    mocks.powderFindMany.mockResolvedValue([]);
+    mocks.milkFindMany.mockResolvedValue([]);
+    mocks.addonFindMany.mockResolvedValue([]);
+    const response = await PUT(request({ is_active: true }) as never, {
+      params: Promise.resolve({ id: "package-product" }),
+    });
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({
+      error: "Không thể kích hoạt package PRODUCT vì target hiện không khả dụng",
+      code: "BUSINESS_RULE_VIOLATION",
+      details: { reason: "TARGET_UNAVAILABLE" },
+    });
   });
 });

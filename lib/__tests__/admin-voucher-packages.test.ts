@@ -94,6 +94,8 @@ const latteMenuItem = {
 const basePricingCtx = {
   powderPriceMap: { [POWDER_ID]: 5000 },
   milkPriceMap: { [BASE_LIQUID_ID]: 40 },
+  availablePowders: [{ id: POWDER_ID, name: "Meyumi" }],
+  availableBaseLiquids: [{ id: BASE_LIQUID_ID, is_active: true, display_order: 1 }],
   defaultBaseLiquidId: BASE_LIQUID_ID,
   defaultMilkPricePerMl: 40,
   powderSizeConfigs: {},
@@ -219,6 +221,77 @@ describe("POST /api/admin/voucher-packages", () => {
         data: expect.objectContaining({ covered_price_vnd: 65000 }),
       })
     );
+  });
+
+  it("từ chối publish PRODUCT Latte khi bột cố định inactive", async () => {
+    mockMenuItemFindUnique.mockResolvedValue(latteMenuItem);
+    mockBuildPricingContext.mockResolvedValue({ ...basePricingCtx, availablePowders: [] });
+
+    const res = await POST(makeReq({
+      voucher_type: "PRODUCT", name: "Latte hết bột", points_cost: 5,
+      menu_item_id: MENU_ITEM_ID, size: "SMALL", included_addon_option_ids: [],
+    }));
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ code: "BUSINESS_RULE_VIOLATION" });
+    expect(mockPkgCreate).not.toHaveBeenCalled();
+  });
+
+  it("publish PRODUCT Fusion dùng fallback bột và Base Liquid active làm baseline", async () => {
+    mockMenuItemFindUnique.mockResolvedValue({
+      ...latteMenuItem,
+      category: "fusion",
+      matcha_powder_id: null,
+      default_powder_id: "powder-inactive",
+      default_base_liquid_id: "liquid-inactive",
+      allowedBaseLiquids: [{
+        base_liquid_id: BASE_LIQUID_ID,
+        baseLiquid: { is_active: true },
+      }],
+    });
+    mockBuildPricingContext.mockResolvedValue(basePricingCtx);
+    mockResolveOrderItemPrice.mockReturnValue(42_000);
+    mockAddonFindMany.mockResolvedValue([]);
+    mockPkgCreate.mockImplementation(
+      (args: { data: Record<string, unknown> }) => Promise.resolve({ id: PKG_ID, ...args.data }),
+    );
+
+    const res = await POST(makeReq({
+      voucher_type: "PRODUCT", name: "Fusion fallback", points_cost: 5,
+      menu_item_id: MENU_ITEM_ID, size: "SMALL", included_addon_option_ids: [],
+    }));
+
+    expect(res.status).toBe(201);
+    expect(mockResolveOrderItemPrice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        powder_id: POWDER_ID,
+        base_liquid_id: BASE_LIQUID_ID,
+        default_base_liquid_id: BASE_LIQUID_ID,
+        premium_latte: 0,
+      }),
+      basePricingCtx,
+    );
+  });
+
+  it("từ chối publish PRODUCT Fusion khi không còn Base Liquid compatible active", async () => {
+    mockMenuItemFindUnique.mockResolvedValue({
+      ...latteMenuItem,
+      category: "fusion",
+      matcha_powder_id: null,
+      default_powder_id: POWDER_ID,
+      default_base_liquid_id: "liquid-inactive",
+      allowedBaseLiquids: [],
+    });
+    mockBuildPricingContext.mockResolvedValue(basePricingCtx);
+
+    const res = await POST(makeReq({
+      voucher_type: "PRODUCT", name: "Fusion hết liquid", points_cost: 5,
+      menu_item_id: MENU_ITEM_ID, size: "SMALL", included_addon_option_ids: [],
+    }));
+
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ code: "BUSINESS_RULE_VIOLATION" });
+    expect(mockPkgCreate).not.toHaveBeenCalled();
   });
 
   it("creates ITEM package only for extras and ignores client covered_price_vnd", async () => {

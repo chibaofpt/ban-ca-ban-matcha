@@ -1,180 +1,85 @@
-/**
- * POST /api/profile/vouchers/refund
- *
- * Auto-refund: triggered when the menu item in a PRODUCT voucher is no longer available.
- * User cannot call this for any other reason.
- * Checks is_available === false, then refunds full points_cost and marks REFUNDED.
- */
-
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import {
+  attachOwnedVoucherAvailability,
+  loadVoucherAvailabilityCatalog,
+  type VoucherAvailabilityDatabase,
+} from "@/lib/voucherAvailability";
 
 export const dynamic = "force-dynamic";
+const refundSchema = z.object({ qr_token: z.string().min(1) });
 
-const refundSchema = z.object({
-  /** qr_token of the voucher to refund (never expose id) */
-  qr_token: z.string().min(1),
-});
+class RefundRuleError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: "NOT_FOUND" | "CONFLICT" | "BUSINESS_RULE_VIOLATION",
+    message: string,
+    readonly reason?: string,
+  ) { super(message); }
+}
 
-/** POST /api/profile/vouchers/refund — Auto-refund a PRODUCT voucher when its item is unavailable. */
+function isSerializationConflict(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "P2034";
+}
+
+/** POST /api/profile/vouchers/refund — Refund an unusable points-exchange voucher. */
 export async function POST(req: NextRequest) {
-  // 1. Auth
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
-  }
-
-  // 2. Parse body
   const body = await req.json().catch(() => null);
   const parsed = refundSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? "Validation failed", code: "VALIDATION_ERROR" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validation failed", code: "VALIDATION_ERROR" }, { status: 400 });
   }
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
 
   try {
-    const { qr_token } = parsed.data;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const result = await prisma.$transaction(async (tx) => {
+          const voucher = await tx.voucher.findUnique({
+            where: { qr_token: parsed.data.qr_token },
+            include: {
+              package: { include: { bundleRule: { include: { productScopes: { include: { sizes: true } }, addonRewards: true } } } },
+              pointsLogs: { where: { reason: "voucher_purchase" }, select: { delta: true, reason: true }, orderBy: { created_at: "asc" }, take: 1 },
+            },
+          });
+          if (!voucher || voucher.user_id !== session.id) throw new RefundRuleError(404, "NOT_FOUND", "Voucher not found or does not belong to you");
+          if (voucher.status !== "ACTIVE") throw new RefundRuleError(409, "CONFLICT", `Voucher cannot be refunded in status: ${voucher.status}`);
+          if (voucher.issued_via !== "POINTS_EXCHANGE") throw new RefundRuleError(422, "BUSINESS_RULE_VIOLATION", "Only points-exchange vouchers can be refunded", "REFUND_NOT_POINTS_EXCHANGE");
+          const now = new Date();
+          if (voucher.expires_at && voucher.expires_at <= now) throw new RefundRuleError(422, "BUSINESS_RULE_VIOLATION", "Expired vouchers cannot be refunded", "REFUND_EXPIRED");
 
-    // 3. Fetch voucher by qr_token
-    const voucher = await prisma.voucher.findUnique({
-      where: { qr_token },
-      include: { package: true },
-    });
+          const catalog = await loadVoucherAvailabilityCatalog(tx as unknown as VoucherAvailabilityDatabase);
+          const resolved = attachOwnedVoucherAvailability([voucher], catalog, now)[0];
+          if (!resolved || resolved.availability.can_apply) throw new RefundRuleError(409, "CONFLICT", "Voucher still has an active usable target", "VOUCHER_STILL_USABLE");
+          const purchaseDelta = voucher.pointsLogs[0]?.delta;
+          if (purchaseDelta === undefined || purchaseDelta >= 0) throw new RefundRuleError(422, "BUSINESS_RULE_VIOLATION", "Voucher purchase audit is missing", "REFUND_AUDIT_MISSING");
 
-    if (!voucher || voucher.user_id !== session.id) {
-      return NextResponse.json(
-        { error: "Voucher not found or does not belong to you", code: "NOT_FOUND" },
-        { status: 404 }
-      );
-    }
-
-    // 4. ITEM and legacy PRODUCT vouchers can be auto-refunded
-    if (voucher.voucher_type !== "PRODUCT" && voucher.voucher_type !== "ITEM") {
-      return NextResponse.json(
-        {
-          error: "Only ITEM/PRODUCT vouchers can be auto-refunded when the item is unavailable",
-          code: "VALIDATION_ERROR",
-        },
-        { status: 400 }
-      );
-    }
-
-    // 5. Voucher must be ACTIVE to be refunded
-    if (voucher.status !== "ACTIVE") {
-      return NextResponse.json(
-        {
-          error: `Voucher cannot be refunded in status: ${voucher.status}`,
-          code: "CONFLICT",
-        },
-        { status: 409 }
-      );
-    }
-
-    // 6. The linked menu item must be unavailable (is_available = false)
-    if (!voucher.menu_item_id) {
-      return NextResponse.json(
-        { error: "PRODUCT voucher has no associated menu item", code: "VALIDATION_ERROR" },
-        { status: 400 }
-      );
-    }
-
-    const menuItem = await prisma.menuItem.findUnique({
-      where: { id: voucher.menu_item_id },
-      include: { 
-        sizes: true,
-        fusionAllowedPowders: true
-      },
-    });
-
-    let canRefund = false;
-
-    if (!menuItem) {
-      canRefund = true;
-    } else if (!menuItem.is_available) {
-      canRefund = true;
-    } else if (voucher.voucher_type === "ITEM") {
-      canRefund = menuItem.category !== "extras" || !menuItem.unit_price_vnd || menuItem.unit_price_vnd < 1000;
-    } else {
-      // Item is available. Check size and powder.
-      const sizeRow = menuItem.sizes.find(s => s.size === voucher.size);
-      if (!sizeRow || sizeRow.base_price_vnd === null) {
-        canRefund = true;
-      } else if (voucher.matcha_powder_id) {
-        const powder = await prisma.matchaPowder.findUnique({
-          where: { id: voucher.matcha_powder_id }
-        });
-        
-        if (!powder || !powder.is_available) {
-          canRefund = true;
-        } else if (menuItem.category === "fusion" && voucher.matcha_powder_id !== menuItem.default_powder_id) {
-          const allowedIds = menuItem.fusionAllowedPowders.map((p) => p.powder_id);
-          if (!allowedIds.includes(voucher.matcha_powder_id)) {
-            canRefund = true;
-          }
-        }
+          const pointsRefunded = Math.abs(purchaseDelta);
+          const updated = await tx.voucher.updateMany({
+            where: { id: voucher.id, user_id: session.id, status: "ACTIVE", issued_via: "POINTS_EXCHANGE", OR: [{ expires_at: null }, { expires_at: { gt: now } }] },
+            data: { status: "REFUNDED" },
+          });
+          if (updated.count !== 1) throw new RefundRuleError(409, "CONFLICT", "Voucher refund state changed");
+          await tx.user.update({ where: { id: session.id }, data: { points_balance: { increment: pointsRefunded } } });
+          await tx.pointsLog.create({ data: { user_id: session.id, delta: pointsRefunded, reason: "voucher_refund", voucher_id: voucher.id, performed_by: null, order_id: null } });
+          return { qr_token: voucher.qr_token, status: "REFUNDED" as const, points_refunded: pointsRefunded };
+        }, { isolationLevel: "Serializable", maxWait: 5_000, timeout: 10_000 });
+        return NextResponse.json({ data: result });
+      } catch (error) {
+        if (isSerializationConflict(error) && attempt < 2) continue;
+        if (isSerializationConflict(error)) throw new RefundRuleError(409, "CONFLICT", "Voucher refund could not be serialized");
+        throw error;
       }
     }
-
-    if (!canRefund) {
-      return NextResponse.json(
-        {
-          error: `Item "${menuItem?.name || 'Unknown'}" and its configuration are still available. Refund only allowed when the item is no longer sold.`,
-          code: "CONFLICT",
-        },
-        { status: 409 }
-      );
+  } catch (error) {
+    if (error instanceof RefundRuleError) {
+      return NextResponse.json({ error: error.message, code: error.code, ...(error.reason ? { details: { reason: error.reason } } : {}) }, { status: error.status });
     }
-
-    const points_cost = voucher.package.points_cost;
-
-    // 7. Atomic: mark REFUNDED + restore points + log
-    await prisma.$transaction(
-      async (tx) => {
-        await tx.voucher.update({
-          where: { id: voucher.id },
-          data: { status: "REFUNDED" },
-        });
-
-        await tx.user.update({
-          where: { id: session.id },
-          data: { points_balance: { increment: points_cost } },
-        });
-
-        await tx.pointsLog.create({
-          data: {
-            user_id: session.id,
-            delta: points_cost,
-            reason: "voucher_refund",
-            voucher_id: voucher.id,
-            performed_by: null,
-            order_id: null,
-          },
-        });
-      },
-      { maxWait: 5000, timeout: 10000 }
-    );
-
-    return NextResponse.json(
-      {
-        data: {
-          qr_token: voucher.qr_token,
-          status: "REFUNDED",
-          points_refunded: points_cost,
-        },
-      },
-      { status: 200 }
-    );
-  } catch (err) {
-    console.error("[POST /api/profile/vouchers/refund]", {
-      name: err instanceof Error ? err.name : typeof err,
-    });
-    return NextResponse.json(
-      { error: "Internal server error", code: "INTERNAL_ERROR" },
-      { status: 500 }
-    );
+    console.error("[POST /api/profile/vouchers/refund]", { name: error instanceof Error ? error.name : typeof error });
+    return NextResponse.json({ error: "Internal server error", code: "INTERNAL_ERROR" }, { status: 500 });
   }
+  return NextResponse.json({ error: "Voucher refund could not be serialized", code: "CONFLICT" }, { status: 409 });
 }

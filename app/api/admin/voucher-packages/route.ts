@@ -24,6 +24,10 @@ import {
   type AdminVoucherAddonDatabase,
 } from "@/lib/adminVoucherAddon";
 import { toVoucherPackageBundleDto } from "@/lib/voucherBundleDto";
+import {
+  resolveDefaultBaseLiquidId,
+  resolveFusionDefaultPowderId,
+} from "@/src/utils/menuConfiguration";
 
 export const dynamic = "force-dynamic";
 
@@ -186,6 +190,13 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      const pricingCtx = await buildPricingContext();
+      const activePowders = pricingCtx.availablePowders.map((powder) => ({
+        ...powder,
+        is_available: true,
+        price_per_gram: pricingCtx.powderPriceMap[powder.id] ?? Number.MAX_SAFE_INTEGER,
+      }));
+
       // Resolve powder_id and premium_latte
       let powder_id: string;
       let premium_latte = 0;
@@ -193,18 +204,20 @@ export async function POST(req: NextRequest) {
       let resolved_milk_type_id: string | null = null;
 
       if (menuItem.category === "latte") {
-        if (!menuItem.matcha_powder_id) {
+        if (!menuItem.matcha_powder_id || !activePowders.some((powder) => powder.id === menuItem.matcha_powder_id)) {
           return NextResponse.json(
-            { error: "Latte item is missing matcha_powder_id", code: "VALIDATION_ERROR" },
-            { status: 400 }
+            { error: "Latte fixed powder is missing or inactive", code: "BUSINESS_RULE_VIOLATION" },
+            { status: 422 }
           );
         }
         powder_id = menuItem.matcha_powder_id;
         // For Latte: milk_type_id is the custom swap (null = default milk)
       } else {
-        // Fusion: use provided powder or item default
-        const default_powder_id = menuItem.default_powder_id;
-        const selected_powder_id = data.matcha_powder_id ?? default_powder_id;
+        const effectiveDefaultPowderId = resolveFusionDefaultPowderId(
+          menuItem.default_powder_id,
+          activePowders,
+        );
+        const selected_powder_id = data.matcha_powder_id ?? effectiveDefaultPowderId;
 
         if (!selected_powder_id) {
           return NextResponse.json(
@@ -214,12 +227,15 @@ export async function POST(req: NextRequest) {
         }
 
         // Validate the selected powder is allowed for this item
-        if (data.matcha_powder_id && data.matcha_powder_id !== default_powder_id) {
-          const allowedIds = menuItem.fusionAllowedPowders.map((p) => p.powder_id);
+        if (data.matcha_powder_id && data.matcha_powder_id !== effectiveDefaultPowderId) {
+          const activePowderIds = new Set(activePowders.map((powder) => powder.id));
+          const allowedIds = menuItem.fusionAllowedPowders
+            .map((entry) => entry.powder_id)
+            .filter((id) => activePowderIds.has(id));
           if (!allowedIds.includes(data.matcha_powder_id)) {
             return NextResponse.json(
-              { error: "Selected powder is not allowed for this fusion item", code: "VALIDATION_ERROR" },
-              { status: 400 }
+              { error: "Selected powder is not allowed or active for this fusion item", code: "BUSINESS_RULE_VIOLATION" },
+              { status: 422 }
             );
           }
         }
@@ -228,16 +244,23 @@ export async function POST(req: NextRequest) {
         resolved_matcha_powder_id = data.matcha_powder_id ?? null;
 
         // Compute Premium_Latte for non-default powder
-        if (default_powder_id && powder_id !== default_powder_id) {
-          premium_latte = await resolveOrderItemPremiumLatte(powder_id, default_powder_id, data.size);
+        if (effectiveDefaultPowderId && powder_id !== effectiveDefaultPowderId) {
+          premium_latte = await resolveOrderItemPremiumLatte(powder_id, effectiveDefaultPowderId, data.size);
         }
       }
 
       // Build pricing context and compute drink price
-      const pricingCtx = await buildPricingContext();
-      const defaultBaseLiquidId = menuItem.category === "latte"
+      const configuredBaseLiquidId = menuItem.category === "latte"
         ? pricingCtx.defaultBaseLiquidId ?? null
         : menuItem.default_base_liquid_id;
+      const allowedBaseLiquidIds = menuItem.allowedBaseLiquids
+        .filter((entry) => entry.baseLiquid.is_active)
+        .map((entry) => entry.base_liquid_id);
+      const defaultBaseLiquidId = resolveDefaultBaseLiquidId(
+        configuredBaseLiquidId,
+        [...(configuredBaseLiquidId ? [configuredBaseLiquidId] : []), ...allowedBaseLiquidIds],
+        pricingCtx.availableBaseLiquids ?? [],
+      );
       if (!defaultBaseLiquidId) {
         return NextResponse.json(
           { error: "Menu item has no Base Liquid default", code: "BUSINESS_RULE_VIOLATION" },
@@ -245,12 +268,9 @@ export async function POST(req: NextRequest) {
         );
       }
       resolved_milk_type_id = data.milk_type_id ?? defaultBaseLiquidId;
-      const allowedBaseLiquidIds = menuItem.allowedBaseLiquids
-        .filter((entry) => entry.baseLiquid.is_active)
-        .map((entry) => entry.base_liquid_id);
       if (
-        resolved_milk_type_id !== defaultBaseLiquidId &&
-        !allowedBaseLiquidIds.includes(resolved_milk_type_id)
+        !pricingCtx.availableBaseLiquids?.some((liquid) => liquid.id === resolved_milk_type_id) ||
+        (resolved_milk_type_id !== defaultBaseLiquidId && !allowedBaseLiquidIds.includes(resolved_milk_type_id))
       ) {
         return NextResponse.json(
           { error: "Selected Base Liquid is not allowed for this menu item", code: "BUSINESS_RULE_VIOLATION" },

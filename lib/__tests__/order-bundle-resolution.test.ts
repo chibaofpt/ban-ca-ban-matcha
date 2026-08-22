@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+const resolveBundleBaselineProducts = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/pricing", () => ({ resolveBundleBaselineProducts }));
 import { resolveOrderBundles, type OrderBundleDatabase } from "@/lib/orderBundle";
 
 const now = new Date("2026-08-12T00:00:00.000Z");
@@ -37,10 +39,28 @@ function input() {
   };
 }
 
+function database(vouchers: unknown[]): OrderBundleDatabase {
+  return {
+    voucher: { findMany: vi.fn().mockResolvedValue(vouchers) },
+    menuItem: { findMany: vi.fn().mockResolvedValue([
+      ...["menu-1", "menu-2"].map((id) => ({
+        id, name: id, category: "fusion", is_available: true, unit_price_vnd: null,
+        matcha_powder_id: null, default_powder_id: "powder-1", default_base_liquid_id: "milk-1",
+        sizes: [{ size: "SMALL", base_price_vnd: 45_000 }], allowedBaseLiquids: [],
+      })),
+    ]) },
+    matchaPowder: { findMany: vi.fn().mockResolvedValue([{ id: "powder-1", name: "Meyumi", price_per_gram: 1, is_available: true }]) },
+    milkType: { findMany: vi.fn().mockResolvedValue([{ id: "milk-1", is_active: true, is_default: true, display_order: 0 }]) },
+    addonOption: { findMany: vi.fn().mockResolvedValue([]) },
+  };
+}
+
 describe("resolve nhiều BUNDLE cho order", () => {
   it("batch token và cộng discount theo từng line", async () => {
     const findMany = vi.fn().mockResolvedValue([record("voucher-1", "menu-1"), record("voucher-2", "menu-2")]);
-    const result = await resolveOrderBundles({ voucher: { findMany } } as OrderBundleDatabase, input());
+    const db = database([]);
+    db.voucher.findMany = findMany;
+    const result = await resolveOrderBundles(db, input());
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { qr_token: { in: ["voucher-1", "voucher-2"] } } }));
     expect(result.bundles).toHaveLength(2);
     expect(result.line_discounts_vnd).toEqual([45_000, 45_000]);
@@ -50,7 +70,7 @@ describe("resolve nhiều BUNDLE cho order", () => {
     const request = input();
     request.bundle_applications[1]!.qualifier_allocations[0]!.client_line_id = lineId;
     request.bundle_applications[1]!.reward_allocations[0]!.client_line_id = lineId;
-    await expect(resolveOrderBundles({ voucher: { findMany: vi.fn() } } as OrderBundleDatabase, request))
+    await expect(resolveOrderBundles(database([]), request))
       .rejects.toMatchObject({ reason: "BUNDLE_ALLOCATION_OVERLAP" });
   });
 
@@ -58,7 +78,32 @@ describe("resolve nhiều BUNDLE cho order", () => {
     const request = input();
     request.bundle_applications = request.bundle_applications.slice(0, 1);
     const foreign = record("voucher-1", "menu-1", { user_id: "user-2" });
-    const db = { voucher: { findMany: vi.fn().mockResolvedValue([foreign]) } } as OrderBundleDatabase;
+    const db = database([foreign]);
     await expect(resolveOrderBundles(db, request)).rejects.toMatchObject({ reason: "BUNDLE_VOUCHER_NOT_FOUND" });
+  });
+
+  it("chặn checkout khi qualifier cuối cùng vừa bị ngưng bán", async () => {
+    const request = input();
+    request.bundle_applications = request.bundle_applications.slice(0, 1);
+    const db = database([record("voucher-1", "menu-1")]);
+    db.menuItem.findMany = vi.fn().mockResolvedValue([]);
+    await expect(resolveOrderBundles(db, request)).rejects.toMatchObject({ reason: "BUNDLE_VOUCHER_UNAVAILABLE" });
+  });
+
+  it("resolve baseline một batch cho nhiều BUNDLE thay vì N+1", async () => {
+    const vouchers = [record("voucher-1", "menu-1"), record("voucher-2", "menu-2")];
+    for (const voucher of vouchers) {
+      voucher.package.bundleRule.reward_mode = "FIXED_CONFIG";
+      voucher.package.bundleRule.productScopes.push({
+        role: "REWARD", menu_item_id: voucher.package.bundleRule.productScopes[0]!.menu_item_id,
+        default_powder_id: "powder-1", default_base_liquid_id: "milk-1", sizes: [{ size: "SMALL" }],
+      });
+    }
+    resolveBundleBaselineProducts.mockImplementation(async (_db: unknown, products: unknown[]) => products.map((product) => ({
+      ...(product as object), baseline_prices_vnd: { SMALL: 45_000 },
+    })));
+    await resolveOrderBundles(database(vouchers), input());
+    expect(resolveBundleBaselineProducts).toHaveBeenCalledTimes(1);
+    expect(resolveBundleBaselineProducts.mock.calls[0]?.[1]).toHaveLength(2);
   });
 });

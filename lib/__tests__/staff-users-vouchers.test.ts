@@ -14,6 +14,10 @@ const mockGetSession = vi.fn();
 const mockVoucherFindMany = vi.fn();
 const mockVoucherUpdateMany = vi.fn();
 const mockUserFindUnique = vi.fn();
+const mockMenuItemFindMany = vi.fn();
+const mockPowderFindMany = vi.fn();
+const mockMilkTypeFindMany = vi.fn();
+const mockAddonOptionFindMany = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ getSession: () => mockGetSession() }));
 vi.mock("@/lib/prisma", () => ({
@@ -24,6 +28,10 @@ vi.mock("@/lib/prisma", () => ({
       updateMany: (...args: unknown[]) => mockVoucherUpdateMany(...args),
     },
     voucherPackage: { findMany: vi.fn().mockResolvedValue([]) },
+    menuItem: { findMany: (...args: unknown[]) => mockMenuItemFindMany(...args) },
+    matchaPowder: { findMany: (...args: unknown[]) => mockPowderFindMany(...args) },
+    milkType: { findMany: (...args: unknown[]) => mockMilkTypeFindMany(...args) },
+    addonOption: { findMany: (...args: unknown[]) => mockAddonOptionFindMany(...args) },
   },
 }));
 
@@ -54,10 +62,17 @@ const sampleActiveVoucher = {
   user_id: CUSTOMER_ID,
   status: "ACTIVE",
   voucher_type: "DISCOUNT",
+  issued_via: "POINTS_EXCHANGE",
   discount_type: "FIXED",
   discount_value: 10000,
   expires_at: null,
-  package: { name: "Gói Giảm Giá", description: "Giảm 10k", points_cost: 100 },
+  menu_item_id: null,
+  size: null,
+  matcha_powder_id: null,
+  milk_type_id: null,
+  addon_option_id: null,
+  pointsLogs: [{ delta: -100, reason: "voucher_purchase" }],
+  package: { name: "Gói Giảm Giá", description: "Giảm 10k", points_cost: 100, bundleRule: null },
   menuItem: null,
   addonOption: null,
   staff: null,
@@ -75,6 +90,10 @@ describe("GET /api/staff/users/[id]/vouchers", () => {
       qr_token: "customer-public-token",
       role: "CUSTOMER",
     });
+    mockMenuItemFindMany.mockResolvedValue([]);
+    mockPowderFindMany.mockResolvedValue([]);
+    mockMilkTypeFindMany.mockResolvedValue([]);
+    mockAddonOptionFindMany.mockResolvedValue([]);
   });
 
   it("trả 401 khi chưa đăng nhập", async () => {

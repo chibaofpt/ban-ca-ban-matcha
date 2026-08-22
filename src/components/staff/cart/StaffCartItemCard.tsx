@@ -26,6 +26,7 @@ interface StaffCartItemCardProps {
   onRemoveProduct?: (cartId: string) => void;
   onRemoveAddon?: (cartId: string, voucherId: string) => void;
   onOpenVoucherPicker: (cartId: string) => void;
+  bundleAllocationBadges?: Array<{ token: string; label: string; quantity: number }>;
 }
 
 const StaffCartItemCard = ({
@@ -42,7 +43,8 @@ const StaffCartItemCard = ({
   onChangeQuantity,
   onRemoveProduct,
   onRemoveAddon,
-  onOpenVoucherPicker
+  onOpenVoucherPicker,
+  bundleAllocationBadges = [],
 }: StaffCartItemCardProps) => {
   const hasMoreProductVouchers = !c.productVoucherId && !c.itemVoucherId && applicableProductVouchers.length > 0;
   const hasMoreAddonVouchers = applicableAddonVouchers.length > 0;
@@ -138,6 +140,15 @@ const StaffCartItemCard = ({
           )}
           {noteText && (
             <span className="text-[10px] font-medium bg-primary/5 text-primary/80 px-1.5 py-0.5 rounded italic inline-block w-fit">📝 {noteText}</span>
+          )}
+          {bundleAllocationBadges.length > 0 && (
+            <div className="flex flex-wrap gap-1" aria-label="Phân bổ ưu đãi BUNDLE">
+              {bundleAllocationBadges.map((badge) => (
+                <span key={badge.token} className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                  {badge.label}: {badge.quantity} phần
+                </span>
+              ))}
+            </div>
           )}
         </div>
 

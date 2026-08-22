@@ -602,6 +602,43 @@ All package/wallet voucher responses expose the same grouped `qualifier_products
 server resolves the immutable default configuration snapshot against current menu pricing at
 checkout.
 
+For owned BUNDLE voucher responses from `GET /api/profile/vouchers` and
+`GET /api/staff/users/[id]/vouchers`, each reward product of `FIXED_CONFIG` or
+`ALLOWED_SCOPE` additionally returns the response-only current baseline below. This is batched
+across the list, is recalculated on every fetch, and is never accepted in an order request.
+`SAME_CONFIG` has no baseline field because it derives its baseline from selected qualifier units.
+
+Owned customer and Staff voucher responses also expose live target availability. BUNDLE product
+and addon arrays contain only currently orderable choices; inactive options and unavailable sizes
+are omitted instead of returned disabled. The voucher remains visible in the wallet when unusable.
+
+```ts
+availability: {
+  status: "USABLE" | "TARGET_UNAVAILABLE" | "NO_ACTIVE_QUALIFIER" |
+    "NO_ACTIVE_REWARD" | "NO_ACTIVE_CONFIGURATION"
+  can_apply: boolean
+  can_refund: boolean
+  refund_points: number
+}
+```
+
+Latte scopes keep their fixed powder and are removed when that powder is inactive. Fusion scopes
+resolve an effective active powder deterministically. `default_powder_id` and
+`default_base_liquid_id` in the owned response are effective live selections; immutable configured
+snapshots remain server-side.
+
+Admin create/publish, public package catalog, every issuance mode, and admin reactivation apply the
+same live target rules to `ITEM`, `PRODUCT`, `ADDON`, and `BUNDLE`. A target-bearing package is not
+published, listed, issued, or reactivated when its current target is unusable. `DISCOUNT` and
+`FREESHIP` remain lifecycle-only because they have no menu target.
+
+```ts
+{
+  baseline_prices_vnd?: Partial<Record<"SMALL" | "MEDIUM" | "LARGE", number>>
+  baseline_price_vnd?: number // extras only
+}
+```
+
 Admin selects the final usable Vietnam calendar date. The UI sends the next day at 00:00 UTC+7;
 the server treats the package as usable only while `now < ends_at`. `quantity` is the single
 campaign issuance limit; there is no second limit inside `bundle_rule`.
@@ -802,10 +839,30 @@ without a configured default Base Liquid. Any full edit still requires a valid a
 }
 ```
 
+For both customer and Staff order creation, a BUNDLE token that is truly missing or not visible to
+the caller returns `404 NOT_FOUND`. A present BUNDLE that fails live eligibility returns
+`422 BUSINESS_RULE_VIOLATION` with `details.reason` set to the server reason; the HTTP boundary
+does not expose a separate `BUNDLE_NOT_ELIGIBLE` error code.
+
 ### `POST /api/profile/vouchers/exchange`
 ```ts
 { package_id: string }
 ```
+
+### `POST /api/profile/vouchers/refund`
+```ts
+{ qr_token: string }
+
+// Success
+{ data: { qr_token: string, status: "REFUNDED", points_refunded: number } }
+```
+
+Refund is allowed only for an unexpired `ACTIVE` voucher issued through `POINTS_EXCHANGE` whose
+live availability is unusable. The refund equals `abs(points_log.delta)` from its immutable
+`voucher_purchase` entry; current package cost is never used. Missing audit returns
+`422 BUSINESS_RULE_VIOLATION` with `details.reason = "REFUND_AUDIT_MISSING"`. An expected-state
+race, including an exhausted Serializable `P2034` retry, returns `409 CONFLICT`. Refund does not
+restore package quantity or per-user redemption count.
 
 ### `GET /api/staff/users?q=xxxx`
 ```ts
@@ -834,7 +891,7 @@ without a configured default Base Liquid. Any full edit still requires a valid a
 ### Menu
 - `GET /api/menu`: return the active global Base Liquid catalog once, plus each item's resolved default, active allowed IDs, and effective per-size volume. Consumers show the selector only when default + allowed contains more than one option.
 - `updated_at` in response = `MAX(menu_items.updated_at)` across all items including unavailable ones.
-- Fusion `default_powder_id = NULL`: resolve fallback (Meyumi → Hana → MH-3 → cheapest `price_per_gram` WHERE `is_available = true`). Return `resolved_default_powder_id` — never NULL.
+- Fusion missing/inactive default: resolve fallback (Meyumi → Hana → MH-3 → lowest active `price_per_gram` → lowest ID). Return `resolved_default_powder_id` when any powder is active.
 - `allowed_powder_ids`: join `fusion_allowed_powder` + filter `matcha_powder.is_available = true`.
 - `POST /api/admin/menu`: INSERT `menu_items` + 3 `menu_item_sizes` + `menu_item_allowed_base_liquid` rows in one `prisma.$transaction()`.
 - `DELETE /api/admin/addon-groups/[id]`: set `is_active = false`. Never hard delete.
@@ -932,6 +989,6 @@ without a configured default Base Liquid. Any full edit still requires a valid a
 | `voucher_surplus` | Aggregate PRODUCT surplus awarded when order → COMPLETED |
 | `order_complete_reversed` | Reversal after a completed COUNTER order is cancelled |
 | `voucher_surplus_reversed` | Reversal of aggregate PRODUCT surplus after cancellation |
-| `voucher_refund` | Target item soft-deleted → full points refund |
+| `voucher_refund` | Unusable points-exchange voucher → exact immutable purchase-points refund |
 | `reversed_by_admin` | Admin reverses a manual adjustment |
 | `registration_bonus` | New customer registration bonus |

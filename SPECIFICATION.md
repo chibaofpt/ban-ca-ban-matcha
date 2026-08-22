@@ -33,6 +33,8 @@ Không thực hiện repo-wide layer refactor khi sửa feature. Direct API call
 - Server luôn đọc lại giá từ DB và ceil giá cuối lên 1.000 VND.
 - Pure formula nằm ở `src/utils/pricing.ts`; DB wrapper nằm ở `lib/pricing.ts`.
 - Order, voucher và pricing rules chỉ có canonical owner trong domain skill tương ứng.
+- Voucher catalog, owned wallet DTO, issuance, checkout và refund dùng cùng server-side live
+  availability resolver; UI không tự suy luận lifecycle của menu configuration.
 - API response và field compatibility thuộc `API.md`; không đổi tên chỉ vì muốn làm sạch thuật ngữ.
 - External SDK luôn nằm sau wrapper/adapter để UI và business logic không phụ thuộc trực tiếp nhà cung cấp.
 

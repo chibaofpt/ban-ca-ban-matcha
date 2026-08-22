@@ -26,6 +26,7 @@ export interface AdminVoucherBundleTransaction {
   addonOption: { findMany: (args: unknown) => Promise<BundleReferenceAddon[]> };
   voucherPackage: { create: (args: unknown) => Promise<unknown> };
   milkType: { findMany: (args: unknown) => Promise<Array<{ id: string; is_default: boolean }>> };
+  matchaPowder: { findMany: (args: unknown) => Promise<Array<{ id: string }>> };
 }
 
 /** Stable reference error raised while publishing an invalid BUNDLE package. */
@@ -41,6 +42,7 @@ function validateScopeConfigurations(
   menus: Map<string, BundleReferenceMenu>,
   activeBaseLiquidIds: Set<string>,
   globalDefaultBaseLiquidId: string | null,
+  activePowderIds: Set<string>,
 ): void {
   const products = [
     ...input.bundle_rule.qualifier_products,
@@ -60,6 +62,7 @@ function validateScopeConfigurations(
       throw new VoucherBundleReferenceError("Bundle scope size is unavailable");
     }
     const powderAllowed = product.default_powder_id !== undefined && product.default_powder_id !== null &&
+      activePowderIds.has(product.default_powder_id) &&
       (menu.category === "latte" ? menu.matcha_powder_id === product.default_powder_id
         : menu.default_powder_id === product.default_powder_id ||
           Boolean(menu.fusionAllowedPowders?.some((row) => row.powder_id === product.default_powder_id)));
@@ -107,11 +110,15 @@ export async function createBundleVoucherPackage(
   const activeBaseLiquids = await tx.milkType.findMany({
     where: { is_active: true }, select: { id: true, is_default: true },
   });
+  const activePowders = await tx.matchaPowder.findMany({
+    where: { is_available: true }, select: { id: true },
+  });
   validateScopeConfigurations(
     input,
     new Map(menus.map((menu) => [menu.id, menu])),
     new Set(activeBaseLiquids.map((liquid) => liquid.id)),
     activeBaseLiquids.find((liquid) => liquid.is_default)?.id ?? null,
+    new Set(activePowders.map((powder) => powder.id)),
   );
 
   const addonIds = input.bundle_rule.reward_addon_option_ids;

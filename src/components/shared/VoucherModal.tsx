@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { AnimatePresence } from "framer-motion";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -9,7 +10,7 @@ import { Loader2, LogIn, Star, Ticket, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { useCartStore } from "@/src/lib/store/cartStore";
-import { useIsLoggedIn } from "@/src/lib/store/authStore";
+import { useCurrentUser, useIsLoggedIn } from "@/src/lib/store/authStore";
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
 import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
 import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
@@ -24,6 +25,7 @@ import {
   type VoucherModalTab,
 } from "@/src/lib/utils/voucherModalHelpers";
 import type { MyVoucher, VoucherPackage } from "@/src/services/customerVoucherService";
+import { refundVoucher } from "@/src/services/customerVoucherService";
 import { QrModal } from "./QrModal";
 import { VoucherAcquisitionConfirm } from "./VoucherAcquisitionConfirm";
 import { VoucherCard } from "./VoucherCards";
@@ -37,14 +39,22 @@ import { useCartTotalPrice } from "@/src/lib/store/cartStore";
 import { estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
 import type { MenuData } from "@/src/lib/types/menu";
 import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
+import { buildBundleApplication, summarizeBundleCart } from "@/src/lib/utils/bundleVoucher";
+import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
+import { getVoucherRefundConfirmation } from "@/src/lib/utils/voucherModalHelpers";
+import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
 
 /** Unified customer wallet and voucher acquisition modal. */
 export default function VoucherModal() {
+  const queryClient = useQueryClient();
   const { open, openModal, close } = useVoucherModalStore();
   const isLoggedIn = useIsLoggedIn();
+  const currentUser = useCurrentUser();
   const pendingIntent = useAuthModalStore((state) => state.pendingIntent);
   const clearIntent = useAuthModalStore((state) => state.clearIntent);
   const setCartOpen = useCartStore((state) => state.setCartOpen);
+  const commitBundleApplication = useCartStore((state) => state.commitBundleApplication);
+  const removeVoucherEffects = useCartStore((state) => state.removeVoucherEffects);
   const { data: points = 0 } = useCustomerPoints();
   const { data: vouchers = [], isLoading: vouchersLoading } = useCustomerVouchers({ enabled: open && isLoggedIn });
   const { data: packages = [], isLoading: packagesLoading } = useVoucherPackages({ enabled: open });
@@ -57,6 +67,8 @@ export default function VoucherModal() {
   const [isDesktop, setIsDesktop] = useState(false);
   const [detailVoucher, setDetailVoucher] = useState<MyVoucher | null>(null);
   const [bundleSetupVoucher, setBundleSetupVoucher] = useState<MyVoucher | null>(null);
+  const [refundCandidate, setRefundCandidate] = useState<MyVoucher | null>(null);
+  const [isRefunding, setIsRefunding] = useState(false);
   const [menuData, setMenuData] = useState<MenuData | undefined>();
   const cartItems = useCartStore((s) => s.items);
   const subtotalVnd = useCartTotalPrice();
@@ -85,13 +97,61 @@ export default function VoucherModal() {
   }, [close, setCartOpen]);
 
   const handleBundleSuccess = useCallback((token: string, allocations: BundleSelectionAllocation[]) => {
-    useCartStore.getState().setSelectedBundleToken(token);
-    useCartStore.getState().setBundleAllocations(allocations);
+    const voucher = activeVouchers.find((candidate) => candidate.qr_token === token);
+    const rule = voucher?.package.bundleRule;
+    const summary = voucher && rule ? {
+      qr_token: voucher.qr_token,
+      buy_quantity: rule.buy_quantity,
+      reward_quantity: rule.reward_quantity,
+      reward_kind: rule.reward_kind,
+      reward_mode: rule.reward_mode,
+      benefit_scaling: rule.benefit_scaling,
+      max_applications_per_order: rule.max_applications_per_order,
+      max_reward_units_per_order: rule.max_reward_units_per_order,
+      eligible_products: rule.qualifier_products.map((product) => ({ menu_item_id: product.menu_item_id, allowed_sizes: product.allowed_sizes })),
+      reward_products: rule.reward_products.map((product) => ({ menu_item_id: product.menu_item_id, allowed_sizes: product.allowed_sizes, baseline_prices_vnd: product.baseline_prices_vnd, baseline_price_vnd: product.baseline_price_vnd })),
+      min_order_vnd: voucher.min_order_vnd,
+    } : null;
+    if (summary) {
+      const cart = useCartStore.getState().items;
+      const payload = buildBundleApplication({ voucher: summary, cart: summarizeBundleCart(cart), rewardAllocations: allocations });
+      commitBundleApplication({
+        voucher_qr_token: token,
+        owner_key: `customer:${currentUser?.phone ?? "anonymous"}`,
+        qualifier_allocations: payload?.qualifier_allocations ?? [],
+        reward_allocations: allocations,
+        created_reward_effects: cart.filter((item) => item.bundleRewardVoucherToken === token).map((item) => ({ kind: "LINE" as const, client_line_id: item.cartId })),
+        status: payload ? "READY" : "NEEDS_CONFIGURATION",
+      });
+    }
     setBundleSetupVoucher(null);
     setDetailVoucher(null);
     close();
     setCartOpen(true);
-  }, [close, setCartOpen]);
+  }, [activeVouchers, close, commitBundleApplication, currentUser?.phone, setCartOpen]);
+
+  const handleRefund = useCallback(async () => {
+    if (!refundCandidate || isRefunding) return;
+    setIsRefunding(true);
+    try {
+      const refunded = await refundVoucher(refundCandidate.qr_token);
+      removeVoucherEffects(refundCandidate.qr_token);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS }),
+        queryClient.invalidateQueries({ queryKey: VOUCHER_QUERY_KEYS.CUSTOMER_POINTS }),
+      ]);
+      toast.success(`Đã hoàn ${refunded.points_refunded.toLocaleString("vi-VN")} điểm`);
+      setRefundCandidate(null);
+      setDetailVoucher(null);
+    } catch (error: unknown) {
+      const message = axios.isAxiosError<{ error?: string }>(error)
+        ? error.response?.data?.error
+        : null;
+      toast.error(message ?? "Không thể hoàn điểm lúc này. Voucher và giỏ hàng vẫn được giữ nguyên.");
+    } finally {
+      setIsRefunding(false);
+    }
+  }, [isRefunding, queryClient, refundCandidate, removeVoucherEffects]);
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 768px)");
@@ -103,7 +163,8 @@ export default function VoucherModal() {
 
   useEffect(() => {
     if (open) setActiveTab(isLoggedIn ? "my_vouchers" : "packages");
-  }, [isLoggedIn, open]);
+    else if (!isRefunding) setRefundCandidate(null);
+  }, [isLoggedIn, isRefunding, open]);
 
   const acquirePackage = useCallback(async (pkg: VoucherPackage) => {
     setExchangingId(pkg.id);
@@ -198,6 +259,8 @@ export default function VoucherModal() {
             onBack={() => setDetailVoucher(null)}
             onUseNowSuccess={handleUseNowSuccess}
             onOpenBundleSetup={(v) => { setDetailVoucher(null); setBundleSetupVoucher(v); }}
+            onRequestRefund={setRefundCandidate}
+            isRefunding={isRefunding}
           />
         )}
       </AnimatePresence>
@@ -214,6 +277,16 @@ export default function VoucherModal() {
           onSuccess={handleBundleSuccess}
         />
       )}
+      <ConfirmModal
+        isOpen={refundCandidate !== null}
+        title="Hoàn điểm voucher"
+        message={getVoucherRefundConfirmation(refundCandidate?.availability.refund_points ?? 0)}
+        confirmLabel={`Hoàn ${refundCandidate?.availability.refund_points.toLocaleString("vi-VN") ?? 0} điểm`}
+        isDestructive
+        isLoading={isRefunding}
+        onCancel={() => setRefundCandidate(null)}
+        onConfirm={() => void handleRefund()}
+      />
     </div>
   );
 

@@ -9,6 +9,12 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
 import { toPublicVoucherDto } from "@/lib/voucherPublicDto";
+import { attachBundleRewardBaselines } from "@/lib/voucherBundleDto";
+import {
+  attachOwnedVoucherAvailability,
+  loadVoucherAvailabilityCatalog,
+  type VoucherAvailabilityDatabase,
+} from "@/lib/voucherAvailability";
 import {
   ensureAutoGrantedVouchers,
   type VoucherIssuanceDatabase,
@@ -68,10 +74,18 @@ export async function GET() {
         addonOption: { select: { label: true } },
         // Staff who redeemed it offline (null = redeemed by the user themselves online)
         staff: { select: { name: true, role: true } },
+        pointsLogs: {
+          where: { reason: "voucher_purchase" },
+          select: { delta: true, reason: true },
+          take: 1,
+        },
       },
     });
 
-    return NextResponse.json({ data: vouchers.map(toPublicVoucherDto) });
+    const catalog = await loadVoucherAvailabilityCatalog(prisma as unknown as VoucherAvailabilityDatabase);
+    const withAvailability = attachOwnedVoucherAvailability(vouchers, catalog);
+    const withBaselines = await attachBundleRewardBaselines(prisma, withAvailability);
+    return NextResponse.json({ data: withBaselines.map(toPublicVoucherDto) });
   } catch (err) {
     console.error("[GET /api/profile/vouchers]", {
       name: err instanceof Error ? err.name : typeof err,

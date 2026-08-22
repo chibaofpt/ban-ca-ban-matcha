@@ -15,9 +15,27 @@ vi.mock("@/src/lib/observability", () => ({
   addBusinessBreadcrumb: (...args: unknown[]) => mockAddBusinessBreadcrumb(...args),
 }));
 
-import { computeFinalClientPrice, migrateCartState, useCartStore } from "@/src/lib/store/cartStore";
+import { computeFinalClientPrice, migrateCartState, retainBundleRewardEffects, useCartStore } from "@/src/lib/store/cartStore";
 import { migrateStaffCartState, useStaffCartStore } from "@/src/lib/store/staffCartStore";
 import type { CartItem } from "@/src/lib/types/cart";
+
+type BundleStoreTestAdapter = {
+  setState: (state: {
+    items: CartItem[];
+    bundleApplications: Array<{
+      voucher_qr_token: string;
+      qualifier_allocations: Array<{ client_line_id: string; quantity: number }>;
+      reward_allocations: Array<{ client_line_id: string; quantity: number }>;
+      created_reward_effects: Array<{ kind: "LINE"; client_line_id: string }>;
+    }>;
+  }) => void;
+  getState: () => {
+    items: CartItem[];
+    bundleApplications: unknown[];
+    markBundleApplicationsVerifyFailed: (message: string) => void;
+    markBundleApplicationsUnavailable: (message: string, voucherTokens: string[]) => void;
+  };
+};
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -329,5 +347,260 @@ describe("ITEM voucher chỉ được gắn vào một dòng giỏ hàng", () =>
     const items = useStaffCartStore.getState().items;
     expect(items[0]).toMatchObject({ itemVoucherId: undefined, clientPriceVnd: 20_000 });
     expect(items[1]).toMatchObject({ itemVoucherId: "item-token", clientPriceVnd: 0 });
+  });
+});
+
+describe("BUNDLE persisted applications", () => {
+  it("migration customer xoá BUNDLE legacy nhưng giữ món trả tiền", () => {
+    const item = makeCartItem({ unitPrice: 45_000, addonsPrice: 0 });
+    const migrated = migrateCartState({
+      items: [{ ...item, bundleRewardVoucherToken: "legacy-bundle" }],
+      selectedBundleToken: "legacy-bundle",
+      bundleAllocations: [{ client_line_id: item.cartId, quantity: 1 }],
+    }, 7);
+
+    expect(migrated.items).toHaveLength(1);
+    expect(migrated).toHaveProperty("bundleApplications", []);
+  });
+
+  it("gỡ application chỉ xoá reward effect do BUNDLE tự tạo", () => {
+    const state = useCartStore.getState() as unknown as {
+      commitBundleApplication: (input: unknown) => void;
+      removeBundleApplication: (token: string) => void;
+    };
+    const paid = makeCartItem({ unitPrice: 45_000, addonsPrice: 0 });
+    const generated = { ...makeCartItem({ unitPrice: 30_000, addonsPrice: 0 }), cartId: "bundle-reward" };
+    useCartStore.setState({ items: [paid, generated] });
+
+    state.commitBundleApplication({
+      voucher_qr_token: "bundle-token",
+      owner_key: "customer:public-user-token",
+      qualifier_allocations: [{ client_line_id: paid.cartId, quantity: 1 }],
+      reward_allocations: [{ client_line_id: generated.cartId, quantity: 1 }],
+      created_reward_effects: [{ kind: "LINE", client_line_id: generated.cartId }],
+    });
+    state.removeBundleApplication("bundle-token");
+
+    expect(useCartStore.getState().items.map((item) => item.cartId)).toEqual([paid.cartId]);
+  });
+
+  it("đổi quà extras tự thêm sẽ gỡ effect cũ nhưng giữ quà mới đang được allocation", () => {
+    const paid = makeCartItem({ unitPrice: 45_000, addonsPrice: 0 });
+    const generatedA = { ...makeExtrasItem("bundle-extra-a"), name: "Quà A" };
+    const generatedB = { ...makeExtrasItem("bundle-extra-b"), name: "Quà B" };
+    useCartStore.setState({ items: [paid, generatedA, generatedB], bundleApplications: [] });
+    const initialEffects = [{ kind: "LINE" as const, client_line_id: generatedA.cartId }];
+    useCartStore.getState().commitBundleApplication({
+      voucher_qr_token: "bundle-token",
+      owner_key: "customer:public-user-token",
+      qualifier_allocations: [{ client_line_id: paid.cartId, quantity: 1 }],
+      reward_allocations: [{ client_line_id: generatedA.cartId, quantity: 1 }],
+      created_reward_effects: initialEffects,
+    });
+
+    const nextEffects = retainBundleRewardEffects(
+      initialEffects,
+      [{ client_line_id: generatedB.cartId, quantity: 1 }],
+      { kind: "LINE", client_line_id: generatedB.cartId },
+    );
+    useCartStore.getState().commitBundleApplication({
+      voucher_qr_token: "bundle-token",
+      owner_key: "customer:public-user-token",
+      qualifier_allocations: [{ client_line_id: paid.cartId, quantity: 1 }],
+      reward_allocations: [{ client_line_id: generatedB.cartId, quantity: 1 }],
+      created_reward_effects: nextEffects,
+    });
+
+    expect(useCartStore.getState().items.map((item) => item.cartId)).toEqual([paid.cartId, generatedB.cartId]);
+  });
+});
+
+describe("Hoàn điểm voucher dọn đúng effect trong giỏ khách", () => {
+  beforeEach(() => {
+    useCartStore.setState({ items: [], selectedVoucherIds: [], bundleApplications: [] });
+  });
+
+  it("gỡ PRODUCT và phục hồi giá trả tiền nhưng giữ nguyên món", () => {
+    const product = {
+      ...makeCartItem({ unitPrice: 70_000, addonsPrice: 10_000, productVoucherDiscountVnd: 50_000 }),
+      productVoucherId: "refund-token",
+      clientPriceVnd: 20_000,
+    };
+    useCartStore.setState({ items: [product] });
+
+    useCartStore.getState().removeVoucherEffects("refund-token");
+
+    expect(useCartStore.getState().items).toHaveLength(1);
+    expect(useCartStore.getState().items[0]).toMatchObject({
+      productVoucherId: undefined,
+      productVoucherDiscountVnd: undefined,
+      clientPriceVnd: 70_000,
+    });
+  });
+
+  it("gỡ ITEM và phục hồi giá nhưng không xoá extras", () => {
+    const extras = makeExtrasItem("paid-extra", "refund-token");
+    useCartStore.setState({ items: [extras] });
+
+    useCartStore.getState().removeVoucherEffects("refund-token");
+
+    expect(useCartStore.getState().items).toHaveLength(1);
+    expect(useCartStore.getState().items[0]).toMatchObject({
+      cartId: "paid-extra",
+      itemVoucherId: undefined,
+      clientPriceVnd: 20_000,
+    });
+  });
+
+  it("gỡ đúng ADDON voucher, giữ addon và voucher khác", () => {
+    const item = {
+      ...makeCartItem({
+        unitPrice: 80_000,
+        addonsPrice: 20_000,
+        addonVouchers: [
+          { voucherId: "refund-token", addonOptionId: "cream", discountVnd: 10_000 },
+          { voucherId: "keep-token", addonOptionId: "boba", discountVnd: 10_000 },
+        ],
+      }),
+      selectedOptionIds: ["cream", "boba"],
+      addonPrices: { cream: 10_000, boba: 10_000 },
+      clientPriceVnd: 60_000,
+    };
+    useCartStore.setState({ items: [item], selectedVoucherIds: ["refund-token", "keep-discount"] });
+
+    useCartStore.getState().removeVoucherEffects("refund-token");
+
+    expect(useCartStore.getState().items[0]).toMatchObject({
+      selectedOptionIds: ["cream", "boba"],
+      addonVouchers: [{ voucherId: "keep-token", addonOptionId: "boba", discountVnd: 10_000 }],
+      clientPriceVnd: 70_000,
+    });
+    expect(useCartStore.getState().selectedVoucherIds).toEqual(["keep-discount"]);
+  });
+});
+
+describe("BUNDLE đổi availability giữa picker và checkout", () => {
+  const application = {
+    voucher_qr_token: "bundle-live-token",
+    owner_key: "customer:owner",
+    qualifier_allocations: [{ client_line_id: "paid-line", quantity: 1 }],
+    reward_allocations: [{ client_line_id: "generated-line", quantity: 1 }],
+    created_reward_effects: [{ kind: "LINE" as const, client_line_id: "generated-line" }],
+    status: "READY" as const,
+  };
+
+  it("customer giữ application và món trả tiền nhưng gỡ reward tự sinh", () => {
+    const paid = { ...makeCartItem({ unitPrice: 50_000, addonsPrice: 0 }), cartId: "paid-line" };
+    const generated = { ...makeCartItem({ unitPrice: 40_000, addonsPrice: 0 }), cartId: "generated-line" };
+    useCartStore.setState({ items: [paid, generated], bundleApplications: [application] });
+
+    useCartStore.getState().markBundleApplicationsUnavailable(
+      "Quà tặng hiện không còn phục vụ.",
+      ["bundle-live-token"],
+    );
+
+    expect(useCartStore.getState().items.map((item) => item.cartId)).toEqual(["paid-line"]);
+    expect(useCartStore.getState().bundleApplications).toEqual([
+      expect.objectContaining({
+        voucher_qr_token: "bundle-live-token",
+        status: "UNAVAILABLE",
+        message: "Quà tặng hiện không còn phục vụ.",
+        created_reward_effects: [],
+      }),
+    ]);
+  });
+
+  it("staff có cùng reconciliation và vẫn giữ application để chặn checkout", () => {
+    const paid = { ...makeCartItem({ unitPrice: 50_000, addonsPrice: 0 }), cartId: "paid-line" };
+    const generated = { ...makeCartItem({ unitPrice: 40_000, addonsPrice: 0 }), cartId: "generated-line" };
+    useStaffCartStore.setState({
+      items: [paid, generated],
+      bundleApplications: [{ ...application, owner_key: "staff:owner" }],
+    });
+
+    useStaffCartStore.getState().markBundleApplicationsUnavailable(
+      "Quà tặng hiện không còn phục vụ.",
+      ["bundle-live-token"],
+    );
+
+    expect(useStaffCartStore.getState().items.map((item) => item.cartId)).toEqual(["paid-line"]);
+    expect(useStaffCartStore.getState().bundleApplications[0]).toMatchObject({
+      status: "UNAVAILABLE",
+      created_reward_effects: [],
+    });
+  });
+
+  it.each([
+    ["customer", useCartStore],
+    ["staff", useStaffCartStore],
+  ] as const)("%s chỉ gỡ BUNDLE A không hợp lệ và giữ nguyên BUNDLE B", (_, rawStore) => {
+    const store = rawStore as unknown as BundleStoreTestAdapter;
+    const paidA = { ...makeCartItem({ unitPrice: 50_000, addonsPrice: 0 }), cartId: "paid-a" };
+    const rewardA = { ...makeCartItem({ unitPrice: 40_000, addonsPrice: 0 }), cartId: "reward-a" };
+    const paidB = { ...makeCartItem({ unitPrice: 60_000, addonsPrice: 0 }), cartId: "paid-b" };
+    const rewardB = { ...makeCartItem({ unitPrice: 30_000, addonsPrice: 0 }), cartId: "reward-b" };
+    store.setState({
+      items: [paidA, rewardA, paidB, rewardB],
+      bundleApplications: [
+        {
+          ...application,
+          voucher_qr_token: "bundle-a",
+          qualifier_allocations: [{ client_line_id: "paid-a", quantity: 1 }],
+          reward_allocations: [{ client_line_id: "reward-a", quantity: 1 }],
+          created_reward_effects: [{ kind: "LINE", client_line_id: "reward-a" }],
+        },
+        {
+          ...application,
+          voucher_qr_token: "bundle-b",
+          qualifier_allocations: [{ client_line_id: "paid-b", quantity: 1 }],
+          reward_allocations: [{ client_line_id: "reward-b", quantity: 1 }],
+          created_reward_effects: [{ kind: "LINE", client_line_id: "reward-b" }],
+        },
+      ],
+    });
+
+    store.getState().markBundleApplicationsVerifyFailed("Đang kiểm tra lại voucher.");
+    expect(store.getState().items.map((item) => item.cartId)).toEqual([
+      "paid-a", "reward-a", "paid-b", "reward-b",
+    ]);
+
+    store.getState().markBundleApplicationsUnavailable(
+      "Quà tặng hiện không còn phục vụ.",
+      ["bundle-a"],
+    );
+
+    expect(store.getState().items.map((item) => item.cartId)).toEqual([
+      "paid-a", "paid-b", "reward-b",
+    ]);
+    expect(store.getState().bundleApplications).toEqual([
+      expect.objectContaining({
+        voucher_qr_token: "bundle-a",
+        status: "UNAVAILABLE",
+        created_reward_effects: [],
+      }),
+      expect.objectContaining({
+        voucher_qr_token: "bundle-b",
+        status: "READY",
+        created_reward_effects: [{ kind: "LINE", client_line_id: "reward-b" }],
+      }),
+    ]);
+  });
+
+  it.each([
+    ["customer", useCartStore],
+    ["staff", useStaffCartStore],
+  ] as const)("%s khi refetch lỗi thì khoá xác minh nhưng không gỡ reward", (_, rawStore) => {
+    const store = rawStore as unknown as BundleStoreTestAdapter;
+    const paid = { ...makeCartItem({ unitPrice: 50_000, addonsPrice: 0 }), cartId: "paid-line" };
+    const generated = { ...makeCartItem({ unitPrice: 40_000, addonsPrice: 0 }), cartId: "generated-line" };
+    store.setState({ items: [paid, generated], bundleApplications: [application] });
+
+    store.getState().markBundleApplicationsVerifyFailed("Không thể kiểm tra lại voucher.");
+
+    expect(store.getState().items.map((item) => item.cartId)).toEqual(["paid-line", "generated-line"]);
+    expect(store.getState().bundleApplications[0]).toMatchObject({
+      status: "VERIFY_FAILED",
+      message: "Không thể kiểm tra lại voucher.",
+    });
   });
 });

@@ -17,6 +17,7 @@ import {
   formatVoucherExpiry,
   formatRedeemedDate,
   getTicketHighlightText,
+  getVoucherAvailabilityMessage,
   VOUCHER_TYPE_CONFIG,
 } from "@/src/lib/utils/voucherModalHelpers";
 
@@ -44,7 +45,8 @@ export function VoucherCard({
   const isExpired = voucher.status === "EXPIRED";
   const isRedeemed = voucher.status === "REDEEMED";
   const isReserved = voucher.status === "RESERVED";
-  const isDimmed = isExpired || isRedeemed || isDisabled;
+  const availabilityReason = getVoucherAvailabilityMessage(voucher);
+  const isDimmed = isExpired || isRedeemed || isDisabled || !voucher.availability.can_apply;
 
   return (
     <motion.div
@@ -52,8 +54,20 @@ export function VoucherCard({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       onClick={isInteractable ? onClick : undefined}
+      role={isInteractable && onClick ? "button" : undefined}
+      tabIndex={isInteractable && onClick ? 0 : undefined}
+      onKeyDown={(event) => {
+        if (
+          !isInteractable ||
+          !onClick ||
+          event.target !== event.currentTarget ||
+          (event.key !== "Enter" && event.key !== " ")
+        ) return;
+        event.preventDefault();
+        onClick();
+      }}
       className={cn(
-        "rounded-xl shadow-sm border overflow-hidden flex relative transition-colors",
+        "rounded-xl shadow-sm border overflow-hidden flex relative transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         isSelected ? "bg-[#f2f7ed] border-[#8ab275] hover:border-[#8ab275]" : "bg-card",
         isDimmed && "opacity-60 grayscale-[40%]",
         isInteractable && onClick && !isSelected && "cursor-pointer hover:border-primary/50"
@@ -90,6 +104,11 @@ export function VoucherCard({
               Đã dùng
             </span>
           )}
+          {voucher.status === "ACTIVE" && !voucher.availability.can_apply ? (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+              Tạm không dùng được
+            </span>
+          ) : null}
         </div>
         
         <p className="font-bold text-sm text-foreground leading-tight line-clamp-1">
@@ -102,6 +121,9 @@ export function VoucherCard({
         {disabledReason && (
           <p className="text-[10px] text-red-500 mt-0.5 line-clamp-1">{disabledReason}</p>
         )}
+        {!disabledReason && availabilityReason ? (
+          <p className="mt-0.5 line-clamp-2 text-[10px] text-amber-700">{availabilityReason}</p>
+        ) : null}
 
         <div className="mt-2 flex items-center justify-between">
           <p className="text-[10px] text-muted-foreground flex items-center gap-1">

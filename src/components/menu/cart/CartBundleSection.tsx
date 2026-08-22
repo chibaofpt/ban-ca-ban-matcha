@@ -11,6 +11,12 @@ import type { BundleVoucherRule, BundleVoucherProduct } from "@/src/services/cus
 import type { MenuData, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
 
+export interface BundleAllocationBadge {
+  token: string;
+  label: string;
+  quantity: number;
+}
+
 interface CartBundleSectionProps {
   qualifierItems: CartItem[];
   rewardItems: CartItem[];
@@ -25,6 +31,10 @@ interface CartBundleSectionProps {
   onSwapItem: (oldCartId: string, newData: Partial<CartItem>) => void;
   /** Called when user removes the entire bundle section. */
   onRemoveBundle: () => void;
+  /** Cross-voucher size intersection and allocation quantities for one rendered line. */
+  allowedSizesByCartId?: ReadonlyMap<string, Size[]>;
+  nonEditableCartIds?: ReadonlySet<string>;
+  allocationBadgesByCartId?: ReadonlyMap<string, BundleAllocationBadge[]>;
 }
 
 /** Formats a CartItem configuration as a compact display string. */
@@ -55,6 +65,9 @@ export function CartBundleSection({
   onEditItem,
   onSwapItem,
   onRemoveBundle,
+  allowedSizesByCartId,
+  nonEditableCartIds,
+  allocationBadgesByCartId,
 }: CartBundleSectionProps) {
   const [swapRole, setSwapRole] = useState<"QUALIFIER" | "REWARD" | null>(null);
   const [swapTargetCartId, setSwapTargetCartId] = useState<string | null>(null);
@@ -66,6 +79,8 @@ export function CartBundleSection({
     if (bundleRule.reward_mode === "SAME_CONFIG") return bundleRule.qualifier_products.filter((p) => p.menu_item.is_available);
     return bundleRule.reward_products.filter((p) => p.menu_item.is_available);
   };
+  const allowedSizesForItem = (item: CartItem, role: "QUALIFIER" | "REWARD"): Size[] =>
+    allowedSizesByCartId?.get(item.cartId) ?? getScopes(role).find((scope) => scope.menu_item_id === item.menuItemId)?.allowed_sizes ?? [];
 
   const handleSwapSelect = (scope: BundleVoucherProduct) => {
     if (!swapTargetCartId) return;
@@ -83,6 +98,8 @@ export function CartBundleSection({
     onSwapItem(swapTargetCartId, {
       menuItemId: fullItem.id,
       name: fullItem.name,
+      category: fullItem.category,
+      imageUrl: fullItem.image_url,
       size: initial.size,
       unitPrice: unitPriceVnd,
       clientPriceVnd: unitPriceVnd,
@@ -95,6 +112,14 @@ export function CartBundleSection({
       addonsPrice: initial.addonsCost,
       addonPrices: initial.addonPrices,
       quantityAddonOptions: initial.quantityAddonOptions,
+      selectedPowderId: fullItem.category === "fusion" ? initial.powderId ?? undefined : undefined,
+      selectedBaseLiquidId: fullItem.category === "latte" ? initial.baseLiquidId ?? undefined : undefined,
+      selectedMilkTypeId: fullItem.category === "latte" ? initial.milkTypeId ?? undefined : undefined,
+      productVoucherId: undefined,
+      productVoucherDiscountVnd: undefined,
+      itemVoucherId: undefined,
+      addonVouchers: [],
+      note: "",
     });
     setSwapRole(null);
     setSwapTargetCartId(null);
@@ -105,7 +130,7 @@ export function CartBundleSection({
       ? `Món mua (${bundleRule.buy_quantity})`
       : `Món tặng (${bundleRule.reward_quantity})`;
     const scopes = getScopes(role);
-    const canSwap = scopes.length > 1;
+    const canSwap = scopes.length > 1 && !items.some((item) => (allocationBadgesByCartId?.get(item.cartId)?.length ?? 0) > 1);
 
     return (
       <div className="space-y-2">
@@ -123,8 +148,9 @@ export function CartBundleSection({
         {items.map((item) => (
           <button
             key={item.cartId}
-            onClick={() => onEditItem(item, scopes.flatMap((s) => s.allowed_sizes))}
-            className="w-full flex items-center gap-3 p-3 rounded-xl bg-white/80 border border-amber-100 text-left"
+            onClick={() => onEditItem(item, allowedSizesForItem(item, role))}
+            disabled={nonEditableCartIds?.has(item.cartId)}
+            className="w-full flex items-center gap-3 p-3 rounded-xl bg-white/80 border border-amber-100 text-left disabled:cursor-not-allowed disabled:opacity-60"
           >
             <div className="w-12 h-12 bg-amber-50 rounded-lg relative overflow-hidden shrink-0">
               {item.imageUrl && <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />}
@@ -133,8 +159,17 @@ export function CartBundleSection({
               <p className="font-bold text-sm text-primary truncate">{item.name}</p>
               <p className="text-xs text-primary/50 truncate">{formatItemConfig(item)}</p>
               <p className="text-xs font-bold text-amber-700 mt-0.5">
-                {role === "REWARD" ? "Miễn phí" : `${(item.clientPriceVnd / 1000).toLocaleString("vi-VN")}K`}
+                {role === "REWARD" ? "Ưu đãi áp dụng khi chốt đơn" : `${(item.clientPriceVnd / 1000).toLocaleString("vi-VN")}K`}
               </p>
+              {(allocationBadgesByCartId?.get(item.cartId) ?? []).length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1" aria-label="Phân bổ ưu đãi BUNDLE">
+                  {allocationBadgesByCartId?.get(item.cartId)?.map((badge) => (
+                    <span key={badge.token} className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                      {badge.label}: {badge.quantity} phần
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </button>
         ))}

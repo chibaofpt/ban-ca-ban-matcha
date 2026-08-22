@@ -1,4 +1,5 @@
 import type { SweetnessLevel, Size } from "./menu";
+import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
 
 export type IceOption = "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
 
@@ -57,4 +58,21 @@ export interface CartItem {
   bundleQualifierVoucherToken?: string;
   /** Applied ADDON vouchers. Unlimited, each targeting a different addon_option_id. */
   addonVouchers?: { voucherId: string; addonOptionId: string; discountVnd: number }[];
+}
+
+export type BundleApplicationStatus = "REVALIDATING" | "READY" | "NEEDS_CONFIGURATION" | "CONFLICT" | "UNAVAILABLE" | "VERIFY_FAILED" | "NO_BENEFIT";
+
+export type BundleCreatedRewardEffect =
+  | { kind: "LINE"; client_line_id: string }
+  | { kind: "ADDON"; client_line_id: string; addon_option_id: string; quantity: number };
+
+/** Client-only bookkeeping for one persisted BUNDLE voucher application. */
+export interface CartBundleApplication {
+  voucher_qr_token: string;
+  owner_key: string;
+  qualifier_allocations: BundleSelectionAllocation[];
+  reward_allocations: BundleSelectionAllocation[];
+  created_reward_effects: BundleCreatedRewardEffect[];
+  status?: BundleApplicationStatus;
+  message?: string;
 }

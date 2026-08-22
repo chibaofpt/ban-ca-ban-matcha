@@ -14,8 +14,12 @@ import {
   computePointsAfterExchange,
   getVoucherBenefitText,
   formatVoucherExpiry,
+  canApplyOwnedVoucher,
+  getVoucherAvailabilityMessage,
+  getVoucherRefundConfirmation,
 } from "@/src/lib/utils/voucherModalHelpers";
 import type { MyVoucher, VoucherPackage } from "@/src/services/customerVoucherService";
+import { isVoucherUsable } from "@/src/utils/voucherMatchUtils";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -41,6 +45,12 @@ function makeVoucher(overrides: Partial<MyVoucher> = {}): MyVoucher {
     package: { name: "Giảm 20%", description: null, points_cost: 50 },
     menuItem: null,
     addonOption: null,
+    availability: {
+      status: "USABLE",
+      can_apply: true,
+      can_refund: false,
+      refund_points: 0,
+    },
     ...overrides,
   } as MyVoucher;
 }
@@ -283,5 +293,57 @@ describe("formatVoucherExpiry", () => {
       menuItem: { name: "Kem vanilla", is_available: true },
     });
     expect(getVoucherBenefitText(v)).toBe("Kem vanilla miễn phí");
+  });
+});
+
+describe("availability voucher", () => {
+  it("khóa áp voucher khi backend đánh dấu không còn qualifier", () => {
+    const voucher = makeVoucher({
+      availability: {
+        status: "NO_ACTIVE_QUALIFIER",
+        can_apply: false,
+        can_refund: true,
+        refund_points: 80,
+      },
+    });
+
+    expect(canApplyOwnedVoucher(voucher)).toBe(false);
+    expect(getVoucherAvailabilityMessage(voucher)).toBe(
+      "Các món mua kèm hiện đang ngưng phục vụ.",
+    );
+  });
+
+  it("không đưa voucher backend đánh dấu unusable vào picker", () => {
+    const voucher = makeVoucher({
+      availability: {
+        status: "TARGET_UNAVAILABLE",
+        can_apply: false,
+        can_refund: true,
+        refund_points: 50,
+      },
+    });
+
+    expect(isVoucherUsable(voucher)).toBe(false);
+  });
+
+  it("hiển thị đúng lý do khi quà tặng không còn phục vụ", () => {
+    const voucher = makeVoucher({
+      availability: {
+        status: "NO_ACTIVE_REWARD",
+        can_apply: false,
+        can_refund: false,
+        refund_points: 0,
+      },
+    });
+
+    expect(getVoucherAvailabilityMessage(voucher)).toBe(
+      "Quà tặng hiện không còn phục vụ.",
+    );
+  });
+
+  it("nội dung hoàn điểm ghi rõ không thể hoàn tác và không khôi phục lượt đổi", () => {
+    expect(getVoucherRefundConfirmation(80)).toContain("80 điểm");
+    expect(getVoucherRefundConfirmation(80)).toContain("không thể sử dụng lại");
+    expect(getVoucherRefundConfirmation(80)).toContain("không được khôi phục");
   });
 });

@@ -78,7 +78,7 @@ describe("createStaffOrder", () => {
     expect(apiClient.post).toHaveBeenCalledWith("/api/staff/orders", payload);
   });
 
-  it("forward grouped BUNDLE applications thay vì field legacy", async () => {
+  it("forward nhiều grouped BUNDLE applications theo đúng thứ tự thay vì field legacy", async () => {
     vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: {} } });
     const payload = {
       phone_number: "+84912345678",
@@ -92,11 +92,16 @@ describe("createStaffOrder", () => {
         voucher_qr_token: "bundle-token",
         qualifier_allocations: [{ client_line_id: "line-1", quantity: 1 }],
         reward_allocations: [{ client_line_id: "line-1", quantity: 1 }],
+      }, {
+        voucher_qr_token: "bundle-token-2",
+        qualifier_allocations: [{ client_line_id: "line-1", quantity: 1 }],
+        reward_allocations: [{ client_line_id: "line-1", quantity: 1 }],
       }],
     };
 
     await createStaffOrder(payload);
     expect(apiClient.post).toHaveBeenCalledWith("/api/staff/orders", payload);
+    expect(payload.bundle_applications.map((application) => application.voucher_qr_token)).toEqual(["bundle-token", "bundle-token-2"]);
     expect(payload).not.toHaveProperty("bundle_voucher_qr_token");
   });
 

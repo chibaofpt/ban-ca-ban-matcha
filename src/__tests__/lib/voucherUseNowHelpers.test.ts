@@ -326,8 +326,14 @@ describe("Integration / Regression — Tích hợp findCheapestScope với deriv
     benefit_scaling: "PER_BUNDLE",
     max_applications_per_order: 1,
     max_reward_units_per_order: null,
-    eligible_menu_item_ids: ["item-latte-01", "item-fusion-02"],
-    reward_menu_item_ids: ["item-latte-01", "item-fusion-02"],
+    eligible_products: [
+      { menu_item_id: "item-latte-01", allowed_sizes: ["SMALL", "MEDIUM", "LARGE"] },
+      { menu_item_id: "item-fusion-02", allowed_sizes: ["SMALL", "MEDIUM", "LARGE"] },
+    ],
+    reward_products: [
+      { menu_item_id: "item-latte-01", allowed_sizes: ["SMALL", "MEDIUM", "LARGE"] },
+      { menu_item_id: "item-fusion-02", allowed_sizes: ["SMALL", "MEDIUM", "LARGE"] },
+    ],
     min_order_vnd: null,
   };
 
@@ -346,6 +352,7 @@ describe("Integration / Regression — Tích hợp findCheapestScope với deriv
       {
         client_line_id: "line-cheapest",
         menu_item_id: cheapest!.menu_item_id,
+        size: "SMALL",
         label: "Món tiết kiệm nhất",
         quantity: 2,
         unit_price_vnd: 45_000,
@@ -373,6 +380,7 @@ describe("Integration / Regression — Tích hợp findCheapestScope với deriv
         {
           client_line_id: "line-reward",
           menu_item_id: cheapest!.menu_item_id,
+          size: "SMALL",
           label: "Món quà tặng",
           quantity: 1,
           unit_price_vnd: 45_000,
@@ -395,6 +403,7 @@ describe("Integration / Regression — Tích hợp findCheapestScope với deriv
       {
         client_line_id: "line-1",
         menu_item_id: cheapest!.menu_item_id,
+        size: "SMALL",
         label: "Matcha Latte",
         quantity: 1, // Only 1, buy_quantity requires 2
         unit_price_vnd: 45_000,

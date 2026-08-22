@@ -21,6 +21,10 @@ import {
   mockUserUpdateMany,
   mockVoucherCount,
   mockVoucherCreate,
+  mockMenuItemFindMany,
+  mockPowderFindMany,
+  mockMilkTypeFindMany,
+  mockAddonOptionFindMany,
 } from "@/lib/__tests__/voucher-issuance.fixtures";
 
 describe("Phát hành voucher dùng chung", () => {
@@ -33,6 +37,10 @@ describe("Phát hành voucher dùng chung", () => {
     mockPointsLogCreate.mockResolvedValue({ id: "log-id" });
     mockGrantFindUnique.mockResolvedValue(null);
     mockGrantCreate.mockResolvedValue({ id: "grant-id" });
+    mockMenuItemFindMany.mockResolvedValue([]);
+    mockPowderFindMany.mockResolvedValue([]);
+    mockMilkTypeFindMany.mockResolvedValue([]);
+    mockAddonOptionFindMany.mockResolvedValue([]);
   });
 
   it("POINTS_EXCHANGE trừ điểm có điều kiện, snapshot voucher và ghi points_log", async () => {
@@ -194,6 +202,44 @@ describe("Phát hành voucher dùng chung", () => {
     });
   });
 
+  it("chặn mọi issuance mode khi BUNDLE không còn qualifier live", async () => {
+    mockPackageFindUnique.mockResolvedValue(makePackage({
+      voucher_type: "BUNDLE",
+      bundleRule: {
+        reward_kind: "PRODUCT", reward_mode: "SAME_CONFIG",
+        productScopes: [{ role: "QUALIFIER", menu_item_id: "inactive-menu", default_powder_id: null,
+          default_base_liquid_id: null, sizes: [{ size: "SMALL" }] }],
+        addonRewards: [],
+      },
+    }));
+    await expect(issueVoucherInTransaction(makeTx(), {
+      user_id: USER_ID, package_id: PACKAGE_ID, source: "POINTS_EXCHANGE", now: NOW,
+    })).rejects.toSatisfy((error: unknown) => {
+      expectReason(error, "NO_ACTIVE_QUALIFIER");
+      return true;
+    });
+    expect(mockUserUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("chặn points, free và auto issuance cho PRODUCT target unavailable", async () => {
+    for (const source of ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"] as const) {
+      vi.clearAllMocks();
+      mockPackageFindUnique.mockResolvedValue(makePackage({
+        voucher_type: "PRODUCT", acquisition_mode: source,
+        points_cost: source === "POINTS_EXCHANGE" ? 10 : 0,
+        menu_item_id: "inactive-product", size: "SMALL",
+      }));
+      mockMenuItemFindMany.mockResolvedValue([]);
+      await expect(issueVoucherInTransaction(makeTx(), {
+        user_id: USER_ID, package_id: PACKAGE_ID, source, now: NOW,
+      })).rejects.toSatisfy((error: unknown) => {
+        expectReason(error, "TARGET_UNAVAILABLE");
+        return true;
+      });
+      expect(mockVoucherCreate).not.toHaveBeenCalled();
+    }
+  });
+
   it("cắt expires_at theo thời điểm campaign kết thúc", async () => {
     mockPackageFindUnique.mockResolvedValue(
       makePackage({
@@ -234,5 +280,34 @@ describe("Phát hành voucher dùng chung", () => {
       granted: 0,
       already_granted: 0,
     });
+  });
+
+  it("lazy AUTO_GRANT nhiều package chỉ tải một batch catalog live trong transaction", async () => {
+    const secondPackageId = "550e8400-e29b-41d4-a716-446655440099";
+    mockPackageFindMany.mockResolvedValue([{ id: secondPackageId }, { id: PACKAGE_ID }]);
+    mockPackageFindUnique.mockImplementation(async (args: unknown) => {
+      const packageId = (args as { where: { id: string } }).where.id;
+      return makePackage({ id: packageId, acquisition_mode: "AUTO_GRANT", points_cost: 0 });
+    });
+    mockVoucherCreate
+      .mockResolvedValueOnce({ id: VOUCHER_ID, qr_token: "voucher-token-1" })
+      .mockResolvedValueOnce({ id: "voucher-id-2", qr_token: "voucher-token-2" });
+    const transaction = vi.fn().mockImplementation(
+      async (callback: (tx: VoucherIssuanceTransaction) => Promise<unknown>) => callback(makeTx()),
+    );
+    const db = {
+      voucherPackage: { findMany: (...args: unknown[]) => mockPackageFindMany(...args) },
+      $transaction: transaction,
+    } as unknown as VoucherIssuanceDatabase;
+
+    await expect(ensureAutoGrantedVouchers(db, USER_ID, NOW)).resolves.toEqual({
+      granted: 2,
+      already_granted: 0,
+    });
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(mockMenuItemFindMany).toHaveBeenCalledTimes(1);
+    expect(mockPowderFindMany).toHaveBeenCalledTimes(1);
+    expect(mockMilkTypeFindMany).toHaveBeenCalledTimes(1);
+    expect(mockAddonOptionFindMany).toHaveBeenCalledTimes(1);
   });
 });

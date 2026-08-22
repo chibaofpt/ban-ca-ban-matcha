@@ -1,3 +1,12 @@
+import type { Size } from "@prisma/client";
+import {
+  loadVoucherAvailabilityCatalog,
+  resolveVoucherTargetAvailability,
+  type VoucherAvailabilityCatalog,
+  type VoucherAvailabilityDatabase,
+  type VoucherBundleRuleSource,
+} from "@/lib/voucherAvailability";
+
 type AcquisitionMode = "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
 
 interface VoucherPackageSnapshot {
@@ -13,7 +22,7 @@ interface VoucherPackageSnapshot {
   discount_type: string | null;
   discount_value: number | null;
   menu_item_id: string | null;
-  size: string | null;
+  size: Size | null;
   matcha_powder_id: string | null;
   milk_type_id: string | null;
   included_addon_option_ids: string[];
@@ -27,6 +36,7 @@ interface VoucherPackageSnapshot {
   covered_delivery_fee_vnd: number | null;
   min_order_vnd: number | null;
   ends_at: Date | null;
+  bundleRule?: VoucherBundleRuleSource | null;
 }
 
 interface CreatedVoucher {
@@ -53,6 +63,10 @@ export interface VoucherIssuanceTransaction {
     findUnique: (args: unknown) => Promise<{ voucher_id: string } | null>;
     create: (args: unknown) => Promise<unknown>;
   };
+  menuItem: VoucherAvailabilityDatabase["menuItem"];
+  matchaPowder: VoucherAvailabilityDatabase["matchaPowder"];
+  milkType: VoucherAvailabilityDatabase["milkType"];
+  addonOption: VoucherAvailabilityDatabase["addonOption"];
 }
 
 export interface VoucherIssuanceDatabase {
@@ -70,6 +84,7 @@ export interface IssueVoucherInput {
   package_id: string;
   source: AcquisitionMode;
   now?: Date;
+  performed_by?: string | null;
 }
 
 export type IssuedVoucherResult = CreatedVoucher | { id: string; already_granted: true };
@@ -148,13 +163,34 @@ async function assertIssuanceLimits(
 export async function issueVoucherInTransaction(
   tx: VoucherIssuanceTransaction,
   input: IssueVoucherInput,
+  availabilityCatalog?: VoucherAvailabilityCatalog,
 ): Promise<IssuedVoucherResult> {
   const now = input.now ?? new Date();
   const pkg = await tx.voucherPackage.findUnique({
     where: { id: input.package_id },
-    include: { addonOption: { include: { group: true } } },
+    include: {
+      addonOption: { include: { group: true } },
+      bundleRule: {
+        include: { productScopes: { include: { sizes: true } }, addonRewards: true },
+      },
+    },
   });
   assertPackageAvailable(pkg, input.source, now);
+  if (["ITEM", "PRODUCT", "ADDON", "BUNDLE"].includes(pkg.voucher_type)) {
+    const catalog = availabilityCatalog ?? await loadVoucherAvailabilityCatalog(tx);
+    const resolved = resolveVoucherTargetAvailability({
+      voucher_type: pkg.voucher_type,
+      menu_item_id: pkg.menu_item_id,
+      size: pkg.size,
+      matcha_powder_id: pkg.matcha_powder_id,
+      milk_type_id: pkg.milk_type_id,
+      addon_option_id: pkg.addon_option_id,
+      package: { bundleRule: pkg.bundleRule },
+    }, catalog);
+    if (!resolved.availability.can_apply) {
+      throw new VoucherIssuanceError(resolved.availability.status, "Voucher has no active target");
+    }
+  }
 
   if (input.source !== "POINTS_EXCHANGE") {
     const existingGrant = await tx.voucherGrant.findUnique({
@@ -206,7 +242,7 @@ export async function issueVoucherInTransaction(
         delta: -pkg.points_cost,
         reason: "voucher_purchase",
         voucher_id: voucher.id,
-        performed_by: null,
+        performed_by: input.performed_by ?? null,
         order_id: null,
       },
     });
@@ -256,29 +292,42 @@ export async function ensureAutoGrantedVouchers(
     select: { id: true },
     orderBy: { id: "asc" },
   });
-  let granted = 0;
-  let alreadyGranted = 0;
-  for (const pkg of packages.sort((left, right) => left.id.localeCompare(right.id))) {
+  const sortedPackages = packages.sort((left, right) => left.id.localeCompare(right.id));
+  if (sortedPackages.length === 0) return { granted: 0, already_granted: 0 };
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const result = await issueVoucher(db, {
-        user_id: userId,
-        package_id: pkg.id,
-        source: "AUTO_GRANT",
-        now,
-      });
-      if ("already_granted" in result) alreadyGranted += 1;
-      else granted += 1;
+      return await db.$transaction(async (tx) => {
+        const catalog = await loadVoucherAvailabilityCatalog(tx);
+        let granted = 0;
+        let alreadyGranted = 0;
+        for (const pkg of sortedPackages) {
+          try {
+            const result = await issueVoucherInTransaction(tx, {
+              user_id: userId,
+              package_id: pkg.id,
+              source: "AUTO_GRANT",
+              now,
+            }, catalog);
+            if ("already_granted" in result) alreadyGranted += 1;
+            else granted += 1;
+          } catch (error) {
+            if (
+              error instanceof VoucherIssuanceError &&
+              ["VOUCHER_SOLD_OUT", "VOUCHER_LIMIT_REACHED", "VOUCHER_PACKAGE_EXPIRED", "NOT_FOUND",
+                "TARGET_UNAVAILABLE", "NO_ACTIVE_QUALIFIER", "NO_ACTIVE_REWARD", "NO_ACTIVE_CONFIGURATION"].includes(error.reason)
+            ) {
+              continue;
+            }
+            throw error;
+          }
+        }
+        return { granted, already_granted: alreadyGranted };
+      }, { isolationLevel: "Serializable", maxWait: 5_000, timeout: 10_000 });
     } catch (error) {
-      if (
-        error instanceof VoucherIssuanceError &&
-        ["VOUCHER_SOLD_OUT", "VOUCHER_LIMIT_REACHED", "VOUCHER_PACKAGE_EXPIRED", "NOT_FOUND"].includes(
-          error.reason,
-        )
-      ) {
-        continue;
-      }
+      if ((isPrismaError(error, "P2034") || isPrismaError(error, "P2002")) && attempt < 2) continue;
       throw error;
     }
   }
-  return { granted, already_granted: alreadyGranted };
+  throw new VoucherIssuanceError("CONFLICT", "AUTO_GRANT issuance could not be serialized");
 }

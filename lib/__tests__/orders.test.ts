@@ -606,6 +606,42 @@ describe("processOrderItems", () => {
     );
   });
 
+  it("Fusion dùng cùng fallback powder rẻ nhất và Base Liquid active như menu/BUNDLE", async () => {
+    mockResolveOrderItemPrice.mockReturnValue(72_000);
+    mockBuildPricingContext.mockResolvedValue({
+      ...basePricingCtx,
+      defaultBaseLiquidId: MILK_ID,
+      powderPriceMap: { "powder-expensive": 9000, "powder-cheap": 3000 },
+      availablePowders: [
+        { id: "powder-expensive", name: "Khác A" },
+        { id: "powder-cheap", name: "Khác B" },
+      ],
+      milkPriceMap: { "milk-fallback": 45 },
+      availableBaseLiquids: [{ id: "milk-fallback", is_active: true, display_order: 1 }],
+    });
+    const tx = makeTx({ menuItemResult: {
+      ...fusionMenuItem,
+      default_powder_id: "powder-inactive",
+      default_base_liquid_id: "milk-inactive",
+      fusionAllowedPowders: [],
+      allowedBaseLiquids: [{ base_liquid_id: "milk-fallback", baseLiquid: { is_active: true } }],
+    } });
+    const result = await processOrderItems([{
+      menu_item_id: FUSION_ITEM_ID, quantity: 1, size: "SMALL", sweetness: "QUARTER",
+      addon_option_ids: [], client_price_vnd: 72_000,
+    }], tx as never);
+    expect(result[0]?.selected_powder_id).toBe("powder-cheap");
+    expect(result[0]?.selected_milk_type_id).toBe("milk-fallback");
+    expect(mockResolveOrderItemPrice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        powder_id: "powder-cheap",
+        base_liquid_id: "milk-fallback",
+        default_base_liquid_id: "milk-fallback",
+      }),
+      expect.anything(),
+    );
+  });
+
   it("Fusion: rejects powder not in allowed list â†’ OrderValidationError", async () => {
     const fusionCtx = {
       ...basePricingCtx,

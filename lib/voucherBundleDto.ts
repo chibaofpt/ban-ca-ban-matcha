@@ -1,4 +1,5 @@
 import type { BundleScopeRole, Size } from "@prisma/client";
+import { resolveBundleBaselineProducts } from "@/lib/pricing";
 
 const SIZE_ORDER: Record<Size, number> = { SMALL: 0, MEDIUM: 1, LARGE: 2 };
 
@@ -9,6 +10,8 @@ interface BundleScopeDtoSource {
   default_base_liquid_id: string | null;
   sizes: Array<{ size: Size }>;
   menuItem: { name: string; category: string; is_available: boolean };
+  baseline_prices_vnd?: Partial<Record<Size, number>>;
+  baseline_price_vnd?: number;
 }
 
 interface BundleAddonDtoSource {
@@ -19,8 +22,8 @@ interface BundleAddonDtoSource {
 export interface BundleRuleDtoSource {
   buy_quantity: number;
   reward_quantity: number;
-  reward_kind: string;
-  reward_mode: string;
+  reward_kind: "PRODUCT" | "ADDON";
+  reward_mode: "SAME_CONFIG" | "FIXED_CONFIG" | "ALLOWED_SCOPE";
   benefit_scaling: string;
   max_applications_order: number;
   max_reward_units_order: number | null;
@@ -39,7 +42,60 @@ function mapProduct(scope: BundleScopeDtoSource) {
     default_powder_id: scope.default_powder_id,
     default_base_liquid_id: scope.default_base_liquid_id,
     allowed_sizes: scope.sizes.map((row) => row.size).sort((a, b) => SIZE_ORDER[a] - SIZE_ORDER[b]),
+    ...(scope.baseline_prices_vnd ? { baseline_prices_vnd: scope.baseline_prices_vnd } : {}),
+    ...(scope.baseline_price_vnd !== undefined ? { baseline_price_vnd: scope.baseline_price_vnd } : {}),
   };
+}
+
+type VoucherWithBundleRule = {
+  qr_token: string;
+  package: { bundleRule?: BundleRuleDtoSource | null };
+};
+
+/** Resolve dynamic baseline prices once for every non-SAME_CONFIG BUNDLE reward scope. */
+export async function attachBundleRewardBaselines<T extends VoucherWithBundleRule>(
+  client: Parameters<typeof resolveBundleBaselineProducts>[0],
+  vouchers: T[],
+): Promise<T[]> {
+  const entries = vouchers.flatMap((voucher) => {
+    const rule = voucher.package.bundleRule;
+    if (!rule || rule.reward_mode === "SAME_CONFIG") return [];
+    return rule.productScopes.flatMap((scope, index) => scope.role === "REWARD" ? [{
+      key: `${voucher.qr_token}:${index}`,
+      scope,
+      input: {
+        menu_item_id: scope.menu_item_id,
+        allowed_sizes: scope.sizes.map((size) => size.size),
+        default_powder_id: scope.default_powder_id,
+        default_base_liquid_id: scope.default_base_liquid_id,
+      },
+    }] : []);
+  });
+  if (entries.length === 0) return vouchers;
+  const resolved = await resolveBundleBaselineProducts(client, entries.map((entry) => entry.input));
+  const baselineByKey = new Map(entries.map((entry, index) => [entry.key, resolved[index]! ]));
+  return vouchers.map((voucher) => {
+    const rule = voucher.package.bundleRule;
+    if (!rule || rule.reward_mode === "SAME_CONFIG") return voucher;
+    return {
+      ...voucher,
+      package: {
+        ...voucher.package,
+        bundleRule: {
+          ...rule,
+          productScopes: rule.productScopes.map((scope, index) => {
+            if (scope.role !== "REWARD") return scope;
+            const baseline = baselineByKey.get(`${voucher.qr_token}:${index}`);
+            return baseline ? {
+              ...scope,
+              baseline_prices_vnd: baseline.baseline_prices_vnd,
+              ...(baseline.baseline_price_vnd === undefined ? {} : { baseline_price_vnd: baseline.baseline_price_vnd }),
+            } : scope;
+          }),
+        },
+      },
+    };
+  });
 }
 
 /** Convert the internal normalized BUNDLE rule into its grouped public API contract. */

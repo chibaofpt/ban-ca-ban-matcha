@@ -16,6 +16,10 @@ import {
   type CustomPowderGrams,
   type Size,
 } from "@/src/utils/pricing";
+import {
+  resolveDefaultBaseLiquidId,
+  resolveFusionDefaultPowderId,
+} from "@/src/utils/menuConfiguration";
 
 /**
  * Minimal interface satisfied by both PrismaClient and the transaction client
@@ -47,6 +51,8 @@ export interface PricingContext {
   milkPriceMap: Record<string, number>;
   /** List of all currently available powders (used for Fusion fallback logic) */
   availablePowders: { id: string; name: string }[];
+  /** Active Base Liquids used by the shared deterministic default resolver. */
+  availableBaseLiquids?: { id: string; is_active: boolean; display_order: number }[];
   referenceLatteItemMap?: Record<string, string | null>;
   referenceLatteBasePriceMap?: Record<string, Partial<Record<Size, number>>>;
 }
@@ -119,6 +125,9 @@ export async function buildPricingContext(
     defaultBaseLiquidId: defaultMilk?.id ?? null,
     milkPriceMap,
     availablePowders: allPowders.filter((p) => p.is_available).map((p) => ({ id: p.id, name: p.name })),
+    availableBaseLiquids: allMilkTypes.filter((liquid) => liquid.is_active).map((liquid) => ({
+      id: liquid.id, is_active: true, display_order: liquid.display_order,
+    })),
     referenceLatteItemMap: Object.fromEntries(allPowders.map((powder) =>
       [powder.id, powder.reference_latte_item_id])),
     referenceLatteBasePriceMap,
@@ -158,7 +167,7 @@ export async function resolveBundleBaselineProducts(
   if (products.length === 0) return [];
   const menus = await client.menuItem.findMany({
     where: { id: { in: [...new Set(products.map((product) => product.menu_item_id))] } },
-    include: { sizes: true },
+    include: { sizes: true, allowedBaseLiquids: { select: { base_liquid_id: true } } },
   });
   const menuMap = new Map(menus.map((menu) => [menu.id, menu]));
   const powderIds = products.flatMap((product) => product.default_powder_id ? [product.default_powder_id] : []);
@@ -180,12 +189,34 @@ export async function resolveBundleBaselineProducts(
     if (!product.default_powder_id || !product.default_base_liquid_id) {
       throw new Error("BUNDLE drink baseline configuration is incomplete");
     }
+    const effectiveMenuPowderId = menu.category === "fusion"
+      ? resolveFusionDefaultPowderId(menu.default_powder_id, ctx.availablePowders.map((powder) => ({
+          ...powder,
+          price_per_gram: ctx.powderPriceMap[powder.id] ?? Number.MAX_SAFE_INTEGER,
+          is_available: true,
+        })))
+      : menu.matcha_powder_id;
+    const configuredBaseLiquidId = menu.category === "latte"
+      ? ctx.defaultBaseLiquidId ?? null
+      : menu.default_base_liquid_id;
+    const compatibleBaseLiquidIds = [
+      ...(configuredBaseLiquidId ? [configuredBaseLiquidId] : []),
+      ...menu.allowedBaseLiquids.map((row) => row.base_liquid_id),
+    ];
+    const effectiveMenuBaseLiquidId = resolveDefaultBaseLiquidId(
+      configuredBaseLiquidId,
+      compatibleBaseLiquidIds,
+      ctx.availableBaseLiquids ?? [],
+    );
+    if (!effectiveMenuPowderId || !effectiveMenuBaseLiquidId) {
+      throw new Error("BUNDLE baseline menu default is unavailable");
+    }
     const baseline_prices_vnd: Partial<Record<Size, number>> = {};
     for (const size of product.allowed_sizes) {
       const sizeRow = menu.sizes.find((row) => row.size === size && row.base_price_vnd !== null);
       if (!sizeRow?.base_price_vnd) throw new Error("BUNDLE baseline size is unavailable");
-      const premiumLatte = menu.category === "fusion" && menu.default_powder_id
-        ? premiumLatteFromContext(product.default_powder_id, menu.default_powder_id, size, ctx)
+      const premiumLatte = menu.category === "fusion"
+        ? premiumLatteFromContext(product.default_powder_id, effectiveMenuPowderId, size, ctx)
         : 0;
       baseline_prices_vnd[size] = resolveOrderItemPrice({
         category: menu.category as "latte" | "fusion",
@@ -194,7 +225,7 @@ export async function resolveBundleBaselineProducts(
         custom_powder_grams: menu.custom_powder_grams as CustomPowderGrams | null,
         powder_id: product.default_powder_id,
         base_liquid_id: product.default_base_liquid_id,
-        default_base_liquid_id: menu.category === "latte" ? ctx.defaultBaseLiquidId : menu.default_base_liquid_id,
+        default_base_liquid_id: effectiveMenuBaseLiquidId,
         base_liquid_ml: sizeRow.base_liquid_ml,
         premium_latte: premiumLatte,
       }, ctx);

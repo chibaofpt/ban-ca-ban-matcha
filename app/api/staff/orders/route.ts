@@ -586,13 +586,14 @@ export async function POST(req: NextRequest) {
     );
   } catch (err) {
     if (err instanceof BundlePromotionError) {
+      const voucherMissing = err.reason === "BUNDLE_VOUCHER_NOT_FOUND";
       return NextResponse.json(
         {
           error: err.message,
-          code: "BUNDLE_NOT_ELIGIBLE",
+          code: voucherMissing ? "NOT_FOUND" : "BUSINESS_RULE_VIOLATION",
           details: { reason: err.reason },
         },
-        { status: err.reason === "BUNDLE_VOUCHER_NOT_FOUND" ? 404 : 422 },
+        { status: voucherMissing ? 404 : 422 },
       );
     }
     if (err instanceof StaffPaymentBusinessError) {

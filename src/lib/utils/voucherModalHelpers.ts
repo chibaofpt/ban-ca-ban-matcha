@@ -55,6 +55,31 @@ export function canInteract(voucher: MyVoucher): boolean {
   return voucher.status === "ACTIVE";
 }
 
+/** Return whether the owned voucher can enter its apply flow according to live backend data. */
+export function canApplyOwnedVoucher(voucher: MyVoucher): boolean {
+  return voucher.status === "ACTIVE" && voucher.availability.can_apply;
+}
+
+/** Map server-owned availability state to a concise Vietnamese explanation. */
+export function getVoucherAvailabilityMessage(voucher: MyVoucher): string | null {
+  if (voucher.availability.status === "USABLE") return null;
+  switch (voucher.availability.status) {
+    case "TARGET_UNAVAILABLE":
+      return "Món áp dụng voucher hiện đang ngưng phục vụ.";
+    case "NO_ACTIVE_QUALIFIER":
+      return "Các món mua kèm hiện đang ngưng phục vụ.";
+    case "NO_ACTIVE_REWARD":
+      return "Quà tặng hiện không còn phục vụ.";
+    case "NO_ACTIVE_CONFIGURATION":
+      return "Món hiện không còn cấu hình bột hoặc sữa phù hợp.";
+  }
+}
+
+/** Build the canonical irreversible refund confirmation copy. */
+export function getVoucherRefundConfirmation(points: number): string {
+  return `Bạn sẽ nhận lại ${points.toLocaleString("vi-VN")} điểm. Voucher này sẽ bị huỷ và không thể sử dụng lại. Lượt đổi của gói này không được khôi phục.`;
+}
+
 // ── Section 2: Exchange Packages ─────────────────────────────────────────────
 
 /**

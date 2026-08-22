@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import type { MenuData, MenuItem, MenuItemSize, MilkTypeOption, AddonGroup, AddonOption, MenuItemPowder } from "@/src/lib/types/menu";
 import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
+import {
+  resolveDefaultBaseLiquidId,
+  resolveFusionDefaultPowderId,
+} from "@/src/utils/menuConfiguration";
 
 /** GET /api/menu — public, no auth required. */
 export async function GET(): Promise<NextResponse> {
@@ -33,7 +37,7 @@ async function fetchMenuData(): Promise<MenuData> {
               },
             },
             matchaPowder: {
-              select: { id: true, name: true, type: true },
+              select: { id: true, name: true, type: true, is_available: true },
             },
             allowedBaseLiquids: {
               include: {
@@ -58,7 +62,7 @@ async function fetchMenuData(): Promise<MenuData> {
         prisma.defaultSizeConfig.findMany(),
         prisma.matchaPowder.findMany({
           where: { is_available: true },
-          select: { id: true, name: true, type: true },
+          select: { id: true, name: true, type: true, price_per_gram: true, is_available: true },
         }),
       ]);
 
@@ -96,23 +100,6 @@ async function fetchMenuData(): Promise<MenuData> {
     const globalDefaultBaseLiquidId =
       globalMilkTypes.find((liquid) => liquid.is_default)?.id ?? null;
 
-    // Resolve Fusion default powder fallback order: Meyumi → Hana → MH-3 → cheapest
-    const FALLBACK_NAMES = ["Meyumi", "Hana", "MH-3"];
-    function resolveFusionDefaultPowderId(
-      defaultPowderId: string | null
-    ): string | null {
-      // Check if explicitly set default powder is still available
-      if (defaultPowderId && powders.some(p => p.id === defaultPowderId)) {
-        return defaultPowderId;
-      }
-      for (const name of FALLBACK_NAMES) {
-        const found = powders.find((p) => p.name === name);
-        if (found) return found.id;
-      }
-      // cheapest available — powders already filtered is_available
-      return powders.length > 0 ? powders[0].id : null;
-    }
-
     // ── Build response ───────────────────────────────────────────────────────
     const latte: MenuItem[] = [];
     const fusion: MenuItem[] = [];
@@ -149,17 +136,27 @@ async function fetchMenuData(): Promise<MenuData> {
         powder: null,
         resolved_default_powder_id: null,
         allowed_powder_ids: [],
-        default_base_liquid_id:
-          item.category === "latte"
-            ? globalDefaultBaseLiquidId
-            : item.default_base_liquid_id,
+        default_base_liquid_id: null,
         allowed_base_liquid_ids: (item.allowedBaseLiquids ?? [])
           .filter((entry) => entry.baseLiquid.is_active)
           .map((entry) => entry.base_liquid_id),
         sizes,
       };
+      const configuredBaseLiquidId = item.category === "latte"
+        ? globalDefaultBaseLiquidId
+        : item.default_base_liquid_id;
+      const compatibleBaseLiquidIds = [
+        ...(configuredBaseLiquidId ? [configuredBaseLiquidId] : []),
+        ...(menuItem.allowed_base_liquid_ids ?? []),
+      ];
+      menuItem.default_base_liquid_id = resolveDefaultBaseLiquidId(
+        configuredBaseLiquidId,
+        compatibleBaseLiquidIds,
+        milkTypes,
+      );
 
       if (item.category === "latte") {
+        if (!item.matchaPowder?.is_available) continue;
         menuItem.powder = item.matchaPowder
           ? ({
               id: item.matchaPowder.id,
@@ -170,7 +167,8 @@ async function fetchMenuData(): Promise<MenuData> {
         latte.push(menuItem);
       } else if (item.category === "fusion") {
         menuItem.resolved_default_powder_id = resolveFusionDefaultPowderId(
-          item.default_powder_id
+          item.default_powder_id,
+          powders,
         );
         menuItem.allowed_powder_ids = item.fusionAllowedPowders
           .filter((fp) => fp.matchaPowder.is_available)

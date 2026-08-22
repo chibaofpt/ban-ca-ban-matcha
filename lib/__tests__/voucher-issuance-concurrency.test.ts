@@ -16,6 +16,10 @@ import {
   mockGrantFindUnique,
   mockPackageFindMany,
   mockPackageFindUnique,
+  mockMenuItemFindMany,
+  mockPowderFindMany,
+  mockMilkTypeFindMany,
+  mockAddonOptionFindMany,
   mockVoucherCount,
   mockVoucherCreate,
 } from "@/lib/__tests__/voucher-issuance.fixtures";
@@ -30,6 +34,10 @@ describe("Serializable transaction và lazy AUTO_GRANT", () => {
     mockVoucherCreate.mockResolvedValue({ id: VOUCHER_ID, qr_token: "voucher-token" });
     mockGrantFindUnique.mockResolvedValue(null);
     mockGrantCreate.mockResolvedValue({ id: "grant-id" });
+    mockMenuItemFindMany.mockResolvedValue([]);
+    mockPowderFindMany.mockResolvedValue([]);
+    mockMilkTypeFindMany.mockResolvedValue([]);
+    mockAddonOptionFindMany.mockResolvedValue([]);
   });
 
   it("retry tối đa khi Prisma trả P2034 và dùng isolation Serializable", async () => {
@@ -68,7 +76,7 @@ describe("Serializable transaction và lazy AUTO_GRANT", () => {
     const result = await ensureAutoGrantedVouchers(db, USER_ID, NOW);
 
     expect(result).toEqual({ granted: 0, already_granted: 2 });
-    expect(transaction).toHaveBeenCalledTimes(2);
+    expect(transaction).toHaveBeenCalledTimes(1);
     expect(mockPackageFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ acquisition_mode: "AUTO_GRANT", is_active: true }),

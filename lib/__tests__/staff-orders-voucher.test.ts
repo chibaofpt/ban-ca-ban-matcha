@@ -210,7 +210,7 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
       defaultMilkPricePerMl: 40,
       defaultBaseLiquidId: "550e8400-e29b-41d4-a716-446655440099",
       milkPriceMap: { "550e8400-e29b-41d4-a716-446655440099": 40 },
-      availablePowders: [],
+      availablePowders: [{ id: POWDER_ID, name: "Bột test" }],
     });
     vi.mocked(resolveOrderItemPrice).mockReturnValue(69000);
     vi.mocked(resolveOrderItemPremiumLatte).mockResolvedValue(0);

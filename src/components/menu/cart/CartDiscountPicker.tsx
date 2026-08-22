@@ -11,7 +11,7 @@ import { CartDiscountPickerFooter } from "@/src/components/menu/cart/CartDiscoun
 import { toast } from "sonner";
 import { CartBundleVoucherPanel } from "@/src/components/menu/cart/CartBundleVoucherPanel";
 import type { CartItem } from "@/src/lib/types/cart";
-import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
+import type { BundleCreatedRewardEffect, CartBundleApplication } from "@/src/lib/types/cart";
 
 interface CartDiscountPickerProps {
   discountVouchers: MyVoucher[];
@@ -30,12 +30,10 @@ interface CartDiscountPickerProps {
   bundleVouchers: MyVoucher[];
   cart: CartItem[];
   addonLabels: ReadonlyMap<string, string>;
-  selectedBundleToken: string | null;
-  bundleAllocations: BundleSelectionAllocation[];
-  onBundleVoucherChange: (token: string | null) => void;
-  onBundleAllocationsChange: (allocations: BundleSelectionAllocation[]) => void;
-  onAddExtrasReward: (menuItemId: string, voucherToken: string) => string | null;
-  onRemoveTransientRewards: (voucherToken: string) => void;
+  bundleApplications: CartBundleApplication[];
+  onBundleApplicationChange: (voucher: MyVoucher, allocations: import("@/src/lib/utils/bundleVoucher").BundleSelectionAllocation[], effect?: BundleCreatedRewardEffect) => void;
+  onRequestRemoveBundle: (voucherToken: string) => void;
+  onAddExtrasReward: (menuItemId: string, voucherToken: string) => { clientLineId: string; effect: BundleCreatedRewardEffect } | null;
 }
 
 export const CartDiscountPicker = ({
@@ -55,12 +53,10 @@ export const CartDiscountPicker = ({
   bundleVouchers,
   cart,
   addonLabels,
-  selectedBundleToken,
-  bundleAllocations,
-  onBundleVoucherChange,
-  onBundleAllocationsChange,
+  bundleApplications,
+  onBundleApplicationChange,
+  onRequestRemoveBundle,
   onAddExtrasReward,
-  onRemoveTransientRewards,
 }: CartDiscountPickerProps) => {
   const { acquire, isPending } = useVoucherAcquisition();
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
@@ -74,8 +70,6 @@ export const CartDiscountPicker = ({
       const newVoucher = await acquire(pkg);
       await onRefreshVouchers();
       if (newVoucher.voucher_type === "BUNDLE") {
-        onBundleVoucherChange(newVoucher.qr_token);
-        onBundleAllocationsChange([]);
         requestAnimationFrame(() => {
           const panel = document.getElementById("cart-bundle-voucher-panel");
           panel?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -155,12 +149,10 @@ export const CartDiscountPicker = ({
           vouchers={bundleVouchers}
           cart={cart}
           addonLabels={addonLabels}
-          selectedVoucherToken={selectedBundleToken}
-          allocations={bundleAllocations}
-          onVoucherChange={onBundleVoucherChange}
-          onAllocationsChange={onBundleAllocationsChange}
+          bundleApplications={bundleApplications}
+          onBundleApplicationChange={onBundleApplicationChange}
+          onRequestRemoveBundle={onRequestRemoveBundle}
           onAddExtrasReward={onAddExtrasReward}
-          onRemoveTransientRewards={onRemoveTransientRewards}
         />
         
         {/* Section 1: Ưu đãi của bạn */}

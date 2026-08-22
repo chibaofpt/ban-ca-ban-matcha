@@ -11,7 +11,9 @@ import {
   canApplyFreeship,
 } from "@/src/lib/utils/voucherUseNowHelpers";
 import {
+  canApplyOwnedVoucher,
   getTicketHighlightText,
+  getVoucherAvailabilityMessage,
   getVoucherBenefitText,
   formatVoucherExpiry,
   VOUCHER_TYPE_CONFIG,
@@ -35,6 +37,8 @@ interface VoucherDetailSheetProps {
   onBack: () => void;
   onUseNowSuccess: () => void;
   onOpenBundleSetup: (voucher: MyVoucher) => void;
+  onRequestRefund: (voucher: MyVoucher) => void;
+  isRefunding: boolean;
 }
 
 export const VoucherDetailSheet = ({
@@ -49,6 +53,8 @@ export const VoucherDetailSheet = ({
   onBack,
   onUseNowSuccess,
   onOpenBundleSetup,
+  onRequestRefund,
+  isRefunding,
 }: VoucherDetailSheetProps) => {
   const router = useRouter();
   const { addToCart, loading } = useAddVoucherToCart();
@@ -56,16 +62,16 @@ export const VoucherDetailSheet = ({
   const [showAddonPicker, setShowAddonPicker] = useState(false);
 
   // Checks based on voucher type
-  let canApply = true;
+  let canApply = canApplyOwnedVoucher(voucher);
   let deficit = 0;
-  let disabledReason = "";
+  let disabledReason = getVoucherAvailabilityMessage(voucher) ?? "";
 
-  if (voucher.voucher_type === "DISCOUNT") {
+  if (canApply && voucher.voucher_type === "DISCOUNT") {
     const res = canApplyDiscount(voucher, subtotalVnd);
     canApply = res.canApply;
     deficit = res.deficitVnd;
     if (!canApply) disabledReason = `Thiếu ${(deficit / 1000).toLocaleString("vi-VN")}K để sử dụng`;
-  } else if (voucher.voucher_type === "FREESHIP") {
+  } else if (canApply && voucher.voucher_type === "FREESHIP") {
     const res = canApplyFreeship(orderType, totalAfterDiscountVnd ?? subtotalVnd, voucher.min_order_vnd, shippingFee);
     canApply = true;
     deficit = res.deficitVnd;
@@ -80,6 +86,7 @@ export const VoucherDetailSheet = ({
   const highlight = getTicketHighlightText(vType, voucher.discount_type, voucher.discount_value);
 
   const handleUseNow = async () => {
+    if (!canApply) return;
     if (vType === "PRODUCT" || vType === "ITEM") {
       const res = await addToCart(voucher);
       if (res.ok) {
@@ -171,7 +178,8 @@ export const VoucherDetailSheet = ({
       <div className="flex items-center gap-3 px-5 py-4 border-b border-border/40 shrink-0 bg-white">
         <button
           onClick={onBack}
-          className="w-11 h-11 rounded-full bg-primary/5 flex items-center justify-center hover:bg-primary/10 transition-colors"
+          aria-label="Quay lại danh sách voucher"
+          className="w-11 h-11 rounded-full bg-primary/5 flex items-center justify-center hover:bg-primary/10 transition-colors focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ArrowLeft className="w-5 h-5 text-primary" />
         </button>
@@ -221,17 +229,29 @@ export const VoucherDetailSheet = ({
         {!canApply && disabledReason && (
           <p className="text-center text-xs text-rose-500 mb-3">{disabledReason}</p>
         )}
-        <button
-          onClick={handleUseNow}
-          disabled={!canApply || loading || voucher.status !== "ACTIVE"}
-          className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {loading ? (
-            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          ) : (
-            vType === "BUNDLE" ? "Chọn món cho ưu đãi" : "Dùng ngay"
-          )}
-        </button>
+        <div className="grid gap-2">
+          <button
+            onClick={handleUseNow}
+            disabled={!canApply || loading || isRefunding || voucher.status !== "ACTIVE"}
+            className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {loading ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              vType === "BUNDLE" ? "Chọn món cho ưu đãi" : "Dùng ngay"
+            )}
+          </button>
+          {voucher.availability.can_refund ? (
+            <button
+              type="button"
+              onClick={() => onRequestRefund(voucher)}
+              disabled={isRefunding}
+              className="min-h-11 w-full rounded-xl border border-destructive/40 bg-background px-4 font-bold text-destructive transition-colors hover:bg-destructive/5 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Hoàn {voucher.availability.refund_points.toLocaleString("vi-VN")} điểm
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <AnimatePresence>

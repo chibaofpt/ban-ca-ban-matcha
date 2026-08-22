@@ -13,6 +13,7 @@ import type { CartItem } from "@/src/lib/types/cart";
 /** Returns true if a voucher is ACTIVE and not expired at the given timestamp. */
 export function isVoucherUsable(voucher: MyVoucher, now: Date = new Date()): boolean {
   if (voucher.status !== "ACTIVE") return false;
+  if (!voucher.availability.can_apply) return false;
   if (voucher.expires_at !== null && new Date(voucher.expires_at) <= now) return false;
   return true;
 }

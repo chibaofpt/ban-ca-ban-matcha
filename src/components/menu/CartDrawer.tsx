@@ -1,22 +1,23 @@
 "use client";
 
 import React, { useState, useCallback, useEffect, useMemo, useRef, Profiler } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { onRenderCallback } from "@/src/utils/dev/renderProfiler";
 import { motion, AnimatePresence, type PanInfo } from "framer-motion";
 import { Drawer } from "vaul";
 import { X, AlertTriangle, RefreshCcw, ArrowLeft } from "lucide-react";
-import { useCartStore, useCartTotalPrice } from "@/src/lib/store/cartStore";
+import { retainBundleRewardEffects, useCartStore } from "@/src/lib/store/cartStore";
 import { useCheckout } from "@/src/hooks/useCheckout";
 import { PriceChangedError, BundleNotEligibleError, type PriceConflict } from "@/src/services/orderService";
 import { toast } from "sonner";
-import { useIsLoggedIn } from "@/src/lib/store/authStore";
+import { useCurrentUser, useIsLoggedIn } from "@/src/lib/store/authStore";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { useStoreStatusStore } from "@/src/lib/store/storeStore";
 import { useEditModalStore } from "@/src/lib/store/editModalStore";
 import { cn } from "@/src/utils/cn";
 import { useRouter } from "next/navigation";
 import { listMyVouchers, listActiveVoucherPackages, type MyVoucher, type VoucherPackage } from "@/src/services/customerVoucherService";
-import { filterUsableVouchers, buildAddonVoucherMap, buildProductVoucherMap, estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
+import { filterUsableVouchers, buildAddonVoucherMap, buildProductVoucherMap } from "@/src/utils/voucherMatchUtils";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { DeliverySection } from "@/src/components/delivery/DeliverySection";
 import type { Address } from "@/src/lib/types/address";
@@ -24,20 +25,28 @@ import ProductModal from "@/src/components/shared/ProductModal";
 import CartItemCard from "./cart/CartItemCard";
 import { CartItemVoucherPicker } from "./cart/CartItemVoucherPicker";
 import { CartDiscountPicker } from "./cart/CartDiscountPicker";
-import { CartBundleSection } from "./cart/CartBundleSection";
+import { CartBundleSection, type BundleAllocationBadge } from "./cart/CartBundleSection";
 import { CartFooter } from "./cart/CartFooter";
 import { getBundleVoucherSummary } from "./cart/CartBundleVoucherPanel";
 import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
 import type { MenuData, MenuItem } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
-import { deriveCheckoutRewards } from "@/src/utils/customerUx";
+import { projectCartTotals } from "@/src/lib/utils/bundleVoucherProjection";
 import { buildExtrasCartItem } from "@/src/utils/cartHelpers";
 import {
   deriveBundleSelectionState,
+  deriveBundleAllocationConstraints,
   buildBundleApplication,
   summarizeBundleCart,
-  type BundleSelectionAllocation,
 } from "@/src/lib/utils/bundleVoucher";
+import type { BundleCreatedRewardEffect } from "@/src/lib/types/cart";
+import { getVoucherAvailabilityMessage } from "@/src/lib/utils/voucherModalHelpers";
+import {
+  findUnavailableBundleTokens,
+  getBundleCheckoutAvailabilityMessage,
+  getReadyBundleApplications,
+  hasBlockingBundleApplication,
+} from "@/src/lib/utils/bundleCheckoutError";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -58,6 +67,7 @@ interface EditModalOverlayProps {
 
 function EditModalOverlay({ menuItems, menuData, allVouchers }: EditModalOverlayProps) {
   const editingCartItem = useEditModalStore(s => s.editingCartItem);
+  const editingAllowedSizes = useEditModalStore(s => s.editingAllowedSizes);
   const closeEdit = useEditModalStore(s => s.closeEdit);
 
   if (!editingCartItem) return null;
@@ -74,6 +84,7 @@ function EditModalOverlay({ menuItems, menuData, allVouchers }: EditModalOverlay
       editingItem={editingCartItem}
       onClose={closeEdit}
       availableVouchers={allVouchers}
+      allowedSizes={editingAllowedSizes}
       nested={true}
     />
   );
@@ -85,6 +96,7 @@ interface CartDrawerProps {
 }
 
 const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
+  const queryClient = useQueryClient();
   const items = useCartStore((s) => s.items);
   const addItem = useCartStore((s) => s.addItem);
   const removeItem = useCartStore((s) => s.removeItem);
@@ -97,10 +109,18 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   const removeProductVoucher = useCartStore((s) => s.removeProductVoucher);
   const applyAddonVoucher = useCartStore((s) => s.applyAddonVoucher);
   const removeAddonVoucher = useCartStore((s) => s.removeAddonVoucher);
+  const bundleApplications = useCartStore((s) => s.bundleApplications);
+  const commitBundleApplication = useCartStore((s) => s.commitBundleApplication);
+  const removeBundleApplication = useCartStore((s) => s.removeBundleApplication);
+  const clearBundleApplications = useCartStore((s) => s.clearBundleApplications);
+  const reconcileBundleApplications = useCartStore((s) => s.reconcileBundleApplications);
+  const setBundleApplicationStatus = useCartStore((s) => s.setBundleApplicationStatus);
+  const markBundleApplicationsVerifyFailed = useCartStore((s) => s.markBundleApplicationsVerifyFailed);
+  const markBundleApplicationsUnavailable = useCartStore((s) => s.markBundleApplicationsUnavailable);
 
 
-  const subtotalPrice = useCartTotalPrice();
   const isLoggedIn = useIsLoggedIn();
+  const currentUser = useCurrentUser();
   const openLogin = useAuthModalStore((s) => s.openLogin);
   const router = useRouter();
 
@@ -119,14 +139,12 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   /** IDs of selected DISCOUNT vouchers. Server rule: max 1 PERCENT + unlimited FIXED. */
   const selectedVoucherIds = useCartStore((s) => s.selectedVoucherIds);
   const setSelectedVoucherIds = useCartStore((s) => s.setSelectedVoucherIds);
-  const [selectedBundleToken, setSelectedBundleToken] = useState<string | null>(null);
-  const [bundleAllocations, setBundleAllocations] = useState<BundleSelectionAllocation[]>([]);
 
   // ── UI overlay state ──
     const [isDiscountPickerOpen, setIsDiscountPickerOpen] = useState(false);
   const [activeItemForVoucher, setActiveItemForVoucher] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
-  void showClearConfirm;
+  const [bundleTokenToRemove, setBundleTokenToRemove] = useState<string | null>(null);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [isAddressPickerOpen, setIsAddressPickerOpen] = useState(false);
   const openEdit = useEditModalStore((s) => s.openEdit);
@@ -162,19 +180,67 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
       voucher.status === "ACTIVE" &&
       voucher.package.bundleRule,
   );
-  const selectedBundleVoucher = bundleVouchers.find(
-    (voucher) => voucher.qr_token === selectedBundleToken,
-  );
-  const selectedBundleSummary = selectedBundleVoucher
-    ? getBundleVoucherSummary(selectedBundleVoucher)
-    : null;
-  const bundleSelectionState = selectedBundleSummary
-    ? deriveBundleSelectionState({
-        voucher: selectedBundleSummary,
-        cart: summarizeBundleCart(items),
-        allocations: bundleAllocations,
-      })
-    : null;
+  const bundleCartSummary = useMemo(() => summarizeBundleCart(items), [items]);
+  const bundleSelectionStates = useMemo(() => bundleApplications.map((application) => {
+    const voucher = bundleVouchers.find((candidate) => candidate.qr_token === application.voucher_qr_token);
+    const summary = voucher ? getBundleVoucherSummary(voucher) : null;
+    return {
+      application,
+      voucher,
+      summary,
+      state: summary
+        ? deriveBundleSelectionState({ voucher: summary, cart: bundleCartSummary, allocations: application.reward_allocations })
+        : { status: "INELIGIBLE" as const, message: "Voucher BUNDLE không còn khả dụng" },
+    };
+  }), [bundleApplications, bundleCartSummary, bundleVouchers]);
+  const bundleConstraints = useMemo(() => deriveBundleAllocationConstraints({
+    cart: bundleCartSummary,
+    applications: bundleSelectionStates.flatMap((bundle) => bundle.summary ? [{
+      voucher_qr_token: bundle.application.voucher_qr_token,
+      voucher: bundle.summary,
+      qualifier_allocations: bundle.application.qualifier_allocations,
+      reward_allocations: bundle.application.reward_allocations,
+    }] : []),
+  }), [bundleCartSummary, bundleSelectionStates]);
+  const bundleAllocationBadgesByCartId = useMemo(() => {
+    const grouped = new Map<string, Map<string, BundleAllocationBadge>>();
+    for (const bundle of bundleSelectionStates) {
+      if (!bundle.voucher?.package.bundleRule) continue;
+      for (const allocation of [...bundle.application.qualifier_allocations, ...bundle.application.reward_allocations]) {
+        const badges = grouped.get(allocation.client_line_id) ?? new Map<string, BundleAllocationBadge>();
+        const current = badges.get(bundle.application.voucher_qr_token);
+        badges.set(bundle.application.voucher_qr_token, {
+          token: bundle.application.voucher_qr_token,
+          label: bundle.voucher.package.name,
+          quantity: (current?.quantity ?? 0) + allocation.quantity,
+        });
+        grouped.set(allocation.client_line_id, badges);
+      }
+    }
+    return new Map([...grouped.entries()].map(([lineId, badges]) => [lineId, [...badges.values()]]));
+  }, [bundleSelectionStates]);
+  const bundleSectionModels = useMemo(() => {
+    const rendered = new Set<string>();
+    return bundleSelectionStates.flatMap((bundle) => {
+      if (!bundle.voucher?.package.bundleRule) return [];
+      const takeUnrendered = (allocations: typeof bundle.application.reward_allocations) => items.filter((item) => {
+        const isAllocated = allocations.some((allocation) => !allocation.addon_option_id && allocation.client_line_id === item.cartId);
+        if (!isAllocated || rendered.has(item.cartId)) return false;
+        rendered.add(item.cartId);
+        return true;
+      });
+      return [{ ...bundle, qualifierItems: takeUnrendered(bundle.application.qualifier_allocations), rewardItems: takeUnrendered(bundle.application.reward_allocations) }];
+    });
+  }, [bundleSelectionStates, items]);
+  const renderedBundleLineIds = useMemo(() => new Set(
+    bundleSelectionStates
+      .filter((bundle) => bundle.voucher?.package.bundleRule)
+      .flatMap((bundle) => [
+        ...bundle.application.qualifier_allocations,
+        ...bundle.application.reward_allocations,
+      ])
+      .map((allocation) => allocation.client_line_id),
+  ), [bundleSelectionStates]);
   const addonLabels = useMemo(
     () =>
       new Map(
@@ -184,56 +250,102 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
       ),
     [menuData.addon_groups],
   );
+  const updateBundleApplication = useCallback((
+    voucher: MyVoucher,
+    rewardAllocations: import("@/src/lib/utils/bundleVoucher").BundleSelectionAllocation[],
+    effect?: BundleCreatedRewardEffect,
+  ) => {
+    const summary = getBundleVoucherSummary(voucher);
+    if (!summary) return;
+    const previous = bundleApplications.find((application) => application.voucher_qr_token === voucher.qr_token);
+    const selection = deriveBundleSelectionState({ voucher: summary, cart: summarizeBundleCart(items), allocations: rewardAllocations });
+    const payload = buildBundleApplication({ voucher: summary, cart: summarizeBundleCart(items), rewardAllocations });
+    const status = selection.status === "READY" ? "READY" : selection.status === "INELIGIBLE" || selection.status === "CONFLICT" ? "CONFLICT" : "NEEDS_CONFIGURATION";
+    commitBundleApplication({
+      voucher_qr_token: voucher.qr_token,
+      owner_key: `customer:${currentUser?.phone ?? "anonymous"}`,
+      qualifier_allocations: payload?.qualifier_allocations ?? [],
+      reward_allocations: rewardAllocations,
+      created_reward_effects: retainBundleRewardEffects(previous?.created_reward_effects ?? [], rewardAllocations, effect),
+      status,
+      message: selection.message,
+    });
+  }, [bundleApplications, commitBundleApplication, currentUser?.phone, items]);
 
-  // Calculate final display price using multi-voucher estimator
+  // Client preview uses the same pure BUNDLE + order calculators as the server.
   const selectedDiscountVouchers = selectedVoucherIds.flatMap((id) => {
     const voucher = discountVouchers.find((candidate) => candidate.qr_token === id);
     return voucher ? [voucher] : [];
   });
-  const rawDiscountAmount = estimateMultiDiscountSavings(selectedDiscountVouchers, subtotalPrice);
-  
-  // Apply rounding rules to avoid .5k decimals in UI
-  const subtotalK = Math.ceil(subtotalPrice / 1000);
-  const discountK = Math.floor(rawDiscountAmount / 1000); // Conservative discount display
-  const finalK = Math.max(0, subtotalK - discountK);
-  
-  const shippingK = orderType === "DELIVERY" && shippingFee !== null ? Math.ceil(shippingFee / 1000) : 0;
-  
-  let freeshipDiscountK = 0;
-  let appliedFreeshipId: string | null = null;
-  const totalAfterDiscountVnd = Math.max(0, subtotalPrice - rawDiscountAmount);
-  const productVoucherCoveredPrices = Object.fromEntries(
-    allVouchers.flatMap((voucher) =>
-      voucher.voucher_type === "PRODUCT" && voucher.covered_price_vnd !== null
-        ? [[voucher.qr_token, voucher.covered_price_vnd] as const]
-        : [],
-    ),
-  );
-  const checkoutRewards = deriveCheckoutRewards(
-    items,
-    totalAfterDiscountVnd,
-    productVoucherCoveredPrices,
-  );
   const selectedFreeshipVouchers = selectedVoucherIds.flatMap((id) => {
     const voucher = freeshipVouchers.find((candidate) => candidate.qr_token === id);
     return voucher ? [voucher] : [];
   });
-  if (orderType === "DELIVERY" && shippingFee !== null && selectedFreeshipVouchers.length > 0) {
-    const bestVoucher = selectedFreeshipVouchers[0];
-    const meetsMinimum =
-      bestVoucher.min_order_vnd === null ||
-      totalAfterDiscountVnd >= bestVoucher.min_order_vnd;
-    if (meetsMinimum && (bestVoucher.covered_delivery_fee_vnd ?? 0) > 0) {
-      freeshipDiscountK = Math.floor(
-        Math.min(shippingFee, bestVoucher.covered_delivery_fee_vnd ?? 0) / 1000
-      );
-      appliedFreeshipId = bestVoucher.qr_token;
-    }
-  }
+  const cartProjection = useMemo(() => projectCartTotals({
+    items,
+    applications: bundleApplications,
+    vouchers: allVouchers,
+    selectedVoucherIds,
+    shipping_fee_vnd: orderType === "DELIVERY" ? shippingFee ?? 0 : 0,
+  }), [allVouchers, bundleApplications, items, orderType, selectedVoucherIds, shippingFee]);
+  const lineBenefitsProjection = useMemo(() => projectCartTotals({
+    items,
+    applications: bundleApplications,
+    vouchers: allVouchers,
+    selectedVoucherIds: [],
+    shipping_fee_vnd: orderType === "DELIVERY" ? shippingFee ?? 0 : 0,
+  }), [allVouchers, bundleApplications, items, orderType, shippingFee]);
+  const bundleErrorByToken = useMemo(() => {
+    const result = new Map(cartProjection.bundles.error_by_token);
+    for (const [token, message] of bundleConstraints.error_by_token) result.set(token, message);
+    return result;
+  }, [bundleConstraints.error_by_token, cartProjection.bundles.error_by_token]);
+  const totalAfterDiscountVnd = cartProjection.totals.total_vnd;
+  const appliedFreeshipId = cartProjection.totals.appliedVoucherIds.find((token) =>
+    selectedFreeshipVouchers.some((voucher) => voucher.qr_token === token),
+  ) ?? null;
+  const checkoutRewards = {
+    orderPoints: Math.floor(cartProjection.totals.total_vnd / 10_000),
+    surplusPoints: Math.floor(cartProjection.totals.order_surplus_vnd / 10_000),
+    totalPoints: Math.floor(cartProjection.totals.total_vnd / 10_000) + Math.floor(cartProjection.totals.order_surplus_vnd / 10_000),
+  };
+  const bundleOwnerKey = isLoggedIn && currentUser ? `customer:${currentUser.phone}` : null;
 
-  const totalDiscountK = discountK + freeshipDiscountK;
-  const grandTotalK = Math.max(0, finalK + shippingK - freeshipDiscountK);
-  
+  // Persisted applications are owned by the signed-in wallet. Cart mutations and
+  // hydration revalidate each one before it can be submitted.
+  useEffect(() => {
+    reconcileBundleApplications(bundleOwnerKey);
+  }, [bundleOwnerKey, items, reconcileBundleApplications]);
+
+  useEffect(() => {
+    for (const bundle of bundleSelectionStates) {
+      const projectedError = bundleErrorByToken.get(bundle.application.voucher_qr_token);
+      const availabilityMessage = bundle.voucher
+        ? getVoucherAvailabilityMessage(bundle.voucher)
+        : null;
+      const persistedBlockedStatus = bundle.application.status === "UNAVAILABLE" || bundle.application.status === "VERIFY_FAILED"
+        ? bundle.application.status
+        : null;
+      const status = persistedBlockedStatus
+        ? persistedBlockedStatus
+        : bundle.voucher && !bundle.voucher.availability.can_apply
+        ? "UNAVAILABLE" as const
+        : projectedError
+        ? "CONFLICT" as const
+        : bundle.state.status === "READY"
+          ? "READY" as const
+          : bundle.state.status === "INELIGIBLE" || bundle.state.status === "CONFLICT" || bundle.state.status === "STALE"
+            ? "CONFLICT" as const
+            : "NEEDS_CONFIGURATION" as const;
+      const message = persistedBlockedStatus
+        ? bundle.application.message
+        : availabilityMessage ?? projectedError ?? bundle.state.message;
+      if (bundle.application.status !== status || bundle.application.message !== message) {
+        setBundleApplicationStatus(bundle.application.voucher_qr_token, status, message);
+      }
+    }
+  }, [bundleErrorByToken, bundleSelectionStates, setBundleApplicationStatus]);
+
 
   useEffect(() => {
     const updateTimes = () => {
@@ -274,8 +386,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
       setAllVouchers([]);
       setAvailableVoucherPackages([]);
       setSelectedVoucherIds([]);
-      setSelectedBundleToken(null);
-      setBundleAllocations([]);
+      if (!isLoggedIn) clearBundleApplications();
       return;
     }
     Promise.all([
@@ -290,7 +401,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
           pkg.voucher_type === "BUNDLE"
         ));
       })
-  }, [isCartOpen, isLoggedIn, setSelectedVoucherIds]);
+  }, [isCartOpen, isLoggedIn, setSelectedVoucherIds, clearBundleApplications]);
 
   // Auto-fetch default address when switching to DELIVERY
   useEffect(() => {
@@ -351,10 +462,24 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   }, [orderType, deliveryAddress, isLoggedIn]);
 
   const handleCheckout = () => {
-    if (selectedBundleToken && bundleSelectionState?.status !== "READY") {
+    const projectionError = [...bundleErrorByToken.values()][0];
+    if (projectionError) {
+      setCheckout({ status: "error", message: projectionError });
+      return;
+    }
+    const persistedBlockedBundle = bundleApplications.find((application) => application.status !== "READY");
+    if (persistedBlockedBundle) {
       setCheckout({
         status: "error",
-        message: bundleSelectionState?.message ?? "Vui lòng chọn đủ quà của ưu đãi.",
+        message: persistedBlockedBundle.message ?? "Voucher BUNDLE cần được kiểm tra lại trước khi đặt hàng.",
+      });
+      return;
+    }
+    const incompleteBundle = bundleSelectionStates.find((bundle) => bundle.state.status !== "READY");
+    if (incompleteBundle) {
+      setCheckout({
+        status: "error",
+        message: incompleteBundle.state.message ?? "Vui lòng chọn đủ quà của ưu đãi.",
       });
       return;
     }
@@ -363,6 +488,14 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
 
   const executeCheckout = useCallback(async () => {
     if (items.length === 0) return;
+    if (hasBlockingBundleApplication(bundleApplications)) {
+      const blocked = bundleApplications.find((application) => application.status !== "READY");
+      setCheckout({
+        status: "error",
+        message: blocked?.message ?? "Voucher BUNDLE cần được kiểm tra lại trước khi đặt hàng.",
+      });
+      return;
+    }
     if (hasUnavailableItems) {
       setCheckout({
         status: "error",
@@ -413,13 +546,13 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
           orderType,
           pickupTime: finalPickupTime,
           discountVoucherIds: selectedDiscountVouchers.map((voucher) => voucher.qr_token),
-          ...(selectedBundleToken && selectedBundleSummary
+          ...(bundleApplications.length > 0
             ? {
-                bundleApplications: [buildBundleApplication({
-                  voucher: selectedBundleSummary,
-                  cart: summarizeBundleCart(items),
-                  rewardAllocations: bundleAllocations,
-                })].filter((application) => application !== null),
+                bundleApplications: getReadyBundleApplications(bundleApplications).map((application) => ({
+                  voucher_qr_token: application.voucher_qr_token,
+                  qualifier_allocations: application.qualifier_allocations,
+                  reward_allocations: application.reward_allocations,
+                })),
               }
             : {}),
           ...(orderType === "DELIVERY" && deliveryAddress ? {
@@ -448,9 +581,23 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
       if (err instanceof PriceChangedError) {
         setCheckout({ status: "price_changed", conflicts: err.conflicts });
       } else if (err instanceof BundleNotEligibleError) {
-        setSelectedBundleToken(null);
-        setBundleAllocations([]);
-        setCheckout({ status: "error", message: err.reason });
+        const message = getBundleCheckoutAvailabilityMessage(err.reason);
+        const submittedTokens = bundleApplications.map((application) => application.voucher_qr_token);
+        markBundleApplicationsVerifyFailed(message);
+        const refreshedVouchers = await listMyVouchers().catch(() => null);
+        if (refreshedVouchers) {
+          setAllVouchers(refreshedVouchers);
+          const unavailableTokens = findUnavailableBundleTokens(submittedTokens, refreshedVouchers);
+          if (unavailableTokens.length > 0) {
+            markBundleApplicationsUnavailable(message, unavailableTokens);
+          }
+        }
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["menu"] }),
+          queryClient.invalidateQueries({ queryKey: ["customer", "vouchers"] }),
+          queryClient.invalidateQueries({ queryKey: ["my_vouchers"] }),
+        ]);
+        setCheckout({ status: "error", message });
       } else {
         const message = err instanceof Error ? err.message : "Đặt hàng thất bại. Vui lòng thử lại.";
         setCheckout({ status: "error", message });
@@ -466,9 +613,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
     resetCheckout,
     pickupTime,
     selectedDiscountVouchers,
-    selectedBundleToken,
-    selectedBundleSummary,
-    bundleAllocations,
+    bundleApplications,
     orderType,
     deliveryAddress,
     shippingFee,
@@ -479,14 +624,15 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
     setIsTimeCustom,
     setSelectedVoucherIds,
     hasUnavailableItems,
+    markBundleApplicationsVerifyFailed,
+    markBundleApplicationsUnavailable,
+    queryClient,
   ]);
 
   const handleClose = useCallback(() => {
     setCartOpen(false);
     resetCheckout();
     setSelectedVoucherIds([]);
-    setSelectedBundleToken(null);
-    setBundleAllocations([]);
     setIsDiscountPickerOpen(false);
     setActiveItemForVoucher(null);
     setIsAddressPickerOpen(false);
@@ -627,33 +773,28 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
                       </div>
                     ) : (
                       <>
-                        {/* Bundle section — shown when a BUNDLE voucher is active */}
-                        {selectedBundleToken && selectedBundleVoucher?.package.bundleRule && (() => {
-                          const bundleRule = selectedBundleVoucher.package.bundleRule!;
-                          const qualifierItems = items.filter((i) => i.bundleQualifierVoucherToken === selectedBundleToken);
-                          const rewardItems = items.filter((i) => i.bundleRewardVoucherToken === selectedBundleToken);
-                          return (
-                            <CartBundleSection
-                              qualifierItems={qualifierItems}
-                              rewardItems={rewardItems}
-                              bundleRule={bundleRule}
-                              menuData={menuData}
-                              powders={powderData.data}
-                              milkTypes={menuData.milk_types}
-                              defaultPowderGram={powderData.default_powder_gram}
-                              onEditItem={(item) => openEdit(item)}
-                              onSwapItem={(oldCartId, newData) => updateItem(oldCartId, newData)}
-                              onRemoveBundle={() => {
-                                items.filter((i) => i.bundleRewardVoucherToken === selectedBundleToken || i.bundleQualifierVoucherToken === selectedBundleToken).forEach((i) => removeItem(i.cartId));
-                                setSelectedBundleToken(null);
-                                setBundleAllocations([]);
-                              }}
-                            />
-                          );
-                        })()}
-                        {/* Regular items — exclude bundle-tagged lines */}
+                        {/* Each application is rendered independently; paid rows stay in the main cart. */}
+                        {bundleSectionModels.flatMap(({ application, voucher, qualifierItems, rewardItems }) => voucher?.package.bundleRule ? [
+                          <CartBundleSection
+                            key={application.voucher_qr_token}
+                            qualifierItems={qualifierItems}
+                            rewardItems={rewardItems}
+                            bundleRule={voucher.package.bundleRule}
+                            menuData={menuData}
+                            powders={powderData.data}
+                            milkTypes={menuData.milk_types}
+                            defaultPowderGram={powderData.default_powder_gram}
+                            onEditItem={(item, allowedSizes) => openEdit(item, allowedSizes)}
+                            onSwapItem={(oldCartId, newData) => updateItem(oldCartId, newData)}
+                            onRemoveBundle={() => setBundleTokenToRemove(application.voucher_qr_token)}
+                            allowedSizesByCartId={bundleConstraints.allowed_sizes_by_line}
+                            nonEditableCartIds={bundleConstraints.non_editable_line_ids}
+                            allocationBadgesByCartId={bundleAllocationBadgesByCartId}
+                          />,
+                        ] : [])}
+                        {/* Every cart line remains visible once, including BUNDLE allocations. */}
                         {[...items].reverse()
-                          .filter((item) => !item.bundleRewardVoucherToken && !item.bundleQualifierVoucherToken)
+                          .filter((item) => !renderedBundleLineIds.has(item.cartId))
                           .map((item) => (
                           <CartItemCard
                             key={item.cartId}
@@ -704,10 +845,10 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
               shippingFee={shippingFee}
               setIsAddressPickerOpen={setIsAddressPickerOpen}
               setIsDiscountPickerOpen={setIsDiscountPickerOpen}
-              subtotalK={subtotalK}
-              shippingK={shippingK}
-              totalDiscountK={totalDiscountK}
-              grandTotalK={grandTotalK}
+              subtotalVnd={cartProjection.totals.subtotal_vnd}
+              shippingVnd={cartProjection.totals.shipping_fee_vnd}
+              totalDiscountVnd={cartProjection.totals.items_discount_vnd + cartProjection.totals.total_voucher_discount_vnd + cartProjection.totals.freeship_discount_vnd}
+              grandTotalVnd={cartProjection.totals.grand_total_vnd}
               totalAfterDiscountVnd={totalAfterDiscountVnd}
               hasUnavailableItems={hasUnavailableItems}
               orderPoints={checkoutRewards.orderPoints}
@@ -747,7 +888,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
                 selectedVoucherIds={selectedVoucherIds}
                 selectedDiscountVouchers={selectedDiscountVouchers}
                 selectedFreeshipVouchers={selectedFreeshipVouchers}
-                subtotalPrice={subtotalPrice}
+                subtotalPrice={lineBenefitsProjection.totals.discountable_subtotal_vnd}
                 orderType={orderType}
                 shippingFee={shippingFee}
                 onClose={() => setIsDiscountPickerOpen(false)}
@@ -759,18 +900,13 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
                 bundleVouchers={bundleVouchers}
                 cart={items}
                 addonLabels={addonLabels}
-                selectedBundleToken={selectedBundleToken}
-                bundleAllocations={bundleAllocations}
-                onBundleVoucherChange={setSelectedBundleToken}
-                onBundleAllocationsChange={setBundleAllocations}
+                bundleApplications={bundleApplications}
+                onBundleApplicationChange={updateBundleApplication}
+                onRequestRemoveBundle={setBundleTokenToRemove}
                 onAddExtrasReward={(menuItemId, voucherToken) => {
                   const reward = (menuData.extras ?? []).find((item) => item.id === menuItemId);
-                  return reward ? addItem(buildExtrasCartItem(reward, voucherToken)) : null;
-                }}
-                onRemoveTransientRewards={(voucherToken) => {
-                  items
-                    .filter((item) => item.bundleRewardVoucherToken === voucherToken)
-                    .forEach((item) => removeItem(item.cartId));
+                  const clientLineId = reward ? addItem(buildExtrasCartItem(reward, voucherToken)) : null;
+                  return clientLineId ? { clientLineId, effect: { kind: "LINE" as const, client_line_id: clientLineId } } : null;
                 }}
               />
             )}
@@ -813,6 +949,19 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
           </AnimatePresence>
 
           <ConfirmModal
+            isOpen={showClearConfirm}
+            onCancel={() => setShowClearConfirm(false)}
+            onConfirm={() => {
+              clearCart();
+              setShowClearConfirm(false);
+              setCartOpen(false);
+            }}
+            title="Xoá giỏ hàng"
+            message="Bạn có chắc chắn muốn xoá toàn bộ món trong giỏ không?"
+            confirmLabel="Xoá giỏ"
+            isDestructive={true}
+          />
+          <ConfirmModal
             isOpen={showSubmitConfirm}
             onCancel={() => setShowSubmitConfirm(false)}
             onConfirm={() => {
@@ -823,6 +972,18 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
             message="Bạn có chắc chắn muốn đặt đơn hàng này không?"
             confirmLabel="Đặt hàng"
             isDestructive={false}
+          />
+          <ConfirmModal
+            isOpen={bundleTokenToRemove !== null}
+            onCancel={() => setBundleTokenToRemove(null)}
+            onConfirm={() => {
+              if (bundleTokenToRemove) removeBundleApplication(bundleTokenToRemove);
+              setBundleTokenToRemove(null);
+            }}
+            title="Gỡ ưu đãi BUNDLE"
+            message="Chỉ quà được ưu đãi tạo thêm sẽ được gỡ khỏi giỏ; các món bạn đã chọn mua vẫn được giữ lại."
+            confirmLabel="Gỡ ưu đãi"
+            isDestructive={true}
           />
           {/* Product Modal overlay for edit */}
           <EditModalOverlay menuItems={menuItems} menuData={menuData} allVouchers={allVouchers} />

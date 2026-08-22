@@ -6,6 +6,12 @@ describe("BUNDLE trong luồng áp voucher hợp nhất", () => {
   it("đọc rule trực tiếp từ package, không qua Promotion", () => {
     const voucher = {
       qr_token: "bundle-token",
+      availability: {
+        status: "USABLE",
+        can_apply: true,
+        can_refund: false,
+        refund_points: 0,
+      },
       package: {
         name: "Mua 2 tặng 1",
         bundleRule: {
@@ -25,7 +31,36 @@ describe("BUNDLE trong luồng áp voucher hợp nhất", () => {
 
     expect(getBundleVoucherSummary(voucher)).toEqual(expect.objectContaining({
       buy_quantity: 2,
-      eligible_menu_item_ids: ["latte-1"],
+      eligible_products: [{ menu_item_id: "latte-1", allowed_sizes: ["MEDIUM"] }],
     }));
+  });
+
+  it("không tạo summary khi backend đánh dấu voucher không thể áp", () => {
+    const voucher = {
+      qr_token: "bundle-unavailable",
+      availability: {
+        status: "NO_ACTIVE_REWARD",
+        can_apply: false,
+        can_refund: true,
+        refund_points: 50,
+      },
+      package: {
+        name: "Mua 2 tặng 1",
+        bundleRule: {
+          buy_quantity: 2,
+          reward_quantity: 1,
+          reward_kind: "PRODUCT",
+          reward_mode: "SAME_CONFIG",
+          benefit_scaling: "PER_BUNDLE",
+          max_applications_per_order: 1,
+          max_reward_units_per_order: null,
+          qualifier_products: [],
+          reward_products: [],
+          reward_addon_option_ids: [],
+        },
+      },
+    } as unknown as MyVoucher;
+
+    expect(getBundleVoucherSummary(voucher)).toBeNull();
   });
 });

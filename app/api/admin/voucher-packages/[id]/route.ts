@@ -8,6 +8,12 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { invalidateVoucherCaches } from "@/lib/cacheInvalidation";
+import {
+  loadVoucherAvailabilityCatalog,
+  resolveVoucherTargetAvailability,
+  type VoucherAvailabilityDatabase,
+  type VoucherBundleRuleSource,
+} from "@/lib/voucherAvailability";
 
 export const dynamic = "force-dynamic";
 
@@ -52,8 +58,16 @@ export async function PUT(
         where: { id },
         select: {
           voucher_type: true,
+          menu_item_id: true,
+          size: true,
+          matcha_powder_id: true,
+          milk_type_id: true,
+          addon_option_id: true,
           addonOption: {
             select: { is_active: true, gram_value: true, group: { select: { is_active: true } } },
+          },
+          bundleRule: {
+            include: { productScopes: { include: { sizes: true } }, addonRewards: true },
           },
         },
       });
@@ -65,6 +79,24 @@ export async function PUT(
           { error: "Không thể kích hoạt package trỏ tới addon không hợp lệ", code: "VALIDATION_ERROR" },
           { status: 400 },
         );
+      }
+      if (target && ["ITEM", "PRODUCT", "ADDON", "BUNDLE"].includes(target.voucher_type)) {
+        const catalog = await loadVoucherAvailabilityCatalog(prisma as unknown as VoucherAvailabilityDatabase);
+        const resolved = resolveVoucherTargetAvailability({
+          voucher_type: target.voucher_type,
+          menu_item_id: target.menu_item_id,
+          size: target.size,
+          matcha_powder_id: target.matcha_powder_id,
+          milk_type_id: target.milk_type_id,
+          addon_option_id: target.addon_option_id,
+          package: { bundleRule: target.bundleRule as unknown as VoucherBundleRuleSource | null },
+        }, catalog);
+        if (!resolved.availability.can_apply) {
+          return NextResponse.json(
+            { error: `Không thể kích hoạt package ${target.voucher_type} vì target hiện không khả dụng`, code: "BUSINESS_RULE_VIOLATION", details: { reason: resolved.availability.status } },
+            { status: 422 },
+          );
+        }
       }
     }
 

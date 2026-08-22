@@ -383,6 +383,24 @@ describe("createOrder — BundleNotEligibleError e skipped_vouchers", () => {
     await expect(createOrder(cart)).rejects.toBeInstanceOf(BundleNotEligibleError);
   });
 
+  it("422 BUSINESS_RULE_VIOLATION với availability reason → lỗi BUNDLE để reconcile", async () => {
+    vi.mocked(apiClient.post).mockRejectedValueOnce({
+      response: {
+        status: 422,
+        data: {
+          code: "BUSINESS_RULE_VIOLATION",
+          error: "Bundle voucher is unavailable",
+          details: { reason: "NO_ACTIVE_REWARD" },
+        },
+      },
+    });
+
+    let caught: unknown;
+    try { await createOrder([makeCartItem()]); } catch (error) { caught = error; }
+    expect(caught).toBeInstanceOf(BundleNotEligibleError);
+    expect((caught as BundleNotEligibleError).reason).toBe("NO_ACTIVE_REWARD");
+  });
+
   it("BundleNotEligibleError chứa reason từ server", async () => {
     vi.mocked(apiClient.post).mockRejectedValueOnce({
       response: {

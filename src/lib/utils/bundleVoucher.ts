@@ -1,4 +1,5 @@
 import type { CartItem } from "@/src/lib/types/cart";
+import type { Size } from "@/src/lib/types/menu";
 
 export type BundleBenefitScaling = "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM";
 
@@ -11,9 +12,16 @@ export interface BundleVoucherSummary {
   benefit_scaling: BundleBenefitScaling;
   max_applications_per_order: number;
   max_reward_units_per_order: number | null;
-  eligible_menu_item_ids: string[];
-  reward_menu_item_ids: string[];
+  eligible_products: BundleVoucherProductSummary[];
+  reward_products: BundleVoucherProductSummary[];
   min_order_vnd: number | null;
+}
+
+export interface BundleVoucherProductSummary {
+  menu_item_id: string;
+  allowed_sizes: Size[];
+  baseline_prices_vnd?: Partial<Record<Size, number>>;
+  baseline_price_vnd?: number;
 }
 
 export interface BundleCartAddonSummary {
@@ -26,6 +34,7 @@ export interface BundleCartAddonSummary {
 export interface BundleCartSummaryItem {
   client_line_id: string;
   menu_item_id: string;
+  size: Size | null;
   label: string;
   quantity: number;
   unit_price_vnd: number;
@@ -45,6 +54,19 @@ export interface BundleApplicationPayload {
   reward_allocations: BundleSelectionAllocation[];
 }
 
+export interface BundleAllocationConstraintApplication {
+  voucher_qr_token: string;
+  voucher: BundleVoucherSummary;
+  qualifier_allocations: BundleSelectionAllocation[];
+  reward_allocations: BundleSelectionAllocation[];
+}
+
+export interface BundleAllocationConstraints {
+  allowed_sizes_by_line: Map<string, Size[]>;
+  non_editable_line_ids: Set<string>;
+  error_by_token: Map<string, string>;
+}
+
 export type BundleSelectionState = {
   status: "INELIGIBLE" | "NEEDS_REWARD" | "READY" | "STALE" | "CONFLICT";
   message: string;
@@ -58,6 +80,7 @@ export function summarizeBundleCart(items: readonly CartItem[]): BundleCartSumma
     return {
       client_line_id: item.cartId,
       menu_item_id: item.menuItemId,
+      size: item.size,
       label: item.name,
       quantity: item.quantity,
       unit_price_vnd: Math.max(0, item.originalClientPriceVnd - item.addonsPrice),
@@ -72,6 +95,62 @@ export function summarizeBundleCart(items: readonly CartItem[]): BundleCartSumma
       })),
     };
   });
+}
+
+function productMatchesSummary(item: Pick<BundleCartSummaryItem, "menu_item_id" | "size">, product: BundleVoucherProductSummary): boolean {
+  return item.menu_item_id === product.menu_item_id && (item.size === null ? product.allowed_sizes.length === 0 : product.allowed_sizes.includes(item.size));
+}
+
+function isEligibleProduct(item: BundleCartSummaryItem, voucher: BundleVoucherSummary): boolean {
+  return voucher.eligible_products.some((product) => productMatchesSummary(item, product));
+}
+
+/** Intersect every BUNDLE role scope assigned to a cart line before it can be edited. */
+export function deriveBundleAllocationConstraints(input: {
+  cart: BundleCartSummaryItem[];
+  applications: BundleAllocationConstraintApplication[];
+}): BundleAllocationConstraints {
+  const constraintsByLine = new Map<string, Array<{ token: string; allowedSizes: Size[] }>>();
+  const error_by_token = new Map<string, string>();
+  const invalidLineIds = new Set<string>();
+  const lineById = new Map(input.cart.map((line) => [line.client_line_id, line]));
+  for (const application of input.applications) {
+    const addConstraints = (allocations: BundleSelectionAllocation[], role: "QUALIFIER" | "REWARD") => {
+      const scopes = role === "QUALIFIER" || application.voucher.reward_mode === "SAME_CONFIG"
+        ? application.voucher.eligible_products
+        : application.voucher.reward_products;
+      for (const allocation of allocations) {
+        if (allocation.addon_option_id) continue;
+        const line = lineById.get(allocation.client_line_id);
+        const scope = line ? scopes.find((product) => productMatchesSummary(line, product)) : undefined;
+        if (!line || !scope) {
+          error_by_token.set(application.voucher_qr_token, "Món BUNDLE đã thay đổi ngoài phạm vi ưu đãi");
+          if (line) invalidLineIds.add(line.client_line_id);
+          continue;
+        }
+        if (line.size === null) continue;
+        const constraints = constraintsByLine.get(line.client_line_id) ?? [];
+        constraints.push({ token: application.voucher_qr_token, allowedSizes: scope.allowed_sizes });
+        constraintsByLine.set(line.client_line_id, constraints);
+      }
+    };
+    addConstraints(application.qualifier_allocations, "QUALIFIER");
+    addConstraints(application.reward_allocations, "REWARD");
+  }
+  const allowed_sizes_by_line = new Map<string, Size[]>();
+  const non_editable_line_ids = new Set(invalidLineIds);
+  for (const [lineId, constraints] of constraintsByLine) {
+    const intersection = constraints[0]?.allowedSizes.filter((size) => constraints.every((entry) => entry.allowedSizes.includes(size))) ?? [];
+    if (intersection.length === 0) {
+      non_editable_line_ids.add(lineId);
+      for (const constraint of constraints) {
+        error_by_token.set(constraint.token, "Các ưu đãi BUNDLE trên cùng món không có size chung; vui lòng chọn lại ưu đãi");
+      }
+    } else {
+      allowed_sizes_by_line.set(lineId, intersection);
+    }
+  }
+  return { allowed_sizes_by_line, non_editable_line_ids, error_by_token };
 }
 
 /** Set or remove one explicit reward allocation without duplicating its target. */
@@ -124,7 +203,7 @@ export function deriveBundleSelectionState(input: {
 
   const eligibleQuantity = input.cart.reduce(
     (total, item) =>
-      total + (input.voucher.eligible_menu_item_ids.includes(item.menu_item_id)
+      total + (isEligibleProduct(item, input.voucher)
         ? Math.max(0, item.quantity - item.product_voucher_quantity)
         : 0),
     0,
@@ -134,7 +213,7 @@ export function deriveBundleSelectionState(input: {
     const missing = requiredCartQuantity - eligibleQuantity;
     const maskedLine = input.cart.find((item) =>
       item.product_voucher_quantity > 0 &&
-      input.voucher.eligible_menu_item_ids.includes(item.menu_item_id),
+      isEligibleProduct(item, input.voucher),
     );
     return {
       status: "INELIGIBLE",
@@ -178,7 +257,7 @@ export function deriveBundleSelectionState(input: {
     const rewardFromEligibleLines = input.allocations.reduce((total, allocation) => {
       const line = input.cart.find((item) => item.client_line_id === allocation.client_line_id);
       return total +
-        (line && input.voucher.eligible_menu_item_ids.includes(line.menu_item_id)
+        (line && isEligibleProduct(line, input.voucher)
           ? allocation.quantity
           : 0);
     }, 0);
@@ -235,7 +314,7 @@ export function buildBundleApplication(input: {
     input.voucher.benefit_scaling === "PER_QUALIFYING_ITEM"
   ) {
     const eligibleQuantity = input.cart.reduce(
-      (sum, line) => sum + (input.voucher.eligible_menu_item_ids.includes(line.menu_item_id)
+      (sum, line) => sum + (isEligibleProduct(line, input.voucher)
         ? Math.max(0, line.quantity - line.product_voucher_quantity)
         : 0),
       0,
@@ -262,7 +341,7 @@ export function buildBundleApplication(input: {
   const qualifierAllocations: BundleSelectionAllocation[] = [];
   let remaining = qualifierQuantity;
   for (const line of input.cart) {
-    if (!input.voucher.eligible_menu_item_ids.includes(line.menu_item_id)) continue;
+    if (!isEligibleProduct(line, input.voucher)) continue;
     const available = Math.max(
       0,
       line.quantity - line.product_voucher_quantity -

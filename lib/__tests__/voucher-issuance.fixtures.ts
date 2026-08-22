@@ -17,6 +17,10 @@ export const mockUserUpdateMany = vi.fn();
 export const mockPointsLogCreate = vi.fn();
 export const mockGrantFindUnique = vi.fn();
 export const mockGrantCreate = vi.fn();
+export const mockMenuItemFindMany = vi.fn();
+export const mockPowderFindMany = vi.fn();
+export const mockMilkTypeFindMany = vi.fn();
+export const mockAddonOptionFindMany = vi.fn();
 
 /** Build a complete voucher package snapshot for issuance tests. */
 export function makePackage(overrides: Record<string, unknown> = {}) {
@@ -66,6 +70,10 @@ export function makeTx(): VoucherIssuanceTransaction {
       findUnique: (...args: unknown[]) => mockGrantFindUnique(...args),
       create: (...args: unknown[]) => mockGrantCreate(...args),
     },
+    menuItem: { findMany: (...args: unknown[]) => mockMenuItemFindMany(...args) },
+    matchaPowder: { findMany: (...args: unknown[]) => mockPowderFindMany(...args) },
+    milkType: { findMany: (...args: unknown[]) => mockMilkTypeFindMany(...args) },
+    addonOption: { findMany: (...args: unknown[]) => mockAddonOptionFindMany(...args) },
   };
 }
 

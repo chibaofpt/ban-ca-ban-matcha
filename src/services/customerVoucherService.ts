@@ -72,7 +72,25 @@ export interface BundleVoucherProduct {
     default_powder_id: string | null;
     default_base_liquid_id: string | null;
     allowed_sizes: Array<"SMALL" | "MEDIUM" | "LARGE">;
+    /** Dynamic checkout baseline for FIXED_CONFIG / ALLOWED_SCOPE rewards only. */
+    baseline_prices_vnd?: Partial<Record<"SMALL" | "MEDIUM" | "LARGE", number>>;
+    /** Dynamic fixed price for extras rewards only. */
+    baseline_price_vnd?: number;
     menu_item: { name: string; category: "latte" | "fusion" | "extras"; is_available: boolean };
+}
+
+export type VoucherAvailabilityStatus =
+  | "USABLE"
+  | "TARGET_UNAVAILABLE"
+  | "NO_ACTIVE_QUALIFIER"
+  | "NO_ACTIVE_REWARD"
+  | "NO_ACTIVE_CONFIGURATION";
+
+export interface VoucherAvailability {
+  status: VoucherAvailabilityStatus;
+  can_apply: boolean;
+  can_refund: boolean;
+  refund_points: number;
 }
 
 export interface MyVoucher {
@@ -111,6 +129,8 @@ export interface MyVoucher {
   addonOption: { label: string } | null;
   /** Staff/admin who redeemed this voucher offline. null = user redeemed themselves online. */
   staff: { name: string; role: "STAFF" | "ADMIN" | "CUSTOMER" } | null;
+  /** Server-authoritative live eligibility and voluntary refund capability. */
+  availability: VoucherAvailability;
 }
 
 export interface ExchangedVoucher {
@@ -162,6 +182,12 @@ export interface AcquiredVoucher extends ExchangedVoucher {
   already_granted: boolean;
 }
 
+export interface RefundedVoucher {
+  qr_token: string;
+  status: "REFUNDED";
+  points_refunded: number;
+}
+
 /** Claim a FREE_CLAIM package without points; repeated calls are idempotent. */
 export async function claimFreeVoucher(
   packageId: string,
@@ -169,6 +195,15 @@ export async function claimFreeVoucher(
   const res = await apiClient.post<ApiResponse<AcquiredVoucher>>(
     "/api/profile/vouchers/claim",
     { package_id: packageId },
+  );
+  return res.data.data;
+}
+
+/** Refund an unusable points-exchange voucher after explicit user confirmation. */
+export async function refundVoucher(qrToken: string): Promise<RefundedVoucher> {
+  const res = await apiClient.post<ApiResponse<RefundedVoucher>>(
+    "/api/profile/vouchers/refund",
+    { qr_token: qrToken },
   );
   return res.data.data;
 }

@@ -3,6 +3,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockGetSession = vi.fn();
 const mockFindManyPackages = vi.fn();
 const mockGroupByVouchers = vi.fn();
+const mockMenuItemFindMany = vi.fn();
+const mockPowderFindMany = vi.fn();
+const mockMilkTypeFindMany = vi.fn();
+const mockAddonOptionFindMany = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
@@ -18,6 +22,10 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     voucherPackage: { findMany: (...args: unknown[]) => mockFindManyPackages(...args) },
     voucher: { groupBy: (...args: unknown[]) => mockGroupByVouchers(...args) },
+    menuItem: { findMany: (...args: unknown[]) => mockMenuItemFindMany(...args) },
+    matchaPowder: { findMany: (...args: unknown[]) => mockPowderFindMany(...args) },
+    milkType: { findMany: (...args: unknown[]) => mockMilkTypeFindMany(...args) },
+    addonOption: { findMany: (...args: unknown[]) => mockAddonOptionFindMany(...args) },
   },
 }));
 
@@ -28,6 +36,10 @@ describe("GET /api/voucher-packages", () => {
     vi.clearAllMocks();
     mockFindManyPackages.mockReset();
     mockGroupByVouchers.mockResolvedValue([]);
+    mockMenuItemFindMany.mockResolvedValue([]);
+    mockPowderFindMany.mockResolvedValue([]);
+    mockMilkTypeFindMany.mockResolvedValue([]);
+    mockAddonOptionFindMany.mockResolvedValue([]);
   });
 
   it("trả remaining_quantity theo tổng voucher đã phát hành", async () => {
@@ -92,7 +104,22 @@ describe("GET /api/voucher-packages", () => {
     mockGetSession.mockResolvedValue(null);
     mockFindManyPackages
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ id: "bundle-1", voucher_type: "BUNDLE" }]);
+      .mockResolvedValueOnce([{
+        id: "bundle-1", voucher_type: "BUNDLE", menu_item_id: null, size: null,
+        matcha_powder_id: null, milk_type_id: null, addon_option_id: null,
+        bundleRule: {
+          buy_quantity: 1, reward_quantity: 1, reward_kind: "PRODUCT", reward_mode: "SAME_CONFIG",
+          benefit_scaling: "PER_BUNDLE", max_applications_order: 1, max_reward_units_order: null,
+          productScopes: [{ role: "QUALIFIER", menu_item_id: "extra-active", default_powder_id: null,
+            default_base_liquid_id: null, sizes: [], menuItem: { name: "Bánh", category: "extras", is_available: true } }],
+          addonRewards: [],
+        },
+      }]);
+    mockMenuItemFindMany.mockResolvedValue([{
+      id: "extra-active", name: "Bánh", category: "extras", is_available: true,
+      unit_price_vnd: 20_000, matcha_powder_id: null, default_powder_id: null,
+      default_base_liquid_id: null, sizes: [], allowedBaseLiquids: [],
+    }]);
 
     const res = await GET();
     expect(res.status).toBe(200);
@@ -102,7 +129,7 @@ describe("GET /api/voucher-packages", () => {
         where: expect.objectContaining({
           OR: expect.arrayContaining([
             { ends_at: expect.objectContaining({ gt: expect.any(Date) }) },
-            { voucher_type: "BUNDLE", ends_at: null },
+            { voucher_type: { in: ["ITEM", "PRODUCT", "ADDON", "BUNDLE"] }, ends_at: null },
           ]),
         }),
       }),
@@ -110,8 +137,36 @@ describe("GET /api/voucher-packages", () => {
     expect(mockFindManyPackages).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        where: { is_active: true, ends_at: null, voucher_type: { not: "BUNDLE" } },
+        where: { is_active: true, ends_at: null, voucher_type: { in: ["DISCOUNT", "FREESHIP"] } },
       }),
     );
+  });
+
+  it("ẩn package BUNDLE khi không còn qualifier active", async () => {
+    mockGetSession.mockResolvedValue(null);
+    mockFindManyPackages.mockResolvedValueOnce([]).mockResolvedValueOnce([{
+      id: "bundle-unusable", voucher_type: "BUNDLE", quantity: null, created_at: new Date().toISOString(),
+      bundleRule: {
+        buy_quantity: 1, reward_quantity: 1, reward_kind: "PRODUCT", reward_mode: "SAME_CONFIG",
+        benefit_scaling: "PER_BUNDLE", max_applications_order: 1, max_reward_units_order: null,
+        productScopes: [{ role: "QUALIFIER", menu_item_id: "inactive-menu", default_powder_id: null,
+          default_base_liquid_id: null, sizes: [{ size: "SMALL" }],
+          menuItem: { name: "Ngưng bán", category: "latte", is_available: false } }],
+        addonRewards: [],
+      },
+    }]);
+    const res = await GET();
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toEqual([]);
+  });
+
+  it("ẩn package ITEM/PRODUCT khi target không còn orderable", async () => {
+    mockGetSession.mockResolvedValue(null);
+    mockFindManyPackages.mockResolvedValueOnce([]).mockResolvedValueOnce([{
+      id: "item-unusable", voucher_type: "ITEM", menu_item_id: "extra-inactive", size: null,
+      matcha_powder_id: null, milk_type_id: null, addon_option_id: null, bundleRule: null,
+    }]);
+    mockMenuItemFindMany.mockResolvedValue([]);
+    expect((await (await GET()).json()).data).toEqual([]);
   });
 });

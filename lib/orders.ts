@@ -14,6 +14,10 @@ import {
 import type { Size, SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
 import type { PrismaClient } from "@prisma/client";
+import {
+  resolveDefaultBaseLiquidId,
+  resolveFusionDefaultPowderId,
+} from "@/src/utils/menuConfiguration";
 
 /** Structural type satisfied by both PrismaClient and the Prisma transaction client. */
 type DbClient = Pick<
@@ -275,36 +279,30 @@ async function resolveOneItem(
         `Latte item is missing matcha_powder_id: ${menuItem.name}`
       );
     }
+    if (!pricingCtx.availablePowders.some((powder) => powder.id === menuItem.matcha_powder_id)) {
+      throw new OrderValidationError("BUSINESS_RULE_VIOLATION", `Bột cố định của Latte đã ngưng bán: ${menuItem.name}`);
+    }
     powder_id = menuItem.matcha_powder_id;
   } else {
-    // Fusion: validate selected_powder_id against allowed list + default
-    let resolvedDefault = menuItem.default_powder_id;
-    if (resolvedDefault && !pricingCtx.availablePowders.some(p => p.id === resolvedDefault)) {
-      resolvedDefault = null;
-    }
+    const resolvedDefault = resolveFusionDefaultPowderId(
+      menuItem.default_powder_id,
+      pricingCtx.availablePowders.map((powder) => ({
+        ...powder,
+        price_per_gram: pricingCtx.powderPriceMap[powder.id] ?? Number.MAX_SAFE_INTEGER,
+        is_available: true,
+      })),
+    );
     if (!resolvedDefault) {
-      const FALLBACK_NAMES = ["Meyumi", "Hana", "MH-3"];
-      for (const name of FALLBACK_NAMES) {
-        const found = pricingCtx.availablePowders.find((p) => p.name === name);
-        if (found) {
-          resolvedDefault = found.id;
-          break;
-        }
-      }
-      if (!resolvedDefault && pricingCtx.availablePowders.length > 0) {
-        resolvedDefault = pricingCtx.availablePowders[0].id;
-      }
+      throw new OrderValidationError("BUSINESS_RULE_VIOLATION", `Fusion không còn bột active: ${menuItem.name}`);
     }
-
-    const safeResolvedDefault = resolvedDefault ?? "";
 
     const allowedIds = (menuItem.fusionAllowedPowders ?? [])
       .filter((p) => p.matchaPowder?.is_available)
       .map((p) => p.powder_id);
       
-    const sentPowderId = item.selected_powder_id ?? safeResolvedDefault;
+    const sentPowderId = item.selected_powder_id ?? resolvedDefault;
 
-    const isDefaultPowder = sentPowderId === safeResolvedDefault;
+    const isDefaultPowder = sentPowderId === resolvedDefault;
     const isInAllowedList = allowedIds.includes(sentPowderId);
 
     if (!isDefaultPowder && !isInAllowedList) {
@@ -314,7 +312,7 @@ async function resolveOneItem(
       );
     }
 
-    powder_id = sentPowderId || safeResolvedDefault;
+    powder_id = sentPowderId;
 
     // Compute Premium_Latte if a non-default powder was selected
     if (powder_id && resolvedDefault && powder_id !== resolvedDefault) {
@@ -341,37 +339,42 @@ async function resolveOneItem(
   }
   const requestedBaseLiquidId =
     item.selected_base_liquid_id ?? item.selected_milk_type_id ?? null;
-  const resolvedDefaultBaseLiquidId = menuItem.category === "latte"
+  const configuredDefaultBaseLiquidId = menuItem.category === "latte"
     ? pricingCtx.defaultBaseLiquidId ?? null
     : menuItem.default_base_liquid_id;
-  let resolvedBaseLiquidId: string | null = null;
-
-  if (menuItem.category === "fusion" && !resolvedDefaultBaseLiquidId) {
-    if (requestedBaseLiquidId) {
-      throw new OrderValidationError(
-        "VALIDATION_ERROR",
-        `Fusion legacy không hỗ trợ đổi Base Liquid: ${menuItem.name}`,
-      );
-    }
-  } else {
-    if (!resolvedDefaultBaseLiquidId) {
-      throw new OrderValidationError(
-        "BUSINESS_RULE_VIOLATION",
-        `Món chưa có Base Liquid mặc định: ${menuItem.name}`,
-      );
-    }
-    const allowedBaseLiquidIds = (menuItem.allowedBaseLiquids ?? [])
-      .filter((entry) => entry.baseLiquid.is_active)
-      .map((entry) => entry.base_liquid_id);
-    resolvedBaseLiquidId = requestedBaseLiquidId ?? resolvedDefaultBaseLiquidId;
-    const isAllowed = resolvedBaseLiquidId === resolvedDefaultBaseLiquidId
-      || allowedBaseLiquidIds.includes(resolvedBaseLiquidId);
-    if (!isAllowed || pricingCtx.milkPriceMap[resolvedBaseLiquidId] === undefined) {
-      throw new OrderValidationError(
-        "VALIDATION_ERROR",
-        `Base Liquid không được phép hoặc đã ngưng bán: ${menuItem.name}`,
-      );
-    }
+  const allowedBaseLiquidIds = (menuItem.allowedBaseLiquids ?? [])
+    .filter((entry) => entry.baseLiquid.is_active)
+    .map((entry) => entry.base_liquid_id);
+  const compatibleBaseLiquidIds = [
+    ...(configuredDefaultBaseLiquidId ? [configuredDefaultBaseLiquidId] : []),
+    ...allowedBaseLiquidIds,
+  ];
+  const legacyFusionWithoutBaseLiquid = menuItem.category === "fusion"
+    && !configuredDefaultBaseLiquidId
+    && allowedBaseLiquidIds.length === 0;
+  if (legacyFusionWithoutBaseLiquid && requestedBaseLiquidId) {
+    throw new OrderValidationError("VALIDATION_ERROR", `Fusion legacy không hỗ trợ đổi Base Liquid: ${menuItem.name}`);
+  }
+  const resolvedDefaultBaseLiquidId = resolveDefaultBaseLiquidId(
+    configuredDefaultBaseLiquidId,
+    compatibleBaseLiquidIds,
+    pricingCtx.availableBaseLiquids ?? Object.keys(pricingCtx.milkPriceMap)
+      .sort((left, right) => left.localeCompare(right))
+      .map((id, display_order) => ({ id, is_active: true, display_order })),
+  );
+  if (!resolvedDefaultBaseLiquidId && !legacyFusionWithoutBaseLiquid) {
+    throw new OrderValidationError("BUSINESS_RULE_VIOLATION", `Món không còn Base Liquid phù hợp: ${menuItem.name}`);
+  }
+  const resolvedBaseLiquidId = legacyFusionWithoutBaseLiquid
+    ? null
+    : requestedBaseLiquidId ?? resolvedDefaultBaseLiquidId;
+  const isAllowed = resolvedBaseLiquidId === resolvedDefaultBaseLiquidId
+    || (resolvedBaseLiquidId !== null && allowedBaseLiquidIds.includes(resolvedBaseLiquidId));
+  if (!legacyFusionWithoutBaseLiquid && (!resolvedBaseLiquidId || !isAllowed || pricingCtx.milkPriceMap[resolvedBaseLiquidId] === undefined)) {
+    throw new OrderValidationError(
+      "VALIDATION_ERROR",
+      `Base Liquid không được phép hoặc đã ngưng bán: ${menuItem.name}`,
+    );
   }
 
   // 5. Compute server-authoritative drink price

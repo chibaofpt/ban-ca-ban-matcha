@@ -12,6 +12,12 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
 import { toVoucherPackageBundleDto } from "@/lib/voucherBundleDto";
+import {
+  loadVoucherAvailabilityCatalog,
+  resolveVoucherTargetAvailability,
+  type VoucherAvailabilityDatabase,
+  type VoucherBundleRuleSource,
+} from "@/lib/voucherAvailability";
 
 export async function GET() {
   try {
@@ -94,7 +100,7 @@ export async function GET() {
 /** Fetches active voucher packages from DB. Called by withCache on cache miss. */
 async function fetchVoucherPackages() {
   return prisma.voucherPackage.findMany({
-    where: { is_active: true, ends_at: null, voucher_type: { not: "BUNDLE" } },
+    where: { is_active: true, ends_at: null, voucher_type: { in: ["DISCOUNT", "FREESHIP"] } },
     orderBy: { created_at: "asc" },
     include: {
       menuItem: { select: { name: true, is_available: true } },
@@ -112,12 +118,12 @@ async function fetchVoucherPackages() {
 
 /** Fetch active BUNDLE packages live so campaign windows are never stale in Redis. */
 async function fetchScheduledVoucherPackages(now: Date) {
-  return prisma.voucherPackage.findMany({
+  const packages = await prisma.voucherPackage.findMany({
     where: {
       is_active: true,
       OR: [
         { ends_at: { gt: now } },
-        { voucher_type: "BUNDLE", ends_at: null },
+        { voucher_type: { in: ["ITEM", "PRODUCT", "ADDON", "BUNDLE"] }, ends_at: null },
       ],
     },
     orderBy: { created_at: "asc" },
@@ -132,6 +138,27 @@ async function fetchScheduledVoucherPackages(now: Date) {
         addonRewards: { include: { addonOption: { select: { label: true } } } },
       } },
     },
-  }).then((packages) => packages.map(toVoucherPackageBundleDto));
+  });
+  const targetPackages = packages.filter((pkg) => ["ITEM", "PRODUCT", "ADDON", "BUNDLE"].includes(pkg.voucher_type));
+  const catalog = targetPackages.length > 0
+    ? await loadVoucherAvailabilityCatalog(prisma as unknown as VoucherAvailabilityDatabase)
+    : null;
+  return packages.flatMap((pkg) => {
+    if (!["ITEM", "PRODUCT", "ADDON", "BUNDLE"].includes(pkg.voucher_type) || !catalog) {
+      return [toVoucherPackageBundleDto(pkg)];
+    }
+    const resolved = resolveVoucherTargetAvailability({
+      voucher_type: pkg.voucher_type,
+      menu_item_id: pkg.menu_item_id,
+      size: pkg.size,
+      matcha_powder_id: pkg.matcha_powder_id,
+      milk_type_id: pkg.milk_type_id,
+      addon_option_id: pkg.addon_option_id,
+      package: { bundleRule: pkg.bundleRule as unknown as VoucherBundleRuleSource | null },
+    }, catalog);
+    return resolved.availability.can_apply
+      ? [toVoucherPackageBundleDto({ ...pkg, bundleRule: resolved.package.bundleRule ?? null } as typeof pkg)]
+      : [];
+  });
 }
 

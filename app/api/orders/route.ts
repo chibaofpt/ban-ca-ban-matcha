@@ -59,13 +59,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return await createCustomerOrder(parsed.data, session.id);
   } catch (error) {
     if (error instanceof BundlePromotionError) {
+      const voucherMissing = error.reason === "BUNDLE_VOUCHER_NOT_FOUND";
       return NextResponse.json(
         {
           error: error.message,
-          code: "BUNDLE_NOT_ELIGIBLE",
+          code: voucherMissing ? "NOT_FOUND" : "BUSINESS_RULE_VIOLATION",
           details: { reason: error.reason },
         },
-        { status: error.reason === "BUNDLE_VOUCHER_NOT_FOUND" ? 404 : 422 },
+        { status: voucherMissing ? 404 : 422 },
       );
     }
     if (error instanceof OrderValidationError) {

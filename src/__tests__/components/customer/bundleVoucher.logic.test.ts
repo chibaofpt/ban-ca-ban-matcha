@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deriveBundleSelectionState,
+  deriveBundleAllocationConstraints,
   buildBundleApplication,
   formatBundleBenefit,
   setBundleAllocationQuantity,
@@ -17,15 +18,15 @@ const VOUCHER: BundleVoucherSummary = {
   benefit_scaling: "PER_BUNDLE",
   max_applications_per_order: 2,
   max_reward_units_per_order: null,
-  eligible_menu_item_ids: ["latte-1"],
-  reward_menu_item_ids: ["latte-1"],
+  eligible_products: [{ menu_item_id: "latte-1", allowed_sizes: ["SMALL", "MEDIUM", "LARGE"] }],
+  reward_products: [{ menu_item_id: "latte-1", allowed_sizes: ["SMALL", "MEDIUM", "LARGE"] }],
   min_order_vnd: null,
 };
 
 const CART: BundleCartSummaryItem[] = [
   {
     client_line_id: "line-1", menu_item_id: "latte-1", label: "Matcha Latte",
-    quantity: 3, unit_price_vnd: 45_000, product_voucher_quantity: 0, addons: [],
+    size: "SMALL", quantity: 3, unit_price_vnd: 45_000, product_voucher_quantity: 0, addons: [],
   },
 ];
 
@@ -193,6 +194,46 @@ describe("Helper chọn BUNDLE dùng chung", () => {
       { client_line_id: "line-1", quantity: 1 },
     ]);
   });
+
+  it("giao của scope hai BUNDLE trên cùng line chỉ cho phép size chung", () => {
+    const first: BundleVoucherSummary = {
+      ...VOUCHER,
+      qr_token: "bundle-a",
+      eligible_products: [{ menu_item_id: "latte-1", allowed_sizes: ["SMALL", "MEDIUM"] }],
+    };
+    const second: BundleVoucherSummary = {
+      ...VOUCHER,
+      qr_token: "bundle-b",
+      eligible_products: [{ menu_item_id: "latte-1", allowed_sizes: ["MEDIUM", "LARGE"] }],
+    };
+    const constraints = deriveBundleAllocationConstraints({
+      cart: [{ ...CART[0]!, size: "MEDIUM", quantity: 4 }],
+      applications: [first, second].map((voucher) => ({
+        voucher_qr_token: voucher.qr_token,
+        voucher,
+        qualifier_allocations: [{ client_line_id: "line-1", quantity: 1 }],
+        reward_allocations: [{ client_line_id: "line-1", quantity: 1 }],
+      })),
+    });
+
+    expect(constraints.allowed_sizes_by_line.get("line-1")).toEqual(["MEDIUM"]);
+    expect(constraints.non_editable_line_ids.has("line-1")).toBe(false);
+  });
+
+  it("chặn edit khi các BUNDLE trên cùng line không có size chung", () => {
+    const constraints = deriveBundleAllocationConstraints({
+      cart: [{ ...CART[0]!, size: "SMALL", quantity: 4 }],
+      applications: [["bundle-a", ["SMALL"]], ["bundle-b", ["LARGE"]]].map(([token, allowedSizes]) => ({
+        voucher_qr_token: token as string,
+        voucher: { ...VOUCHER, qr_token: token as string, eligible_products: [{ menu_item_id: "latte-1", allowed_sizes: allowedSizes as ("SMALL" | "MEDIUM" | "LARGE")[] }] },
+        qualifier_allocations: [{ client_line_id: "line-1", quantity: 1 }],
+        reward_allocations: [{ client_line_id: "line-1", quantity: 1 }],
+      })),
+    });
+
+    expect(constraints.non_editable_line_ids.has("line-1")).toBe(true);
+    expect(constraints.error_by_token.size).toBe(1);
+  });
 });
 
 describe("buildBundleApplication — edge cases", () => {
@@ -202,11 +243,11 @@ describe("buildBundleApplication — edge cases", () => {
     const multiLineCart: BundleCartSummaryItem[] = [
       {
         client_line_id: "line-A", menu_item_id: "latte-1", label: "Latte A",
-        quantity: 2, unit_price_vnd: 45_000, product_voucher_quantity: 0, addons: [],
+        size: "SMALL", quantity: 2, unit_price_vnd: 45_000, product_voucher_quantity: 0, addons: [],
       },
       {
         client_line_id: "line-B", menu_item_id: "latte-1", label: "Latte B",
-        quantity: 2, unit_price_vnd: 45_000, product_voucher_quantity: 0, addons: [],
+        size: "SMALL", quantity: 2, unit_price_vnd: 45_000, product_voucher_quantity: 0, addons: [],
       },
     ];
     // VOUCHER: buy_quantity=2, reward_quantity=1, SAME_CONFIG
@@ -229,7 +270,7 @@ describe("buildBundleApplication — edge cases", () => {
   it("buildBundleApplication cho ADDON reward gán đúng addon_option_id", () => {
     const addonCart: BundleCartSummaryItem[] = [{
       client_line_id: "line-1", menu_item_id: "latte-1", label: "Latte",
-      quantity: 2, unit_price_vnd: 45_000, product_voucher_quantity: 0,
+      size: "SMALL", quantity: 2, unit_price_vnd: 45_000, product_voucher_quantity: 0,
       addons: [{ addon_option_id: "addon-jelly", quantity: 2, unit_price_vnd: 10_000, voucher_discounted_quantity: 0 }],
     }];
     const addonVoucher: BundleVoucherSummary = {
