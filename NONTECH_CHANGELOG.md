@@ -5,7 +5,18 @@
 
 ---
 
-## [2026-08-17 18:30] — Thêm hình ảnh món vào khung chọn món trên điện thoại
+## [2026-08-17 19:02] — Sửa lỗi thanh tab danh mục không trượt theo khi cuộn trang
+ 
+ **Yêu cầu**: sao lúc cuộn xuống trang dưới rồi tôi không thấy thanh category đi cùng
+ **Quyết định**: Xóa các thẻ HTML dư thừa (flex-col h-full) bao quanh thanh tab và đổi overflow body để sửa lỗi position sticky.
+ **Thay đổi**:
+ - `src/views/MenuPage.tsx`: Xóa lớp `flex flex-col h-full` bao bọc trang Menu để thanh tab có thể trượt bình thường.
+ - `app/globals.css`: Đổi `overflow-x: hidden` thành `clip` để không chặn tính năng trượt (sticky) trên toàn hệ thống.
+ **Kết quả QA**: ✅ lint + TypeScript PASS · ⚠️ 3 test fail cũ (không liên quan: 2 addon-opt-in-migration + 1 admin-order-cancel timeout)
+ 
+ ---
+ 
+ ## [2026-08-17 18:30] — Thêm hình ảnh món vào khung chọn món trên điện thoại
 
 **Yêu cầu**: Hiển thị hình ảnh của món ở phần trên cùng (khoảng 1/3) khung chọn món khi dùng điện thoại, hình cắt ngay trung tâm
 **Quyết định**: Hình chiếm 30% chiều cao màn hình, cắt từ giữa để món nằm ngay trung tâm

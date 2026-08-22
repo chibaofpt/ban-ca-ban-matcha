@@ -143,7 +143,7 @@ export default function MenuPage() {
 
   return (
     <main className="min-h-screen bg-[#fdfcf7] text-foreground font-sans pt-4 pb-24 px-6">
-      <div className="max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto flex flex-col h-full">
+      <div className="max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto">
 
         {/* Sticky header + tab bar — always visible when scrolling */}
         <div className="sticky top-0 z-20 bg-[#fdfcf7]/90 backdrop-blur-md pt-4 -mx-6 px-6 pb-1">
@@ -160,7 +160,7 @@ export default function MenuPage() {
           <TabBar activeTab={activeTab} setActiveTab={handleTabChange} />
         </div>
 
-        <div className="flex-1 relative w-full">
+        <div className="relative w-full">
           <MenuPanels
             loading={menuLoading || powderLoading}
             latteItems={data?.latte ?? []}

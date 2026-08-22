@@ -121,7 +121,7 @@ html {
 }
 
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 .dismissable-sheet {
