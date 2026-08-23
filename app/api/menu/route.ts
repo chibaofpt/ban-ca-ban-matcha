@@ -76,19 +76,19 @@ async function fetchMenuData(): Promise<MenuData> {
     const globalAddonGroups: AddonGroup[] = addonGroups
       .filter((g) => g.options.length > 0)
       .map((g) => ({
-      id: g.id,
-      name: g.name,
-      image_url: g.image_url ?? null,
-      type: g.type,
-      max_quantity: g.max_quantity ?? null,
-      options: g.options.map((o): AddonOption => ({
-        id: o.id,
-        label: o.label,
-        price_vnd: o.price_vnd,
-        gram_value: o.gram_value !== null ? Number(o.gram_value) : null,
-        sort_order: o.sort_order,
-      })),
-    }));
+        id: g.id,
+        name: g.name,
+        image_url: g.image_url ?? null,
+        type: g.type,
+        max_quantity: g.max_quantity ?? null,
+        options: g.options.map((o): AddonOption => ({
+          id: o.id,
+          label: o.label,
+          price_vnd: o.price_vnd,
+          gram_value: o.gram_value !== null ? Number(o.gram_value) : null,
+          sort_order: o.sort_order,
+        })),
+      }));
 
     const globalMilkTypes: MilkTypeOption[] = milkTypes.map((m) => ({
       id: m.id,
@@ -96,6 +96,7 @@ async function fetchMenuData(): Promise<MenuData> {
       price_per_ml: m.price_per_ml,
       is_default: m.is_default,
       display_order: m.display_order,
+      image_url: m.image_url ?? null,
     }));
     const globalDefaultBaseLiquidId =
       globalMilkTypes.find((liquid) => liquid.is_default)?.id ?? null;

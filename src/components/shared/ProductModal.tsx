@@ -5,7 +5,7 @@ import Image from "next/image";
 import { onRenderCallback } from "@/src/utils/dev/renderProfiler";
 import { Drawer } from "vaul";
 import * as Dialog from "@radix-ui/react-dialog";
-import { X, Minus, Plus, Ticket, CheckCircle2 } from "lucide-react";
+import { X, Minus, Plus, Ticket, CheckCircle2, ArrowLeft } from "lucide-react";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { filterUsableVouchers } from "@/src/utils/voucherMatchUtils";
 import type { AddonGroup, MenuItem, MilkTypeOption, SweetnessLevel, Size } from "@/src/lib/types/menu";
@@ -198,6 +198,21 @@ const BaseModal: React.FC<ProductModalProps> = ({
 
   const defaultPowderPriceCtx = getPriceForContext(selectedSize, item.resolved_default_powder_id ?? "");
 
+  // ── Browser back button support ───────────────────────────────────────────
+  const isClosing = React.useRef(false);
+
+  React.useEffect(() => {
+    window.history.pushState({ modal: 'product' }, "");
+    const onPop = () => {
+      if (isClosing.current) return;
+      isClosing.current = true;
+      setIsOpen(false);
+      onClose();
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [onClose]);
+
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleSelectorToggle = useCallback((groupId: string, optionId: string) => {
     const group = addonGroups.find(candidate => candidate.id === groupId);
@@ -224,8 +239,13 @@ const BaseModal: React.FC<ProductModalProps> = ({
 
 
   const handleClose = useCallback(() => {
+    if (isClosing.current) return;
+    isClosing.current = true;
     setIsOpen(false);
-    setTimeout(onClose, 300); // wait for exit animation
+    onClose();
+    if (window.history.state?.modal === 'product') {
+      window.history.back();
+    }
   }, [onClose]);
 
   const handleAddToCart = useCallback(() => {
@@ -354,10 +374,11 @@ const BaseModal: React.FC<ProductModalProps> = ({
           <X className="w-5 h-5 text-primary" />
         </button>
 
-        <div className="flex flex-col flex-1 min-h-0 h-full overflow-y-auto overscroll-contain px-5 md:px-8 pt-7 pb-44 md:pb-40 md:pt-0">
-          {item.image_url && (
-            <div className="md:hidden -mx-5 -mt-7">
-              <div className="relative h-[30vh] w-full overflow-hidden">
+        {/* overflow-x-clip overscroll-x-none prevents diagonal wiggle */}
+        <div className="flex flex-col flex-1 min-h-0 h-full overflow-y-auto overflow-x-clip overscroll-contain overscroll-x-none px-5 md:px-8 pt-7 pb-44 md:pb-40 md:pt-0">
+          {item.image_url ? (
+            <div className="md:hidden -mx-5 -mt-7 shrink-0">
+              <div className="relative aspect-square w-full overflow-hidden">
                 <Image
                   src={item.image_url}
                   alt={item.name}
@@ -368,8 +389,29 @@ const BaseModal: React.FC<ProductModalProps> = ({
                   placeholder="blur"
                   blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
                 />
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/20 to-transparent" />
+                {/* Floating back button — top left over image */}
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="absolute top-4 left-4 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-black/25 backdrop-blur-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                  aria-label="Quay lại"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/20 to-transparent" />
               </div>
+            </div>
+          ) : (
+            /* No image — back button floats top-left as standalone */
+            <div className="md:hidden -mx-5 -mt-7 shrink-0 relative h-16">
+              <button
+                type="button"
+                onClick={handleClose}
+                className="absolute top-4 left-4 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                aria-label="Quay lại"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
             </div>
           )}
           <div
@@ -754,7 +796,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
           <Drawer.Portal>
             <Drawer.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100]" />
             <Drawer.Content 
-              className="fixed bottom-0 left-0 right-0 z-[101] outline-none bg-[#fdfcf7] shadow-2xl flex flex-col max-h-[92vh] rounded-t-[2.5rem] after:content-[''] after:absolute after:inset-x-0 after:top-full after:h-[50vh] after:bg-inherit"
+              className="fixed bottom-0 left-0 right-0 z-[101] outline-none bg-[#fdfcf7] shadow-2xl flex flex-col h-[100dvh] max-h-[100dvh] rounded-none after:content-[''] after:absolute after:inset-x-0 after:top-full after:h-[50vh] after:bg-inherit"
             >
               <div className="absolute top-0 left-0 right-0 h-10 z-10 flex items-start justify-center pt-3 bg-transparent">
                 <div className="w-12 h-1.5 bg-border rounded-full" />
@@ -800,9 +842,28 @@ const ExtrasModal: React.FC<ProductModalProps> = ({
   const hasVoucher = voucherId !== null;
   const finalPrice = hasVoucher ? 0 : unitPrice;
 
+  const isClosing = React.useRef(false);
+
+  React.useEffect(() => {
+    window.history.pushState({ modal: 'extras' }, "");
+    const onPop = () => {
+      if (isClosing.current) return;
+      isClosing.current = true;
+      setIsOpen(false);
+      onClose();
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [onClose]);
+
   const close = () => {
+    if (isClosing.current) return;
+    isClosing.current = true;
     setIsOpen(false);
     onClose();
+    if (window.history.state?.modal === 'extras') {
+      window.history.back();
+    }
   };
 
   const save = () => {

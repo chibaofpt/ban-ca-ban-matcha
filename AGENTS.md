@@ -126,3 +126,5 @@ Không dùng NextAuth/Supabase Auth, raw SQL nếu chưa được yêu cầu, Re
 - Code được sửa để khớp spec hiện có → `None`.
 
 Completion report phải nêu resource đã cập nhật hoặc lý do `None`. Git là change history; không tạo `changes/`, task changelog, `task.md` hay `implementation_plan.md`.
+
+@RTK.md

@@ -13,7 +13,7 @@ export interface MenuImageObject {
 
 /** Inputs used to generate a collision-safe SEO storage path. */
 export interface MenuImagePathInput {
-  category: "latte" | "fusion" | "extras" | "addons" | "powders";
+  category: "latte" | "fusion" | "extras" | "addons" | "powders" | "milk-types";
   productName: string;
   requestedName?: string | null;
   contentType: string;

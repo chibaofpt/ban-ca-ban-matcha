@@ -9,6 +9,7 @@ interface FormFields {
   price_per_ml: string;
   is_default: boolean;
   is_active: boolean;
+  remove_image: boolean;
 }
 
 export interface MilkTypeFormPayload {
@@ -16,6 +17,7 @@ export interface MilkTypeFormPayload {
   price_per_ml: number;
   is_default: boolean;
   is_active: boolean;
+  remove_image?: boolean;
 }
 
 interface MilkTypeFormProps {

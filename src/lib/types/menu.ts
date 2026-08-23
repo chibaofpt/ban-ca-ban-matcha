@@ -42,6 +42,7 @@ export interface MilkTypeOption {
   is_default: boolean;
   display_order: number;
   is_active?: boolean;
+  image_url?: string | null;
 }
 
 export type BaseLiquidOption = MilkTypeOption;

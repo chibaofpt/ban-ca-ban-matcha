@@ -5,6 +5,7 @@ export interface AdminMilkType {
   price_per_ml: number;
   is_default: boolean;
   is_active: boolean;
+  image_url: string | null;
   display_order: number;
   created_at: string;
 }

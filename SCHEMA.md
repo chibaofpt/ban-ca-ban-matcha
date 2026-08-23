@@ -198,6 +198,7 @@ Global Base Liquid catalog for Latte and Fusion. The physical table name is reta
 - `is_default` bool — the single global Latte default (normally sữa bò).
 - `is_active` bool — default true
 - `display_order` int — default 0
+- `image_url` string nullable — Supabase Storage public URL for the milk type avatar shown in MilkSelector OptionCard.
 - `created_at` timestamp
 
 > Database constraints enforce at most one `is_default = true` row and require that row to remain

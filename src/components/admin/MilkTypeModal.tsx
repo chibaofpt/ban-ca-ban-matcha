@@ -9,6 +9,7 @@ import MilkTypeForm, {
 import { createMilkType, updateMilkType } from "@/src/services/adminMilkTypeService";
 import type { AdminMilkType } from "@/src/lib/types/milkType";
 import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
+import CatalogImageFields from "@/src/components/admin/CatalogImageFields";
 
 interface MilkTypeModalProps {
   mode: "create" | "edit";
@@ -27,15 +28,23 @@ export default function MilkTypeModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageFilename, setImageFilename] = useState("");
+
   const handleSubmit = async (payload: MilkTypeFormPayload) => {
     setIsSubmitting(true);
     setErrorMsg(null);
     try {
+      const requestedFilename = imageFilename.trim();
       let saved: AdminMilkType;
+
+      // If user provided a requestedFilename but NO new file, AND they don't currently have an image, clear it.
+      const finalFilename = (requestedFilename && !imageFile && !item?.image_url) ? null : requestedFilename;
+
       if (mode === "edit" && item) {
-        saved = await updateMilkType(item.id, payload);
+        saved = await updateMilkType(item.id, payload, imageFile, finalFilename);
       } else {
-        saved = await createMilkType(payload);
+        saved = await createMilkType(payload, imageFile, finalFilename);
       }
       onSuccess(saved);
       onClose();
@@ -66,24 +75,33 @@ export default function MilkTypeModal({
             type="button"
             aria-label="Đóng"
             onClick={onClose}
-            className="rounded-lg p-1.5 hover:bg-secondary/60 transition text-muted-foreground hover:text-foreground"
+            className="rounded-full p-2 hover:bg-secondary transition-colors"
           >
-            <X size={16} />
+            <X className="h-5 w-5 text-muted-foreground" />
           </button>
         </div>
 
-        <div className="overflow-y-auto overscroll-contain px-5 py-4 flex-1">
-          {errorMsg && (
-            <div className="mb-4 rounded-xl bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
-              {errorMsg}
-            </div>
-          )}
+        <div className="flex-1 overflow-y-auto px-5 py-6">
+          <CatalogImageFields
+            currentImageUrl={item?.image_url}
+            label="Ảnh loại sữa"
+            imageFilename={imageFilename}
+            disabled={isSubmitting}
+            onFileChange={setImageFile}
+            onFilenameChange={setImageFilename}
+            onError={setErrorMsg}
+          />
           <MilkTypeForm
             mode={mode}
             defaultValues={defaultValues}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
           />
+          {errorMsg && (
+            <div className="mt-4 text-sm text-destructive font-medium bg-destructive/10 p-3 rounded-lg text-center">
+              {errorMsg}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -13,6 +13,7 @@ vi.mock("@/lib/prisma", () => ({
     menuItem: { findMany: (...args: unknown[]) => mockMenuItemFindMany(...args) },
     addonGroup: { findMany: (...args: unknown[]) => mockAddonGroupFindMany(...args) },
     matchaPowder: { findMany: (...args: unknown[]) => mockMatchaPowderFindMany(...args) },
+    milkType: { findMany: vi.fn().mockResolvedValue([]) },
   },
 }));
 

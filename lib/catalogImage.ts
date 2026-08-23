@@ -9,7 +9,7 @@ import {
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
-export type CatalogImageKind = "addons" | "powders";
+export type CatalogImageKind = "addons" | "powders" | "milk-types";
 
 export interface PreparedCatalogImage {
   imageUrl: string | undefined;

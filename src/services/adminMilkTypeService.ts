@@ -15,13 +15,41 @@ export async function listAdminMilkTypes(): Promise<AdminMilkType[]> {
   return data.data;
 }
 
-export async function createMilkType(payload: CreateMilkTypeInput): Promise<AdminMilkType> {
-  const { data } = await apiClient.post<AdminSingleMilkTypeResponse>("/api/admin/milk-types", payload);
+function buildMultipartPayload(
+  payload: CreateMilkTypeInput | UpdateMilkTypeInput,
+  imageFile?: File | null,
+  imageFilename?: string | null,
+): FormData | (CreateMilkTypeInput | UpdateMilkTypeInput) {
+  if (!imageFile && !imageFilename && !("remove_image" in payload && payload.remove_image)) {
+    return payload; // fallback to json
+  }
+  const formData = new FormData();
+  formData.set("payload", JSON.stringify(payload));
+  if (imageFile) formData.set("image", imageFile);
+  if (imageFilename?.trim()) formData.set("image_filename", imageFilename.trim());
+  return formData;
+}
+
+export async function createMilkType(
+  payload: CreateMilkTypeInput,
+  imageFile?: File | null,
+  imageFilename?: string | null,
+): Promise<AdminMilkType> {
+  const body = buildMultipartPayload(payload, imageFile, imageFilename);
+  const config = body instanceof FormData ? { headers: { "Content-Type": "multipart/form-data" } } : undefined;
+  const { data } = await apiClient.post<AdminSingleMilkTypeResponse>("/api/admin/milk-types", body, config);
   return data.data;
 }
 
-export async function updateMilkType(id: string, payload: UpdateMilkTypeInput): Promise<AdminMilkType> {
-  const { data } = await apiClient.put<AdminSingleMilkTypeResponse>(`/api/admin/milk-types/${id}`, payload);
+export async function updateMilkType(
+  id: string,
+  payload: UpdateMilkTypeInput,
+  imageFile?: File | null,
+  imageFilename?: string | null,
+): Promise<AdminMilkType> {
+  const body = buildMultipartPayload(payload, imageFile, imageFilename);
+  const config = body instanceof FormData ? { headers: { "Content-Type": "multipart/form-data" } } : undefined;
+  const { data } = await apiClient.put<AdminSingleMilkTypeResponse>(`/api/admin/milk-types/${id}`, body, config);
   return data.data;
 }
 

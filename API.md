@@ -114,13 +114,14 @@ is the canonical current example.
 
 ## Image Upload Flow
 
-- Client calls the menu, addon-group, or powder admin create/update route with `multipart/form-data`
+- Client calls the menu, addon-group, powder, or **milk-type** admin create/update route with `multipart/form-data`
 - Route handler uploads to Supabase Storage via `lib/storage.ts`
 - Bucket: `menu-images` (public bucket)
 - Size limit: 5MB
 - Allowed types: `image/jpeg`, `image/png`, `image/webp`
 - Optional `image_filename` controls the SEO-friendly Storage object name; it is not stored in a database column
-- Addon/powder multipart requests keep their existing JSON contract inside the `payload` field and remain backward-compatible with direct JSON requests
+- Addon/powder/milk-type multipart requests keep their existing JSON contract inside the `payload` field and remain backward-compatible with direct JSON requests
+- Milk-type PUT also accepts `remove_image: true` in the JSON payload to explicitly nullify `image_url` and delete the Storage object
 - Replacing or renaming an image deletes the previous object only after the database update succeeds
 - Soft-deleted menu items, addon groups, and powders retain their image references and are protected from cleanup
 - Daily cleanup deletes only objects unreferenced by all three catalog tables and older than 48 hours; start with `IMAGE_CLEANUP_DRY_RUN=true`
@@ -460,6 +461,7 @@ type BaseLiquid = {
   price_per_ml: number
   is_default: boolean
   display_order: number
+  image_url: string | null   // Supabase Storage public URL; null when no image uploaded
 }
 
 // AddonGroup — MenuData.addon_groups is global, applies to every item
