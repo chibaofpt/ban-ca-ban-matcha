@@ -6,6 +6,8 @@
  *  - canApplyDiscount: Validates minimum order threshold for DISCOUNT vouchers
  *  - canApplyFreeship: Validates delivery order type and threshold for FREESHIP vouchers
  *  - buildBundleItemConfig: Constructs valid item configuration from scope snapshot
+ *  - formatBundleSlotConfig: Formats non-default config fields for slot card display
+ *  - cartItemToBundleConfig: Converts CartItem (from ProductModal onConfirm) to BundleItemConfig
  *  - Regression/Integration: Verifies compatibility with deriveBundleSelectionState
  *
  * TDD Phase: These tests will FAIL until `src/lib/utils/voucherUseNowHelpers.ts` is implemented.
@@ -19,6 +21,8 @@ import {
   canApplyDiscount,
   canApplyFreeship,
   buildBundleItemConfig,
+  formatBundleSlotConfig,
+  cartItemToBundleConfig,
   type CanApplyDiscountResult,
   type CanApplyFreeshipResult,
   type BundleItemConfig,
@@ -420,5 +424,237 @@ describe("Integration / Regression — Tích hợp findCheapestScope với deriv
 
     expect(state.status).toBe("INELIGIBLE");
     expect(state.message).toContain("Cần thêm 1 món đủ điều kiện");
+  });
+});
+
+// ── CartItem fixture for cartItemToBundleConfig tests ────────────────────────
+import type { CartItem } from "@/src/lib/types/cart";
+
+function makeCartItem(overrides: Partial<CartItem> = {}): CartItem {
+  return {
+    cartId: "cart-test-01",
+    menuItemId: "item-latte-01",
+    name: "Matcha Latte Truyền Thống",
+    category: "latte",
+    imageUrl: "https://example.com/latte.jpg",
+    size: "MEDIUM",
+    unitPrice: 55_000,
+    quantity: 1,
+    sweetness: "QUARTER",
+    iceOption: "NORMAL",
+    coldwhisk: false,
+    note: "",
+    selectedOptionIds: [],
+    quantityMap: {},
+    addonsPrice: 0,
+    addonPrices: {},
+    quantityAddonOptions: [],
+    clientPriceVnd: 55_000,
+    originalClientPriceVnd: 55_000,
+    selectedBaseLiquidId: "milk-fresh",
+    ...overrides,
+  };
+}
+
+describe("formatBundleSlotConfig — Format config khác default để hiển thị trên slot card", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("trả về chuỗi rỗng khi config là default hoàn toàn (QUARTER đường, NORMAL đá, không coldwhisk)", () => {
+    const config: BundleItemConfig = {
+      menuItemId: "item-latte-01",
+      name: "Matcha Latte",
+      imageUrl: null,
+      size: "MEDIUM",
+      powderId: null,
+      milkTypeId: "milk-fresh",
+      baseLiquidId: "milk-fresh",
+      sweetness: "QUARTER",
+      iceOption: "NORMAL",
+      coldwhisk: false,
+      selectedOptionIds: [],
+      quantityMap: {},
+      unitPriceVnd: 55_000,
+      addonsCost: 0,
+      addonPrices: {},
+      quantityAddonOptions: [],
+    };
+    const result = formatBundleSlotConfig(config);
+    // Default values should not appear; result should not have sweetness or ice
+    expect(result).not.toContain("QUARTER");
+    expect(result).not.toContain("NORMAL");
+  });
+
+  it("hiển thị size khi có", () => {
+    const config: BundleItemConfig = {
+      menuItemId: "item-latte-01",
+      name: "Matcha Latte",
+      imageUrl: null,
+      size: "LARGE",
+      powderId: null,
+      milkTypeId: null,
+      sweetness: "QUARTER",
+      iceOption: "NORMAL",
+      coldwhisk: false,
+      selectedOptionIds: [],
+      quantityMap: {},
+      unitPriceVnd: 65_000,
+      addonsCost: 0,
+      addonPrices: {},
+      quantityAddonOptions: [],
+    };
+    const result = formatBundleSlotConfig(config);
+    expect(result).toContain("L");
+  });
+
+  it("hiển thị sweetness khi khác QUARTER (default)", () => {
+    const config: BundleItemConfig = {
+      menuItemId: "item-latte-01",
+      name: "Matcha Latte",
+      imageUrl: null,
+      size: "MEDIUM",
+      powderId: null,
+      milkTypeId: null,
+      sweetness: "NONE",
+      iceOption: "NORMAL",
+      coldwhisk: false,
+      selectedOptionIds: [],
+      quantityMap: {},
+      unitPriceVnd: 55_000,
+      addonsCost: 0,
+      addonPrices: {},
+      quantityAddonOptions: [],
+    };
+    const result = formatBundleSlotConfig(config);
+    expect(result.toLowerCase()).toContain("đường");
+  });
+
+  it("hiển thị ice khi khác NORMAL (default)", () => {
+    const config: BundleItemConfig = {
+      menuItemId: "item-latte-01",
+      name: "Matcha Latte",
+      imageUrl: null,
+      size: "MEDIUM",
+      powderId: null,
+      milkTypeId: null,
+      sweetness: "QUARTER",
+      iceOption: "NO_ICE",
+      coldwhisk: false,
+      selectedOptionIds: [],
+      quantityMap: {},
+      unitPriceVnd: 55_000,
+      addonsCost: 0,
+      addonPrices: {},
+      quantityAddonOptions: [],
+    };
+    const result = formatBundleSlotConfig(config);
+    expect(result.toLowerCase()).toContain("đá");
+  });
+
+  it("hiển thị Coldwhisk khi coldwhisk = true", () => {
+    const config: BundleItemConfig = {
+      menuItemId: "item-latte-01",
+      name: "Matcha Latte",
+      imageUrl: null,
+      size: "MEDIUM",
+      powderId: null,
+      milkTypeId: null,
+      sweetness: "QUARTER",
+      iceOption: "NORMAL",
+      coldwhisk: true,
+      selectedOptionIds: [],
+      quantityMap: {},
+      unitPriceVnd: 55_000,
+      addonsCost: 0,
+      addonPrices: {},
+      quantityAddonOptions: [],
+    };
+    const result = formatBundleSlotConfig(config);
+    expect(result.toLowerCase()).toContain("coldwhisk");
+  });
+
+  it("kết hợp size + sweetness khác default thành chuỗi phân cách bằng ·", () => {
+    const config: BundleItemConfig = {
+      menuItemId: "item-latte-01",
+      name: "Matcha Latte",
+      imageUrl: null,
+      size: "SMALL",
+      powderId: null,
+      milkTypeId: null,
+      sweetness: "FULL",
+      iceOption: "NORMAL",
+      coldwhisk: false,
+      selectedOptionIds: [],
+      quantityMap: {},
+      unitPriceVnd: 45_000,
+      addonsCost: 0,
+      addonPrices: {},
+      quantityAddonOptions: [],
+    };
+    const result = formatBundleSlotConfig(config);
+    expect(result).toContain("·");
+    expect(result).toContain("S");
+  });
+});
+
+describe("cartItemToBundleConfig — Convert CartItem từ ProductModal sang BundleItemConfig", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const scope = createScope({
+    menu_item_id: "item-latte-01",
+    allowed_sizes: ["MEDIUM"],
+    default_powder_id: "powder-haru",
+    default_base_liquid_id: "milk-fresh",
+  });
+
+  it("convert CartItem thành BundleItemConfig với đúng fields cơ bản", () => {
+    const cartItem = makeCartItem({ size: "MEDIUM", sweetness: "HALF", iceOption: "LESS_ICE" });
+    const result = cartItemToBundleConfig(cartItem, scope);
+    expect(result.menuItemId).toBe("item-latte-01");
+    expect(result.name).toBe("Matcha Latte Truyền Thống");
+    expect(result.size).toBe("MEDIUM");
+    expect(result.sweetness).toBe("HALF");
+    expect(result.iceOption).toBe("LESS_ICE");
+  });
+
+  it("giữ nguyên selectedOptionIds từ CartItem", () => {
+    const cartItem = makeCartItem({ selectedOptionIds: ["opt-kem-01", "opt-coconut-02"] });
+    const result = cartItemToBundleConfig(cartItem, scope);
+    expect(result.selectedOptionIds).toEqual(["opt-kem-01", "opt-coconut-02"]);
+  });
+
+  it("giữ nguyên quantityAddonOptions từ CartItem", () => {
+    const cartItem = makeCartItem({
+      quantityAddonOptions: [{ option_id: "opt-extra-matcha", quantity: 2 }],
+    });
+    const result = cartItemToBundleConfig(cartItem, scope);
+    expect(result.quantityAddonOptions).toEqual([{ option_id: "opt-extra-matcha", quantity: 2 }]);
+  });
+
+  it("map selectedBaseLiquidId → baseLiquidId trong BundleItemConfig", () => {
+    const cartItem = makeCartItem({ selectedBaseLiquidId: "milk-oat" });
+    const result = cartItemToBundleConfig(cartItem, scope);
+    expect(result.baseLiquidId).toBe("milk-oat");
+  });
+
+  it("map selectedPowderId → powderId trong BundleItemConfig", () => {
+    const cartItem = makeCartItem({ selectedPowderId: "powder-aki", category: "fusion" });
+    const result = cartItemToBundleConfig(cartItem, scope);
+    expect(result.powderId).toBe("powder-aki");
+  });
+
+  it("giữ nguyên coldwhisk từ CartItem", () => {
+    const cartItem = makeCartItem({ coldwhisk: true });
+    const result = cartItemToBundleConfig(cartItem, scope);
+    expect(result.coldwhisk).toBe(true);
+  });
+
+  it("set unitPriceVnd từ clientPriceVnd của CartItem", () => {
+    const cartItem = makeCartItem({ clientPriceVnd: 62_000 });
+    const result = cartItemToBundleConfig(cartItem, scope);
+    expect(result.unitPriceVnd).toBe(62_000);
   });
 });

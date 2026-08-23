@@ -23,6 +23,7 @@ Không duy trì cây thư mục thủ công trong tài liệu này. Dùng `rg --
 | `lib/` | Server-only business logic, Prisma và external adapters |
 | `lib/validations/` | Shared server Zod schemas |
 | `prisma/` | Physical schema và committed migrations |
+| `.agents/skills/<name>/SKILL.md` | Project-local reusable workflow skill |
 
 Feature container trong `src/components/<domain>` được phép gọi `src/services`; leaf UI và mọi file trong `src/components/ui` thì không. Không di chuyển component chỉ để thỏa một layer lý tưởng trong lúc sửa bug.
 

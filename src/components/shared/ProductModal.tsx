@@ -44,6 +44,8 @@ interface ProductModalProps {
   // ── Bundle Selection ──
   allowedSizes?: Size[];
   disableVoucherApplication?: boolean;
+  /** Optional CTA button label override (e.g. "Chọn món này" in bundle context). */
+  ctaLabel?: string;
 }
 
 const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
@@ -60,7 +62,7 @@ const getDesktopServerSnapshot = () => false;
 const BaseModal: React.FC<ProductModalProps> = ({ 
   item, latteItems, milkTypes, addonGroups, onClose, editingItem, onConfirm, freeVoucherId,
   freeVoucherCoveredPriceVnd, availableVouchers, nested = false, currentCartItems,
-  allowedSizes, disableVoucherApplication
+  allowedSizes, disableVoucherApplication, ctaLabel
 }) => {
   const [isOpen, setIsOpen] = useState(true);
   // Global state
@@ -729,6 +731,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
           hideQuantityPicker={lockQuantity}
           handleAddToCart={handleAddToCart}
           isEditing={!!editingItem}
+          ctaLabel={ctaLabel}
         />
     </>
   );

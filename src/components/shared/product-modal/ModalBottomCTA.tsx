@@ -10,6 +10,8 @@ interface ModalBottomCTAProps {
   hideQuantityPicker: boolean;
   handleAddToCart: () => void;
   isEditing: boolean;
+  /** Optional override for the CTA button text. Defaults to 'Bỏ giỏ cá' / 'Cập nhật'. */
+  ctaLabel?: string;
 }
 
 export function ModalBottomCTA({
@@ -18,7 +20,8 @@ export function ModalBottomCTA({
   setQuantity,
   hideQuantityPicker,
   handleAddToCart,
-  isEditing
+  isEditing,
+  ctaLabel,
 }: ModalBottomCTAProps) {
   return (
     <div className="fixed md:absolute bottom-0 left-0 md:left-auto right-0 z-[110] w-full md:w-1/2 bg-[#fdfcf7]/95 backdrop-blur-md border-t border-border/60 shadow-[0_-8px_30px_rgba(0,0,0,0.04)] px-5 py-4 pb-8 md:pb-6 md:rounded-br-[2.5rem]">
@@ -52,7 +55,7 @@ export function ModalBottomCTA({
           className="bg-primary text-white rounded-2xl h-11 px-4 md:px-5 font-bold text-sm shadow-lg active:scale-[0.98] transition-all flex items-center gap-2 shrink-0"
         >
           <ShoppingBag className="w-4 h-4" />
-          <span>{isEditing ? 'Cập nhật' : 'Bỏ giỏ cá'}</span>
+          <span>{ctaLabel ?? (isEditing ? 'Cập nhật' : 'Bỏ giỏ cá')}</span>
         </button>
       </div>
     </div>

@@ -25,6 +25,7 @@ Chỉ đọc resource liên quan task; không đọc tất cả mặc định.
 | Pricing/rounding | `pricing-logic` skill |
 | UI/mobile/form/overlay | `mobile-ux` skill + UI section của `SPECIFICATION.md` |
 | Test/feature/business bug | `tdd` skill |
+| Sub-agent, chia agent, Backend/Frontend/QA agent, delegate hoặc làm song song | `subagent-orchestration` skill |
 | Deferred/unresolved/env | `NOTES.md` hoặc `.env.local.example` |
 | Push staging/production | `push-to-dev` hoặc `production-deploy` skill |
 
