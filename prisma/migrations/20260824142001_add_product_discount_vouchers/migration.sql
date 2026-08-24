@@ -1,7 +1,3 @@
-CREATE TYPE "ProductDiscountMode" AS ENUM ('FIXED_AMOUNT', 'PAY_AS_SIZE');
-
-ALTER TYPE "VoucherType" ADD VALUE 'PRODUCT_DISCOUNT';
-
 ALTER TABLE "voucher_packages"
   ADD COLUMN "product_discount_mode" "ProductDiscountMode",
   ADD COLUMN "eligible_sizes" "Size"[] NOT NULL DEFAULT ARRAY[]::"Size"[],
