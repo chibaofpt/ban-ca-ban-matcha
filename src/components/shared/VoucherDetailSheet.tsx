@@ -83,11 +83,11 @@ export const VoucherDetailSheet = ({
 
   const vType = voucher.voucher_type;
   const config = VOUCHER_TYPE_CONFIG[vType] || { label: "Voucher", badgeCls: "bg-gray-100 text-gray-800" };
-  const highlight = getTicketHighlightText(vType, voucher.discount_type, voucher.discount_value);
+  const highlight = getTicketHighlightText(vType, voucher.discount_type, voucher.discount_value, voucher.reference_size);
 
   const handleUseNow = async () => {
     if (!canApply) return;
-    if (vType === "PRODUCT" || vType === "ITEM") {
+    if (vType === "PRODUCT" || vType === "PRODUCT_DISCOUNT" || vType === "ITEM") {
       const res = await addToCart(voucher);
       if (res.ok) {
         onUseNowSuccess();

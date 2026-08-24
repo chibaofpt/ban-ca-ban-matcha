@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { AddonGroup, MenuItem, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import type { Powder, DefaultPowderGram } from "@/src/lib/types/powder";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
+import { computeProductDiscountBenefit } from "@/src/hooks/useAddVoucherToCart";
 import {
   applyProductVoucherCredit,
   calcLattePrice,
@@ -143,7 +144,22 @@ export function usePriceMap({
     // 2. Apply Product Voucher deduction
     const activeProductVoucher = availableVouchers?.find(v => v.qr_token === selectedProductVoucherId);
     const effectiveFreeVoucherId = freeVoucherId || selectedProductVoucherId;
-    const effectiveFreeCoveredPrice = freeVoucherCoveredPriceVnd ?? activeProductVoucher?.covered_price_vnd ?? undefined;
+    const productDiscountBenefit = activeProductVoucher?.voucher_type === "PRODUCT_DISCOUNT"
+      ? computeProductDiscountBenefit(
+          activeProductVoucher,
+          currentPriceContext.baseDrinkPrice,
+          activeProductVoucher.reference_size
+            ? getPriceForContext(activeProductVoucher.reference_size, activePowderId).baseDrinkPrice
+            : null,
+        )
+      : undefined;
+    const effectiveFreeCoveredPrice = freeVoucherCoveredPriceVnd
+      ?? productDiscountBenefit
+      ?? activeProductVoucher?.covered_price_vnd
+      ?? undefined;
+    const effectiveProductVoucherType = activeProductVoucher?.voucher_type === "PRODUCT_DISCOUNT"
+      ? "PRODUCT_DISCOUNT" as const
+      : effectiveFreeVoucherId ? "PRODUCT" as const : undefined;
 
     if (effectiveFreeVoucherId && effectiveFreeCoveredPrice !== undefined) {
       const baseDrinkPrice = finalUnitPrice - finalAddonsCost;
@@ -165,7 +181,8 @@ export function usePriceMap({
       finalAddonsCost,
       totalCost,
       effectiveFreeVoucherId,
-      effectiveFreeCoveredPrice
+      effectiveFreeCoveredPrice,
+      effectiveProductVoucherType,
     };
   }, [
     item, latteItems, milkTypes, addonGroups, powders, defaultPowderGrams, selectedSize, activePowderId,

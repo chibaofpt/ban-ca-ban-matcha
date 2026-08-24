@@ -40,6 +40,7 @@ export function releaseVoucherFromOtherCartLines(
       ...item,
       productVoucherId: undefined,
       productVoucherDiscountVnd: undefined,
+      productVoucherType: undefined,
       itemVoucherId: undefined,
     };
     return { ...released, clientPriceVnd: computeFinalClientPrice(released) };
@@ -59,6 +60,7 @@ function normalizeUniqueCartVouchers(items: CartItem[]): CartItem[] {
       ...item,
       productVoucherId: undefined,
       productVoucherDiscountVnd: undefined,
+      productVoucherType: undefined,
       itemVoucherId: undefined,
     };
     return { ...released, clientPriceVnd: computeFinalClientPrice(released) };
@@ -156,7 +158,7 @@ interface CartState {
    * Reduces clientPriceVnd by up to coveredPriceVnd (floor at 0).
    * Stores the original price so it can be restored on voucher removal.
    */
-  applyProductVoucher: (cartId: string, voucherId: string, coveredPriceVnd: number) => void;
+  applyProductVoucher: (cartId: string, voucherId: string, coveredPriceVnd: number, voucherType?: "PRODUCT" | "PRODUCT_DISCOUNT") => void;
   /**
    * Removes a PRODUCT voucher from a cart item and restores the original price.
    */
@@ -201,6 +203,7 @@ export function migrateCartState(
       clientPriceVnd: sizedItem.originalClientPriceVnd ?? sizedItem.unitPrice,
       productVoucherId: undefined,
       productVoucherDiscountVnd: undefined,
+      productVoucherType: undefined,
       addonVouchers: [],
     } : sizedItem;
     const baseLiquidSafeItem = fromVersion < 5 && voucherSafeItem.selectedMilkTypeId
@@ -372,10 +375,10 @@ export const useCartStore = create<CartState>()(
 
       clearCart: () => set({ items: [], selectedVoucherIds: [], bundleApplications: [] }),
 
-      applyProductVoucher: (cartId, voucherId, coveredPriceVnd) => {
+      applyProductVoucher: (cartId, voucherId, coveredPriceVnd, voucherType = "PRODUCT") => {
         const currentItems = get().items.map((i) => {
           if (i.productVoucherId === voucherId || i.itemVoucherId === voucherId) {
-            const nextI = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, itemVoucherId: undefined };
+            const nextI = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, productVoucherType: undefined, itemVoucherId: undefined };
             nextI.clientPriceVnd = computeFinalClientPrice(nextI);
             return nextI;
           }
@@ -391,6 +394,7 @@ export const useCartStore = create<CartState>()(
           ...item,
           productVoucherId: isItemVoucher ? undefined : voucherId,
           productVoucherDiscountVnd: isItemVoucher ? undefined : coveredPriceVnd,
+          productVoucherType: isItemVoucher ? undefined : voucherType,
           itemVoucherId: isItemVoucher ? voucherId : undefined,
         };
         const discounted = computeFinalClientPrice(nextItem);
@@ -421,7 +425,7 @@ export const useCartStore = create<CartState>()(
         set({
           items: get().items.map((i) => {
             if (i.cartId !== cartId) return i;
-            const nextItem = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, itemVoucherId: undefined };
+            const nextItem = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, productVoucherType: undefined, itemVoucherId: undefined };
             nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
             return nextItem;
           }),
@@ -510,6 +514,7 @@ export const useCartStore = create<CartState>()(
               ? {
                   productVoucherId: undefined,
                   productVoucherDiscountVnd: undefined,
+                  productVoucherType: undefined,
                   itemVoucherId: undefined,
                 }
               : {}),

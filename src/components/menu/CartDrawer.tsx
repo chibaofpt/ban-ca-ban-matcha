@@ -41,6 +41,7 @@ import {
 } from "@/src/lib/utils/bundleVoucher";
 import type { BundleCreatedRewardEffect } from "@/src/lib/types/cart";
 import { getVoucherAvailabilityMessage } from "@/src/lib/utils/voucherModalHelpers";
+import { computeProductDiscountBenefit, computeVoucherItemPrice } from "@/src/hooks/useAddVoucherToCart";
 import {
   findUnavailableBundleTokens,
   getBundleCheckoutAvailabilityMessage,
@@ -135,6 +136,26 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
 
   // ── Voucher state ──
   const [allVouchers, setAllVouchers] = useState<MyVoucher[]>([]);
+
+  const getItemVoucherBenefit = useCallback((item: import("@/src/lib/types/cart").CartItem, voucher: MyVoucher) => {
+    let benefit = voucher.covered_price_vnd ?? 0;
+    if (voucher.voucher_type === "PRODUCT_DISCOUNT") {
+      const menuItem = [...menuData.latte, ...menuData.fusion].find((candidate) => candidate.id === item.menuItemId);
+      if (!menuItem || item.size === null) return 0;
+      const referencePrice = voucher.product_discount_mode === "PAY_AS_SIZE" && voucher.reference_size
+        ? computeVoucherItemPrice(menuItem, voucher.reference_size, item.selectedPowderId ?? null,
+            item.selectedBaseLiquidId ?? item.selectedMilkTypeId ?? null, [], powderData.data,
+            powderData.default_powder_gram, menuData.latte, menuData.milk_types, menuData.addon_groups).drinkPrice
+        : null;
+      benefit = computeProductDiscountBenefit(voucher, item.originalClientPriceVnd - item.addonsPrice, referencePrice);
+    }
+    return benefit;
+  }, [menuData, powderData]);
+  const applyItemVoucher = useCallback((cartId: string, voucher: MyVoucher) => {
+    const item = items.find((candidate) => candidate.cartId === cartId);
+    if (!item) return;
+    applyProductVoucher(cartId, voucher.qr_token, getItemVoucherBenefit(item, voucher), voucher.voucher_type === "PRODUCT_DISCOUNT" ? "PRODUCT_DISCOUNT" : "PRODUCT");
+  }, [applyProductVoucher, getItemVoucherBenefit, items]);
   const [availableVoucherPackages, setAvailableVoucherPackages] = useState<VoucherPackage[]>([]);
   /** IDs of selected DISCOUNT vouchers. Server rule: max 1 PERCENT + unlimited FIXED. */
   const selectedVoucherIds = useCartStore((s) => s.selectedVoucherIds);
@@ -869,7 +890,8 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
                 applicableProductVouchers={applicableProductVouchers}
                 applicableAddonVouchersMap={applicableAddonVouchersMap}
                 onClose={() => setActiveItemForVoucher(null)}
-                onApplyProductVoucher={applyProductVoucher}
+                onApplyProductVoucher={applyItemVoucher}
+                getProductVoucherSavings={getItemVoucherBenefit}
                 onRemoveProductVoucher={removeProductVoucher}
                 onApplyAddonVoucher={applyAddonVoucher}
                 onRemoveAddonVoucher={removeAddonVoucher}

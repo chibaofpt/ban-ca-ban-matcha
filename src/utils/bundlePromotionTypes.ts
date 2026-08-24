@@ -29,6 +29,8 @@ export interface BundleCartItem {
   unit_price_vnd: number;
   quantity: number;
   product_voucher_quantity: number;
+  product_discount_voucher_quantity?: number;
+  product_discount_vnd?: number;
   item_voucher_quantity?: number;
   addons: BundleCartAddon[];
 }

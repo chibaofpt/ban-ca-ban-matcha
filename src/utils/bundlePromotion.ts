@@ -43,6 +43,10 @@ function available(item: BundleCartItem): number {
   return Math.max(0, item.quantity - item.product_voucher_quantity - (item.item_voucher_quantity ?? 0));
 }
 
+function rewardAvailable(item: BundleCartItem): number {
+  return Math.max(0, available(item) - (item.product_discount_voucher_quantity ?? 0));
+}
+
 function assertAllocations(qualifiers: BundleQualifierAllocation[], rewards: BundleRewardAllocation[]): void {
   const qualifierKeys = new Set<string>();
   const rewardKeys = new Set<string>();
@@ -66,7 +70,13 @@ function assertCapacity(
 ): void {
   const used = new Map<string, number>();
   for (const allocation of qualifiers) used.set(allocation.client_line_id, (used.get(allocation.client_line_id) ?? 0) + allocation.quantity);
-  if (rewardKind === "PRODUCT") for (const allocation of rewards) used.set(allocation.client_line_id, (used.get(allocation.client_line_id) ?? 0) + allocation.quantity);
+  if (rewardKind === "PRODUCT") for (const allocation of rewards) {
+    const item = items.get(allocation.client_line_id);
+    if (allocation.quantity > rewardAvailable(item ?? ({ quantity: 0, product_voucher_quantity: 0 } as BundleCartItem))) {
+      throw new BundlePromotionError("BUNDLE_CONFLICT", "Bundle reward overlaps PRODUCT_DISCOUNT");
+    }
+    used.set(allocation.client_line_id, (used.get(allocation.client_line_id) ?? 0) + allocation.quantity);
+  }
   for (const [lineId, quantity] of used) {
     if (quantity > available(items.get(lineId) ?? ({ quantity: 0, product_voucher_quantity: 0 } as BundleCartItem))) {
       throw new BundlePromotionError("BUNDLE_CONFLICT", "Bundle allocations exceed paid product units");
@@ -85,7 +95,7 @@ function paidSubtotal(items: BundleCartItem[], rewards: BundleRewardAllocation[]
   return items.reduce((total, item) => {
     const products = Math.max(0, available(item) - (productRewards.get(`${item.client_line_id}:PRODUCT`) ?? 0));
     const addons = item.addons.reduce((sum, addon) => sum + Math.max(0, addon.quantity - (addon.voucher_discounted_quantity ?? 0) - (addonRewards.get(`${item.client_line_id}:${addon.addon_option_id}`) ?? 0)) * addon.unit_price_vnd, 0);
-    return total + products * item.unit_price_vnd + addons;
+    return total + Math.max(0, products * item.unit_price_vnd - (item.product_discount_vnd ?? 0)) + addons;
   }, 0);
 }
 

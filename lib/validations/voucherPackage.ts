@@ -61,6 +61,15 @@ const rawVoucherPackageSchema = z.discriminatedUnion("voucher_type", [
   }),
   z.object({
     ...commonFields,
+    voucher_type: z.literal("PRODUCT_DISCOUNT"),
+    menu_item_id: z.string().uuid(),
+    product_discount_mode: z.enum(["FIXED_AMOUNT", "PAY_AS_SIZE"]),
+    eligible_sizes: z.array(sizeSchema).min(1).max(3),
+    discount_value: z.number().int().positive().optional(),
+    reference_size: sizeSchema.optional(),
+  }),
+  z.object({
+    ...commonFields,
     voucher_type: z.literal("ADDON"),
     addon_option_id: z.string().uuid(),
   }),
@@ -92,9 +101,9 @@ export const createVoucherPackageSchema = rawVoucherPackageSchema.superRefine((d
     ctx.addIssue({ code: "custom", path: ["ends_at"], message: "ends_at must be in the future" });
   }
   if (
-    data.voucher_type === "DISCOUNT" &&
-    data.discount_type === "FIXED" &&
-    data.discount_value % 1_000 !== 0
+    (data.voucher_type === "DISCOUNT" || (data.voucher_type === "PRODUCT_DISCOUNT" && data.product_discount_mode === "FIXED_AMOUNT")) &&
+    (data.voucher_type !== "DISCOUNT" || data.discount_type === "FIXED") &&
+    data.discount_value !== undefined && data.discount_value % 1_000 !== 0
   ) {
     ctx.addIssue({ code: "custom", path: ["discount_value"], message: "FIXED value must be divisible by 1000" });
   }
@@ -104,6 +113,27 @@ export const createVoucherPackageSchema = rawVoucherPackageSchema.superRefine((d
     data.discount_value > 100
   ) {
     ctx.addIssue({ code: "custom", path: ["discount_value"], message: "PERCENT value cannot exceed 100" });
+  }
+  if (data.voucher_type === "PRODUCT_DISCOUNT") {
+    if (new Set(data.eligible_sizes).size !== data.eligible_sizes.length) {
+      ctx.addIssue({ code: "custom", path: ["eligible_sizes"], message: "Duplicate eligible size" });
+    }
+    if (data.product_discount_mode === "FIXED_AMOUNT") {
+      if (data.discount_value === undefined) {
+        ctx.addIssue({ code: "custom", path: ["discount_value"], message: "FIXED_AMOUNT requires discount_value" });
+      }
+      if (data.reference_size !== undefined) {
+        ctx.addIssue({ code: "custom", path: ["reference_size"], message: "FIXED_AMOUNT does not accept reference_size" });
+      }
+    } else {
+      const rank = { SMALL: 0, MEDIUM: 1, LARGE: 2 } as const;
+      if (!data.reference_size || data.eligible_sizes.some((size) => rank[size] <= rank[data.reference_size!])) {
+        ctx.addIssue({ code: "custom", path: ["reference_size"], message: "reference_size must rank below every eligible size" });
+      }
+      if (data.discount_value !== undefined) {
+        ctx.addIssue({ code: "custom", path: ["discount_value"], message: "PAY_AS_SIZE does not accept discount_value" });
+      }
+    }
   }
   if (data.voucher_type !== "BUNDLE") return;
 

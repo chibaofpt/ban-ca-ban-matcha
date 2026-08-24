@@ -29,13 +29,13 @@ export async function PATCH(
       );
     }
 
-    if (voucher.voucher_type === "BUNDLE" || voucher.voucher_type === "ITEM") {
+    if (voucher.voucher_type === "BUNDLE" || voucher.voucher_type === "ITEM" || voucher.voucher_type === "PRODUCT_DISCOUNT") {
       return NextResponse.json(
         {
-          error: voucher.voucher_type === "ITEM"
+          error: voucher.voucher_type === "ITEM" || voucher.voucher_type === "PRODUCT_DISCOUNT"
             ? "ITEM vouchers must be applied to an order"
             : "Bundle vouchers must be applied to an order",
-          code: voucher.voucher_type === "ITEM"
+          code: voucher.voucher_type === "ITEM" || voucher.voucher_type === "PRODUCT_DISCOUNT"
             ? "ITEM_ORDER_REQUIRED"
             : "BUNDLE_ORDER_REQUIRED",
         },

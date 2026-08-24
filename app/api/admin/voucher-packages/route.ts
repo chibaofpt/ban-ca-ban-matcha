@@ -346,6 +346,34 @@ export async function POST(req: NextRequest) {
     }
 
     // FREESHIP package — placeholder for delivery fee discount (Phase 5+)
+    if (data.voucher_type === "PRODUCT_DISCOUNT") {
+      const menuItem = await prisma.menuItem.findUnique({ where: { id: data.menu_item_id }, include: { sizes: true } });
+      if (!menuItem?.is_available || (menuItem.category !== "latte" && menuItem.category !== "fusion")) {
+        return NextResponse.json({ error: "Product discount requires an available drink", code: "BUSINESS_RULE_VIOLATION" }, { status: 422 });
+      }
+      const activeSizes = new Set(menuItem.sizes.filter((row) => row.base_price_vnd !== null).map((row) => row.size));
+      if (data.eligible_sizes.some((size) => !activeSizes.has(size)) ||
+          (data.product_discount_mode === "PAY_AS_SIZE" && (!data.reference_size || !activeSizes.has(data.reference_size)))) {
+        return NextResponse.json({ error: "Voucher size configuration is unavailable", code: "BUSINESS_RULE_VIOLATION" }, { status: 422 });
+      }
+      const pkg = await prisma.voucherPackage.create({
+        data: {
+          name: data.name, description: data.description ?? null, voucher_type: "PRODUCT_DISCOUNT",
+          acquisition_mode: data.acquisition_mode, points_cost: data.points_cost,
+          ends_at: data.ends_at ? new Date(data.ends_at) : null, is_active: true,
+          expires_after_days: data.expires_after_days ?? null, quantity: data.quantity ?? null,
+          max_per_user: data.max_per_user ?? 1, menu_item_id: data.menu_item_id,
+          product_discount_mode: data.product_discount_mode, eligible_sizes: [...data.eligible_sizes],
+          reference_size: data.product_discount_mode === "PAY_AS_SIZE" ? data.reference_size : null,
+          discount_type: data.product_discount_mode === "FIXED_AMOUNT" ? "FIXED" : null,
+          discount_value: data.product_discount_mode === "FIXED_AMOUNT" ? data.discount_value : null,
+          covered_price_vnd: null,
+        },
+      });
+      await invalidateVoucherCaches();
+      return NextResponse.json({ data: pkg }, { status: 201 });
+    }
+
     if (data.voucher_type === "FREESHIP") {
       const pkg = await prisma.voucherPackage.create({
         data: {

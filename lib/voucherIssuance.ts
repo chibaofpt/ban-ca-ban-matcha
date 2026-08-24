@@ -21,7 +21,10 @@ interface VoucherPackageSnapshot {
   expires_after_days: number | null;
   discount_type: string | null;
   discount_value: number | null;
+  product_discount_mode: "FIXED_AMOUNT" | "PAY_AS_SIZE" | null;
   menu_item_id: string | null;
+  eligible_sizes: Size[];
+  reference_size: Size | null;
   size: Size | null;
   matcha_powder_id: string | null;
   milk_type_id: string | null;
@@ -176,12 +179,14 @@ export async function issueVoucherInTransaction(
     },
   });
   assertPackageAvailable(pkg, input.source, now);
-  if (["ITEM", "PRODUCT", "ADDON", "BUNDLE"].includes(pkg.voucher_type)) {
+  if (["ITEM", "PRODUCT", "PRODUCT_DISCOUNT", "ADDON", "BUNDLE"].includes(pkg.voucher_type)) {
     const catalog = availabilityCatalog ?? await loadVoucherAvailabilityCatalog(tx);
     const resolved = resolveVoucherTargetAvailability({
       voucher_type: pkg.voucher_type,
       menu_item_id: pkg.menu_item_id,
       size: pkg.size,
+      eligible_sizes: pkg.eligible_sizes,
+      reference_size: pkg.reference_size,
       matcha_powder_id: pkg.matcha_powder_id,
       milk_type_id: pkg.milk_type_id,
       addon_option_id: pkg.addon_option_id,
@@ -221,7 +226,10 @@ export async function issueVoucherInTransaction(
       voucher_type: pkg.voucher_type,
       discount_type: pkg.discount_type,
       discount_value: pkg.discount_value,
+      product_discount_mode: pkg.product_discount_mode,
       menu_item_id: pkg.menu_item_id,
+      eligible_sizes: pkg.eligible_sizes,
+      reference_size: pkg.reference_size,
       size: pkg.size,
       matcha_powder_id: pkg.matcha_powder_id,
       milk_type_id: pkg.milk_type_id,

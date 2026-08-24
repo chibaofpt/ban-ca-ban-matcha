@@ -17,9 +17,17 @@ import {
   canApplyOwnedVoucher,
   getVoucherAvailabilityMessage,
   getVoucherRefundConfirmation,
+  getTicketHighlightText,
 } from "@/src/lib/utils/voucherModalHelpers";
 import type { MyVoucher, VoucherPackage } from "@/src/services/customerVoucherService";
 import { isVoucherUsable } from "@/src/utils/voucherMatchUtils";
+
+describe("PRODUCT_DISCOUNT ticket highlight", () => {
+  it("renders SMALL and MEDIUM reference sizes", () => {
+    expect(getTicketHighlightText("PRODUCT_DISCOUNT", null, null, "SMALL").text).toBe("SIZE S");
+    expect(getTicketHighlightText("PRODUCT_DISCOUNT", null, null, "MEDIUM").text).toBe("SIZE M");
+  });
+});
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -218,6 +226,10 @@ describe("computePointsAfterExchange", () => {
 // ── getVoucherBenefitText ─────────────────────────────────────────────────────
 
 describe("getVoucherBenefitText", () => {
+  it("PRODUCT_DISCOUNT PAY_AS_SIZE hiển thị đúng size tham chiếu", () => {
+    expect(getVoucherBenefitText(makeVoucher({ voucher_type: "PRODUCT_DISCOUNT", product_discount_mode: "PAY_AS_SIZE", reference_size: "SMALL" }))).toContain("nhỏ");
+    expect(getVoucherBenefitText(makeVoucher({ voucher_type: "PRODUCT_DISCOUNT", product_discount_mode: "PAY_AS_SIZE", reference_size: "MEDIUM" }))).toContain("vừa");
+  });
   it("DISCOUNT PERCENT → 'Giảm X% toàn đơn'", () => {
     const v = makeVoucher({ voucher_type: "DISCOUNT", discount_type: "PERCENT", discount_value: 20 });
     expect(getVoucherBenefitText(v)).toBe("Giảm 20% toàn đơn");

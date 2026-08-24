@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeVoucherItemPrice,
+  computeProductDiscountBenefit,
   resolveVoucherBaseLiquidId,
 } from "@/src/hooks/useAddVoucherToCart";
 import type { MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
@@ -22,6 +23,11 @@ const fusion = {
 } as unknown as MenuItem;
 
 describe("PRODUCT voucher add-to-cart Base Liquid", () => {
+  it("tính benefit PRODUCT_DISCOUNT không bao gồm addon", () => {
+    expect(computeProductDiscountBenefit({ product_discount_mode: "FIXED_AMOUNT", discount_value: 50_000 }, 40_000, null)).toBe(40_000);
+    expect(computeProductDiscountBenefit({ product_discount_mode: "PAY_AS_SIZE", discount_value: null }, 72_000, 53_000)).toBe(19_000);
+    expect(computeProductDiscountBenefit({ product_discount_mode: "PAY_AS_SIZE", discount_value: null }, 52_000, 53_000)).toBe(0);
+  });
   it("tính delta Base Liquid cho Fusion giống luồng order", () => {
     const result = computeVoucherItemPrice(
       fusion,

@@ -20,6 +20,7 @@ import { cn } from "@/src/utils/cn";
 import { formatInclusiveEndDate } from "@/src/lib/utils/adminVoucherForm";
 
 const TYPE_LABEL: Record<VoucherPackage["voucher_type"], string> = {
+  PRODUCT_DISCOUNT: "Giảm theo món",
   ITEM: "Add-on", BUNDLE: "Mua X tặng Y", PRODUCT: "Sản phẩm", ADDON: "Addon",
   DISCOUNT: "Giảm giá", FREESHIP: "Freeship",
 };

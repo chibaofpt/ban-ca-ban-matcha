@@ -16,6 +16,32 @@ const product = (menu_item_id = UUID.menu) => ({
   allowed_sizes: ["MEDIUM", "LARGE"] as const,
 });
 
+describe("Validation PRODUCT_DISCOUNT", () => {
+  const common = {
+    voucher_type: "PRODUCT_DISCOUNT" as const,
+    name: "Giam theo mon",
+    acquisition_mode: "POINTS_EXCHANGE" as const,
+    points_cost: 10,
+    menu_item_id: UUID.menu,
+    eligible_sizes: ["MEDIUM", "LARGE"] as const,
+  };
+
+  it("nhan FIXED_AMOUNT duong va chia het cho 1.000", () => {
+    expect(createVoucherPackageSchema.safeParse({ ...common, product_discount_mode: "FIXED_AMOUNT", discount_value: 10_000 }).success).toBe(true);
+  });
+
+  it("tu choi eligible_sizes rong, trung hoac gia le 1.000", () => {
+    expect(createVoucherPackageSchema.safeParse({ ...common, eligible_sizes: [], product_discount_mode: "FIXED_AMOUNT", discount_value: 10_000 }).success).toBe(false);
+    expect(createVoucherPackageSchema.safeParse({ ...common, eligible_sizes: ["MEDIUM", "MEDIUM"], product_discount_mode: "FIXED_AMOUNT", discount_value: 10_000 }).success).toBe(false);
+    expect(createVoucherPackageSchema.safeParse({ ...common, product_discount_mode: "FIXED_AMOUNT", discount_value: 10_500 }).success).toBe(false);
+  });
+
+  it("PAY_AS_SIZE yeu cau reference size thap hon moi eligible size", () => {
+    expect(createVoucherPackageSchema.safeParse({ ...common, product_discount_mode: "PAY_AS_SIZE", reference_size: "SMALL" }).success).toBe(true);
+    expect(createVoucherPackageSchema.safeParse({ ...common, product_discount_mode: "PAY_AS_SIZE", reference_size: "MEDIUM" }).success).toBe(false);
+  });
+});
+
 function makeBundle() {
   return {
     voucher_type: "BUNDLE" as const, name: "Mua 2 tặng 1", acquisition_mode: "POINTS_EXCHANGE" as const,

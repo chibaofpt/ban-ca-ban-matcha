@@ -6,6 +6,7 @@ import type {
   VoucherStatus,
   VoucherType,
   VoucherAcquisitionMode,
+  ProductDiscountMode,
 } from "@prisma/client";
 import { toBundleRuleDto, type BundleRuleDtoSource } from "@/lib/voucherBundleDto";
 import type { VoucherAvailability } from "@/lib/voucherAvailability";
@@ -19,7 +20,10 @@ interface VoucherDtoSource {
   voucher_type: VoucherType;
   discount_type: DiscountType | null;
   discount_value: number | null;
+  product_discount_mode?: ProductDiscountMode | null;
   menu_item_id: string | null;
+  eligible_sizes?: Size[];
+  reference_size?: Size | null;
   size: Size | null;
   matcha_powder_id: string | null;
   milk_type_id: string | null;
@@ -54,7 +58,10 @@ export function toPublicVoucherDto(voucher: VoucherDtoSource) {
     voucher_type: voucher.voucher_type,
     discount_type: voucher.discount_type,
     discount_value: voucher.discount_value,
+    product_discount_mode: voucher.product_discount_mode ?? null,
     menu_item_id: voucher.menu_item_id,
+    eligible_sizes: voucher.eligible_sizes ?? [],
+    reference_size: voucher.reference_size ?? null,
     size: voucher.size,
     matcha_powder_id: voucher.matcha_powder_id,
     milk_type_id: voucher.milk_type_id,

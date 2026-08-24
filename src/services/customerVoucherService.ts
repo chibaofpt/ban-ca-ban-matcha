@@ -25,13 +25,16 @@ export interface VoucherPackage {
   id: string;
   name: string;
   description: string | null;
-  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
+  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE";
   acquisition_mode: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
   points_cost: number;
   ends_at?: string | null;
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
+  product_discount_mode?: "FIXED_AMOUNT" | "PAY_AS_SIZE" | null;
   menu_item_id: string | null;
+  eligible_sizes?: Array<"SMALL" | "MEDIUM" | "LARGE">;
+  reference_size?: "SMALL" | "MEDIUM" | "LARGE" | null;
   size: "SMALL" | "MEDIUM" | "LARGE" | null;
   matcha_powder_id: string | null;
   milk_type_id: string | null;
@@ -95,10 +98,13 @@ export interface VoucherAvailability {
 
 export interface MyVoucher {
   qr_token: string;
-  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
+  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE";
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
+  product_discount_mode?: "FIXED_AMOUNT" | "PAY_AS_SIZE" | null;
   menu_item_id: string | null;
+  eligible_sizes?: Array<"SMALL" | "MEDIUM" | "LARGE">;
+  reference_size?: "SMALL" | "MEDIUM" | "LARGE" | null;
   size: "SMALL" | "MEDIUM" | "LARGE" | null;
   /** For PRODUCT vouchers — the powder used in the snapshot config. */
   matcha_powder_id: string | null;
@@ -135,7 +141,7 @@ export interface MyVoucher {
 
 export interface ExchangedVoucher {
   qr_token: string;
-  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
+  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE";
   status: "ACTIVE";
   expires_at: string | null;
 }

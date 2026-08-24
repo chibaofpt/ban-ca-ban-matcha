@@ -96,7 +96,10 @@ model VoucherPackage {
   points_cost               Int
   discount_type             DiscountType?
   discount_value            Int?
+  product_discount_mode     ProductDiscountMode?
   menu_item_id              String?                @db.Uuid
+  eligible_sizes            Size[]                 @default([])
+  reference_size            Size?
   size                      Size?
   matcha_powder_id          String?                @db.Uuid
   milk_type_id              String?                @db.Uuid
@@ -136,7 +139,10 @@ model Voucher {
   issued_via                VoucherAcquisitionMode     @default(POINTS_EXCHANGE)
   discount_type             DiscountType?
   discount_value            Int?
+  product_discount_mode     ProductDiscountMode?
   menu_item_id              String?                    @db.Uuid
+  eligible_sizes            Size[]                     @default([])
+  reference_size            Size?
   size                      Size?
   matcha_powder_id          String?                    @db.Uuid
   milk_type_id              String?                    @db.Uuid
@@ -650,10 +656,16 @@ enum VoucherType {
   ITEM
   DISCOUNT
   PRODUCT
+  PRODUCT_DISCOUNT
   ADDON
   /// Covers delivery shipping fee up to covered_delivery_fee_vnd. DELIVERY orders only. Phase 5+ for actual deduction.
   FREESHIP
   BUNDLE
+}
+
+enum ProductDiscountMode {
+  FIXED_AMOUNT
+  PAY_AS_SIZE
 }
 
 enum VoucherAcquisitionMode {

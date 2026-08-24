@@ -942,7 +942,11 @@ restore package quantity or per-user redemption count.
   - Display as "Khách vãng lai" in all order list views
 
 ### Vouchers
-- Apply vouchers strictly in this order: `BUNDLE → ITEM/PRODUCT → ADDON → DISCOUNT → FREESHIP`.
+- Apply vouchers strictly in this order: `BUNDLE → ITEM/PRODUCT/PRODUCT_DISCOUNT → ADDON → DISCOUNT → FREESHIP`.
+- `product_voucher_id` accepts a PRODUCT or PRODUCT_DISCOUNT public token. PRODUCT_DISCOUNT
+  matches `menu_item_id` plus `eligible_sizes`; FIXED_AMOUNT uses `discount_value`, while
+  PAY_AS_SIZE charges the canonical current reference-size price for the same powder/Base Liquid.
+  It excludes addons, has null `covered_price_vnd`, and never creates surplus.
 - ITEM: extras only, matches `menu_item_id`, makes one unit free at its current server price,
   has no surplus, and cannot be redeemed outside an order. A target price change does not change
   eligibility or coverage; target soft-delete follows PRODUCT refund policy.

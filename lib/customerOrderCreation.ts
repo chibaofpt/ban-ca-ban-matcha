@@ -64,6 +64,9 @@ export async function createCustomerOrder(
     product_voucher_covered_vnd: (item.item_voucher_id ?? item.product_voucher_id)
       ? (productVoucherMap.get(item.item_voucher_id ?? item.product_voucher_id ?? "")?.covered_price_vnd ?? 0)
       : 0,
+    product_voucher_discount_vnd: productVoucherMap.get(item.product_voucher_id ?? "")?.voucher_type === "PRODUCT_DISCOUNT"
+      ? item.product_voucher_discount_vnd
+      : undefined,
     addon_vouchers: item.addon_voucher_ids.map((voucher) => {
       const addon = item.resolvedAddons.find(
         (resolvedAddon) => resolvedAddon.addon_option_id === voucher.addon_option_id,

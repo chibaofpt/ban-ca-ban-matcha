@@ -37,6 +37,7 @@ function makeItem(overrides: {
   menu_item_id?: string;
   product_voucher_id?: string | null;
   product_voucher_covered_vnd?: number;
+  product_voucher_discount_vnd?: number;
   addon_vouchers?: Array<{
     voucher_id: string;
     addon_option_id: string;
@@ -56,6 +57,7 @@ function makeItem(overrides: {
     line_total: (unit_price + addons_price) * qty,
     product_voucher_id: overrides.product_voucher_id ?? null,
     product_voucher_covered_vnd: overrides.product_voucher_covered_vnd ?? 0,
+    product_voucher_discount_vnd: overrides.product_voucher_discount_vnd,
     addon_vouchers: overrides.addon_vouchers ?? [],
   };
 }
@@ -91,6 +93,35 @@ function makeFreeshipVoucher(overrides?: {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("calcOrderTotals — bộ tính tiền thống nhất", () => {
+  describe("PRODUCT_DISCOUNT", () => {
+    it("FIXED_AMOUNT cap theo gia nuoc va khong giam addon", () => {
+      const result = calcOrderTotals({
+        items: [makeItem({ unit_price_vnd: 8_000, addons_price_vnd: 12_000, product_voucher_id: PRODUCT_VOUCHER_ID, product_voucher_discount_vnd: 10_000 })],
+        discountVouchers: [], freeshipVoucher: null, shipping_fee_vnd: 0,
+      });
+      expect(result.itemResults[0]?.product_voucher_discount_vnd).toBe(8_000);
+      expect(result.total_vnd).toBe(12_000);
+      expect(result.order_surplus_vnd).toBe(0);
+    });
+
+    it("PAY_AS_SIZE dung chenh lech hai gia canonical", () => {
+      const result = calcOrderTotals({
+        items: [makeItem({ unit_price_vnd: 72_000, addons_price_vnd: 9_000, product_voucher_id: PRODUCT_VOUCHER_ID, product_voucher_discount_vnd: 19_000 })],
+        discountVouchers: [], freeshipVoucher: null, shipping_fee_vnd: 0,
+      });
+      expect(result.itemResults[0]?.product_voucher_discount_vnd).toBe(19_000);
+      expect(result.total_vnd).toBe(62_000);
+    });
+
+    it("khong consume khi benefit bang 0", () => {
+      const result = calcOrderTotals({
+        items: [makeItem({ product_voucher_id: PRODUCT_VOUCHER_ID, product_voucher_discount_vnd: 0 })],
+        discountVouchers: [], freeshipVoucher: null, shipping_fee_vnd: 0,
+      });
+      expect(result.skippedVoucherIds).toContain(PRODUCT_VOUCHER_ID);
+    });
+  });
+
   // ── PRODUCT credit ──────────────────────────────────────────────────────────
 
   describe("PRODUCT credit — chỉ giảm giá nước", () => {

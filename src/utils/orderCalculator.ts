@@ -10,6 +10,8 @@ export interface CalcOrderItem {
   product_voucher_id?: string | null;
   item_voucher_id?: string | null;
   product_voucher_covered_vnd?: number;
+  /** Server-resolved PRODUCT_DISCOUNT benefit for this unit. */
+  product_voucher_discount_vnd?: number;
   item_voucher_covered_vnd?: number;
   addon_vouchers: Array<{ voucher_id: string; addon_option_id: string; covered_price_vnd: number; unit_price_vnd?: number; gram_value?: number | null }>;
 }
@@ -50,9 +52,10 @@ function itemDiscounts(items: CalcOrderItem[], applied: string[], skipped: strin
         itemDiscount = Math.min(item.unit_price_vnd, item.line_total);
         if (itemDiscount > 0) { applied.push(voucherId); itemId = voucherId; } else skipped.push(voucherId);
       } else {
-        const credit = item.product_voucher_covered_vnd ?? 0;
+        const resolvedDiscount = item.product_voucher_discount_vnd;
+        const credit = resolvedDiscount ?? item.product_voucher_covered_vnd ?? 0;
         productDiscount = Math.min(credit, item.unit_price_vnd);
-        const itemSurplus = Math.max(0, credit - item.unit_price_vnd);
+        const itemSurplus = resolvedDiscount === undefined ? Math.max(0, credit - item.unit_price_vnd) : 0;
         if (productDiscount > 0 || itemSurplus > 0) { applied.push(voucherId); productId = voucherId; surplus += itemSurplus; } else skipped.push(voucherId);
       }
     }

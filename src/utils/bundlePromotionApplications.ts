@@ -25,6 +25,10 @@ function availableProducts(item: BundleCartItem | undefined): number {
   return item ? Math.max(0, item.quantity - item.product_voucher_quantity - (item.item_voucher_quantity ?? 0)) : 0;
 }
 
+function rewardAvailableProducts(item: BundleCartItem | undefined): number {
+  return item ? Math.max(0, availableProducts(item) - (item.product_discount_voucher_quantity ?? 0)) : 0;
+}
+
 function assertGlobalCapacity(applications: BundleApplicationEvaluationInput[], items: BundleCartItem[]): void {
   const itemByLine = new Map(items.map((item) => [item.client_line_id, item]));
   const tokens = new Set<string>();
@@ -38,7 +42,10 @@ function assertGlobalCapacity(applications: BundleApplicationEvaluationInput[], 
       if (allocation.addon_option_id) {
         const key = `${allocation.client_line_id}:${allocation.addon_option_id}`;
         addonUsage.set(key, (addonUsage.get(key) ?? 0) + allocation.quantity);
-      } else productUsage.set(allocation.client_line_id, (productUsage.get(allocation.client_line_id) ?? 0) + allocation.quantity);
+      } else {
+        if (allocation.quantity > rewardAvailableProducts(itemByLine.get(allocation.client_line_id))) throw new BundlePromotionError("BUNDLE_CONFLICT", "Bundle reward overlaps PRODUCT_DISCOUNT");
+        productUsage.set(allocation.client_line_id, (productUsage.get(allocation.client_line_id) ?? 0) + allocation.quantity);
+      }
     }
   }
   for (const [lineId, quantity] of productUsage) if (quantity > availableProducts(itemByLine.get(lineId))) {
@@ -67,7 +74,7 @@ function globalPaidSubtotal(applications: BundleApplicationEvaluationInput[], it
     const target = reward.addon_option_id ? addonRewards : productRewards;
     target.set(key, (target.get(key) ?? 0) + reward.quantity);
   }
-  return items.reduce((total, item) => total + Math.max(0, availableProducts(item) - (productRewards.get(`${item.client_line_id}:PRODUCT`) ?? 0)) * item.unit_price_vnd + item.addons.reduce((sum, addon) => sum + Math.max(0, addon.quantity - (addon.voucher_discounted_quantity ?? 0) - (addonRewards.get(`${item.client_line_id}:${addon.addon_option_id}`) ?? 0)) * addon.unit_price_vnd, 0), 0);
+  return items.reduce((total, item) => total + Math.max(0, Math.max(0, availableProducts(item) - (productRewards.get(`${item.client_line_id}:PRODUCT`) ?? 0)) * item.unit_price_vnd - (item.product_discount_vnd ?? 0)) + item.addons.reduce((sum, addon) => sum + Math.max(0, addon.quantity - (addon.voucher_discounted_quantity ?? 0) - (addonRewards.get(`${item.client_line_id}:${addon.addon_option_id}`) ?? 0)) * addon.unit_price_vnd, 0), 0);
 }
 
 /** Evaluate distinct BUNDLE instances using one global non-overlapping allocation pool. */

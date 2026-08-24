@@ -21,7 +21,9 @@ function cartItemToBundleItem(item: CartItem): BundleCartItem {
     selected_milk_type_id: item.selectedBaseLiquidId ?? item.selectedMilkTypeId ?? null,
     unit_price_vnd: Math.max(0, item.originalClientPriceVnd - item.addonsPrice),
     quantity: item.quantity,
-    product_voucher_quantity: item.productVoucherId ? 1 : 0,
+    product_voucher_quantity: item.productVoucherId && item.productVoucherType !== "PRODUCT_DISCOUNT" ? 1 : 0,
+    product_discount_voucher_quantity: item.productVoucherId && item.productVoucherType === "PRODUCT_DISCOUNT" && (item.productVoucherDiscountVnd ?? 0) > 0 ? 1 : 0,
+    product_discount_vnd: item.productVoucherType === "PRODUCT_DISCOUNT" ? item.productVoucherDiscountVnd ?? 0 : 0,
     item_voucher_quantity: item.itemVoucherId ? 1 : 0,
     addons: [...addonQuantities.entries()].map(([addon_option_id, quantity]) => ({
       addon_option_id,

@@ -37,7 +37,11 @@ export interface ProductVoucherInfo {
   menu_item_id: string;
   /** Fixed PRODUCT credit, capped at the server-computed drink price and never applied to addons. */
   covered_price_vnd: number;
-  voucher_type?: "PRODUCT" | "ITEM";
+  voucher_type?: "PRODUCT" | "PRODUCT_DISCOUNT" | "ITEM";
+  product_discount_mode?: "FIXED_AMOUNT" | "PAY_AS_SIZE" | null;
+  eligible_sizes?: Size[];
+  reference_size?: Size | null;
+  discount_value?: number | null;
 }
 
 
@@ -94,6 +98,7 @@ export interface ProcessedOrderItem {
   addons_price_vnd: number;
   /** Exact amount of discount applied by the product voucher */
   product_voucher_discount_vnd: number;
+  product_voucher_type: "PRODUCT" | "PRODUCT_DISCOUNT" | null;
   /** Total discount for this line item (product_voucher_discount_vnd + sum of addon voucher discounts) */
   total_discount_vnd: number;
   /** line_total = (unit_price_vnd + addons_price_vnd) × quantity (Original line total before discounts) */
@@ -246,6 +251,7 @@ async function resolveOneItem(
       unit_price_vnd: serverUnitPrice,
       addons_price_vnd: 0,
       product_voucher_discount_vnd: itemDiscount,
+      product_voucher_type: null,
       total_discount_vnd: itemDiscount,
       line_total: serverUnitPrice * item.quantity,
       resolvedAddons: [],
@@ -270,6 +276,7 @@ async function resolveOneItem(
   // 3. Resolve powder_id and premium_latte
   let powder_id: string;
   let premium_latte = 0;
+  let effectiveFusionDefaultPowderId: string | null = null;
 
   if (menuItem.category === "latte") {
     // Latte: server always uses the item's fixed powder — ignore client-sent value
@@ -292,6 +299,7 @@ async function resolveOneItem(
         is_available: true,
       })),
     );
+    effectiveFusionDefaultPowderId = resolvedDefault;
     if (!resolvedDefault) {
       throw new OrderValidationError("BUSINESS_RULE_VIOLATION", `Fusion không còn bột active: ${menuItem.name}`);
     }
@@ -522,7 +530,36 @@ async function resolveOneItem(
         );
       }
       // PRODUCT credit caps at drink price — never spills into addon
-      product_voucher_discount_vnd = Math.min(server_unit_price, pvInfo.covered_price_vnd);
+      if (pvInfo.voucher_type === "PRODUCT_DISCOUNT") {
+        if (!pvInfo.eligible_sizes?.includes(item.size)) {
+          throw new OrderValidationError("VALIDATION_ERROR", "Product discount voucher is not valid for this size");
+        }
+        if (pvInfo.product_discount_mode === "FIXED_AMOUNT") {
+          product_voucher_discount_vnd = Math.min(server_unit_price, pvInfo.discount_value ?? 0);
+        } else if (pvInfo.product_discount_mode === "PAY_AS_SIZE" && pvInfo.reference_size) {
+          const referenceRow = menuItem.sizes.find((row) => row.size === pvInfo.reference_size);
+          if (!referenceRow || referenceRow.base_price_vnd === null) {
+            throw new OrderValidationError("BUSINESS_RULE_VIOLATION", "Product discount reference size is unavailable");
+          }
+          const referencePremium = menuItem.category === "fusion" && effectiveFusionDefaultPowderId && powder_id !== effectiveFusionDefaultPowderId
+            ? await resolveOrderItemPremiumLatte(powder_id, effectiveFusionDefaultPowderId, pvInfo.reference_size, client as Parameters<typeof resolveOrderItemPremiumLatte>[3])
+            : 0;
+          const referencePrice = resolveOrderItemPrice({
+            category: menuItem.category as "latte" | "fusion",
+            size: pvInfo.reference_size,
+            base_price_vnd: referenceRow.base_price_vnd,
+            custom_powder_grams: menuItem.custom_powder_grams as Record<string, number> | null,
+            powder_id,
+            base_liquid_id: resolvedBaseLiquidId,
+            default_base_liquid_id: resolvedDefaultBaseLiquidId,
+            base_liquid_ml: referenceRow.base_liquid_ml,
+            premium_latte: referencePremium,
+          }, pricingCtx);
+          product_voucher_discount_vnd = Math.max(0, server_unit_price - referencePrice);
+        }
+      } else {
+        product_voucher_discount_vnd = Math.min(server_unit_price, pvInfo.covered_price_vnd);
+      }
     }
   }
 
@@ -562,6 +599,9 @@ async function resolveOneItem(
     unit_price_vnd: server_unit_price,
     addons_price_vnd: original_addons_price_vnd,
     product_voucher_discount_vnd,
+    product_voucher_type: item.product_voucher_id
+      ? (productVoucherMap?.get(item.product_voucher_id)?.voucher_type === "PRODUCT_DISCOUNT" ? "PRODUCT_DISCOUNT" : "PRODUCT")
+      : null,
     total_discount_vnd,
     line_total,
     resolvedAddons,

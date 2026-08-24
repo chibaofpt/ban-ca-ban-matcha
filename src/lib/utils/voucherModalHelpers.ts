@@ -211,8 +211,13 @@ export function formatRedeemedDate(redeemedAt: string | null): string {
 export function getTicketHighlightText(
   vType: string,
   discountType?: "PERCENT" | "FIXED" | null,
-  discountValue?: number | null
+  discountValue?: number | null,
+  referenceSize?: "SMALL" | "MEDIUM" | "LARGE" | null,
 ): { text: string; subtext: string } {
+  if (vType === "PRODUCT_DISCOUNT") {
+    const sizeLabel = referenceSize === "SMALL" ? "S" : referenceSize === "LARGE" ? "L" : "M";
+    return discountValue ? { text: `${Math.floor(discountValue / 1000)}K`, subtext: "GIẢM MÓN" } : { text: `SIZE ${sizeLabel}`, subtext: "TRẢ GIÁ" };
+  }
   if (vType === "DISCOUNT") {
     if (discountType === "PERCENT") return { text: `${discountValue}%`, subtext: "GIẢM" };
     if (discountType === "FIXED" && discountValue) {
@@ -243,6 +248,10 @@ export function getVoucherBenefitText(v: MyVoucher): string {
   if (v.voucher_type === "PRODUCT") {
     const itemName = v.menuItem?.name ?? "Sản phẩm";
     return `${itemName}${v.size ? ` Size ${v.size}` : ""} miễn phí`;
+  }
+  if (v.voucher_type === "PRODUCT_DISCOUNT") {
+    const referenceLabel = v.reference_size === "SMALL" ? "nhỏ" : v.reference_size === "LARGE" ? "lớn" : "vừa";
+    return v.product_discount_mode === "PAY_AS_SIZE" ? `Trả giá size ${referenceLabel}` : `Giảm ${(v.discount_value ?? 0).toLocaleString("vi-VN")}đ`;
   }
   if (v.voucher_type === "ADDON") {
     return `Topping ${v.addonOption?.label ?? "Addon"} miễn phí`;
@@ -289,6 +298,10 @@ export function getPackageBenefitText(pkg: VoucherPackage): string {
   if (pkg.voucher_type === "PRODUCT" && pkg.menuItem) {
     return `${pkg.menuItem.name} Size ${pkg.size} miễn phí`;
   }
+  if (pkg.voucher_type === "PRODUCT_DISCOUNT") {
+    const referenceLabel = pkg.reference_size === "SMALL" ? "nhỏ" : pkg.reference_size === "LARGE" ? "lớn" : "vừa";
+    return pkg.product_discount_mode === "PAY_AS_SIZE" ? `Trả giá size ${referenceLabel}` : `Giảm ${(pkg.discount_value ?? 0).toLocaleString("vi-VN")}đ`;
+  }
   if (pkg.voucher_type === "ADDON" && pkg.addonOption) {
     return `Topping ${pkg.addonOption.label} miễn phí`;
   }
@@ -297,12 +310,13 @@ export function getPackageBenefitText(pkg: VoucherPackage): string {
 
 /** Badge config for voucher types */
 export const VOUCHER_TYPE_CONFIG: Record<
-  "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE",
+  "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE",
   { label: string; badgeCls: string }
 > = {
   ITEM: { label: "Add-on", badgeCls: "bg-amber-100 text-amber-800" },
   DISCOUNT: { label: "Giảm giá", badgeCls: "bg-blue-100 text-blue-800" },
   PRODUCT: { label: "Sản phẩm", badgeCls: "bg-green-100 text-green-800" },
+  PRODUCT_DISCOUNT: { label: "Giảm theo món", badgeCls: "bg-emerald-100 text-emerald-800" },
   ADDON: { label: "Topping", badgeCls: "bg-purple-100 text-purple-800" },
   FREESHIP: { label: "Freeship", badgeCls: "bg-orange-100 text-orange-800" },
   BUNDLE: { label: "Mua X tặng Y", badgeCls: "bg-rose-100 text-rose-800" },

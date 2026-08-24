@@ -26,6 +26,7 @@ import {
 } from "@/src/lib/store/staffCartStore";
 import { retainBundleRewardEffects } from "@/src/lib/store/cartStore";
 import { buildExtrasCartItem } from "@/src/utils/cartHelpers";
+import { computeProductDiscountBenefit, computeVoucherItemPrice } from "@/src/hooks/useAddVoucherToCart";
 import ProductModal from "@/src/components/shared/ProductModal";
 import { StaffCartDrawer } from "@/src/components/staff/StaffCartDrawer";
 import { CustomerSelectModal } from "@/src/components/staff/CustomerSelectModal";
@@ -751,11 +752,23 @@ export default function StaffOrdersPage({
     cartId: string,
     voucher: import("@/src/services/staffVoucherService").MyVoucher,
   ) => {
-    if (voucher.voucher_type === "ITEM" || voucher.covered_price_vnd) {
+    if (voucher.voucher_type === "ITEM" || voucher.voucher_type === "PRODUCT" || voucher.voucher_type === "PRODUCT_DISCOUNT") {
+      const cartItem = cart.find((item) => item.cartId === cartId);
+      const menuItem = cartItem ? menuItems.find((item) => item.id === cartItem.menuItemId) : undefined;
+      let benefit = voucher.covered_price_vnd ?? 0;
+      if (voucher.voucher_type === "PRODUCT_DISCOUNT" && cartItem && menuItem && cartItem.size && menuData) {
+        const referencePrice = voucher.product_discount_mode === "PAY_AS_SIZE" && voucher.reference_size
+          ? computeVoucherItemPrice(menuItem, voucher.reference_size, cartItem.selectedPowderId ?? null,
+              cartItem.selectedBaseLiquidId ?? cartItem.selectedMilkTypeId ?? null, [], powders,
+              defaultPowderGrams, menuData.latte, menuData.milk_types, menuData.addon_groups).drinkPrice
+          : null;
+        benefit = computeProductDiscountBenefit(voucher, cartItem.originalClientPriceVnd - cartItem.addonsPrice, referencePrice);
+      }
       applyProductVoucher(
         cartId,
         voucher.qr_token,
-        voucher.covered_price_vnd ?? 0,
+        benefit,
+        voucher.voucher_type === "PRODUCT_DISCOUNT" ? "PRODUCT_DISCOUNT" : "PRODUCT",
       );
     }
   };

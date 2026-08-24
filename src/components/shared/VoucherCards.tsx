@@ -40,7 +40,7 @@ export function VoucherCard({
 }) {
   const isInteractable = canInteract(voucher) && !isDisabled;
   const typeConfig = VOUCHER_TYPE_CONFIG[voucher.voucher_type];
-  const highlight = getTicketHighlightText(voucher.voucher_type, voucher.discount_type, voucher.discount_value);
+  const highlight = getTicketHighlightText(voucher.voucher_type, voucher.discount_type, voucher.discount_value, voucher.reference_size);
 
   const isExpired = voucher.status === "EXPIRED";
   const isRedeemed = voucher.status === "REDEEMED";
@@ -157,7 +157,7 @@ export function PackageCard({
 }) {
   const { ok, reason } = canExchange(pkg, userBalance, pkg.user_redeemed_count ?? 0);
   const typeConfig = VOUCHER_TYPE_CONFIG[pkg.voucher_type] ?? VOUCHER_TYPE_CONFIG.DISCOUNT;
-  const highlight = getTicketHighlightText(pkg.voucher_type, pkg.discount_type, pkg.discount_value);
+  const highlight = getTicketHighlightText(pkg.voucher_type, pkg.discount_type, pkg.discount_value, pkg.reference_size);
 
   // Calculate progress for insufficient points
   const progressPercent = pkg.points_cost > 0

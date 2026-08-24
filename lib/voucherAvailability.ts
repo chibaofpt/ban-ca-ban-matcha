@@ -167,6 +167,9 @@ export interface VoucherTargetAvailabilitySource {
   voucher_type: string;
   menu_item_id: string | null;
   size: Size | null;
+  eligible_sizes?: Size[];
+  reference_size?: Size | null;
+  product_discount_mode?: "FIXED_AMOUNT" | "PAY_AS_SIZE" | null;
   matcha_powder_id: string | null;
   milk_type_id: string | null;
   addon_option_id: string | null;
@@ -201,16 +204,27 @@ export function resolveVoucherTargetAvailability(
   }
   if (!voucher.menu_item_id) return { availability: unavailable("TARGET_UNAVAILABLE"), package: voucher.package };
   const currentItem = catalog.menuItems.find((item) => item.id === voucher.menu_item_id);
+  if (voucher.voucher_type === "PRODUCT_DISCOUNT") {
+    const activeSizes = new Set((currentItem?.sizes ?? []).filter((row) => row.base_price_vnd !== null).map((row) => row.size));
+    const hasEligibleSize = (voucher.eligible_sizes ?? []).some((size) => activeSizes.has(size));
+    const hasReferenceSize = voucher.product_discount_mode !== "PAY_AS_SIZE" ||
+      (voucher.reference_size !== null && voucher.reference_size !== undefined && activeSizes.has(voucher.reference_size));
+    if (!hasEligibleSize || !hasReferenceSize) {
+      return { availability: unavailable("NO_ACTIVE_CONFIGURATION"), package: voucher.package };
+    }
+  }
   const currentProductSizes = voucher.voucher_type === "PRODUCT"
     ? (currentItem?.sizes ?? [])
       .filter((size) => size.base_price_vnd !== null)
       .map((size) => ({ size: size.size }))
-    : voucher.size ? [{ size: voucher.size }] : [];
+    : voucher.voucher_type === "PRODUCT_DISCOUNT"
+      ? [...(voucher.eligible_sizes ?? []), ...(voucher.reference_size ? [voucher.reference_size] : [])].map((size) => ({ size }))
+      : voucher.size ? [{ size: voucher.size }] : [];
   const scope: VoucherBundleScopeSource = {
     role: "QUALIFIER",
     menu_item_id: voucher.menu_item_id,
-    default_powder_id: voucher.voucher_type === "PRODUCT" ? null : voucher.matcha_powder_id,
-    default_base_liquid_id: voucher.voucher_type === "PRODUCT" ? null : voucher.milk_type_id,
+    default_powder_id: voucher.voucher_type === "PRODUCT" || voucher.voucher_type === "PRODUCT_DISCOUNT" ? null : voucher.matcha_powder_id,
+    default_base_liquid_id: voucher.voucher_type === "PRODUCT" || voucher.voucher_type === "PRODUCT_DISCOUNT" ? null : voucher.milk_type_id,
     sizes: currentProductSizes,
   };
   const resolved = filterProductScope(scope, catalog);

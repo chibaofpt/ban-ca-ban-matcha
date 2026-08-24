@@ -222,7 +222,11 @@ export async function POST(req: NextRequest) {
           productVoucherMap.set(pv!.id, {
             menu_item_id: pv!.menu_item_id,
             covered_price_vnd: pv!.covered_price_vnd ?? 0,
-            voucher_type: pv!.voucher_type === "ITEM" ? "ITEM" : "PRODUCT",
+            voucher_type: pv!.voucher_type === "ITEM" ? "ITEM" : pv!.voucher_type === "PRODUCT_DISCOUNT" ? "PRODUCT_DISCOUNT" : "PRODUCT",
+            product_discount_mode: pv!.product_discount_mode,
+            eligible_sizes: pv!.eligible_sizes,
+            reference_size: pv!.reference_size,
+            discount_value: pv!.discount_value,
           });
           if (item.item_voucher_id) item.item_voucher_id = pv!.id;
           else item.product_voucher_id = pv!.id;
@@ -313,6 +317,9 @@ export async function POST(req: NextRequest) {
       product_voucher_covered_vnd: (item.item_voucher_id ?? item.product_voucher_id)
         ? (productVoucherMap.get(item.item_voucher_id ?? item.product_voucher_id ?? "")?.covered_price_vnd ?? 0)
         : 0,
+      product_voucher_discount_vnd: productVoucherMap.get(item.product_voucher_id ?? "")?.voucher_type === "PRODUCT_DISCOUNT"
+        ? item.product_voucher_discount_vnd
+        : undefined,
       addon_vouchers: item.addon_voucher_ids.map((voucher) => {
         const addon = item.resolvedAddons.find(
           (resolvedAddon) => resolvedAddon.addon_option_id === voucher.addon_option_id

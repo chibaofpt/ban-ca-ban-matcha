@@ -50,6 +50,7 @@ export interface CartItem {
   /** Set when this item was added via a PRODUCT voucher (unit price reduced by voucher credit). */
   productVoucherId?: string;
   productVoucherDiscountVnd?: number;
+  productVoucherType?: "PRODUCT" | "PRODUCT_DISCOUNT";
   /** New ITEM voucher identifier; productVoucherId remains a compatibility alias. */
   itemVoucherId?: string;
   /** In-cart BUNDLE reward line; excluded from persisted cart state. */

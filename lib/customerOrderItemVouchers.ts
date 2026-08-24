@@ -85,7 +85,11 @@ export async function resolveCustomerItemVouchers(
     productVoucherMap.set(voucher.id, {
       menu_item_id: voucher.menu_item_id,
       covered_price_vnd: voucher.covered_price_vnd ?? 0,
-      voucher_type: voucher.voucher_type === "ITEM" ? "ITEM" : "PRODUCT",
+      voucher_type: voucher.voucher_type === "ITEM" ? "ITEM" : voucher.voucher_type === "PRODUCT_DISCOUNT" ? "PRODUCT_DISCOUNT" : "PRODUCT",
+      product_discount_mode: voucher.product_discount_mode,
+      eligible_sizes: voucher.eligible_sizes,
+      reference_size: voucher.reference_size,
+      discount_value: voucher.discount_value,
     });
     if (item.item_voucher_id) item.item_voucher_id = voucher.id;
     else item.product_voucher_id = voucher.id;

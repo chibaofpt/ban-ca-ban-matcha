@@ -65,6 +65,8 @@ Không thực hiện repo-wide layer refactor khi sửa feature. Direct API call
 
 Shared overlay sở hữu portal, accessible title/description, focus trap/restore, Escape, scroll lock, backdrop, safe area, dismiss policy và layer. Feature code chỉ cung cấp content và callbacks; không tự viết `fixed inset-0` backdrop.
 
+`ProductModal` dùng dialog desktop và Vaul full-height trên mobile. Browser Back chỉ đóng overlay trên cùng; CTA luôn ghép action với tổng giá bằng ` - `, còn addon selector dùng lưới 3 cột. Header Base Liquid hiển thị Coldwhisk dạng switch có semantics và vẫn nêu nền mặc định khi selector bị ẩn.
+
 Overlay layer chỉ có `base`, `nested`, `critical`. Không tạo z-index tùy ý cho overlay mới.
 
 Button dùng variants `primary`, `secondary`, `outline`, `ghost`, `destructive`; touch target tối thiểu 44×44px. Option card/tab có thể là specialized control nhưng vẫn phải có semantic button, focus state và touch target tương đương.

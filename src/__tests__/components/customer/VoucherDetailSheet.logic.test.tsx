@@ -1,12 +1,14 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const { addToCart } = vi.hoisted(() => ({ addToCart: vi.fn() }));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
 vi.mock("@/src/hooks/useAddVoucherToCart", () => ({
-  useAddVoucherToCart: () => ({ addToCart: vi.fn(), loading: false }),
+  useAddVoucherToCart: () => ({ addToCart, loading: false }),
 }));
 
 import { VoucherDetailSheet } from "@/src/components/shared/VoucherDetailSheet";
@@ -55,6 +57,30 @@ function makeUnavailableBundle(): MyVoucher {
 }
 
 describe("Chi tiết voucher không còn lựa chọn", () => {
+  it("dùng ngay PRODUCT_DISCOUNT qua cart hook và đóng sheet khi thành công", async () => {
+    const voucher = {
+      ...makeUnavailableBundle(),
+      qr_token: "product-discount",
+      voucher_type: "PRODUCT_DISCOUNT",
+      menu_item_id: "drink-1",
+      product_discount_mode: "PAY_AS_SIZE",
+      eligible_sizes: ["LARGE"],
+      reference_size: "MEDIUM",
+      availability: { status: "USABLE", can_apply: true, can_refund: false, refund_points: 0 },
+    } as MyVoucher;
+    const onUseNowSuccess = vi.fn();
+    addToCart.mockResolvedValueOnce({ ok: true });
+    render(
+      <VoucherDetailSheet voucher={voucher} cartItems={[]} subtotalVnd={0} myVouchers={[voucher]}
+        orderType="PICKUP" shippingFee={null} onBack={vi.fn()} onUseNowSuccess={onUseNowSuccess}
+        onOpenBundleSetup={vi.fn()} onRequestRefund={vi.fn()} isRefunding={false} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Dùng ngay" }));
+    expect(addToCart).toHaveBeenCalledWith(voucher);
+    await vi.waitFor(() => expect(onUseNowSuccess).toHaveBeenCalledOnce());
+  });
+
   it("khóa áp dụng, giải thích lý do và cho yêu cầu hoàn đúng số điểm", () => {
     const voucher = makeUnavailableBundle();
     const onRequestRefund = vi.fn();

@@ -86,7 +86,7 @@ export function assertVoucherUsable(
   if (voucher.expires_at !== null && voucher.expires_at <= new Date()) {
     throw new VoucherError("VOUCHER_EXPIRED", "Voucher has expired");
   }
-  if (voucher.voucher_type !== expectedType) {
+  if (voucher.voucher_type !== expectedType && !(expectedType === "PRODUCT" && voucher.voucher_type === "PRODUCT_DISCOUNT")) {
     throw new VoucherError(
       "VALIDATION_ERROR",
       `Expected voucher type ${expectedType}, got ${voucher.voucher_type}`

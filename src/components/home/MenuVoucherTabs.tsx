@@ -22,7 +22,7 @@ type HomeTab = "menu" | "uu-dai";
 
 function MiniPackageCard({ pkg }: { pkg: VoucherPackage }) {
   const typeConfig = VOUCHER_TYPE_CONFIG[pkg.voucher_type] ?? VOUCHER_TYPE_CONFIG.DISCOUNT;
-  const highlight = getTicketHighlightText(pkg.voucher_type, pkg.discount_type, pkg.discount_value);
+  const highlight = getTicketHighlightText(pkg.voucher_type, pkg.discount_type, pkg.discount_value, pkg.reference_size);
 
   return (
     <div className="rounded-xl bg-white/60 backdrop-blur-xs shadow-paper border border-primary/10 overflow-hidden flex relative">

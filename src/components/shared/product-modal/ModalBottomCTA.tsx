@@ -49,7 +49,7 @@ export function ModalBottomCTA({
           className="min-w-0 flex-1 flex items-center justify-center gap-1 bg-primary text-white rounded-2xl h-11 px-3 font-bold text-sm shadow-lg active:scale-[0.98] transition-all overflow-hidden"
         >
           <span className="truncate">{label}</span>
-          <span className="shrink-0 whitespace-nowrap">— {formatKa(totalCost, "ceil")}</span>
+          <span className="shrink-0 whitespace-nowrap">- {formatKa(totalCost, "ceil")}</span>
         </button>
       </div>
     </div>

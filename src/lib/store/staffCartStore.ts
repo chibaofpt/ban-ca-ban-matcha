@@ -28,7 +28,7 @@ interface StaffCartState {
   setSelectedDiscountIds: (ids: string[]) => void;
   toggleDiscountId: (id: string) => void;
 
-  applyProductVoucher: (cartId: string, voucherId: string, coveredPriceVnd: number) => void;
+  applyProductVoucher: (cartId: string, voucherId: string, coveredPriceVnd: number, voucherType?: "PRODUCT" | "PRODUCT_DISCOUNT") => void;
   removeProductVoucher: (cartId: string) => void;
   applyAddonVoucher: (cartId: string, voucherId: string, addonOptionId: string) => void;
   removeAddonVoucher: (cartId: string, voucherId: string) => void;
@@ -85,6 +85,7 @@ export function migrateStaffCartState(persistedState: unknown, fromVersion = 0):
       ...item,
       productVoucherId: undefined,
       productVoucherDiscountVnd: undefined,
+      productVoucherType: undefined,
       itemVoucherId: undefined,
     };
     return { ...released, clientPriceVnd: computeFinalClientPrice(released) };
@@ -120,7 +121,7 @@ export const useStaffCartStore = create<StaffCartState>()(
           // Remove applied vouchers from existing cart
           set({
             items: get().items.map((i) => {
-              const next = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, itemVoucherId: undefined, addonVouchers: [] };
+              const next = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, productVoucherType: undefined, itemVoucherId: undefined, addonVouchers: [] };
               next.clientPriceVnd = computeFinalClientPrice(next);
               return next;
             })
@@ -260,10 +261,10 @@ export const useStaffCartStore = create<StaffCartState>()(
         bundleApplications: [],
       }),
 
-      applyProductVoucher: (cartId, voucherId, coveredPriceVnd) => {
+      applyProductVoucher: (cartId, voucherId, coveredPriceVnd, voucherType = "PRODUCT") => {
         const currentItems = get().items.map((i) => {
           if (i.productVoucherId === voucherId || i.itemVoucherId === voucherId) {
-            const nextI = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, itemVoucherId: undefined };
+            const nextI = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, productVoucherType: undefined, itemVoucherId: undefined };
             nextI.clientPriceVnd = computeFinalClientPrice(nextI);
             return nextI;
           }
@@ -282,6 +283,7 @@ export const useStaffCartStore = create<StaffCartState>()(
           ...item,
           productVoucherId: isItemVoucher ? undefined : voucherId,
           productVoucherDiscountVnd: isItemVoucher ? undefined : coveredPriceVnd,
+          productVoucherType: isItemVoucher ? undefined : voucherType,
           itemVoucherId: isItemVoucher ? voucherId : undefined,
         };
         nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
@@ -305,7 +307,7 @@ export const useStaffCartStore = create<StaffCartState>()(
         set({
           items: get().items.map((i) => {
             if (i.cartId !== cartId) return i;
-            const nextItem = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, itemVoucherId: undefined };
+            const nextItem = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, productVoucherType: undefined, itemVoucherId: undefined };
             nextItem.clientPriceVnd = computeFinalClientPrice(nextItem);
             return nextItem;
           }),

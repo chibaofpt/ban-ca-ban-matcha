@@ -63,6 +63,8 @@ interface BundleResolvedItem {
   selected_milk_type_id: string | null;
   unit_price_vnd: number;
   quantity: number;
+  product_voucher_discount_vnd?: number;
+  product_voucher_type?: "PRODUCT" | "PRODUCT_DISCOUNT" | null;
   resolvedAddons: Array<{ addon_option_id: string; quantity: number; unit_price_vnd: number; gram_value: number | null }>;
 }
 
@@ -110,7 +112,9 @@ function cartItems(
       client_line_id: input.client_line_id, menu_item_id: item.menu_item_id, size: item.size,
       selected_powder_id: item.selected_powder_id, selected_milk_type_id: item.selected_milk_type_id,
       unit_price_vnd: item.unit_price_vnd, quantity: item.quantity,
-      product_voucher_quantity: input.product_voucher_id ? item.quantity : 0,
+      product_voucher_quantity: input.product_voucher_id && item.product_voucher_type !== "PRODUCT_DISCOUNT" ? item.quantity : 0,
+      product_discount_voucher_quantity: item.product_voucher_type === "PRODUCT_DISCOUNT" && (item.product_voucher_discount_vnd ?? 0) > 0 ? 1 : 0,
+      product_discount_vnd: item.product_voucher_type === "PRODUCT_DISCOUNT" ? item.product_voucher_discount_vnd ?? 0 : 0,
       item_voucher_quantity: input.item_voucher_id ? item.quantity : 0,
       addons: item.resolvedAddons.map((addon) => ({ ...addon,
         voucher_discounted_quantity: input.addon_voucher_ids.filter((link) =>

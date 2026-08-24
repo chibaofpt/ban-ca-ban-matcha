@@ -39,6 +39,8 @@ export interface BundleCartSummaryItem {
   quantity: number;
   unit_price_vnd: number;
   product_voucher_quantity: number;
+  product_discount_voucher_quantity?: number;
+  product_discount_vnd?: number;
   addons: BundleCartAddonSummary[];
 }
 
@@ -84,7 +86,9 @@ export function summarizeBundleCart(items: readonly CartItem[]): BundleCartSumma
       label: item.name,
       quantity: item.quantity,
       unit_price_vnd: Math.max(0, item.originalClientPriceVnd - item.addonsPrice),
-      product_voucher_quantity: item.productVoucherId || item.itemVoucherId ? 1 : 0,
+      product_voucher_quantity: item.itemVoucherId || (item.productVoucherId && item.productVoucherType !== "PRODUCT_DISCOUNT") ? 1 : 0,
+      product_discount_voucher_quantity: item.productVoucherId && item.productVoucherType === "PRODUCT_DISCOUNT" && (item.productVoucherDiscountVnd ?? 0) > 0 ? 1 : 0,
+      product_discount_vnd: item.productVoucherType === "PRODUCT_DISCOUNT" ? item.productVoucherDiscountVnd ?? 0 : 0,
       addons: [...quantities.entries()].map(([addonOptionId, quantity]) => ({
         addon_option_id: addonOptionId,
         quantity,
@@ -190,7 +194,7 @@ export function deriveBundleSelectionState(input: {
   for (const allocation of input.allocations) {
     const line = input.cart.find((item) => item.client_line_id === allocation.client_line_id);
     if (!line) continue;
-    if (!allocation.addon_option_id && allocation.quantity > line.quantity - line.product_voucher_quantity) {
+    if (!allocation.addon_option_id && allocation.quantity > line.quantity - line.product_voucher_quantity - (line.product_discount_voucher_quantity ?? 0)) {
       return { status: "CONFLICT", message: `${line.label} đã dùng voucher sản phẩm; vui lòng chọn phần quà khác` };
     }
     if (allocation.addon_option_id) {
@@ -223,7 +227,7 @@ export function deriveBundleSelectionState(input: {
     };
   }
   const eligibleSubtotal = input.cart.reduce((total, item) => {
-    const drinkTotal = Math.max(0, item.quantity - item.product_voucher_quantity) * item.unit_price_vnd;
+    const drinkTotal = Math.max(0, Math.max(0, item.quantity - item.product_voucher_quantity) * item.unit_price_vnd - (item.product_discount_vnd ?? 0));
     const addonTotal = item.addons.reduce(
       (sum, addon) => sum + Math.max(0, addon.quantity - addon.voucher_discounted_quantity) * addon.unit_price_vnd,
       0,

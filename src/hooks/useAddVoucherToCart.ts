@@ -110,6 +110,18 @@ export function computeVoucherItemPrice(
   return { drinkPrice, addonsCost };
 }
 
+/** Compute one PRODUCT_DISCOUNT benefit from canonical drink-only prices. */
+export function computeProductDiscountBenefit(
+  voucher: Pick<MyVoucher, "product_discount_mode" | "discount_value">,
+  actualDrinkPrice: number,
+  referenceDrinkPrice: number | null,
+): number {
+  if (voucher.product_discount_mode === "FIXED_AMOUNT") {
+    return Math.min(actualDrinkPrice, Math.max(0, voucher.discount_value ?? 0));
+  }
+  return referenceDrinkPrice === null ? 0 : Math.max(0, actualDrinkPrice - referenceDrinkPrice);
+}
+
 /** Resolve a PRODUCT voucher Base Liquid against the item's current allow-list. */
 export function resolveVoucherBaseLiquidId(
   menuItem: MenuItem,
@@ -137,7 +149,7 @@ export function useAddVoucherToCart() {
 
   const addToCart = useCallback(
     async (voucher: MyVoucher): Promise<AddVoucherResult> => {
-      if ((voucher.voucher_type !== "PRODUCT" && voucher.voucher_type !== "ITEM") || !voucher.menu_item_id) {
+      if ((voucher.voucher_type !== "PRODUCT" && voucher.voucher_type !== "PRODUCT_DISCOUNT" && voucher.voucher_type !== "ITEM") || !voucher.menu_item_id) {
         return { ok: false, reason: "fetch_failed" };
       }
 
@@ -183,7 +195,10 @@ export function useAddVoucherToCart() {
         }
 
         // Use voucher's size config (soft match: item must support this size)
-        const voucherSize = (voucher.size ?? "SMALL") as Size;
+        const voucherSize = (voucher.voucher_type === "PRODUCT_DISCOUNT"
+          ? voucher.eligible_sizes?.find((size) => menuItem.sizes.some((row) => row.size === size && row.base_price_vnd !== null))
+          : voucher.size) as Size | undefined;
+        if (!voucherSize) return { ok: false, reason: "size_unavailable" };
         const sizeObj = menuItem.sizes.find((s) => s.size === voucherSize);
         if (!sizeObj || sizeObj.base_price_vnd == null) {
           return { ok: false, reason: "size_unavailable" };
@@ -211,6 +226,15 @@ export function useAddVoucherToCart() {
           menuData.addon_groups,
         );
         const originalPrice = drinkPrice + addonsCost;
+        let voucherBenefit = voucher.covered_price_vnd ?? 0;
+        if (voucher.voucher_type === "PRODUCT_DISCOUNT") {
+          const referencePrice = voucher.product_discount_mode === "PAY_AS_SIZE" && voucher.reference_size
+            ? computeVoucherItemPrice(menuItem, voucher.reference_size, voucher.matcha_powder_id ?? null,
+                resolvedBaseLiquidId, [], powders, defaultPowderGram, latteItems, menuData.milk_types,
+                menuData.addon_groups).drinkPrice
+            : null;
+          voucherBenefit = computeProductDiscountBenefit(voucher, drinkPrice, referencePrice);
+        }
 
         // Build addon details for display
         const allAddonOptions = menuData.addon_groups.flatMap((group) => group.options);
@@ -286,7 +310,7 @@ export function useAddVoucherToCart() {
 
         const newCartId = addItem(cartItemBase);
         if (newCartId) {
-          applyProductVoucher(newCartId, voucher.qr_token, voucher.covered_price_vnd ?? 0);
+          applyProductVoucher(newCartId, voucher.qr_token, voucherBenefit, voucher.voucher_type === "PRODUCT_DISCOUNT" ? "PRODUCT_DISCOUNT" : "PRODUCT");
         }
 
         setCartOpen(true);

@@ -56,12 +56,13 @@ export function buildProductVoucherMap(
 ): Map<string, MyVoucher[]> {
   const usable = vouchers.filter(
     (voucher) =>
-      (voucher.voucher_type === "PRODUCT" || voucher.voucher_type === "ITEM") &&
+      (voucher.voucher_type === "PRODUCT" || voucher.voucher_type === "PRODUCT_DISCOUNT" || voucher.voucher_type === "ITEM") &&
       isVoucherUsable(voucher),
   );
   const result = new Map<string, MyVoucher[]>();
   for (const item of cartItems) {
-    const matches = usable.filter((v) => v.menu_item_id === item.menuItemId);
+    const matches = usable.filter((v) => v.menu_item_id === item.menuItemId &&
+      (v.voucher_type !== "PRODUCT_DISCOUNT" || (item.size !== null && (v.eligible_sizes ?? []).includes(item.size))));
     if (matches.length > 0) {
       result.set(item.menuItemId, matches);
     }

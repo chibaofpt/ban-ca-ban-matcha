@@ -26,7 +26,7 @@
 
 ## Canonical Order Totals
 
-Apply vouchers in this strict order: `BUNDLE → ITEM/PRODUCT → ADDON → DISCOUNT → FREESHIP`.
+Apply vouchers in this strict order: `BUNDLE → ITEM/PRODUCT/PRODUCT_DISCOUNT → ADDON → DISCOUNT → FREESHIP`.
 
 ```text
 subtotal_vnd = gross drinks + gross addons
@@ -70,7 +70,8 @@ grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
 | Enum | Values |
 |---|---|
 | `Role` | `CUSTOMER`, `STAFF`, `ADMIN` |
-| `VoucherType` | `ITEM`, `DISCOUNT`, `PRODUCT`, `ADDON`, `FREESHIP`, `BUNDLE` |
+| `VoucherType` | `ITEM`, `DISCOUNT`, `PRODUCT`, `PRODUCT_DISCOUNT`, `ADDON`, `FREESHIP`, `BUNDLE` |
+| `ProductDiscountMode` | `FIXED_AMOUNT`, `PAY_AS_SIZE` |
 | `DiscountType` | `PERCENT`, `FIXED` |
 | `VoucherStatus` | `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, `REFUNDED` |
 | `UsedChannel` | `ONLINE`, `OFFLINE` |
