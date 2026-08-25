@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useMemo } from "react";
-import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
+import { ResponsiveOverlay, type OverlayLayer } from "@/src/components/ui/ResponsiveOverlay";
 import Image from "next/image";
 import { Plus, X, CheckCircle2, ChevronRight, Gift, ShoppingBag } from "lucide-react";
 import { useCartStore } from "@/src/lib/store/cartStore";
@@ -15,21 +15,32 @@ import type { MenuData, MenuItem, MilkTypeOption, Size } from "@/src/lib/types/m
 import type { Powder } from "@/src/lib/types/powder";
 import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
 import type { CartItem } from "@/src/lib/types/cart";
+import type { BundleCreatedRewardEffect } from "@/src/lib/types/cart";
 import { cn } from "@/src/utils/cn";
 import ProductModal from "@/src/components/shared/ProductModal";
 
 interface BundleVoucherSetupSheetProps {
   open: boolean;
+  layer?: OverlayLayer;
   voucher: MyVoucher;
   menuData: MenuData;
   milkTypes: MilkTypeOption[];
   powders: Powder[];
   defaultPowderGram: Array<{ size: "SMALL" | "MEDIUM" | "LARGE"; grams: number }>;
   onClose: () => void;
-  onSuccess: (bundleToken: string, allocations: BundleSelectionAllocation[]) => void;
+  onValidateDraft?: (input: {
+    cartItems: CartItem[];
+    rewardAllocations: BundleSelectionAllocation[];
+  }) => { ok: true } | { ok: false; error: string };
+  onSuccess: (
+    bundleToken: string,
+    allocations: BundleSelectionAllocation[],
+    createdRewardEffects: BundleCreatedRewardEffect[],
+  ) => void | { ok: true } | { ok: false; error: string };
 }
 
 type SlotRole = "qualifier" | "reward";
+type BundleSlotConfig = BundleItemConfig & { sourceCartId?: string; sourceUnitIndex?: number };
 
 type SubView =
   | null
@@ -46,6 +57,7 @@ function findMenuItem(menuData: MenuData, menuItemId: string): MenuItem | undefi
 
 export const BundleVoucherSetupSheet = ({
   open,
+  layer = "nested",
   voucher,
   menuData,
   milkTypes,
@@ -54,24 +66,58 @@ export const BundleVoucherSetupSheet = ({
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   defaultPowderGram: _defaultPowderGram,
   onClose,
+  onValidateDraft,
   onSuccess,
 }: BundleVoucherSetupSheetProps) => {
-  const { addItem } = useCartStore();
+  const { addItem, removeItem, items } = useCartStore();
   const bundleRule = voucher.package.bundleRule;
 
-  // N qualifier slots — array of null (empty) or filled BundleItemConfig
-  const [qualifierSlots, setQualifierSlots] = useState<(BundleItemConfig | null)[]>(() =>
-    bundleRule ? Array(bundleRule.buy_quantity).fill(null) : [],
+  const qualifierScopes = useMemo(
+    () => bundleRule?.qualifier_products.filter((p) => p.menu_item.is_available) ?? [],
+    [bundleRule],
   );
+  const rewardScopes = useMemo(() => {
+    if (!bundleRule) return [];
+    return bundleRule.reward_mode === "SAME_CONFIG"
+      ? qualifierScopes
+      : bundleRule.reward_products.filter((p) => p.menu_item.is_available);
+  }, [bundleRule, qualifierScopes]);
+
+  const initialSlots = useMemo(() => {
+    const used = new Set<string>();
+    const take = (scopes: BundleProductScope[], count: number): (BundleSlotConfig | null)[] => {
+      const slots: BundleSlotConfig[] = [];
+      for (const item of items) {
+        const scope = scopes.find((candidate) => candidate.menu_item_id === item.menuItemId);
+        if (!scope || item.productVoucherId || item.itemVoucherId || item.size === null || !scope.allowed_sizes.includes(item.size)) continue;
+        for (let unitIndex = 0; unitIndex < item.quantity && slots.length < count; unitIndex += 1) {
+          const unitKey = `${item.cartId}:${unitIndex}`;
+          if (used.has(unitKey)) continue;
+          used.add(unitKey);
+          slots.push({ ...cartItemToBundleConfig(item, scope), sourceCartId: item.cartId, sourceUnitIndex: unitIndex });
+        }
+        if (slots.length === count) break;
+      }
+      return [...slots, ...Array<null>(Math.max(0, count - slots.length)).fill(null)];
+    };
+    return {
+      qualifiers: take(qualifierScopes, bundleRule?.buy_quantity ?? 0),
+      rewards: take(rewardScopes, bundleRule?.reward_quantity ?? 0),
+    };
+  }, [bundleRule, items, qualifierScopes, rewardScopes]);
+
+  // N qualifier slots — array of null (empty) or filled BundleItemConfig
+  const [qualifierSlots, setQualifierSlots] = useState<(BundleSlotConfig | null)[]>(() => initialSlots.qualifiers);
 
   // Reward slots — only when PRODUCT reward with ALLOWED_SCOPE / FIXED_CONFIG
   const needsRewardSlots =
-    bundleRule?.reward_kind === "PRODUCT" && bundleRule.reward_mode !== "SAME_CONFIG";
-  const [rewardSlots, setRewardSlots] = useState<(BundleItemConfig | null)[]>(() =>
-    needsRewardSlots && bundleRule ? Array(bundleRule.reward_quantity).fill(null) : [],
+    bundleRule?.reward_kind === "PRODUCT";
+  const [rewardSlots, setRewardSlots] = useState<(BundleSlotConfig | null)[]>(() =>
+    needsRewardSlots ? initialSlots.rewards : [],
   );
 
   const [subView, setSubView] = useState<SubView>(null);
+  const [setupError, setSetupError] = useState<string | null>(null);
 
   const qualifierFilled = qualifierSlots.filter(Boolean).length;
   const rewardFilled = rewardSlots.filter(Boolean).length;
@@ -83,22 +129,12 @@ export const BundleVoucherSetupSheet = ({
   // Reset on close
   const handleClose = useCallback(() => {
     setSubView(null);
-    setQualifierSlots(bundleRule ? Array(bundleRule.buy_quantity).fill(null) : []);
-    setRewardSlots(needsRewardSlots && bundleRule ? Array(bundleRule.reward_quantity).fill(null) : []);
+    setQualifierSlots(initialSlots.qualifiers);
+    setRewardSlots(needsRewardSlots ? initialSlots.rewards : []);
     onClose();
-  }, [bundleRule, needsRewardSlots, onClose]);
+  }, [initialSlots, needsRewardSlots, onClose]);
 
   // ── Scope lists ───────────────────────────────────────────────────────────
-  const qualifierScopes = useMemo(
-    () => bundleRule?.qualifier_products.filter((p) => p.menu_item.is_available) ?? [],
-    [bundleRule],
-  );
-  const rewardScopes = useMemo(() => {
-    if (!bundleRule) return [];
-    if (bundleRule.reward_mode === "SAME_CONFIG") return qualifierScopes;
-    return bundleRule.reward_products.filter((p) => p.menu_item.is_available);
-  }, [bundleRule, qualifierScopes]);
-
   const currentScopes = subView?.kind === "pick"
     ? subView.role === "qualifier" ? qualifierScopes : rewardScopes
     : [];
@@ -161,11 +197,50 @@ export const BundleVoucherSetupSheet = ({
   // ── Confirm (Sử dụng) ────────────────────────────────────────────────────
   const handleConfirm = useCallback(() => {
     if (!bundleRule || !canConfirm) return;
+    setSetupError(null);
+    const toDraftItem = (config: BundleSlotConfig, cartId: string, role: SlotRole): CartItem => {
+      const category = findMenuItem(menuData, config.menuItemId)?.category ?? "latte";
+      const total = config.unitPriceVnd + config.addonsCost;
+      return {
+        cartId, menuItemId: config.menuItemId, name: config.name, category, imageUrl: config.imageUrl,
+        size: config.size, unitPrice: total, quantity: 1, sweetness: config.sweetness,
+        iceOption: config.iceOption, coldwhisk: config.coldwhisk, note: "",
+        selectedOptionIds: config.selectedOptionIds, quantityMap: config.quantityMap,
+        addonsPrice: config.addonsCost, addonPrices: config.addonPrices,
+        quantityAddonOptions: config.quantityAddonOptions, clientPriceVnd: total, originalClientPriceVnd: total,
+        ...(category === "fusion" && config.powderId ? { selectedPowderId: config.powderId } : {}),
+        ...(category !== "extras" && config.baseLiquidId ? { selectedBaseLiquidId: config.baseLiquidId } : {}),
+        ...(role === "qualifier" ? { bundleQualifierVoucherToken: voucher.qr_token } : { bundleRewardVoucherToken: voucher.qr_token }),
+      };
+    };
+    const plannedQualifierIds = qualifierSlots.flatMap((config, index) => config
+      ? [config.sourceCartId ?? `draft-qualifier-${index}`]
+      : []);
+    const plannedRewardAllocations: BundleSelectionAllocation[] = bundleRule.reward_kind === "ADDON"
+      ? plannedQualifierIds.map((id) => ({ client_line_id: id, quantity: bundleRule.reward_quantity, addon_option_id: bundleRule.reward_addon_option_ids[0] }))
+      : rewardSlots.flatMap((config, index) => config
+          ? [{ client_line_id: config.sourceCartId ?? `draft-reward-${index}`, quantity: 1 }]
+          : []);
+    const plannedItems = [
+      ...qualifierSlots.flatMap((config, index) => config && !config.sourceCartId ? [toDraftItem(config, `draft-qualifier-${index}`, "qualifier")] : []),
+      ...rewardSlots.flatMap((config, index) => config && !config.sourceCartId ? [toDraftItem(config, `draft-reward-${index}`, "reward")] : []),
+    ];
+    const validation = onValidateDraft?.({ cartItems: [...items, ...plannedItems], rewardAllocations: plannedRewardAllocations });
+    if (validation && !validation.ok) {
+      setSetupError(validation.error);
+      return;
+    }
+    const createdCartIds: string[] = [];
+    const createdRewardCartIds: string[] = [];
 
     // Add qualifier items
     const qualifierCartIds: string[] = [];
     for (const config of qualifierSlots) {
       if (!config) continue;
+      if (config.sourceCartId) {
+        qualifierCartIds.push(config.sourceCartId);
+        continue;
+      }
       const menuItem = findMenuItem(menuData, config.menuItemId);
       const category = menuItem?.category ?? "latte";
       const cartId = addItem({
@@ -191,6 +266,7 @@ export const BundleVoucherSetupSheet = ({
         ...(category !== "extras" && config.baseLiquidId ? { selectedBaseLiquidId: config.baseLiquidId } : {}),
         bundleQualifierVoucherToken: voucher.qr_token,
       });
+      createdCartIds.push(cartId);
       qualifierCartIds.push(cartId);
     }
 
@@ -198,29 +274,28 @@ export const BundleVoucherSetupSheet = ({
     if (bundleRule.reward_kind === "ADDON") {
       const rewardAddonId = bundleRule.reward_addon_option_ids[0];
       if (rewardAddonId) {
-        onSuccess(voucher.qr_token, qualifierCartIds.map((id) => ({
+        const result = onSuccess(voucher.qr_token, qualifierCartIds.map((id) => ({
           client_line_id: id,
           quantity: bundleRule.reward_quantity,
           addon_option_id: rewardAddonId,
-        })));
+        })), []);
+        if (result && !result.ok) {
+          createdCartIds.forEach(removeItem);
+          setSetupError(result.error);
+        }
       }
       return;
     }
 
-    // PRODUCT reward — SAME_CONFIG: first qualifier items are also reward
-    if (bundleRule.reward_mode === "SAME_CONFIG") {
-      const rewardCount = bundleRule.reward_quantity;
-      const rewardAllocations: BundleSelectionAllocation[] = qualifierCartIds
-        .slice(0, rewardCount)
-        .map((id) => ({ client_line_id: id, quantity: 1 }));
-      onSuccess(voucher.qr_token, rewardAllocations);
-      return;
-    }
-
+    // PRODUCT reward — SAME_CONFIG still uses explicitly distinct reward units.
     // PRODUCT reward — ALLOWED_SCOPE / FIXED_CONFIG: add separate reward items
     const rewardAllocations: BundleSelectionAllocation[] = [];
     for (const config of rewardSlots) {
       if (!config) continue;
+      if (config.sourceCartId) {
+        rewardAllocations.push({ client_line_id: config.sourceCartId, quantity: 1 });
+        continue;
+      }
       const menuItem = findMenuItem(menuData, config.menuItemId);
       const category = menuItem?.category ?? "latte";
       const rewardCartId = addItem({
@@ -246,10 +321,20 @@ export const BundleVoucherSetupSheet = ({
         ...(category !== "extras" && config.baseLiquidId ? { selectedBaseLiquidId: config.baseLiquidId } : {}),
         bundleRewardVoucherToken: voucher.qr_token,
       });
+      createdCartIds.push(rewardCartId);
+      createdRewardCartIds.push(rewardCartId);
       rewardAllocations.push({ client_line_id: rewardCartId, quantity: 1 });
     }
-    onSuccess(voucher.qr_token, rewardAllocations);
-  }, [bundleRule, canConfirm, qualifierSlots, rewardSlots, menuData, addItem, voucher.qr_token, onSuccess]);
+    const createdRewardEffects: BundleCreatedRewardEffect[] = createdRewardCartIds.map((clientLineId) => ({
+      kind: "LINE",
+      client_line_id: clientLineId,
+    }));
+    const result = onSuccess(voucher.qr_token, rewardAllocations, createdRewardEffects);
+    if (result && !result.ok) {
+      createdCartIds.forEach(removeItem);
+      setSetupError(result.error);
+    }
+  }, [addItem, bundleRule, canConfirm, items, menuData, onSuccess, onValidateDraft, qualifierSlots, removeItem, rewardSlots, voucher.qr_token]);
 
   if (!bundleRule) return null;
 
@@ -403,8 +488,8 @@ export const BundleVoucherSetupSheet = ({
     return (
       <ResponsiveOverlay
         open={open}
-        onOpenChange={(isOpen) => !isOpen && handleClose()}
-        layer="nested"
+        onOpenChange={(isOpen) => !isOpen && setSubView(null)}
+        layer={layer}
         title="Cấu hình món"
       >
         <ProductModal
@@ -429,8 +514,8 @@ export const BundleVoucherSetupSheet = ({
     return (
       <ResponsiveOverlay
         open={open}
-        onOpenChange={(isOpen) => !isOpen && handleClose()}
-        layer="nested"
+        onOpenChange={(isOpen) => !isOpen && setSubView(null)}
+        layer={layer}
         title={subView.role === "qualifier" ? "Chọn món mua" : "Chọn món tặng"}
       >
         <div className="flex flex-col h-[65vh]">
@@ -459,7 +544,7 @@ export const BundleVoucherSetupSheet = ({
     <ResponsiveOverlay
       open={open}
       onOpenChange={(isOpen) => !isOpen && handleClose()}
-      layer="nested"
+      layer={layer}
       title="Chọn món cho ưu đãi"
     >
       <div className="flex flex-col">
@@ -538,6 +623,7 @@ export const BundleVoucherSetupSheet = ({
 
         {/* ── BOTTOM CTA ── */}
         <div className="p-5 bg-white border-t border-border/40 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+          {setupError ? <p role="alert" className="mb-2 text-sm font-medium text-destructive">{setupError}</p> : null}
           <button
             onClick={handleConfirm}
             disabled={!canConfirm}

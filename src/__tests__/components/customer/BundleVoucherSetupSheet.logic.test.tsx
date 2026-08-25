@@ -1,16 +1,17 @@
 import { cleanup, fireEvent, render, screen, waitFor, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockAddItem } = vi.hoisted(() => ({ mockAddItem: vi.fn() }));
+const { mockAddItem, mockRemoveItem, mockItems } = vi.hoisted(() => ({ mockAddItem: vi.fn(), mockRemoveItem: vi.fn(), mockItems: [] as unknown[] }));
 
 vi.mock("@/src/lib/store/cartStore", () => ({
-  useCartStore: () => ({ addItem: mockAddItem }),
+  useCartStore: () => ({ addItem: mockAddItem, removeItem: mockRemoveItem, items: mockItems }),
 }));
 
 vi.mock("@/src/components/ui/ResponsiveOverlay", () => ({
-  ResponsiveOverlay: ({ children, title }: { children: React.ReactNode; title?: string }) => (
+  ResponsiveOverlay: ({ children, title, onOpenChange }: { children: React.ReactNode; title?: string; onOpenChange?: (open: boolean) => void }) => (
     <div data-testid="overlay" data-title={title}>
       {children}
+      <button onClick={() => onOpenChange?.(false)}>Dismiss overlay</button>
     </div>
   ),
 }));
@@ -73,6 +74,7 @@ afterEach(cleanup);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockItems.length = 0;
   mockAddItem
     .mockReturnValueOnce("qualifier-line")
     .mockReturnValueOnce("reward-line");
@@ -211,7 +213,7 @@ describe("BundleVoucherSetupSheet — slot-based flow", () => {
     });
   });
 
-  it("SAME_CONFIG — không hiển thị section 'Món tặng' riêng, có badge 'cùng loại'", () => {
+  it("SAME_CONFIG — cho chọn qualifier và reward thành các unit riêng", () => {
     render(
       <BundleVoucherSetupSheet
         open
@@ -224,8 +226,7 @@ describe("BundleVoucherSetupSheet — slot-based flow", () => {
         onSuccess={vi.fn()}
       />,
     );
-    expect(screen.queryByText(/Món tặng/i)).toBeNull();
-    expect(screen.getByText(/cùng loại với món đã chọn/i)).toBeTruthy();
+    expect(screen.getByText(/Món tặng/i)).toBeTruthy();
   });
 
   it("FIXED_CONFIG — hiển thị cả section qualifier và reward", () => {
@@ -286,6 +287,19 @@ describe("BundleVoucherSetupSheet — slot-based flow", () => {
       fireEvent.click(screen.getByTestId("mock-product-modal-confirm"));
     });
 
+    // SAME_CONFIG vẫn yêu cầu chọn reward unit riêng.
+    await act(async () => {
+      fireEvent.click(screen.getAllByText("Thêm món")[0]);
+    });
+    await waitFor(() => expect(screen.getByTestId("overlay").getAttribute("data-title")).toBe("Chọn món tặng"));
+    await act(async () => {
+      fireEvent.click(screen.queryAllByText("fusion-item")[0]);
+    });
+    await waitFor(() => expect(screen.queryByTestId("mock-product-modal-confirm")).not.toBeNull());
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("mock-product-modal-confirm"));
+    });
+
     // CTA should be enabled now
     await waitFor(() => {
       const cta = screen.getByRole("button", { name: /sử dụng/i });
@@ -296,7 +310,7 @@ describe("BundleVoucherSetupSheet — slot-based flow", () => {
       fireEvent.click(screen.getByRole("button", { name: /sử dụng/i }));
     });
 
-    expect(mockAddItem).toHaveBeenCalledTimes(1);
+    expect(mockAddItem).toHaveBeenCalledTimes(2);
     const [input] = mockAddItem.mock.calls[0];
     expect(input).toMatchObject({
       category: "fusion",
@@ -304,7 +318,79 @@ describe("BundleVoucherSetupSheet — slot-based flow", () => {
       selectedBaseLiquidId: "liquid-effective",
     });
     expect(onSuccess).toHaveBeenCalledWith("fusion-bundle", [
-      { client_line_id: "qualifier-line", quantity: 1 },
-    ]);
+      { client_line_id: "reward-line", quantity: 1 },
+    ], [{ kind: "LINE", client_line_id: "reward-line" }]);
+  });
+
+  it("prefill unit trong giỏ và xác nhận không add lại món đã có", () => {
+    mockItems.push({
+      cartId: "existing", menuItemId: "fusion-item", name: "fusion-item", category: "fusion",
+      imageUrl: null, size: "MEDIUM", unitPrice: 52_000, quantity: 2, sweetness: "QUARTER",
+      iceOption: "NORMAL", coldwhisk: false, note: "", selectedOptionIds: [], quantityMap: {},
+      addonsPrice: 0, addonPrices: {}, quantityAddonOptions: [], clientPriceVnd: 52_000,
+      originalClientPriceVnd: 52_000, selectedPowderId: "powder-effective",
+      selectedBaseLiquidId: "liquid-effective",
+    });
+    const onSuccess = vi.fn();
+    render(<BundleVoucherSetupSheet open voucher={makeVoucher({ category: "fusion", reward_mode: "SAME_CONFIG", buy_quantity: 1 })}
+      menuData={makeMenuData("fusion")} milkTypes={makeMenuData("fusion").milk_types} powders={[]}
+      defaultPowderGram={[]} onClose={vi.fn()} onSuccess={onSuccess} />);
+    fireEvent.click(screen.getByRole("button", { name: /sử dụng/i }));
+    expect(mockAddItem).not.toHaveBeenCalled();
+    expect(onSuccess).toHaveBeenCalledWith("fusion-bundle", [{ client_line_id: "existing", quantity: 1 }], []);
+  });
+
+  it("latest-cart validation thất bại thì không add, không commit và giữ setup với lỗi", () => {
+    mockItems.push({
+      cartId: "existing", menuItemId: "fusion-item", name: "fusion-item", category: "fusion",
+      imageUrl: null, size: "MEDIUM", unitPrice: 52_000, quantity: 2, sweetness: "QUARTER",
+      iceOption: "NORMAL", coldwhisk: false, note: "", selectedOptionIds: [], quantityMap: {},
+      addonsPrice: 0, addonPrices: {}, quantityAddonOptions: [], clientPriceVnd: 52_000,
+      originalClientPriceVnd: 52_000,
+    });
+    const onSuccess = vi.fn();
+    const onClose = vi.fn();
+    render(<BundleVoucherSetupSheet open voucher={makeVoucher({ category: "fusion", reward_mode: "SAME_CONFIG", buy_quantity: 1 })}
+      menuData={makeMenuData("fusion")} milkTypes={makeMenuData("fusion").milk_types} powders={[]}
+      defaultPowderGram={[]} onClose={onClose} onSuccess={onSuccess}
+      onValidateDraft={() => ({ ok: false, error: "Giỏ đã thay đổi, vui lòng chọn lại" })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /sử dụng/i }));
+    expect(mockAddItem).not.toHaveBeenCalled();
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText("Giỏ đã thay đổi, vui lòng chọn lại")).toBeTruthy();
+  });
+
+  it("dismiss nested picker chỉ quay lại setup chính", () => {
+    const onClose = vi.fn();
+    render(<BundleVoucherSetupSheet open voucher={makeVoucher({ category: "fusion", reward_mode: "SAME_CONFIG" })}
+      menuData={makeMenuData("fusion")} milkTypes={makeMenuData("fusion").milk_types} powders={[]}
+      defaultPowderGram={[]} onClose={onClose} onSuccess={vi.fn()} />);
+    fireEvent.click(screen.getAllByText("Thêm món")[0]);
+    expect(screen.getByTestId("overlay").getAttribute("data-title")).toBe("Chọn món mua");
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss overlay" }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByTestId("overlay").getAttribute("data-title")).toBe("Chọn món cho ưu đãi");
+  });
+
+  it("latest validation sau khi add thất bại thì rollback mọi line mới và giữ setup", async () => {
+    const onClose = vi.fn();
+    render(<BundleVoucherSetupSheet open voucher={makeVoucher({ category: "fusion", reward_mode: "SAME_CONFIG", buy_quantity: 1 })}
+      menuData={makeMenuData("fusion")} milkTypes={makeMenuData("fusion").milk_types} powders={[]}
+      defaultPowderGram={[]} onClose={onClose} onValidateDraft={() => ({ ok: true })}
+      onSuccess={() => ({ ok: false, error: "Giỏ vừa thay đổi" })} />);
+    for (const expectedTitle of ["Chọn món mua", "Chọn món tặng"]) {
+      fireEvent.click(screen.getAllByText("Thêm món")[0]);
+      expect(screen.getByTestId("overlay").getAttribute("data-title")).toBe(expectedTitle);
+      fireEvent.click(screen.queryAllByText("fusion-item")[0]);
+      await waitFor(() => expect(screen.queryByTestId("mock-product-modal-confirm")).not.toBeNull());
+      fireEvent.click(screen.getByTestId("mock-product-modal-confirm"));
+    }
+    fireEvent.click(screen.getByRole("button", { name: /sử dụng/i }));
+    expect(mockAddItem).toHaveBeenCalledTimes(2);
+    expect(mockRemoveItem.mock.calls.map(([id]) => id)).toEqual(["qualifier-line", "reward-line"]);
+    expect(screen.getByText("Giỏ vừa thay đổi")).toBeTruthy();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

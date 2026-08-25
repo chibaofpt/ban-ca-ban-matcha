@@ -50,7 +50,13 @@ export function VoucherModalTabs({
 }
 
 /** Render redeemed and expired vouchers in a dedicated history section. */
-export function VoucherHistorySection({ vouchers }: { vouchers: MyVoucher[] }) {
+export function VoucherHistorySection({
+  vouchers,
+  onVoucherClick,
+}: {
+  vouchers: MyVoucher[];
+  onVoucherClick?: (voucher: MyVoucher) => void;
+}) {
   if (vouchers.length === 0) {
     return (
       <div className="mt-4 flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border/60 bg-secondary/10 py-16 text-center">
@@ -64,7 +70,11 @@ export function VoucherHistorySection({ vouchers }: { vouchers: MyVoucher[] }) {
   return (
     <div className="grid grid-cols-1 gap-3 pb-8 sm:grid-cols-2">
       {vouchers.map((voucher) => (
-        <VoucherCard key={voucher.qr_token} voucher={voucher} />
+        <VoucherCard
+          key={voucher.qr_token}
+          voucher={voucher}
+          onClick={onVoucherClick ? () => onVoucherClick(voucher) : undefined}
+        />
       ))}
     </div>
   );

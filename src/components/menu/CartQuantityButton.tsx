@@ -100,10 +100,10 @@ export const CartQuantityButton: React.FC<CartQuantityButtonProps> = ({
       <button
         type="button"
         aria-label="Thêm món vào giỏ"
-        className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-[#5b9a2b] shadow-sm transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b9a2b] focus-visible:ring-offset-2"
+        className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full bg-[#5b9a2b] shadow-sm transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b9a2b] focus-visible:ring-offset-2"
         onClick={handleAdd}
       >
-        <Plus className="text-white" size={16} strokeWidth={3} />
+        <Plus className="text-white" size={14} strokeWidth={3} />
       </button>
     );
   }
@@ -116,9 +116,9 @@ export const CartQuantityButton: React.FC<CartQuantityButtonProps> = ({
     >
       <motion.div
         initial={false}
-        animate={{ width: isExpanded ? 120 : 44 }}
+        animate={{ width: isExpanded ? 76 : 36 }}
         transition={{ type: "spring", stiffness: 500, damping: 35 }}
-        className="flex h-11 items-center overflow-hidden rounded-full border-2 border-[#5b9a2b] bg-white shadow-sm"
+        className="flex h-9 items-center overflow-hidden rounded-full border-2 border-[#5b9a2b] bg-white shadow-sm"
       >
         {!isExpanded ? (
           <button
@@ -132,34 +132,34 @@ export const CartQuantityButton: React.FC<CartQuantityButtonProps> = ({
             </span>
           </button>
         ) : (
-          <div className="flex items-center justify-between w-full px-0.5">
+          <div className="flex w-full items-center justify-between px-0.5">
             <button
               type="button"
               onClick={handleDecrement}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[#5b9a2b]/10 active:bg-[#5b9a2b]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b9a2b]"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[#5b9a2b]/10 active:bg-[#5b9a2b]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b9a2b]"
               aria-label={quantity === 1 ? "Xóa khỏi giỏ" : "Giảm số lượng"}
             >
               {quantity === 1 ? (
-                <Trash2 className="text-red-500" size={12} strokeWidth={2.5} />
+                <Trash2 className="text-red-500" size={10} strokeWidth={2.5} />
               ) : (
-                <Minus className="text-[#5b9a2b]" size={13} strokeWidth={2.5} />
+                <Minus className="text-[#5b9a2b]" size={11} strokeWidth={2.5} />
               )}
             </button>
-            <span className="text-xs font-bold text-[#5b9a2b] w-4 text-center select-none shrink-0">
+            <span className="w-3 shrink-0 select-none text-center text-[11px] font-bold text-[#5b9a2b]">
               {quantity}
             </span>
             <button
               type="button"
               onClick={handleIncrement}
               disabled={quantity >= MAX_QUANTITY}
-              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b9a2b] ${
+              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b9a2b] ${
                 quantity >= MAX_QUANTITY
                   ? "opacity-30 cursor-not-allowed"
                   : "hover:bg-[#5b9a2b]/10 active:bg-[#5b9a2b]/20"
               }`}
               aria-label="Tăng số lượng"
             >
-              <Plus className="text-[#5b9a2b]" size={13} strokeWidth={2.5} />
+              <Plus className="text-[#5b9a2b]" size={11} strokeWidth={2.5} />
             </button>
           </div>
         )}

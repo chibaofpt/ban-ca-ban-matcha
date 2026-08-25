@@ -28,12 +28,12 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, setActiveTab }) => {
   const tabIndex = tabs.findIndex(t => t.id === activeTab);
 
   return (
-    <div className="w-full mb-6 mt-2">
-      <div className="relative flex w-full bg-primary/5 py-1 rounded-full backdrop-blur-md border border-primary/10">
+    <div className="mb-4 mt-1 w-full">
+      <div className="relative flex w-full rounded-full border border-primary/10 bg-primary/5 py-0.5 backdrop-blur-md">
 
         {/* Sliding indicator — position driven by activeTab index */}
         <motion.div
-          className="absolute top-1 bottom-1 left-0 w-1/4 z-0 px-1 pointer-events-none"
+          className="pointer-events-none absolute bottom-0.5 left-0 top-0.5 z-0 w-1/4 px-0.5"
           animate={{ x: `${tabIndex * 100}%` }}
           transition={{ type: 'spring', stiffness: 350, damping: 32 }}
         >
@@ -49,7 +49,7 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, setActiveTab }) => {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "relative z-10 flex min-h-11 flex-1 items-center justify-center gap-1 py-2.5 text-xs font-bold transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:text-sm",
+                "relative z-10 flex min-h-9 flex-1 items-center justify-center gap-1 py-1.5 text-xs font-bold transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:text-sm",
                 isActive ? "text-white" : "text-primary/40 hover:text-primary/60"
               )}
             >

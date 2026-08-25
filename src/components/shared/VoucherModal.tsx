@@ -33,13 +33,18 @@ import { VoucherHistorySection, VoucherModalTabs } from "./VoucherModalSections"
 import { VoucherPackageCatalog } from "./VoucherPackageCatalog";
 import { VoucherDetailSheet } from "./VoucherDetailSheet";
 import { BundleVoucherSetupSheet } from "./BundleVoucherSetupSheet";
+import { buildVoucherActionModel, resolveWalletUseNowIntent, selectOrderVoucherToken, type ProductDiscountTarget } from "@/src/utils/customerVoucherSelection";
+import { useAddVoucherToCart } from "@/src/hooks/useAddVoucherToCart";
+import { canApplyDiscount } from "@/src/lib/utils/voucherUseNowHelpers";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { fetchMenu } from "@/src/services/menuService";
 import { useCartTotalPrice } from "@/src/lib/store/cartStore";
 import { estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
 import type { MenuData } from "@/src/lib/types/menu";
 import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
-import { buildBundleApplication, summarizeBundleCart } from "@/src/lib/utils/bundleVoucher";
+import type { BundleCreatedRewardEffect } from "@/src/lib/types/cart";
+import { buildBundleApplication, deriveBundleSelectionState, summarizeBundleCart } from "@/src/lib/utils/bundleVoucher";
+import { getBundleVoucherSummary } from "@/src/components/menu/cart/CartBundleVoucherPanel";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { getVoucherRefundConfirmation } from "@/src/lib/utils/voucherModalHelpers";
 import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
@@ -73,8 +78,10 @@ export default function VoucherModal() {
   const cartItems = useCartStore((s) => s.items);
   const subtotalVnd = useCartTotalPrice();
   const selectedVoucherIds = useCartStore((s) => s.selectedVoucherIds);
+  const setSelectedVoucherIds = useCartStore((s) => s.setSelectedVoucherIds);
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGram = usePowderStore((s) => s.defaultPowderGram);
+  const { addToCart, loading: isUsingVoucher } = useAddVoucherToCart();
   const touchStart = useRef({ x: 0, y: 0 });
   useBodyScrollLock(open);
 
@@ -96,38 +103,68 @@ export default function VoucherModal() {
     setCartOpen(true);
   }, [close, setCartOpen]);
 
-  const handleBundleSuccess = useCallback((token: string, allocations: BundleSelectionAllocation[]) => {
-    const voucher = activeVouchers.find((candidate) => candidate.qr_token === token);
-    const rule = voucher?.package.bundleRule;
-    const summary = voucher && rule ? {
-      qr_token: voucher.qr_token,
-      buy_quantity: rule.buy_quantity,
-      reward_quantity: rule.reward_quantity,
-      reward_kind: rule.reward_kind,
-      reward_mode: rule.reward_mode,
-      benefit_scaling: rule.benefit_scaling,
-      max_applications_per_order: rule.max_applications_per_order,
-      max_reward_units_per_order: rule.max_reward_units_per_order,
-      eligible_products: rule.qualifier_products.map((product) => ({ menu_item_id: product.menu_item_id, allowed_sizes: product.allowed_sizes })),
-      reward_products: rule.reward_products.map((product) => ({ menu_item_id: product.menu_item_id, allowed_sizes: product.allowed_sizes, baseline_prices_vnd: product.baseline_prices_vnd, baseline_price_vnd: product.baseline_price_vnd })),
-      min_order_vnd: voucher.min_order_vnd,
-    } : null;
-    if (summary) {
-      const cart = useCartStore.getState().items;
-      const payload = buildBundleApplication({ voucher: summary, cart: summarizeBundleCart(cart), rewardAllocations: allocations });
-      commitBundleApplication({
-        voucher_qr_token: token,
-        owner_key: `customer:${currentUser?.phone ?? "anonymous"}`,
-        qualifier_allocations: payload?.qualifier_allocations ?? [],
-        reward_allocations: allocations,
-        created_reward_effects: cart.filter((item) => item.bundleRewardVoucherToken === token).map((item) => ({ kind: "LINE" as const, client_line_id: item.cartId })),
-        status: payload ? "READY" : "NEEDS_CONFIGURATION",
-      });
+  const handleWalletUseNow = useCallback(async (voucher: MyVoucher) => {
+    let targets: ProductDiscountTarget[] = [];
+    if (voucher.voucher_type === "PRODUCT_DISCOUNT") {
+      const resolvedMenu = menuData ?? await fetchMenu();
+      if (!menuData) setMenuData(resolvedMenu);
+      const eligibleIds = new Set(
+        voucher.eligible_menu_items?.length
+          ? voucher.eligible_menu_items.map((item) => item.menu_item_id)
+          : voucher.menu_item_id ? [voucher.menu_item_id] : [],
+      );
+      targets = [...resolvedMenu.latte, ...resolvedMenu.fusion].flatMap((item) =>
+        eligibleIds.has(item.id)
+          ? (voucher.eligible_sizes ?? []).flatMap((size) =>
+              item.sizes.some((row) => row.size === size && row.base_price_vnd !== null)
+                ? [{ cartId: `${item.id}:${size}`, menuItemId: item.id, size, estimatedBenefitVnd: 1 }]
+                : [])
+          : [],
+      );
     }
+    const intent = resolveWalletUseNowIntent({
+      voucherType: voucher.voucher_type,
+      productDiscountTargets: targets,
+      canApplyOrder: (voucher.voucher_type === "DISCOUNT" || voucher.voucher_type === "FREESHIP") &&
+        canApplyDiscount(voucher, subtotalVnd).canApply,
+    });
+    if (intent.kind === "open-detail") return void setDetailVoucher(voucher);
+    if (intent.kind === "open-bundle") return void setBundleSetupVoucher(voucher);
+    if (intent.kind === "apply-order") {
+      setSelectedVoucherIds((current) => selectOrderVoucherToken(current, voucher, activeVouchers));
+      handleUseNowSuccess();
+      return;
+    }
+    const result = intent.selection
+      ? await addToCart(voucher, intent.selection)
+      : await addToCart(voucher);
+    if (result.ok) handleUseNowSuccess();
+    else setDetailVoucher(voucher);
+  }, [activeVouchers, addToCart, handleUseNowSuccess, menuData, setSelectedVoucherIds, subtotalVnd]);
+
+  const handleBundleSuccess = useCallback((token: string, allocations: BundleSelectionAllocation[], createdRewardEffects: BundleCreatedRewardEffect[]) => {
+    const voucher = activeVouchers.find((candidate) => candidate.qr_token === token);
+    const summary = voucher ? getBundleVoucherSummary(voucher) : null;
+    if (!summary) return { ok: false as const, error: "Voucher BUNDLE không còn khả dụng" };
+    const cart = useCartStore.getState().items;
+    const summarizedCart = summarizeBundleCart(cart);
+    const selection = deriveBundleSelectionState({ voucher: summary, cart: summarizedCart, allocations });
+    const payload = buildBundleApplication({ voucher: summary, cart: summarizedCart, rewardAllocations: allocations });
+    if (selection.status !== "READY" || !payload) return { ok: false as const, error: selection.message };
+    commitBundleApplication({
+      voucher_qr_token: token,
+      owner_key: `customer:${currentUser?.phone ?? "anonymous"}`,
+      qualifier_allocations: payload.qualifier_allocations,
+      reward_allocations: allocations,
+      created_reward_effects: createdRewardEffects,
+      status: "READY",
+      message: selection.message,
+    });
     setBundleSetupVoucher(null);
     setDetailVoucher(null);
     close();
     setCartOpen(true);
+    return { ok: true as const };
   }, [activeVouchers, close, commitBundleApplication, currentUser?.phone, setCartOpen]);
 
   const handleRefund = useCallback(async () => {
@@ -232,9 +269,23 @@ export default function VoucherModal() {
         {loading ? <div className="flex h-full items-center justify-center"><Loader2 className="animate-spin text-primary" /></div> : activeTab === "my_vouchers" && isLoggedIn ? (
           activeVouchers.length === 0 ? <div className="mt-4 flex flex-col items-center gap-2 rounded-2xl border border-dashed py-16 text-center"><Ticket className="text-primary/30" /><p className="text-sm font-bold text-primary/60">Bạn chưa có voucher nào</p></div> :
           <div className="grid gap-3 pb-8 sm:grid-cols-2">{activeVouchers.map((voucher) => (
-            <VoucherCard key={voucher.qr_token} voucher={voucher} isSelected={highlightToken === voucher.qr_token} onClick={() => setDetailVoucher(voucher)} />
+            <VoucherCard
+              key={voucher.qr_token}
+              voucher={voucher}
+              isSelected={highlightToken === voucher.qr_token}
+              onClick={() => setDetailVoucher(voucher)}
+              onAction={() => void handleWalletUseNow(voucher)}
+              actionModel={buildVoucherActionModel({
+                context: "wallet",
+                busy: isUsingVoucher,
+                selectable: voucher.status === "ACTIVE" && voucher.availability.can_apply,
+                disabledReason: voucher.availability.can_apply ? null : "Voucher hiện chưa thể sử dụng",
+              })}
+            />
           ))}</div>
-        ) : activeTab === "history" && isLoggedIn ? <VoucherHistorySection vouchers={filterHistoryVouchers(vouchers)} /> : (
+        ) : activeTab === "history" && isLoggedIn ? (
+          <VoucherHistorySection vouchers={filterHistoryVouchers(vouchers)} onVoucherClick={setDetailVoucher} />
+        ) : (
           <div>
             {!isLoggedIn && <div className="mb-4 flex items-center gap-3 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3"><LogIn className="size-5 shrink-0 text-primary" /><p className="flex-1 text-sm font-bold text-primary">Đăng nhập để nhận hoặc đổi ưu đãi</p><button onClick={() => { close(); useAuthModalStore.getState().openLogin(); }} className="min-h-11 rounded-lg bg-primary px-3 text-xs font-bold text-white">Đăng nhập</button></div>}
             <VoucherPackageCatalog packages={packages} pointsBalance={points} pendingPackageId={isPending ? exchangingId : null} onAcquire={handleAcquire} />
@@ -274,6 +325,16 @@ export default function VoucherModal() {
           powders={powders}
           defaultPowderGram={defaultPowderGram}
           onClose={() => setBundleSetupVoucher(null)}
+          onValidateDraft={({ cartItems: draftItems, rewardAllocations }) => {
+            const summary = getBundleVoucherSummary(bundleSetupVoucher);
+            if (!summary) return { ok: false, error: "Voucher BUNDLE không còn khả dụng" };
+            const draftCart = summarizeBundleCart(draftItems);
+            const selection = deriveBundleSelectionState({ voucher: summary, cart: draftCart, allocations: rewardAllocations });
+            const payload = buildBundleApplication({ voucher: summary, cart: draftCart, rewardAllocations });
+            return selection.status === "READY" && payload
+              ? { ok: true }
+              : { ok: false, error: selection.message };
+          }}
           onSuccess={handleBundleSuccess}
         />
       )}

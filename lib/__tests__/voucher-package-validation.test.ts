@@ -23,8 +23,24 @@ describe("Validation PRODUCT_DISCOUNT", () => {
     acquisition_mode: "POINTS_EXCHANGE" as const,
     points_cost: 10,
     menu_item_id: UUID.menu,
+    eligible_menu_item_ids: [UUID.menu],
     eligible_sizes: ["MEDIUM", "LARGE"] as const,
   };
+
+  it("nhận legacy menu_item_id và chuẩn hóa danh sách mục tiêu mới", () => {
+    const legacy = { ...common, product_discount_mode: "FIXED_AMOUNT" as const, discount_value: 10_000 };
+    delete (legacy as Partial<typeof legacy>).eligible_menu_item_ids;
+    expect(createVoucherPackageSchema.safeParse(legacy).success).toBe(true);
+    expect(createVoucherPackageSchema.safeParse({ ...common, eligible_menu_item_ids: [] }).success).toBe(false);
+  });
+
+  it("từ chối mục tiêu trùng, quá 100 hoặc anchor nằm ngoài scope", () => {
+    const benefit = { product_discount_mode: "FIXED_AMOUNT" as const, discount_value: 10_000 };
+    expect(createVoucherPackageSchema.safeParse({ ...common, ...benefit, eligible_menu_item_ids: [UUID.menu, UUID.menu] }).success).toBe(false);
+    const tooMany = Array.from({ length: 101 }, (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`);
+    expect(createVoucherPackageSchema.safeParse({ ...common, ...benefit, eligible_menu_item_ids: tooMany }).success).toBe(false);
+    expect(createVoucherPackageSchema.safeParse({ ...common, ...benefit, eligible_menu_item_ids: [UUID.menu2] }).success).toBe(false);
+  });
 
   it("nhan FIXED_AMOUNT duong va chia het cho 1.000", () => {
     expect(createVoucherPackageSchema.safeParse({ ...common, product_discount_mode: "FIXED_AMOUNT", discount_value: 10_000 }).success).toBe(true);

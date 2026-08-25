@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState, useSyncExternalStore } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
 import * as Popover from "@radix-ui/react-popover";
 import { Check, ChevronDown, Search, X } from "lucide-react";
+import { Drawer } from "vaul";
 import { cn } from "@/src/utils/cn";
 import {
   filterAdaptiveOptions,
@@ -37,17 +37,23 @@ function SelectionList({
   selected,
   multiple,
   onSelect,
+  mobile,
 }: {
   options: AdaptiveSelectOption[];
   selected: string[];
   multiple: boolean;
   onSelect: (value: string) => void;
+  mobile: boolean;
 }) {
   if (options.length === 0) {
     return <p className="px-4 py-8 text-center text-sm text-muted-foreground">Không tìm thấy lựa chọn</p>;
   }
   return (
-    <div className="max-h-[48vh] overflow-y-auto p-2" role="listbox" aria-multiselectable={multiple}>
+    <div
+      className={cn("max-h-[48vh] overflow-y-auto p-2", mobile && "min-h-0 flex-1")}
+      role="listbox"
+      aria-multiselectable={multiple}
+    >
       {options.map((option) => {
         const active = selected.includes(option.value);
         return (
@@ -120,11 +126,11 @@ export function AdaptiveSelect({
     </button>
   );
   const body = (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 border-b px-3 py-3">
         <Search className="h-4 w-4 text-muted-foreground" aria-hidden />
         <input
-          autoFocus
+          autoFocus={desktop}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={searchPlaceholder}
@@ -137,7 +143,7 @@ export function AdaptiveSelect({
           </button>
         ) : null}
       </div>
-      <SelectionList options={filtered} selected={selected} multiple={multiple} onSelect={choose} />
+      <SelectionList options={filtered} selected={selected} multiple={multiple} onSelect={choose} mobile={!desktop} />
       {multiple ? (
         <div className="border-t p-3">
           <button type="button" onClick={() => setOpen(false)} className="h-11 w-full rounded-xl bg-primary font-semibold text-primary-foreground">
@@ -145,7 +151,7 @@ export function AdaptiveSelect({
           </button>
         </div>
       ) : null}
-    </>
+    </div>
   );
 
   return (
@@ -161,17 +167,20 @@ export function AdaptiveSelect({
           </Popover.Portal>
         </Popover.Root>
       ) : (
-        <Dialog.Root open={open} onOpenChange={setOpen}>
-          <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
-          <Dialog.Portal>
-            <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45" />
-            <Dialog.Content aria-describedby={undefined} className="fixed inset-x-0 bottom-0 z-50 max-h-[82vh] rounded-t-3xl bg-background pb-[env(safe-area-inset-bottom)] shadow-2xl">
-              <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-muted" />
-              <Dialog.Title className="px-4 pb-1 pt-3 text-base font-bold">{label}</Dialog.Title>
+        <Drawer.Root open={open} onOpenChange={setOpen} autoFocus={false} repositionInputs>
+          <Drawer.Trigger asChild>{trigger}</Drawer.Trigger>
+          <Drawer.Portal>
+            <Drawer.Overlay className="fixed inset-0 z-[90] bg-black/45" />
+            <Drawer.Content
+              className="fixed inset-x-0 bottom-0 z-[100] flex max-h-[92dvh] flex-col overflow-hidden rounded-t-3xl bg-background pb-[env(safe-area-inset-bottom)] shadow-2xl outline-none"
+            >
+              <div className="mx-auto mt-2 h-1.5 w-12 shrink-0 rounded-full bg-muted" />
+              <Drawer.Title className="shrink-0 px-4 pb-1 pt-3 text-base font-bold">{label}</Drawer.Title>
+              <Drawer.Description className="sr-only">Tìm kiếm và chọn {label.toLocaleLowerCase("vi-VN")}</Drawer.Description>
               {body}
-            </Dialog.Content>
-          </Dialog.Portal>
-        </Dialog.Root>
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
       )}
       {error ? <span className="text-xs text-destructive">{error}</span> : null}
     </div>

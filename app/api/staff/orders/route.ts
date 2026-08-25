@@ -221,6 +221,7 @@ export async function POST(req: NextRequest) {
           }
           productVoucherMap.set(pv!.id, {
             menu_item_id: pv!.menu_item_id,
+            eligible_menu_item_ids: pv!.menuItemScopes?.map((scope) => scope.menu_item_id) ?? [],
             covered_price_vnd: pv!.covered_price_vnd ?? 0,
             voucher_type: pv!.voucher_type === "ITEM" ? "ITEM" : pv!.voucher_type === "PRODUCT_DISCOUNT" ? "PRODUCT_DISCOUNT" : "PRODUCT",
             product_discount_mode: pv!.product_discount_mode,

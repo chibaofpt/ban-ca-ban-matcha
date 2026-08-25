@@ -3,7 +3,8 @@ name: voucher-flow
 description: >
   Standardize voucher eligibility, application order, stacking, lifecycle, surplus,
   points, and QR rules for Bạn Cá Bán Matcha. Use for voucher apply/reserve/redeem,
-  PRODUCT credit, ADDON voucher, DISCOUNT, FREESHIP, covered_price_vnd,
+  PRODUCT credit, PRODUCT_DISCOUNT, FIXED_AMOUNT, PAY_AS_SIZE, ADDON voucher,
+  DISCOUNT, FREESHIP, covered_price_vnd,
   min_order_vnd, voucher surplus, voucher expiry, points, QR scan,
   voucher packages, lib/vouchers.ts, or any order calculation involving vouchers.
 ---
@@ -23,6 +24,7 @@ Inspect current files, callers and tests with `rg`; do not maintain file paths o
 |---|---|---|
 | `ITEM` | Item-level | One fixed-price `extras` unit at its current server price; no surplus. |
 | `PRODUCT` | Item-level | One drink unit matching `menu_item_id`; covers drink components only. |
+| `PRODUCT_DISCOUNT` | Item-level, selected from main cart | Discounts one configured drink/size using `FIXED_AMOUNT` or `PAY_AS_SIZE`; excludes addons. |
 | `ADDON` | Addon-level | One unit of a specific `addon_option_id`; never Extra Matcha. |
 | `DISCOUNT` | Order-level | Reduces `total_vnd`. `PERCENT` or `FIXED` via `discount_type`. |
 | `FREESHIP` | Order-level | Covers delivery fee up to `covered_delivery_fee_vnd`. |
@@ -36,7 +38,7 @@ calculator for customer and staff orders; never duplicate or reorder these calcu
 
 **Application order** (strict — never reorder):
 ```
-BUNDLE → ITEM/PRODUCT → ADDON → DISCOUNT → FREESHIP
+BUNDLE → ITEM/PRODUCT/PRODUCT_DISCOUNT → ADDON → DISCOUNT → FREESHIP
 ```
 
 ### Canonical money terms
@@ -137,6 +139,42 @@ Derive the aggregate from `order_items.unit_price_vnd` (drink snapshot) and
 `vouchers.covered_price_vnd` (voucher snapshot). The fields `order_items.surplus_points`
 and `order_discount_vouchers.discount_applied_vnd` have been **dropped** (migration
 `20260720201131`). Do not reference or recreate them.
+
+---
+
+## PRODUCT_DISCOUNT Voucher Details
+
+- Present `PRODUCT_DISCOUNT` in the customer's main cart voucher list, while persisting the
+  applied token on exactly one qualifying drink unit through the existing product-voucher fields.
+- Keep other item-level `PRODUCT`, `ITEM`, and `ADDON` vouchers in their per-item selection flows.
+- Match an exact configured `menu_item_id` and an allowed current size. Also require `ACTIVE`,
+  `availability.can_apply`, no conflicting BUNDLE allocation, and a positive incremental benefit.
+- `FIXED_AMOUNT` benefit:
+
+```text
+product_discount_vnd = min(current_drink_price_vnd, discount_value)
+```
+
+- `PAY_AS_SIZE` benefit, using the same selected powder and Base Liquid and excluding addons:
+
+```text
+product_discount_vnd = max(
+  current_eligible_size_drink_price_vnd - current_reference_size_drink_price_vnd,
+  0
+)
+```
+
+- Keep an ACTIVE but currently ineligible voucher visible in the cart picker. Disable only its
+  selection control, expose a specific reason, and keep voucher details readable.
+- Apply immediately when exactly one cart target qualifies. When multiple targets qualify, require
+  explicit target selection in a nested customer bottom sheet.
+- If the selected cart line has quantity greater than one, split one unit before applying.
+- Replacing a product-level voucher must release only the previous voucher on the selected unit.
+- Removing the selected voucher must restore that unit's normal calculated drink price.
+- A selected voucher remains visible and removable even if later cart changes make it ineligible.
+- Do not allow a PRODUCT_DISCOUNT token and a BUNDLE allocation to overlap on the same cart unit.
+- Server order resolution remains authoritative: re-fetch configuration and prices and reject
+  stale or invalid client selections before reserving the voucher.
 
 ---
 

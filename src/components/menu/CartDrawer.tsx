@@ -17,7 +17,9 @@ import { useEditModalStore } from "@/src/lib/store/editModalStore";
 import { cn } from "@/src/utils/cn";
 import { useRouter } from "next/navigation";
 import { listMyVouchers, listActiveVoucherPackages, type MyVoucher, type VoucherPackage } from "@/src/services/customerVoucherService";
-import { filterUsableVouchers, buildAddonVoucherMap, buildProductVoucherMap } from "@/src/utils/voucherMatchUtils";
+import { buildAddonVoucherMap, buildProductVoucherMap } from "@/src/utils/voucherMatchUtils";
+import { filterActiveMainCartVouchers } from "@/src/utils/customerVoucherSelection";
+import { filterHistoryVouchers } from "@/src/lib/utils/voucherModalHelpers";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { DeliverySection } from "@/src/components/delivery/DeliverySection";
 import type { Address } from "@/src/lib/types/address";
@@ -191,15 +193,14 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Derived voucher lists
-  const discountVouchers = filterUsableVouchers(allVouchers, "DISCOUNT");
-  const freeshipVouchers = filterUsableVouchers(allVouchers, "FREESHIP");
+  const discountVouchers = filterActiveMainCartVouchers(allVouchers, "DISCOUNT");
+  const freeshipVouchers = filterActiveMainCartVouchers(allVouchers, "FREESHIP");
+  const productDiscountVouchers = filterActiveMainCartVouchers(allVouchers, "PRODUCT_DISCOUNT");
+  const historyVouchers = filterHistoryVouchers(allVouchers);
   const applicableAddonVouchersMap = buildAddonVoucherMap(allVouchers, items);
   const applicableProductVouchers = buildProductVoucherMap(allVouchers, items);
-  const bundleVouchers = allVouchers.filter(
-    (voucher) =>
-      voucher.voucher_type === "BUNDLE" &&
-      voucher.status === "ACTIVE" &&
-      voucher.package.bundleRule,
+  const bundleVouchers = filterActiveMainCartVouchers(allVouchers, "BUNDLE").filter(
+    (voucher) => voucher.package.bundleRule,
   );
   const bundleCartSummary = useMemo(() => summarizeBundleCart(items), [items]);
   const bundleSelectionStates = useMemo(() => bundleApplications.map((application) => {
@@ -274,24 +275,31 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   const updateBundleApplication = useCallback((
     voucher: MyVoucher,
     rewardAllocations: import("@/src/lib/utils/bundleVoucher").BundleSelectionAllocation[],
-    effect?: BundleCreatedRewardEffect,
+    effects: BundleCreatedRewardEffect[] = [],
   ) => {
     const summary = getBundleVoucherSummary(voucher);
-    if (!summary) return;
+    if (!summary) return { ok: false as const, error: "Voucher BUNDLE không còn khả dụng" };
     const previous = bundleApplications.find((application) => application.voucher_qr_token === voucher.qr_token);
-    const selection = deriveBundleSelectionState({ voucher: summary, cart: summarizeBundleCart(items), allocations: rewardAllocations });
-    const payload = buildBundleApplication({ voucher: summary, cart: summarizeBundleCart(items), rewardAllocations });
-    const status = selection.status === "READY" ? "READY" : selection.status === "INELIGIBLE" || selection.status === "CONFLICT" ? "CONFLICT" : "NEEDS_CONFIGURATION";
+    const latestCart = summarizeBundleCart(useCartStore.getState().items);
+    const selection = deriveBundleSelectionState({ voucher: summary, cart: latestCart, allocations: rewardAllocations });
+    const payload = buildBundleApplication({ voucher: summary, cart: latestCart, rewardAllocations });
+    if (selection.status !== "READY" || !payload) {
+      return { ok: false as const, error: selection.message };
+    }
     commitBundleApplication({
       voucher_qr_token: voucher.qr_token,
       owner_key: `customer:${currentUser?.phone ?? "anonymous"}`,
       qualifier_allocations: payload?.qualifier_allocations ?? [],
       reward_allocations: rewardAllocations,
-      created_reward_effects: retainBundleRewardEffects(previous?.created_reward_effects ?? [], rewardAllocations, effect),
-      status,
+      created_reward_effects: effects.reduce(
+        (retained, effect) => retainBundleRewardEffects(retained, rewardAllocations, effect),
+        retainBundleRewardEffects(previous?.created_reward_effects ?? [], rewardAllocations),
+      ),
+      status: "READY",
       message: selection.message,
     });
-  }, [bundleApplications, commitBundleApplication, currentUser?.phone, items]);
+    return { ok: true as const };
+  }, [bundleApplications, commitBundleApplication, currentUser?.phone]);
 
   // Client preview uses the same pure BUNDLE + order calculators as the server.
   const selectedDiscountVouchers = selectedVoucherIds.flatMap((id) => {
@@ -905,6 +913,8 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
               <CartDiscountPicker
                 discountVouchers={discountVouchers}
                 freeshipVouchers={freeshipVouchers}
+                productDiscountVouchers={productDiscountVouchers}
+                historyVouchers={historyVouchers}
                 availableVoucherPackages={availableVoucherPackages}
                 pointsBalance={pointsBalance}
                 selectedVoucherIds={selectedVoucherIds}
@@ -921,6 +931,13 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
                 }}
                 bundleVouchers={bundleVouchers}
                 cart={items}
+                menuData={menuData}
+                powders={powderData.data}
+                defaultPowderGram={powderData.default_powder_gram}
+                getProductVoucherBenefit={getItemVoucherBenefit}
+                onApplyProductVoucher={applyItemVoucher}
+                onRemoveProductVoucher={removeProductVoucher}
+                bundleAllocatedCartIds={renderedBundleLineIds}
                 addonLabels={addonLabels}
                 bundleApplications={bundleApplications}
                 onBundleApplicationChange={updateBundleApplication}

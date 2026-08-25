@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Spectral } from "next/font/google";
-import Navbar from "@/src/components/common/Navbar";
 import Footer from "@/src/components/common/Footer";
 import AuthModal from "@/src/components/common/AuthModal";
 import AuthGuardProvider from "@/src/components/common/AuthGuardProvider";
@@ -86,7 +85,6 @@ export default function RootLayout({
       <body className="min-h-screen flex flex-col bg-paper text-foreground font-sans border-border transition-colors duration-300 text-ink">
         <ReactQueryProvider>
           <AuthGuardProvider>
-            <Navbar />
             <AuthModal />
             <div className="flex-1">
               <StoreStatusBanner />

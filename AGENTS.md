@@ -2,6 +2,11 @@
 
 > Đọc file này đầu tiên trong mọi session. Không dùng workaround im lặng khi resource, code và test mâu thuẫn.
 
+## CodeGraph bootstrap
+
+- For code-related sessions, run one task-focused CodeGraph query before `rg` or raw reads; treat its source as already read and narrow a follow-up query only when needed.
+- Skip non-code or unindexed tasks; never initialize an index without the user, and use normal tools only for missing or stale details.
+
 ## Current state
 
 - [x] Supabase, Prisma, custom auth

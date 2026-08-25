@@ -2,14 +2,13 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { Clock, Loader2 } from "lucide-react";
+import { CheckCircle2, Clock, Loader2 } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import {
   type MyVoucher,
   type VoucherPackage,
 } from "@/src/services/customerVoucherService";
 import {
-  canInteract,
   canExchange,
   getVoucherBenefitText,
   getPackageBenefitText,
@@ -20,6 +19,7 @@ import {
   getVoucherAvailabilityMessage,
   VOUCHER_TYPE_CONFIG,
 } from "@/src/lib/utils/voucherModalHelpers";
+import type { VoucherActionModel } from "@/src/utils/customerVoucherSelection";
 
 // ── VoucherCard (Section 1 - Ticket Layout) ───────────────────────────────────
 
@@ -29,7 +29,9 @@ export function VoucherCard({
   isDisabled,
   disabledReason,
   isSelected,
-  onClick
+  onClick,
+  actionModel,
+  onAction,
 }: {
   voucher: MyVoucher;
   actionNode?: React.ReactNode;
@@ -37,8 +39,10 @@ export function VoucherCard({
   disabledReason?: string;
   isSelected?: boolean;
   onClick?: () => void;
+  actionModel?: VoucherActionModel;
+  onAction?: () => void;
 }) {
-  const isInteractable = canInteract(voucher) && !isDisabled;
+  const isInteractable = Boolean(onClick);
   const typeConfig = VOUCHER_TYPE_CONFIG[voucher.voucher_type];
   const highlight = getTicketHighlightText(voucher.voucher_type, voucher.discount_type, voucher.discount_value, voucher.reference_size);
 
@@ -53,19 +57,7 @@ export function VoucherCard({
       layout
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      onClick={isInteractable ? onClick : undefined}
-      role={isInteractable && onClick ? "button" : undefined}
-      tabIndex={isInteractable && onClick ? 0 : undefined}
-      onKeyDown={(event) => {
-        if (
-          !isInteractable ||
-          !onClick ||
-          event.target !== event.currentTarget ||
-          (event.key !== "Enter" && event.key !== " ")
-        ) return;
-        event.preventDefault();
-        onClick();
-      }}
+      onClick={onClick}
       className={cn(
         "rounded-xl shadow-sm border overflow-hidden flex relative transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         isSelected ? "bg-[#f2f7ed] border-[#8ab275] hover:border-[#8ab275]" : "bg-card",
@@ -73,6 +65,14 @@ export function VoucherCard({
         isInteractable && onClick && !isSelected && "cursor-pointer hover:border-primary/50"
       )}
     >
+      {isInteractable ? (
+        <button
+          type="button"
+          aria-label={`Xem chi tiết ${voucher.package.name}`}
+          onClick={(event) => { event.stopPropagation(); onClick?.(); }}
+          className="absolute inset-0 z-20 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        />
+      ) : null}
       {/* Left side: Highlight Ticket */}
       <div className={cn(
         "w-[32%] flex flex-col items-center justify-center p-3 border-r-2 border-dashed",
@@ -131,11 +131,36 @@ export function VoucherCard({
             {isRedeemed ? formatRedeemedDate(voucher.redeemed_at) : formatVoucherExpiry(voucher.expires_at)}
           </p>
           
-          {actionNode && (
-             <div onClick={(e) => { e.stopPropagation(); }}>
-               {actionNode}
-             </div>
-          )}
+          {actionModel?.kind === "selection" ? (
+            <button
+              type="button"
+              aria-label={actionModel.selected ? "Bỏ chọn voucher" : "Chọn voucher"}
+              aria-pressed={actionModel.selected}
+              disabled={actionModel.disabled}
+              title={actionModel.reason}
+              onClick={(event) => { event.stopPropagation(); onAction?.(); }}
+              className="relative z-30 ml-2 flex min-h-11 min-w-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {actionModel.selected ? (
+                <CheckCircle2 className="h-5 w-5 text-primary" />
+              ) : (
+                <span className="h-5 w-5 rounded-full border border-border/60" />
+              )}
+            </button>
+          ) : actionModel?.kind === "use-now" ? (
+            <button
+              type="button"
+              disabled={actionModel.disabled}
+              title={actionModel.reason}
+              onClick={(event) => { event.stopPropagation(); onAction?.(); }}
+              className="relative z-30 ml-2 flex min-h-11 items-center justify-center rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {actionModel.busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+              {actionModel.label}
+            </button>
+          ) : actionNode ? (
+            <div onClick={(e) => { e.stopPropagation(); }}>{actionNode}</div>
+          ) : null}
         </div>
       </div>
     </motion.div>

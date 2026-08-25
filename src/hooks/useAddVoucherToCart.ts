@@ -148,7 +148,7 @@ export function useAddVoucherToCart() {
   const [loading, setLoading] = useState(false);
 
   const addToCart = useCallback(
-    async (voucher: MyVoucher): Promise<AddVoucherResult> => {
+    async (voucher: MyVoucher, selection?: { menuItemId: string; size: Size }): Promise<AddVoucherResult> => {
       if ((voucher.voucher_type !== "PRODUCT" && voucher.voucher_type !== "PRODUCT_DISCOUNT" && voucher.voucher_type !== "ITEM") || !voucher.menu_item_id) {
         return { ok: false, reason: "fetch_failed" };
       }
@@ -160,7 +160,10 @@ export function useAddVoucherToCart() {
         const allItems = [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])];
         const latteItems = menuData.latte;
 
-        const menuItem = allItems.find((i) => i.id === voucher.menu_item_id);
+        const selectedMenuItemId = voucher.voucher_type === "PRODUCT_DISCOUNT"
+          ? selection?.menuItemId ?? voucher.menu_item_id
+          : voucher.menu_item_id;
+        const menuItem = allItems.find((i) => i.id === selectedMenuItemId);
         if (!menuItem) {
           return { ok: false, reason: "item_unavailable" };
         }
@@ -196,7 +199,7 @@ export function useAddVoucherToCart() {
 
         // Use voucher's size config (soft match: item must support this size)
         const voucherSize = (voucher.voucher_type === "PRODUCT_DISCOUNT"
-          ? voucher.eligible_sizes?.find((size) => menuItem.sizes.some((row) => row.size === size && row.base_price_vnd !== null))
+          ? selection?.size ?? voucher.eligible_sizes?.find((size) => menuItem.sizes.some((row) => row.size === size && row.base_price_vnd !== null))
           : voucher.size) as Size | undefined;
         if (!voucherSize) return { ok: false, reason: "size_unavailable" };
         const sizeObj = menuItem.sizes.find((s) => s.size === voucherSize);

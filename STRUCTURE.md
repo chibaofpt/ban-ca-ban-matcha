@@ -7,6 +7,10 @@
 
 Không duy trì cây thư mục thủ công trong tài liệu này. Dùng `rg --files` để xem cấu trúc thật.
 
+Selector phạm vi PRODUCT_DISCOUNT của admin đặt trong `src/components/admin`; lựa chọn dùng ngay
+của khách nằm trong shared voucher sheet/hook hiện có. Chuẩn hóa và fallback scope thuộc `lib/`,
+API URL/types tiếp tục thuộc các voucher service hiện có, còn persistence thuộc Prisma schema/migration.
+
 ## Placement
 
 | Nơi | Trách nhiệm |

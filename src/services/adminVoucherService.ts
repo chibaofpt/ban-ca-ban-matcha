@@ -13,6 +13,7 @@ export interface VoucherPackage {
   discount_value: number | null;
   product_discount_mode?: "FIXED_AMOUNT" | "PAY_AS_SIZE" | null;
   menu_item_id: string | null;
+  eligible_menu_items?: VoucherEligibleMenuItem[];
   eligible_sizes?: Array<"SMALL" | "MEDIUM" | "LARGE">;
   reference_size?: "SMALL" | "MEDIUM" | "LARGE" | null;
   size: "SMALL" | "MEDIUM" | "LARGE" | null;
@@ -46,6 +47,14 @@ export interface VoucherBundleProductScope {
   default_base_liquid_id?: string | null;
   allowed_sizes: Array<"SMALL" | "MEDIUM" | "LARGE">;
   menu_item?: { name: string; category: "latte" | "fusion" | "extras"; is_available: boolean };
+}
+
+export interface VoucherEligibleMenuItem {
+  menu_item_id: string;
+  name: string;
+  category: "latte" | "fusion";
+  is_available: boolean;
+  is_seasonal: boolean;
 }
 
 export interface VoucherBundleRule {
@@ -98,6 +107,7 @@ export type CreateVoucherPackageInput = VoucherPackageCommonInput & (
   | {
       voucher_type: "PRODUCT_DISCOUNT";
       menu_item_id: string;
+      eligible_menu_item_ids: string[];
       product_discount_mode: "FIXED_AMOUNT" | "PAY_AS_SIZE";
       eligible_sizes: Array<"SMALL" | "MEDIUM" | "LARGE">;
       discount_value?: number;

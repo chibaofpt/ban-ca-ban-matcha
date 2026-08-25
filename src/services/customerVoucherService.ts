@@ -19,6 +19,14 @@
 import { apiClient } from "@/src/lib/api/client";
 import type { ApiResponse } from "@/src/lib/types/api";
 
+export interface VoucherEligibleMenuItem {
+  menu_item_id: string;
+  name: string;
+  category: "latte" | "fusion";
+  is_available: boolean;
+  is_seasonal: boolean;
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface VoucherPackage {
@@ -33,6 +41,7 @@ export interface VoucherPackage {
   discount_value: number | null;
   product_discount_mode?: "FIXED_AMOUNT" | "PAY_AS_SIZE" | null;
   menu_item_id: string | null;
+  eligible_menu_items?: VoucherEligibleMenuItem[];
   eligible_sizes?: Array<"SMALL" | "MEDIUM" | "LARGE">;
   reference_size?: "SMALL" | "MEDIUM" | "LARGE" | null;
   size: "SMALL" | "MEDIUM" | "LARGE" | null;
@@ -103,6 +112,7 @@ export interface MyVoucher {
   discount_value: number | null;
   product_discount_mode?: "FIXED_AMOUNT" | "PAY_AS_SIZE" | null;
   menu_item_id: string | null;
+  eligible_menu_items?: VoucherEligibleMenuItem[];
   eligible_sizes?: Array<"SMALL" | "MEDIUM" | "LARGE">;
   reference_size?: "SMALL" | "MEDIUM" | "LARGE" | null;
   size: "SMALL" | "MEDIUM" | "LARGE" | null;

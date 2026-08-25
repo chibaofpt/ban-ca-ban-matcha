@@ -35,6 +35,8 @@ type DbClient = Pick<
 export interface ProductVoucherInfo {
   /** The menu_item_id the voucher is locked to. Server rejects if item doesn't match. */
   menu_item_id: string;
+  /** Normalized PRODUCT_DISCOUNT snapshot targets; absent uses legacy anchor. */
+  eligible_menu_item_ids?: string[];
   /** Fixed PRODUCT credit, capped at the server-computed drink price and never applied to addons. */
   covered_price_vnd: number;
   voucher_type?: "PRODUCT" | "PRODUCT_DISCOUNT" | "ITEM";
@@ -42,6 +44,14 @@ export interface ProductVoucherInfo {
   eligible_sizes?: Size[];
   reference_size?: Size | null;
   discount_value?: number | null;
+}
+
+/** Match a product voucher against normalized snapshot targets with legacy fallback. */
+export function productVoucherTargetsMenuItem(voucher: ProductVoucherInfo, menuItemId: string): boolean {
+  const targetIds = voucher.eligible_menu_item_ids?.length
+    ? voucher.eligible_menu_item_ids
+    : [voucher.menu_item_id];
+  return targetIds.includes(menuItemId);
 }
 
 
@@ -523,7 +533,7 @@ async function resolveOneItem(
   if (itemVoucherId && productVoucherMap) {
     const pvInfo = productVoucherMap.get(itemVoucherId);
     if (pvInfo) {
-      if (pvInfo.voucher_type === "ITEM" || pvInfo.menu_item_id !== item.menu_item_id) {
+      if (pvInfo.voucher_type === "ITEM" || !productVoucherTargetsMenuItem(pvInfo, item.menu_item_id)) {
         throw new OrderValidationError(
           "VALIDATION_ERROR",
           `Product voucher is not valid for this menu item`

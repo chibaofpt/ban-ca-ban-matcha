@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
             where: { qr_token: parsed.data.qr_token },
             include: {
               package: { include: { bundleRule: { include: { productScopes: { include: { sizes: true } }, addonRewards: true } } } },
+              menuItemScopes: { select: { menu_item_id: true } },
               pointsLogs: { where: { reason: "voucher_purchase" }, select: { delta: true, reason: true }, orderBy: { created_at: "asc" }, take: 1 },
             },
           });

@@ -1,48 +1,57 @@
-import HomePage from '@/src/views/HomePage';
+import MenuPage from '@/src/views/MenuPage';
+import { prisma } from '@/lib/prisma';
 import { headers } from 'next/headers';
 import { serializeJsonLd } from '@/src/utils/jsonLd';
 
 export const metadata = {
-  title: 'Bạn Cá Bán Matcha — Tiên phong văn hóa Matcha tại Bình Dương',
-  description: 'Thưởng thức vị matcha chuẩn Nhật đầu tiên tại Thủ Dầu Một, Bình Dương. Trải nghiệm matcha ceremonial grade được pha chế thủ công.',
+  title: 'Menu — Bạn Cá Bán Matcha',
+  description: 'Khám phá menu matcha chuẩn Nhật và bánh cá đặc trưng của Bạn Cá Bán Matcha tại Bình Dương.',
   openGraph: {
-    title: 'Bạn Cá Bán Matcha — Tiên phong văn hóa Matcha tại Bình Dương',
-    description: 'Thưởng thức vị matcha chuẩn Nhật đầu tiên tại Thủ Dầu Một, Bình Dương. Trải nghiệm matcha ceremonial grade được pha chế thủ công.',
+    title: 'Menu — Bạn Cá Bán Matcha',
+    description: 'Khám phá menu matcha chuẩn Nhật và bánh cá đặc trưng của Bạn Cá Bán Matcha tại Bình Dương.',
   },
 };
 
-const jsonLd = {
-  '@context': 'https://schema.org',
-  '@type': 'Organization',
-  name: 'Bạn Cá Bán Matcha',
-  url: 'https://ban-ca-ban-matcha.vercel.app',
-  logo: 'https://ban-ca-ban-matcha.vercel.app/logo.png',
-  description: 'Quán matcha chuẩn Nhật đầu tiên tại Thủ Dầu Một, Bình Dương',
-  address: {
-    '@type': 'PostalAddress',
-    addressLocality: 'Thủ Dầu Một',
-    addressRegion: 'Bình Dương',
-    addressCountry: 'VN'
-  },
-  sameAs: [
-    'https://www.facebook.com/bancabanmatcha'
-  ]
-};
+export const dynamic = 'force-dynamic';
 
-/**
- * app/(public)/page.tsx – Entry-only wrapper for the Home route.
- * Following the Pattern Rule: logic and styling are delegated to src/views/HomePage.
- */
+/** Render the public menu at the launch default route. */
 export default async function Page() {
   const nonce = (await headers()).get('x-nonce') ?? undefined;
+
+  let serializedJsonLd: string | null = null;
+  try {
+    const items = await prisma.menuItem.findMany({
+      where: { is_available: true },
+      include: { sizes: true },
+    });
+
+    serializedJsonLd = serializeJsonLd({
+      '@context': 'https://schema.org',
+      '@type': 'Menu',
+      name: 'Menu Bạn Cá Bán Matcha',
+      hasMenuSection: [{
+        '@type': 'MenuSection',
+        name: 'Đồ Uống & Món Ăn',
+        hasMenuItem: items.map((item) => {
+          const prices = item.sizes.map((size) => size.base_price_vnd).filter((price) => price !== null) as number[];
+          const basePrice = prices.length > 0 ? Math.min(...prices) : 0;
+          return {
+            '@type': 'MenuItem',
+            name: item.name,
+            description: item.description ?? '',
+            offers: { '@type': 'Offer', priceCurrency: 'VND', price: basePrice.toString() },
+          };
+        }),
+      }],
+    });
+  } catch {
+    console.error('[page] Failed to generate menu JSON-LD because the database is unavailable');
+  }
+
   return (
     <>
-      <script
-        nonce={nonce}
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
-      />
-      <HomePage />
+      {serializedJsonLd && <script nonce={nonce} type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializedJsonLd }} />}
+      <MenuPage />
     </>
   );
 }

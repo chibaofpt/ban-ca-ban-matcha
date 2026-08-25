@@ -104,6 +104,7 @@ async function fetchVoucherPackages() {
     orderBy: { created_at: "asc" },
     include: {
       menuItem: { select: { name: true, is_available: true } },
+      menuItemScopes: { include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } } },
       addonOption: { select: { label: true } },
       bundleRule: { include: {
         productScopes: { include: {
@@ -123,12 +124,13 @@ async function fetchScheduledVoucherPackages(now: Date) {
       is_active: true,
       OR: [
         { ends_at: { gt: now } },
-        { voucher_type: { in: ["ITEM", "PRODUCT", "ADDON", "BUNDLE"] }, ends_at: null },
+        { voucher_type: { in: ["ITEM", "PRODUCT", "PRODUCT_DISCOUNT", "ADDON", "BUNDLE"] }, ends_at: null },
       ],
     },
     orderBy: { created_at: "asc" },
     include: {
       menuItem: { select: { name: true, is_available: true } },
+      menuItemScopes: { include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } } },
       addonOption: { select: { label: true } },
       bundleRule: { include: {
         productScopes: { include: {
@@ -139,18 +141,22 @@ async function fetchScheduledVoucherPackages(now: Date) {
       } },
     },
   });
-  const targetPackages = packages.filter((pkg) => ["ITEM", "PRODUCT", "ADDON", "BUNDLE"].includes(pkg.voucher_type));
+  const targetPackages = packages.filter((pkg) => ["ITEM", "PRODUCT", "PRODUCT_DISCOUNT", "ADDON", "BUNDLE"].includes(pkg.voucher_type));
   const catalog = targetPackages.length > 0
     ? await loadVoucherAvailabilityCatalog(prisma as unknown as VoucherAvailabilityDatabase)
     : null;
   return packages.flatMap((pkg) => {
-    if (!["ITEM", "PRODUCT", "ADDON", "BUNDLE"].includes(pkg.voucher_type) || !catalog) {
+    if (!["ITEM", "PRODUCT", "PRODUCT_DISCOUNT", "ADDON", "BUNDLE"].includes(pkg.voucher_type) || !catalog) {
       return [toVoucherPackageBundleDto(pkg)];
     }
     const resolved = resolveVoucherTargetAvailability({
       voucher_type: pkg.voucher_type,
       menu_item_id: pkg.menu_item_id,
       size: pkg.size,
+      product_discount_mode: pkg.product_discount_mode,
+      eligible_sizes: pkg.eligible_sizes,
+      reference_size: pkg.reference_size,
+      menuItemScopes: pkg.menuItemScopes,
       matcha_powder_id: pkg.matcha_powder_id,
       milk_type_id: pkg.milk_type_id,
       addon_option_id: pkg.addon_option_id,

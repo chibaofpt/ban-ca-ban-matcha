@@ -23,11 +23,6 @@ vi.mock("@/src/lib/store/authStore", () => ({
   useIsLoggedIn: () => false,
 }));
 
-vi.mock("@/src/lib/store/pointsStore", () => ({
-  usePointsStore: (selector: (s: { points: null; fetchPoints: () => void }) => unknown) =>
-    selector({ points: null, fetchPoints: vi.fn() }),
-}));
-
 vi.mock("@/src/lib/store/voucherModalStore", () => ({
   useVoucherModalStore: (selector: (s: { openModal: () => void }) => unknown) =>
     selector({ openModal: vi.fn() }),

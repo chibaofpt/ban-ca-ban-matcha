@@ -53,6 +53,10 @@ const groupedBundleMigration = readFileSync(
   ),
   "utf8",
 );
+const productDiscountScopeMigration = readFileSync(
+  join(process.cwd(), "prisma", "migrations", "20260825000000_add_product_discount_scopes", "migration.sql"),
+  "utf8",
+);
 
 function prismaTableNames(): string[] {
   return [...schema.matchAll(/@@map\("([^"]+)"\)/g)]
@@ -62,7 +66,7 @@ function prismaTableNames(): string[] {
 
 describe("migration hardening Supabase Data API", () => {
   it("bật RLS, không FORCE, cho mọi bảng Prisma quản lý", () => {
-    const hardenedMigrations = `${migration}\n${bundleMigration}\n${unifiedVoucherMigration}\n${baseLiquidMigration}\n${groupedBundleMigration}`;
+    const hardenedMigrations = `${migration}\n${bundleMigration}\n${unifiedVoucherMigration}\n${baseLiquidMigration}\n${groupedBundleMigration}\n${productDiscountScopeMigration}`;
     const currentTables = new Set(prismaTableNames());
     const enabledTables = [...new Set([...hardenedMigrations.matchAll(
       /ALTER TABLE (?:IF EXISTS )?public\."([^"]+)" ENABLE ROW LEVEL SECURITY;/g,

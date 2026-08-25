@@ -2,16 +2,18 @@
 
 import React from "react";
 import { ShoppingBag } from "lucide-react";
-import { motion, AnimatePresence, useAnimation } from "framer-motion";
-import { useCartStore, useCartTotalItems } from "@/src/lib/store/cartStore";
+import { motion, useAnimation } from "framer-motion";
+import { useCartStore, useCartTotalItems, useCartTotalPrice } from "@/src/lib/store/cartStore";
+import { formatKa } from "@/src/utils/display";
 
 /**
- * CartButton is a floating action button that displays the total number of items in the cart.
+ * CartButton is a floating action button that displays the cart total and item count.
  * Updated with premium styling and UIProvider connection.
  */
 const CartButton: React.FC = () => {
   const setCartOpen = useCartStore((s) => s.setCartOpen);
   const count = useCartTotalItems();
+  const totalPrice = useCartTotalPrice();
   const controls = useAnimation();
   const prevCount = React.useRef(count);
 
@@ -25,27 +27,29 @@ const CartButton: React.FC = () => {
     prevCount.current = count;
   }, [count, controls]);
 
+  if (count === 0) return null;
+
   return (
-    <motion.button
-      onClick={() => setCartOpen(true)}
-      animate={controls}
-      className="fixed bottom-8 right-8 z-50 w-16 h-16 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-2xl hover:scale-110 active:scale-95 transition-all group lg:hidden"
-      aria-label="Mở giỏ hàng"
-    >
-      <ShoppingBag className="w-6 h-6 group-hover:rotate-12 transition-transform" />
-      <AnimatePresence>
-        {count > 0 && (
-          <motion.span
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            exit={{ scale: 0 }}
-            className="absolute -top-1 -right-1 w-6 h-6 bg-accent text-accent-foreground text-[12px] font-bold rounded-full flex items-center justify-center border-2 border-background"
-          >
-            {count}
-          </motion.span>
-        )}
-      </AnimatePresence>
-    </motion.button>
+    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center lg:hidden">
+      <motion.button
+        onClick={() => setCartOpen(true)}
+        animate={controls}
+        className="group pointer-events-auto flex min-h-14 items-center justify-center gap-2 rounded-full bg-primary/90 px-5 text-primary-foreground shadow-2xl backdrop-blur-sm transition-all hover:scale-105 active:scale-95"
+        aria-label={`Mở giỏ hàng, ${formatKa(totalPrice)} cho ${count} món`}
+      >
+        <ShoppingBag className="h-5 w-5 shrink-0 transition-transform group-hover:rotate-12" />
+        <span className="flex items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-primary-foreground/80">
+          <span>Giỏ đang có</span>
+          <span className="text-base font-extrabold text-white">
+            {formatKa(totalPrice)}
+          </span>
+          <span>cho</span>
+          <span className="text-base font-extrabold text-white">
+            {count} món
+          </span>
+        </span>
+      </motion.button>
+    </div>
   );
 };
 

@@ -71,6 +71,7 @@ export async function GET() {
           },
         },
         menuItem: { select: { name: true, is_available: true } },
+        menuItemScopes: { include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } } },
         addonOption: { select: { label: true } },
         // Staff who redeemed it offline (null = redeemed by the user themselves online)
         staff: { select: { name: true, role: true } },

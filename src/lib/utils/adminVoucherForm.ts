@@ -13,6 +13,7 @@ export interface VoucherDraft extends BundleVoucherFormState {
   eligibleSizes: Array<"SMALL" | "MEDIUM" | "LARGE">;
   referenceSize: "SMALL" | "MEDIUM" | "LARGE";
   menuItemId: string;
+  eligibleMenuItemIds?: string[];
   size: "SMALL" | "MEDIUM" | "LARGE";
   matchaPowderId: string;
   milkTypeId: string;
@@ -26,7 +27,7 @@ export function createEmptyVoucherDraft(): VoucherDraft {
     voucherType: "DISCOUNT", name: "", description: "", endsAt: "",
     acquisitionMode: "POINTS_EXCHANGE", pointsCost: 10, expiresAfterDays: 30,
     quantity: null, maxPerUser: 1, minOrderVnd: null,
-    discountType: "PERCENT", discountValue: 10, productDiscountMode: "FIXED_AMOUNT", eligibleSizes: ["MEDIUM"], referenceSize: "SMALL", menuItemId: "", size: "SMALL",
+    discountType: "PERCENT", discountValue: 10, productDiscountMode: "FIXED_AMOUNT", eligibleSizes: ["MEDIUM"], referenceSize: "SMALL", menuItemId: "", eligibleMenuItemIds: [], size: "SMALL",
     matchaPowderId: "", milkTypeId: "", addonOptionId: "", coveredDeliveryFeeVnd: 30_000,
     buyQuantity: 2, rewardQuantity: 1, rewardKind: "PRODUCT", rewardMode: "SAME_CONFIG",
     benefitScaling: "PER_BUNDLE", maxApplications: 1,
@@ -57,6 +58,7 @@ export function buildVoucherInput(draft: VoucherDraft): CreateVoucherPackageInpu
   };
   if (draft.voucherType === "PRODUCT_DISCOUNT") return {
     ...base, voucher_type: "PRODUCT_DISCOUNT", menu_item_id: draft.menuItemId,
+    eligible_menu_item_ids: (draft.eligibleMenuItemIds?.length ?? 0) > 0 ? draft.eligibleMenuItemIds! : [draft.menuItemId],
     product_discount_mode: draft.productDiscountMode, eligible_sizes: draft.eligibleSizes,
     ...(draft.productDiscountMode === "FIXED_AMOUNT"
       ? { discount_value: draft.discountValue }
@@ -77,7 +79,9 @@ export function buildVoucherInput(draft: VoucherDraft): CreateVoucherPackageInpu
 export function validateVoucherDraft(draft: VoucherDraft): string | null {
   if (!draft.name.trim()) return "Vui lòng nhập tên voucher";
   if (draft.acquisitionMode === "POINTS_EXCHANGE" && draft.pointsCost < 1) return "Điểm đổi phải lớn hơn 0";
-  if ((draft.voucherType === "PRODUCT" || draft.voucherType === "PRODUCT_DISCOUNT") && !draft.menuItemId) return "Vui lòng chọn sản phẩm";
+  if (draft.voucherType === "PRODUCT" && !draft.menuItemId) return "Vui lòng chọn sản phẩm";
+  if (draft.voucherType === "PRODUCT_DISCOUNT" && (draft.eligibleMenuItemIds?.length ?? 0) === 0 && !draft.menuItemId) return "Vui lòng chọn ít nhất một sản phẩm";
+  if (draft.voucherType === "PRODUCT_DISCOUNT" && (draft.eligibleMenuItemIds?.length ?? 0) > 100) return "Chỉ được chọn tối đa 100 sản phẩm";
   if (draft.voucherType === "PRODUCT_DISCOUNT" && draft.eligibleSizes.length === 0) return "Vui lòng chọn ít nhất một size";
   if (draft.voucherType === "PRODUCT_DISCOUNT" && draft.productDiscountMode === "FIXED_AMOUNT" && (draft.discountValue <= 0 || draft.discountValue % 1_000 !== 0)) return "Mức giảm phải chia hết cho 1.000đ";
   if (draft.voucherType === "PRODUCT_DISCOUNT" && draft.productDiscountMode === "PAY_AS_SIZE") {
@@ -175,6 +179,14 @@ export function estimateVoucherLiabilityVnd(
   if (draft.voucherType === "FREESHIP") return draft.quantity * draft.coveredDeliveryFeeVnd;
   if (draft.voucherType === "PRODUCT") {
     return draft.quantity * (menuPrices.get(draft.menuItemId) ?? 0);
+  }
+  if (draft.voucherType === "PRODUCT_DISCOUNT") {
+    const targetIds = draft.eligibleMenuItemIds?.length ? draft.eligibleMenuItemIds : [draft.menuItemId];
+    const maximumDrinkPrice = maxPrice(targetIds, menuPrices);
+    const unitLiability = draft.productDiscountMode === "FIXED_AMOUNT"
+      ? Math.min(draft.discountValue, maximumDrinkPrice || draft.discountValue)
+      : maximumDrinkPrice;
+    return draft.quantity * unitLiability;
   }
   if (draft.voucherType === "ITEM") {
     return draft.quantity * (menuPrices.get(draft.menuItemId) ?? 0);

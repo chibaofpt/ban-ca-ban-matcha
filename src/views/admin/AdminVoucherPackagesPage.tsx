@@ -72,6 +72,7 @@ export default function AdminVoucherPackagesPage() {
       item.default_base_liquid_id,
       ...(item.allowed_base_liquid_ids ?? []),
     ].filter((id): id is string => Boolean(id)))],
+    isSeasonal: item.is_seasonal,
   }));
   const addonOptions = (menu?.addon_groups ?? []).flatMap((group) => group.options.filter((option) => option.gram_value === null).map((option) => ({ value: option.id, label: option.label, description: group.name })));
   const powderOptions = (powders?.data ?? []).map((powder) => ({ value: powder.id, label: powder.name }));

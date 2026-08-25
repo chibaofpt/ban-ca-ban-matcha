@@ -61,7 +61,10 @@ export function buildProductVoucherMap(
   );
   const result = new Map<string, MyVoucher[]>();
   for (const item of cartItems) {
-    const matches = usable.filter((v) => v.menu_item_id === item.menuItemId &&
+    const matches = usable.filter((v) =>
+      ((v.eligible_menu_items?.length ?? 0) > 0
+        ? v.eligible_menu_items!.some((target) => target.menu_item_id === item.menuItemId)
+        : v.menu_item_id === item.menuItemId) &&
       (v.voucher_type !== "PRODUCT_DISCOUNT" || (item.size !== null && (v.eligible_sizes ?? []).includes(item.size))));
     if (matches.length > 0) {
       result.set(item.menuItemId, matches);

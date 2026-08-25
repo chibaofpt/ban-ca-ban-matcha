@@ -7,6 +7,14 @@
 
 Tài liệu này mô tả hệ thống đang được hỗ trợ, không phải kiến trúc lý tưởng trong tương lai. Legacy exception được phép tồn tại nhưng không được copy sang code mới.
 
+## PRODUCT_DISCOUNT nhiều sản phẩm
+
+Admin cấu hình phạm vi explicit tối đa 100 món Latte/Fusion bằng multi-select có tìm kiếm,
+lọc category/không theo mùa, chọn tất cả kết quả lọc và giao của các size đang bán. Các filter
+chỉ hỗ trợ chọn; server lưu ID cụ thể. Khách “Dùng ngay” chỉ one-tap khi còn đúng một tổ hợp
+món/size hợp lệ, nếu không phải chọn rõ món và size. Staff chỉ áp dụng lên cart item đã chọn.
+Customer và staff đều gửi cùng `product_voucher_id` và dùng chung server calculator.
+
 ## Runtime architecture
 
 ```text
@@ -64,6 +72,13 @@ Không thực hiện repo-wide layer refactor khi sửa feature. Direct API call
 | Field validation | Inline error bên dưới field |
 
 Shared overlay sở hữu portal, accessible title/description, focus trap/restore, Escape, scroll lock, backdrop, safe area, dismiss policy và layer. Feature code chỉ cung cấp content và callbacks; không tự viết `fixed inset-0` backdrop.
+
+Customer voucher list/detail/target/setup dùng chung `ResponsiveOverlay`: mobile là bottom sheet,
+desktop là centered dialog. Voucher card giữ content button mở detail độc lập với action; wallet dùng
+“Dùng ngay”, cart dùng selection button có `aria-pressed`. Voucher không đủ điều kiện vẫn đọc được
+và mở detail, chỉ selection bị khóa kèm lý do. Wallet và cart voucher sheet dùng chung
+ba tab Voucher của tôi / Nhận ưu đãi / Lịch sử; history chỉ cho xem detail, không cho chọn.
+Cart voucher sheet dùng layer `nested`; detail/target/setup mở từ sheet này dùng layer `critical`.
 
 `ProductModal` dùng dialog desktop và Vaul full-height trên mobile. Browser Back chỉ đóng overlay trên cùng; CTA luôn ghép action với tổng giá bằng ` - `, còn addon selector dùng lưới 3 cột. Header Base Liquid hiển thị Coldwhisk dạng switch có semantics và vẫn nêu nền mặc định khi selector bị ẩn.
 

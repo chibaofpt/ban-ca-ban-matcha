@@ -46,6 +46,7 @@ interface VoucherDtoSource {
     bundleRule?: BundleRuleDtoSource | null;
   };
   menuItem: { name: string; is_available: boolean } | null;
+  menuItemScopes?: Array<{ menu_item_id: string; menuItem: { name: string; category: string; is_available: boolean; is_seasonal: boolean } }>;
   addonOption: { label: string } | null;
   staff: { name: string; role: Role } | null;
   availability?: VoucherAvailability;
@@ -82,6 +83,13 @@ export function toPublicVoucherDto(voucher: VoucherDtoSource) {
         : { bundleRule: voucher.package.bundleRule ? toBundleRuleDto(voucher.package.bundleRule) : null }),
     },
     menuItem: voucher.menuItem,
+    eligible_menu_items: (voucher.menuItemScopes ?? []).map((scope) => ({
+      menu_item_id: scope.menu_item_id,
+      name: scope.menuItem.name,
+      category: scope.menuItem.category,
+      is_available: scope.menuItem.is_available,
+      is_seasonal: scope.menuItem.is_seasonal,
+    })),
     addonOption: voucher.addonOption,
     staff: voucher.staff,
     ...(voucher.availability ? { availability: voucher.availability } : {}),

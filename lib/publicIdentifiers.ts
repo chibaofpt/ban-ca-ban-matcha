@@ -29,9 +29,10 @@ export async function resolveCustomerIdentifier(
 export async function resolveOwnedVoucherIdentifier(
   identifier: string,
   ownerId: string,
-): Promise<Voucher | null> {
+): Promise<(Voucher & { menuItemScopes: Array<{ menu_item_id: string }> }) | null> {
   const publicVoucher = await prisma.voucher.findUnique({
     where: { qr_token: identifier },
+    include: { menuItemScopes: { select: { menu_item_id: true } } },
   });
   if (publicVoucher) {
     return publicVoucher.user_id === ownerId ? publicVoucher : null;
@@ -39,6 +40,7 @@ export async function resolveOwnedVoucherIdentifier(
 
   const legacyVoucher = await prisma.voucher.findUnique({
     where: { id: identifier },
+    include: { menuItemScopes: { select: { menu_item_id: true } } },
   });
   if (!legacyVoucher || legacyVoucher.user_id !== ownerId) return null;
   recordLegacyIdentifierFallback("voucher", "owner");

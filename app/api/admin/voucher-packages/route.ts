@@ -51,6 +51,7 @@ export async function GET() {
       orderBy: { created_at: "desc" },
       include: {
         menuItem: { select: { name: true, is_available: true } },
+        menuItemScopes: { include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } } },
         addonOption: { select: { label: true } },
         bundleRule: { include: {
           productScopes: { include: {
@@ -347,13 +348,21 @@ export async function POST(req: NextRequest) {
 
     // FREESHIP package — placeholder for delivery fee discount (Phase 5+)
     if (data.voucher_type === "PRODUCT_DISCOUNT") {
-      const menuItem = await prisma.menuItem.findUnique({ where: { id: data.menu_item_id }, include: { sizes: true } });
-      if (!menuItem?.is_available || (menuItem.category !== "latte" && menuItem.category !== "fusion")) {
+      const targetIds = data.eligible_menu_item_ids ?? [data.menu_item_id];
+      const menuItems = await prisma.menuItem.findMany({
+        where: { id: { in: targetIds } },
+        include: { sizes: true },
+      });
+      if (menuItems.length !== targetIds.length || menuItems.some((item) =>
+        !item.is_available || (item.category !== "latte" && item.category !== "fusion"))) {
         return NextResponse.json({ error: "Product discount requires an available drink", code: "BUSINESS_RULE_VIOLATION" }, { status: 422 });
       }
-      const activeSizes = new Set(menuItem.sizes.filter((row) => row.base_price_vnd !== null).map((row) => row.size));
-      if (data.eligible_sizes.some((size) => !activeSizes.has(size)) ||
-          (data.product_discount_mode === "PAY_AS_SIZE" && (!data.reference_size || !activeSizes.has(data.reference_size)))) {
+      const supportsSharedSizes = menuItems.every((item) => {
+        const activeSizes = new Set(item.sizes.filter((row) => row.base_price_vnd !== null).map((row) => row.size));
+        return data.eligible_sizes.every((size) => activeSizes.has(size)) &&
+          (data.product_discount_mode !== "PAY_AS_SIZE" || (!!data.reference_size && activeSizes.has(data.reference_size)));
+      });
+      if (!supportsSharedSizes) {
         return NextResponse.json({ error: "Voucher size configuration is unavailable", code: "BUSINESS_RULE_VIOLATION" }, { status: 422 });
       }
       const pkg = await prisma.voucherPackage.create({
@@ -362,7 +371,8 @@ export async function POST(req: NextRequest) {
           acquisition_mode: data.acquisition_mode, points_cost: data.points_cost,
           ends_at: data.ends_at ? new Date(data.ends_at) : null, is_active: true,
           expires_after_days: data.expires_after_days ?? null, quantity: data.quantity ?? null,
-          max_per_user: data.max_per_user ?? 1, menu_item_id: data.menu_item_id,
+          max_per_user: data.max_per_user ?? 1, menu_item_id: targetIds[0],
+          menuItemScopes: { create: targetIds.map((menu_item_id) => ({ menu_item_id })) },
           product_discount_mode: data.product_discount_mode, eligible_sizes: [...data.eligible_sizes],
           reference_size: data.product_discount_mode === "PAY_AS_SIZE" ? data.reference_size : null,
           discount_type: data.product_discount_mode === "FIXED_AMOUNT" ? "FIXED" : null,

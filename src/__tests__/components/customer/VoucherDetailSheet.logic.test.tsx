@@ -57,7 +57,7 @@ function makeUnavailableBundle(): MyVoucher {
 }
 
 describe("Chi tiết voucher không còn lựa chọn", () => {
-  it("dùng ngay PRODUCT_DISCOUNT qua cart hook và đóng sheet khi thành công", async () => {
+  it("khóa dùng ngay PRODUCT_DISCOUNT khi menuData chưa resolve", async () => {
     const voucher = {
       ...makeUnavailableBundle(),
       qr_token: "product-discount",
@@ -69,16 +69,34 @@ describe("Chi tiết voucher không còn lựa chọn", () => {
       availability: { status: "USABLE", can_apply: true, can_refund: false, refund_points: 0 },
     } as MyVoucher;
     const onUseNowSuccess = vi.fn();
-    addToCart.mockResolvedValueOnce({ ok: true });
+    addToCart.mockClear();
     render(
       <VoucherDetailSheet voucher={voucher} cartItems={[]} subtotalVnd={0} myVouchers={[voucher]}
         orderType="PICKUP" shippingFee={null} onBack={vi.fn()} onUseNowSuccess={onUseNowSuccess}
         onOpenBundleSetup={vi.fn()} onRequestRefund={vi.fn()} isRefunding={false} />,
     );
 
+    const button = screen.getByRole("button", { name: "Dùng ngay" });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(button);
+    expect(addToCart).not.toHaveBeenCalled();
+    expect(onUseNowSuccess).not.toHaveBeenCalled();
+  });
+
+  it("chỉ one-tap sau khi resolve đúng một tổ hợp sản phẩm và size", async () => {
+    const voucher = {
+      ...makeUnavailableBundle(), qr_token: "single-combination", voucher_type: "PRODUCT_DISCOUNT",
+      menu_item_id: "drink-1", eligible_menu_items: [{ menu_item_id: "drink-1", name: "Latte", category: "latte", is_available: true, is_seasonal: false }],
+      product_discount_mode: "FIXED_AMOUNT", eligible_sizes: ["MEDIUM"], reference_size: null,
+      availability: { status: "USABLE", can_apply: true, can_refund: false, refund_points: 0 },
+    } as MyVoucher;
+    addToCart.mockClear();
+    addToCart.mockResolvedValueOnce({ ok: true });
+    render(<VoucherDetailSheet voucher={voucher} cartItems={[]} subtotalVnd={0} myVouchers={[voucher]}
+      orderType="PICKUP" shippingFee={null} menuData={{ latte: [{ id: "drink-1", name: "Latte", sizes: [{ size: "MEDIUM", base_price_vnd: 50_000 }] }], fusion: [] } as never}
+      onBack={vi.fn()} onUseNowSuccess={vi.fn()} onOpenBundleSetup={vi.fn()} onRequestRefund={vi.fn()} isRefunding={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Dùng ngay" }));
-    expect(addToCart).toHaveBeenCalledWith(voucher);
-    await vi.waitFor(() => expect(onUseNowSuccess).toHaveBeenCalledOnce());
+    expect(addToCart).toHaveBeenCalledWith(voucher, { menuItemId: "drink-1", size: "MEDIUM" });
   });
 
   it("khóa áp dụng, giải thích lý do và cho yêu cầu hoàn đúng số điểm", () => {
@@ -110,17 +128,16 @@ describe("Chi tiết voucher không còn lựa chọn", () => {
     expect(onRequestRefund).toHaveBeenCalledWith(voucher);
   });
 
-  it("mở được chi tiết hoàn điểm bằng Enter hoặc Space trên card", () => {
+  it("dùng semantic button để mở chi tiết bằng bàn phím", () => {
     const voucher = makeUnavailableBundle();
     const onClick = vi.fn();
     render(<VoucherCard voucher={voucher} onClick={onClick} />);
 
-    const card = screen.getByRole("button", { name: /Mua 2 tặng 1/i });
-    expect(card.getAttribute("tabindex")).toBe("0");
+    const card = screen.getByRole("button", { name: /Xem chi tiết Mua 2 tặng 1/i });
+    expect(card.tagName).toBe("BUTTON");
     expect(card.className).toContain("focus-visible:ring-2");
 
-    fireEvent.keyDown(card, { key: "Enter" });
-    fireEvent.keyDown(card, { key: " " });
-    expect(onClick).toHaveBeenCalledTimes(2);
+    fireEvent.click(card);
+    expect(onClick).toHaveBeenCalledOnce();
   });
 });

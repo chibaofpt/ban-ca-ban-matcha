@@ -40,6 +40,7 @@ interface VoucherPackageSnapshot {
   min_order_vnd: number | null;
   ends_at: Date | null;
   bundleRule?: VoucherBundleRuleSource | null;
+  menuItemScopes?: Array<{ menu_item_id: string }>;
 }
 
 interface CreatedVoucher {
@@ -176,6 +177,7 @@ export async function issueVoucherInTransaction(
       bundleRule: {
         include: { productScopes: { include: { sizes: true } }, addonRewards: true },
       },
+      menuItemScopes: { select: { menu_item_id: true }, orderBy: { menu_item_id: "asc" } },
     },
   });
   assertPackageAvailable(pkg, input.source, now);
@@ -187,6 +189,8 @@ export async function issueVoucherInTransaction(
       size: pkg.size,
       eligible_sizes: pkg.eligible_sizes,
       reference_size: pkg.reference_size,
+      product_discount_mode: pkg.product_discount_mode,
+      menuItemScopes: pkg.menuItemScopes,
       matcha_powder_id: pkg.matcha_powder_id,
       milk_type_id: pkg.milk_type_id,
       addon_option_id: pkg.addon_option_id,
@@ -240,6 +244,9 @@ export async function issueVoucherInTransaction(
       min_order_vnd: pkg.min_order_vnd,
       status: "ACTIVE",
       expires_at: calculateExpiry(now, pkg.expires_after_days, pkg.ends_at),
+      ...(pkg.voucher_type === "PRODUCT_DISCOUNT" && pkg.menuItemScopes?.length
+        ? { menuItemScopes: { create: pkg.menuItemScopes.map(({ menu_item_id }) => ({ menu_item_id })) } }
+        : {}),
     },
   });
 

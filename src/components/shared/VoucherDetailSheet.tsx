@@ -39,6 +39,7 @@ interface VoucherDetailSheetProps {
   onOpenBundleSetup: (voucher: MyVoucher) => void;
   onRequestRefund: (voucher: MyVoucher) => void;
   isRefunding: boolean;
+  onSelectProductDiscountTarget?: (voucher: MyVoucher) => void;
 }
 
 export const VoucherDetailSheet = ({
@@ -55,11 +56,21 @@ export const VoucherDetailSheet = ({
   onOpenBundleSetup,
   onRequestRefund,
   isRefunding,
+  onSelectProductDiscountTarget,
 }: VoucherDetailSheetProps) => {
   const router = useRouter();
   const { addToCart, loading } = useAddVoucherToCart();
   const { setCartOpen, setSelectedVoucherIds, updateItem, applyAddonVoucher, selectedVoucherIds } = useCartStore();
   const [showAddonPicker, setShowAddonPicker] = useState(false);
+  const [selectedProductId, setSelectedProductId] = useState(voucher.menu_item_id ?? "");
+  const [selectedProductSize, setSelectedProductSize] = useState<"SMALL" | "MEDIUM" | "LARGE" | "">("");
+  const productDiscountCombinations = voucher.voucher_type === "PRODUCT_DISCOUNT" && menuData
+    ? (voucher.eligible_menu_items?.length ? voucher.eligible_menu_items : voucher.menu_item_id ? [{ menu_item_id: voucher.menu_item_id }] : [])
+        .flatMap((target) => [...menuData.latte, ...menuData.fusion].filter((item) => item.id === target.menu_item_id)
+          .flatMap((item) => (voucher.eligible_sizes ?? []).filter((size) => item.sizes.some((row) => row.size === size && row.base_price_vnd !== null)).map((size) => ({ menuItemId: item.id, name: item.name, size }))))
+    : [];
+  const productDiscountReady = voucher.voucher_type !== "PRODUCT_DISCOUNT" ||
+    (menuData !== undefined && productDiscountCombinations.length > 0);
 
   // Checks based on voucher type
   let canApply = canApplyOwnedVoucher(voucher);
@@ -86,9 +97,21 @@ export const VoucherDetailSheet = ({
   const highlight = getTicketHighlightText(vType, voucher.discount_type, voucher.discount_value, voucher.reference_size);
 
   const handleUseNow = async () => {
+    if (voucher.voucher_type === "PRODUCT_DISCOUNT" && onSelectProductDiscountTarget) {
+      onSelectProductDiscountTarget(voucher);
+      return;
+    }
     if (!canApply) return;
     if (vType === "PRODUCT" || vType === "PRODUCT_DISCOUNT" || vType === "ITEM") {
-      const res = await addToCart(voucher);
+      if (voucher.voucher_type === "PRODUCT_DISCOUNT" && !productDiscountReady) return;
+      const selection = productDiscountCombinations.length === 1
+        ? { menuItemId: productDiscountCombinations[0]!.menuItemId, size: productDiscountCombinations[0]!.size }
+        : selectedProductId && selectedProductSize ? { menuItemId: selectedProductId, size: selectedProductSize } : undefined;
+      if (voucher.voucher_type === "PRODUCT_DISCOUNT" && productDiscountCombinations.length > 1 && !selection) {
+        import("sonner").then((module) => module.toast.error("Vui lòng chọn sản phẩm và size"));
+        return;
+      }
+      const res = selection ? await addToCart(voucher, selection) : await addToCart(voucher);
       if (res.ok) {
         onUseNowSuccess();
       } else {
@@ -226,13 +249,20 @@ export const VoucherDetailSheet = ({
       </div>
 
       <div className="p-5 bg-white border-t border-border/40 pb-[max(1.25rem,env(safe-area-inset-bottom))] shrink-0">
+        {vType === "PRODUCT_DISCOUNT" && productDiscountCombinations.length > 1 ? <div className="mb-3 grid grid-cols-2 gap-2">
+          <label className="space-y-1 text-xs font-semibold">Sản phẩm<select value={selectedProductId} onChange={(event) => { setSelectedProductId(event.target.value); setSelectedProductSize(""); }} className="h-11 w-full rounded-xl border bg-background px-2 text-sm"><option value="">Chọn món</option>{[...new Map(productDiscountCombinations.map((entry) => [entry.menuItemId, entry])).values()].map((entry) => <option key={entry.menuItemId} value={entry.menuItemId}>{entry.name}</option>)}</select></label>
+          <label className="space-y-1 text-xs font-semibold">Size<select value={selectedProductSize} onChange={(event) => setSelectedProductSize(event.target.value as typeof selectedProductSize)} className="h-11 w-full rounded-xl border bg-background px-2 text-sm"><option value="">Chọn size</option>{productDiscountCombinations.filter((entry) => entry.menuItemId === selectedProductId).map((entry) => <option key={entry.size} value={entry.size}>{entry.size}</option>)}</select></label>
+        </div> : null}
         {!canApply && disabledReason && (
           <p className="text-center text-xs text-rose-500 mb-3">{disabledReason}</p>
         )}
+        {vType === "PRODUCT_DISCOUNT" && !productDiscountReady ? (
+          <p className="mb-3 text-center text-xs text-rose-500">{menuData ? "Không còn tổ hợp sản phẩm và size phù hợp" : "Đang tải sản phẩm phù hợp…"}</p>
+        ) : null}
         <div className="grid gap-2">
           <button
             onClick={handleUseNow}
-            disabled={!canApply || loading || isRefunding || voucher.status !== "ACTIVE"}
+            disabled={!canApply || !productDiscountReady || loading || isRefunding || voucher.status !== "ACTIVE"}
             className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-ring"
           >
             {loading ? (

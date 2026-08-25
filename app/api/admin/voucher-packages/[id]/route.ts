@@ -60,6 +60,10 @@ export async function PUT(
           voucher_type: true,
           menu_item_id: true,
           size: true,
+          product_discount_mode: true,
+          eligible_sizes: true,
+          reference_size: true,
+          menuItemScopes: { select: { menu_item_id: true } },
           matcha_powder_id: true,
           milk_type_id: true,
           addon_option_id: true,
@@ -80,12 +84,16 @@ export async function PUT(
           { status: 400 },
         );
       }
-      if (target && ["ITEM", "PRODUCT", "ADDON", "BUNDLE"].includes(target.voucher_type)) {
+      if (target && ["ITEM", "PRODUCT", "PRODUCT_DISCOUNT", "ADDON", "BUNDLE"].includes(target.voucher_type)) {
         const catalog = await loadVoucherAvailabilityCatalog(prisma as unknown as VoucherAvailabilityDatabase);
         const resolved = resolveVoucherTargetAvailability({
           voucher_type: target.voucher_type,
           menu_item_id: target.menu_item_id,
           size: target.size,
+          product_discount_mode: target.product_discount_mode,
+          eligible_sizes: target.eligible_sizes,
+          reference_size: target.reference_size,
+          menuItemScopes: target.menuItemScopes,
           matcha_powder_id: target.matcha_powder_id,
           milk_type_id: target.milk_type_id,
           addon_option_id: target.addon_option_id,

@@ -129,7 +129,7 @@ describe("GET /api/voucher-packages", () => {
         where: expect.objectContaining({
           OR: expect.arrayContaining([
             { ends_at: expect.objectContaining({ gt: expect.any(Date) }) },
-            { voucher_type: { in: ["ITEM", "PRODUCT", "ADDON", "BUNDLE"] }, ends_at: null },
+            { voucher_type: { in: ["ITEM", "PRODUCT", "PRODUCT_DISCOUNT", "ADDON", "BUNDLE"] }, ends_at: null },
           ]),
         }),
       }),

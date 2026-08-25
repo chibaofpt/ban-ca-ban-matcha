@@ -63,6 +63,7 @@ const rawVoucherPackageSchema = z.discriminatedUnion("voucher_type", [
     ...commonFields,
     voucher_type: z.literal("PRODUCT_DISCOUNT"),
     menu_item_id: z.string().uuid(),
+    eligible_menu_item_ids: z.array(z.string().uuid()).min(1).max(100).optional(),
     product_discount_mode: z.enum(["FIXED_AMOUNT", "PAY_AS_SIZE"]),
     eligible_sizes: z.array(sizeSchema).min(1).max(3),
     discount_value: z.number().int().positive().optional(),
@@ -115,6 +116,14 @@ export const createVoucherPackageSchema = rawVoucherPackageSchema.superRefine((d
     ctx.addIssue({ code: "custom", path: ["discount_value"], message: "PERCENT value cannot exceed 100" });
   }
   if (data.voucher_type === "PRODUCT_DISCOUNT") {
+    if (data.eligible_menu_item_ids) {
+      if (new Set(data.eligible_menu_item_ids).size !== data.eligible_menu_item_ids.length) {
+        ctx.addIssue({ code: "custom", path: ["eligible_menu_item_ids"], message: "Duplicate eligible menu item" });
+      }
+      if (!data.eligible_menu_item_ids.includes(data.menu_item_id)) {
+        ctx.addIssue({ code: "custom", path: ["menu_item_id"], message: "Legacy anchor must belong to eligible scope" });
+      }
+    }
     if (new Set(data.eligible_sizes).size !== data.eligible_sizes.length) {
       ctx.addIssue({ code: "custom", path: ["eligible_sizes"], message: "Duplicate eligible size" });
     }

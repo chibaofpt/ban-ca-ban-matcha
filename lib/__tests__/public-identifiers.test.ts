@@ -65,6 +65,7 @@ describe("Public identifier resolver", () => {
     expect(mockVoucherFindUnique).toHaveBeenCalledTimes(1);
     expect(mockVoucherFindUnique).toHaveBeenCalledWith({
       where: { qr_token: PUBLIC_TOKEN },
+      include: { menuItemScopes: { select: { menu_item_id: true } } },
     });
     expect(mockRecordFallback).not.toHaveBeenCalled();
   });
@@ -79,6 +80,7 @@ describe("Public identifier resolver", () => {
     expect(voucher?.id).toBe(LEGACY_ID);
     expect(mockVoucherFindUnique).toHaveBeenNthCalledWith(2, {
       where: { id: LEGACY_ID },
+      include: { menuItemScopes: { select: { menu_item_id: true } } },
     });
     expect(mockRecordFallback).toHaveBeenCalledWith("voucher", "owner");
     expect(JSON.stringify(mockRecordFallback.mock.calls)).not.toContain(LEGACY_ID);

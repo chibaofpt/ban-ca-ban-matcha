@@ -115,6 +115,19 @@ export function toBundleRuleDto(rule: BundleRuleDtoSource) {
 }
 
 /** Replace a package's internal BUNDLE relations with the stable grouped DTO. */
-export function toVoucherPackageBundleDto<T extends { bundleRule?: BundleRuleDtoSource | null }>(pkg: T) {
-  return { ...pkg, bundleRule: pkg.bundleRule ? toBundleRuleDto(pkg.bundleRule) : pkg.bundleRule ?? null };
+export function toVoucherPackageBundleDto<T extends {
+  bundleRule?: BundleRuleDtoSource | null;
+  menuItemScopes?: Array<{ menu_item_id: string; menuItem: { name: string; category: string; is_available: boolean; is_seasonal: boolean } }>;
+}>(pkg: T) {
+  return {
+    ...pkg,
+    eligible_menu_items: (pkg.menuItemScopes ?? []).map((scope) => ({
+      menu_item_id: scope.menu_item_id,
+      name: scope.menuItem.name,
+      category: scope.menuItem.category,
+      is_available: scope.menuItem.is_available,
+      is_seasonal: scope.menuItem.is_seasonal,
+    })),
+    bundleRule: pkg.bundleRule ? toBundleRuleDto(pkg.bundleRule) : pkg.bundleRule ?? null,
+  };
 }

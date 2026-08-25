@@ -59,8 +59,11 @@ function ItemSection({
   const isExtras = title === "Add-on";
   const isSeasonal = title === "Seasonal";
   return (
-    <div ref={sectionRef} className="scroll-mt-32">
-      <div className={`flex items-center gap-3 mb-4${isFusion ? "" : " mt-2"}`}>
+    <div>
+      <div
+        ref={sectionRef}
+        className={`scroll-mt-32 flex items-center gap-3 mb-4${isFusion ? "" : " mt-2"}`}
+      >
         <h2 className="font-serif text-xl font-bold text-[#2d4a22]">{title}</h2>
         <div className="flex-1 h-px bg-primary/10" />
       </div>

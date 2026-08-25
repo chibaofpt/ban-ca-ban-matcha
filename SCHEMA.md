@@ -28,6 +28,12 @@
 
 Apply vouchers in this strict order: `BUNDLE → ITEM/PRODUCT/PRODUCT_DISCOUNT → ADDON → DISCOUNT → FREESHIP`.
 
+`voucher_package_menu_item_scopes` and `voucher_menu_item_scopes` normalize the explicit 1–100
+drink targets of PRODUCT_DISCOUNT. Both use `(parent_id, menu_item_id)` composite primary keys;
+package/voucher deletion cascades while menu-item deletion is `NO ACTION`. The legacy
+`menu_item_id` remains the deterministic compatibility anchor. Issuance copies package scope rows
+to immutable voucher scope rows.
+
 ```text
 subtotal_vnd = gross drinks + gross addons
 item_discount_vnd = BUNDLE reductions + ITEM/PRODUCT reductions + ADDON reductions

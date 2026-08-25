@@ -20,6 +20,7 @@ export interface BundleMenuConfig {
   fixedPowderId: string | null;
   availablePowderIds: string[];
   availableBaseLiquidIds: string[];
+  isSeasonal?: boolean;
 }
 
 export interface BundleVoucherFormState {

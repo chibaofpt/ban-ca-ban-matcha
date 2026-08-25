@@ -85,6 +85,7 @@ export async function GET(
           },
         },
         menuItem: { select: { name: true, is_available: true } },
+        menuItemScopes: { include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } } },
         addonOption: { select: { label: true } },
         staff: { select: { name: true, role: true } },
         pointsLogs: {
