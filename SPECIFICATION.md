@@ -78,7 +78,9 @@ desktop là centered dialog. Voucher card giữ content button mở detail độ
 “Dùng ngay”, cart dùng selection button có `aria-pressed`. Voucher không đủ điều kiện vẫn đọc được
 và mở detail, chỉ selection bị khóa kèm lý do. Wallet và cart voucher sheet dùng chung
 ba tab Voucher của tôi / Nhận ưu đãi / Lịch sử; history chỉ cho xem detail, không cho chọn.
-Cart voucher sheet dùng layer `nested`; detail/target/setup mở từ sheet này dùng layer `critical`.
+Wallet và cart dùng chung voucher frame edge-to-edge với một lớp padding; detail thay nội dung
+trong cùng frame thay vì mở sheet lồng. Cart voucher sheet dùng layer `nested`; target/setup mở
+từ sheet này dùng layer `critical`.
 
 `ProductModal` dùng dialog desktop và Vaul full-height trên mobile. Browser Back chỉ đóng overlay trên cùng; CTA luôn ghép action với tổng giá bằng ` - `, còn addon selector dùng lưới 3 cột. Header Base Liquid hiển thị Coldwhisk dạng switch có semantics và vẫn nêu nền mặc định khi selector bị ẩn.
 

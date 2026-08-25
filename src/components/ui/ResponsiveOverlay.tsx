@@ -12,6 +12,7 @@ import { cn } from "@/src/utils/cn";
 export type OverlayLayer = "base" | "nested" | "critical";
 export type OverlaySize = "sm" | "md" | "lg" | "full";
 export type OverlayDismissPolicy = "default" | "explicit-only" | "locked-while-busy";
+export type OverlayPresentation = "default" | "bare";
 
 interface ResponsiveOverlayProps {
   open: boolean;
@@ -24,6 +25,7 @@ interface ResponsiveOverlayProps {
   dismissPolicy?: OverlayDismissPolicy;
   busy?: boolean;
   showCloseButton?: boolean;
+  presentation?: OverlayPresentation;
   className?: string;
   onOpenChange: (open: boolean) => void;
 }
@@ -67,6 +69,7 @@ export function ResponsiveOverlay({
   dismissPolicy = "default",
   busy = false,
   showCloseButton = true,
+  presentation = "default",
   className,
   onOpenChange,
 }: ResponsiveOverlayProps) {
@@ -93,12 +96,21 @@ export function ResponsiveOverlay({
               if (!canDismiss) event.preventDefault();
             }}
             className={cn(
-              "fixed left-1/2 top-1/2 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-3xl border bg-background shadow-2xl outline-none",
+              "fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 outline-none",
+              presentation === "default" && "max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-hidden rounded-3xl border bg-background shadow-2xl",
+              presentation === "bare" && "w-full",
               layerClasses[layer].content,
-              desktopSizeClasses[size],
+              presentation === "default" && desktopSizeClasses[size],
               className,
             )}
           >
+            {presentation === "bare" ? (
+              <>
+                <Dialog.Title className="sr-only">{title}</Dialog.Title>
+                <Dialog.Description className="sr-only">{description ?? `Hộp thoại ${title}`}</Dialog.Description>
+                {children}
+              </>
+            ) : <>
             <header className="flex items-start justify-between gap-4 border-b px-6 py-4">
               <div>
                 <Dialog.Title asChild><h2 className="text-lg font-bold text-foreground">{title}</h2></Dialog.Title>
@@ -114,6 +126,7 @@ export function ResponsiveOverlay({
             </header>
             <div className="max-h-[calc(100dvh-10rem)] overflow-y-auto overscroll-contain px-6 py-5">{children}</div>
             {footer ? <footer className="border-t px-6 py-4">{footer}</footer> : null}
+            </>}
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
@@ -126,11 +139,19 @@ export function ResponsiveOverlay({
         <Drawer.Overlay className={cn("fixed inset-0 bg-foreground/40 backdrop-blur-sm", layerClasses[layer].overlay)} />
         <Drawer.Content
           className={cn(
-            "fixed inset-x-0 bottom-0 max-h-[92dvh] overflow-hidden rounded-t-3xl border-t bg-background outline-none",
+            "fixed inset-x-0 bottom-0 outline-none",
+            presentation === "default" && "max-h-[92dvh] overflow-hidden rounded-t-3xl border-t bg-background",
             layerClasses[layer].content,
             className,
           )}
         >
+          {presentation === "bare" ? (
+            <>
+              <Drawer.Title className="sr-only">{title}</Drawer.Title>
+              <Drawer.Description className="sr-only">{description ?? `Bảng nội dung ${title}`}</Drawer.Description>
+              {children}
+            </>
+          ) : <>
           <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-border" aria-hidden="true" />
           <header className="flex items-start justify-between gap-4 border-b px-5 py-4">
             <div>
@@ -147,6 +168,7 @@ export function ResponsiveOverlay({
           </header>
           <div className="max-h-[calc(92dvh-8rem)] overflow-y-auto overscroll-contain px-5 py-5">{children}</div>
           {footer ? <footer className="border-t px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">{footer}</footer> : null}
+          </>}
         </Drawer.Content>
       </Drawer.Portal>
     </Drawer.Root>

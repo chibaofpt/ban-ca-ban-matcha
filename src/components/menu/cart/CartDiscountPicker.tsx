@@ -1,10 +1,10 @@
 import React, { useState } from "react";
-import { ArrowLeft, Coins } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
 import { estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
 import { type MyVoucher, type VoucherPackage } from "@/src/services/customerVoucherService";
 import { useVoucherAcquisition } from "@/src/hooks/useVoucherAcquisition";
 import { VoucherCard } from "@/src/components/shared/VoucherCards";
-import { VoucherHistorySection, VoucherModalTabs } from "@/src/components/shared/VoucherModalSections";
+import { VoucherHistorySection, VoucherModalFrame } from "@/src/components/shared/VoucherModalSections";
 import { VoucherPackageCatalog } from "@/src/components/shared/VoucherPackageCatalog";
 import { VoucherAcquisitionConfirm } from "@/src/components/shared/VoucherAcquisitionConfirm";
 import { CartDiscountPickerFooter } from "@/src/components/menu/cart/CartDiscountPickerFooter";
@@ -157,51 +157,73 @@ export const CartDiscountPicker = ({
       onOpenChange={(open) => { if (!open) onClose(); }}
       layer="nested"
       title="Mã ưu đãi"
+      presentation="bare"
+      className="w-full md:max-w-2xl"
     >
-      <div className="flex max-h-[85vh] flex-col bg-background"
-    >
-      {/* Overlay header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border/40 shrink-0 bg-white shadow-sm z-10">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-primary/5 flex items-center justify-center hover:bg-primary/10 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4 text-primary" />
-          </button>
-          <div>
-            <h3 className="font-bold text-primary leading-tight">Mã ưu đãi</h3>
-            <div className="flex items-center gap-1 mt-0.5">
-              <Coins className="w-3 h-3 text-orange-500" />
-              <p className="text-[11px] font-medium text-orange-600">Bạn đang có: {pointsBalance} điểm</p>
-            </div>
-          </div>
-        </div>
-        {activeTab === "my_vouchers" && selectedVoucherIds.length > 0 && (
-          <button
-            onClick={() => onUpdateSelectedVouchers([])}
-            className="text-xs font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition-colors shrink-0"
-          >
-            Bỏ tất cả
-          </button>
-        )}
-      </div>
-
-      <VoucherModalTabs
+      <VoucherModalFrame
         activeTab={activeTab}
         isLoggedIn
         voucherCount={myVouchers.length}
+        pointsBalance={pointsBalance}
         onChange={setActiveTab}
-      />
-
-      <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-6">
-        {/* Section 1: Ưu đãi của bạn */}
+        onClose={onClose}
+        headerAction={activeTab === "my_vouchers" && selectedVoucherIds.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => onUpdateSelectedVouchers([])}
+            className="min-h-11 shrink-0 rounded-full bg-red-50 px-3 text-xs font-bold text-red-500 transition-colors hover:bg-red-100 focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            Bỏ tất cả
+          </button>
+        ) : null}
+        footer={activeTab === "my_vouchers" ? (
+          <CartDiscountPickerFooter selectedVoucherIds={selectedVoucherIds} selectedDiscountVouchers={selectedDiscountVouchers} subtotalPrice={subtotalPrice} freeshipDiscount={selectedFreeshipDiscount} onConfirm={onClose} />
+        ) : null}
+        overlayContent={(
+          <>
+            <VoucherAcquisitionConfirm
+              pkg={confirmPackage}
+              pointsBalance={pointsBalance}
+              isLoading={isPending}
+              onCancel={() => setConfirmPackage(null)}
+              onConfirm={() => { if (confirmPackage) void acquirePackage(confirmPackage); }}
+            />
+            <AnimatePresence>
+              {detailVoucher ? (
+                <VoucherDetailSheet
+                  key="cart-voucher-detail"
+                  voucher={detailVoucher}
+                  cartItems={cart}
+                  subtotalVnd={subtotalPrice}
+                  myVouchers={[...myVouchers, ...historyVouchers]}
+                  orderType={orderType}
+                  shippingFee={shippingFee}
+                  menuData={menuData}
+                  onBack={() => setDetailVoucher(null)}
+                  onUseNowSuccess={() => setDetailVoucher(null)}
+                  onOpenBundleSetup={() => {
+                    setDetailVoucher(null);
+                    setBundleSetupVoucher(detailVoucher);
+                  }}
+                  onRequestRefund={() => undefined}
+                  isRefunding={false}
+                  onSelectProductDiscountTarget={(voucher) => {
+                    const selection = getProductDiscountSelection(productTargets(voucher), null);
+                    if (selection.kind === "single") {
+                      onApplyProductVoucher(selection.target.cartId, voucher);
+                      setDetailVoucher(null);
+                    } else if (selection.kind === "multiple") {
+                      setDetailVoucher(null);
+                      setTargetVoucher(voucher);
+                    }
+                  }}
+                />
+              ) : null}
+            </AnimatePresence>
+          </>
+        )}
+      >
         {activeTab === "my_vouchers" && <section>
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-bold text-primary text-sm">Ưu đãi của bạn</h4>
-            <span className="text-[10px] text-primary/50">Tối đa 1 mã %, 1 freeship</span>
-          </div>
-          
           {myVouchers.length === 0 ? (
             <div className="text-center py-6 bg-white rounded-2xl border border-dashed border-border/60">
               <p className="text-xs text-primary/40 font-medium">Bạn chưa có mã ưu đãi nào</p>
@@ -349,54 +371,7 @@ export const CartDiscountPicker = ({
         {activeTab === "history" && (
           <VoucherHistorySection vouchers={historyVouchers} onVoucherClick={setDetailVoucher} />
         )}
-      </div>
-
-      {activeTab === "my_vouchers" && (
-        <CartDiscountPickerFooter selectedVoucherIds={selectedVoucherIds} selectedDiscountVouchers={selectedDiscountVouchers} subtotalPrice={subtotalPrice} freeshipDiscount={selectedFreeshipDiscount} onConfirm={onClose} />
-      )}
-      <VoucherAcquisitionConfirm
-        pkg={confirmPackage}
-        pointsBalance={pointsBalance}
-        isLoading={isPending}
-        onCancel={() => setConfirmPackage(null)}
-        onConfirm={() => { if (confirmPackage) void acquirePackage(confirmPackage); }}
-      />
-      <ResponsiveOverlay
-        open={detailVoucher !== null}
-        onOpenChange={(open) => { if (!open) setDetailVoucher(null); }}
-        layer="critical"
-        title="Chi tiết voucher"
-      >
-        {detailVoucher ? (
-          <VoucherDetailSheet
-            voucher={detailVoucher}
-            cartItems={cart}
-            subtotalVnd={subtotalPrice}
-            myVouchers={[...myVouchers, ...historyVouchers]}
-            orderType={orderType}
-            shippingFee={shippingFee}
-            menuData={menuData}
-            onBack={() => setDetailVoucher(null)}
-            onUseNowSuccess={() => setDetailVoucher(null)}
-            onOpenBundleSetup={() => {
-              setDetailVoucher(null);
-              setBundleSetupVoucher(detailVoucher);
-            }}
-            onRequestRefund={() => undefined}
-            isRefunding={false}
-            onSelectProductDiscountTarget={(voucher) => {
-              const selection = getProductDiscountSelection(productTargets(voucher), null);
-              if (selection.kind === "single") {
-                onApplyProductVoucher(selection.target.cartId, voucher);
-                setDetailVoucher(null);
-              } else if (selection.kind === "multiple") {
-                setDetailVoucher(null);
-                setTargetVoucher(voucher);
-              }
-            }}
-          />
-        ) : null}
-      </ResponsiveOverlay>
+      </VoucherModalFrame>
       <ResponsiveOverlay
         open={targetVoucher !== null}
         onOpenChange={(open) => { if (!open) setTargetVoucher(null); }}
@@ -453,7 +428,6 @@ export const CartDiscountPicker = ({
           }}
         />
       ) : null}
-      </div>
     </ResponsiveOverlay>
   );
 };

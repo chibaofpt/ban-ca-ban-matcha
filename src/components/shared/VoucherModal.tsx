@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { AnimatePresence } from "framer-motion";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Drawer } from "vaul";
-import { Loader2, LogIn, Star, Ticket, X } from "lucide-react";
+import { Loader2, LogIn, Ticket } from "lucide-react";
 import { toast } from "sonner";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { useCartStore } from "@/src/lib/store/cartStore";
@@ -20,7 +20,6 @@ import { useVoucherPackages } from "@/src/hooks/useVoucherPackages";
 import {
   filterHistoryVouchers,
   filterModalVouchers,
-  getAdjacentVoucherTab,
   getExchangeErrorMessage,
   type VoucherModalTab,
 } from "@/src/lib/utils/voucherModalHelpers";
@@ -29,7 +28,7 @@ import { refundVoucher } from "@/src/services/customerVoucherService";
 import { QrModal } from "./QrModal";
 import { VoucherAcquisitionConfirm } from "./VoucherAcquisitionConfirm";
 import { VoucherCard } from "./VoucherCards";
-import { VoucherHistorySection, VoucherModalTabs } from "./VoucherModalSections";
+import { VoucherHistorySection, VoucherModalFrame } from "./VoucherModalSections";
 import { VoucherPackageCatalog } from "./VoucherPackageCatalog";
 import { VoucherDetailSheet } from "./VoucherDetailSheet";
 import { BundleVoucherSetupSheet } from "./BundleVoucherSetupSheet";
@@ -82,7 +81,6 @@ export default function VoucherModal() {
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGram = usePowderStore((s) => s.defaultPowderGram);
   const { addToCart, loading: isUsingVoucher } = useAddVoucherToCart();
-  const touchStart = useRef({ x: 0, y: 0 });
   useBodyScrollLock(open);
 
   const activeVouchers = filterModalVouchers(vouchers);
@@ -248,24 +246,74 @@ export default function VoucherModal() {
 
   const loading = packagesLoading || (isLoggedIn && vouchersLoading);
   const content = (
-    <div className="relative flex h-[85vh] w-full flex-col overflow-hidden rounded-t-[2.5rem] bg-background shadow-2xl md:max-h-[85vh] md:max-w-2xl md:rounded-[2.5rem]">
-      <header className="z-10 bg-background px-4 pb-3 pt-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-serif text-lg font-bold text-primary">Ưu đãi</h2>
-          <button onClick={close} className="flex size-11 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:ring-ring" aria-label="Đóng"><X size={18} /></button>
-        </div>
-        {isLoggedIn && <p className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-sm font-bold text-primary"><Star size={14} className="text-amber-500" />Điểm của bạn: {points.toLocaleString("vi-VN")} 🐟</p>}
-      </header>
-      <VoucherModalTabs activeTab={activeTab} isLoggedIn={isLoggedIn} voucherCount={activeVouchers.length} onChange={setActiveTab} />
-      <div
-        className="flex-1 overflow-y-auto overscroll-contain px-4 py-4"
-        onTouchStart={(event) => { touchStart.current = { x: event.touches[0].clientX, y: event.touches[0].clientY }; }}
-        onTouchEnd={(event) => {
-          const dx = event.changedTouches[0].clientX - touchStart.current.x;
-          const dy = event.changedTouches[0].clientY - touchStart.current.y;
-          if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) setActiveTab(getAdjacentVoucherTab(activeTab, dx < 0 ? "left" : "right", isLoggedIn));
-        }}
-      >
+    <VoucherModalFrame
+      activeTab={activeTab}
+      isLoggedIn={isLoggedIn}
+      voucherCount={activeVouchers.length}
+      pointsBalance={points}
+      onChange={setActiveTab}
+      onClose={close}
+      overlayContent={(
+        <>
+          <AnimatePresence>{qrVoucher && <QrModal voucher={qrVoucher} onClose={() => setQrVoucher(null)} />}</AnimatePresence>
+          <VoucherAcquisitionConfirm pkg={pendingPackage} pointsBalance={points} isLoading={isPending} onCancel={() => setPendingPackage(null)} onConfirm={() => { if (pendingPackage) void acquirePackage(pendingPackage); }} />
+
+          <AnimatePresence>
+            {detailVoucher && (
+              <VoucherDetailSheet
+                key="voucher-detail-sheet"
+                voucher={detailVoucher}
+                cartItems={cartItems}
+                subtotalVnd={subtotalVnd}
+                totalAfterDiscountVnd={totalAfterDiscountVnd}
+                myVouchers={activeVouchers}
+                orderType="PICKUP"
+                shippingFee={null}
+                menuData={menuData}
+                onBack={() => setDetailVoucher(null)}
+                onUseNowSuccess={handleUseNowSuccess}
+                onOpenBundleSetup={(v) => { setDetailVoucher(null); setBundleSetupVoucher(v); }}
+                onRequestRefund={setRefundCandidate}
+                isRefunding={isRefunding}
+              />
+            )}
+          </AnimatePresence>
+
+          {bundleSetupVoucher && menuData && (
+            <BundleVoucherSetupSheet
+              open={!!bundleSetupVoucher}
+              voucher={bundleSetupVoucher}
+              menuData={menuData}
+              milkTypes={menuData.milk_types}
+              powders={powders}
+              defaultPowderGram={defaultPowderGram}
+              onClose={() => setBundleSetupVoucher(null)}
+              onValidateDraft={({ cartItems: draftItems, rewardAllocations }) => {
+                const summary = getBundleVoucherSummary(bundleSetupVoucher);
+                if (!summary) return { ok: false, error: "Voucher BUNDLE không còn khả dụng" };
+                const draftCart = summarizeBundleCart(draftItems);
+                const selection = deriveBundleSelectionState({ voucher: summary, cart: draftCart, allocations: rewardAllocations });
+                const payload = buildBundleApplication({ voucher: summary, cart: draftCart, rewardAllocations });
+                return selection.status === "READY" && payload
+                  ? { ok: true }
+                  : { ok: false, error: selection.message };
+              }}
+              onSuccess={handleBundleSuccess}
+            />
+          )}
+          <ConfirmModal
+            isOpen={refundCandidate !== null}
+            title="Hoàn điểm voucher"
+            message={getVoucherRefundConfirmation(refundCandidate?.availability.refund_points ?? 0)}
+            confirmLabel={`Hoàn ${refundCandidate?.availability.refund_points.toLocaleString("vi-VN") ?? 0} điểm`}
+            isDestructive
+            isLoading={isRefunding}
+            onCancel={() => setRefundCandidate(null)}
+            onConfirm={() => void handleRefund()}
+          />
+        </>
+      )}
+    >
         {loading ? <div className="flex h-full items-center justify-center"><Loader2 className="animate-spin text-primary" /></div> : activeTab === "my_vouchers" && isLoggedIn ? (
           activeVouchers.length === 0 ? <div className="mt-4 flex flex-col items-center gap-2 rounded-2xl border border-dashed py-16 text-center"><Ticket className="text-primary/30" /><p className="text-sm font-bold text-primary/60">Bạn chưa có voucher nào</p></div> :
           <div className="grid gap-3 pb-8 sm:grid-cols-2">{activeVouchers.map((voucher) => (
@@ -291,69 +339,12 @@ export default function VoucherModal() {
             <VoucherPackageCatalog packages={packages} pointsBalance={points} pendingPackageId={isPending ? exchangingId : null} onAcquire={handleAcquire} />
           </div>
         )}
-      </div>
-      <AnimatePresence>{qrVoucher && <QrModal voucher={qrVoucher} onClose={() => setQrVoucher(null)} />}</AnimatePresence>
-      <VoucherAcquisitionConfirm pkg={pendingPackage} pointsBalance={points} isLoading={isPending} onCancel={() => setPendingPackage(null)} onConfirm={() => { if (pendingPackage) void acquirePackage(pendingPackage); }} />
-
-      <AnimatePresence>
-        {detailVoucher && (
-          <VoucherDetailSheet
-            key="voucher-detail-sheet"
-            voucher={detailVoucher}
-            cartItems={cartItems}
-            subtotalVnd={subtotalVnd}
-            totalAfterDiscountVnd={totalAfterDiscountVnd}
-            myVouchers={activeVouchers}
-            orderType="PICKUP"
-            shippingFee={null}
-            menuData={menuData}
-            onBack={() => setDetailVoucher(null)}
-            onUseNowSuccess={handleUseNowSuccess}
-            onOpenBundleSetup={(v) => { setDetailVoucher(null); setBundleSetupVoucher(v); }}
-            onRequestRefund={setRefundCandidate}
-            isRefunding={isRefunding}
-          />
-        )}
-      </AnimatePresence>
-
-      {bundleSetupVoucher && menuData && (
-        <BundleVoucherSetupSheet
-          open={!!bundleSetupVoucher}
-          voucher={bundleSetupVoucher}
-          menuData={menuData}
-          milkTypes={menuData.milk_types}
-          powders={powders}
-          defaultPowderGram={defaultPowderGram}
-          onClose={() => setBundleSetupVoucher(null)}
-          onValidateDraft={({ cartItems: draftItems, rewardAllocations }) => {
-            const summary = getBundleVoucherSummary(bundleSetupVoucher);
-            if (!summary) return { ok: false, error: "Voucher BUNDLE không còn khả dụng" };
-            const draftCart = summarizeBundleCart(draftItems);
-            const selection = deriveBundleSelectionState({ voucher: summary, cart: draftCart, allocations: rewardAllocations });
-            const payload = buildBundleApplication({ voucher: summary, cart: draftCart, rewardAllocations });
-            return selection.status === "READY" && payload
-              ? { ok: true }
-              : { ok: false, error: selection.message };
-          }}
-          onSuccess={handleBundleSuccess}
-        />
-      )}
-      <ConfirmModal
-        isOpen={refundCandidate !== null}
-        title="Hoàn điểm voucher"
-        message={getVoucherRefundConfirmation(refundCandidate?.availability.refund_points ?? 0)}
-        confirmLabel={`Hoàn ${refundCandidate?.availability.refund_points.toLocaleString("vi-VN") ?? 0} điểm`}
-        isDestructive
-        isLoading={isRefunding}
-        onCancel={() => setRefundCandidate(null)}
-        onConfirm={() => void handleRefund()}
-      />
-    </div>
+    </VoucherModalFrame>
   );
 
   return isDesktop ? (
     <Dialog.Root open={open} onOpenChange={(next) => { if (!next) close(); }}><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" /><Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 p-4 outline-none">{content}</Dialog.Content></Dialog.Portal></Dialog.Root>
   ) : (
-    <Drawer.Root open={open} repositionInputs={false} onOpenChange={(next) => { if (!next) close(); }}><Drawer.Portal><Drawer.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" /><Drawer.Content className="fixed inset-x-0 bottom-0 z-50 outline-none"><div className="absolute inset-x-0 top-3 z-10 mx-auto h-1.5 w-12 rounded-full bg-border/60" />{content}</Drawer.Content></Drawer.Portal></Drawer.Root>
+    <Drawer.Root open={open} repositionInputs={false} onOpenChange={(next) => { if (!next) close(); }}><Drawer.Portal><Drawer.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" /><Drawer.Content className="fixed inset-x-0 bottom-0 z-50 outline-none">{content}</Drawer.Content></Drawer.Portal></Drawer.Root>
   );
 }

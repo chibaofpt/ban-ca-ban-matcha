@@ -5,8 +5,8 @@ vi.mock("@/src/hooks/useVoucherAcquisition", () => ({
   useVoucherAcquisition: () => ({ acquire: vi.fn(), isPending: false }),
 }));
 vi.mock("@/src/components/ui/ResponsiveOverlay", () => ({
-  ResponsiveOverlay: ({ open, title, layer = "base", children }: { open: boolean; title: string; layer?: string; children: React.ReactNode }) =>
-    open ? <section aria-label={title} data-overlay-layer={layer}>{children}</section> : null,
+  ResponsiveOverlay: ({ open, title, layer = "base", presentation = "default", children }: { open: boolean; title: string; layer?: string; presentation?: string; children: React.ReactNode }) =>
+    open ? <section aria-label={title} data-overlay-layer={layer} data-overlay-presentation={presentation}>{children}</section> : null,
 }));
 vi.mock("@/src/components/shared/VoucherDetailSheet", () => ({
   VoucherDetailSheet: ({ voucher, onOpenBundleSetup }: { voucher: { package: { name: string } }; onOpenBundleSetup: (voucher: unknown) => void }) => (
@@ -142,13 +142,16 @@ describe("CartDiscountPicker — production wiring", () => {
 });
 
 describe("CartDiscountPicker — phân lớp bottom sheet", () => {
-  it("xếp picker trên cart và detail trên picker", () => {
+  it("dùng shell edge-to-edge và thay detail trong cùng picker", () => {
     const voucher = makeVoucher("PRODUCT_DISCOUNT", "Voucher phân lớp");
     render(<CartDiscountPicker {...baseProps} productDiscountVouchers={[voucher]} bundleVouchers={[]} />);
 
-    expect(screen.getByRole("region", { name: "Mã ưu đãi" }).getAttribute("data-overlay-layer")).toBe("nested");
+    const picker = screen.getByRole("region", { name: "Mã ưu đãi" });
+    expect(picker.getAttribute("data-overlay-layer")).toBe("nested");
+    expect(picker.getAttribute("data-overlay-presentation")).toBe("bare");
     fireEvent.click(screen.getByText("Voucher phân lớp"));
-    expect(screen.getByRole("region", { name: "Chi tiết voucher" }).getAttribute("data-overlay-layer")).toBe("critical");
+    expect(screen.queryByRole("region", { name: "Chi tiết voucher" })).toBeNull();
+    expect(picker.contains(screen.getByText("DETAIL:Voucher phân lớp"))).toBe(true);
   });
 });
 
