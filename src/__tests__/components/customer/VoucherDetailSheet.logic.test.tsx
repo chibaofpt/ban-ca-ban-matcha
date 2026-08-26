@@ -140,4 +140,30 @@ describe("Chi tiết voucher không còn lựa chọn", () => {
     fireEvent.click(card);
     expect(onClick).toHaveBeenCalledOnce();
   });
+
+  it("voucher đang áp hiển thị nút hủy màu đỏ và gọi đúng action", () => {
+    const voucher = makeUnavailableBundle();
+    const onRemoveAppliedVoucher = vi.fn();
+    render(
+      <VoucherDetailSheet
+        voucher={voucher}
+        cartItems={[]}
+        subtotalVnd={0}
+        myVouchers={[voucher]}
+        orderType="PICKUP"
+        shippingFee={null}
+        onBack={vi.fn()}
+        onUseNowSuccess={vi.fn()}
+        onOpenBundleSetup={vi.fn()}
+        onRequestRefund={vi.fn()}
+        isRefunding={false}
+        onRemoveAppliedVoucher={onRemoveAppliedVoucher}
+      />,
+    );
+
+    const removeButton = screen.getByRole("button", { name: "Hủy voucher" });
+    expect(removeButton.className).toContain("text-destructive");
+    fireEvent.click(removeButton);
+    expect(onRemoveAppliedVoucher).toHaveBeenCalledOnce();
+  });
 });

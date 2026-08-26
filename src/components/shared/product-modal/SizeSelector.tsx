@@ -29,6 +29,7 @@ export function SizeSelector({ sizes, selectedSize, onChange, getPriceForContext
             sub={formatKa(sizePrice, "ceil")}
             isActive={selectedSize === s.size}
             onClick={() => onChange(s.size)}
+            size="lg"
           />
         );
       })}

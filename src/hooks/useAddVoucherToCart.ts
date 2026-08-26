@@ -149,7 +149,12 @@ export function useAddVoucherToCart() {
 
   const addToCart = useCallback(
     async (voucher: MyVoucher, selection?: { menuItemId: string; size: Size }): Promise<AddVoucherResult> => {
-      if ((voucher.voucher_type !== "PRODUCT" && voucher.voucher_type !== "PRODUCT_DISCOUNT" && voucher.voucher_type !== "ITEM") || !voucher.menu_item_id) {
+      const supportsAddToCart = voucher.voucher_type === "PRODUCT" ||
+        voucher.voucher_type === "PRODUCT_DISCOUNT" || voucher.voucher_type === "ITEM";
+      const targetMenuItemId = voucher.voucher_type === "PRODUCT_DISCOUNT"
+        ? selection?.menuItemId ?? voucher.menu_item_id
+        : voucher.menu_item_id;
+      if (!supportsAddToCart || !targetMenuItemId) {
         return { ok: false, reason: "fetch_failed" };
       }
 
@@ -160,10 +165,7 @@ export function useAddVoucherToCart() {
         const allItems = [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])];
         const latteItems = menuData.latte;
 
-        const selectedMenuItemId = voucher.voucher_type === "PRODUCT_DISCOUNT"
-          ? selection?.menuItemId ?? voucher.menu_item_id
-          : voucher.menu_item_id;
-        const menuItem = allItems.find((i) => i.id === selectedMenuItemId);
+        const menuItem = allItems.find((i) => i.id === targetMenuItemId);
         if (!menuItem) {
           return { ok: false, reason: "item_unavailable" };
         }

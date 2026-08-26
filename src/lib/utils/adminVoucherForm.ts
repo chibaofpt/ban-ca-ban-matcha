@@ -122,6 +122,82 @@ function names(ids: string[], labels: ReadonlyMap<string, string>): string {
 
 const SIZE_LABEL = { SMALL: "Nhỏ", MEDIUM: "Vừa", LARGE: "Lớn" } as const;
 
+export interface VoucherCopyLabels {
+  menuLabels: ReadonlyMap<string, string>;
+  addonLabels: ReadonlyMap<string, string>;
+  powderLabels: ReadonlyMap<string, string>;
+  milkLabels: ReadonlyMap<string, string>;
+  defaultPowderByMenuId: ReadonlyMap<string, string>;
+  defaultMilkByMenuId: ReadonlyMap<string, string>;
+}
+
+export interface VoucherCopySuggestion {
+  name: string;
+  description: string;
+}
+
+function compactVnd(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toLocaleString("vi-VN", { maximumFractionDigits: 1 })}tr`;
+  return `${value / 1_000}k`;
+}
+
+function fullVnd(value: number): string {
+  return `${value.toLocaleString("vi-VN")}đ`;
+}
+
+function limitedLabels(ids: string[], labels: ReadonlyMap<string, string>): string {
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length === 0 || uniqueIds.length > 2) return "";
+  return uniqueIds.map((id) => labels.get(id)).filter((label): label is string => Boolean(label)).join(", ");
+}
+
+/** Suggest editable customer-facing voucher copy from the current admin selections. */
+export function suggestVoucherCopy(draft: VoucherDraft, labels: VoucherCopyLabels): VoucherCopySuggestion {
+  const minimumName = draft.minOrderVnd ? ` cho đơn từ ${compactVnd(draft.minOrderVnd)}` : "";
+  const minimumDescription = draft.minOrderVnd ? ` cho đơn hàng từ ${fullVnd(draft.minOrderVnd)}` : " cho đơn hàng";
+  if (draft.voucherType === "DISCOUNT") {
+    const value = draft.discountType === "PERCENT" ? `${draft.discountValue}%` : compactVnd(draft.discountValue);
+    const detail = draft.discountType === "PERCENT" ? value : fullVnd(draft.discountValue);
+    return { name: `Giảm ${value}${minimumName}`, description: `Giảm ${detail}${minimumDescription}.` };
+  }
+  if (draft.voucherType === "FREESHIP") {
+    return { name: `Freeship đến ${compactVnd(draft.coveredDeliveryFeeVnd)}${minimumName}`, description: `Hỗ trợ phí giao hàng tối đa ${fullVnd(draft.coveredDeliveryFeeVnd)}${minimumDescription}.` };
+  }
+  if (draft.voucherType === "PRODUCT") {
+    const menu = labels.menuLabels.get(draft.menuItemId);
+    if (!menu) return { name: "", description: "" };
+    const powderId = draft.matchaPowderId || labels.defaultPowderByMenuId.get(draft.menuItemId) || "";
+    const milkId = draft.milkTypeId || labels.defaultMilkByMenuId.get(draft.menuItemId) || "";
+    const detail = [menu, `size ${SIZE_LABEL[draft.size]}`, labels.powderLabels.get(powderId), labels.milkLabels.get(milkId)].filter(Boolean).join(" ");
+    return { name: `Free 1 ly ${detail}`, description: `Tặng 1 ly ${detail}.` };
+  }
+  if (draft.voucherType === "ITEM" || draft.voucherType === "ADDON") {
+    const label = draft.voucherType === "ITEM" ? labels.menuLabels.get(draft.menuItemId) : labels.addonLabels.get(draft.addonOptionId);
+    return label ? { name: `Free 1 ${label}`, description: `Tặng 1 ${label}.` } : { name: "", description: "" };
+  }
+  if (draft.voucherType === "PRODUCT_DISCOUNT") {
+    const ids = draft.eligibleMenuItemIds?.length ? draft.eligibleMenuItemIds : [draft.menuItemId];
+    const targets = limitedLabels(ids.filter(Boolean), labels.menuLabels);
+    const targetName = targets ? ` cho ${targets}` : " theo món";
+    const sizes = draft.eligibleSizes.map((size) => SIZE_LABEL[size]).join(", ");
+    if (draft.productDiscountMode === "PAY_AS_SIZE") {
+      const name = `Trả giá size ${SIZE_LABEL[draft.referenceSize]}${targetName}`;
+      return { name, description: `${name}${sizes ? ` khi chọn size ${sizes}` : ""}.` };
+    }
+    const name = `Giảm ${compactVnd(draft.discountValue)}${targetName}`;
+    return { name, description: `Giảm ${fullVnd(draft.discountValue)} cho ${targets || "các món đã chọn"}${sizes ? ` ở size ${sizes}` : ""}.` };
+  }
+  const qualifiers = limitedLabels(draft.qualifierScopes.map((scope) => scope.menuItemId), labels.menuLabels);
+  const rewardIds = draft.rewardKind === "PRODUCT"
+    ? draft.rewardProductScopes.map((scope) => scope.menuItemId)
+    : draft.rewardAddonOptionIds;
+  const rewards = draft.rewardKind === "PRODUCT" && draft.rewardMode === "SAME_CONFIG"
+    ? "sản phẩm cùng loại"
+    : limitedLabels(rewardIds, draft.rewardKind === "PRODUCT" ? labels.menuLabels : labels.addonLabels);
+  const name = `Mua ${draft.buyQuantity}${qualifiers ? ` ${qualifiers}` : ""} tặng ${draft.rewardQuantity}${rewards ? ` ${rewards}` : ""}`;
+  return { name, description: `${name}.` };
+}
+
 function describeScope(
   scope: BundleVoucherFormState["qualifierScopes"][number],
   menuLabels: ReadonlyMap<string, string>,

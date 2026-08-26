@@ -75,17 +75,17 @@ export function VoucherCard({
       ) : null}
       {/* Left side: Highlight Ticket */}
       <div className={cn(
-        "w-[32%] flex flex-col items-center justify-center p-3 border-r-2 border-dashed",
+        "w-[32%] flex flex-col items-center justify-center px-3 py-2 border-r-2 border-dashed",
         isDimmed ? "bg-muted/50 text-muted-foreground border-border/60" : 
         isSelected ? "bg-[#e6f0de] text-[#4d7338] border-[#8ab275]/40" : "bg-primary/5 text-primary border-border/60"
       )}>
-        <span className="font-black text-xl lg:text-2xl tracking-tighter leading-none text-center">{highlight.text}</span>
+        <span className="font-black text-lg lg:text-xl tracking-tighter leading-none text-center">{highlight.text}</span>
         <span className="text-[10px] font-bold uppercase tracking-wider opacity-80 mt-1">{highlight.subtext}</span>
       </div>
 
       {/* Right side: Info */}
-      <div className={cn("flex-1 min-w-0 p-3 flex flex-col justify-center z-10", isSelected ? "bg-transparent" : "bg-card")}>
-        <div className="flex items-center gap-1.5 flex-wrap mb-1">
+      <div className={cn("flex-1 min-w-0 px-3 py-2 flex flex-col justify-center", isSelected ? "bg-transparent" : "bg-card")}>
+        <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
           <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold", typeConfig.badgeCls)}>
             {typeConfig.label}
           </span>
@@ -125,7 +125,7 @@ export function VoucherCard({
           <p className="mt-0.5 line-clamp-2 text-[10px] text-amber-700">{availabilityReason}</p>
         ) : null}
 
-        <div className="mt-2 flex items-center justify-between">
+        <div className="mt-1 flex items-center justify-between">
           <p className="text-[10px] text-muted-foreground flex items-center gap-1">
             <Clock size={10} />
             {isRedeemed ? formatRedeemedDate(voucher.redeemed_at) : formatVoucherExpiry(voucher.expires_at)}
@@ -142,9 +142,9 @@ export function VoucherCard({
               className="relative z-30 ml-2 flex min-h-11 min-w-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             >
               {actionModel.selected ? (
-                <CheckCircle2 className="h-5 w-5 text-primary" />
+                <CheckCircle2 className="h-6 w-6 text-primary" />
               ) : (
-                <span className="h-5 w-5 rounded-full border border-border/60" />
+                <span className="h-6 w-6 rounded-full border-2 border-border/60" />
               )}
             </button>
           ) : actionModel?.kind === "use-now" ? (

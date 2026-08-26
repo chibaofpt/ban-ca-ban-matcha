@@ -40,6 +40,7 @@ interface VoucherDetailSheetProps {
   onRequestRefund: (voucher: MyVoucher) => void;
   isRefunding: boolean;
   onSelectProductDiscountTarget?: (voucher: MyVoucher) => void;
+  onRemoveAppliedVoucher?: () => void;
 }
 
 export const VoucherDetailSheet = ({
@@ -57,6 +58,7 @@ export const VoucherDetailSheet = ({
   onRequestRefund,
   isRefunding,
   onSelectProductDiscountTarget,
+  onRemoveAppliedVoucher,
 }: VoucherDetailSheetProps) => {
   const router = useRouter();
   const { addToCart, loading } = useAddVoucherToCart();
@@ -260,17 +262,27 @@ export const VoucherDetailSheet = ({
           <p className="mb-3 text-center text-xs text-rose-500">{menuData ? "Không còn tổ hợp sản phẩm và size phù hợp" : "Đang tải sản phẩm phù hợp…"}</p>
         ) : null}
         <div className="grid gap-2">
-          <button
-            onClick={handleUseNow}
-            disabled={!canApply || !productDiscountReady || loading || isRefunding || voucher.status !== "ACTIVE"}
-            className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {loading ? (
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : (
-              vType === "BUNDLE" ? "Chọn món cho ưu đãi" : "Dùng ngay"
-            )}
-          </button>
+          {onRemoveAppliedVoucher ? (
+            <button
+              type="button"
+              onClick={onRemoveAppliedVoucher}
+              className="min-h-12 w-full rounded-xl border border-destructive bg-destructive/10 px-4 font-bold text-destructive transition-colors hover:bg-destructive/15 focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Hủy voucher
+            </button>
+          ) : (
+            <button
+              onClick={handleUseNow}
+              disabled={!canApply || !productDiscountReady || loading || isRefunding || voucher.status !== "ACTIVE"}
+              className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {loading ? (
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                vType === "BUNDLE" ? "Chọn món cho ưu đãi" : "Dùng ngay"
+              )}
+            </button>
+          )}
           {voucher.availability.can_refund ? (
             <button
               type="button"

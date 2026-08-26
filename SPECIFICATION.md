@@ -87,7 +87,7 @@ từ sheet này dùng layer `critical`.
 
 Overlay layer chỉ có `base`, `nested`, `critical`. Không tạo z-index tùy ý cho overlay mới.
 
-Button dùng variants `primary`, `secondary`, `outline`, `ghost`, `destructive`; touch target tối thiểu 44×44px. Option card/tab có thể là specialized control nhưng vẫn phải có semantic button, focus state và touch target tương đương.
+Button dùng variants `primary`, `secondary`, `outline`, `ghost`, `destructive`; touch target tối thiểu 40×40px. Option card/tab có thể là specialized control nhưng vẫn phải có semantic button, focus state và touch target tương đương.
 
 ## Legacy UI migration policy
 

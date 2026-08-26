@@ -367,7 +367,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
         <div className="flex flex-col flex-1 min-h-0 h-full overflow-y-auto overflow-x-clip overscroll-contain overscroll-x-none px-5 md:px-8 pt-7 pb-44 md:pb-40 md:pt-0">
           {item.image_url ? (
             <div className="md:hidden -mx-5 -mt-7 shrink-0">
-              <div className="relative aspect-square w-full overflow-hidden">
+              <div className="relative aspect-square max-h-[33dvh] w-full overflow-hidden">
                 <Image
                   src={item.image_url}
                   alt={item.name}
@@ -440,7 +440,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
           <div className="mt-7">
             <div className="flex items-center justify-between mb-5">
               <SectionLabel text="Độ ngọt" />
-              <span className="text-xs font-bold text-primary bg-primary/8 px-2.5 py-1 rounded-full -mt-3">
+              <span className="text-sm font-bold text-primary bg-primary/8 px-2.5 py-1 rounded-full -mt-3">
                 {SWEETNESS_OPTIONS[sweetnessIdx]?.label}
               </span>
             </div>
@@ -478,7 +478,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
                     key={opt.value}
                     style={{ left: `${(i / (SWEETNESS_OPTIONS.length - 1)) * 100}%` }}
                     className={cn(
-                      "absolute -translate-x-1/2 text-[10px] whitespace-nowrap font-medium transition-colors",
+                      "absolute -translate-x-1/2 text-xs whitespace-nowrap font-medium transition-colors",
                       sweetness === opt.value ? "text-primary font-bold" : "text-primary/40"
                     )}
                   >
@@ -570,6 +570,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
                         sub={opt.price_vnd > 0 ? `+${formatKa(opt.price_vnd, "ceil")}` : undefined}
                         isActive={selectedOptionIds.includes(opt.id)}
                         onClick={() => handleSelectorToggle(group.id, opt.id)}
+                        layout="stacked"
                       />
                     );
                   })
@@ -586,6 +587,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
                       sub={opt.price_vnd > 0 ? `+${formatKa(opt.price_vnd, "ceil")}` : undefined}
                       isActive={selectedOptionIds.includes(opt.id)}
                       onClick={() => handleToggleChange(opt.id)}
+                      layout="stacked"
                     />
                   );
                 })}
@@ -597,7 +599,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
           {matchaSelectorGroups.map((group) => (
             <div key={group.id} className="mt-7">
               <SectionLabel text={group.name} />
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 {group.options.map((opt) => {
                   const price = ceilTo1000(opt.gram_value != null ? opt.gram_value * activePowderPricePerGram : opt.price_vnd);
                   return (

@@ -76,4 +76,27 @@ describe("Shared overlays", () => {
     fireEvent.keyDown(dialog, { key: "Escape" });
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
+
+  it("ResponsiveOverlay mobile giữ footer trong sheet và chỉ cuộn phần nội dung", () => {
+    mockDesktop(false);
+    render(
+      <ResponsiveOverlay
+        open
+        title="Form dài"
+        footer={<button type="button">Tiếp tục</button>}
+        onOpenChange={vi.fn()}
+      >
+        <p>Nội dung dài</p>
+      </ResponsiveOverlay>,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Form dài" });
+    const body = screen.getByText("Nội dung dài").parentElement;
+    const footer = screen.getByRole("button", { name: "Tiếp tục" }).closest("footer");
+
+    expect(dialog.className).toContain("flex-col");
+    expect(body?.className).toContain("flex-1");
+    expect(body?.className).toContain("overflow-y-auto");
+    expect(footer?.className).toContain("shrink-0");
+  });
 });

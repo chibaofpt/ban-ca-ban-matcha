@@ -19,6 +19,7 @@ const mockPkgUpdate = vi.fn();
 const mockAddonFindUnique = vi.fn();
 const mockAddonFindMany = vi.fn();
 const mockMenuItemFindUnique = vi.fn();
+const mockVoucherGroupBy = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -35,6 +36,7 @@ vi.mock("@/lib/prisma", () => ({
     menuItem: {
       findUnique: (...a: unknown[]) => mockMenuItemFindUnique(...a),
     },
+    voucher: { groupBy: (...a: unknown[]) => mockVoucherGroupBy(...a) },
   },
 }));
 
@@ -71,6 +73,9 @@ const existingPkg = {
   voucher_type: "PRODUCT",
   points_cost: 5,
   is_active: true,
+  quantity: null,
+  vouchers: [],
+  _count: { vouchers: 0 },
 };
 
 /** Minimal latte menu item returned by Prisma include with sizes and fusionAllowedPowders */
@@ -120,6 +125,7 @@ describe("GET /api/admin/voucher-packages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSession.mockResolvedValue(ADMIN_SESSION);
+    mockVoucherGroupBy.mockResolvedValue([]);
   });
 
   it("returns 403 for STAFF role", async () => {
@@ -141,6 +147,8 @@ describe("GET /api/admin/voucher-packages", () => {
     const json = await res.json();
     expect(json.data).toHaveLength(1);
     expect(json.data[0].id).toBe(PKG_ID);
+    expect(mockPkgFindMany).toHaveBeenCalledWith(expect.not.objectContaining({ include: expect.objectContaining({ vouchers: expect.anything() }) }));
+    expect(mockVoucherGroupBy).toHaveBeenCalledTimes(2);
   });
 
   it("returns 500 on DB error", async () => {

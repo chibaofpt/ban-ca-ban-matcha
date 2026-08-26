@@ -97,7 +97,7 @@ export function ResponsiveOverlay({
             }}
             className={cn(
               "fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 outline-none",
-              presentation === "default" && "max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-hidden rounded-3xl border bg-background shadow-2xl",
+              presentation === "default" && "flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] flex-col overflow-hidden rounded-3xl border bg-background shadow-2xl",
               presentation === "bare" && "w-full",
               layerClasses[layer].content,
               presentation === "default" && desktopSizeClasses[size],
@@ -111,7 +111,7 @@ export function ResponsiveOverlay({
                 {children}
               </>
             ) : <>
-            <header className="flex items-start justify-between gap-4 border-b px-6 py-4">
+            <header className="flex shrink-0 items-start justify-between gap-4 border-b px-6 py-4">
               <div>
                 <Dialog.Title asChild><h2 className="text-lg font-bold text-foreground">{title}</h2></Dialog.Title>
                 <Dialog.Description className={description ? "mt-1 text-sm text-muted-foreground" : "sr-only"}>
@@ -124,8 +124,8 @@ export function ResponsiveOverlay({
                 </Button>
               ) : null}
             </header>
-            <div className="max-h-[calc(100dvh-10rem)] overflow-y-auto overscroll-contain px-6 py-5">{children}</div>
-            {footer ? <footer className="border-t px-6 py-4">{footer}</footer> : null}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5">{children}</div>
+            {footer ? <footer className="shrink-0 border-t px-6 py-4">{footer}</footer> : null}
             </>}
           </Dialog.Content>
         </Dialog.Portal>
@@ -140,7 +140,7 @@ export function ResponsiveOverlay({
         <Drawer.Content
           className={cn(
             "fixed inset-x-0 bottom-0 outline-none",
-            presentation === "default" && "max-h-[92dvh] overflow-hidden rounded-t-3xl border-t bg-background",
+            presentation === "default" && "flex max-h-[92dvh] flex-col overflow-hidden rounded-t-3xl border-t bg-background",
             layerClasses[layer].content,
             className,
           )}
@@ -152,8 +152,8 @@ export function ResponsiveOverlay({
               {children}
             </>
           ) : <>
-          <div className="mx-auto mt-3 h-1.5 w-12 rounded-full bg-border" aria-hidden="true" />
-          <header className="flex items-start justify-between gap-4 border-b px-5 py-4">
+          <div className="mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-border" aria-hidden="true" />
+          <header className="flex shrink-0 items-start justify-between gap-4 border-b px-5 py-4">
             <div>
               <Drawer.Title asChild><h2 className="text-lg font-bold text-foreground">{title}</h2></Drawer.Title>
               <Drawer.Description className={description ? "mt-1 text-sm text-muted-foreground" : "sr-only"}>
@@ -166,8 +166,8 @@ export function ResponsiveOverlay({
               </Button>
             ) : null}
           </header>
-          <div className="max-h-[calc(92dvh-8rem)] overflow-y-auto overscroll-contain px-5 py-5">{children}</div>
-          {footer ? <footer className="border-t px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">{footer}</footer> : null}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5">{children}</div>
+          {footer ? <footer className="shrink-0 border-t px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">{footer}</footer> : null}
           </>}
         </Drawer.Content>
       </Drawer.Portal>

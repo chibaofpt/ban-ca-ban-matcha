@@ -5,6 +5,7 @@ import {
   describeVoucherDraft,
   estimateVoucherLiabilityVnd,
   formatInclusiveEndDate,
+  suggestVoucherCopy,
   toExclusiveEndIso,
   validateVoucherDraft,
 } from "@/src/lib/utils/adminVoucherForm";
@@ -94,5 +95,68 @@ describe("Form quản lý voucher hợp nhất", () => {
     );
     expect(text).toContain("Vừa + Lớn");
     expect(text).toContain("Hana + Meyumi");
+  });
+
+  it("gợi ý tên giảm phần trăm kèm giá trị đơn tối thiểu", () => {
+    const draft = {
+      ...createEmptyVoucherDraft(),
+      discountValue: 15,
+      minOrderVnd: 100_000,
+    };
+
+    expect(suggestVoucherCopy(draft, {
+      menuLabels: new Map(), addonLabels: new Map(), powderLabels: new Map(), milkLabels: new Map(),
+      defaultPowderByMenuId: new Map(), defaultMilkByMenuId: new Map(),
+    })).toEqual({
+      name: "Giảm 15% cho đơn từ 100k",
+      description: "Giảm 15% cho đơn hàng từ 100.000đ.",
+    });
+  });
+
+  it("gợi ý tên quà tặng từ món, size, bột và Base Liquid mà không thêm nhãn loại", () => {
+    const draft = {
+      ...createEmptyVoucherDraft(),
+      voucherType: "PRODUCT" as const,
+      menuItemId: "latte-1",
+      size: "MEDIUM" as const,
+      matchaPowderId: "powder-1",
+      milkTypeId: "milk-1",
+    };
+
+    expect(suggestVoucherCopy(draft, {
+      menuLabels: new Map([["latte-1", "Matcha Latte"]]),
+      addonLabels: new Map(),
+      powderLabels: new Map([["powder-1", "Hana"]]),
+      milkLabels: new Map([["milk-1", "Oatside"]]),
+      defaultPowderByMenuId: new Map(),
+      defaultMilkByMenuId: new Map(),
+    }).name).toBe("Free 1 ly Matcha Latte size Vừa Hana Oatside");
+  });
+
+  it("gợi ý bundle chỉ liệt kê tối đa hai món ở mỗi phía", () => {
+    const baseDraft = {
+      ...createEmptyVoucherDraft(),
+      voucherType: "BUNDLE" as const,
+      rewardMode: "ALLOWED_SCOPE" as const,
+      qualifierScopes: [
+        { menuItemId: "q1", category: "latte" as const, sizes: [], powderIds: [], milkTypeIds: [], fixedPowderId: "p1" },
+        { menuItemId: "q2", category: "latte" as const, sizes: [], powderIds: [], milkTypeIds: [], fixedPowderId: "p2" },
+      ],
+      rewardProductScopes: [
+        { menuItemId: "r1", category: "latte" as const, sizes: [], powderIds: [], milkTypeIds: [], fixedPowderId: "p3" },
+        { menuItemId: "r2", category: "latte" as const, sizes: [], powderIds: [], milkTypeIds: [], fixedPowderId: "p4" },
+      ],
+    };
+    const labels = {
+      menuLabels: new Map([["q1", "Latte"], ["q2", "Fusion"], ["q3", "Trà"], ["r1", "Mochi"], ["r2", "Cookie"]]),
+      addonLabels: new Map(), powderLabels: new Map(), milkLabels: new Map(),
+      defaultPowderByMenuId: new Map(), defaultMilkByMenuId: new Map(),
+    };
+
+    expect(suggestVoucherCopy(baseDraft, labels).name).toBe("Mua 2 Latte, Fusion tặng 1 Mochi, Cookie");
+    expect(suggestVoucherCopy({
+      ...baseDraft,
+      qualifierScopes: [...baseDraft.qualifierScopes, { menuItemId: "q3", category: "latte" as const, sizes: [], powderIds: [], milkTypeIds: [], fixedPowderId: "p5" }],
+    }, labels).name).toBe("Mua 2 tặng 1 Mochi, Cookie");
   });
 });

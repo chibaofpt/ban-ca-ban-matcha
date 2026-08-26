@@ -115,7 +115,7 @@ export default function HistoryPage() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-5 overflow-x-hidden px-4 py-6 pb-24">
+    <main className="mx-auto w-full max-w-6xl touch-pan-y space-y-5 overflow-x-clip overscroll-x-none px-4 py-6 pb-24">
       <header className="flex items-center justify-between gap-3">
         <h1 className="font-serif text-3xl font-bold text-primary">Lịch sử</h1>
         <motion.button

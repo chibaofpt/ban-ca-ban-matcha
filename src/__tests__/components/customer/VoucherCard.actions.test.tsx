@@ -70,4 +70,20 @@ describe("VoucherCard — nội dung và action độc lập", () => {
     expect(onUseNow).toHaveBeenCalledOnce();
     expect(onOpen).toHaveBeenCalledOnce();
   });
+
+  it("nút chọn nằm trên lớp mở detail và vòng tròn hiển thị lớn hơn", () => {
+    render(
+      <VoucherCard
+        voucher={voucher}
+        onClick={vi.fn()}
+        onAction={vi.fn()}
+        actionModel={{ kind: "selection", selected: false, disabled: false }}
+      />,
+    );
+
+    const action = screen.getByRole("button", { name: "Chọn voucher" });
+    expect(action.closest(".z-10")).toBeNull();
+    expect(action.querySelector("span")?.className).toContain("h-6");
+    expect(action.querySelector("span")?.className).toContain("w-6");
+  });
 });

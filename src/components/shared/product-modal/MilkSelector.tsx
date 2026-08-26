@@ -50,6 +50,7 @@ export function MilkSelector({
             }
             isActive={selectedMilkId === milk.id}
             onClick={() => onChange(milk.id)}
+            layout="stacked"
           />
         );
       })}

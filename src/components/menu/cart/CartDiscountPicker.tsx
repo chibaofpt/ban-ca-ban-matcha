@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { AnimatePresence } from "framer-motion";
+import { Loader2 } from "lucide-react";
 import { estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
 import { type MyVoucher, type VoucherPackage } from "@/src/services/customerVoucherService";
 import { useVoucherAcquisition } from "@/src/hooks/useVoucherAcquisition";
@@ -28,6 +29,7 @@ interface CartDiscountPickerProps {
   historyVouchers: MyVoucher[];
   availableVoucherPackages: VoucherPackage[];
   pointsBalance: number;
+  isLoading: boolean;
   selectedVoucherIds: string[];
   selectedDiscountVouchers: MyVoucher[];
   selectedFreeshipVouchers: MyVoucher[];
@@ -53,6 +55,12 @@ interface CartDiscountPickerProps {
   onAddExtrasReward: (menuItemId: string, voucherToken: string) => { clientLineId: string; effect: BundleCreatedRewardEffect } | null;
 }
 
+type VoucherPickerView =
+  | { kind: "list" }
+  | { kind: "detail"; voucher: MyVoucher }
+  | { kind: "product-target"; voucher: MyVoucher }
+  | { kind: "bundle-setup"; voucher: MyVoucher };
+
 export const CartDiscountPicker = ({
   discountVouchers,
   freeshipVouchers,
@@ -60,6 +68,7 @@ export const CartDiscountPicker = ({
   historyVouchers,
   availableVoucherPackages,
   pointsBalance,
+  isLoading,
   selectedVoucherIds,
   selectedDiscountVouchers,
   selectedFreeshipVouchers,
@@ -87,10 +96,11 @@ export const CartDiscountPicker = ({
   const { acquire, isPending } = useVoucherAcquisition();
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
   const [confirmPackage, setConfirmPackage] = useState<VoucherPackage | null>(null);
-  const [detailVoucher, setDetailVoucher] = useState<MyVoucher | null>(null);
-  const [targetVoucher, setTargetVoucher] = useState<MyVoucher | null>(null);
-  const [bundleSetupVoucher, setBundleSetupVoucher] = useState<MyVoucher | null>(null);
+  const [activeView, setActiveView] = useState<VoucherPickerView>({ kind: "list" });
   const [activeTab, setActiveTab] = useState<VoucherModalTab>("my_vouchers");
+  const detailVoucher = activeView.kind === "detail" ? activeView.voucher : null;
+  const targetVoucher = activeView.kind === "product-target" ? activeView.voucher : null;
+  const bundleSetupVoucher = activeView.kind === "bundle-setup" ? activeView.voucher : null;
 
   const myVouchers = [...discountVouchers, ...freeshipVouchers, ...productDiscountVouchers, ...bundleVouchers]
     .filter((voucher) => voucher.status === "ACTIVE");
@@ -151,10 +161,32 @@ export const CartDiscountPicker = ({
         )
       : 0;
 
+  const closePicker = () => {
+    setActiveView({ kind: "list" });
+    onClose();
+  };
+  const detailProductItem = detailVoucher?.voucher_type === "PRODUCT_DISCOUNT"
+    ? cart.find((item) => item.productVoucherId === detailVoucher.qr_token)
+    : undefined;
+  const detailHasOrderVoucher = detailVoucher
+    ? selectedVoucherIds.includes(detailVoucher.qr_token)
+    : false;
+  const detailHasBundle = detailVoucher?.voucher_type === "BUNDLE"
+    ? bundleApplications.some((application) => application.voucher_qr_token === detailVoucher.qr_token)
+    : false;
+  const removeAppliedDetailVoucher = detailVoucher && (detailProductItem || detailHasOrderVoucher || detailHasBundle)
+    ? () => {
+        if (detailProductItem) onRemoveProductVoucher(detailProductItem.cartId);
+        else if (detailHasBundle) onRequestRemoveBundle(detailVoucher.qr_token);
+        else onUpdateSelectedVouchers((previous) => previous.filter((token) => token !== detailVoucher.qr_token));
+        setActiveView({ kind: "list" });
+      }
+    : undefined;
+
   return (
     <ResponsiveOverlay
       open
-      onOpenChange={(open) => { if (!open) onClose(); }}
+      onOpenChange={(open) => { if (!open) closePicker(); }}
       layer="nested"
       title="Mã ưu đãi"
       presentation="bare"
@@ -166,7 +198,7 @@ export const CartDiscountPicker = ({
         voucherCount={myVouchers.length}
         pointsBalance={pointsBalance}
         onChange={setActiveTab}
-        onClose={onClose}
+        onClose={closePicker}
         headerAction={activeTab === "my_vouchers" && selectedVoucherIds.length > 0 ? (
           <button
             type="button"
@@ -177,7 +209,7 @@ export const CartDiscountPicker = ({
           </button>
         ) : null}
         footer={activeTab === "my_vouchers" ? (
-          <CartDiscountPickerFooter selectedVoucherIds={selectedVoucherIds} selectedDiscountVouchers={selectedDiscountVouchers} subtotalPrice={subtotalPrice} freeshipDiscount={selectedFreeshipDiscount} onConfirm={onClose} />
+          <CartDiscountPickerFooter selectedVoucherIds={selectedVoucherIds} selectedDiscountVouchers={selectedDiscountVouchers} subtotalPrice={subtotalPrice} freeshipDiscount={selectedFreeshipDiscount} onConfirm={closePicker} />
         ) : null}
         overlayContent={(
           <>
@@ -199,22 +231,21 @@ export const CartDiscountPicker = ({
                   orderType={orderType}
                   shippingFee={shippingFee}
                   menuData={menuData}
-                  onBack={() => setDetailVoucher(null)}
-                  onUseNowSuccess={() => setDetailVoucher(null)}
-                  onOpenBundleSetup={() => {
-                    setDetailVoucher(null);
-                    setBundleSetupVoucher(detailVoucher);
-                  }}
+                  onBack={() => setActiveView({ kind: "list" })}
+                  onUseNowSuccess={() => setActiveView({ kind: "list" })}
+                  onOpenBundleSetup={(voucher) => setActiveView({ kind: "bundle-setup", voucher })}
                   onRequestRefund={() => undefined}
                   isRefunding={false}
+                  onRemoveAppliedVoucher={removeAppliedDetailVoucher}
                   onSelectProductDiscountTarget={(voucher) => {
                     const selection = getProductDiscountSelection(productTargets(voucher), null);
                     if (selection.kind === "single") {
                       onApplyProductVoucher(selection.target.cartId, voucher);
-                      setDetailVoucher(null);
+                      setActiveView({ kind: "list" });
                     } else if (selection.kind === "multiple") {
-                      setDetailVoucher(null);
-                      setTargetVoucher(voucher);
+                      setActiveView({ kind: "product-target", voucher });
+                    } else {
+                      toast.error(selection.reason);
                     }
                   }}
                 />
@@ -224,7 +255,16 @@ export const CartDiscountPicker = ({
         )}
       >
         {activeTab === "my_vouchers" && <section>
-          {myVouchers.length === 0 ? (
+          {isLoading ? (
+            <div
+              role="status"
+              aria-label="Đang tải voucher"
+              className="flex min-h-40 items-center justify-center"
+            >
+              <Loader2 className="size-6 animate-spin text-primary" aria-hidden="true" />
+              <span className="sr-only">Đang tải voucher</span>
+            </div>
+          ) : myVouchers.length === 0 ? (
             <div className="text-center py-6 bg-white rounded-2xl border border-dashed border-border/60">
               <p className="text-xs text-primary/40 font-medium">Bạn chưa có mã ưu đãi nào</p>
             </div>
@@ -298,38 +338,43 @@ export const CartDiscountPicker = ({
                 }
 
                 const handleSelection = () => {
-                  if (v.voucher_type === "BUNDLE") {
-                    if (selectedBundle) onRequestRemoveBundle(v.qr_token);
-                    else setBundleSetupVoucher(v);
-                    return;
-                  }
-                  if (selectedProductItem) {
-                    onRemoveProductVoucher(selectedProductItem.cartId);
-                    return;
-                  }
-                  if (productSelection?.kind === "single") {
-                    onApplyProductVoucher(productSelection.target.cartId, v);
-                    return;
-                  }
-                  if (productSelection?.kind === "multiple") {
-                    setTargetVoucher(v);
-                    return;
-                  }
-                  if (isDisabled) return;
-                  onUpdateSelectedVouchers((prev: string[]) => {
-                    if (isSelected) return prev.filter((id) => id !== v.qr_token);
-                    let newSelected = [...prev];
-                    if (v.voucher_type === "DISCOUNT" && v.discount_type === "PERCENT") {
-                      newSelected = newSelected.filter(id => {
-                        const existingV = discountVouchers.find(d => d.qr_token === id);
-                        return !(existingV && existingV.discount_type === "PERCENT");
+                  setActiveView({ kind: "list" });
+                  switch (v.voucher_type) {
+                    case "BUNDLE":
+                      if (selectedBundle) onRequestRemoveBundle(v.qr_token);
+                      else setActiveView({ kind: "bundle-setup", voucher: v });
+                      return;
+                    case "PRODUCT_DISCOUNT":
+                      if (selectedProductItem) {
+                        onRemoveProductVoucher(selectedProductItem.cartId);
+                      } else if (productSelection?.kind === "single") {
+                        onApplyProductVoucher(productSelection.target.cartId, v);
+                      } else if (productSelection?.kind === "multiple") {
+                        setActiveView({ kind: "product-target", voucher: v });
+                      }
+                      return;
+                    case "DISCOUNT":
+                    case "FREESHIP":
+                      if (isDisabled) return;
+                      onUpdateSelectedVouchers((previous: string[]) => {
+                        if (isSelected) return previous.filter((id) => id !== v.qr_token);
+                        let nextSelected = [...previous];
+                        if (v.voucher_type === "DISCOUNT" && v.discount_type === "PERCENT") {
+                          nextSelected = nextSelected.filter((id) => {
+                            const existingVoucher = discountVouchers.find((candidate) => candidate.qr_token === id);
+                            return !(existingVoucher && existingVoucher.discount_type === "PERCENT");
+                          });
+                        }
+                        if (v.voucher_type === "FREESHIP") {
+                          nextSelected = nextSelected.filter((id) =>
+                            !freeshipVouchers.some((candidate) => candidate.qr_token === id));
+                        }
+                        return [...nextSelected, v.qr_token];
                       });
-                    }
-                    if (v.voucher_type === "FREESHIP") {
-                      newSelected = newSelected.filter(id => !freeshipVouchers.find(f => f.qr_token === id));
-                    }
-                    return [...newSelected, v.qr_token];
-                  });
+                      return;
+                    default:
+                      return;
+                  }
                 };
 
                 return (
@@ -339,7 +384,9 @@ export const CartDiscountPicker = ({
                     isDisabled={isDisabled}
                     disabledReason={disabledReason}
                     isSelected={isSelected}
-                    onClick={() => setDetailVoucher(v)}
+                    onClick={() => {
+                      setActiveView({ kind: "detail", voucher: v });
+                    }}
                     onAction={handleSelection}
                     actionModel={buildVoucherActionModel({
                       context: "cart",
@@ -369,12 +416,15 @@ export const CartDiscountPicker = ({
         )}
 
         {activeTab === "history" && (
-          <VoucherHistorySection vouchers={historyVouchers} onVoucherClick={setDetailVoucher} />
+          <VoucherHistorySection
+            vouchers={historyVouchers}
+            onVoucherClick={(voucher) => setActiveView({ kind: "detail", voucher })}
+          />
         )}
       </VoucherModalFrame>
       <ResponsiveOverlay
         open={targetVoucher !== null}
-        onOpenChange={(open) => { if (!open) setTargetVoucher(null); }}
+        onOpenChange={(open) => { if (!open) setActiveView({ kind: "list" }); }}
         layer="critical"
         title="Chọn món áp dụng"
       >
@@ -387,7 +437,7 @@ export const CartDiscountPicker = ({
                 type="button"
                 onClick={() => {
                   onApplyProductVoucher(target.cartId, targetVoucher);
-                  setTargetVoucher(null);
+                  setActiveView({ kind: "list" });
                 }}
                 className="flex min-h-11 w-full items-center justify-between rounded-xl border bg-card p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
@@ -410,7 +460,7 @@ export const CartDiscountPicker = ({
           milkTypes={menuData.milk_types}
           powders={powders}
           defaultPowderGram={defaultPowderGram}
-          onClose={() => setBundleSetupVoucher(null)}
+          onClose={() => setActiveView({ kind: "list" })}
           onValidateDraft={({ cartItems, rewardAllocations }) => {
             const summary = getBundleVoucherSummary(bundleSetupVoucher);
             if (!summary) return { ok: false, error: "Voucher BUNDLE không còn khả dụng" };
@@ -423,7 +473,7 @@ export const CartDiscountPicker = ({
           }}
           onSuccess={(_token, allocations, createdRewardEffects) => {
             const result = onBundleApplicationChange(bundleSetupVoucher, allocations, createdRewardEffects);
-            if (result.ok) setBundleSetupVoucher(null);
+            if (result.ok) setActiveView({ kind: "list" });
             return result;
           }}
         />

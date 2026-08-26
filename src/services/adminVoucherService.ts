@@ -39,7 +39,19 @@ export interface VoucherPackage {
     label: string;
   } | null;
   bundleRule?: VoucherBundleRule | null;
+  _count?: { vouchers: number };
+  stats?: VoucherPackageStats;
 }
+
+export interface VoucherPackageStats {
+  issued_count: number; active_count: number; reserved_count: number; redeemed_count: number;
+  expired_count: number; refunded_count: number; remaining_quantity: number | null;
+}
+
+export type VoucherOwnerStatus = "ALL" | "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED";
+export interface VoucherOwnerInstance { qr_token: string; status: Exclude<VoucherOwnerStatus, "ALL">; effective_status: Exclude<VoucherOwnerStatus, "ALL">; issued_via: VoucherPackage["acquisition_mode"]; created_at: string; expires_at: string | null; redeemed_at: string | null; used_channel: "ONLINE" | "OFFLINE" | null }
+export interface VoucherPackageOwner { qr_token: string; name: string; insta_name: string | null; phone_number: string; vouchers: VoucherOwnerInstance[] }
+export interface VoucherOwnerPage { users: VoucherPackageOwner[]; next_cursor: string | null }
 
 export interface VoucherBundleProductScope {
   menu_item_id: string;
@@ -146,11 +158,18 @@ export type UpdateVoucherPackageInput = {
 const URL = {
   list: "/api/admin/voucher-packages",
   byId: (id: string) => `/api/admin/voucher-packages/${id}`,
+  owners: (id: string) => `/api/admin/voucher-packages/${id}/owners`,
 } as const;
 
 /** List all voucher packages (active and inactive) — ADMIN only. */
 export async function listVoucherPackages(): Promise<VoucherPackage[]> {
   const res = await apiClient.get<ApiResponse<VoucherPackage[]>>(URL.list);
+  return res.data.data;
+}
+
+/** Searches owners of one package with effective status filtering. */
+export async function searchVoucherPackageOwners(id: string, params: { q: string; status: VoucherOwnerStatus; cursor?: string }): Promise<VoucherOwnerPage> {
+  const res = await apiClient.get<ApiResponse<VoucherOwnerPage>>(URL.owners(id), { params });
   return res.data.data;
 }
 

@@ -138,6 +138,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
 
   // ── Voucher state ──
   const [allVouchers, setAllVouchers] = useState<MyVoucher[]>([]);
+  const [voucherLoadState, setVoucherLoadState] = useState<"idle" | "loading" | "loaded">("idle");
 
   const getItemVoucherBenefit = useCallback((item: import("@/src/lib/types/cart").CartItem, voucher: MyVoucher) => {
     let benefit = voucher.covered_price_vnd ?? 0;
@@ -414,15 +415,19 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
     if (!isCartOpen || !isLoggedIn) {
       setAllVouchers([]);
       setAvailableVoucherPackages([]);
+      setVoucherLoadState("idle");
       setSelectedVoucherIds([]);
       if (!isLoggedIn) clearBundleApplications();
       return;
     }
-    Promise.all([
+    let cancelled = false;
+    setVoucherLoadState("loading");
+    void Promise.all([
       listMyVouchers().catch(() => [] as MyVoucher[]),
       listActiveVoucherPackages().catch(() => [] as VoucherPackage[])
     ])
       .then(([vouchers, packages]) => {
+        if (cancelled) return;
         setAllVouchers(vouchers);
         setAvailableVoucherPackages(packages.filter((pkg) =>
           pkg.voucher_type === "DISCOUNT" ||
@@ -430,6 +435,10 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
           pkg.voucher_type === "BUNDLE"
         ));
       })
+      .finally(() => {
+        if (!cancelled) setVoucherLoadState("loaded");
+      });
+    return () => { cancelled = true; };
   }, [isCartOpen, isLoggedIn, setSelectedVoucherIds, clearBundleApplications]);
 
   // Auto-fetch default address when switching to DELIVERY
@@ -686,7 +695,14 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
     >
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-70 bg-foreground/40 backdrop-blur-sm touch-none" />
-        <Drawer.Content className="fixed bottom-0 left-0 right-0 h-[100dvh] mx-auto z-71 w-full max-w-md bg-[#fdfcf7] shadow-2xl flex flex-col outline-none after:content-[''] after:absolute after:inset-x-0 after:top-full after:h-[50vh] after:bg-inherit">
+        <Drawer.Content
+          onInteractOutside={(event) => {
+            if (document.querySelector('[data-prevent-drawer-close="true"]')) {
+              event.preventDefault();
+            }
+          }}
+          className="fixed bottom-0 left-0 right-0 h-[100dvh] mx-auto z-71 w-full max-w-md bg-[#fdfcf7] shadow-2xl flex flex-col outline-none after:content-[''] after:absolute after:inset-x-0 after:top-full after:h-[50vh] after:bg-inherit"
+        >
           {/* ── Main cart view ───────────────────────────────────────────── */}
           <div className="flex-1 flex flex-col overflow-hidden relative">
 
@@ -917,6 +933,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
                 historyVouchers={historyVouchers}
                 availableVoucherPackages={availableVoucherPackages}
                 pointsBalance={pointsBalance}
+                isLoading={voucherLoadState !== "loaded"}
                 selectedVoucherIds={selectedVoucherIds}
                 selectedDiscountVouchers={selectedDiscountVouchers}
                 selectedFreeshipVouchers={selectedFreeshipVouchers}
@@ -926,8 +943,13 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
                 onClose={() => setIsDiscountPickerOpen(false)}
                 onUpdateSelectedVouchers={setSelectedVoucherIds}
                 onRefreshVouchers={async () => {
-                  const refreshed = await listMyVouchers();
-                  setAllVouchers(refreshed);
+                  setVoucherLoadState("loading");
+                  try {
+                    const refreshed = await listMyVouchers();
+                    setAllVouchers(refreshed);
+                  } finally {
+                    setVoucherLoadState("loaded");
+                  }
                 }}
                 bundleVouchers={bundleVouchers}
                 cart={items}
@@ -993,7 +1015,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
             onConfirm={() => {
               clearCart();
               setShowClearConfirm(false);
-              setCartOpen(false);
+              window.requestAnimationFrame(handleClose);
             }}
             title="Xoá giỏ hàng"
             message="Bạn có chắc chắn muốn xoá toàn bộ món trong giỏ không?"

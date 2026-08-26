@@ -28,6 +28,7 @@ import {
   resolveDefaultBaseLiquidId,
   resolveFusionDefaultPowderId,
 } from "@/src/utils/menuConfiguration";
+import { buildAdminVoucherStats } from "@/lib/adminVoucherInsights";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +65,16 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json({ data: packages.map(toVoucherPackageBundleDto) });
+    const now = new Date();
+    const packageIds = packages.map((pkg) => pkg.id);
+    const [statusAggregates, expiredActiveAggregates] = packageIds.length === 0 ? [[], []] : await Promise.all([
+      prisma.voucher.groupBy({ by: ["package_id", "status"], where: { package_id: { in: packageIds } }, _count: { _all: true } }),
+      prisma.voucher.groupBy({ by: ["package_id"], where: { package_id: { in: packageIds }, status: "ACTIVE", expires_at: { lte: now } }, _count: { _all: true } }),
+    ]);
+    return NextResponse.json({ data: packages.map((pkg) => ({
+      ...toVoucherPackageBundleDto(pkg),
+      stats: buildAdminVoucherStats({ id: pkg.id, quantity: pkg.quantity, issued_count: pkg._count.vouchers }, statusAggregates, expiredActiveAggregates),
+    })) });
   } catch (err) {
     console.error("[GET /api/admin/voucher-packages]", err);
     return NextResponse.json(

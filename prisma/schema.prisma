@@ -180,6 +180,8 @@ model Voucher {
   @@index([qr_token], map: "idx_vouchers_qr_token")
   @@index([status], map: "idx_vouchers_status")
   @@index([user_id], map: "idx_vouchers_user_id")
+  @@index([package_id, status], map: "idx_vouchers_package_status")
+  @@index([package_id, user_id], map: "idx_vouchers_package_user")
   @@map("vouchers")
 }
 

@@ -478,6 +478,11 @@ Junction table mapping multiple ADDON vouchers to an order item.
 > `expires_at` is authoritative for eligibility. Lazy expiry moves only expired `ACTIVE`
 > vouchers to `EXPIRED`; never lazy-expire `RESERVED` vouchers. Cancelling an expired
 > reservation restores it to `EXPIRED`, not `ACTIVE`.
+>
+> Admin package statistics and owner lookup use composite indexes
+> `idx_vouchers_package_status (package_id, status)` and
+> `idx_vouchers_package_user (package_id, user_id)`. These indexes add no counters or lifecycle
+> state; effective expiry remains derived from `status` plus `expires_at`.
 
 ---
 

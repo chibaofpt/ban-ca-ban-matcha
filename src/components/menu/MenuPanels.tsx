@@ -89,7 +89,7 @@ function ItemSection({
           milkTypes={milkTypes}
           cartItems={cartItems}
           onItemClick={onItemClick}
-          priorityCount={isFusion ? 2 : 4}
+          priorityCount={title === "Latte" ? 2 : 0}
         />
       )}
     </div>

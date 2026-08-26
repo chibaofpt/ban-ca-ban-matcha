@@ -156,6 +156,7 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/admin/store-schedule` | GET, PUT |
 | `/api/admin/voucher-packages` | GET, POST |
 | `/api/admin/voucher-packages/[id]` | PUT, DELETE |
+| `/api/admin/voucher-packages/[id]/owners` | GET |
 | `/api/auth/check-phone` | POST |
 | `/api/auth/login` | POST |
 | `/api/auth/logout` | POST |
@@ -599,6 +600,18 @@ Rules are immutable after creation; `PUT /api/admin/voucher-packages/[id]` only 
 description, and `is_active`. Qualifier/reward arrays support multiple products, including seasonal
 items. Each BUNDLE has one reward kind. Package `min_order_vnd` excludes product-vouchered drink
 units and addon-vouchered addon units from the eligible subtotal.
+
+`GET /api/admin/voucher-packages` keeps `_count.vouchers` and additionally returns `stats` with
+`issued_count`, current `active_count`, `reserved_count`, `redeemed_count`, effective
+`expired_count`, `refunded_count`, and nullable `remaining_quantity`. Every voucher row counts as
+issued. An `ACTIVE` voucher whose `expires_at <= now` is presented as expired without a write.
+
+`GET /api/admin/voucher-packages/[id]/owners?q=&status=&cursor=` is ADMIN-only. `q` is required
+(2–50 characters), strips a leading `@` for Instagram matching, and accepts local `0` or `+84`
+phone forms. `status` is `ALL`, `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, or `REFUNDED` and uses
+the same effective-expiry semantics without expiring `RESERVED`. It returns at most 20 users,
+grouped voucher instances, and `next_cursor` based on the public user `qr_token`. User and voucher
+internal IDs are never returned.
 
 All package/wallet voucher responses expose the same grouped `qualifier_products` and
 `reward_products`. Each product additionally contains

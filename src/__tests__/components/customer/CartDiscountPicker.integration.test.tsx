@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/src/hooks/useVoucherAcquisition", () => ({
@@ -9,8 +9,12 @@ vi.mock("@/src/components/ui/ResponsiveOverlay", () => ({
     open ? <section aria-label={title} data-overlay-layer={layer} data-overlay-presentation={presentation}>{children}</section> : null,
 }));
 vi.mock("@/src/components/shared/VoucherDetailSheet", () => ({
-  VoucherDetailSheet: ({ voucher, onOpenBundleSetup }: { voucher: { package: { name: string } }; onOpenBundleSetup: (voucher: unknown) => void }) => (
-    <div><p>DETAIL:{voucher.package.name}</p><button onClick={() => onOpenBundleSetup(voucher)}>Thiết lập bundle</button></div>
+  VoucherDetailSheet: ({ voucher, onOpenBundleSetup, onRemoveAppliedVoucher }: { voucher: { package: { name: string } }; onOpenBundleSetup: (voucher: unknown) => void; onRemoveAppliedVoucher?: () => void }) => (
+    <div>
+      <p>DETAIL:{voucher.package.name}</p>
+      <button onClick={() => onOpenBundleSetup(voucher)}>Thiết lập bundle</button>
+      {onRemoveAppliedVoucher ? <button onClick={onRemoveAppliedVoucher}>Hủy voucher</button> : null}
+    </div>
   ),
 }));
 vi.mock("@/src/components/shared/BundleVoucherSetupSheet", () => ({
@@ -56,6 +60,7 @@ const cart: CartItem[] = [{
 
 const baseProps = {
   discountVouchers: [], freeshipVouchers: [], availableVoucherPackages: [], pointsBalance: 0,
+  isLoading: false,
   historyVouchers: [],
   selectedVoucherIds: [], selectedDiscountVouchers: [], selectedFreeshipVouchers: [], subtotalPrice: 50_000,
   orderType: "PICKUP" as const, shippingFee: null, onClose: vi.fn(), onUpdateSelectedVouchers: vi.fn(),
@@ -67,7 +72,29 @@ const baseProps = {
   onBundleApplicationChange: vi.fn(() => ({ ok: true as const })), onRequestRemoveBundle: vi.fn(), onAddExtrasReward: vi.fn(() => null),
 };
 
+function clickVoucherAction(name: string) {
+  const detailButton = screen.getByRole("button", { name: `Xem chi tiết ${name}` });
+  const card = detailButton.parentElement;
+  if (!card) throw new Error(`Không tìm thấy card voucher ${name}`);
+  fireEvent.click(within(card).getByRole("button", { name: "Chọn voucher" }));
+}
+
 describe("CartDiscountPicker — production wiring", () => {
+  it("hiện loading khi voucher chưa tải và chỉ hiện empty state sau khi tải xong", () => {
+    const { rerender } = render(
+      <CartDiscountPicker {...baseProps} isLoading productDiscountVouchers={[]} bundleVouchers={[]} />,
+    );
+
+    expect(screen.getByRole("status", { name: "Đang tải voucher" })).toBeTruthy();
+    expect(screen.queryByText("Bạn chưa có mã ưu đãi nào")).toBeNull();
+
+    rerender(
+      <CartDiscountPicker {...baseProps} isLoading={false} productDiscountVouchers={[]} bundleVouchers={[]} />,
+    );
+    expect(screen.queryByRole("status", { name: "Đang tải voucher" })).toBeNull();
+    expect(screen.getByText("Bạn chưa có mã ưu đãi nào")).toBeTruthy();
+  });
+
   it("giữ PRODUCT_DISCOUNT không target để đọc detail và chỉ khóa tick", () => {
     const voucher = makeVoucher("PRODUCT_DISCOUNT", "Giảm món không target");
     render(<CartDiscountPicker {...baseProps} productDiscountVouchers={[voucher]} bundleVouchers={[]} />);
@@ -88,6 +115,42 @@ describe("CartDiscountPicker — production wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: "Hủy setup" }));
     expect(screen.queryByText("SETUP:Mua 1 tặng 1")).toBeNull();
     expect(baseProps.onBundleApplicationChange).not.toHaveBeenCalled();
+  });
+
+  it("chuyển từ BUNDLE sang PRODUCT_DISCOUNT chỉ giữ một luồng action", () => {
+    const bundle = makeVoucher("BUNDLE", "Bundle chuyển luồng");
+    const product = makeVoucher("PRODUCT_DISCOUNT", "Product chuyển luồng");
+    product.menu_item_id = "latte";
+    const secondLine = { ...cart[0]!, cartId: "line-2" };
+    render(<CartDiscountPicker {...baseProps} cart={[...cart, secondLine]}
+      productDiscountVouchers={[product]} bundleVouchers={[bundle]}
+      getProductVoucherBenefit={() => 10_000} />);
+
+    clickVoucherAction("Bundle chuyển luồng");
+    expect(screen.getByText("SETUP:Bundle chuyển luồng")).toBeTruthy();
+
+    clickVoucherAction("Product chuyển luồng");
+    expect(screen.queryByText("SETUP:Bundle chuyển luồng")).toBeNull();
+    expect(screen.getByRole("region", { name: "Chọn món áp dụng" })).toBeTruthy();
+  });
+
+  it("chuyển từ BUNDLE sang DISCOUNT đóng setup cũ và chỉ toggle order voucher", () => {
+    const bundle = makeVoucher("BUNDLE", "Bundle trước discount");
+    const discount = makeVoucher("DISCOUNT", "Giảm toàn đơn");
+    discount.discount_type = "FIXED";
+    discount.discount_value = 10_000;
+    const onUpdate = vi.fn();
+    render(<CartDiscountPicker {...baseProps} discountVouchers={[discount]}
+      productDiscountVouchers={[]} bundleVouchers={[bundle]}
+      onUpdateSelectedVouchers={onUpdate} />);
+
+    clickVoucherAction("Bundle trước discount");
+    expect(screen.getByText("SETUP:Bundle trước discount")).toBeTruthy();
+
+    clickVoucherAction("Giảm toàn đơn");
+    expect(screen.queryByText("SETUP:Bundle trước discount")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Chọn món áp dụng" })).toBeNull();
+    expect(onUpdate).toHaveBeenCalledOnce();
   });
 
   it("một target áp ngay, nhiều target mở sheet chọn, selected tick thì gỡ", () => {
@@ -118,6 +181,21 @@ describe("CartDiscountPicker — production wiring", () => {
       onRemoveProductVoucher={onRemove} />);
     fireEvent.click(screen.getByRole("button", { name: "Bỏ chọn voucher" }));
     expect(onRemove).toHaveBeenCalledWith("line");
+  });
+
+  it("detail của voucher đang chọn cho hủy và quay lại đúng danh sách", () => {
+    const voucher = makeVoucher("PRODUCT_DISCOUNT", "Giảm đang áp");
+    voucher.menu_item_id = "latte";
+    const onRemove = vi.fn();
+    render(<CartDiscountPicker {...baseProps} cart={[{ ...cart[0]!, productVoucherId: voucher.qr_token }]}
+      productDiscountVouchers={[voucher]} bundleVouchers={[]} getProductVoucherBenefit={() => 10_000}
+      onRemoveProductVoucher={onRemove} />);
+
+    fireEvent.click(screen.getByText("Giảm đang áp"));
+    fireEvent.click(screen.getByRole("button", { name: "Hủy voucher" }));
+
+    expect(onRemove).toHaveBeenCalledWith("line");
+    expect(screen.queryByText("DETAIL:Giảm đang áp")).toBeNull();
   });
 
   it("giữ ACTIVE unavailable PRODUCT_DISCOUNT/BUNDLE để đọc detail nhưng khóa tick", () => {

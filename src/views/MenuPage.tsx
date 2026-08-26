@@ -2,8 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
-import { ArrowLeft, Gift } from "lucide-react";
-import Link from "next/link";
+import { Gift } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 
@@ -20,6 +19,7 @@ import { useCartStore } from "@/src/lib/store/cartStore";
 import { useIsLoggedIn, useIsLoggedInSynced } from "@/src/lib/store/authStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
+import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { MenuItem } from "@/src/lib/types/menu";
 import { listMyVouchers } from "@/src/services/customerVoucherService";
@@ -58,7 +58,7 @@ export default function MenuPage() {
     enabled: Boolean(packagesRes) && isLoggedInSynced,
   });
   const { data: vouchersData } = useQuery({
-    queryKey: ["my_vouchers"],
+    queryKey: VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS,
     queryFn: listMyVouchers,
     enabled: Boolean(packagesRes) && isLoggedInSynced,
   });
@@ -126,7 +126,7 @@ export default function MenuPage() {
       window.removeEventListener("resize", handleScroll);
       if (animationFrameId !== null) window.cancelAnimationFrame(animationFrameId);
     };
-  }, []);
+  }, [menuLoading, powderLoading]);
 
   const handleItemClick = useCallback((item: MenuItem) => {
     if (cartItems.some((cartItem) => cartItem.menuItemId === item.id)) {
@@ -148,17 +148,14 @@ export default function MenuPage() {
     .filter((item) => item.is_seasonal);
 
   return (
-    <main className="min-h-screen bg-[#fdfcf7] px-4 pb-24 font-sans text-foreground sm:px-6">
+    <main className="min-h-screen touch-pan-y overflow-x-clip overscroll-x-none bg-[#fdfcf7] px-2 pb-24 font-sans text-foreground sm:px-6">
 
       {/* Sticky header + tab bar — direct child of <main>, no h-full ancestor, so sticky sticks on window scroll */}
-      <div className="sticky top-0 z-20 -mx-4 bg-[#fdfcf7]/90 px-4 pb-1 pt-4 backdrop-blur-md sm:-mx-6 sm:px-6">
+      <div className="sticky top-0 z-20 -mx-2 bg-[#fdfcf7]/90 px-2 pb-1 pt-4 backdrop-blur-md sm:-mx-6 sm:px-6">
         <div className="max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto">
-          <div className="flex items-center justify-between mb-4">
-            <Link href="/home" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border/50 bg-white text-primary/60 shadow-sm transition-transform hover:text-primary hover:shadow-md active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label="Về trang chủ">
-              <ArrowLeft className="w-5 h-5 -ml-0.5" />
-            </Link>
-            <h1 className="font-serif text-2xl md:text-3xl font-bold text-primary">Menu</h1>
-            <button type="button" onClick={openVoucherModal} className="flex min-h-11 cursor-pointer items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-3.5 py-2.5 text-xs font-bold text-white shadow-sm shadow-orange-500/20 transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-2">
+          <div className="mb-4 grid grid-cols-[1fr_auto_1fr] items-center">
+            <h1 className="col-start-2 font-serif text-2xl font-bold text-primary md:text-3xl">Menu</h1>
+            <button type="button" onClick={openVoucherModal} className="col-start-3 flex min-h-11 cursor-pointer items-center justify-self-end gap-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-3.5 py-2.5 text-xs font-bold text-white shadow-sm shadow-orange-500/20 transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-2">
               <Gift size={14} />
               <span>{isLoggedIn ? `Đổi quà${typeof points === "number" ? ` (${points} cá)` : ""}` : "Ưu đãi"}</span>
             </button>
