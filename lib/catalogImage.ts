@@ -1,4 +1,5 @@
 import {
+  MENU_IMAGE_OUTPUT_CONTENT_TYPE,
   buildMenuImagePath,
   contentTypeForMenuImagePath,
   copyMenuImage,
@@ -44,7 +45,7 @@ export async function prepareCatalogImage(
       category: input.kind,
       productName: input.entityName,
       requestedName,
-      contentType: input.imageFile.type,
+      contentType: MENU_IMAGE_OUTPUT_CONTENT_TYPE,
     });
     const buffer = Buffer.from(await input.imageFile.arrayBuffer());
     const imageUrl = await uploadMenuImage(newPath, buffer, input.imageFile.type);

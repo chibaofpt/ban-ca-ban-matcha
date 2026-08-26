@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createLatteWithPowderSchema } from "@/lib/validations/createLatteWithPowder";
 import {
+  MENU_IMAGE_OUTPUT_CONTENT_TYPE,
   buildMenuImagePath,
   removeMenuImages,
   uploadMenuImage,
@@ -187,7 +188,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         category: "latte",
         productName: validData.name,
         requestedName: validData.image_filename,
-        contentType: imageFile.type,
+        contentType: MENU_IMAGE_OUTPUT_CONTENT_TYPE,
       });
       image_url = await uploadMenuImage(imagePath, buffer, imageFile.type);
       uploadedImagePath = imagePath;

@@ -8,21 +8,21 @@ import { X, ZoomIn, ZoomOut, Check } from "lucide-react";
 interface ImageCropModalProps {
   /** URL.createObjectURL hoặc data URL của ảnh gốc */
   imageSrc: string;
-  /** Callback nhận Blob WebP 1200×1200 sau khi crop xong */
+  /** Callback nhận Blob WebP 800×800 sau khi crop xong */
   onCropDone: (blob: Blob) => void;
   /** Đóng modal mà không thay đổi gì */
   onClose: () => void;
 }
 
 /**
- * Crop vùng được chọn từ ảnh và trả về Blob WebP 1200×1200px.
+ * Crop vùng được chọn từ ảnh và trả về Blob WebP 800×800px.
  * Dùng canvas API để resize + convert, không cần server-side xử lý.
  */
 async function cropImageToWebP(
   imageSrc: string,
   pixelCrop: Area,
-  outputSize = 1200,
-  quality = 0.85
+  outputSize = 800,
+  quality = 0.75
 ): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -64,7 +64,7 @@ async function cropImageToWebP(
   });
 }
 
-/** Modal crop ảnh tỉ lệ 1:1, output WebP 1200×1200px quality 0.85. */
+/** Modal crop ảnh tỉ lệ 1:1, output WebP 800×800px quality 0.75. */
 export default function ImageCropModal({
   imageSrc,
   onCropDone,

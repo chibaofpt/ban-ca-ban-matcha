@@ -4,9 +4,24 @@ const mockUploadMenuImage = vi.fn();
 const mockCopyMenuImage = vi.fn();
 
 vi.mock("@/lib/storage", () => ({
-  buildMenuImagePath: ({ category, requestedName }: { category: string; requestedName?: string }) =>
-    `products/${category}/${requestedName || "auto"}-12345678.webp`,
-  contentTypeForMenuImagePath: () => "image/webp",
+  MENU_IMAGE_OUTPUT_CONTENT_TYPE: "image/webp",
+  buildMenuImagePath: ({
+    category,
+    requestedName,
+    contentType,
+  }: {
+    category: string;
+    requestedName?: string;
+    contentType: string;
+  }) => {
+    const extension = contentType === "image/png"
+      ? "png"
+      : contentType === "image/jpeg"
+        ? "jpg"
+        : "webp";
+    return `products/${category}/${requestedName || "auto"}-12345678.${extension}`;
+  },
+  contentTypeForMenuImagePath: (path: string) => path.endsWith(".png") ? "image/png" : "image/webp",
   copyMenuImage: (...args: unknown[]) => mockCopyMenuImage(...args),
   parseMenuImagePath: (url: string) => url.split("/menu-images/")[1] ?? null,
   uploadMenuImage: (...args: unknown[]) => mockUploadMenuImage(...args),
@@ -21,7 +36,7 @@ describe("Ảnh addon và bột matcha", () => {
     mockCopyMenuImage.mockResolvedValue("https://cdn/menu-images/products/addons/kem-moi-12345678.webp");
   });
 
-  it("upload ảnh mới vào đúng thư mục và trả đường dẫn rollback", async () => {
+  it("upload ảnh PNG mới vào path WebP và trả đường dẫn rollback", async () => {
     const image = new File(["image"], "meyumi.png", { type: "image/png" });
 
     const result = await prepareCatalogImage({
@@ -44,6 +59,25 @@ describe("Ảnh addon và bột matcha", () => {
     });
   });
 
+  it("ảnh JPEG mới luôn tạo storage path đuôi webp", async () => {
+    const image = new File(["image"], "meyumi.jpg", { type: "image/jpeg" });
+
+    const result = await prepareCatalogImage({
+      kind: "powders",
+      entityName: "Meyumi",
+      requestedName: "meyumi",
+      imageFile: image,
+      currentImageUrl: null,
+    });
+
+    expect(mockUploadMenuImage).toHaveBeenCalledWith(
+      "products/powders/meyumi-12345678.webp",
+      expect.any(Buffer),
+      "image/jpeg",
+    );
+    expect(result.newPath).toBe("products/powders/meyumi-12345678.webp");
+  });
+
   it("đổi tên ảnh hiện tại bằng copy và đánh dấu ảnh cũ để dọn sau commit", async () => {
     const result = await prepareCatalogImage({
       kind: "addons",
@@ -58,6 +92,21 @@ describe("Ảnh addon và bột matcha", () => {
       "products/addons/kem-moi-12345678.webp",
     );
     expect(result.oldPath).toBe("products/addons/kem-cu.webp");
+  });
+
+  it("SEO rename ảnh legacy giữ nguyên định dạng cũ", async () => {
+    await prepareCatalogImage({
+      kind: "addons",
+      entityName: "Kem",
+      requestedName: "kem-moi",
+      imageFile: null,
+      currentImageUrl: "https://cdn/menu-images/products/addons/kem-cu.png",
+    });
+
+    expect(mockCopyMenuImage).toHaveBeenCalledWith(
+      "products/addons/kem-cu.png",
+      "products/addons/kem-moi-12345678.png",
+    );
   });
 
   it("từ chối file không phải JPEG, PNG hoặc WebP", async () => {

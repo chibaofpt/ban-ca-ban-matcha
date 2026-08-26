@@ -71,7 +71,7 @@ const StaffCartItemCard = ({
       <div className="flex flex-col items-center gap-2 shrink-0">
         <div className="w-16 h-16 rounded-xl overflow-hidden bg-secondary/40 flex items-center justify-center text-3xl">
           {c.imageUrl ? (
-            <Image src={c.imageUrl} alt={c.name} width={64} height={64} unoptimized className="w-full h-full object-cover" />
+            <Image src={c.imageUrl} alt={c.name} width={64} height={64} sizes="64px" className="w-full h-full object-cover" />
           ) : (
             "🍵"
           )}

@@ -99,7 +99,7 @@ function PowderInfoPopover({ powder }: PowderInfoPopoverProps) {
                 alt={`áº¢nh bá»™t ${powder.name}`}
                 width={256}
                 height={256}
-                unoptimized
+                sizes="220px"
                 className="h-full w-full object-cover"
               />
             </div>
@@ -187,7 +187,7 @@ export function PowderSelector({
                   alt={`áº¢nh bá»™t ${powder.name}`}
                   width={48}
                   height={48}
-                  unoptimized
+                  sizes="48px"
                   className="h-12 w-12 shrink-0 rounded-xl object-cover"
                 />
               )}

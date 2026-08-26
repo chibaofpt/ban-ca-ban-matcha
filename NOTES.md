@@ -48,5 +48,6 @@ Không implement nội dung trong file này nếu task hiện tại chưa đư�
 ## Environment and operations
 
 - Env key inventory duy nhất: `.env.local.example`.
+- Route `/api/cron/cleanup-menu-images` đã tồn tại nhưng staging và production chưa có `cron.job`; cấu hình lịch cleanup là task hạ tầng riêng sau khi backfill/visual QA hoàn tất.
 - Release/launch checklist duy nhất: `push-to-dev`, `production-deploy` và `security-checklist` skills.
 - Prisma migrations là đường duy nhất cho app schema; không dùng `db push`.

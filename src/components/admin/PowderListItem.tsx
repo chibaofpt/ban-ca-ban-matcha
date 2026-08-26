@@ -45,7 +45,7 @@ export default function PowderListItem({ item, onClick }: PowderListItemProps) {
             alt={`Ảnh ${item.name}`}
             width={40}
             height={40}
-            unoptimized
+            sizes="40px"
             className="h-full w-full object-cover"
           />
         ) : (

@@ -45,6 +45,7 @@ Không thực hiện repo-wide layer refactor khi sửa feature. Direct API call
   availability resolver; UI không tự suy luận lifecycle của menu configuration.
 - API response và field compatibility thuộc `API.md`; không đổi tên chỉ vì muốn làm sạch thuật ngữ.
 - External SDK luôn nằm sau wrapper/adapter để UI và business logic không phụ thuộc trực tiếp nhà cung cấp.
+- Ảnh catalog đi qua Storage adapter để chuẩn hóa WebP tối đa 800px, quality 75 và cache một năm; ảnh Supabase hiển thị qua Next/Vercel Image Optimization với `sizes` theo container.
 
 ## UI system
 

@@ -48,7 +48,7 @@ export default function AddonGroupCard({
                 alt={`Ảnh ${item.name}`}
                 width={48}
                 height={48}
-                unoptimized
+                sizes="48px"
                 className="h-full w-full object-cover"
               />
             ) : (

@@ -30,6 +30,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 vi.mock("@/lib/storage", () => ({
+  MENU_IMAGE_OUTPUT_CONTENT_TYPE: "image/webp",
   uploadMenuImage: (...args: unknown[]) => mockUploadMenuImage(...args),
   removeMenuImages: (...args: unknown[]) => mockRemoveMenuImages(...args),
   buildMenuImagePath: (...args: unknown[]) => mockBuildMenuImagePath(...args),

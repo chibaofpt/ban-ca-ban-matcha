@@ -73,6 +73,7 @@ export default function MenuImageCropField({
             src={previewUrl}
             alt="Ảnh sản phẩm đã cắt"
             fill
+            sizes="220px"
             unoptimized
             className="object-cover"
           />
@@ -81,7 +82,7 @@ export default function MenuImageCropField({
             src={currentImageUrl}
             alt={`${label} hiện tại`}
             fill
-            unoptimized
+            sizes="220px"
             className="object-cover"
           />
         ) : hasExistingImage ? (

@@ -49,6 +49,7 @@ export const StaffProductGrid = memo(function StaffProductGrid({
                   src={item.image_url}
                   alt={item.name}
                   fill
+                  sizes="(max-width: 767px) 50vw, (max-width: 1023px) 33vw, 25vw"
                   className="object-cover"
                 />
               ) : (

@@ -345,7 +345,7 @@ export default function AdminMenuPage() {
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-xl bg-secondary/50 flex items-center justify-center overflow-hidden flex-shrink-0">
                             {item.image_url ? (
-                              <Image src={item.image_url} alt={item.name} width={40} height={40} unoptimized className="w-full h-full object-cover" />
+                              <Image src={item.image_url} alt={item.name} width={40} height={40} sizes="40px" className="w-full h-full object-cover" />
                             ) : (
                               <span className="text-xl">🍵</span>
                             )}

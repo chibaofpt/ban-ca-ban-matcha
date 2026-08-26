@@ -105,7 +105,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
             src={item.image_url}
             alt={item.name}
             fill
-            sizes="(max-width: 640px) 50vw, 33vw"
+            sizes="(max-width: 767px) 104px, 120px"
             className="object-cover transition-transform duration-300 ease-out group-hover:scale-105"
             quality={75}
             priority={priority}

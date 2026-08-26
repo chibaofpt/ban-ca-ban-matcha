@@ -119,12 +119,14 @@ is the canonical current example.
 - Bucket: `menu-images` (public bucket)
 - Size limit: 5MB
 - Allowed types: `image/jpeg`, `image/png`, `image/webp`
+- Ảnh upload mới được server xoay theo EXIF, resize tối đa 800×800 (không upscale), loại metadata và lưu WebP quality 75
+- Storage object mới dùng `Content-Type: image/webp`, cache một năm và `upsert: false`; `image_url` vẫn là URL string như trước
 - Optional `image_filename` controls the SEO-friendly Storage object name; it is not stored in a database column
 - Addon/powder/milk-type multipart requests keep their existing JSON contract inside the `payload` field and remain backward-compatible with direct JSON requests
 - Milk-type PUT also accepts `remove_image: true` in the JSON payload to explicitly nullify `image_url` and delete the Storage object
 - Replacing or renaming an image deletes the previous object only after the database update succeeds
 - Soft-deleted menu items, addon groups, and powders retain their image references and are protected from cleanup
-- Daily cleanup deletes only objects unreferenced by all three catalog tables and older than 48 hours; start with `IMAGE_CLEANUP_DRY_RUN=true`
+- Cleanup chỉ xét object không còn được menu item, addon group, powder hoặc milk type tham chiếu và đã cũ hơn 48 giờ; luôn bắt đầu với `IMAGE_CLEANUP_DRY_RUN=true`
 
 ---
 
@@ -238,7 +240,7 @@ promotion, or messaging feature.
 |---|---|---|
 | `/api/cron/cancel-expired-orders` | Supabase `*/5 * * * *` UTC; Vercel `0 0 * * *` UTC backup | Cancel expired PENDING orders in bounded batches and release reservations |
 | `/api/cron/clean-sessions` | Supabase `15 20 * * *` UTC | Delete expired sessions in at most 5 batches of 500 |
-| `/api/cron/cleanup-menu-images` | Supabase `0 17 * * *` UTC | Dry-run/delete orphaned menu images older than 48 hours |
+| `/api/cron/cleanup-menu-images` | Chưa cấu hình lịch ở staging/production | Dry-run/delete orphaned menu images older than 48 hours |
 
 Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-side
 `CRON_SECRET` fails closed with `500 INTERNAL_ERROR`; a missing or incorrect bearer token returns

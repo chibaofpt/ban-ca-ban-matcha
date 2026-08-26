@@ -33,7 +33,7 @@ function OptionCard({ label, meta, sub, isActive, onClick, imageUrl, imageAlt }:
           alt={imageAlt ?? "Ảnh tuỳ chọn"}
           width={32}
           height={32}
-          unoptimized
+          sizes="32px"
           className="h-8 w-8 shrink-0 rounded-lg object-cover"
         />
       )}

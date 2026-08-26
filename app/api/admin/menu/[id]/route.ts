@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { updateMenuSchema } from "@/lib/validations/menu";
 import {
+  MENU_IMAGE_OUTPUT_CONTENT_TYPE,
   buildMenuImagePath,
   contentTypeForMenuImagePath,
   copyMenuImage,
@@ -159,7 +160,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           category: asMenuStorageCategory(existing.category),
           productName: validData.name ?? existing.name,
           requestedName: validData.image_filename,
-          contentType: imageFile.type,
+          contentType: MENU_IMAGE_OUTPUT_CONTENT_TYPE,
         });
         image_url = await uploadMenuImage(imagePath, buffer, imageFile.type);
         newImagePath = imagePath;

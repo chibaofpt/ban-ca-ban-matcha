@@ -1,7 +1,12 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import sharp from "sharp";
 
 const MENU_IMAGES_BUCKET = "menu-images";
 const PAGE_SIZE = 100;
+const MENU_IMAGE_CACHE_CONTROL = "31536000";
+const SUPPORTED_IMAGE_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+export const MENU_IMAGE_OUTPUT_CONTENT_TYPE = "image/webp";
 
 let supabase: SupabaseClient | null = null;
 
@@ -9,6 +14,14 @@ let supabase: SupabaseClient | null = null;
 export interface MenuImageObject {
   path: string;
   createdAt: string | null;
+  cacheControl: string | null;
+  size: number | null;
+}
+
+/** Binary data downloaded from the menu image bucket. */
+export interface DownloadedMenuImage {
+  buffer: Buffer;
+  contentType: string;
 }
 
 /** Inputs used to generate a collision-safe SEO storage path. */
@@ -119,13 +132,41 @@ export async function uploadMenuImage(
   buffer: Buffer,
   contentType: string,
 ): Promise<string> {
+  if (!SUPPORTED_IMAGE_CONTENT_TYPES.has(contentType)) {
+    throw new Error("INVALID_IMAGE_CONTENT_TYPE");
+  }
+  const optimizedBuffer = await sharp(buffer)
+    .rotate()
+    .resize({
+      width: 800,
+      height: 800,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .webp({ quality: 75, effort: 4 })
+    .toBuffer();
   const bucket = getSupabase().storage.from(MENU_IMAGES_BUCKET);
-  const { error } = await bucket.upload(fileName, buffer, {
-    contentType,
+  const { error } = await bucket.upload(fileName, optimizedBuffer, {
+    contentType: MENU_IMAGE_OUTPUT_CONTENT_TYPE,
+    cacheControl: MENU_IMAGE_CACHE_CONTROL,
     upsert: false,
   });
   if (error) throw new Error(`Upload failed: ${error.message}`);
   return publicUrlForPath(fileName);
+}
+
+/** Download a menu image through the Storage SDK for safe server-side processing. */
+export async function downloadMenuImage(path: string): Promise<DownloadedMenuImage> {
+  const { data, error } = await getSupabase().storage.from(MENU_IMAGES_BUCKET).download(path);
+  if (error) throw new Error(`Download failed: ${error.message}`);
+  const contentType = data.type || contentTypeForMenuImagePath(path);
+  if (!contentType || !SUPPORTED_IMAGE_CONTENT_TYPES.has(contentType)) {
+    throw new Error("INVALID_IMAGE_CONTENT_TYPE");
+  }
+  return {
+    buffer: Buffer.from(await data.arrayBuffer()),
+    contentType,
+  };
 }
 
 /** Copy a menu image within the same bucket and return its new public URL. */
@@ -162,9 +203,16 @@ async function listDirectory(path: string): Promise<MenuImageObject[]> {
       const entryPath = path ? `${path}/${entry.name}` : entry.name;
       if (entry.id === null) directories.push(entryPath);
       else {
+        const metadata = entry.metadata && typeof entry.metadata === "object"
+          ? entry.metadata as Record<string, unknown>
+          : {};
+        const cacheControl = metadata.cacheControl ?? metadata.cache_control;
+        const size = metadata.size;
         files.push({
           path: entryPath,
           createdAt: entry.created_at ?? entry.updated_at ?? null,
+          cacheControl: typeof cacheControl === "string" ? cacheControl : null,
+          size: typeof size === "number" ? size : null,
         });
       }
     }
