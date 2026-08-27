@@ -299,6 +299,7 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `id` uuid PK
 - `addon_group_id` uuid FK → addon_groups (cascade delete)
 - `label` string — e.g. "½ viên", "+2g"
+- `image_url` string nullable — Supabase Storage public URL for this option; customer UI falls back to `addon_groups.image_url` when null.
 - `price_vnd` int — 0 if no charge. Extra matcha: always 0 here — actual price computed from `gram_value × selected_powder.price_per_gram` at order time.
 - `gram_value` Decimal nullable — Extra matcha only: positive gram amount (1.0–4.0 in the current seed). Null for all fixed-price addon types.
 - `is_active` bool — default true. Referenced options are retired by setting false, never hard deleted.
@@ -483,6 +484,7 @@ Junction table mapping multiple ADDON vouchers to an order item.
 > `idx_vouchers_package_status (package_id, status)` and
 > `idx_vouchers_package_user (package_id, user_id)`. These indexes add no counters or lifecycle
 > state; effective expiry remains derived from `status` plus `expires_at`.
+> Cursor wallet reads use `idx_vouchers_user_created_cursor (user_id, created_at DESC, id DESC)`.
 
 ---
 
@@ -498,6 +500,12 @@ Immutable. Reversal = insert new negative-delta row.
 - `order_id` uuid FK nullable → orders
 - `voucher_id` uuid FK nullable → vouchers
 - `created_at` timestamp
+
+Cursor history reads use `idx_points_log_user_created_cursor (user_id, created_at DESC, id DESC)`.
+
+`push_subscriptions` fan-out uses partial index `idx_push_subscriptions_active_cursor (id) WHERE
+is_active = true`. The shared trigger function `public.update_updated_at()` pins
+`search_path = pg_catalog`; PUBLIC, anon, and authenticated have no execute privilege.
 
 > For aggregate PRODUCT surplus, create one `voucher_surplus` log associated with the order.
 > Do not create separately rounded surplus logs per PRODUCT voucher.

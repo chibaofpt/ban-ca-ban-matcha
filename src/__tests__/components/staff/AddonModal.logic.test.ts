@@ -41,6 +41,7 @@ const quantityGroup: AddonGroup = {
     {
       id: "opt-powder",
       label: "Bột matcha",
+      image_url: null,
       price_vnd: 5000,
       gram_value: null,
       sort_order: 0,
@@ -55,8 +56,8 @@ const selectorGroup: AddonGroup = {
   type: "SELECTOR",
   max_quantity: null,
   options: [
-    { id: "opt-cow", label: "Sữa bò", price_vnd: 0, gram_value: null, sort_order: 0 },
-    { id: "opt-oat", label: "Sữa Oat", price_vnd: 10000, gram_value: null, sort_order: 1 },
+    { id: "opt-cow", label: "Sữa bò", image_url: null, price_vnd: 0, gram_value: null, sort_order: 0 },
+    { id: "opt-oat", label: "Sữa Oat", image_url: null, price_vnd: 10000, gram_value: null, sort_order: 1 },
   ],
 };
 

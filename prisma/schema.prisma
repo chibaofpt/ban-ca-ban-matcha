@@ -180,6 +180,7 @@ model Voucher {
   @@index([qr_token], map: "idx_vouchers_qr_token")
   @@index([status], map: "idx_vouchers_status")
   @@index([user_id], map: "idx_vouchers_user_id")
+  @@index([user_id, created_at(sort: Desc), id(sort: Desc)], map: "idx_vouchers_user_created_cursor")
   @@index([package_id, status], map: "idx_vouchers_package_status")
   @@index([package_id, user_id], map: "idx_vouchers_package_user")
   @@map("vouchers")
@@ -204,6 +205,7 @@ model PointsLog {
 
   @@index([created_at(sort: Desc)], map: "idx_points_log_created_at")
   @@index([user_id], map: "idx_points_log_user_id")
+  @@index([user_id, created_at(sort: Desc), id(sort: Desc)], map: "idx_points_log_user_created_cursor")
   @@map("points_log")
 }
 
@@ -364,6 +366,7 @@ model AddonOption {
   id                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   addon_group_id    String                  @db.Uuid
   label             String
+  image_url         String?
   price_vnd         Int                     @default(0)
   /// Deprecated during the opt-in rollout. Always false; dropped in phase 2.
   is_default        Boolean                 @default(false)

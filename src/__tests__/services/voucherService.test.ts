@@ -206,16 +206,21 @@ describe("listMyVouchers", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("gọi đúng endpoint GET /api/profile/vouchers", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({
+      data: { data: { granted_count: 0, expired_count: 0 } },
+    });
     vi.mocked(apiClient.get).mockResolvedValueOnce({
       data: { data: [] },
     });
 
     await listMyVouchers();
 
+    expect(apiClient.post).toHaveBeenCalledWith("/api/profile/vouchers/sync");
     expect(apiClient.get).toHaveBeenCalledWith("/api/profile/vouchers");
   });
 
   it("trả về mảng voucher của người dùng", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: {} } });
     vi.mocked(apiClient.get).mockResolvedValueOnce({
       data: { data: [mockMyVoucher] },
     });
@@ -228,6 +233,7 @@ describe("listMyVouchers", () => {
   });
 
   it("voucher có package info lồng nhau", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: {} } });
     vi.mocked(apiClient.get).mockResolvedValueOnce({
       data: { data: [mockMyVoucher] },
     });
@@ -239,6 +245,7 @@ describe("listMyVouchers", () => {
   });
 
   it("trả về mảng rỗng khi không có voucher nào", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: {} } });
     vi.mocked(apiClient.get).mockResolvedValueOnce({
       data: { data: [] },
     });

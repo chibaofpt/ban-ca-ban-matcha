@@ -5,8 +5,13 @@ const MENU_IMAGES_BUCKET = "menu-images";
 const PAGE_SIZE = 100;
 const MENU_IMAGE_CACHE_CONTROL = "31536000";
 const SUPPORTED_IMAGE_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MENU_IMAGE_UPLOAD_PRESETS = {
+  full: { maxDimension: 800, quality: 75 },
+  compact: { maxDimension: 320, quality: 70 },
+} as const;
 
 export const MENU_IMAGE_OUTPUT_CONTENT_TYPE = "image/webp";
+export type MenuImageUploadPreset = keyof typeof MENU_IMAGE_UPLOAD_PRESETS;
 
 let supabase: SupabaseClient | null = null;
 
@@ -126,24 +131,26 @@ export function parseMenuImagePath(publicUrl: string): string | null {
   }
 }
 
-/** Upload a menu image without overwriting an existing storage object. */
+/** Optimize and upload a menu image without overwriting an existing storage object. */
 export async function uploadMenuImage(
   fileName: string,
   buffer: Buffer,
   contentType: string,
+  preset: MenuImageUploadPreset = "full",
 ): Promise<string> {
   if (!SUPPORTED_IMAGE_CONTENT_TYPES.has(contentType)) {
     throw new Error("INVALID_IMAGE_CONTENT_TYPE");
   }
+  const { maxDimension, quality } = MENU_IMAGE_UPLOAD_PRESETS[preset];
   const optimizedBuffer = await sharp(buffer)
     .rotate()
     .resize({
-      width: 800,
-      height: 800,
+      width: maxDimension,
+      height: maxDimension,
       fit: "inside",
       withoutEnlargement: true,
     })
-    .webp({ quality: 75, effort: 4 })
+    .webp({ quality, effort: 4 })
     .toBuffer();
   const bucket = getSupabase().storage.from(MENU_IMAGES_BUCKET);
   const { error } = await bucket.upload(fileName, optimizedBuffer, {

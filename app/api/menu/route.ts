@@ -84,6 +84,7 @@ async function fetchMenuData(): Promise<MenuData> {
         options: g.options.map((o): AddonOption => ({
           id: o.id,
           label: o.label,
+          image_url: o.image_url ?? null,
           price_vnd: o.price_vnd,
           gram_value: o.gram_value !== null ? Number(o.gram_value) : null,
           sort_order: o.sort_order,

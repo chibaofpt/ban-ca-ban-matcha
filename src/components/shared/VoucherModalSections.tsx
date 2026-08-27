@@ -17,6 +17,7 @@ interface VoucherModalTabsProps {
 
 interface VoucherModalFrameProps extends VoucherModalTabsProps {
   children: ReactNode;
+  detailOpen?: boolean;
   pointsBalance?: number;
   headerAction?: ReactNode;
   footer?: ReactNode;
@@ -36,11 +37,13 @@ export function VoucherModalFrame({
   onChange,
   onClose,
   children,
+  detailOpen = false,
 }: VoucherModalFrameProps) {
   const touchStart = useRef({ x: 0, y: 0 });
 
   return (
     <div data-slot="voucher-modal-frame" className="relative flex h-[85dvh] w-full flex-col overflow-hidden rounded-t-[2.5rem] bg-background shadow-2xl md:max-h-[85dvh] md:max-w-2xl md:rounded-[2.5rem]">
+      {!detailOpen && <>
       <div className="absolute inset-x-0 top-3 z-10 mx-auto h-1.5 w-12 rounded-full bg-border/60 md:hidden" aria-hidden="true" />
       <header className="z-10 bg-background px-4 pb-3 pt-6 md:pt-4">
         <div className="mb-3 flex items-center justify-between">
@@ -76,6 +79,7 @@ export function VoucherModalFrame({
         {children}
       </div>
       {footer}
+      </>}
       {overlayContent}
     </div>
   );

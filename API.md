@@ -119,7 +119,7 @@ is the canonical current example.
 - Bucket: `menu-images` (public bucket)
 - Size limit: 5MB
 - Allowed types: `image/jpeg`, `image/png`, `image/webp`
-- Ảnh upload mới được server xoay theo EXIF, resize tối đa 800×800 (không upscale), loại metadata và lưu WebP quality 75
+- Ảnh upload mới được server xoay theo EXIF, resize không upscale và loại metadata: menu/powder lưu WebP tối đa 800×800 quality 75; milk type/add-on lưu WebP tối đa 320×320 quality 70
 - Storage object mới dùng `Content-Type: image/webp`, cache một năm và `upsert: false`; `image_url` vẫn là URL string như trước
 - Optional `image_filename` controls the SEO-friendly Storage object name; it is not stored in a database column
 - Addon/powder/milk-type multipart requests keep their existing JSON contract inside the `payload` field and remain backward-compatible with direct JSON requests
@@ -179,6 +179,7 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/profile/addresses/[id]` | PUT, DELETE |
 | `/api/profile/points` | GET |
 | `/api/profile/vouchers` | GET |
+| `/api/profile/vouchers/sync` | POST |
 | `/api/profile/vouchers/claim` | POST |
 | `/api/profile/vouchers/exchange` | POST |
 | `/api/profile/vouchers/refund` | POST |
@@ -239,13 +240,18 @@ promotion, or messaging feature.
 
 | Route | Schedule | Purpose |
 |---|---|---|
-| `/api/cron/cancel-expired-orders` | Supabase `*/5 * * * *` UTC; Vercel `0 0 * * *` UTC backup | Cancel expired PENDING orders in bounded batches and release reservations |
-| `/api/cron/clean-sessions` | Supabase `15 20 * * *` UTC | Delete expired sessions in at most 5 batches of 500 |
+| `/api/cron/cancel-expired-orders` | Required Supabase `*/5 * * * *` UTC; Vercel `0 0 * * *` UTC backup | Cancel expired PENDING orders in bounded batches and release reservations |
+| `/api/cron/clean-sessions` | Required Supabase `15 20 * * *` UTC | Delete expired sessions in at most 5 batches of 500 |
 | `/api/cron/cleanup-menu-images` | Chưa cấu hình lịch ở staging/production | Dry-run/delete orphaned menu images older than 48 hours |
 
 Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-side
 `CRON_SECRET` fails closed with `500 INTERNAL_ERROR`; a missing or incorrect bearer token returns
 `401 UNAUTHORIZED`. No worker starts unless this check succeeds.
+
+Supabase Cron must use a Vault-backed deployment URL and `CRON_SECRET`. Staging may omit these
+jobs when the release owner explicitly accepts that expired-order and session cleanup behavior cannot
+be exercised there. Production release remains blocked until both required jobs are installed and
+smoke-tested against the production deployment.
 
 `/api/push/test` has been deleted and is not a supported development or production contract.
 
@@ -253,10 +259,12 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
 
 ## Request / Response Specs
 
-### `GET /api/admin/report?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&staffId?=UUID`
+### `GET /api/admin/report?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&staffId?=qr_token`
 
 ADMIN-only. `startDate` and `endDate` are required; `staffId` optionally limits completed orders
-to the selected staff member. Dates are evaluated in `Asia/Ho_Chi_Minh`.
+to the selected staff member. Public `qr_token` is canonical; a legacy UUID is accepted for one
+release through the server resolver and recorded as compatibility telemetry. Dates are evaluated
+in `Asia/Ho_Chi_Minh`.
 
 ```ts
 {
@@ -330,7 +338,7 @@ to the selected staff member. Dates are evaluated in `Asia/Ho_Chi_Minh`.
 }
 ```
 
-### `GET /api/profile/points?page=1&limit=10`
+### `GET /api/profile/points?page=1&limit=10&cursor?=opaque`
 ```ts
 {
   data: {
@@ -354,19 +362,42 @@ to the selected staff member. Dates are evaluated in `Asia/Ho_Chi_Minh`.
       } | null
     }[]
     meta: {
-      total: number                    // grouped events, not raw log rows
+      total: number                    // raw immutable rows during the page compatibility bridge
       page: number
       limit: number
       totalPages: number
+      has_more: boolean
+      next_cursor: string | null
     }
   }
 }
 ```
 
-- Default `page=1`, `limit=10`; maximum `limit=50`. Invalid values return `400 VALIDATION_ERROR`.
+- Default `page=1`, `limit=10`; maximum `limit=50`, maximum compatibility page `100`. New clients
+  follow the opaque `next_cursor`; `page` remains a one-release bounded compatibility bridge.
+  Invalid values return `400 VALIDATION_ERROR`.
 - `order_complete` + `voucher_surplus` group by order; reversal reasons form a separate event.
-- Pagination happens after grouping, so one order event is never split across pages.
+- The database query is bounded and ordered by `(created_at DESC, id DESC)`; the endpoint never
+  loads a customer's complete `points_log` history into application memory.
+- Grouping is applied within the bounded page. New cursor consumers must treat `next_cursor` as
+  authoritative; the legacy `total`/`totalPages` fields count immutable rows until that bridge is removed.
 - The response never exposes `order_id`, `voucher_id`, or `performed_by`.
+
+### `GET /api/admin/staff`
+
+Returns `{ qr_token, id, name, role }[]`. `qr_token` is canonical. During the one-release bridge,
+`id` contains the same public `qr_token`; raw `users.id` is never returned.
+
+### `GET /api/profile/vouchers?status?=&limit=50&cursor?=opaque`
+
+Read-only, maximum 50 rows, ordered by `(created_at DESC, id DESC)`. Returns
+`meta: { limit, has_more, next_cursor }`. Effective expiry is projected without writing data.
+
+### `POST /api/profile/vouchers/sync`
+
+CUSTOMER-only explicit reconciliation for automatic grants and expired ACTIVE vouchers. Returns
+`{ data: { granted_count, expired_count } }`. Customer clients call this mutation before reading
+the wallet; GET routes never grant, expire, or cancel records.
 
 ### `PATCH /api/profile`
 ```ts
@@ -477,6 +508,7 @@ type AddonGroup = {
   options: {
     id: string
     label: string
+    image_url: string | null         // own option image; UI falls back to AddonGroup.image_url
     price_vnd: number               // extra matcha: 0 — actual price = gram_value × powder.price_per_gram
     gram_value: number | null       // extra matcha only: positive gram amount. null for fixed-price addons.
     sort_order: number
@@ -500,6 +532,7 @@ and option `is_active`.
   is_active: boolean
   options: {
     id?: string
+    image_key?: string              // multipart correlation key; 1-64 letters, digits, _ or -
     label: string
     price_vnd: number
     gram_value?: number | null
@@ -523,8 +556,16 @@ Omitting an existing option from an update does not delete it; retire it with `i
   payload: string        // JSON.stringify(existing request payload)
   image?: File          // JPEG, PNG, or WebP; max 5MB
   image_filename?: string // optional SEO object name; may rename an existing image
+  option_image_<image_key>?: File
+  option_image_filename_<image_key>?: string
 }
 ```
+
+Option images reuse the `menu-images` bucket and compact pipeline: square WebP, maximum 320px,
+quality 70, one-year cache. The server correlates every option file with a unique `image_key`,
+rejects unmatched keys, rolls back newly uploaded objects when the database transaction fails,
+and removes replaced objects only after commit. JSON requests and group-level images remain
+backward compatible.
 
 ### `GET /api/admin/menu`
 Uses the same `updated_at`, `latte`, `fusion`, and `extras` grouping as `GET /api/menu`, but does not return the public global `milk_types` or `addon_groups` collections. It also:

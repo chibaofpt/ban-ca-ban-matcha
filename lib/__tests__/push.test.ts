@@ -21,14 +21,14 @@ vi.mock("web-push", () => ({
 }));
 
 const mockPushSubscriptionFindMany = vi.fn();
-const mockPushSubscriptionUpdate = vi.fn();
+const mockPushSubscriptionUpdateMany = vi.fn();
 const mockPushSubscriptionUpsert = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     pushSubscription: {
       findMany: (...args: unknown[]) => mockPushSubscriptionFindMany(...args),
-      update: (...args: unknown[]) => mockPushSubscriptionUpdate(...args),
+      updateMany: (...args: unknown[]) => mockPushSubscriptionUpdateMany(...args),
       upsert: (...args: unknown[]) => mockPushSubscriptionUpsert(...args),
     },
   },
@@ -160,9 +160,9 @@ describe("sendPushToRoles — gửi push theo role", () => {
     await sendPushToRoles(["ADMIN"], testPayload);
 
     // Phải set is_active = false cho subscription expired
-    expect(mockPushSubscriptionUpdate).toHaveBeenCalledWith(
+    expect(mockPushSubscriptionUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: adminSub.id },
+        where: { id: { in: [adminSub.id] } },
         data: { is_active: false },
       })
     );
@@ -198,6 +198,8 @@ describe("sendPushToRoles — gửi push theo role", () => {
 
     expect(mockPushSubscriptionFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
+        take: 100,
+        orderBy: { id: "asc" },
         where: expect.objectContaining({
           is_active: true,
         }),

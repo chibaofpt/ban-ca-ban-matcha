@@ -38,6 +38,44 @@ describe("Parser multipart cho addon và bột", () => {
     }
   });
 
+  it("ghép nhiều ảnh option theo image_key trong cùng multipart", async () => {
+    const formData = new FormData();
+    const creamImage = new File(["cream"], "kem-sua.webp", { type: "image/webp" });
+    const matchaImage = new File(["matcha"], "extra-2g.webp", { type: "image/webp" });
+    formData.set("payload", JSON.stringify({
+      name: "Topping",
+      options: [
+        { image_key: "cream", label: "Kem sữa" },
+        { image_key: "matcha-2g", label: "+2g" },
+      ],
+    }));
+    formData.set("option_image_cream", creamImage);
+    formData.set("option_image_filename_cream", "kem-sua");
+    formData.set("option_image_matcha-2g", matchaImage);
+    const request = new Request("http://localhost/api/admin/addon-groups", {
+      method: "POST",
+      body: formData,
+    });
+
+    const result = await parseCatalogRequest(request);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.optionImages).toHaveLength(2);
+      expect(result.optionImages).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          imageKey: "cream",
+          requestedName: "kem-sua",
+          imageFile: expect.objectContaining({ name: "kem-sua.webp" }),
+        }),
+        expect.objectContaining({
+          imageKey: "matcha-2g",
+          imageFile: expect.objectContaining({ name: "extra-2g.webp" }),
+        }),
+      ]));
+    }
+  });
+
   it("trả validation error khi payload multipart không phải JSON", async () => {
     const formData = new FormData();
     formData.set("payload", "{");

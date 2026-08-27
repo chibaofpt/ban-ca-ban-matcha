@@ -13,6 +13,14 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
+vi.mock("@/lib/publicIdentifiers", () => ({
+  resolveStaffIdentifier: (identifier: string) => Promise.resolve({
+    id: identifier,
+    qr_token: "staff-public-token",
+    role: "STAFF",
+  }),
+}));
+
 const mockOrderFindMany = vi.fn();
 const mockDefaultSizeConfigFindMany = vi.fn();
 const mockPowderSizeConfigFindMany = vi.fn();

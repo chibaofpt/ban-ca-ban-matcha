@@ -56,4 +56,28 @@ describe("Service upload ảnh catalog", () => {
     expect(JSON.parse(String(body.get("payload")))).toEqual(payload);
     expect(body.get("image")).toBe(image);
   });
+
+  it("gửi đúng ảnh riêng của từng addon option theo image_key", async () => {
+    const creamImage = new File(["cream"], "cream.webp", { type: "image/webp" });
+    const matchaImage = new File(["matcha"], "matcha.webp", { type: "image/webp" });
+    const payload = {
+      name: "Topping",
+      type: "SELECTOR" as const,
+      is_active: true,
+      options: [
+        { image_key: "cream", label: "Kem", price_vnd: 10000, is_active: true, sort_order: 0 },
+        { image_key: "matcha-2g", label: "+2g", price_vnd: 0, gram_value: 2, is_active: true, sort_order: 1 },
+      ],
+    };
+
+    await updateAddonGroup("addon-1", payload, null, "", [
+      { imageKey: "cream", imageFile: creamImage, imageFilename: "kem-sua" },
+      { imageKey: "matcha-2g", imageFile: matchaImage, imageFilename: "" },
+    ]);
+
+    const [, body] = mockPut.mock.calls[0] as [string, FormData];
+    expect(body.get("option_image_cream")).toBe(creamImage);
+    expect(body.get("option_image_filename_cream")).toBe("kem-sua");
+    expect(body.get("option_image_matcha-2g")).toBe(matchaImage);
+  });
 });

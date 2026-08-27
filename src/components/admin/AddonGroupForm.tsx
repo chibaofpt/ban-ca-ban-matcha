@@ -3,12 +3,20 @@
 import { useForm, useFieldArray, Controller, useWatch } from "react-hook-form";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/src/utils/cn";
-import type { AddonGroupFormFields as FormFields, AddonGroupFormPayload } from "@/src/components/admin/addonGroupFormModel";
+import CatalogImageFields from "@/src/components/admin/CatalogImageFields";
+import type {
+  AddonGroupFormFields as FormFields,
+  AddonGroupFormSubmission,
+} from "@/src/components/admin/addonGroupFormModel";
+
+function createOptionImageKey(): string {
+  return `new-${crypto.randomUUID()}`;
+}
 
 interface AddonGroupFormProps {
   mode: "create" | "edit";
   defaultValues?: Partial<FormFields>;
-  onSubmit: (data: AddonGroupFormPayload) => Promise<void>;
+  onSubmit: (data: AddonGroupFormSubmission) => Promise<void>;
   isSubmitting: boolean;
 }
 
@@ -22,6 +30,9 @@ export default function AddonGroupForm({
     register,
     control,
     handleSubmit,
+    setValue,
+    setError,
+    clearErrors,
     formState: { errors },
   } = useForm<FormFields>({
     defaultValues: {
@@ -31,7 +42,17 @@ export default function AddonGroupForm({
       max_quantity: "",
       is_active: true,
       options: [
-        { label: "", price_vnd: "0", is_active: true, sort_order: "0", gram_value: "" }
+        {
+          image_key: createOptionImageKey(),
+          image_url: null,
+          image_file: null,
+          image_filename: "",
+          label: "",
+          price_vnd: "0",
+          is_active: true,
+          sort_order: "0",
+          gram_value: "",
+        }
       ],
       ...defaultValues,
     },
@@ -40,11 +61,27 @@ export default function AddonGroupForm({
   const { fields, append, remove } = useFieldArray({
     control,
     name: "options",
+    keyName: "fieldKey",
   });
 
   const type = useWatch({ control, name: "type" });
 
   const onFormSubmit = async (values: FormFields) => {
+    let hasImageError = false;
+    values.options.forEach((option, index) => {
+      const filename = option.image_filename.trim();
+      if (/\.\.|[/\\\0]/.test(filename)) {
+        setError(`options.${index}.image_filename`, { message: "Tên file ảnh không hợp lệ." });
+        hasImageError = true;
+      } else if (filename && !option.image_file && !option.image_url) {
+        setError(`options.${index}.image_filename`, { message: "Vui lòng chọn ảnh trước khi đặt tên file SEO." });
+        hasImageError = true;
+      } else {
+        clearErrors(`options.${index}.image_filename`);
+      }
+    });
+    if (hasImageError) return;
+
     const payload = {
       name: values.name.trim(),
       description: values.description.trim() || null,
@@ -53,6 +90,7 @@ export default function AddonGroupForm({
       is_active: values.is_active,
       options: values.options.map((opt, idx) => ({
         id: opt.id,
+        image_key: opt.image_key,
         label: opt.label.trim(),
         price_vnd: Number(opt.price_vnd),
         is_active: opt.is_active,
@@ -60,7 +98,14 @@ export default function AddonGroupForm({
         gram_value: opt.gram_value !== "" ? Number(opt.gram_value) : null,
       })),
     };
-    await onSubmit(payload);
+    await onSubmit({
+      payload,
+      optionImages: values.options.map((option) => ({
+        imageKey: option.image_key,
+        imageFile: option.image_file,
+        imageFilename: option.image_filename,
+      })),
+    });
   };
 
   const inputClass = "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1 disabled:opacity-50";
@@ -118,7 +163,17 @@ export default function AddonGroupForm({
           <h3 className="font-semibold text-foreground">Danh sách Options</h3>
           <button
             type="button"
-            onClick={() => append({ label: "", price_vnd: "0", is_active: true, sort_order: String(fields.length), gram_value: "" })}
+            onClick={() => append({
+              image_key: createOptionImageKey(),
+              image_url: null,
+              image_file: null,
+              image_filename: "",
+              label: "",
+              price_vnd: "0",
+              is_active: true,
+              sort_order: String(fields.length),
+              gram_value: "",
+            })}
             className="flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition bg-primary/10 hover:bg-primary/20 px-3 py-1.5 rounded-lg"
           >
             <Plus size={16} /> Thêm option
@@ -131,7 +186,40 @@ export default function AddonGroupForm({
 
         <div className="space-y-3">
           {fields.map((field, index) => (
-            <div key={field.id} className="relative flex items-start gap-3 p-4 rounded-xl border border-border bg-card shadow-sm group">
+            <div key={field.fieldKey} className="group relative flex flex-col items-stretch gap-4 rounded-xl border border-border bg-card p-4 shadow-sm sm:flex-row sm:items-start">
+              <input type="hidden" {...register(`options.${index}.image_key`)} />
+              <input type="hidden" {...register(`options.${index}.image_url`)} />
+              <Controller
+                name={`options.${index}.image_filename`}
+                control={control}
+                render={({ field: filenameField }) => (
+                  <div className="shrink-0 sm:w-40">
+                    <CatalogImageFields
+                      currentImageUrl={field.image_url}
+                      label="Ảnh option"
+                      cropPreset="compact"
+                      layout="inline"
+                      inputId={`addon-option-image-${field.image_key}`}
+                      imageFilename={filenameField.value}
+                      disabled={isSubmitting}
+                      onFileChange={(file) => {
+                        setValue(`options.${index}.image_file`, file, { shouldDirty: true });
+                        clearErrors(`options.${index}.image_file`);
+                      }}
+                      onFilenameChange={filenameField.onChange}
+                      onError={(message) => {
+                        if (message) setError(`options.${index}.image_file`, { message });
+                        else clearErrors(`options.${index}.image_file`);
+                      }}
+                    />
+                    {(errors.options?.[index]?.image_file?.message || errors.options?.[index]?.image_filename?.message) && (
+                      <p className={errorClass}>
+                        {errors.options[index]?.image_file?.message ?? errors.options[index]?.image_filename?.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+              />
               
               <div className="flex-1 grid grid-cols-12 gap-4">
                 <div className="col-span-12 sm:col-span-5">

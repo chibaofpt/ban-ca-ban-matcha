@@ -85,8 +85,9 @@ ACTIVE → REFUNDED                                (auto: target item soft-delet
 
 - Treat `expires_at <= now` as unusable in every list, apply, exchange, and scan flow,
   regardless of stored status.
-- **Lazy synchronization is implemented**: `lazyExpireVouchers(userId)` writes `status = EXPIRED`
-  for `ACTIVE` vouchers past `expires_at` before list, apply, and scan flows. No cron needed.
+- `lazyExpireVouchers(userId)` may write `status = EXPIRED` only from an explicit mutation or an
+  existing mutation flow. Customer wallet reconciliation uses `POST /api/profile/vouchers/sync`;
+  GET wallet/staff-list routes project effective expiry without writing.
 - Never lazy-expire `RESERVED` vouchers — the reservation is still valid.
 - If an order is cancelled after the voucher's `expires_at`, set status = `EXPIRED`, not `ACTIVE`.
   This is handled by `cancelOrder` / `restoreVouchersOnCancel`.

@@ -3,6 +3,28 @@ import { prisma } from "@/lib/prisma";
 import { recordLegacyIdentifierFallback } from "@/lib/observability";
 
 export type PublicUserIdentity = Pick<User, "id" | "qr_token">;
+export type PublicStaffIdentity = Pick<User, "id" | "qr_token" | "role">;
+
+/** Resolve a STAFF/ADMIN filter token, then one-release legacy UUID fallback. */
+export async function resolveStaffIdentifier(
+  identifier: string,
+): Promise<PublicStaffIdentity | null> {
+  const publicUser = await prisma.user.findUnique({
+    where: { qr_token: identifier },
+    select: { id: true, qr_token: true, role: true },
+  });
+  if (publicUser) {
+    return publicUser.role === "STAFF" || publicUser.role === "ADMIN" ? publicUser : null;
+  }
+
+  const legacyUser = await prisma.user.findUnique({
+    where: { id: identifier },
+    select: { id: true, qr_token: true, role: true },
+  });
+  if (!legacyUser || (legacyUser.role !== "STAFF" && legacyUser.role !== "ADMIN")) return null;
+  recordLegacyIdentifierFallback("user", "staff");
+  return legacyUser;
+}
 
 /** Resolve a customer path identifier by public token, then one-release legacy UUID fallback. */
 export async function resolveCustomerIdentifier(

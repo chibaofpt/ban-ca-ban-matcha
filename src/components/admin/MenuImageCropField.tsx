@@ -11,6 +11,9 @@ interface MenuImageCropFieldProps {
   label?: string;
   onFileChange: (file: File | null) => void;
   onError: (message: string | null) => void;
+  outputSize?: number;
+  outputQuality?: number;
+  compact?: boolean;
 }
 
 /** Image picker that crops uploads to a square WebP before form submission. */
@@ -20,6 +23,9 @@ export default function MenuImageCropField({
   label = "Ảnh đại diện",
   onFileChange,
   onError,
+  outputSize = 800,
+  outputQuality = 0.75,
+  compact = false,
 }: MenuImageCropFieldProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [cropSourceUrl, setCropSourceUrl] = useState<string | null>(null);
@@ -67,7 +73,10 @@ export default function MenuImageCropField({
   return (
     <div className="space-y-2">
       <span className="text-sm font-bold text-primary">{label}</span>
-      <label className="group relative mx-auto flex aspect-square max-w-[220px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-border bg-secondary/10 transition-colors hover:border-primary/50 focus-within:ring-2 focus-within:ring-ring">
+      <label className={compact
+        ? "group relative mx-auto flex h-20 w-20 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-border bg-secondary/10 transition-colors hover:border-primary/50 focus-within:ring-2 focus-within:ring-ring"
+        : "group relative mx-auto flex aspect-square max-w-[220px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-border bg-secondary/10 transition-colors hover:border-primary/50 focus-within:ring-2 focus-within:ring-ring"}
+      >
         {previewUrl ? (
           <Image
             src={previewUrl}
@@ -92,9 +101,11 @@ export default function MenuImageCropField({
             <span className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-full border border-border bg-background shadow-sm">
               <Plus className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
             </span>
-            <span className="text-xs font-medium text-muted-foreground">
-              Nhấn để tải ảnh lên
-            </span>
+            {!compact && (
+              <span className="text-xs font-medium text-muted-foreground">
+                Nhấn để tải ảnh lên
+              </span>
+            )}
           </span>
         )}
         <input
@@ -115,7 +126,7 @@ export default function MenuImageCropField({
         </button>
       )}
       <p className="text-center text-[11px] text-muted-foreground">
-        Tỉ lệ 1:1 · Tự động chuyển WebP · Tối đa 5MB
+        Tỉ lệ 1:1 · WebP {outputSize}px · Tối đa 5MB
       </p>
 
       {cropSourceUrl && (
@@ -123,6 +134,8 @@ export default function MenuImageCropField({
           imageSrc={cropSourceUrl}
           onCropDone={finishCrop}
           onClose={() => setCropSourceUrl(null)}
+          outputSize={outputSize}
+          outputQuality={outputQuality}
         />
       )}
     </div>

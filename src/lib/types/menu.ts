@@ -16,6 +16,7 @@ export type SweetnessLevel =
 export interface AddonOption {
   id: string;
   label: string;
+  image_url: string | null;
   /** Always 0 for extra matcha — actual price = gram_value × selected_powder.price_per_gram */
   price_vnd: number;
   /** gram amount for extra matcha options; null for all other addon types */

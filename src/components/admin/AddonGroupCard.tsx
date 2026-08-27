@@ -153,7 +153,24 @@ export default function AddonGroupCard({
             ) : (
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 {item.options.map((opt) => (
-                  <div key={opt.id} className={cn("bg-card border border-border rounded-xl p-3 flex flex-col gap-1.5 shadow-sm", !opt.is_active && "opacity-50")}>
+                  <div key={opt.id} className={cn("bg-card border border-border rounded-xl p-3 flex gap-3 shadow-sm", !opt.is_active && "opacity-50")}>
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-secondary/30">
+                      {(opt.image_url ?? item.image_url) ? (
+                        <Image
+                          src={(opt.image_url ?? item.image_url) as string}
+                          alt={`Ảnh ${opt.label}`}
+                          width={48}
+                          height={48}
+                          sizes="48px"
+                          quality={60}
+                          loading="lazy"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <ImageIcon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+                      )}
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                     <div className="flex justify-between items-start gap-2">
                       <span className="text-sm font-medium text-foreground leading-tight">
                         {opt.label}
@@ -174,6 +191,7 @@ export default function AddonGroupCard({
                           {opt.gram_value > 0 ? `+${opt.gram_value}g` : `${opt.gram_value}g`}
                         </span>
                       )}
+                    </div>
                     </div>
                   </div>
                 ))}

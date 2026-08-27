@@ -136,8 +136,11 @@ Counter transfer: PENDING → COMPLETED (creator Staff or any Admin confirms pay
 ## Auto-Cancel
 
 - PENDING customer and COUNTER BANK_TRANSFER orders have `auto_cancel_at` = `created_at + 20 minutes`.
-- Checked **lazily** on read (when fetching order details) AND **actively** via Vercel Cron.
-- Cron endpoint: `GET /api/cron/cancel-expired-orders`.
+- Checked actively by the authenticated Supabase Cron route every 5 minutes. GET order detail/list
+  handlers are read-only and never perform cancellation.
+- Cron endpoint: `GET /api/cron/cancel-expired-orders`; Vercel daily cron is backup only.
+- Staging may omit the Supabase schedule when explicitly accepted for that staging cycle. Production
+  must have the schedule installed and smoke-tested before release.
 - On cancel: revert voucher status from `RESERVED` → `ACTIVE` and mark any BUNDLE order
   application `CANCELLED` (see `voucher-flow` skill).
 

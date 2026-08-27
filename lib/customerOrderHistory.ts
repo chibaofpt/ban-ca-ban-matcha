@@ -1,44 +1,8 @@
 import { NextResponse } from "next/server";
-import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 import { prisma } from "@/lib/prisma";
 import { buildVietQRUrl } from "@/lib/vietqr";
 
-async function cancelExpiredOrders<
-  T extends { id: string; status: string; auto_cancel_at: Date | null },
->(orders: T[]): Promise<void> {
-  const now = new Date();
-  const expiredOrders = orders.filter(
-    (order) =>
-      order.status === "PENDING" &&
-      order.auto_cancel_at !== null &&
-      order.auto_cancel_at <= now,
-  );
-  await Promise.all(
-    expiredOrders.map(async (order) => {
-      try {
-        const wasCancelled = await prisma.$transaction(
-          async (tx) => {
-            const claim = await tx.order.updateMany({
-              where: { id: order.id, status: "PENDING" },
-              data: { status: "CANCELLED" },
-            });
-            if (claim.count !== 1) return false;
-            await restoreVouchersOnCancel(tx, order.id);
-            return true;
-          },
-          { maxWait: 5000, timeout: 10000 },
-        );
-        if (wasCancelled) order.status = "CANCELLED";
-      } catch (error) {
-        console.error("[GET /api/orders lazy-cancel] Failed", {
-          name: error instanceof Error ? error.name : typeof error,
-        });
-      }
-    }),
-  );
-}
-
-/** Fetches, lazily cancels, and maps one page of customer order history. */
+/** Fetches and maps one read-only page of customer order history. */
 export async function getCustomerOrderHistory(
   userId: string,
   page: number,
@@ -100,7 +64,6 @@ export async function getCustomerOrderHistory(
     }),
   ]);
 
-  await cancelExpiredOrders(orders);
   const data = orders.map((order) => {
     let paymentQrUrl: string | null = null;
     if (order.status === "PENDING" && order.order_code && order.order_type !== "COUNTER") {

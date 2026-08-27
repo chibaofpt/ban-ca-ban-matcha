@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { reportQuerySchema } from "@/lib/validations/report";
+import { resolveStaffIdentifier } from "@/lib/publicIdentifiers";
 import {
   buildAdminReport,
   type RawAdminOrder,
@@ -51,10 +52,12 @@ export async function GET(req: NextRequest) {
   const startIso = new Date(`${startDate}T00:00:00+07:00`);
   const endIso = new Date(`${endDate}T23:59:59+07:00`);
 
-  // 5. Admin: optional staffId param (undefined = all staff)
-  const handledByFilter = staffId ?? undefined;
-
   try {
+    const staff = staffId ? await resolveStaffIdentifier(staffId) : null;
+    if (staffId && !staff) {
+      return NextResponse.json({ error: "Staff not found", code: "NOT_FOUND" }, { status: 404 });
+    }
+    const handledByFilter = staff?.id;
     // 6. Fetch completed orders with all required relations — includes order_type and addon label/group
     const orders = await prisma.order.findMany({
       where: {

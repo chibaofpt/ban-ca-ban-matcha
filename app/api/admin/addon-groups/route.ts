@@ -41,6 +41,7 @@ export async function GET() {
         id: o.id,
         addon_group_id: o.addon_group_id,
         label: o.label,
+        image_url: o.image_url,
         price_vnd: o.price_vnd,
         is_active: o.is_active,
         sort_order: o.sort_order,
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   }
 
-  let newImagePath: string | null = null;
+  const newImagePaths: string[] = [];
   let databaseCommitted = false;
   try {
     const parsedRequest = await parseCatalogRequest(req);
@@ -76,6 +77,16 @@ export async function POST(req: Request) {
     }
 
     const validData = validation.data;
+    const optionImageKeys = new Set(
+      validData.options.flatMap((option) => option.image_key ? [option.image_key] : []),
+    );
+    if (parsedRequest.optionImages.some((image) => !optionImageKeys.has(image.imageKey))) {
+      return NextResponse.json(
+        { error: "Ảnh option không khớp dữ liệu biểu mẫu", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
     const preparedImage = await prepareCatalogImage({
       kind: "addons",
       entityName: validData.name,
@@ -83,7 +94,28 @@ export async function POST(req: Request) {
       imageFile: parsedRequest.imageFile,
       currentImageUrl: null,
     });
-    newImagePath = preparedImage.newPath;
+    if (preparedImage.newPath) newImagePaths.push(preparedImage.newPath);
+
+    const optionUploads = new Map(
+      parsedRequest.optionImages.map((image) => [image.imageKey, image]),
+    );
+    const optionImageUrls = new Map<string, string>();
+    for (const option of validData.options) {
+      if (!option.image_key) continue;
+      const upload = optionUploads.get(option.image_key);
+      if (!upload) continue;
+      const preparedOptionImage = await prepareCatalogImage({
+        kind: "addons",
+        entityName: `${validData.name} ${option.label}`,
+        requestedName: upload.requestedName,
+        imageFile: upload.imageFile,
+        currentImageUrl: null,
+      });
+      if (preparedOptionImage.newPath) newImagePaths.push(preparedOptionImage.newPath);
+      if (preparedOptionImage.imageUrl) {
+        optionImageUrls.set(option.image_key, preparedOptionImage.imageUrl);
+      }
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       const group = await tx.addonGroup.create({
@@ -103,6 +135,7 @@ export async function POST(req: Request) {
         data: validData.options.map((opt, idx) => ({
           addon_group_id: group.id,
           label: opt.label,
+          image_url: opt.image_key ? optionImageUrls.get(opt.image_key) ?? null : null,
           price_vnd: opt.price_vnd,
           is_default: false,
           is_active: opt.is_active,
@@ -133,6 +166,7 @@ export async function POST(req: Request) {
         id: o.id,
         addon_group_id: o.addon_group_id,
         label: o.label,
+        image_url: o.image_url,
         price_vnd: o.price_vnd,
         is_active: o.is_active,
         sort_order: o.sort_order,
@@ -143,8 +177,8 @@ export async function POST(req: Request) {
     await invalidateMenuCaches();
     return NextResponse.json({ data: mappedResult }, { status: 201 });
   } catch (error: unknown) {
-    if (newImagePath && !databaseCommitted) {
-      await removeMenuImages([newImagePath]).catch(() => undefined);
+    if (newImagePaths.length > 0 && !databaseCommitted) {
+      await removeMenuImages(newImagePaths).catch(() => undefined);
     }
     const imageMessage = catalogImageValidationMessage(error);
     if (imageMessage) {

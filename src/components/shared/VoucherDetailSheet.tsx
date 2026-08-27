@@ -198,7 +198,7 @@ export const VoucherDetailSheet = ({
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
       transition={{ type: "spring", damping: 25, stiffness: 300 }}
-      className="absolute inset-0 bg-background flex flex-col z-10 overflow-hidden"
+      className="relative flex h-full w-full flex-col overflow-hidden bg-background"
     >
       <div className="flex items-center gap-3 px-5 py-4 border-b border-border/40 shrink-0 bg-white">
         <button

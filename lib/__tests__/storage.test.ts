@@ -150,6 +150,20 @@ describe("Supabase Storage wrapper cho ảnh menu", () => {
     expect(metadata.height).toBe(240);
   });
 
+  it("preset compact giới hạn ảnh sữa/addon ở 320px", async () => {
+    await uploadMenuImage(
+      "products/milk-types/oat.webp",
+      await makeImage(1200, 900),
+      "image/png",
+      "compact",
+    );
+
+    const metadata = await sharp(mockUpload.mock.calls[0]?.[1] as Buffer).metadata();
+    expect(metadata.format).toBe("webp");
+    expect(metadata.width).toBe(320);
+    expect(metadata.height).toBe(240);
+  });
+
   it("không gọi Storage khi buffer ảnh bị hỏng", async () => {
     await expect(uploadMenuImage(
       "products/latte/broken.webp",

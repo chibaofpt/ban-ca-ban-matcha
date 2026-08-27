@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import Image from 'next/image';
 import { Coffee, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -44,8 +44,12 @@ const MenuCard: React.FC<MenuCardProps> = ({
   const sizes = item.sizes.filter((s) => s.base_price_vnd != null);
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
+  const [loadedImageUrl, setLoadedImageUrl] = useState<string | null>(null);
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
 
   const isLatte = item.category === "latte";
+  const canRenderImage = Boolean(item.image_url && failedImageUrl !== item.image_url);
+  const isImageLoaded = Boolean(item.image_url && loadedImageUrl === item.image_url);
   const defaultPowderId = isLatte ? item.powder?.id : item.resolved_default_powder_id;
   const defaultMilk = milkTypes.find((milk) => milk.is_default) ?? milkTypes[0];
 
@@ -100,19 +104,25 @@ const MenuCard: React.FC<MenuCardProps> = ({
     >
       {/* Image Area */}
       <div className="h-[80%] aspect-square bg-[#eef1eb] relative overflow-hidden flex-shrink-0 rounded-2xl">
-        {item.image_url ? (
-          <Image
-            src={item.image_url}
-            alt={item.name}
-            fill
-            sizes="(max-width: 767px) 104px, 120px"
-            className="object-cover transition-transform duration-300 ease-out group-hover:scale-105"
-            quality={75}
-            priority={priority}
-            loading={priority ? "eager" : "lazy"}
-            placeholder="blur"
-            blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-          />
+        {canRenderImage && item.image_url ? (
+          <>
+            <div
+              aria-hidden="true"
+              className={`absolute inset-0 bg-primary/10 transition-opacity duration-300 ${isImageLoaded ? "opacity-0" : "animate-pulse opacity-100"}`}
+            />
+            <Image
+              src={item.image_url}
+              alt={item.name}
+              fill
+              sizes="(max-width: 767px) 104px, 120px"
+              className={`object-cover transition-[opacity,transform] duration-300 ease-out group-hover:scale-105 ${isImageLoaded ? "opacity-100" : "opacity-0"}`}
+              quality={75}
+              priority={priority}
+              loading={priority ? "eager" : "lazy"}
+              onLoad={() => setLoadedImageUrl(item.image_url)}
+              onError={() => setFailedImageUrl(item.image_url)}
+            />
+          </>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <Coffee className="h-10 w-10 text-[#b8c9b4] transition-transform duration-300 group-hover:scale-110" />

@@ -3,6 +3,7 @@
 import { cn } from "@/src/utils/cn";
 
 interface MenuImageSeoFieldProps {
+  inputId?: string;
   currentImageUrl?: string | null;
   value: string;
   onChange: (value: string) => void;
@@ -21,6 +22,7 @@ function currentFilename(publicUrl?: string | null): string | null {
 
 /** Optional SEO filename input for menu images; the value is never stored as a DB column. */
 export default function MenuImageSeoField({
+  inputId = "menu-image-seo-name",
   currentImageUrl,
   value,
   onChange,
@@ -31,11 +33,11 @@ export default function MenuImageSeoField({
 
   return (
     <div className={cn("mx-6 mt-4 space-y-1.5 rounded-xl border border-border/60 bg-secondary/10 p-4", className)}>
-      <label htmlFor="menu-image-seo-name" className="text-sm font-medium text-foreground">
+      <label htmlFor={inputId} className="text-sm font-medium text-foreground">
         Tên file SEO (tuỳ chọn)
       </label>
       <input
-        id="menu-image-seo-name"
+        id={inputId}
         type="text"
         value={value}
         maxLength={80}

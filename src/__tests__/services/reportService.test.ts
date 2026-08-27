@@ -52,8 +52,8 @@ const mockReport: DailyReport = {
 };
 
 const mockStaff: StaffMember[] = [
-  { id: "staff-id-1", name: "Nguyễn Văn A", role: "STAFF" },
-  { id: "admin-id-1", name: "Trần Thị B", role: "ADMIN" },
+  { id: "staff-token-1", qr_token: "staff-token-1", name: "Nguyễn Văn A", role: "STAFF" },
+  { id: "admin-token-1", qr_token: "admin-token-1", name: "Trần Thị B", role: "ADMIN" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -196,8 +196,18 @@ describe("getStaffList", () => {
 
     const result = await getStaffList();
 
-    expect(result[0]).toMatchObject({ id: "staff-id-1", name: "Nguyễn Văn A", role: "STAFF" });
-    expect(result[1]).toMatchObject({ id: "admin-id-1", name: "Trần Thị B", role: "ADMIN" });
+    expect(result[0]).toMatchObject({
+      id: "staff-token-1",
+      qr_token: "staff-token-1",
+      name: "Nguyễn Văn A",
+      role: "STAFF",
+    });
+    expect(result[1]).toMatchObject({
+      id: "admin-token-1",
+      qr_token: "admin-token-1",
+      name: "Trần Thị B",
+      role: "ADMIN",
+    });
   });
 
   it("returns empty array when no staff exist", async () => {

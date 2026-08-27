@@ -38,6 +38,7 @@ const mockSessionDeleteMany = vi.fn();
 const mockPointsLogCreate = vi.fn();
 const mockTransaction = vi.fn();
 const mockEnsureAutoGrantedVouchers = vi.fn();
+const mockCacheDelete = vi.fn();
 
 const mockBcryptCompare = vi.fn();
 const mockBcryptHash = vi.fn();
@@ -98,6 +99,10 @@ vi.mock("bcryptjs", () => ({
 
 vi.mock("@/lib/voucherIssuance", () => ({
   ensureAutoGrantedVouchers: (...args: unknown[]) => mockEnsureAutoGrantedVouchers(...args),
+}));
+
+vi.mock("@/lib/redis", () => ({
+  cacheDelete: (...args: unknown[]) => mockCacheDelete(...args),
 }));
 
 // ── Import SAU mock ───────────────────────────────────────────────────────────
@@ -207,6 +212,7 @@ describe("POST /api/auth/login — ghost user guard", () => {
     mockSignJwt.mockResolvedValue("access-token-xyz");
     mockCreateSession.mockResolvedValue("refresh-token-xyz");
     mockSetAuthCookies.mockResolvedValue(undefined);
+    mockCacheDelete.mockResolvedValue(undefined);
     mockEnsureAutoGrantedVouchers.mockResolvedValue({ granted: 0, already_granted: 0 });
     // Default: rate limits allow through
     mockCheckLoginFailLimit.mockResolvedValue({ allowed: true, remaining: 4 });
@@ -310,7 +316,9 @@ describe("POST /api/auth/login — session limit (max 5)", () => {
   it("xóa session cũ nhất khi đã có đúng 5 session active", async () => {
     mockUserFindUnique.mockResolvedValueOnce(REAL_USER);
     const fiveSessions = [
-      { id: "s1" }, { id: "s2" }, { id: "s3" }, { id: "s4" }, { id: "s5" },
+      { id: "s1", refresh_token: "r1" }, { id: "s2", refresh_token: "r2" },
+      { id: "s3", refresh_token: "r3" }, { id: "s4", refresh_token: "r4" },
+      { id: "s5", refresh_token: "r5" },
     ];
     mockSessionFindMany.mockResolvedValueOnce(fiveSessions);
 
@@ -321,13 +329,16 @@ describe("POST /api/auth/login — session limit (max 5)", () => {
         where: expect.objectContaining({ id: { in: ["s1"] } }),
       })
     );
+    expect(mockCacheDelete).toHaveBeenCalledWith("session:r1");
   });
 
   it("xóa nhiều session cũ khi có > 5 session active (giữ 4 mới nhất)", async () => {
     mockUserFindUnique.mockResolvedValueOnce(REAL_USER);
     const sevenSessions = [
-      { id: "s1" }, { id: "s2" }, { id: "s3" }, { id: "s4" },
-      { id: "s5" }, { id: "s6" }, { id: "s7" },
+      { id: "s1", refresh_token: "r1" }, { id: "s2", refresh_token: "r2" },
+      { id: "s3", refresh_token: "r3" }, { id: "s4", refresh_token: "r4" },
+      { id: "s5", refresh_token: "r5" }, { id: "s6", refresh_token: "r6" },
+      { id: "s7", refresh_token: "r7" },
     ];
     mockSessionFindMany.mockResolvedValueOnce(sevenSessions);
 
@@ -338,6 +349,7 @@ describe("POST /api/auth/login — session limit (max 5)", () => {
         where: expect.objectContaining({ id: { in: ["s1", "s2", "s3"] } }),
       })
     );
+    expect(mockCacheDelete).toHaveBeenCalledWith("session:r1", "session:r2", "session:r3");
   });
 });
 

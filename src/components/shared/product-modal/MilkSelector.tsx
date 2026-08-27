@@ -26,7 +26,7 @@ export function MilkSelector({
   if (milkTypes.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-3 gap-2 mt-3">
+    <div className="mt-2 grid grid-cols-2 gap-2">
       {milkTypes.map((milk) => {
         const isDefault = milk.id === defaultMilkId;
         const milkPrice = getPriceForContext(selectedSize, activePowderId, milk.id).baseDrinkPrice;

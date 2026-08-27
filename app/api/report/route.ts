@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { reportQuerySchema } from "@/lib/validations/report";
+import { resolveStaffIdentifier } from "@/lib/publicIdentifiers";
 import {
   buildReport,
   type RawOrder,
@@ -52,13 +53,14 @@ export async function GET(req: NextRequest) {
   const startIso = new Date(`${startDate}T00:00:00+07:00`);
   const endIso = new Date(`${endDate}T23:59:59+07:00`);
 
-  // 5. Determine staff filter
-  // STAFF: always forced to own id
-  // ADMIN: optional staffId param (undefined = all staff)
-  const handledByFilter =
-    session.role === "STAFF" ? session.id : (staffId ?? undefined);
-
   try {
+    const staff = session.role === "ADMIN" && staffId
+      ? await resolveStaffIdentifier(staffId)
+      : null;
+    if (session.role === "ADMIN" && staffId && !staff) {
+      return NextResponse.json({ error: "Staff not found", code: "NOT_FOUND" }, { status: 404 });
+    }
+    const handledByFilter = session.role === "STAFF" ? session.id : staff?.id;
     // 6. Fetch completed orders with all required relations
     const orders = await prisma.order.findMany({
       where: {

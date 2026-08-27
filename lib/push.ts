@@ -1,4 +1,4 @@
-import type { Role } from "@prisma/client";
+import type { PushSubscription, Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import webpush from "web-push";
 
@@ -52,9 +52,45 @@ interface PushPayload {
   url: string;
 }
 
+const PUSH_PAGE_SIZE = 100;
+const PUSH_CONCURRENCY = 10;
+
 function getPushStatusCode(error: unknown): number | undefined {
   if (typeof error !== "object" || error === null || !("statusCode" in error)) return undefined;
   return typeof error.statusCode === "number" ? error.statusCode : undefined;
+}
+
+async function deliverPushPage(
+  subscriptions: PushSubscription[],
+  payloadString: string,
+): Promise<{ sent: number; invalidIds: string[] }> {
+  let sent = 0;
+  const invalidIds: string[] = [];
+
+  for (let offset = 0; offset < subscriptions.length; offset += PUSH_CONCURRENCY) {
+    const chunk = subscriptions.slice(offset, offset + PUSH_CONCURRENCY);
+    await Promise.allSettled(chunk.map(async (sub) => {
+      try {
+        await webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payloadString,
+        );
+        sent += 1;
+      } catch (error: unknown) {
+        const statusCode = getPushStatusCode(error);
+        if (statusCode === 410 || statusCode === 404) {
+          invalidIds.push(sub.id);
+        } else {
+          console.error("[WebPush Error] Notification delivery failed", {
+            name: error instanceof Error ? error.name : typeof error,
+            statusCode,
+          });
+        }
+      }
+    }));
+  }
+
+  return { sent, invalidIds };
 }
 
 /**
@@ -69,52 +105,40 @@ export async function sendPushToRoles(
   excludeUserId?: string
 ): Promise<void> {
   try {
-    const subscriptions = await prisma.pushSubscription.findMany({
-      where: {
-        is_active: true,
-        user: { role: { in: roles } },
-        ...(excludeUserId ? { user_id: { not: excludeUserId } } : {}),
-      },
-    });
-
-    console.log(`[Push Notification] Found ${subscriptions.length} active subscription(s) for roles: ${roles.join(", ")}`);
-
-    if (subscriptions.length === 0) return;
-
     if (!initVapid()) {
       console.warn(`[Push Notification] Skipped sending to ${roles.join(", ")} because VAPID keys are missing.`);
       return;
     }
 
     const payloadString = JSON.stringify(payload);
+    let cursor: string | undefined;
+    let total = 0;
+    do {
+      const subscriptions = await prisma.pushSubscription.findMany({
+        where: {
+          is_active: true,
+          user: { role: { in: roles } },
+          ...(excludeUserId ? { user_id: { not: excludeUserId } } : {}),
+        },
+        orderBy: { id: "asc" },
+        take: PUSH_PAGE_SIZE,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      if (subscriptions.length === 0) break;
 
-    await Promise.allSettled(
-      subscriptions.map(async (sub) => {
-        try {
-          await webpush.sendNotification(
-            {
-              endpoint: sub.endpoint,
-              keys: { p256dh: sub.p256dh, auth: sub.auth },
-            },
-            payloadString
-          );
-        } catch (error: unknown) {
-          const statusCode = getPushStatusCode(error);
-          if (statusCode === 410 || statusCode === 404) {
-            // Subscription has expired or is invalid, deactivate it
-            await prisma.pushSubscription.update({
-              where: { id: sub.id },
-              data: { is_active: false },
-            });
-          } else {
-            console.error("[WebPush Error] Notification delivery failed", {
-              name: error instanceof Error ? error.name : typeof error,
-              statusCode,
-            });
-          }
-        }
-      })
-    );
+      const result = await deliverPushPage(subscriptions, payloadString);
+      total += subscriptions.length;
+      if (result.invalidIds.length > 0) {
+        await prisma.pushSubscription.updateMany({
+          where: { id: { in: result.invalidIds } },
+          data: { is_active: false },
+        });
+      }
+      cursor = subscriptions.at(-1)?.id;
+      if (subscriptions.length < PUSH_PAGE_SIZE) break;
+    } while (cursor);
+
+    console.log(`[Push Notification] Processed ${total} active subscription(s) for roles: ${roles.join(", ")}`);
   } catch (error) {
     console.error("[WebPush Error] Failed to execute sendPushToRoles", {
       name: error instanceof Error ? error.name : typeof error,
@@ -131,17 +155,6 @@ export async function sendPushToUser(
   payload: PushPayload
 ): Promise<number> {
   try {
-    const subscriptions = await prisma.pushSubscription.findMany({
-      where: {
-        user_id: userId,
-        is_active: true,
-      },
-    });
-
-    console.log(`[Push Notification] Found ${subscriptions.length} active subscription(s)`);
-
-    if (subscriptions.length === 0) return 0;
-
     if (!initVapid()) {
       console.warn("[Push Notification] Skipped because VAPID keys are missing.");
       return 0;
@@ -150,33 +163,27 @@ export async function sendPushToUser(
     const payloadString = JSON.stringify(payload);
     let sentCount = 0;
 
-    await Promise.allSettled(
-      subscriptions.map(async (sub) => {
-        try {
-          await webpush.sendNotification(
-            {
-              endpoint: sub.endpoint,
-              keys: { p256dh: sub.p256dh, auth: sub.auth },
-            },
-            payloadString
-          );
-          sentCount++;
-        } catch (error: unknown) {
-          const statusCode = getPushStatusCode(error);
-          if (statusCode === 410 || statusCode === 404) {
-            await prisma.pushSubscription.update({
-              where: { id: sub.id },
-              data: { is_active: false },
-            });
-          } else {
-            console.error("[WebPush Error] Notification delivery failed", {
-              name: error instanceof Error ? error.name : typeof error,
-              statusCode,
-            });
-          }
-        }
-      })
-    );
+    let cursor: string | undefined;
+    do {
+      const subscriptions = await prisma.pushSubscription.findMany({
+        where: { user_id: userId, is_active: true },
+        orderBy: { id: "asc" },
+        take: PUSH_PAGE_SIZE,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      if (subscriptions.length === 0) break;
+
+      const result = await deliverPushPage(subscriptions, payloadString);
+      sentCount += result.sent;
+      if (result.invalidIds.length > 0) {
+        await prisma.pushSubscription.updateMany({
+          where: { id: { in: result.invalidIds } },
+          data: { is_active: false },
+        });
+      }
+      cursor = subscriptions.at(-1)?.id;
+      if (subscriptions.length < PUSH_PAGE_SIZE) break;
+    } while (cursor);
 
     return sentCount;
   } catch (error) {

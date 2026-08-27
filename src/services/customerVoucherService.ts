@@ -172,6 +172,7 @@ export async function listActiveVoucherPackages(): Promise<VoucherPackage[]> {
  * Calls GET /api/profile/vouchers (requires CUSTOMER auth).
  */
 export async function listMyVouchers(): Promise<MyVoucher[]> {
+  await apiClient.post("/api/profile/vouchers/sync");
   const res = await apiClient.get<ApiResponse<MyVoucher[]>>("/api/profile/vouchers");
   return res.data.data;
 }

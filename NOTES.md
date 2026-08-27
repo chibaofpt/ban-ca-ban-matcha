@@ -49,5 +49,13 @@ Không implement nội dung trong file này nếu task hiện tại chưa đư�
 
 - Env key inventory duy nhất: `.env.local.example`.
 - Route `/api/cron/cleanup-menu-images` đã tồn tại nhưng staging và production chưa có `cron.job`; cấu hình lịch cleanup là task hạ tầng riêng sau khi backfill/visual QA hoàn tất.
+- Hai cron `cancel-expired-orders` và `clean-sessions` vẫn chưa được cài ở production (audit
+  2026-08-27). Đây là blocker bắt buộc của `production-deploy`: cần cấu hình đúng production URL và
+  `CRON_SECRET` qua Vault, sau đó smoke-test cả hai job trước khi merge `main`.
+- Follow-up cùng ngày: staging đã bật `pg_cron`/`pg_net` và có hai Vault secret, nhưng smoke test
+  xác nhận Vercel staging chưa có runtime `CRON_SECRET` (route fail-closed `500`). Hai job thử
+  nghiệm đã được unschedule để không retry lỗi. Production route trả `401` khi thiếu bearer, xác
+  nhận production runtime đã có secret; production Supabase vẫn chưa bị thay đổi. Theo quyết định
+  release ngày 2026-08-27, staging được phép thiếu hai job này và không dùng để xác nhận auto-cancel.
 - Release/launch checklist duy nhất: `push-to-dev`, `production-deploy` và `security-checklist` skills.
 - Prisma migrations là đường duy nhất cho app schema; không dùng `db push`.

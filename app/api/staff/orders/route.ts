@@ -14,7 +14,6 @@ import type { CalcDiscountVoucher } from "@/lib/orderCalculator";
 import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
-import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 import { BundlePromotionError } from "@/lib/promotionBundle";
 import { resolveOrderBundles, type OrderBundleDatabase } from "@/lib/orderBundle";
 import { persistOrderBundles } from "@/lib/orderBundleWrite";
@@ -781,41 +780,6 @@ export async function GET(req: NextRequest) {
     ]);
 
     const totalPages = Math.ceil(total / limit);
-
-    // Lazy auto-cancel: expire any PENDING orders that have passed their deadline.
-    // Only relevant when fetching PENDING orders ("Chờ CK" tab).
-    if (statusParam === 'PENDING') {
-      const now = new Date();
-      const expiredIds = orders
-        .filter((o) => o.status === 'PENDING' && o.auto_cancel_at && o.auto_cancel_at <= now)
-        .map((o) => o.id);
-
-      if (expiredIds.length > 0) {
-        // Batch-cancel expired orders (individual transactions for atomicity with vouchers)
-        await Promise.all(
-          expiredIds.map(async (orderId) => {
-            const expired = orders.find((o) => o.id === orderId);
-            if (!expired) return;
-            const wasCancelled = await prisma.$transaction(
-              async (tx) => {
-                const claim = await tx.order.updateMany({
-                  where: { id: orderId, status: 'PENDING' },
-                  data: { status: 'CANCELLED' },
-                });
-                if (claim.count !== 1) return false;
-                await restoreVouchersOnCancel(tx, orderId);
-                return true;
-              },
-              { maxWait: 5000, timeout: 10000 }
-            );
-            // Update in-memory for response
-            if (wasCancelled) {
-              expired.status = 'CANCELLED';
-            }
-          })
-        );
-      }
-    }
 
     const data = orders.map((order) => ({
       ...toPublicOrderDto(order),

@@ -199,6 +199,7 @@ export const CartDiscountPicker = ({
         pointsBalance={pointsBalance}
         onChange={setActiveTab}
         onClose={closePicker}
+        detailOpen={detailVoucher !== null}
         headerAction={activeTab === "my_vouchers" && selectedVoucherIds.length > 0 ? (
           <button
             type="button"

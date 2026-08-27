@@ -29,7 +29,7 @@ function OptionCard({ label, meta, sub, isActive, onClick, imageUrl, imageAlt, s
         onClick={onClick}
         whileTap={{ scale: 0.92 }}
         className={cn(
-          "flex min-h-12 min-w-0 flex-col items-stretch rounded-2xl border-2 px-3 py-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+          "flex min-h-12 min-w-0 flex-col items-stretch rounded-2xl border-2 p-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
           isActive ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-white hover:border-primary/30"
         )}
       >
@@ -45,6 +45,8 @@ function OptionCard({ label, meta, sub, isActive, onClick, imageUrl, imageAlt, s
                 width={32}
                 height={32}
                 sizes="32px"
+                quality={60}
+                loading="lazy"
                 className="h-8 w-8 shrink-0 rounded-lg object-cover"
               />
             )}
@@ -73,7 +75,7 @@ function OptionCard({ label, meta, sub, isActive, onClick, imageUrl, imageAlt, s
       whileTap={{ scale: 0.92 }}
       className={cn(
         "flex min-h-12 min-w-0 items-center justify-center rounded-2xl border-2 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
-        isLg ? "px-3 py-4" : "px-2 py-3",
+        isLg ? "px-3 py-2" : "p-2",
         imageUrl ? "gap-2 text-left" : "flex-col text-center",
         isActive ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-white hover:border-primary/30"
       )}
@@ -85,6 +87,8 @@ function OptionCard({ label, meta, sub, isActive, onClick, imageUrl, imageAlt, s
           width={32}
           height={32}
           sizes="32px"
+          quality={60}
+          loading="lazy"
           className="h-8 w-8 shrink-0 rounded-lg object-cover"
         />
       )}
@@ -98,7 +102,7 @@ function OptionCard({ label, meta, sub, isActive, onClick, imageUrl, imageAlt, s
         {sub && (
           <span
             className={cn(
-              isLg ? "text-sm" : "text-xs",
+              isLg ? "text-base" : "text-xs",
               imageUrl ? "" : "mt-1",
               isPriceAddition
                 ? "font-semibold text-[#c74646]"

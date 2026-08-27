@@ -57,6 +57,10 @@ const productDiscountScopeMigration = readFileSync(
   join(process.cwd(), "prisma", "migrations", "20260825000000_add_product_discount_scopes", "migration.sql"),
   "utf8",
 );
+const securityPaginationMigration = readFileSync(
+  join(process.cwd(), "prisma", "migrations", "20260827094000_harden_function_and_pagination_indexes", "migration.sql"),
+  "utf8",
+);
 
 function prismaTableNames(): string[] {
   return [...schema.matchAll(/@@map\("([^"]+)"\)/g)]
@@ -99,5 +103,18 @@ describe("migration hardening Supabase Data API", () => {
     expect(migration).toMatch(/ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public/);
     expect(migration).not.toMatch(/\bstorage\./i);
     expect(migration).not.toMatch(/SCHEMA storage/i);
+  });
+
+  it("pins update_updated_at search_path và thêm index cho các cursor query", () => {
+    expect(securityPaginationMigration).toMatch(/SET search_path = pg_catalog/);
+    expect(securityPaginationMigration).toMatch(/NEW\.updated_at = pg_catalog\.now\(\)/);
+    expect(securityPaginationMigration).toMatch(
+      /REVOKE ALL ON FUNCTION public\.update_updated_at\(\) FROM PUBLIC, anon, authenticated/,
+    );
+    expect(securityPaginationMigration).toContain("idx_points_log_user_created_cursor");
+    expect(securityPaginationMigration).toContain("idx_vouchers_user_created_cursor");
+    expect(securityPaginationMigration).toMatch(
+      /idx_push_subscriptions_active_cursor[\s\S]*WHERE is_active = true/,
+    );
   });
 });

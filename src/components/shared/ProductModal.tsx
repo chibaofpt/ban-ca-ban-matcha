@@ -58,6 +58,14 @@ const subscribeToDesktopViewport = (onChange: () => void) => {
 const getDesktopSnapshot = () => window.matchMedia(DESKTOP_MEDIA_QUERY).matches;
 const getDesktopServerSnapshot = () => false;
 
+/** Resolve an addon option image while preserving the legacy group-image fallback. */
+export function resolveAddonOptionImage(
+  optionImageUrl: string | null,
+  groupImageUrl: string | null,
+): string | null {
+  return optionImageUrl ?? groupImageUrl;
+}
+
 // Extracted OptionCard, SizeSelector, MilkSelector, PowderSelector are imported
 
 const BaseModal: React.FC<ProductModalProps> = ({ 
@@ -366,14 +374,14 @@ const BaseModal: React.FC<ProductModalProps> = ({
         {/* overflow-x-clip overscroll-x-none prevents diagonal wiggle */}
         <div className="flex flex-col flex-1 min-h-0 h-full overflow-y-auto overflow-x-clip overscroll-contain overscroll-x-none px-5 md:px-8 pt-7 pb-44 md:pb-40 md:pt-0">
           {item.image_url ? (
-            <div className="md:hidden -mx-5 -mt-7 shrink-0">
-              <div className="relative aspect-square max-h-[33dvh] w-full overflow-hidden">
+            <div className="md:hidden -mx-5 -mt-7 shrink-0 bg-[#fdfcf7]">
+              <div className="relative h-[40dvh] w-full overflow-hidden bg-[#fdfcf7]">
                 <Image
                   src={item.image_url}
                   alt={item.name}
                   fill
                   sizes="100vw"
-                  className="object-cover object-center"
+                  className="object-contain object-center"
                   quality={80}
                   placeholder="blur"
                   blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
@@ -404,7 +412,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
             </div>
           )}
           <div
-            className={cn("pb-5 border-b border-border/40 md:hidden", item.image_url ? "pt-4" : "pt-7")}
+            className={cn("pb-3 border-b border-border/40 md:hidden", item.image_url ? "pt-3" : "pt-5")}
           >
             <h2 className="font-serif text-2xl font-bold text-primary">{item.name}</h2>
             {item.description && <p className="text-sm text-primary/55 mt-1.5 leading-relaxed">{item.description}</p>}
@@ -424,7 +432,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
 
           {/* 1. SIZE */}
           {item.sizes.length > 0 && (
-            <div className="mt-7">
+            <div className="mt-5">
               <SectionLabel text="Chọn size *" />
               <SizeSelector
                 sizes={allowedSizes ? item.sizes.filter(s => allowedSizes.includes(s.size)) : item.sizes}
@@ -437,10 +445,10 @@ const BaseModal: React.FC<ProductModalProps> = ({
           )}
 
           {/* 2. SWEETNESS SLIDER */}
-          <div className="mt-7">
+          <div className="mt-5">
             <div className="flex items-center justify-between mb-5">
               <SectionLabel text="Độ ngọt" />
-              <span className="text-sm font-bold text-primary bg-primary/8 px-2.5 py-1 rounded-full -mt-3">
+              <span className="rounded-full bg-primary/8 px-2.5 py-1 text-sm font-bold text-primary -mt-3">
                 {SWEETNESS_OPTIONS[sweetnessIdx]?.label}
               </span>
             </div>
@@ -478,7 +486,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
                     key={opt.value}
                     style={{ left: `${(i / (SWEETNESS_OPTIONS.length - 1)) * 100}%` }}
                     className={cn(
-                      "absolute -translate-x-1/2 text-xs whitespace-nowrap font-medium transition-colors",
+                      "absolute -translate-x-1/2 text-sm whitespace-nowrap font-medium transition-colors",
                       sweetness === opt.value ? "text-primary font-bold" : "text-primary/40"
                     )}
                   >
@@ -490,7 +498,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
           </div>
 
           {/* 3a. Base Liquid + compact Coldwhisk */}
-          <div className="mt-7">
+          <div className="mt-5">
             <div className="mb-3 flex min-h-11 items-center justify-between gap-3">
               <p className="text-xs font-bold uppercase tracking-wider text-primary/55">
                 {baseLiquidOptions.length > 1 ? (isLatte ? "Loại sữa" : "Loại nền") : selectedBaseLiquidName}
@@ -524,7 +532,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
 
           {/* 3b. FUSION: Powder */}
           {powderList.length > 0 && (
-            <div className="mt-7">
+            <div className="mt-5">
               <SectionLabel text="Loại bột matcha" />
               <PowderSelector
                 powderList={powderList}
@@ -540,7 +548,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
           )}
 
           {/* 5. ĐÁ */}
-          <div className="mt-7">
+          <div className="mt-5">
             <SectionLabel text="Lượng đá" />
             <div className="grid grid-cols-3 gap-2">
               {ICE_OPTIONS.map((opt) => (
@@ -556,7 +564,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
 
           {/* 6. TOPPING (Kem + Đá dừa) */}
           {(otherSelectorGroups.length > 0 || toggleGroups.length > 0) && (
-            <div className="mt-7">
+            <div className="mt-5">
               <SectionLabel text="Topping" />
               <div className="grid grid-cols-3 gap-2">
                 {otherSelectorGroups.map((group) =>
@@ -565,8 +573,8 @@ const BaseModal: React.FC<ProductModalProps> = ({
                       <OptionCard
                         key={opt.id}
                         label={opt.label}
-                        imageUrl={group.image_url}
-                        imageAlt={`Ảnh ${group.name}`}
+                        imageUrl={resolveAddonOptionImage(opt.image_url, group.image_url)}
+                        imageAlt={`Ảnh ${opt.label}`}
                         sub={opt.price_vnd > 0 ? `+${formatKa(opt.price_vnd, "ceil")}` : undefined}
                         isActive={selectedOptionIds.includes(opt.id)}
                         onClick={() => handleSelectorToggle(group.id, opt.id)}
@@ -582,8 +590,8 @@ const BaseModal: React.FC<ProductModalProps> = ({
                     <OptionCard
                       key={group.id}
                       label={group.name}
-                      imageUrl={group.image_url}
-                      imageAlt={`Ảnh ${group.name}`}
+                      imageUrl={resolveAddonOptionImage(opt.image_url, group.image_url)}
+                      imageAlt={`Ảnh ${opt.label}`}
                       sub={opt.price_vnd > 0 ? `+${formatKa(opt.price_vnd, "ceil")}` : undefined}
                       isActive={selectedOptionIds.includes(opt.id)}
                       onClick={() => handleToggleChange(opt.id)}
@@ -597,7 +605,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
 
           {/* 7. EXTRA MATCHA (SELECTOR) */}
           {matchaSelectorGroups.map((group) => (
-            <div key={group.id} className="mt-7">
+            <div key={group.id} className="mt-5">
               <SectionLabel text={group.name} />
               <div className="grid grid-cols-4 gap-2">
                 {group.options.map((opt) => {
@@ -606,8 +614,8 @@ const BaseModal: React.FC<ProductModalProps> = ({
                     <OptionCard
                       key={opt.id}
                       label={opt.label}
-                      imageUrl={group.image_url}
-                      imageAlt={`Ảnh ${group.name}`}
+                      imageUrl={resolveAddonOptionImage(opt.image_url, group.image_url)}
+                      imageAlt={`Ảnh ${opt.label}`}
                       sub={price > 0 ? `+${formatKa(price, "ceil")}` : "0 ká"}
                       isActive={selectedOptionIds.includes(opt.id)}
                       onClick={() => handleSelectorToggle(group.id, opt.id)}
@@ -637,7 +645,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
             }).join(", ") + (max > listLimit ? "..." : "");
 
             return (
-              <div key={group.id} className="mt-7">
+              <div key={group.id} className="mt-5">
                 <SectionLabel text={group.name} />
                 <div className="flex items-center justify-between bg-white rounded-2xl border-2 border-border px-5 py-4">
                   <div>

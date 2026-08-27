@@ -84,6 +84,7 @@ describe("GET /api/menu — contract dữ liệu chuẩn hóa", () => {
           {
             id: "addon-option-1",
             label: "Một phần kem",
+            image_url: "https://cdn/menu-images/products/addons/kem-sua.webp",
             price_vnd: 5000,
             gram_value: null,
             sort_order: 1,
@@ -131,6 +132,9 @@ describe("GET /api/menu — contract dữ liệu chuẩn hóa", () => {
     expect(body.data.addon_groups).toEqual([
       expect.objectContaining({
         image_url: "https://cdn/menu-images/products/addons/kem.webp",
+        options: [expect.objectContaining({
+          image_url: "https://cdn/menu-images/products/addons/kem-sua.webp",
+        })],
       }),
     ]);
     expect(body.data.addon_groups).toEqual([

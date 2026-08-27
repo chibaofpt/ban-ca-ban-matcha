@@ -1,5 +1,9 @@
 import { apiClient } from "@/src/lib/api/client";
-import type { AdminAddonGroup, AddonGroupMutationPayload } from "@/src/lib/types/addonGroup";
+import type {
+  AdminAddonGroup,
+  AddonGroupMutationPayload,
+  AddonOptionImageUpload,
+} from "@/src/lib/types/addonGroup";
 
 const URL = {
   list: "/api/admin/addon-groups",
@@ -18,11 +22,23 @@ function buildMultipartPayload(
   payload: AddonGroupMutationPayload,
   imageFile?: File | null,
   imageFilename?: string,
+  optionImages: AddonOptionImageUpload[] = [],
 ): FormData {
   const formData = new FormData();
   formData.set("payload", JSON.stringify(payload));
   if (imageFile) formData.set("image", imageFile);
   if (imageFilename?.trim()) formData.set("image_filename", imageFilename.trim());
+  for (const optionImage of optionImages) {
+    if (optionImage.imageFile) {
+      formData.set(`option_image_${optionImage.imageKey}`, optionImage.imageFile);
+    }
+    if (optionImage.imageFilename.trim()) {
+      formData.set(
+        `option_image_filename_${optionImage.imageKey}`,
+        optionImage.imageFilename.trim(),
+      );
+    }
+  }
   return formData;
 }
 
@@ -37,8 +53,9 @@ export async function createAddonGroup(
   payload: AddonGroupMutationPayload,
   imageFile?: File | null,
   imageFilename?: string,
+  optionImages: AddonOptionImageUpload[] = [],
 ): Promise<AdminAddonGroup> {
-  const body = buildMultipartPayload(payload, imageFile, imageFilename);
+  const body = buildMultipartPayload(payload, imageFile, imageFilename, optionImages);
   const { data } = await apiClient.post<AdminSingleAddonGroupResponse>(URL.list, body);
   return data.data;
 }
@@ -49,8 +66,9 @@ export async function updateAddonGroup(
   payload: AddonGroupMutationPayload,
   imageFile?: File | null,
   imageFilename?: string,
+  optionImages: AddonOptionImageUpload[] = [],
 ): Promise<AdminAddonGroup> {
-  const body = buildMultipartPayload(payload, imageFile, imageFilename);
+  const body = buildMultipartPayload(payload, imageFile, imageFilename, optionImages);
   const { data } = await apiClient.put<AdminSingleAddonGroupResponse>(URL.byId(id), body);
   return data.data;
 }

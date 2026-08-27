@@ -4,7 +4,14 @@ type ParsedCatalogRequest = {
   ok: true;
   raw: unknown;
   imageFile: File | null;
+  optionImages: CatalogOptionImage[];
 };
+
+export interface CatalogOptionImage {
+  imageKey: string;
+  imageFile: File | null;
+  requestedName?: string;
+}
 
 type InvalidCatalogRequest = {
   ok: false;
@@ -21,6 +28,7 @@ export async function parseCatalogRequest(
       ok: true,
       raw: await request.json().catch(() => null),
       imageFile: null,
+      optionImages: [],
     };
   }
 
@@ -42,6 +50,8 @@ export async function parseCatalogRequest(
 
   const imageFilename = formData.get("image_filename");
   const candidate = formData.get("image");
+  const optionImages = parseOptionImages(formData);
+  if (!optionImages) return invalidPayload();
   return {
     ok: true,
     raw: {
@@ -51,7 +61,39 @@ export async function parseCatalogRequest(
         : {}),
     },
     imageFile: candidate instanceof File && candidate.size > 0 ? candidate : null,
+    optionImages,
   };
+}
+
+function parseOptionImages(formData: FormData): CatalogOptionImage[] | null {
+  const records = new Map<string, CatalogOptionImage>();
+  const filenamePrefix = "option_image_filename_";
+  const imagePrefix = "option_image_";
+
+  for (const [field, value] of formData.entries()) {
+    if (field.startsWith(filenamePrefix)) {
+      const imageKey = field.slice(filenamePrefix.length);
+      if (!isValidImageKey(imageKey) || typeof value !== "string") return null;
+      const current = records.get(imageKey) ?? { imageKey, imageFile: null };
+      if (current.requestedName !== undefined) return null;
+      current.requestedName = value.trim() || undefined;
+      records.set(imageKey, current);
+      continue;
+    }
+    if (!field.startsWith(imagePrefix)) continue;
+    const imageKey = field.slice(imagePrefix.length);
+    if (!isValidImageKey(imageKey) || !(value instanceof File) || value.size === 0) return null;
+    const current = records.get(imageKey) ?? { imageKey, imageFile: null };
+    if (current.imageFile) return null;
+    current.imageFile = value;
+    records.set(imageKey, current);
+  }
+
+  return [...records.values()];
+}
+
+function isValidImageKey(value: string): boolean {
+  return /^[a-zA-Z0-9_-]{1,64}$/.test(value);
 }
 
 function invalidPayload(): InvalidCatalogRequest {

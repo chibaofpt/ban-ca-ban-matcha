@@ -230,7 +230,7 @@ export function DailyReportModal({
               >
                 <option value="">Tất cả staff</option>
                 {staffList.map((s) => (
-                  <option key={s.id} value={s.id}>
+                  <option key={s.qr_token} value={s.qr_token}>
                     {s.name}
                     {s.role === "ADMIN" ? " (Admin)" : ""}
                   </option>

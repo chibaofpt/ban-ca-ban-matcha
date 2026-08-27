@@ -48,7 +48,8 @@ export async function prepareCatalogImage(
       contentType: MENU_IMAGE_OUTPUT_CONTENT_TYPE,
     });
     const buffer = Buffer.from(await input.imageFile.arrayBuffer());
-    const imageUrl = await uploadMenuImage(newPath, buffer, input.imageFile.type);
+    const preset = input.kind === "powders" ? "full" : "compact";
+    const imageUrl = await uploadMenuImage(newPath, buffer, input.imageFile.type, preset);
     return { imageUrl, newPath, oldPath };
   }
 

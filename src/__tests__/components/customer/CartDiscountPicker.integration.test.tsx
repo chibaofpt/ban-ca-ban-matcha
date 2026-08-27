@@ -198,6 +198,19 @@ describe("CartDiscountPicker — production wiring", () => {
     expect(screen.queryByText("DETAIL:Giảm đang áp")).toBeNull();
   });
 
+  it("detail thay thế hoàn toàn danh sách và không để action nền nhận tương tác", () => {
+    const first = makeVoucher("DISCOUNT", "Voucher thứ nhất");
+    const second = makeVoucher("DISCOUNT", "Voucher thứ hai");
+    render(<CartDiscountPicker {...baseProps} discountVouchers={[first, second]} productDiscountVouchers={[]} bundleVouchers={[]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết Voucher thứ nhất" }));
+
+    expect(screen.getByText("DETAIL:Voucher thứ nhất")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Xem chi tiết Voucher thứ nhất" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Xem chi tiết Voucher thứ hai" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Chọn voucher" })).toBeNull();
+  });
+
   it("giữ ACTIVE unavailable PRODUCT_DISCOUNT/BUNDLE để đọc detail nhưng khóa tick", () => {
     const product = makeVoucher("PRODUCT_DISCOUNT", "PD unavailable");
     const bundle = makeVoucher("BUNDLE", "Bundle unavailable");

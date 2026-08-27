@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import AddonGroupForm from "@/src/components/admin/AddonGroupForm";
 import {
   buildAddonGroupDefaultValues,
-  type AddonGroupFormPayload,
+  type AddonGroupFormSubmission,
 } from "@/src/components/admin/addonGroupFormModel";
 import { createAddonGroup, updateAddonGroup } from "@/src/services/adminAddonService";
 import type { AdminAddonGroup } from "@/src/lib/types/addonGroup";
@@ -31,7 +31,7 @@ export default function AddonGroupModal({
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageFilename, setImageFilename] = useState("");
 
-  const handleSubmit = async (payload: AddonGroupFormPayload) => {
+  const handleSubmit = async ({ payload, optionImages }: AddonGroupFormSubmission) => {
     const requestedFilename = imageFilename.trim();
     if (/\.\.|[/\\\0]/.test(requestedFilename)) {
       setErrorMsg("Tên file ảnh không hợp lệ.");
@@ -46,9 +46,9 @@ export default function AddonGroupModal({
     try {
       let saved: AdminAddonGroup;
       if (mode === "edit" && item) {
-        saved = await updateAddonGroup(item.id, payload, imageFile, requestedFilename);
+        saved = await updateAddonGroup(item.id, payload, imageFile, requestedFilename, optionImages);
       } else {
-        saved = await createAddonGroup(payload, imageFile, requestedFilename);
+        saved = await createAddonGroup(payload, imageFile, requestedFilename, optionImages);
       }
       onSuccess(saved);
       onClose();
@@ -93,7 +93,8 @@ export default function AddonGroupModal({
           )}
           <CatalogImageFields
             currentImageUrl={item?.image_url}
-            label="Ảnh addon"
+            label="Ảnh mặc định của nhóm"
+            cropPreset="compact"
             imageFilename={imageFilename}
             disabled={isSubmitting}
             onFileChange={setImageFile}

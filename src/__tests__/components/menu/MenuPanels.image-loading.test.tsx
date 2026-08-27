@@ -1,14 +1,16 @@
 import { createElement, createRef } from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ImageProps } from "next/image";
 import { describe, expect, it, vi } from "vitest";
 
 import type { MenuItem } from "@/src/lib/types/menu";
 
 vi.mock("next/image", () => ({
-  default: ({ alt, loading, priority }: ImageProps) => createElement("img", {
+  default: ({ alt, loading, priority, className, onLoad }: ImageProps) => createElement("img", {
     alt,
     loading,
+    className,
+    onLoad,
     "data-priority": String(Boolean(priority)),
   }),
 }));
@@ -73,5 +75,31 @@ describe("MenuPanels — lazy-load ảnh menu", () => {
       expect(screen.getByRole("img", { name }).getAttribute("loading")).toBe("lazy");
       expect(screen.getByRole("img", { name }).getAttribute("data-priority")).toBe("false");
     }
+  });
+
+  it("fade-in ảnh sau khi thumbnail tải xong", () => {
+    render(
+      <MenuPanels
+        loading={false}
+        latteItems={[menuItem("latte-1", "latte")]}
+        fusionItems={[]}
+        extrasItems={[]}
+        seasonalItems={[]}
+        milkTypes={[]}
+        cartItems={[]}
+        latteSectionRef={createRef<HTMLDivElement>()}
+        fusionSectionRef={createRef<HTMLDivElement>()}
+        extrasSectionRef={createRef<HTMLDivElement>()}
+        seasonalSectionRef={createRef<HTMLDivElement>()}
+        onItemClick={vi.fn()}
+      />,
+    );
+
+    const image = screen.getByRole("img", { name: "latte-1" });
+    expect(image.className).toContain("opacity-0");
+
+    fireEvent.load(image);
+
+    expect(image.className).toContain("opacity-100");
   });
 });

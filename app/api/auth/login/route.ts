@@ -13,6 +13,7 @@ import {
   type LoginIdentifierKind,
 } from "@/lib/rateLimit";
 import bcrypt from "bcryptjs";
+import { cacheDelete } from "@/lib/redis";
 
 // Dummy hash to prevent timing attacks. It corresponds to an empty string with cost 12.
 const DUMMY_HASH = "$2a$12$R9h/cIPz0gi.URNNX3rub2A9WEH71/x7LpZ9zL1Pz.x0bI/tXh9eW";
@@ -127,7 +128,7 @@ export async function POST(req: Request) {
     const activeSessions = await prisma.session.findMany({
       where: { user_id: user.id, expires_at: { gt: new Date() } },
       orderBy: { created_at: "asc" },
-      select: { id: true },
+      select: { id: true, refresh_token: true },
     });
     if (activeSessions.length >= MAX_ACTIVE_SESSIONS) {
       // Delete oldest sessions, keep (MAX_ACTIVE_SESSIONS - 1) newest
@@ -135,6 +136,10 @@ export async function POST(req: Request) {
         .slice(0, activeSessions.length - (MAX_ACTIVE_SESSIONS - 1))
         .map((s) => s.id);
       await prisma.session.deleteMany({ where: { id: { in: idsToDelete } } });
+      const cacheKeys = activeSessions
+        .slice(0, activeSessions.length - (MAX_ACTIVE_SESSIONS - 1))
+        .map((session) => `session:${session.refresh_token}`);
+      await cacheDelete(...cacheKeys);
     }
 
     // Create session

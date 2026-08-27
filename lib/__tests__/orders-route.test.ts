@@ -961,6 +961,28 @@ describe("GET /api/orders", () => {
     );
   });
 
+  it("không lazy-cancel đơn PENDING quá hạn khi đọc lịch sử", async () => {
+    const expiredOrder = {
+      id: "o-expired",
+      user_id: USER_ID,
+      status: "PENDING",
+      order_type: "PICKUP",
+      order_code: "BCBM-EXPIRED",
+      auto_cancel_at: new Date(Date.now() - 5 * 60 * 1000),
+      grand_total_vnd: 50_000,
+      total_vnd: 50_000,
+      created_at: new Date("2026-05-02T00:00:00.000Z"),
+    };
+    Object.assign(prisma.order, { findMany: vi.fn().mockResolvedValue([expiredOrder]) });
+
+    const response = await GET(makeGetReq());
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).data[0].status).toBe("PENDING");
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(prisma.$transaction).mock.calls[0]?.[0]).toBeInstanceOf(Array);
+  });
+
   it("trả discount_applied_vnd của addon voucher trong history DTO", async () => {
     Object.assign(prisma.order, { findMany: vi.fn().mockResolvedValue([{
       id: "o-addon", user_id: USER_ID, status: "COMPLETED", created_at: "2026-05-02",

@@ -51,6 +51,7 @@ describe("Ảnh addon và bột matcha", () => {
       "products/powders/meyumi-12345678.webp",
       expect.any(Buffer),
       "image/png",
+      "full",
     );
     expect(result).toEqual({
       imageUrl: "https://cdn/menu-images/products/powders/meyumi-12345678.webp",
@@ -74,9 +75,31 @@ describe("Ảnh addon và bột matcha", () => {
       "products/powders/meyumi-12345678.webp",
       expect.any(Buffer),
       "image/jpeg",
+      "full",
     );
     expect(result.newPath).toBe("products/powders/meyumi-12345678.webp");
   });
+
+  it.each(["addons", "milk-types"] as const)(
+    "upload %s bằng preset compact",
+    async (kind) => {
+      const image = new File(["image"], "option.png", { type: "image/png" });
+
+      await prepareCatalogImage({
+        kind,
+        entityName: "Tuỳ chọn",
+        imageFile: image,
+        currentImageUrl: null,
+      });
+
+      expect(mockUploadMenuImage).toHaveBeenCalledWith(
+        `products/${kind}/auto-12345678.webp`,
+        expect.any(Buffer),
+        "image/png",
+        "compact",
+      );
+    },
+  );
 
   it("đổi tên ảnh hiện tại bằng copy và đánh dấu ảnh cũ để dọn sau commit", async () => {
     const result = await prepareCatalogImage({

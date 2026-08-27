@@ -3,7 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Drawer } from "vaul";
 
 import { Button } from "@/src/components/ui/button";
@@ -28,6 +28,7 @@ interface ResponsiveOverlayProps {
   presentation?: OverlayPresentation;
   className?: string;
   onOpenChange: (open: boolean) => void;
+  onAfterClose?: () => void;
 }
 
 const desktopQuery = "(min-width: 768px)";
@@ -72,8 +73,10 @@ export function ResponsiveOverlay({
   presentation = "default",
   className,
   onOpenChange,
+  onAfterClose,
 }: ResponsiveOverlayProps) {
   const isDesktop = useSyncExternalStore(subscribeDesktop, getDesktopSnapshot, getServerDesktopSnapshot);
+  const wasOpen = useRef(open);
   const canDismiss = dismissPolicy === "default" || (dismissPolicy === "locked-while-busy" && !busy);
   const canExplicitlyClose = !(dismissPolicy === "locked-while-busy" && busy);
   const requestOpenChange = (nextOpen: boolean) => {
@@ -82,6 +85,11 @@ export function ResponsiveOverlay({
   const explicitClose = () => {
     if (canExplicitlyClose) onOpenChange(false);
   };
+
+  useEffect(() => {
+    if (isDesktop && wasOpen.current && !open) onAfterClose?.();
+    wasOpen.current = open;
+  }, [isDesktop, onAfterClose, open]);
 
   if (isDesktop) {
     return (
@@ -134,7 +142,13 @@ export function ResponsiveOverlay({
   }
 
   return (
-    <Drawer.Root open={open} onOpenChange={requestOpenChange} dismissible={canDismiss} repositionInputs={false}>
+    <Drawer.Root
+      open={open}
+      onOpenChange={requestOpenChange}
+      onAnimationEnd={(nextOpen) => { if (!nextOpen) onAfterClose?.(); }}
+      dismissible={canDismiss}
+      repositionInputs={false}
+    >
       <Drawer.Portal>
         <Drawer.Overlay className={cn("fixed inset-0 bg-foreground/40 backdrop-blur-sm", layerClasses[layer].overlay)} />
         <Drawer.Content

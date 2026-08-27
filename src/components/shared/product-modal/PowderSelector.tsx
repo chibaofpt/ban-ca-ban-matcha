@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Image from "next/image";
-import { Info, X } from "lucide-react";
+import { MoreVertical, X } from "lucide-react";
 import { Drawer } from "vaul";
 import type { Powder } from "@/src/lib/types/powder";
 import type { Size } from "@/src/lib/types/menu";
@@ -86,13 +86,15 @@ function PowderDetailSheet({ powder, open, onOpenChange }: PowderDetailSheetProp
 
             {/* Powder image */}
             {powder.image_url && (
-              <div className="mb-4 w-full aspect-square overflow-hidden rounded-2xl bg-primary/5">
+              <div className="mx-auto mb-4 aspect-square w-full max-w-[300px] overflow-hidden rounded-2xl bg-primary/5">
                 <Image
                   src={powder.image_url}
                   alt={`Ảnh bột ${powder.name}`}
-                  width={400}
-                  height={400}
-                  sizes="(max-width: 768px) 100vw, 400px"
+                  width={300}
+                  height={300}
+                  sizes="(max-width: 339px) calc(100vw - 40px), 300px"
+                  quality={75}
+                  loading="eager"
                   className="h-full w-full object-cover"
                 />
               </div>
@@ -111,13 +113,15 @@ function PowderDetailSheet({ powder, open, onOpenChange }: PowderDetailSheetProp
 
             {/* Flavor chart */}
             {(powder.fragrance !== null || powder.body !== null || powder.bitterness !== null || powder.umami !== null || powder.color !== null) && (
-              <div className="mt-4 space-y-2 border-t border-border/40 pt-4">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-primary/50 mb-2">Hương vị</p>
-                <FlavorBar label="Hương thơm" value={powder.fragrance} />
-                <FlavorBar label="Độ đậm" value={powder.body} />
-                <FlavorBar label="Đắng" value={powder.bitterness} />
-                <FlavorBar label="Umami" value={powder.umami} />
-                <FlavorBar label="Màu sắc" value={powder.color} />
+              <div className="mt-4 border-t border-border/40 pt-4">
+                <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-primary/50">Hương vị</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                  <FlavorBar label="Hương thơm" value={powder.fragrance} />
+                  <FlavorBar label="Độ đậm" value={powder.body} />
+                  <FlavorBar label="Đắng" value={powder.bitterness} />
+                  <FlavorBar label="Umami" value={powder.umami} />
+                  <FlavorBar label="Màu sắc" value={powder.color} />
+                </div>
               </div>
             )}
           </div>
@@ -144,7 +148,7 @@ export function PowderSelector({
 
   return (
     <>
-      <div className="mt-3 space-y-2">
+      <div className="mt-2 space-y-2">
         {powderList.map((powderId) => {
           const powder = powders.find((candidate) => candidate.id === powderId);
           if (!powder) return null;
@@ -163,58 +167,57 @@ export function PowderSelector({
                 )}`;
 
           return (
-            <button
+            <div
               key={powderId}
-              type="button"
-              onClick={() => onChange(powderId)}
               className={cn(
-                "flex w-full min-h-16 min-w-0 flex-col rounded-2xl border-2 p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+                "relative w-full min-w-0 rounded-2xl border-2 p-2 text-left transition-colors",
                 isActive
                   ? "border-primary bg-primary/5"
                   : "border-border bg-white hover:border-primary/30",
               )}
             >
-              {/* Row 1: name + price + info button */}
-              <span className="flex w-full items-center gap-2">
-                {powder.image_url && (
-                  <Image
-                    src={powder.image_url}
-                    alt={`Ảnh bột ${powder.name}`}
-                    width={48}
-                    height={48}
-                    sizes="48px"
-                    className="h-12 w-12 shrink-0 rounded-xl object-cover"
-                  />
-                )}
-                <span className="min-w-0 flex-1 text-sm font-bold text-primary">{powder.name}</span>
-                <span
-                  className={cn(
-                    "shrink-0 text-xs font-bold",
-                    difference > 0 ? "text-[#c74646]" : "text-primary/70",
-                  )}
-                >
-                  {priceLabel}
-                </span>
-                {/* Info button inside card */}
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => { e.stopPropagation(); setDetailPowder(powder); }}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); setDetailPowder(powder); } }}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/8 text-primary/50 hover:bg-primary/15 hover:text-primary transition-colors"
-                  aria-label={`Xem thông tin ${powder.name}`}
-                >
-                  <Info className="h-4 w-4" />
-                </span>
-              </span>
+              <button
+                type="button"
+                onClick={() => onChange(powderId)}
+                className="flex w-full min-w-0 items-start gap-2.5 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary/5">
+                  {powder.image_url ? (
+                    <Image
+                      src={powder.image_url}
+                      alt={`Ảnh bột ${powder.name}`}
+                      width={48}
+                      height={48}
+                      sizes="48px"
+                      quality={60}
+                      loading="lazy"
+                      className="h-12 w-12 object-contain"
+                    />
+                  ) : null}
+                </div>
 
-              {/* Row 2: description full width */}
-              {powder.description && (
-                <span className="mt-2 block text-xs leading-relaxed text-primary/65">
-                  {powder.description}
-                </span>
-              )}
-            </button>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start gap-2 pr-9 leading-tight">
+                    <span className="min-w-0 flex-1 text-sm font-bold text-primary">{powder.name}</span>
+                    <span className={cn("shrink-0 text-xs font-bold", difference > 0 ? "text-[#c74646]" : "text-primary/70")}>
+                      {priceLabel}
+                    </span>
+                  </div>
+                  {powder.description && (
+                    <p className="mt-0.5 text-xs leading-snug text-primary/65">{powder.description}</p>
+                  )}
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDetailPowder(powder)}
+                className="absolute right-1 top-1 z-10 flex h-10 w-10 items-center justify-center text-primary/60 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                aria-label={`Xem thông tin ${powder.name}`}
+              >
+                <MoreVertical className="h-5 w-5" strokeWidth={2.5} />
+              </button>
+            </div>
           );
         })}
       </div>

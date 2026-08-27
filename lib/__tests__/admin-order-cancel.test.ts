@@ -1,13 +1,12 @@
 /**
  * Tests cho logic hủy đơn hàng — bao phủ toàn bộ yêu cầu:
  *
- * 1. Hệ thống tự động hủy đơn quá 20 phút (lazy cancel trên GET list)
- * 2. Admin hủy được đơn COUNTER đã COMPLETED (staff bấm nhầm / khách đổi ý)
+ * 1. Admin hủy được đơn COUNTER đã COMPLETED (staff bấm nhầm / khách đổi ý)
  *    → phải trừ lại điểm order_complete, floor về 0 không cho âm
- * 3. Admin hủy được đơn online chưa complete (PENDING, ADMIN_CONFIRMED, STAFF_DONE)
- * 4. Admin KHÔNG hủy được đơn online đã COMPLETED
- * 5. Staff KHÔNG hủy được đơn nào
- * 6. Restore voucher về ACTIVE khi hủy
+ * 2. Admin hủy được đơn online chưa complete (PENDING, ADMIN_CONFIRMED, STAFF_DONE)
+ * 3. Admin KHÔNG hủy được đơn online đã COMPLETED
+ * 4. Staff KHÔNG hủy được đơn nào
+ * 5. Restore voucher về ACTIVE khi hủy
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -31,14 +30,6 @@ const mockPointsLogCreateStaff = vi.fn();
 const mockOrderDiscountVoucherFindManyStaff = vi.fn();
 const mockTransactionStaff = vi.fn();
 
-// Orders route mocks (customer GET)
-const mockOrderFindManyCustomer = vi.fn();
-const mockOrderCountCustomer = vi.fn();
-const mockTransactionCustomer = vi.fn();
-const mockOrderFindUniqueCustomer = vi.fn();
-const mockOrderUpdateCustomer = vi.fn();
-const mockOrderUpdateManyCustomer = vi.fn();
-
 vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
   normalizePhone: (p: string) => p,
@@ -60,10 +51,6 @@ function makeStaffPatchReq(body: unknown, orderId = "order-uuid-1") {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-}
-
-function makeCustomerGetReq(): NextRequest {
-  return new NextRequest("http://localhost/api/orders", { method: "GET" });
 }
 
 const ADMIN_SESSION  = { id: "admin-uuid-1", role: "ADMIN",  phone_number: "+84900000001" };
@@ -516,195 +503,5 @@ describe("PATCH /api/staff/orders/[id] — cancel rules", () => {
 
     expect(res.status).toBe(404);
     expect((await res.json()).code).toBe("NOT_FOUND");
-  });
-});
-
-// ── Test Suite 2: GET /api/orders — Lazy auto-cancel ─────────────────────────
-
-describe("GET /api/orders — lazy auto-cancel đơn quá 20 phút", () => {
-  const CUSTOMER_SESSION = { id: USER_ID, role: "CUSTOMER", phone_number: "+84900000003" };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockGetSession.mockResolvedValue(CUSTOMER_SESSION);
-    mockOrderUpdateManyCustomer.mockResolvedValue({ count: 1 });
-  });
-
-  async function getGET() {
-    vi.doMock("@/lib/prisma", () => ({
-      prisma: {
-        order: {
-          findUnique: mockOrderFindUniqueCustomer,
-          findMany:   mockOrderFindManyCustomer,
-          count:      mockOrderCountCustomer,
-          update:     mockOrderUpdateCustomer,
-        },
-        $transaction: (arg: unknown) => mockTransactionCustomer(arg),
-      },
-    }));
-    const mod = await import("@/app/api/orders/route");
-    return mod.GET;
-  }
-
-  it("1a. Đơn PENDING chưa hết hạn → không bị cancel", async () => {
-    const futureDeadline = new Date(Date.now() + 10 * 60 * 1000); // còn 10 phút
-    const pendingOrder = {
-      id: "order-active",
-      status: "PENDING",
-      order_type: "PICKUP",
-      user_id: USER_ID,
-      auto_cancel_at: futureDeadline,
-      order_code: "BCBM-001",
-      total_vnd: 50000,
-    };
-
-    // $transaction trả [count, orders]
-    mockTransactionCustomer.mockImplementation(async (arg: unknown) => {
-      if (Array.isArray(arg)) return Promise.all(arg);
-      return (arg as (tx: unknown) => Promise<unknown>)({
-        order: {
-          findUnique: mockOrderFindUniqueCustomer,
-          update: mockOrderUpdateCustomer,
-          updateMany: mockOrderUpdateManyCustomer,
-        },
-        voucher: { findUnique: vi.fn(), update: vi.fn() },
-        orderItem: { findMany: vi.fn().mockResolvedValue([]) },
-        user: { findUnique: vi.fn(), update: vi.fn() },
-        pointsLog: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn() },
-        orderDiscountVoucher: { findMany: vi.fn().mockResolvedValue([]) },
-        orderItemAddonVoucher: { findMany: vi.fn().mockResolvedValue([]) },
-      });
-    });
-    mockOrderCountCustomer.mockResolvedValue(1);
-    mockOrderFindManyCustomer.mockResolvedValue([pendingOrder]);
-
-    const GET = await getGET();
-    const res = await GET(makeCustomerGetReq());
-
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    // Status vẫn PENDING, không bị cancel
-    expect(json.data[0].status).toBe("PENDING");
-    expect(mockOrderUpdateCustomer).not.toHaveBeenCalled();
-  });
-
-  it("1b. Đơn PENDING đã quá hạn → bị lazy cancel, response trả về CANCELLED", async () => {
-    const pastDeadline = new Date(Date.now() - 5 * 60 * 1000); // đã qua 5 phút
-    const expiredOrder = {
-      id: "order-expired",
-      status: "PENDING",
-      order_type: "PICKUP",
-      user_id: USER_ID,
-      auto_cancel_at: pastDeadline,
-      order_code: "BCBM-002",
-      total_vnd: 50000,
-    };
-
-    mockOrderCountCustomer.mockResolvedValue(1);
-    mockOrderFindManyCustomer.mockResolvedValue([expiredOrder]);
-
-    // Transaction cho lazy cancel: re-check status vẫn PENDING → cho phép cancel
-    mockOrderUpdateManyCustomer.mockResolvedValue({ count: 1 });
-
-    mockTransactionCustomer.mockImplementation(async (arg: unknown) => {
-      if (Array.isArray(arg)) return Promise.all(arg);
-      return (arg as (tx: unknown) => Promise<unknown>)({
-        order: {
-          findUnique: mockOrderFindUniqueCustomer,
-          update: mockOrderUpdateCustomer,
-          updateMany: mockOrderUpdateManyCustomer,
-        },
-        voucher: { findUnique: vi.fn().mockResolvedValue(null), update: vi.fn() },
-        orderItem: { findMany: vi.fn().mockResolvedValue([]) },
-        user: { findUnique: vi.fn().mockResolvedValue({ points_balance: 0 }), update: vi.fn() },
-        pointsLog: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn() },
-        orderDiscountVoucher: { findMany: vi.fn().mockResolvedValue([]) },
-        orderItemAddonVoucher: { findMany: vi.fn().mockResolvedValue([]) },
-      });
-    });
-
-    const GET = await getGET();
-    const res = await GET(makeCustomerGetReq());
-
-    expect(res.status).toBe(200);
-    const json = await res.json();
-    // Response trả về status đã được update in-memory
-    expect(json.data[0].status).toBe("CANCELLED");
-    // Đã gọi update để cancel
-    expect(mockOrderUpdateManyCustomer).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "order-expired", status: "PENDING" },
-        data: { status: "CANCELLED" },
-      })
-    );
-  });
-
-  it("1c. Race condition: đơn đã bị cancel bởi request khác → skip silently", async () => {
-    const pastDeadline = new Date(Date.now() - 5 * 60 * 1000);
-    const expiredOrder = {
-      id: "order-race",
-      status: "PENDING",
-      order_type: "PICKUP",
-      user_id: USER_ID,
-      auto_cancel_at: pastDeadline,
-      order_code: "BCBM-003",
-      total_vnd: 50000,
-    };
-
-    mockOrderCountCustomer.mockResolvedValue(1);
-    mockOrderFindManyCustomer.mockResolvedValue([expiredOrder]);
-
-    // Re-check trong transaction: đã bị cancel bởi request khác
-    mockOrderUpdateManyCustomer.mockResolvedValue({ count: 0 });
-
-    mockTransactionCustomer.mockImplementation(async (arg: unknown) => {
-      if (Array.isArray(arg)) return Promise.all(arg);
-      return (arg as (tx: unknown) => Promise<unknown>)({
-        order: {
-          findUnique: mockOrderFindUniqueCustomer,
-          update: mockOrderUpdateCustomer,
-          updateMany: mockOrderUpdateManyCustomer,
-        },
-        voucher: { findUnique: vi.fn(), update: vi.fn() },
-        orderItem: { findMany: vi.fn().mockResolvedValue([]) },
-        user: { findUnique: vi.fn(), update: vi.fn() },
-        pointsLog: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn() },
-        orderDiscountVoucher: { findMany: vi.fn().mockResolvedValue([]) },
-      });
-    });
-
-    const GET = await getGET();
-    const res = await GET(makeCustomerGetReq());
-
-    // Không throw, không update lần thứ 2
-    expect(res.status).toBe(200);
-    expect(mockOrderUpdateCustomer).not.toHaveBeenCalled();
-  });
-
-  it("1d. Đơn COMPLETED không bị ảnh hưởng bởi lazy cancel", async () => {
-    const completedOrder = {
-      id: "order-completed",
-      status: "COMPLETED",
-      order_type: "COUNTER",
-      user_id: USER_ID,
-      auto_cancel_at: null, // COUNTER không có deadline
-      total_vnd: 50000,
-    };
-
-    mockOrderCountCustomer.mockResolvedValue(1);
-    mockOrderFindManyCustomer.mockResolvedValue([completedOrder]);
-
-    mockTransactionCustomer.mockImplementation(async (arg: unknown) => {
-      if (Array.isArray(arg)) return Promise.all(arg);
-      return arg;
-    });
-
-    const GET = await getGET();
-    const res = await GET(makeCustomerGetReq());
-
-    expect(res.status).toBe(200);
-    expect(mockOrderUpdateCustomer).not.toHaveBeenCalled();
-    const json = await res.json();
-    expect(json.data[0].status).toBe("COMPLETED");
   });
 });

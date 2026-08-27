@@ -44,8 +44,13 @@ Không thực hiện repo-wide layer refactor khi sửa feature. Direct API call
 - Voucher catalog, owned wallet DTO, issuance, checkout và refund dùng cùng server-side live
   availability resolver; UI không tự suy luận lifecycle của menu configuration.
 - API response và field compatibility thuộc `API.md`; không đổi tên chỉ vì muốn làm sạch thuật ngữ.
+- Auth middleware treats PostgreSQL session state as authoritative. Revocation paths await cache
+  eviction, refresh rotation fails closed when its compare-and-set/grace update is not confirmed,
+  and no positive Redis session cache may outlive a deleted database row.
+- GET handlers are read-only. Scheduled lifecycle work runs through authenticated cron routes;
+  customer voucher reconciliation is an explicit POST before a wallet read.
 - External SDK luôn nằm sau wrapper/adapter để UI và business logic không phụ thuộc trực tiếp nhà cung cấp.
-- Ảnh catalog đi qua Storage adapter để chuẩn hóa WebP tối đa 800px, quality 75 và cache một năm; ảnh Supabase hiển thị qua Next/Vercel Image Optimization với `sizes` theo container.
+- Ảnh catalog đi qua Storage adapter: menu/powder chuẩn hóa WebP tối đa 800px quality 75; milk type, addon group và từng addon option tối đa 320px quality 70, cùng cache một năm. Option ưu tiên ảnh riêng và fallback ảnh group cho dữ liệu cũ. Ảnh Supabase hiển thị qua Next/Vercel Image Optimization với `sizes` theo container; thumbnail sữa/add-on/powder dùng quality 60 và ảnh powder lớn chỉ tải khi mở chi tiết. Menu card giữ khung skeleton ổn định và fade ảnh vào sau khi tải xong.
 
 ## UI system
 

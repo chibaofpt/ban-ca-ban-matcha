@@ -39,6 +39,8 @@ export interface DailyReport {
 
 /** Staff member for admin dropdown */
 export interface StaffMember {
+  qr_token: string;
+  /** One-release public-token alias retained for older consumers. */
   id: string;
   name: string;
   role: "STAFF" | "ADMIN";

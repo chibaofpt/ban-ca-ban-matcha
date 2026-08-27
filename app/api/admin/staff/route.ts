@@ -24,11 +24,19 @@ export async function GET() {
   try {
     const staff = await prisma.user.findMany({
       where: { role: { in: ["STAFF", "ADMIN"] } },
-      select: { id: true, name: true, role: true },
+      select: { qr_token: true, name: true, role: true },
       orderBy: { created_at: "asc" },
     });
 
-    return NextResponse.json({ data: staff });
+    return NextResponse.json({
+      data: staff.map((member) => ({
+        qr_token: member.qr_token,
+        // One-release compatibility alias. This is the public token, never users.id.
+        id: member.qr_token,
+        name: member.name,
+        role: member.role,
+      })),
+    });
   } catch {
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },

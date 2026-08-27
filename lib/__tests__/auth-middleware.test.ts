@@ -9,6 +9,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 const mockFetch = vi.fn();
+const redisMocks = vi.hoisted(() => ({
+  cacheGet: vi.fn(),
+  cacheSet: vi.fn(),
+  cacheDelete: vi.fn(),
+}));
+
+vi.mock("@/lib/redis", () => redisMocks);
 
 // Patch global fetch before imports
 vi.stubGlobal("fetch", mockFetch);
@@ -23,6 +30,8 @@ import {
   findSessionWithUser,
   deleteSession,
   createSession,
+  markSessionRotating,
+  updateSessionGracePeriod,
 } from "@/lib/middleware-auth";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -54,6 +63,10 @@ function makeSupabaseResponse(data: unknown, status = 200) {
 describe("middleware-auth — findSessionWithUser", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFetch.mockReset();
+    redisMocks.cacheGet.mockResolvedValue(null);
+    redisMocks.cacheSet.mockResolvedValue(undefined);
+    redisMocks.cacheDelete.mockResolvedValue(undefined);
     vi.stubEnv("SUPABASE_SECRET_KEY", "");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
   });
@@ -120,11 +133,43 @@ describe("middleware-auth — findSessionWithUser", () => {
 
     expect(result).toBeNull();
   });
+
+  it("không tin session Redis đã bị thu hồi khi DB không còn row", async () => {
+    redisMocks.cacheGet.mockResolvedValueOnce(MOCK_SESSION);
+    mockFetch.mockResolvedValueOnce(makeSupabaseResponse([]));
+
+    const result = await findSessionWithUser("refresh-token-abc");
+
+    expect(result).toBeNull();
+    expect(mockFetch).toHaveBeenCalledOnce();
+    expect(redisMocks.cacheGet).not.toHaveBeenCalled();
+    expect(redisMocks.cacheSet).not.toHaveBeenCalled();
+  });
+});
+
+describe("middleware-auth — claim rotation fail-closed", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFetch.mockReset();
+  });
+
+  it("trả error khi không thể kiểm tra rotation lock", async () => {
+    mockFetch.mockRejectedValueOnce(new Error("Network error"));
+
+    await expect(markSessionRotating("session-uuid-123")).resolves.toBe("error");
+  });
+
+  it("không xác nhận grace period khi session đã bị xóa", async () => {
+    mockFetch.mockResolvedValueOnce(makeSupabaseResponse([]));
+
+    await expect(updateSessionGracePeriod("session-uuid-123")).resolves.toBe(false);
+  });
 });
 
 describe("middleware-auth — deleteSession", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFetch.mockReset();
   });
 
   it("gọi DELETE request đến đúng endpoint với session id", async () => {
@@ -148,6 +193,7 @@ describe("middleware-auth — deleteSession", () => {
 describe("middleware-auth — createSession", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFetch.mockReset();
   });
 
   it("tạo session mới và trả về refresh_token và expires_at", async () => {

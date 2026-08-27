@@ -85,6 +85,7 @@ export default function MilkTypeModal({
           <CatalogImageFields
             currentImageUrl={item?.image_url}
             label="Ảnh loại sữa"
+            cropPreset="compact"
             imageFilename={imageFilename}
             disabled={isSubmitting}
             onFileChange={setImageFile}

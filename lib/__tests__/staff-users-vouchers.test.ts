@@ -158,5 +158,6 @@ describe("GET /api/staff/users/[id]/vouchers", () => {
         where: expect.objectContaining({ status: "ACTIVE" }),
       })
     );
+    expect(mockVoucherUpdateMany).not.toHaveBeenCalled();
   });
 });

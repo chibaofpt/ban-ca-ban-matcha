@@ -4,10 +4,10 @@
  * ordered by created_at desc, newest first.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import type { Prisma, VoucherStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
 import { toPublicVoucherDto } from "@/lib/voucherPublicDto";
 import { attachBundleRewardBaselines } from "@/lib/voucherBundleDto";
 import {
@@ -15,29 +15,67 @@ import {
   loadVoucherAvailabilityCatalog,
   type VoucherAvailabilityDatabase,
 } from "@/lib/voucherAvailability";
-import {
-  ensureAutoGrantedVouchers,
-  type VoucherIssuanceDatabase,
-} from "@/lib/voucherIssuance";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/profile/vouchers — Returns all vouchers belonging to the current user. */
-export async function GET() {
+function decodeCursor(cursor: string): string | null {
+  try {
+    const id = Buffer.from(cursor, "base64url").toString("utf8");
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+      ? id
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function encodeCursor(id: string): string {
+  return Buffer.from(id, "utf8").toString("base64url");
+}
+
+/** GET /api/profile/vouchers — Returns a bounded cursor page of the current user's vouchers. */
+export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   }
 
   try {
-    // Lazy retry closes the gap when registration-time grant lost a transient race.
-    await ensureAutoGrantedVouchers(prisma as unknown as VoucherIssuanceDatabase, session.id);
-    // Lazy-sync: mark expired vouchers before listing
-    await lazyExpireVouchers(session.id);
+    const { searchParams } = new URL(req.url);
+    const limitValue = Number(searchParams.get("limit") ?? "50");
+    const limit = Number.isInteger(limitValue) && limitValue >= 1 && limitValue <= 50
+      ? limitValue
+      : null;
+    const cursor = searchParams.get("cursor");
+    const cursorId = cursor ? decodeCursor(cursor) : null;
+    const status = searchParams.get("status") as VoucherStatus | null;
+    const validStatuses: VoucherStatus[] = ["ACTIVE", "RESERVED", "REDEEMED", "EXPIRED", "REFUNDED"];
+    if (!limit || (cursor && !cursorId) || (status && !validStatuses.includes(status))) {
+      return NextResponse.json(
+        { error: "Invalid pagination", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
+    const now = new Date();
+    const lifecycleWhere: Prisma.VoucherWhereInput = status === "ACTIVE"
+      ? { status: "ACTIVE", OR: [{ expires_at: null }, { expires_at: { gt: now } }] }
+      : status === "EXPIRED"
+        ? {
+            OR: [
+              { status: "EXPIRED" },
+              { status: "ACTIVE", expires_at: { lte: now } },
+            ],
+          }
+        : status
+          ? { status }
+          : {};
 
     const vouchers = await prisma.voucher.findMany({
-      where: { user_id: session.id },
-      orderBy: { created_at: "desc" },
+      where: { user_id: session.id, ...lifecycleWhere },
+      orderBy: [{ created_at: "desc" }, { id: "desc" }],
+      take: limit + 1,
+      ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
       include: {
         package: {
           select: {
@@ -83,10 +121,21 @@ export async function GET() {
       },
     });
 
+    const hasMore = vouchers.length > limit;
+    const page = vouchers.slice(0, limit);
     const catalog = await loadVoucherAvailabilityCatalog(prisma as unknown as VoucherAvailabilityDatabase);
-    const withAvailability = attachOwnedVoucherAvailability(vouchers, catalog);
+    const withAvailability = attachOwnedVoucherAvailability(page, catalog);
     const withBaselines = await attachBundleRewardBaselines(prisma, withAvailability);
-    return NextResponse.json({ data: withBaselines.map(toPublicVoucherDto) });
+    const nextCursor = hasMore && page.length > 0 ? encodeCursor(page[page.length - 1].id) : null;
+    return NextResponse.json({
+      data: withBaselines.map((voucher) => {
+        const dto = toPublicVoucherDto(voucher);
+        return voucher.status === "ACTIVE" && voucher.expires_at && voucher.expires_at <= now
+          ? { ...dto, status: "EXPIRED" as const }
+          : dto;
+      }),
+      meta: { limit, has_more: hasMore, next_cursor: nextCursor },
+    });
   } catch (err) {
     console.error("[GET /api/profile/vouchers]", {
       name: err instanceof Error ? err.name : typeof err,

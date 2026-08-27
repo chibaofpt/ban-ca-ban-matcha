@@ -4,15 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { AnimatePresence } from "framer-motion";
-import * as Dialog from "@radix-ui/react-dialog";
-import { Drawer } from "vaul";
 import { Loader2, LogIn, Ticket } from "lucide-react";
 import { toast } from "sonner";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import { useCurrentUser, useIsLoggedIn } from "@/src/lib/store/authStore";
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
-import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
 import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
 import { useCustomerVouchers } from "@/src/hooks/useCustomerVouchers";
 import { useVoucherAcquisition } from "@/src/hooks/useVoucherAcquisition";
@@ -47,6 +44,7 @@ import { getBundleVoucherSummary } from "@/src/components/menu/cart/CartBundleVo
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { getVoucherRefundConfirmation } from "@/src/lib/utils/voucherModalHelpers";
 import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
+import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 
 /** Unified customer wallet and voucher acquisition modal. */
 export default function VoucherModal() {
@@ -68,7 +66,7 @@ export default function VoucherModal() {
   const [exchangingId, setExchangingId] = useState<string | null>(null);
   const [highlightToken, setHighlightToken] = useState<string | null>(null);
   const [qrVoucher, setQrVoucher] = useState<MyVoucher | null>(null);
-  const [isDesktop, setIsDesktop] = useState(false);
+  const [pendingAuthRequest, setPendingAuthRequest] = useState<{ packageId?: string } | null>(null);
   const [detailVoucher, setDetailVoucher] = useState<MyVoucher | null>(null);
   const [bundleSetupVoucher, setBundleSetupVoucher] = useState<MyVoucher | null>(null);
   const [refundCandidate, setRefundCandidate] = useState<MyVoucher | null>(null);
@@ -81,7 +79,6 @@ export default function VoucherModal() {
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGram = usePowderStore((s) => s.defaultPowderGram);
   const { addToCart, loading: isUsingVoucher } = useAddVoucherToCart();
-  useBodyScrollLock(open);
 
   const activeVouchers = filterModalVouchers(vouchers);
   const selectedDiscountVouchers = activeVouchers.filter(v => selectedVoucherIds.includes(v.qr_token) && v.voucher_type === "DISCOUNT");
@@ -189,14 +186,6 @@ export default function VoucherModal() {
   }, [isRefunding, queryClient, refundCandidate, removeVoucherEffects]);
 
   useEffect(() => {
-    const media = window.matchMedia("(min-width: 768px)");
-    const update = () => setIsDesktop(media.matches);
-    update();
-    media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
-
-  useEffect(() => {
     if (open) setActiveTab(isLoggedIn ? "my_vouchers" : "packages");
     else if (!isRefunding) setRefundCandidate(null);
   }, [isLoggedIn, isRefunding, open]);
@@ -221,13 +210,24 @@ export default function VoucherModal() {
 
   const handleAcquire = useCallback((pkg: VoucherPackage) => {
     if (!isLoggedIn) {
+      setPendingAuthRequest({ packageId: pkg.id });
       close();
-      useAuthModalStore.getState().openLoginWithIntent({ type: "voucher_acquire", packageId: pkg.id });
       return;
     }
     if (pkg.acquisition_mode === "POINTS_EXCHANGE") setPendingPackage(pkg);
     else void acquirePackage(pkg);
   }, [acquirePackage, close, isLoggedIn]);
+
+  const openPendingAuth = useCallback(() => {
+    if (!pendingAuthRequest) return;
+    const request = pendingAuthRequest;
+    setPendingAuthRequest(null);
+    if (request.packageId) {
+      useAuthModalStore.getState().openLoginWithIntent({ type: "voucher_acquire", packageId: request.packageId });
+    } else {
+      useAuthModalStore.getState().openLogin();
+    }
+  }, [pendingAuthRequest]);
 
   useEffect(() => {
     if (isLoggedIn && pendingIntent && !open) openModal();
@@ -253,6 +253,7 @@ export default function VoucherModal() {
       pointsBalance={points}
       onChange={setActiveTab}
       onClose={close}
+      detailOpen={detailVoucher !== null}
       overlayContent={(
         <>
           <AnimatePresence>{qrVoucher && <QrModal voucher={qrVoucher} onClose={() => setQrVoucher(null)} />}</AnimatePresence>
@@ -335,16 +336,23 @@ export default function VoucherModal() {
           <VoucherHistorySection vouchers={filterHistoryVouchers(vouchers)} onVoucherClick={setDetailVoucher} />
         ) : (
           <div>
-            {!isLoggedIn && <div className="mb-4 flex items-center gap-3 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3"><LogIn className="size-5 shrink-0 text-primary" /><p className="flex-1 text-sm font-bold text-primary">Đăng nhập để nhận hoặc đổi ưu đãi</p><button onClick={() => { close(); useAuthModalStore.getState().openLogin(); }} className="min-h-11 rounded-lg bg-primary px-3 text-xs font-bold text-white">Đăng nhập</button></div>}
+            {!isLoggedIn && <div className="mb-4 flex items-center gap-3 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3"><LogIn className="size-5 shrink-0 text-primary" /><p className="flex-1 text-sm font-bold text-primary">Đăng nhập để nhận hoặc đổi ưu đãi</p><button onClick={() => { setPendingAuthRequest({}); close(); }} className="min-h-11 rounded-lg bg-primary px-3 text-xs font-bold text-white">Đăng nhập</button></div>}
             <VoucherPackageCatalog packages={packages} pointsBalance={points} pendingPackageId={isPending ? exchangingId : null} onAcquire={handleAcquire} />
           </div>
         )}
     </VoucherModalFrame>
   );
 
-  return isDesktop ? (
-    <Dialog.Root open={open} onOpenChange={(next) => { if (!next) close(); }}><Dialog.Portal><Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" /><Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 p-4 outline-none">{content}</Dialog.Content></Dialog.Portal></Dialog.Root>
-  ) : (
-    <Drawer.Root open={open} repositionInputs={false} onOpenChange={(next) => { if (!next) close(); }}><Drawer.Portal><Drawer.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" /><Drawer.Content className="fixed inset-x-0 bottom-0 z-50 outline-none">{content}</Drawer.Content></Drawer.Portal></Drawer.Root>
+  return (
+    <ResponsiveOverlay
+      open={open}
+      title="Ưu đãi"
+      presentation="bare"
+      className="w-full md:max-w-2xl"
+      onOpenChange={(nextOpen) => { if (!nextOpen) close(); }}
+      onAfterClose={openPendingAuth}
+    >
+      {content}
+    </ResponsiveOverlay>
   );
 }

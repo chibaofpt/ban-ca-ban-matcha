@@ -99,4 +99,23 @@ describe("Shared overlays", () => {
     expect(body?.className).toContain("overflow-y-auto");
     expect(footer?.className).toContain("shrink-0");
   });
+
+  it("ResponsiveOverlay báo sau khi dialog desktop đã đóng hoàn toàn", () => {
+    const onAfterClose = vi.fn();
+    const { rerender } = render(
+      <ResponsiveOverlay open title="Đăng nhập" onOpenChange={vi.fn()} onAfterClose={onAfterClose}>
+        <p>Biểu mẫu đăng nhập</p>
+      </ResponsiveOverlay>,
+    );
+
+    expect(onAfterClose).not.toHaveBeenCalled();
+
+    rerender(
+      <ResponsiveOverlay open={false} title="Đăng nhập" onOpenChange={vi.fn()} onAfterClose={onAfterClose}>
+        <p>Biểu mẫu đăng nhập</p>
+      </ResponsiveOverlay>,
+    );
+
+    expect(onAfterClose).toHaveBeenCalledOnce();
+  });
 });

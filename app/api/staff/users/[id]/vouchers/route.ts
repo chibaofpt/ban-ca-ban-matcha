@@ -7,7 +7,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
 import { resolveCustomerIdentifier } from "@/lib/publicIdentifiers";
 import { toPublicVoucherDto } from "@/lib/voucherPublicDto";
 import { attachBundleRewardBaselines } from "@/lib/voucherBundleDto";
@@ -16,10 +15,6 @@ import {
   loadVoucherAvailabilityCatalog,
   type VoucherAvailabilityDatabase,
 } from "@/lib/voucherAvailability";
-import {
-  ensureAutoGrantedVouchers,
-  type VoucherIssuanceDatabase,
-} from "@/lib/voucherIssuance";
 
 export const dynamic = "force-dynamic";
 
@@ -44,14 +39,14 @@ export async function GET(
     if (!user) return NextResponse.json({ data: [] });
 
     const userId = user.id;
-    await ensureAutoGrantedVouchers(prisma as unknown as VoucherIssuanceDatabase, userId);
-    await lazyExpireVouchers(userId);
     const vouchers = await prisma.voucher.findMany({
       where: {
         user_id: userId,
         status: "ACTIVE",
+        OR: [{ expires_at: null }, { expires_at: { gt: new Date() } }],
       },
       orderBy: { created_at: "desc" },
+      take: 50,
       include: {
         package: {
           select: {

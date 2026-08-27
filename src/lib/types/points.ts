@@ -24,5 +24,7 @@ export interface CustomerPointsData {
     page: number;
     limit: number;
     totalPages: number;
+    has_more?: boolean;
+    next_cursor?: string | null;
   };
 }

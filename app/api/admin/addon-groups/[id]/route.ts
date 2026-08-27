@@ -18,8 +18,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   }
 
-  let newImagePath: string | null = null;
-  let oldImagePath: string | null = null;
+  const newImagePaths: string[] = [];
+  const oldImagePaths: string[] = [];
   let databaseCommitted = false;
   try {
     const { id } = await params;
@@ -62,6 +62,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           id: o.id,
           addon_group_id: o.addon_group_id,
           label: o.label,
+          image_url: o.image_url,
           price_vnd: o.price_vnd,
           is_active: o.is_active,
           sort_order: o.sort_order,
@@ -83,6 +84,16 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     const validData = validation.data;
+    const optionImageKeys = new Set(
+      validData.options.flatMap((option) => option.image_key ? [option.image_key] : []),
+    );
+    if (parsedRequest.optionImages.some((image) => !optionImageKeys.has(image.imageKey))) {
+      return NextResponse.json(
+        { error: "Ảnh option không khớp dữ liệu biểu mẫu", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
     const preparedImage = await prepareCatalogImage({
       kind: "addons",
       entityName: validData.name ?? existing.name,
@@ -90,8 +101,32 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       imageFile: parsedRequest.imageFile,
       currentImageUrl: existing.image_url,
     });
-    newImagePath = preparedImage.newPath;
-    oldImagePath = preparedImage.oldPath;
+    if (preparedImage.newPath) newImagePaths.push(preparedImage.newPath);
+    if (preparedImage.oldPath) oldImagePaths.push(preparedImage.oldPath);
+
+    const existingOptions = new Map(existing.options.map((option) => [option.id, option]));
+    const optionUploads = new Map(
+      parsedRequest.optionImages.map((image) => [image.imageKey, image]),
+    );
+    const preparedOptionImages = new Map<string, Awaited<ReturnType<typeof prepareCatalogImage>>>();
+    for (const option of validData.options) {
+      if (!option.image_key) continue;
+      const upload = optionUploads.get(option.image_key);
+      if (!upload) continue;
+      const currentImageUrl = option.id
+        ? existingOptions.get(option.id)?.image_url ?? null
+        : null;
+      const preparedOptionImage = await prepareCatalogImage({
+        kind: "addons",
+        entityName: `${validData.name} ${option.label}`,
+        requestedName: upload.requestedName,
+        imageFile: upload.imageFile,
+        currentImageUrl,
+      });
+      preparedOptionImages.set(option.image_key, preparedOptionImage);
+      if (preparedOptionImage.newPath) newImagePaths.push(preparedOptionImage.newPath);
+      if (preparedOptionImage.oldPath) oldImagePaths.push(preparedOptionImage.oldPath);
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       // Update group fields
@@ -118,11 +153,17 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           const sortOrder = opt.sort_order ?? i;
           
           if (opt.id && existingOptionIds.has(opt.id)) {
+            const preparedOptionImage = opt.image_key
+              ? preparedOptionImages.get(opt.image_key)
+              : undefined;
             // Update existing
             await tx.addonOption.update({
               where: { id: opt.id },
               data: {
                 label: opt.label,
+                ...(preparedOptionImage?.imageUrl !== undefined && {
+                  image_url: preparedOptionImage.imageUrl,
+                }),
                 price_vnd: opt.price_vnd,
                 is_default: false,
                 is_active: opt.is_active,
@@ -131,11 +172,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
               }
             });
           } else {
+            const preparedOptionImage = opt.image_key
+              ? preparedOptionImages.get(opt.image_key)
+              : undefined;
             // Create new
             await tx.addonOption.create({
               data: {
                 addon_group_id: id,
                 label: opt.label,
+                image_url: preparedOptionImage?.imageUrl ?? null,
                 price_vnd: opt.price_vnd,
                 is_default: false,
                 is_active: opt.is_active,
@@ -169,6 +214,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         id: o.id,
         addon_group_id: o.addon_group_id,
         label: o.label,
+        image_url: o.image_url,
         price_vnd: o.price_vnd,
         is_active: o.is_active,
         sort_order: o.sort_order,
@@ -176,14 +222,14 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       }))
     };
 
-    if (oldImagePath) {
-      await removeMenuImages([oldImagePath]).catch(() => undefined);
+    if (oldImagePaths.length > 0) {
+      await removeMenuImages(oldImagePaths).catch(() => undefined);
     }
     await invalidateMenuCaches();
     return NextResponse.json({ data: mappedResult });
   } catch (error: unknown) {
-    if (newImagePath && !databaseCommitted) {
-      await removeMenuImages([newImagePath]).catch(() => undefined);
+    if (newImagePaths.length > 0 && !databaseCommitted) {
+      await removeMenuImages(newImagePaths).catch(() => undefined);
     }
     const imageMessage = catalogImageValidationMessage(error);
     if (imageMessage) {
