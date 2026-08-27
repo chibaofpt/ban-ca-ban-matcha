@@ -7,12 +7,10 @@ import type { AdminMenuItem } from "@/src/lib/types/menu";
 
 const mockListAdminMenuItems = vi.fn();
 const mockListAdminPowders = vi.fn();
-const mockDeleteMenuItem = vi.fn();
 const mockToggleMenuItemAvailability = vi.fn();
 
 vi.mock("@/src/services/adminMenuService", () => ({
   listAdminMenuItems: () => mockListAdminMenuItems(),
-  deleteMenuItem: (...args: unknown[]) => mockDeleteMenuItem(...args),
   toggleMenuItemAvailability: (...args: unknown[]) => mockToggleMenuItemAvailability(...args),
 }));
 
