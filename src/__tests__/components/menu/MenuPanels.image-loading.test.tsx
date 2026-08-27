@@ -51,6 +51,7 @@ describe("MenuPanels — lazy-load ảnh menu", () => {
     render(
       <MenuPanels
         loading={false}
+        seasonalOnly={false}
         latteItems={[
           menuItem("latte-1", "latte"),
           menuItem("latte-2", "latte"),
@@ -71,16 +72,41 @@ describe("MenuPanels — lazy-load ảnh menu", () => {
 
     expect(screen.getByRole("img", { name: "latte-1" }).getAttribute("loading")).toBe("eager");
     expect(screen.getByRole("img", { name: "latte-2" }).getAttribute("loading")).toBe("eager");
-    for (const name of ["latte-3", "fusion-1", "extra-1", "seasonal-1"]) {
+    for (const name of ["latte-3", "fusion-1", "extra-1"]) {
       expect(screen.getByRole("img", { name }).getAttribute("loading")).toBe("lazy");
       expect(screen.getByRole("img", { name }).getAttribute("data-priority")).toBe("false");
     }
+    expect(screen.queryByRole("img", { name: "seasonal-1" })).toBeNull();
+  });
+
+  it("chỉ lazy-load ảnh Seasonal trong view riêng", () => {
+    render(
+      <MenuPanels
+        loading={false}
+        seasonalOnly
+        latteItems={[menuItem("latte-1", "latte")]}
+        fusionItems={[menuItem("fusion-1", "fusion")]}
+        extrasItems={[menuItem("extra-1", "extras")]}
+        seasonalItems={[menuItem("seasonal-1", "latte")]}
+        milkTypes={[]}
+        cartItems={[]}
+        latteSectionRef={createRef<HTMLDivElement>()}
+        fusionSectionRef={createRef<HTMLDivElement>()}
+        extrasSectionRef={createRef<HTMLDivElement>()}
+        seasonalSectionRef={createRef<HTMLDivElement>()}
+        onItemClick={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("img", { name: "latte-1" })).toBeNull();
+    expect(screen.getByRole("img", { name: "seasonal-1" }).getAttribute("loading")).toBe("lazy");
   });
 
   it("fade-in ảnh sau khi thumbnail tải xong", () => {
     render(
       <MenuPanels
         loading={false}
+        seasonalOnly={false}
         latteItems={[menuItem("latte-1", "latte")]}
         fusionItems={[]}
         extrasItems={[]}

@@ -52,21 +52,31 @@ vi.mock("@/src/components/menu/ExistingCartItemSheet", () => ({ ExistingCartItem
 vi.mock("@/src/components/shared/ProductModal", () => ({ default: () => null }));
 vi.mock("@/src/components/shared/VoucherModal", () => ({ default: () => null }));
 vi.mock("@/src/components/menu/TabBar", () => ({
-  default: ({ activeTab }: { activeTab: string }) => createElement("div", { "data-testid": "active-tab" }, activeTab),
+  default: ({ activeTab, setActiveTab }: { activeTab: string; setActiveTab: (tab: string) => void }) => createElement("div", null,
+    createElement("div", { "data-testid": "active-tab" }, activeTab),
+    createElement("button", { type: "button", onClick: () => setActiveTab("seasonal") }, "Seasonal"),
+  ),
 }));
 vi.mock("@/src/components/menu/MenuPanels", () => ({
-  MenuPanels: ({ loading, latteSectionRef, fusionSectionRef, extrasSectionRef, seasonalSectionRef }: {
+  MenuPanels: ({ loading, seasonalOnly, latteItems, fusionItems, extrasItems, seasonalItems, latteSectionRef, fusionSectionRef, extrasSectionRef, seasonalSectionRef }: {
     loading: boolean;
+    seasonalOnly?: boolean;
+    latteItems: Array<{ id: string }>;
+    fusionItems: Array<{ id: string }>;
+    extrasItems: Array<{ id: string }>;
+    seasonalItems: Array<{ id: string }>;
     latteSectionRef: RefObject<HTMLDivElement | null>;
     fusionSectionRef: RefObject<HTMLDivElement | null>;
     extrasSectionRef: RefObject<HTMLDivElement | null>;
     seasonalSectionRef: RefObject<HTMLDivElement | null>;
-  }) => loading ? null : createElement("div", null,
-    createElement("div", { ref: latteSectionRef, "data-section": "latte" }),
-    createElement("div", { ref: fusionSectionRef, "data-section": "fusion" }),
-    createElement("div", { ref: extrasSectionRef, "data-section": "extras" }),
-    createElement("div", { ref: seasonalSectionRef, "data-section": "seasonal" }),
-  ),
+  }) => loading ? null : seasonalOnly
+    ? createElement("div", { ref: seasonalSectionRef, "data-section": "seasonal", "data-items": seasonalItems.map((item) => item.id).join(",") })
+    : createElement("div", null,
+      createElement("div", { ref: latteSectionRef, "data-section": "latte", "data-items": latteItems.map((item) => item.id).join(",") }),
+      createElement("div", { ref: fusionSectionRef, "data-section": "fusion", "data-items": fusionItems.map((item) => item.id).join(",") }),
+      createElement("div", { ref: extrasSectionRef, "data-section": "extras", "data-items": extrasItems.map((item) => item.id).join(",") }),
+      createElement("div", { ref: seasonalSectionRef, "data-scroll-marker": "seasonal" }),
+    ),
 }));
 
 vi.mock("@/src/lib/store/voucherModalStore", () => ({
@@ -94,8 +104,56 @@ const mockMenuData = {
       allowed_powder_ids: [],
       sizes: [{ size: "SMALL", base_price_vnd: 45000, milk_ml: 180 }],
     },
+    {
+      id: "seasonal-latte",
+      name: "Seasonal Latte",
+      category: "latte",
+      is_seasonal: true,
+      image_url: null,
+      description: null,
+      sort_order: 1,
+      base_liquid_note: null,
+      custom_powder_grams: null,
+      powder: { id: "p-1", name: "Meyumi", type: "RECOMMEND" },
+      resolved_default_powder_id: null,
+      allowed_powder_ids: [],
+      sizes: [{ size: "SMALL", base_price_vnd: 45000, milk_ml: 180 }],
+    },
   ],
-  fusion: [],
+  fusion: [
+    {
+      id: "seasonal-fusion",
+      name: "Seasonal Fusion",
+      category: "fusion",
+      is_seasonal: true,
+      image_url: null,
+      description: null,
+      sort_order: 0,
+      base_liquid_note: null,
+      custom_powder_grams: null,
+      powder: null,
+      resolved_default_powder_id: null,
+      allowed_powder_ids: [],
+      sizes: [{ size: "SMALL", base_price_vnd: 45000, milk_ml: 180 }],
+    },
+  ],
+  extras: [
+    {
+      id: "seasonal-extra",
+      name: "Seasonal Extra",
+      category: "extras",
+      is_seasonal: true,
+      image_url: null,
+      description: null,
+      sort_order: 0,
+      base_liquid_note: null,
+      custom_powder_grams: null,
+      powder: null,
+      resolved_default_powder_id: null,
+      allowed_powder_ids: [],
+      sizes: [{ size: "SMALL", base_price_vnd: 45000, milk_ml: 180 }],
+    },
+  ],
   milk_types: [],
   addon_groups: [],
 };
@@ -183,7 +241,7 @@ describe("MenuPage — Contract 3: tab filtering logic", () => {
     return data[activeTab as "latte" | "fusion"] ?? [];
   }
 
-  it("tab latte → chỉ trả latte items", () => {
+  it("tab latte → giữ cả món seasonal thuộc category latte", () => {
     const items = getFilteredItems("latte");
     expect(items.every((i) => i.category === "latte")).toBe(true);
     expect(items).toHaveLength(2);
@@ -204,6 +262,37 @@ describe("MenuPage — Contract 3: tab filtering logic", () => {
   it("tab không tồn tại → trả mảng rỗng", () => {
     const items = getFilteredItems("unknown");
     expect(items).toHaveLength(0);
+  });
+});
+
+describe("MenuPage — Seasonal là view độc lập", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockQueriesLoaded = false;
+  });
+
+  it("giữ seasonal trong category gốc và chỉ hiện Seasonal sau khi chọn", () => {
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn().mockReturnValue({ matches: false }),
+    });
+    mockQueriesLoaded = true;
+    render(createElement(MenuPage));
+
+    expect(document.querySelector('[data-section="latte"]')?.getAttribute("data-items")).toBe("item-1,seasonal-latte");
+    expect(document.querySelector('[data-section="fusion"]')?.getAttribute("data-items")).toBe("seasonal-fusion");
+    expect(document.querySelector('[data-section="extras"]')?.getAttribute("data-items")).toBe("seasonal-extra");
+    expect(document.querySelector('[data-section="seasonal"]')).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Seasonal" }));
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
+    expect(document.querySelector('[data-section="latte"]')).toBeNull();
+    expect(document.querySelector('[data-section="fusion"]')).toBeNull();
+    expect(document.querySelector('[data-section="extras"]')).toBeNull();
+    expect(document.querySelector('[data-section="seasonal"]')?.getAttribute("data-items"))
+      .toBe("seasonal-latte,seasonal-fusion,seasonal-extra");
   });
 });
 
@@ -234,7 +323,7 @@ describe("MenuPage — thanh danh mục theo vị trí cuộn", () => {
       return 1;
     });
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-      const section = this.getAttribute("data-section");
+      const section = this.getAttribute("data-section") ?? this.getAttribute("data-scroll-marker");
       const top = section === "fusion" ? 100 : section === "extras" ? 400 : section === "seasonal" ? 700 : 0;
       return { top, bottom: top, left: 0, right: 0, width: 0, height: 0, x: 0, y: top, toJSON: () => ({}) };
     });

@@ -52,6 +52,7 @@ export default function MenuPage() {
     queryKey: ["powders"],
     queryFn: fetchPowders,
   });
+  const isMenuContentLoading = menuLoading || powderLoading;
   const isMenuLoaded = Boolean(menuRes && powderRes);
   const { data: packagesRes } = useVoucherPackages({ enabled: isMenuLoaded });
   const { data: points } = useCustomerPoints({
@@ -80,28 +81,37 @@ export default function MenuPage() {
 
   const handleTabChange = useCallback((newTab: TabId) => {
     setActiveTab(newTab);
+    if (newTab === "seasonal") {
+      isScrollingProgrammatically.current = false;
+      window.scrollTo({
+        top: 0,
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      });
+      return;
+    }
+
     isScrollingProgrammatically.current = true;
-    const refMap: Record<TabId, RefObject<HTMLDivElement | null>> = {
+    const refMap: Record<Exclude<TabId, "seasonal">, RefObject<HTMLDivElement | null>> = {
       latte: latteSectionRef,
       fusion: fusionSectionRef,
       extras: extrasSectionRef,
-      seasonal: seasonalSectionRef,
     };
-    scrollToSection(refMap[newTab]);
+    window.requestAnimationFrame(() => scrollToSection(refMap[newTab]));
     setTimeout(() => { isScrollingProgrammatically.current = false; }, 900);
   }, [scrollToSection]);
 
+  const isSeasonalView = activeTab === "seasonal";
+
   useEffect(() => {
+    if (isSeasonalView) return;
+
     const fusionSection = fusionSectionRef.current;
     const extrasSection = extrasSectionRef.current;
-    const seasonalSection = seasonalSectionRef.current;
-    if (!fusionSection || !extrasSection || !seasonalSection) return;
+    if (!fusionSection || !extrasSection) return;
     const updateActiveSection = () => {
       if (isScrollingProgrammatically.current) return;
       const stickyOffset = 140;
-      if (seasonalSection.getBoundingClientRect().top <= stickyOffset) {
-        setActiveTab("seasonal");
-      } else if (extrasSection.getBoundingClientRect().top <= stickyOffset) {
+      if (extrasSection.getBoundingClientRect().top <= stickyOffset) {
         setActiveTab("extras");
       } else if (fusionSection.getBoundingClientRect().top <= stickyOffset) {
         setActiveTab("fusion");
@@ -126,7 +136,7 @@ export default function MenuPage() {
       window.removeEventListener("resize", handleScroll);
       if (animationFrameId !== null) window.cancelAnimationFrame(animationFrameId);
     };
-  }, [menuLoading, powderLoading]);
+  }, [isMenuContentLoading, isSeasonalView]);
 
   const handleItemClick = useCallback((item: MenuItem) => {
     if (cartItems.some((cartItem) => cartItem.menuItemId === item.id)) {
@@ -168,7 +178,8 @@ export default function MenuPage() {
       <div className="max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto pt-4">
         <div className="relative w-full">
           <MenuPanels
-            loading={menuLoading || powderLoading}
+            loading={isMenuContentLoading}
+            seasonalOnly={isSeasonalView}
             latteItems={data?.latte ?? []}
             fusionItems={data?.fusion ?? []}
             extrasItems={data?.extras ?? []}
