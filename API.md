@@ -142,7 +142,7 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/admin/base-liquids/[id]` | PUT, DELETE |
 | `/api/admin/logs` | GET |
 | `/api/admin/menu` | GET, POST |
-| `/api/admin/menu/[id]` | PUT, DELETE |
+| `/api/admin/menu/[id]` | PUT |
 | `/api/admin/menu/create-latte-with-powder` | POST |
 | `/api/admin/milk-types` | GET, POST |
 | `/api/admin/milk-types/[id]` | PUT, DELETE |

@@ -11,7 +11,7 @@ const migration = readFileSync(
     "migration.sql",
   ),
   "utf8",
-);
+).replace(/\r\n/g, "\n");
 
 describe("migration addon opt-in phase 1", () => {
   it("thêm lifecycle cho option và vô hiệu hóa hai sentinel cũ", () => {

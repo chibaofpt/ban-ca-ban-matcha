@@ -90,13 +90,3 @@ export async function toggleMenuItemAvailability(
   const res = await apiClient.put<ApiResponse<AdminMenuItem>>(URL.byId(id), { is_available });
   return res.data.data;
 }
-
-/** Soft-delete menu item — DELETE /api/admin/menu/[id]. */
-export async function deleteMenuItem(
-  id: string
-): Promise<{ id: string; disabled_powder_id?: string }> {
-  const res = await apiClient.delete<ApiResponse<{ id: string; disabled_powder_id?: string }>>(
-    URL.byId(id)
-  );
-  return res.data.data;
-}
