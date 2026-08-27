@@ -175,7 +175,7 @@ description: >
 
 - [ ] **B4: Max Order Value Cap**
   - **Risk**: Lỗ hổng logic khiến user tạo đơn hàng trị giá hàng Tỷ VND làm tràn kiểu dữ liệu hoặc lỗi business.
-  - **Check**: Hard-code mức giá trị đơn hàng tối đa ở Backend (`if (total_vnd > 20_000_000) throw Error("ORDER_VALUE_EXCEEDED")`). **Trạng thái hiện tại**: CHƯA IMPLEMENT — cần thêm vào `lib/orders.ts`.
+  - **Check**: Backend phải chặn giá trị đơn hàng vượt trần đã duyệt và trả stable business error. Xác minh bằng code/test hiện tại, không lưu implementation status trong skill.
 
 - [ ] **B5: Soft Delete Integrity**
   - **Risk**: Hard delete menu item trong khi có voucher hoặc order đang active reference đến nó.
@@ -187,11 +187,11 @@ description: >
 
 - [ ] **IN1: X-Frame-Options**
   - **Risk**: Clickjacking — trang bị nhúng vào iframe của trang lạ.
-  - **Check**: `next.config.ts` phải có `headers()` với `X-Frame-Options: DENY` hoặc `SAMEORIGIN`. **Trạng thái hiện tại**: CHƯA IMPLEMENT.
+  - **Check**: Xác minh response có chính sách chống framing phù hợp (`X-Frame-Options` hoặc CSP `frame-ancestors`).
 
 - [ ] **IN2: X-Content-Type-Options**
   - **Risk**: Browser đoán MIME type của response → MIME-sniffing attack.
-  - **Check**: Header `X-Content-Type-Options: nosniff` phải có mặt. **Trạng thái hiện tại**: CHƯA IMPLEMENT.
+  - **Check**: Header `X-Content-Type-Options: nosniff` phải có mặt.
 
 - [ ] **IN3: Content-Security-Policy (CSP)**
   - **Risk**: Không có CSP → XSS dễ dàng load script từ domain lạ.
@@ -220,7 +220,7 @@ description: >
 
 - [ ] **DP1: Lộ PII lên Sentry (Data Scrubbing)**
   - **Risk**: Sentry tự động bắt lỗi và gửi nguyên cục request body (chứa password, mã OTP, số điện thoại khách).
-  - **Check**: File `sentry.server.config.ts` và `sentry.client.config.ts` phải tồn tại. Cấu hình `beforeSend` để scrub các field: `password`, `password_hash`, `phone_number`, `refresh_token`, `access_token`. **Trạng thái hiện tại**: Sentry chưa được setup — cần tạo config files.
+  - **Check**: Xác minh cấu hình Sentry hiện hành scrub password, phone, token, cookies, identifiers và vị trí nhạy cảm trước khi gửi.
 
 - [ ] **DP2: Debug Logs trong Production**
   - **Risk**: Lộ PII khách hàng và internal state trên Vercel Runtime Logs.

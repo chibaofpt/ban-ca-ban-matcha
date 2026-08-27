@@ -116,7 +116,9 @@ export interface CustomerHistoryOrderItem extends HistoryOrderItem {
   selectedPowder: { name: string; price_per_gram: number } | null;
   milkType: { name: string; is_default: boolean } | null;
   productVoucher?: { package: { name: string } } | null;
-  addonVouchers?: Array<{ voucher: { package: { name: string } } }>;
+  /** Discount amount applied by the product voucher on this item. */
+  product_voucher_discount_vnd?: number;
+  addonVouchers?: Array<{ discount_applied_vnd?: number; voucher: { package: { name: string } } }>;
 }
 
 /** Customer order card returned by the paginated history endpoint. */

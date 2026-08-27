@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockMenuItemFindMany = vi.fn();
+const mockAddonGroupFindMany = vi.fn();
+const mockAddonOptionFindMany = vi.fn();
+const mockMatchaPowderFindMany = vi.fn();
 const mockListMenuImages = vi.fn();
 const mockRemoveMenuImages = vi.fn();
 const mockCaptureServerException = vi.fn();
@@ -9,6 +12,10 @@ const mockCaptureServerException = vi.fn();
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     menuItem: { findMany: (...args: unknown[]) => mockMenuItemFindMany(...args) },
+    addonGroup: { findMany: (...args: unknown[]) => mockAddonGroupFindMany(...args) },
+    addonOption: { findMany: (...args: unknown[]) => mockAddonOptionFindMany(...args) },
+    matchaPowder: { findMany: (...args: unknown[]) => mockMatchaPowderFindMany(...args) },
+    milkType: { findMany: vi.fn().mockResolvedValue([]) },
   },
 }));
 
@@ -37,8 +44,49 @@ describe("Cron dọn orphan image", () => {
     vi.stubEnv("CRON_SECRET", "cron-secret");
     vi.stubEnv("IMAGE_CLEANUP_DRY_RUN", "true");
     mockMenuItemFindMany.mockResolvedValue([]);
+    mockAddonGroupFindMany.mockResolvedValue([]);
+    mockAddonOptionFindMany.mockResolvedValue([]);
+    mockMatchaPowderFindMany.mockResolvedValue([]);
     mockListMenuImages.mockResolvedValue([]);
     mockRemoveMenuImages.mockResolvedValue(undefined);
+  });
+
+  it("giữ ảnh đang được addon và bột matcha tham chiếu", async () => {
+    mockAddonGroupFindMany.mockResolvedValue([
+      { image_url: `${baseUrl}products/addons/kem.webp` },
+    ]);
+    mockMatchaPowderFindMany.mockResolvedValue([
+      { image_url: `${baseUrl}products/powders/meyumi.webp` },
+    ]);
+    mockListMenuImages.mockResolvedValue([
+      { path: "products/addons/kem.webp", createdAt: "2026-07-01T00:00:00.000Z" },
+      { path: "products/powders/meyumi.webp", createdAt: "2026-07-01T00:00:00.000Z" },
+      { path: "products/addons/orphan.webp", createdAt: "2026-07-01T00:00:00.000Z" },
+    ]);
+
+    const result = await runMenuImageCleanup({ now, dryRun: false });
+
+    expect(mockRemoveMenuImages).toHaveBeenCalledWith(["products/addons/orphan.webp"]);
+    expect(result.referenced).toBe(2);
+  });
+
+  it("giữ ảnh riêng của option kể cả khi option đã ngưng bán", async () => {
+    mockAddonOptionFindMany.mockResolvedValue([
+      { image_url: `${baseUrl}products/addons/kem-sua.webp` },
+    ]);
+    mockListMenuImages.mockResolvedValue([
+      { path: "products/addons/kem-sua.webp", createdAt: "2026-07-01T00:00:00.000Z" },
+      { path: "products/addons/orphan.webp", createdAt: "2026-07-01T00:00:00.000Z" },
+    ]);
+
+    const result = await runMenuImageCleanup({ now, dryRun: false });
+
+    expect(mockAddonOptionFindMany).toHaveBeenCalledWith({
+      where: { image_url: { not: null } },
+      select: { image_url: true },
+    });
+    expect(mockRemoveMenuImages).toHaveBeenCalledWith(["products/addons/orphan.webp"]);
+    expect(result.referenced).toBe(1);
   });
 
   it("giữ ảnh của cả sản phẩm active và soft-delete", async () => {

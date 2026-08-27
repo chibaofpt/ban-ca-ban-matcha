@@ -1,16 +1,35 @@
 import React, { useState } from "react";
-import { motion } from "framer-motion";
-import { ArrowLeft, CheckCircle2, Coins } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
+import { Loader2 } from "lucide-react";
 import { estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
-import { exchangeVoucher, type MyVoucher, type VoucherPackage } from "@/src/services/customerVoucherService";
-import { useQueryClient } from "@tanstack/react-query";
-import { VoucherCard, PackageCard } from "@/src/components/shared/VoucherCards";
+import { type MyVoucher, type VoucherPackage } from "@/src/services/customerVoucherService";
+import { useVoucherAcquisition } from "@/src/hooks/useVoucherAcquisition";
+import { VoucherCard } from "@/src/components/shared/VoucherCards";
+import { VoucherHistorySection, VoucherModalFrame } from "@/src/components/shared/VoucherModalSections";
+import { VoucherPackageCatalog } from "@/src/components/shared/VoucherPackageCatalog";
+import { VoucherAcquisitionConfirm } from "@/src/components/shared/VoucherAcquisitionConfirm";
+import { CartDiscountPickerFooter } from "@/src/components/menu/cart/CartDiscountPickerFooter";
+import { toast } from "sonner";
+import type { CartItem } from "@/src/lib/types/cart";
+import type { BundleCreatedRewardEffect, CartBundleApplication } from "@/src/lib/types/cart";
+import type { MenuData } from "@/src/lib/types/menu";
+import type { Powder } from "@/src/lib/types/powder";
+import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
+import { VoucherDetailSheet } from "@/src/components/shared/VoucherDetailSheet";
+import { buildVoucherActionModel, getProductDiscountSelection } from "@/src/utils/customerVoucherSelection";
+import { getVoucherAvailabilityMessage, type VoucherModalTab } from "@/src/lib/utils/voucherModalHelpers";
+import { BundleVoucherSetupSheet } from "@/src/components/shared/BundleVoucherSetupSheet";
+import { getBundleVoucherSummary } from "@/src/components/menu/cart/CartBundleVoucherPanel";
+import { buildBundleApplication, deriveBundleSelectionState, summarizeBundleCart } from "@/src/lib/utils/bundleVoucher";
 
 interface CartDiscountPickerProps {
   discountVouchers: MyVoucher[];
   freeshipVouchers: MyVoucher[];
+  productDiscountVouchers: MyVoucher[];
+  historyVouchers: MyVoucher[];
   availableVoucherPackages: VoucherPackage[];
   pointsBalance: number;
+  isLoading: boolean;
   selectedVoucherIds: string[];
   selectedDiscountVouchers: MyVoucher[];
   selectedFreeshipVouchers: MyVoucher[];
@@ -19,14 +38,37 @@ interface CartDiscountPickerProps {
   shippingFee: number | null;
   onClose: () => void;
   onUpdateSelectedVouchers: React.Dispatch<React.SetStateAction<string[]>>;
-  onRefreshVouchers: () => void;
+  onRefreshVouchers: () => Promise<void>;
+  bundleVouchers: MyVoucher[];
+  cart: CartItem[];
+  menuData: MenuData;
+  powders: Powder[];
+  defaultPowderGram: Array<{ size: "SMALL" | "MEDIUM" | "LARGE"; grams: number }>;
+  getProductVoucherBenefit: (item: CartItem, voucher: MyVoucher) => number;
+  onApplyProductVoucher: (cartId: string, voucher: MyVoucher) => void;
+  onRemoveProductVoucher: (cartId: string) => void;
+  bundleAllocatedCartIds: ReadonlySet<string>;
+  addonLabels: ReadonlyMap<string, string>;
+  bundleApplications: CartBundleApplication[];
+  onBundleApplicationChange: (voucher: MyVoucher, allocations: import("@/src/lib/utils/bundleVoucher").BundleSelectionAllocation[], effects?: BundleCreatedRewardEffect[]) => { ok: true } | { ok: false; error: string };
+  onRequestRemoveBundle: (voucherToken: string) => void;
+  onAddExtrasReward: (menuItemId: string, voucherToken: string) => { clientLineId: string; effect: BundleCreatedRewardEffect } | null;
 }
+
+type VoucherPickerView =
+  | { kind: "list" }
+  | { kind: "detail"; voucher: MyVoucher }
+  | { kind: "product-target"; voucher: MyVoucher }
+  | { kind: "bundle-setup"; voucher: MyVoucher };
 
 export const CartDiscountPicker = ({
   discountVouchers,
   freeshipVouchers,
+  productDiscountVouchers,
+  historyVouchers,
   availableVoucherPackages,
   pointsBalance,
+  isLoading,
   selectedVoucherIds,
   selectedDiscountVouchers,
   selectedFreeshipVouchers,
@@ -35,26 +77,71 @@ export const CartDiscountPicker = ({
   shippingFee,
   onClose,
   onUpdateSelectedVouchers,
-  onRefreshVouchers
+  onRefreshVouchers,
+  bundleVouchers,
+  cart,
+  menuData,
+  powders,
+  defaultPowderGram,
+  getProductVoucherBenefit,
+  onApplyProductVoucher,
+  onRemoveProductVoucher,
+  bundleAllocatedCartIds,
+  addonLabels,
+  bundleApplications,
+  onBundleApplicationChange,
+  onRequestRemoveBundle,
+  onAddExtrasReward,
 }: CartDiscountPickerProps) => {
-  const [isRedeeming, setIsRedeeming] = useState<string | null>(null);
-  const queryClient = useQueryClient();
+  const { acquire, isPending } = useVoucherAcquisition();
+  const [redeemingId, setRedeemingId] = useState<string | null>(null);
+  const [confirmPackage, setConfirmPackage] = useState<VoucherPackage | null>(null);
+  const [activeView, setActiveView] = useState<VoucherPickerView>({ kind: "list" });
+  const [activeTab, setActiveTab] = useState<VoucherModalTab>("my_vouchers");
+  const detailVoucher = activeView.kind === "detail" ? activeView.voucher : null;
+  const targetVoucher = activeView.kind === "product-target" ? activeView.voucher : null;
+  const bundleSetupVoucher = activeView.kind === "bundle-setup" ? activeView.voucher : null;
 
-  const myVouchers = [...discountVouchers, ...freeshipVouchers];
+  const myVouchers = [...discountVouchers, ...freeshipVouchers, ...productDiscountVouchers, ...bundleVouchers]
+    .filter((voucher) => voucher.status === "ACTIVE");
 
-  const handleRedeem = async (packageId: string) => {
+  const productTargets = (voucher: MyVoucher) => cart.flatMap((item) => {
+    const matchesProduct = (voucher.eligible_menu_items?.length ?? 0) > 0
+      ? voucher.eligible_menu_items!.some((target) => target.menu_item_id === item.menuItemId)
+      : voucher.menu_item_id === item.menuItemId;
+    const benefit = getProductVoucherBenefit(item, voucher);
+    return matchesProduct && item.size !== null && (voucher.eligible_sizes ?? []).includes(item.size) &&
+      !bundleAllocatedCartIds.has(item.cartId) && benefit > 0
+      ? [{ cartId: item.cartId, menuItemId: item.menuItemId, size: item.size, estimatedBenefitVnd: benefit }]
+      : [];
+  });
+
+  const acquirePackage = async (pkg: VoucherPackage) => {
     try {
-      setIsRedeeming(packageId);
-      const newVoucher = await exchangeVoucher(packageId);
-      onUpdateSelectedVouchers(prev => [...prev, newVoucher.qr_token]);
-      onRefreshVouchers();
-      queryClient.invalidateQueries({ queryKey: ["customer", "points"] }); // refresh points
+      setRedeemingId(pkg.id);
+      const newVoucher = await acquire(pkg);
+      await onRefreshVouchers();
+      if (newVoucher.voucher_type === "BUNDLE") {
+        requestAnimationFrame(() => {
+          const panel = document.getElementById("cart-bundle-voucher-panel");
+          panel?.scrollIntoView({ behavior: "smooth", block: "start" });
+          panel?.focus();
+        });
+      } else {
+        onUpdateSelectedVouchers((previous) => [...previous, newVoucher.qr_token]);
+      }
+      toast.success(pkg.acquisition_mode === "FREE_CLAIM" ? "Đã nhận voucher" : "Đổi voucher thành công");
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
-      alert("Đổi điểm thất bại: " + message);
+      toast.error(`Không thể nhận ưu đãi: ${message}`);
     } finally {
-      setIsRedeeming(null);
+      setRedeemingId(null);
     }
+  };
+
+  const handleAcquire = (pkg: VoucherPackage) => {
+    if (pkg.acquisition_mode === "POINTS_EXCHANGE") setConfirmPackage(pkg);
+    else void acquirePackage(pkg);
   };
 
   const selectedOrderDiscount = estimateMultiDiscountSavings(
@@ -74,58 +161,124 @@ export const CartDiscountPicker = ({
         )
       : 0;
 
+  const closePicker = () => {
+    setActiveView({ kind: "list" });
+    onClose();
+  };
+  const detailProductItem = detailVoucher?.voucher_type === "PRODUCT_DISCOUNT"
+    ? cart.find((item) => item.productVoucherId === detailVoucher.qr_token)
+    : undefined;
+  const detailHasOrderVoucher = detailVoucher
+    ? selectedVoucherIds.includes(detailVoucher.qr_token)
+    : false;
+  const detailHasBundle = detailVoucher?.voucher_type === "BUNDLE"
+    ? bundleApplications.some((application) => application.voucher_qr_token === detailVoucher.qr_token)
+    : false;
+  const removeAppliedDetailVoucher = detailVoucher && (detailProductItem || detailHasOrderVoucher || detailHasBundle)
+    ? () => {
+        if (detailProductItem) onRemoveProductVoucher(detailProductItem.cartId);
+        else if (detailHasBundle) onRequestRemoveBundle(detailVoucher.qr_token);
+        else onUpdateSelectedVouchers((previous) => previous.filter((token) => token !== detailVoucher.qr_token));
+        setActiveView({ kind: "list" });
+      }
+    : undefined;
+
   return (
-    <motion.div
-      initial={{ x: "100%" }}
-      animate={{ x: 0 }}
-      exit={{ x: "100%" }}
-      transition={{ type: "spring", damping: 25, stiffness: 300 }}
-      className="absolute inset-0 z-10 bg-[#f4f4f5] flex flex-col"
+    <ResponsiveOverlay
+      open
+      onOpenChange={(open) => { if (!open) closePicker(); }}
+      layer="nested"
+      title="Mã ưu đãi"
+      presentation="bare"
+      className="w-full md:max-w-2xl"
     >
-      {/* Overlay header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border/40 shrink-0 bg-white shadow-sm z-10">
-        <div className="flex items-center gap-3">
+      <VoucherModalFrame
+        activeTab={activeTab}
+        isLoggedIn
+        voucherCount={myVouchers.length}
+        pointsBalance={pointsBalance}
+        onChange={setActiveTab}
+        onClose={closePicker}
+        detailOpen={detailVoucher !== null}
+        headerAction={activeTab === "my_vouchers" && selectedVoucherIds.length > 0 ? (
           <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-primary/5 flex items-center justify-center hover:bg-primary/10 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4 text-primary" />
-          </button>
-          <div>
-            <h3 className="font-bold text-primary leading-tight">Mã ưu đãi</h3>
-            <div className="flex items-center gap-1 mt-0.5">
-              <Coins className="w-3 h-3 text-orange-500" />
-              <p className="text-[11px] font-medium text-orange-600">Bạn đang có: {pointsBalance} điểm</p>
-            </div>
-          </div>
-        </div>
-        {selectedVoucherIds.length > 0 && (
-          <button
+            type="button"
             onClick={() => onUpdateSelectedVouchers([])}
-            className="text-xs font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition-colors shrink-0"
+            className="min-h-11 shrink-0 rounded-full bg-red-50 px-3 text-xs font-bold text-red-500 transition-colors hover:bg-red-100 focus-visible:ring-2 focus-visible:ring-ring"
           >
             Bỏ tất cả
           </button>
+        ) : null}
+        footer={activeTab === "my_vouchers" ? (
+          <CartDiscountPickerFooter selectedVoucherIds={selectedVoucherIds} selectedDiscountVouchers={selectedDiscountVouchers} subtotalPrice={subtotalPrice} freeshipDiscount={selectedFreeshipDiscount} onConfirm={closePicker} />
+        ) : null}
+        overlayContent={(
+          <>
+            <VoucherAcquisitionConfirm
+              pkg={confirmPackage}
+              pointsBalance={pointsBalance}
+              isLoading={isPending}
+              onCancel={() => setConfirmPackage(null)}
+              onConfirm={() => { if (confirmPackage) void acquirePackage(confirmPackage); }}
+            />
+            <AnimatePresence>
+              {detailVoucher ? (
+                <VoucherDetailSheet
+                  key="cart-voucher-detail"
+                  voucher={detailVoucher}
+                  cartItems={cart}
+                  subtotalVnd={subtotalPrice}
+                  myVouchers={[...myVouchers, ...historyVouchers]}
+                  orderType={orderType}
+                  shippingFee={shippingFee}
+                  menuData={menuData}
+                  onBack={() => setActiveView({ kind: "list" })}
+                  onUseNowSuccess={() => setActiveView({ kind: "list" })}
+                  onOpenBundleSetup={(voucher) => setActiveView({ kind: "bundle-setup", voucher })}
+                  onRequestRefund={() => undefined}
+                  isRefunding={false}
+                  onRemoveAppliedVoucher={removeAppliedDetailVoucher}
+                  onSelectProductDiscountTarget={(voucher) => {
+                    const selection = getProductDiscountSelection(productTargets(voucher), null);
+                    if (selection.kind === "single") {
+                      onApplyProductVoucher(selection.target.cartId, voucher);
+                      setActiveView({ kind: "list" });
+                    } else if (selection.kind === "multiple") {
+                      setActiveView({ kind: "product-target", voucher });
+                    } else {
+                      toast.error(selection.reason);
+                    }
+                  }}
+                />
+              ) : null}
+            </AnimatePresence>
+          </>
         )}
-      </div>
-
-      <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-6">
-        
-        {/* Section 1: Ưu đãi của bạn */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="font-bold text-primary text-sm">Ưu đãi của bạn</h4>
-            <span className="text-[10px] text-primary/50">Tối đa 1 mã %, 1 freeship</span>
-          </div>
-          
-          {myVouchers.length === 0 ? (
+      >
+        {activeTab === "my_vouchers" && <section>
+          {isLoading ? (
+            <div
+              role="status"
+              aria-label="Đang tải voucher"
+              className="flex min-h-40 items-center justify-center"
+            >
+              <Loader2 className="size-6 animate-spin text-primary" aria-hidden="true" />
+              <span className="sr-only">Đang tải voucher</span>
+            </div>
+          ) : myVouchers.length === 0 ? (
             <div className="text-center py-6 bg-white rounded-2xl border border-dashed border-border/60">
               <p className="text-xs text-primary/40 font-medium">Bạn chưa có mã ưu đãi nào</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3">
               {myVouchers.map((v) => {
-                const isSelected = selectedVoucherIds.includes(v.qr_token);
+                const selectedProductItem = v.voucher_type === "PRODUCT_DISCOUNT"
+                  ? cart.find((item) => item.productVoucherId === v.qr_token)
+                  : undefined;
+                const selectedBundle = v.voucher_type === "BUNDLE"
+                  ? bundleApplications.some((application) => application.voucher_qr_token === v.qr_token)
+                  : false;
+                const isSelected = selectedVoucherIds.includes(v.qr_token) || Boolean(selectedProductItem) || selectedBundle;
                 const selectedOrderDiscount = selectedDiscountVouchers;
                 const currentOrderDiscount = estimateMultiDiscountSavings(
                   selectedOrderDiscount,
@@ -146,9 +299,11 @@ export const CartDiscountPicker = ({
                   : currentOrderDiscount;
                 const amountBeforeShipping = subtotalPrice - currentOrderDiscount;
 
-                let isDisabled = false;
-                let disabledReason = "";
-                if (!isSelected && v.voucher_type === "DISCOUNT") {
+                let isDisabled = v.status !== "ACTIVE" || !v.availability.can_apply;
+                let disabledReason = isDisabled
+                  ? getVoucherAvailabilityMessage(v) ?? "Voucher hiện chưa thể áp dụng"
+                  : "";
+                if (!isSelected && !isDisabled && v.voucher_type === "DISCOUNT") {
                   if (v.min_order_vnd !== null && subtotalPrice < v.min_order_vnd) {
                     isDisabled = true;
                     disabledReason = "Chưa đạt giá trị đơn tối thiểu";
@@ -157,7 +312,7 @@ export const CartDiscountPicker = ({
                     disabledReason = "Voucher không tạo thêm ưu đãi cho đơn này";
                   }
                 }
-                if (!isSelected && v.voucher_type === "FREESHIP") {
+                if (!isSelected && !isDisabled && v.voucher_type === "FREESHIP") {
                   if (orderType !== "DELIVERY" || (shippingFee ?? 0) <= 0) {
                     isDisabled = true;
                     disabledReason = "Chỉ áp dụng khi đơn giao hàng có phí ship";
@@ -172,6 +327,56 @@ export const CartDiscountPicker = ({
                     disabledReason = "Voucher không tạo thêm ưu đãi cho đơn này";
                   }
                 }
+                const productSelection = v.voucher_type === "PRODUCT_DISCOUNT"
+                  ? getProductDiscountSelection(
+                      productTargets(v),
+                      cart.find((item) => item.productVoucherId && item.productVoucherId !== v.qr_token)?.productVoucherId ?? null,
+                    )
+                  : null;
+                if (!isSelected && !isDisabled && productSelection?.kind === "none") {
+                  isDisabled = true;
+                  disabledReason = productSelection.reason;
+                }
+
+                const handleSelection = () => {
+                  setActiveView({ kind: "list" });
+                  switch (v.voucher_type) {
+                    case "BUNDLE":
+                      if (selectedBundle) onRequestRemoveBundle(v.qr_token);
+                      else setActiveView({ kind: "bundle-setup", voucher: v });
+                      return;
+                    case "PRODUCT_DISCOUNT":
+                      if (selectedProductItem) {
+                        onRemoveProductVoucher(selectedProductItem.cartId);
+                      } else if (productSelection?.kind === "single") {
+                        onApplyProductVoucher(productSelection.target.cartId, v);
+                      } else if (productSelection?.kind === "multiple") {
+                        setActiveView({ kind: "product-target", voucher: v });
+                      }
+                      return;
+                    case "DISCOUNT":
+                    case "FREESHIP":
+                      if (isDisabled) return;
+                      onUpdateSelectedVouchers((previous: string[]) => {
+                        if (isSelected) return previous.filter((id) => id !== v.qr_token);
+                        let nextSelected = [...previous];
+                        if (v.voucher_type === "DISCOUNT" && v.discount_type === "PERCENT") {
+                          nextSelected = nextSelected.filter((id) => {
+                            const existingVoucher = discountVouchers.find((candidate) => candidate.qr_token === id);
+                            return !(existingVoucher && existingVoucher.discount_type === "PERCENT");
+                          });
+                        }
+                        if (v.voucher_type === "FREESHIP") {
+                          nextSelected = nextSelected.filter((id) =>
+                            !freeshipVouchers.some((candidate) => candidate.qr_token === id));
+                        }
+                        return [...nextSelected, v.qr_token];
+                      });
+                      return;
+                    default:
+                      return;
+                  }
+                };
 
                 return (
                   <VoucherCard 
@@ -181,96 +386,99 @@ export const CartDiscountPicker = ({
                     disabledReason={disabledReason}
                     isSelected={isSelected}
                     onClick={() => {
-                      onUpdateSelectedVouchers((prev: string[]) => {
-                        if (isSelected) {
-                          return prev.filter((id) => id !== v.qr_token);
-                        }
-                        let newSelected = [...prev];
-                        if (v.voucher_type === "DISCOUNT" && v.discount_type === "PERCENT") {
-                          newSelected = newSelected.filter(id => {
-                            const existingV = discountVouchers.find(d => d.qr_token === id);
-                            return !(existingV && existingV.discount_type === "PERCENT");
-                          });
-                        }
-                        if (v.voucher_type === "FREESHIP") {
-                          newSelected = newSelected.filter(id => !freeshipVouchers.find(f => f.qr_token === id));
-                        }
-                        return [...newSelected, v.qr_token];
-                      });
+                      setActiveView({ kind: "detail", voucher: v });
                     }}
-                    actionNode={
-                      isSelected ? (
-                        <CheckCircle2 className="w-5 h-5 text-primary shrink-0 ml-2" />
-                      ) : (
-                        <div className="w-5 h-5 rounded-full border border-border/60 shrink-0 ml-2" />
-                      )
-                    }
+                    onAction={handleSelection}
+                    actionModel={buildVoucherActionModel({
+                      context: "cart",
+                      selected: isSelected,
+                      selectable: isSelected || !isDisabled,
+                      disabledReason: disabledReason || null,
+                      estimatedBenefitVnd: productSelection?.kind === "single"
+                        ? productSelection.target.estimatedBenefitVnd
+                        : 0,
+                    })}
                   />
                 );
               })}
             </div>
           )}
-        </section>
+        </section>}
 
-        {/* Section 2: Đổi điểm lấy ưu đãi */}
-        {availableVoucherPackages.length > 0 && (
-          <section>
-            <div className="flex items-center gap-2 mb-3">
-              <h4 className="font-bold text-primary text-sm">Đổi điểm lấy ưu đãi</h4>
-              <span className="bg-yellow-100 text-yellow-800 text-[9px] px-1.5 py-0.5 rounded-sm font-bold uppercase tracking-wider">Mới</span>
-            </div>
-            
-            <div className="grid grid-cols-1 gap-3">
-              {availableVoucherPackages.map((p) => (
-                <PackageCard 
-                  key={p.id}
-                  pkg={p}
-                  userBalance={pointsBalance}
-                  onExchange={() => handleRedeem(p.id)}
-                  isExchanging={isRedeeming === p.id}
-                />
-              ))}
-            </div>
-          </section>
+        {/* Section 2: Receive or exchange a voucher */}
+        {activeTab === "packages" && (
+          <VoucherPackageCatalog
+            packages={availableVoucherPackages}
+            pointsBalance={pointsBalance}
+            pendingPackageId={isPending ? redeemingId : null}
+            onAcquire={handleAcquire}
+            columns="one"
+          />
         )}
-      </div>
 
-      {/* Preview total discount while overlay open */}
-      {selectedVoucherIds.length > 0 && (
-        <div className="px-5 pb-5 pt-4 border-t border-border/30 bg-white shrink-0 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.06)] z-10">
-          <div className="flex flex-col gap-1 mb-3">
-            {selectedDiscountVouchers.length > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-primary/60">Giảm giá đơn hàng:</span>
-                <span className="text-xs font-bold text-orange-600">
-                  -{Math.floor(estimateMultiDiscountSavings(selectedDiscountVouchers, subtotalPrice) / 1000).toLocaleString('vi-VN')}k
+        {activeTab === "history" && (
+          <VoucherHistorySection
+            vouchers={historyVouchers}
+            onVoucherClick={(voucher) => setActiveView({ kind: "detail", voucher })}
+          />
+        )}
+      </VoucherModalFrame>
+      <ResponsiveOverlay
+        open={targetVoucher !== null}
+        onOpenChange={(open) => { if (!open) setActiveView({ kind: "list" }); }}
+        layer="critical"
+        title="Chọn món áp dụng"
+      >
+        <div className="space-y-2 p-4">
+          {targetVoucher ? productTargets(targetVoucher).map((target) => {
+            const item = cart.find((candidate) => candidate.cartId === target.cartId);
+            return (
+              <button
+                key={target.cartId}
+                type="button"
+                onClick={() => {
+                  onApplyProductVoucher(target.cartId, targetVoucher);
+                  setActiveView({ kind: "list" });
+                }}
+                className="flex min-h-11 w-full items-center justify-between rounded-xl border bg-card p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span>
+                  <span className="block text-sm font-bold">{item?.name}</span>
+                  <span className="block text-xs text-muted-foreground">Size {target.size}</span>
                 </span>
-              </div>
-            )}
-            {selectedFreeshipDiscount > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-primary/60">Giảm phí ship:</span>
-                <span className="text-xs font-bold text-teal-600">
-                  -{Math.floor(selectedFreeshipDiscount / 1000).toLocaleString('vi-VN')}k
-                </span>
-              </div>
-            )}
-            {selectedVoucherIds.length > 1 && <div className="border-t border-dashed border-border/40 my-1" />}
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-bold text-primary">Tổng cộng ({selectedVoucherIds.length} mã):</span>
-              <span className="text-base font-bold text-red-500">
-                -{Math.floor((selectedOrderDiscount + selectedFreeshipDiscount) / 1000).toLocaleString('vi-VN')}k
-              </span>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-full py-3.5 rounded-2xl bg-primary text-white font-bold text-sm hover:scale-[1.01] active:scale-[0.99] transition-all flex justify-center items-center"
-          >
-            Xác nhận
-          </button>
+                <span className="text-sm font-bold text-primary">-{target.estimatedBenefitVnd.toLocaleString("vi-VN")}đ</span>
+              </button>
+            );
+          }) : null}
         </div>
-      )}
-    </motion.div>
+      </ResponsiveOverlay>
+      {bundleSetupVoucher ? (
+        <BundleVoucherSetupSheet
+          open
+          layer="critical"
+          voucher={bundleSetupVoucher}
+          menuData={menuData}
+          milkTypes={menuData.milk_types}
+          powders={powders}
+          defaultPowderGram={defaultPowderGram}
+          onClose={() => setActiveView({ kind: "list" })}
+          onValidateDraft={({ cartItems, rewardAllocations }) => {
+            const summary = getBundleVoucherSummary(bundleSetupVoucher);
+            if (!summary) return { ok: false, error: "Voucher BUNDLE không còn khả dụng" };
+            const draftCart = summarizeBundleCart(cartItems);
+            const selection = deriveBundleSelectionState({ voucher: summary, cart: draftCart, allocations: rewardAllocations });
+            const payload = buildBundleApplication({ voucher: summary, cart: draftCart, rewardAllocations });
+            return selection.status === "READY" && payload
+              ? { ok: true }
+              : { ok: false, error: selection.message };
+          }}
+          onSuccess={(_token, allocations, createdRewardEffects) => {
+            const result = onBundleApplicationChange(bundleSetupVoucher, allocations, createdRewardEffects);
+            if (result.ok) setActiveView({ kind: "list" });
+            return result;
+          }}
+        />
+      ) : null}
+    </ResponsiveOverlay>
   );
 };

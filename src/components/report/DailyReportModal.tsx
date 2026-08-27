@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { X, BarChart3, Loader2, RefreshCw, TrendingUp } from "lucide-react";
+import { Fragment, useState, useEffect, useCallback } from "react";
+import { X, BarChart3, ChevronDown, Loader2, RefreshCw, TrendingUp } from "lucide-react";
 import { getStaffReport, getAdminReport, getStaffList } from "@/src/services/reportService";
 import type { StaffReport, AdminReport, StaffMember } from "@/src/lib/types/report";
 import { toast } from "sonner";
@@ -93,6 +93,7 @@ export function DailyReportModal({
   const [adminReport, setAdminReport] = useState<AdminReport | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
+  const [expandedAddonIds, setExpandedAddonIds] = useState<Set<string>>(new Set());
 
   // Fetch staff list once for admin
   useEffect(() => {
@@ -151,6 +152,7 @@ export function DailyReportModal({
       setStartDate(today);
       setEndDate(today);
       setSelectedStaffId("");
+      setExpandedAddonIds(new Set());
     }
   }, [isOpen, today]);
 
@@ -228,7 +230,7 @@ export function DailyReportModal({
               >
                 <option value="">Tất cả staff</option>
                 {staffList.map((s) => (
-                  <option key={s.id} value={s.id}>
+                  <option key={s.qr_token} value={s.qr_token}>
                     {s.name}
                     {s.role === "ADMIN" ? " (Admin)" : ""}
                   </option>
@@ -306,7 +308,7 @@ export function DailyReportModal({
               <>
                 {/* ---- Summary Card ---- */}
                 <SectionCard title="📊 Tổng quan">
-                  <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
                     <div className="space-y-1">
                       <p className="text-2xl font-bold text-foreground">
                         {adminReport.summary.total_orders}
@@ -320,12 +322,44 @@ export function DailyReportModal({
                       <p className="text-xs text-muted-foreground">Ly bán ra</p>
                     </div>
                     <div className="space-y-1">
+                      <p className="text-2xl font-bold text-foreground">
+                        {adminReport.summary.total_extras_units ?? 0}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Add-on bán ra</p>
+                    </div>
+                    <div className="space-y-1">
                       <p className="text-xl font-bold text-primary">
                         {formatVND(adminReport.summary.total_revenue_vnd)}
                       </p>
                       <p className="text-xs text-muted-foreground">Doanh thu</p>
                     </div>
                   </div>
+                  {/* Breakdown theo size */}
+                  {adminReport.summary.cups_by_size && (
+                    <div className="mt-4 pt-3 border-t border-border">
+                      <p className="text-xs font-medium text-muted-foreground mb-2">Số ly theo size</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="flex flex-col items-center gap-0.5 rounded-xl bg-secondary/30 py-2">
+                          <span className="text-lg font-bold text-foreground">
+                            {adminReport.summary.cups_by_size.SMALL}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground font-medium">Nhỏ (S)</span>
+                        </div>
+                        <div className="flex flex-col items-center gap-0.5 rounded-xl bg-secondary/30 py-2">
+                          <span className="text-lg font-bold text-foreground">
+                            {adminReport.summary.cups_by_size.MEDIUM}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground font-medium">Vừa (M)</span>
+                        </div>
+                        <div className="flex flex-col items-center gap-0.5 rounded-xl bg-secondary/30 py-2">
+                          <span className="text-lg font-bold text-foreground">
+                            {adminReport.summary.cups_by_size.LARGE}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground font-medium">Lớn (L)</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </SectionCard>
 
                 {/* ---- Revenue by Type ---- */}
@@ -426,19 +460,56 @@ export function DailyReportModal({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
-                        {adminReport.addon_usage.map((a) => (
-                          <tr key={a.addon_label}>
-                            <td className="py-2.5 font-medium text-foreground pr-2">
-                              {a.addon_label}
-                            </td>
-                            <td className="py-2.5 text-muted-foreground text-xs">
-                              {a.group_name}
-                            </td>
-                            <td className="py-2.5 text-right font-bold text-foreground tabular-nums">
-                              {a.total_count}
-                            </td>
-                          </tr>
-                        ))}
+                        {adminReport.addon_usage.map((addon) => {
+                          const isExpandable = addon.powder_breakdown.length > 0;
+                          const isExpanded = expandedAddonIds.has(addon.addon_option_id);
+                          return (
+                            <Fragment key={addon.addon_option_id}>
+                              <tr>
+                                <td className="py-2.5 pr-2 font-medium text-foreground">
+                                  {isExpandable ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setExpandedAddonIds((current) => {
+                                          const next = new Set(current);
+                                          if (next.has(addon.addon_option_id)) next.delete(addon.addon_option_id);
+                                          else next.add(addon.addon_option_id);
+                                          return next;
+                                        });
+                                      }}
+                                      className="inline-flex min-h-11 items-center gap-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                                      aria-expanded={isExpanded}
+                                    >
+                                      <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                                      {addon.addon_label}
+                                    </button>
+                                  ) : addon.addon_label}
+                                </td>
+                                <td className="py-2.5 text-xs text-muted-foreground">
+                                  {addon.group_name}
+                                </td>
+                                <td className="py-2.5 text-right font-bold tabular-nums text-foreground">
+                                  {addon.total_count}
+                                </td>
+                              </tr>
+                              {isExpanded && (
+                                <tr>
+                                  <td colSpan={3} className="bg-secondary/20 px-3 py-2">
+                                    <ul className="space-y-1 text-xs text-muted-foreground">
+                                      {addon.powder_breakdown.map((powder) => (
+                                        <li key={powder.powder_name} className="flex justify-between gap-3">
+                                          <span>{powder.powder_name}</span>
+                                          <span className="tabular-nums">{powder.total_grams}g</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </SectionCard>
@@ -451,9 +522,9 @@ export function DailyReportModal({
                       <thead>
                         <tr className="text-xs text-muted-foreground border-b">
                           <th className="text-left pb-2 font-medium">Món</th>
-                          <th className="text-right pb-2 font-medium w-8">M</th>
-                          <th className="text-right pb-2 font-medium w-8">L</th>
-                          <th className="text-right pb-2 font-medium w-8">XL</th>
+                          <th className="text-right pb-2 font-medium w-10">S</th>
+                          <th className="text-right pb-2 font-medium w-10">M</th>
+                          <th className="text-right pb-2 font-medium w-10">L</th>
                           <th className="text-right pb-2 font-medium w-14">Tổng</th>
                         </tr>
                       </thead>
@@ -463,14 +534,14 @@ export function DailyReportModal({
                             <td className="py-2.5 font-medium text-foreground pr-2">
                               {item.name}
                             </td>
-                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-8">
-                              {item.sizes.M > 0 ? item.sizes.M : "—"}
+                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-10">
+                              {item.sizes.SMALL > 0 ? item.sizes.SMALL : "—"}
                             </td>
-                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-8">
-                              {item.sizes.L > 0 ? item.sizes.L : "—"}
+                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-10">
+                              {item.sizes.MEDIUM > 0 ? item.sizes.MEDIUM : "—"}
                             </td>
-                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-8">
-                              {item.sizes.XL > 0 ? item.sizes.XL : "—"}
+                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-10">
+                              {item.sizes.LARGE > 0 ? item.sizes.LARGE : "—"}
                             </td>
                             <td className="py-2.5 text-right font-bold text-foreground tabular-nums w-14">
                               {item.total_cups}
@@ -489,9 +560,9 @@ export function DailyReportModal({
                       <thead>
                         <tr className="text-xs text-muted-foreground border-b">
                           <th className="text-left pb-2 font-medium">Món</th>
-                          <th className="text-right pb-2 font-medium w-8">M</th>
-                          <th className="text-right pb-2 font-medium w-8">L</th>
-                          <th className="text-right pb-2 font-medium w-8">XL</th>
+                          <th className="text-right pb-2 font-medium w-10">S</th>
+                          <th className="text-right pb-2 font-medium w-10">M</th>
+                          <th className="text-right pb-2 font-medium w-10">L</th>
                           <th className="text-right pb-2 font-medium w-14">Tổng</th>
                         </tr>
                       </thead>
@@ -501,16 +572,40 @@ export function DailyReportModal({
                             <td className="py-2.5 font-medium text-foreground pr-2">
                               {item.name}
                             </td>
-                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-8">
-                              {item.sizes.M > 0 ? item.sizes.M : "—"}
+                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-10">
+                              {item.sizes.SMALL > 0 ? item.sizes.SMALL : "—"}
                             </td>
-                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-8">
-                              {item.sizes.L > 0 ? item.sizes.L : "—"}
+                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-10">
+                              {item.sizes.MEDIUM > 0 ? item.sizes.MEDIUM : "—"}
                             </td>
-                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-8">
-                              {item.sizes.XL > 0 ? item.sizes.XL : "—"}
+                            <td className="py-2.5 text-right text-muted-foreground tabular-nums w-10">
+                              {item.sizes.LARGE > 0 ? item.sizes.LARGE : "—"}
                             </td>
                             <td className="py-2.5 text-right font-bold text-foreground tabular-nums w-14">
+                              {item.total_cups}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </SectionCard>
+                )}
+
+                {/* ---- Add-on Sales ---- */}
+                {(adminReport.extras_sales?.length ?? 0) > 0 && (
+                  <SectionCard title="🍰 Add-on — Số lượng bán ra">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-xs text-muted-foreground">
+                          <th className="pb-2 text-left font-medium">Món</th>
+                          <th className="w-20 pb-2 text-right font-medium">Số lượng</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {adminReport.extras_sales?.map((item) => (
+                          <tr key={item.name}>
+                            <td className="py-2.5 pr-2 font-medium text-foreground">{item.name}</td>
+                            <td className="w-20 py-2.5 text-right font-bold tabular-nums text-foreground">
                               {item.total_cups}
                             </td>
                           </tr>
@@ -550,7 +645,7 @@ export function DailyReportModal({
                               {p.name}
                             </td>
                             <td className="py-2.5 text-xs text-muted-foreground">
-                              {p.category === "latte" ? "Latte" : "Fusion"}
+                              {p.category === "latte" ? "Latte" : p.category === "fusion" ? "Fusion" : "Add-on"}
                             </td>
                             <td className="py-2.5 text-right font-bold text-foreground tabular-nums w-16">
                               {p.total_cups}
@@ -563,7 +658,9 @@ export function DailyReportModal({
                 )}
 
                 {/* Show a note if no sales breakdown exists */}
-                {adminReport.latte_sales.length === 0 && adminReport.fusion_sales.length === 0 && (
+                {adminReport.latte_sales.length === 0 &&
+                  adminReport.fusion_sales.length === 0 &&
+                  (adminReport.extras_sales?.length ?? 0) === 0 && (
                   <p className="text-center text-xs text-muted-foreground py-2">
                     Chưa có dữ liệu bán hàng theo món.
                   </p>

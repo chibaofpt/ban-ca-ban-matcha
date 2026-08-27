@@ -3,6 +3,7 @@ import type { ApiResponse } from "@/src/lib/types/api";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
 import type { PaymentMethod, StaffOrderResult } from "@/src/lib/types/order";
 import { normalizeCustomerSearch } from "@/src/utils/display";
+import type { BundleApplicationPayload } from "@/src/lib/utils/bundleVoucher";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -13,10 +14,11 @@ export interface CreateStaffOrderPayload {
   /** Defaults to CASH on both client and server for backward compatibility. */
   payment_method?: PaymentMethod;
   items: {
+    client_line_id?: string;
     menu_item_id: string;
     quantity: number;
-    /** Required — all items have SMALL/MEDIUM/LARGE. */
-    size: "SMALL" | "MEDIUM" | "LARGE";
+    /** Required for drinks; null for fixed-price Add-on items. */
+    size: "SMALL" | "MEDIUM" | "LARGE" | null;
     sweetness: SweetnessLevel;
     /** Defaults to NORMAL on server if omitted; explicit here for correctness. */
     ice_option: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
@@ -24,12 +26,15 @@ export interface CreateStaffOrderPayload {
     note?: string;
     addon_option_ids: { option_id: string; quantity: number }[];
     product_voucher_id?: string;
+    item_voucher_id?: string;
     /** ADDON vouchers per item — each targets a specific addon_option_id. */
     addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
     /** Fusion only — server validates against item's allowed powder list. */
     selected_powder_id?: string;
     /** Latte only — server defaults to is_default milk if omitted. */
     selected_milk_type_id?: string;
+    /** Base Liquid selection for Latte or Fusion. */
+    selected_base_liquid_id?: string;
     /**
      * Client-computed final unit price. Required.
      * Server recomputes and rejects with PRICE_CHANGED on mismatch.
@@ -38,6 +43,7 @@ export interface CreateStaffOrderPayload {
   }[];
   /** DISCOUNT voucher IDs (multiple allowed, max 1 PERCENT). Omit for anonymous orders. */
   discount_voucher_ids?: string[];
+  bundle_applications?: BundleApplicationPayload[];
   /**
    * Customer QR token (‘qr_token’ from users table). Required for STAFF when any voucher is used.
    * Admin auto-bypasses QR verification — omit for admin orders.
@@ -67,7 +73,7 @@ export type QrScanResult =
       type: "voucher";
       data: {
         qr_token: string;
-        voucher_type: "DISCOUNT" | "PRODUCT";
+        voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
         discount_type: "PERCENT" | "FIXED" | null;
         discount_value: number | null;
         menu_item_id: string | null;

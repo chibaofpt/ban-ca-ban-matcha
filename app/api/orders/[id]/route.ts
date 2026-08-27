@@ -6,35 +6,13 @@ import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 
 export const dynamic = "force-dynamic";
 
-function toPublicOrderItems<T extends { product_voucher_id: string | null }>(items: T[]) {
+function toPublicOrderItems<T extends { product_voucher_id: string | null; item_voucher_id: string | null }>(items: T[]) {
   return items.map((item) => {
-    const { product_voucher_id: _productVoucherId, ...publicItem } = item;
+    const { product_voucher_id: _productVoucherId, item_voucher_id: _itemVoucherId, ...publicItem } = item;
     void _productVoucherId;
+    void _itemVoucherId;
     return publicItem;
   });
-}
-
-/**
- * Runs a lazy auto-cancel check for a PENDING order.
- * If auto_cancel_at has passed, cancels the order and restores ALL vouchers.
- * Returns true if the order was cancelled.
- */
-async function tryLazyCancel(orderId: string, auto_cancel_at: Date | null): Promise<boolean> {
-  if (!auto_cancel_at || auto_cancel_at > new Date()) return false;
-
-  return prisma.$transaction(
-    async (tx) => {
-      const claim = await tx.order.updateMany({
-        where: { id: orderId, status: "PENDING" },
-        data: { status: "CANCELLED" },
-      });
-      if (claim.count !== 1) return false;
-
-      await restoreVouchersOnCancel(tx, orderId);
-      return true;
-    },
-    { maxWait: 5000, timeout: 10000 }
-  );
 }
 
 /** GET /api/orders/[id] — Customer polls own order status for tracking. */
@@ -85,41 +63,6 @@ export async function GET(
     // Security: customers can only view their own orders
     if (order.user_id !== session.id) {
       return NextResponse.json({ error: "Order not found", code: "NOT_FOUND" }, { status: 404 });
-    }
-
-    // Lazy auto-cancel check — inline if expired
-    if (order.status === "PENDING") {
-      const wasCancelled = await tryLazyCancel(order.id, order.auto_cancel_at);
-      if (wasCancelled) {
-        // Return the cancelled state immediately without another DB read
-        return NextResponse.json({
-          data: {
-            id: order.id,
-            order_code: order.order_code,
-            status: "CANCELLED",
-            order_type: order.order_type,
-            payment_method: order.payment_method,
-            subtotal_vnd: order.subtotal_vnd,
-            total_voucher_discount_vnd: order.total_voucher_discount_vnd,
-            total_vnd: order.total_vnd,
-            shipping_fee_vnd: order.shipping_fee_vnd,
-            freeship_discount_vnd: order.freeship_discount_vnd,
-            grand_total_vnd: order.grand_total_vnd,
-            pickup_time: order.pickup_time,
-            auto_cancel_at: order.auto_cancel_at,
-            payment_qr_url: null,
-            created_at: order.created_at,
-            address_id: order.address_id,
-            delivery_address: order.delivery_address,
-            delivery_lat: order.delivery_lat,
-            delivery_lng: order.delivery_lng,
-            delivery_distance_km: order.delivery_distance_km,
-            delivery_receiver_name: order.delivery_receiver_name,
-            delivery_receiver_phone: order.delivery_receiver_phone,
-            items: toPublicOrderItems(order.items),
-          },
-        });
-      }
     }
 
     // Only return QR URL while order is still PENDING and awaiting payment

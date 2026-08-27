@@ -5,6 +5,8 @@ import type {
   CustomerOrderDetail,
   CreateOrderResult,
 } from "@/src/lib/types/order";
+import type { BundleApplicationPayload } from "@/src/lib/utils/bundleVoucher";
+import { getBundleCheckoutAvailabilityReason } from "@/src/lib/utils/bundleCheckoutError";
 
 // Re-export for consumers
 export type { CreateOrderResult } from "@/src/lib/types/order";
@@ -12,25 +14,28 @@ export type { CreateOrderResult } from "@/src/lib/types/order";
 export interface CreateOrderPayload {
   order_type: "PICKUP" | "DELIVERY";
   items: {
+    client_line_id?: string;
     menu_item_id: string;
     quantity: number;
-    size: "SMALL" | "MEDIUM" | "LARGE";
+    size: "SMALL" | "MEDIUM" | "LARGE" | null;
     sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL" | "EXTRA";
     ice_option: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
     coldwhisk: boolean;
     note?: string;
     addon_option_ids: { option_id: string; quantity: number }[];
     product_voucher_id?: string;
+    item_voucher_id?: string;
     addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
     selected_powder_id?: string;
     selected_milk_type_id?: string;
+    selected_base_liquid_id?: string;
     client_price_vnd: number;
   }[];
   discount_voucher_ids: string[];
   pickup_time?: string;
   note?: string;
   delivery_address?: string;
-  
+
   // Delivery fields
   address_id?: string;
   delivery_lat?: number;
@@ -39,6 +44,7 @@ export interface CreateOrderPayload {
   delivery_receiver_phone?: string;
   client_shipping_fee_vnd?: number;
   freeship_voucher_id?: string;
+  bundle_applications?: BundleApplicationPayload[];
 }
 
 export interface PriceConflict {
@@ -53,6 +59,13 @@ export class PriceChangedError extends Error {
   constructor(public readonly conflicts: PriceConflict[]) {
     super("One or more item prices have changed");
     this.name = "PriceChangedError";
+  }
+}
+
+export class BundleNotEligibleError extends Error {
+  constructor(public readonly reason: string) {
+    super(`Voucher bundle không hợp lệ: ${reason}`);
+    this.name = "BundleNotEligibleError";
   }
 }
 
@@ -71,6 +84,7 @@ function buildPayloadItems(cart: CartItem[]): CreateOrderPayload["items"] {
       ...c.quantityAddonOptions,
     ],
     ...(c.productVoucherId ? { product_voucher_id: c.productVoucherId } : {}),
+    ...(c.itemVoucherId ? { item_voucher_id: c.itemVoucherId } : {}),
     ...(c.addonVouchers && c.addonVouchers.length > 0
       ? {
           addon_voucher_ids: c.addonVouchers.map((av) => ({
@@ -80,7 +94,9 @@ function buildPayloadItems(cart: CartItem[]): CreateOrderPayload["items"] {
         }
       : {}),
     ...(c.selectedPowderId ? { selected_powder_id: c.selectedPowderId } : {}),
-    ...(c.selectedMilkTypeId ? { selected_milk_type_id: c.selectedMilkTypeId } : {}),
+    ...((c.selectedBaseLiquidId ?? c.selectedMilkTypeId)
+      ? { selected_base_liquid_id: c.selectedBaseLiquidId ?? c.selectedMilkTypeId }
+      : {}),
     client_price_vnd: c.clientPriceVnd,
   }));
 }
@@ -98,7 +114,7 @@ export async function createOrder(
     pickupTime?: string;
     note?: string;
     deliveryAddress?: string;
-    
+
     // Delivery fields
     addressId?: string;
     deliveryLat?: number;
@@ -107,6 +123,7 @@ export async function createOrder(
     deliveryReceiverPhone?: string;
     clientShippingFeeVnd?: number;
     freeshipVoucherId?: string;
+    bundleApplications?: BundleApplicationPayload[];
   }
 ): Promise<CreateOrderResult> {
   const payload: CreateOrderPayload = {
@@ -123,6 +140,15 @@ export async function createOrder(
     ...(options?.deliveryReceiverPhone ? { delivery_receiver_phone: options.deliveryReceiverPhone } : {}),
     ...(options?.clientShippingFeeVnd !== undefined ? { client_shipping_fee_vnd: options.clientShippingFeeVnd } : {}),
     ...(options?.freeshipVoucherId ? { freeship_voucher_id: options.freeshipVoucherId } : {}),
+    ...(options?.bundleApplications?.length
+      ? {
+          bundle_applications: options.bundleApplications,
+          items: buildPayloadItems(cart).map((item, index) => ({
+            ...item,
+            client_line_id: cart[index]?.cartId,
+          })),
+        }
+      : {}),
   };
 
   try {
@@ -137,9 +163,16 @@ export async function createOrder(
       typeof err.response === "object" &&
       "data" in err.response
     ) {
-      const response = err.response as { status: number; data: { code?: string; details?: { conflicts?: PriceConflict[] }; error?: string } };
+      const response = err.response as {
+        status: number;
+        data: { code?: string; details?: { conflicts?: PriceConflict[], reason?: string }; error?: string };
+      };
       if (response.status === 409 && response.data.code === "PRICE_CHANGED") {
         throw new PriceChangedError(response.data.details?.conflicts ?? []);
+      }
+      const bundleAvailabilityReason = getBundleCheckoutAvailabilityReason(err);
+      if (bundleAvailabilityReason) {
+        throw new BundleNotEligibleError(bundleAvailabilityReason);
       }
       throw new Error(response.data.error ?? "Đặt hàng thất bại");
     }
@@ -149,15 +182,16 @@ export async function createOrder(
 
 /**
  * Fetches the paginated list of orders for the current customer.
- * Calls GET /api/orders.
+ * Calls GET /api/orders with optional status filter.
  */
 export async function fetchCustomerOrders(
-  params?: { page?: number; limit?: number },
+  params?: { page?: number; limit?: number; statusFilter?: "active" | "cancelled" },
 ): Promise<CustomerHistoryOrdersResponse> {
   const query = new URLSearchParams();
-  if (params?.page) query.append('page', params.page.toString());
-  if (params?.limit) query.append('limit', params.limit.toString());
-  
+  if (params?.page) query.append("page", params.page.toString());
+  if (params?.limit) query.append("limit", params.limit.toString());
+  if (params?.statusFilter) query.append("status", params.statusFilter);
+
   const qs = query.toString();
   const res = await apiClient.get<CustomerHistoryOrdersResponse>(
     `/api/orders${qs ? `?${qs}` : ""}`,

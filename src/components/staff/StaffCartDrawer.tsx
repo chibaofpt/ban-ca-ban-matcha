@@ -2,17 +2,16 @@
 
 import React, { useState, useMemo, useCallback } from "react";
 import { User, UserX, Ticket, ArrowLeft, CheckCircle2, ChevronRight, X } from "lucide-react";
-import type { CartItem } from "@/src/lib/types/cart";
-import type { MenuData, SweetnessLevel } from "@/src/lib/types/menu";
+import type { BundleCreatedRewardEffect, CartBundleApplication, CartItem } from "@/src/lib/types/cart";
+import type { MenuData, Size, SweetnessLevel } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { CustomerInfo } from "./CustomerSelectModal";
 import type { MyVoucher } from "@/src/services/staffVoucherService";
 import { cn } from "@/src/utils/cn";
-import { formatKa, formatVietnamPhone } from "@/src/utils/display";
+import { formatVietnamPhone } from "@/src/utils/display";
 import {
   buildProductVoucherMap,
   buildAddonVoucherMap,
-  estimateMultiDiscountSavings,
   filterUsableVouchers,
 } from "@/src/utils/voucherMatchUtils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -24,6 +23,10 @@ import type { DiscountVoucher } from "@/src/lib/store/staffCartStore";
 import Image from "next/image";
 import type { PaymentMethod } from "@/src/lib/types/order";
 import { PaymentMethodSelector } from "@/src/components/staff/PaymentMethodSelector";
+import { CartBundleVoucherPanel, getBundleVoucherSummary } from "@/src/components/menu/cart/CartBundleVoucherPanel";
+import { deriveBundleAllocationConstraints, summarizeBundleCart, type BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
+import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
+import { projectCartTotals, type VoucherProjectionSource } from "@/src/lib/utils/bundleVoucherProjection";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -48,15 +51,18 @@ interface StaffCartDrawerProps {
   customerInfo: CustomerInfo | null;
   isSubmitting?: boolean;
   paymentMethod?: PaymentMethod;
-  isCheckoutLocked?: boolean;
   onClose: () => void;
   onRemove: (cartId: string) => void;
-  onEditItem?: (item: CartItem) => void;
+  onEditItem?: (item: CartItem, allowedSizes?: Size[]) => void;
   onChangeQuantity: (cartId: string, newQty: number) => void;
   onCheckout: () => void;
   onPaymentMethodChange?: (method: PaymentMethod) => void;
   onOpenCustomerSelect: () => void;
   onClearCustomer: () => void;
+  bundleApplications: CartBundleApplication[];
+  onBundleApplicationChange: (voucher: MyVoucher, allocations: BundleSelectionAllocation[], effect?: BundleCreatedRewardEffect) => void;
+  onRequestRemoveBundle: (voucherToken: string) => void;
+  onAddExtrasReward?: (menuItemId: string, voucherToken: string) => { clientLineId: string; effect: BundleCreatedRewardEffect } | string | null;
 
   customerVouchers?: MyVoucher[];
   selectedDiscountIds?: string[];
@@ -84,7 +90,6 @@ export function StaffCartDrawer({
   customerInfo,
   isSubmitting = false,
   paymentMethod = "CASH",
-  isCheckoutLocked = false,
   onClose,
   onRemove,
   onEditItem,
@@ -93,6 +98,10 @@ export function StaffCartDrawer({
   onPaymentMethodChange = () => undefined,
   onOpenCustomerSelect,
   onClearCustomer,
+  bundleApplications,
+  onBundleApplicationChange,
+  onRequestRemoveBundle,
+  onAddExtrasReward,
   customerVouchers = [],
   selectedDiscountIds = [],
   onToggleDiscount,
@@ -107,62 +116,97 @@ export function StaffCartDrawer({
   isExchanging = false,
   preventCloseOutside = false,
 }: StaffCartDrawerProps) {
-  const menuItems = menuData ? [...menuData.latte, ...menuData.fusion] : [];
+  const menuItems = menuData ? [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])] : [];
 
   const [activeItemForVoucher, setActiveItemForVoucher] = useState<string | null>(null);
   const [isDiscountPickerOpen, setIsDiscountPickerOpen] = useState(false);
+  const [bundleTokenToRemove, setBundleTokenToRemove] = useState<string | null>(null);
 
   // Pull-to-dismiss logic is handled by DismissableSheet.
   // Body scroll lock is handled by DismissableSheet.
 
 
-  // Subtotal (already reflects PRODUCT voucher credit if applied)
-  const subtotalPrice = useMemo(() => cart.reduce((s, c) => s + c.clientPriceVnd * c.quantity, 0), [cart]);
-
   // Vouchers
   const discountVouchers = useMemo(() => filterUsableVouchers(customerVouchers, "DISCOUNT"), [customerVouchers]);
   const applicableProductVouchers = useMemo(() => buildProductVoucherMap(customerVouchers, cart), [customerVouchers, cart]);
   const applicableAddonVouchersMap = useMemo(() => buildAddonVoucherMap(customerVouchers, cart), [customerVouchers, cart]);
+  const bundleVouchers = useMemo(
+    () => customerVouchers.filter((voucher) => voucher.voucher_type === "BUNDLE"),
+    [customerVouchers],
+  );
+  const addonLabels = useMemo(
+    () =>
+      new Map(
+        (menuData?.addon_groups ?? []).flatMap((group) =>
+          group.options.map((option) => [option.id, option.label] as const),
+        ),
+      ),
+    [menuData?.addon_groups],
+  );
+  const bundleConstraints = useMemo(() => deriveBundleAllocationConstraints({
+    cart: summarizeBundleCart(cart),
+    applications: bundleApplications.flatMap((application) => {
+      const voucher = customerVouchers.find((candidate) => candidate.qr_token === application.voucher_qr_token);
+      const summary = voucher ? getBundleVoucherSummary(voucher) : null;
+      return summary ? [{
+        voucher_qr_token: application.voucher_qr_token,
+        voucher: summary,
+        qualifier_allocations: application.qualifier_allocations,
+        reward_allocations: application.reward_allocations,
+      }] : [];
+    }),
+  }), [bundleApplications, cart, customerVouchers]);
+  const bundleAllocationBadgesByLine = useMemo(() => {
+    const grouped = new Map<string, Map<string, { token: string; label: string; quantity: number }>>();
+    for (const application of bundleApplications) {
+      const voucher = customerVouchers.find((candidate) => candidate.qr_token === application.voucher_qr_token);
+      if (!voucher) continue;
+      for (const allocation of [...application.qualifier_allocations, ...application.reward_allocations]) {
+        const badges = grouped.get(allocation.client_line_id) ?? new Map<string, { token: string; label: string; quantity: number }>();
+        const current = badges.get(application.voucher_qr_token);
+        badges.set(application.voucher_qr_token, {
+          token: application.voucher_qr_token,
+          label: voucher.package.name,
+          quantity: (current?.quantity ?? 0) + allocation.quantity,
+        });
+        grouped.set(allocation.client_line_id, badges);
+      }
+    }
+    return new Map([...grouped.entries()].map(([lineId, badges]) => [lineId, [...badges.values()]]));
+  }, [bundleApplications, customerVouchers]);
 
   // Discounts
-  const selectedDiscountVouchersList = useMemo(
-    () => selectedDiscountIds.flatMap((id) => {
-      const voucher = discountVouchers.find((candidate) => candidate.qr_token === id);
-      return voucher ? [voucher] : [];
-    }),
-    [discountVouchers, selectedDiscountIds]
-  );
-  const previewDiscountVouchers = useMemo(
-    () => [
-      ...selectedDiscountVouchersList,
-      ...(discountVoucher && !selectedDiscountIds.includes(discountVoucher.qr_token)
-        ? [discountVoucher]
-        : []),
-    ],
-    [discountVoucher, selectedDiscountIds, selectedDiscountVouchersList]
-  );
-  const rawDiscountAmount = useMemo(
-    () => estimateMultiDiscountSavings(previewDiscountVouchers, subtotalPrice),
-    [previewDiscountVouchers, subtotalPrice]
-  );
-  const scanDiscount = useMemo(
-    () => discountVoucher ? estimateMultiDiscountSavings([discountVoucher], subtotalPrice) : 0,
-    [discountVoucher, subtotalPrice]
-  );
-
-  // Apply rounding rules to match Customer Cart
-  const { subtotalK, finalK, discountK, discountAmount, total } = useMemo(() => {
-    const subtotalK = Math.ceil(subtotalPrice / 1000);
-    const discountK = Math.floor(rawDiscountAmount / 1000); // Conservative discount display
-    const finalK = Math.max(0, subtotalK - discountK);
+  const scannedDiscountForProjection = useMemo<VoucherProjectionSource | null>(() => {
+    if (!discountVoucher || customerVouchers.some((voucher) => voucher.qr_token === discountVoucher.qr_token)) return null;
     return {
-      subtotalK,
-      finalK,
-      discountK,
-      discountAmount: discountK * 1000,
-      total: finalK * 1000
+      qr_token: discountVoucher.qr_token,
+      voucher_type: "DISCOUNT",
+      discount_type: discountVoucher.discount_type,
+      discount_value: discountVoucher.discount_value,
+      covered_price_vnd: null,
+      covered_delivery_fee_vnd: null,
+      min_order_vnd: null,
+      status: "ACTIVE",
+      package: { name: "Voucher quét mã", description: null, points_cost: 0, bundleRule: null },
     };
-  }, [subtotalPrice, rawDiscountAmount]);
+  }, [customerVouchers, discountVoucher]);
+  const projectionVoucherIds = useMemo(
+    () => Array.from(new Set([
+      ...selectedDiscountIds,
+      ...(discountVoucher ? [discountVoucher.qr_token] : []),
+    ])),
+    [discountVoucher, selectedDiscountIds],
+  );
+  const cartProjection = useMemo(() => projectCartTotals({
+    items: cart,
+    applications: bundleApplications,
+    vouchers: scannedDiscountForProjection ? [...customerVouchers, scannedDiscountForProjection] : customerVouchers,
+    selectedVoucherIds: projectionVoucherIds,
+    shipping_fee_vnd: 0,
+  }), [bundleApplications, cart, customerVouchers, projectionVoucherIds, scannedDiscountForProjection]);
+  const subtotalVnd = cartProjection.totals.subtotal_vnd;
+  const totalDiscountVnd = cartProjection.totals.items_discount_vnd + cartProjection.totals.total_voucher_discount_vnd;
+  const totalVnd = cartProjection.totals.total_vnd;
 
   const activeItem = cart.find(i => i.cartId === activeItemForVoucher);
 
@@ -187,6 +231,7 @@ export function StaffCartDrawer({
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-50 bg-black/40" />
         <Drawer.Content 
+          data-testid="staff-cart-sheet"
           onInteractOutside={(e) => {
             const target = e.target as HTMLElement;
             // Prevent closing if the clicked element was removed from the DOM (e.g. clicking a button inside a modal that unmounts)
@@ -203,7 +248,7 @@ export function StaffCartDrawer({
               e.preventDefault();
             }
           }}
-          className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl max-h-[85vh] flex flex-col shadow-2xl outline-none after:content-[''] after:absolute after:inset-x-0 after:top-full after:h-[50vh] after:bg-inherit"
+          className="fixed bottom-0 left-0 right-0 z-50 flex h-auto max-h-[100dvh] flex-col rounded-t-3xl bg-card shadow-2xl outline-none after:absolute after:inset-x-0 after:top-full after:h-[50vh] after:bg-inherit after:content-['']"
         >
           <div className="flex justify-center pt-3 pb-1 w-full shrink-0">
             <div className="w-12 h-1.5 bg-border rounded-full" />
@@ -215,8 +260,10 @@ export function StaffCartDrawer({
               </h2>
             </div>
             <button
+              type="button"
               onClick={handleClose}
-              className="w-8 h-8 rounded-full bg-secondary/50 flex items-center justify-center hover:bg-secondary transition"
+              aria-label="Đóng giỏ hàng"
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-secondary/50 transition hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <X size={16} />
             </button>
@@ -260,7 +307,8 @@ export function StaffCartDrawer({
 
         {/* Item list */}
         <div
-          className="overflow-y-auto overscroll-contain flex-1 min-h-0 p-4 space-y-4"
+          data-testid="staff-cart-items"
+          className="min-h-0 flex-[0_1_auto] space-y-4 overflow-y-auto overscroll-contain p-4"
         >
           {cart.length === 0 ? (
              <div className="text-center py-10 text-muted-foreground space-y-3">
@@ -284,7 +332,11 @@ export function StaffCartDrawer({
                   customerVouchers={customerVouchers}
                   applicableProductVouchers={productVouchersForItem}
                   applicableAddonVouchers={addonVouchersForItem}
-                  onEdit={onEditItem!}
+                  onEdit={(item) => {
+                    if (bundleConstraints.non_editable_line_ids.has(item.cartId)) return;
+                    onEditItem?.(item, bundleConstraints.allowed_sizes_by_line.get(item.cartId));
+                  }}
+                  bundleAllocationBadges={bundleAllocationBadgesByLine.get(c.cartId)}
                   onRemove={onRemove}
                   onChangeQuantity={onChangeQuantity}
                   onRemoveProduct={onRemoveProduct}
@@ -297,6 +349,17 @@ export function StaffCartDrawer({
               );
             })
           )}
+          {cart.length > 0 && customerInfo?.type === "existing" ? (
+            <CartBundleVoucherPanel
+              vouchers={bundleVouchers}
+              cart={cart}
+              addonLabels={addonLabels}
+              bundleApplications={bundleApplications}
+              onBundleApplicationChange={onBundleApplicationChange}
+              onRequestRemoveBundle={setBundleTokenToRemove}
+              onAddExtrasReward={onAddExtrasReward}
+            />
+          ) : null}
         </div>
 
         {/* Footer */}
@@ -305,7 +368,7 @@ export function StaffCartDrawer({
             <div className="mb-4">
               <PaymentMethodSelector
                 value={paymentMethod}
-                bankTransferDisabled={total <= 0 || isCheckoutLocked}
+                bankTransferDisabled={totalVnd <= 0}
                 onChange={onPaymentMethodChange}
               />
             </div>
@@ -336,9 +399,7 @@ export function StaffCartDrawer({
                 {discountVoucher && !selectedDiscountIds.includes(discountVoucher.qr_token) && (
                   <div className="flex items-center justify-between bg-green-50/50 border border-green-200/50 rounded-xl px-3 py-2">
                     <span className="text-xs font-bold text-green-700">🏷 Voucher quét mã</span>
-                    <span className="text-xs font-bold text-green-700">
-                      -{formatKa(scanDiscount, "floor")}
-                    </span>
+                    <span className="text-xs font-bold text-green-700">Đã tính trong tổng</span>
                   </div>
                 )}
               </div>
@@ -347,23 +408,23 @@ export function StaffCartDrawer({
               <div className="w-[45%] flex flex-col justify-end gap-1 text-right">
                 <div className="flex justify-between items-center text-xs text-muted-foreground font-medium">
                   <span>Tạm tính</span>
-                  <span>{formatKa(subtotalK * 1000)}</span>
+                  <span>{subtotalVnd.toLocaleString("vi-VN")}đ</span>
                 </div>
-                {discountAmount > 0 && (
+                {totalDiscountVnd > 0 && (
                   <div className="flex justify-between items-center text-xs text-orange-600 font-bold">
                     <span>Giảm</span>
-                    <span>-{formatKa(discountK * 1000, "floor")}</span>
+                    <span>-{totalDiscountVnd.toLocaleString("vi-VN")}đ</span>
                   </div>
                 )}
                 <div className="border-t border-dashed border-border/60 my-1" />
                 <div className="flex flex-col items-end">
                   <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none mb-1">Tổng</span>
                   <span className="font-serif text-2xl font-bold text-primary leading-none flex items-center gap-1">
-                    <span className="text-xl">🐟</span> {formatKa(finalK * 1000, "ceil")}
+                    {totalVnd.toLocaleString("vi-VN")}đ
                   </span>
-                  {customerInfo && finalK >= 10 && (
+                  {customerInfo && totalVnd >= 10_000 && (
                     <span className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-100 px-1.5 py-0.5 rounded-md mt-1.5">
-                      +{Math.floor(total / 10000)} điểm cá
+                      +{Math.floor(totalVnd / 10_000)} điểm cá
                     </span>
                   )}
                 </div>
@@ -375,7 +436,6 @@ export function StaffCartDrawer({
                 <motion.button
                   whileTap={{ scale: 0.98 }}
                   onClick={onClearCart}
-                  disabled={isCheckoutLocked}
                   className="w-[30%] bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 rounded-2xl h-12 font-bold text-sm shadow-sm transition flex items-center justify-center shrink-0"
                 >
                   Xoá tất cả
@@ -385,7 +445,7 @@ export function StaffCartDrawer({
               <motion.button
                 whileTap={{ scale: 0.98 }}
                 onClick={onCheckout}
-                disabled={isSubmitting || isCheckoutLocked}
+                disabled={isSubmitting}
                 className={cn(
                   "bg-primary text-primary-foreground rounded-2xl h-12 font-bold text-sm shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none shrink-0",
                   onClearCart ? "w-[70%]" : "w-full"
@@ -428,11 +488,13 @@ export function StaffCartDrawer({
                 {/* Item context */}
                 <div className="flex items-center gap-3 p-3 bg-secondary/20 border border-border/50 rounded-2xl">
                   <div className="w-12 h-12 rounded-xl overflow-hidden bg-secondary/40">
-                     {activeItem.imageUrl ? <Image src={activeItem.imageUrl} alt={activeItem.name} width={48} height={48} unoptimized className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-xl">🍵</div>}
+                     {activeItem.imageUrl ? <Image src={activeItem.imageUrl} alt={activeItem.name} width={48} height={48} sizes="48px" className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-xl">🍵</div>}
                   </div>
                   <div>
                     <p className="font-bold text-sm">{activeItem.name}</p>
-                    <p className="text-xs text-muted-foreground">Size {activeItem.size}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {activeItem.category === "extras" ? "Add-on" : `Size ${activeItem.size}`}
+                    </p>
                   </div>
                 </div>
 
@@ -442,15 +504,15 @@ export function StaffCartDrawer({
                     <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Miễn phí món</p>
                     <div className="space-y-2">
                       {applicableProductVouchers.get(activeItem.menuItemId)?.map(v => {
-                        const isSelected = activeItem.productVoucherId === v.qr_token;
-                        const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && c.productVoucherId === v.qr_token);
+                        const isSelected = (activeItem.productVoucherId ?? activeItem.itemVoucherId) === v.qr_token;
+                        const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && (c.productVoucherId === v.qr_token || c.itemVoucherId === v.qr_token));
                         
                         return (
                           <VoucherCard 
                             key={v.qr_token}
                             voucher={v}
                             isDisabled={isAlreadyUsed}
-                            disabledReason={isAlreadyUsed ? "Đã dùng ở ly khác" : undefined}
+                            disabledReason={isAlreadyUsed ? "Đã dùng ở món khác" : undefined}
                             onClick={() => {
                               if (isAlreadyUsed) return;
                               if (isSelected && onRemoveProduct) onRemoveProduct(activeItem.cartId);
@@ -598,6 +660,18 @@ export function StaffCartDrawer({
         
         {/* Product Modal Node for Staff */}
         {productModalNode}
+        <ConfirmModal
+          isOpen={bundleTokenToRemove !== null}
+          onCancel={() => setBundleTokenToRemove(null)}
+          onConfirm={() => {
+            if (bundleTokenToRemove) onRequestRemoveBundle(bundleTokenToRemove);
+            setBundleTokenToRemove(null);
+          }}
+          title="Gỡ ưu đãi BUNDLE"
+          message="Chỉ quà mà ưu đãi đã thêm sẽ được gỡ; các món khách đã chọn mua vẫn được giữ lại."
+          confirmLabel="Gỡ ưu đãi"
+          isDestructive={true}
+        />
         
         </>
         </Drawer.Content>

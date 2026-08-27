@@ -21,7 +21,25 @@ const ORDER = {
   items: [],
 };
 
+/** Default controlled filter props for tests that don't focus on filtering. */
+const defaultFilterProps = {
+  filter: "active" as const,
+  onFilterChange: vi.fn(),
+};
+
 describe("OrderHistoryTab — giữ nguyên hành vi lịch sử đơn", () => {
+  it("hiển thị giảm giá order-level khi card có không quá ba món", () => {
+    const view = render(
+      <OrderHistoryTab
+        orders={[{ ...ORDER, total_voucher_discount_vnd: 10_000,
+          discountVouchers: [{ voucher: { package: { name: "Giảm 10K" } } }] }]}
+        isLoading={false} page={1} totalPages={1} {...defaultFilterProps}
+        onPageChange={vi.fn()} onCancel={vi.fn()} onReorder={vi.fn()}
+      />,
+    );
+    expect(view.container.textContent).toContain("Giảm giá");
+    expect(view.container.textContent).toContain("Giảm 10K");
+  });
   it("hiển thị mã đơn, điểm dự kiến và tổng thanh toán", () => {
     const view = render(
       <OrderHistoryTab
@@ -29,6 +47,7 @@ describe("OrderHistoryTab — giữ nguyên hành vi lịch sử đơn", () => {
         isLoading={false}
         page={1}
         totalPages={1}
+        {...defaultFilterProps}
         onPageChange={vi.fn()}
         onCancel={vi.fn()}
         onReorder={vi.fn()}
@@ -50,6 +69,7 @@ describe("OrderHistoryTab — giữ nguyên hành vi lịch sử đơn", () => {
         isLoading={false}
         page={1}
         totalPages={2}
+        {...defaultFilterProps}
         onPageChange={onPageChange}
         onCancel={vi.fn()}
         onReorder={vi.fn()}
@@ -60,13 +80,15 @@ describe("OrderHistoryTab — giữ nguyên hành vi lịch sử đơn", () => {
     expect(onPageChange).toHaveBeenCalledWith(2);
   });
 
-  it("hiển thị empty state", () => {
+  it("hiển thị empty state khi không có đơn", () => {
     const view = render(
       <OrderHistoryTab
         orders={[]}
         isLoading={false}
         page={1}
         totalPages={1}
+        filter="active"
+        onFilterChange={vi.fn()}
         onPageChange={vi.fn()}
         onCancel={vi.fn()}
         onReorder={vi.fn()}
@@ -74,5 +96,43 @@ describe("OrderHistoryTab — giữ nguyên hành vi lịch sử đơn", () => {
     );
 
     expect(view.container.textContent).toContain("Bạn chưa có đơn hàng nào");
+  });
+
+  it("hiển thị empty state đúng khi filter = cancelled", () => {
+    const view = render(
+      <OrderHistoryTab
+        orders={[]}
+        isLoading={false}
+        page={1}
+        totalPages={1}
+        filter="cancelled"
+        onFilterChange={vi.fn()}
+        onPageChange={vi.fn()}
+        onCancel={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    );
+
+    expect(view.container.textContent).toContain("Không có đơn nào bị huỷ");
+  });
+
+  it("gọi onFilterChange khi bấm filter pill", () => {
+    const onFilterChange = vi.fn();
+    const view = render(
+      <OrderHistoryTab
+        orders={[ORDER]}
+        isLoading={false}
+        page={1}
+        totalPages={1}
+        filter="active"
+        onFilterChange={onFilterChange}
+        onPageChange={vi.fn()}
+        onCancel={vi.fn()}
+        onReorder={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Đơn huỷ" }));
+    expect(onFilterChange).toHaveBeenCalledWith("cancelled");
   });
 });

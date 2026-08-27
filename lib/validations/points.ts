@@ -7,6 +7,7 @@ const paginationValue = (fallback: number, maximum: number) =>
   );
 
 export const pointsHistoryQuerySchema = z.object({
-  page: paginationValue(1, Number.MAX_SAFE_INTEGER),
+  page: paginationValue(1, 100),
   limit: paginationValue(10, 50),
+  cursor: z.string().min(1).max(512).optional(),
 });

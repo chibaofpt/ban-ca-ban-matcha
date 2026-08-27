@@ -6,7 +6,6 @@ import { Ticket, MapPin, ChevronRight, Trash2, ShoppingBag, Info } from "lucide-
 import { cn } from "@/src/utils/cn";
 import type { Address } from "@/src/lib/types/address";
 import type { PriceConflict } from "@/src/services/orderService";
-import { formatKa } from "@/src/utils/display";
 import { PointsBreakdownSheet } from "./PointsBreakdownSheet";
 
 type CheckoutState =
@@ -42,10 +41,10 @@ interface CartFooterProps {
   setIsDiscountPickerOpen: (open: boolean) => void;
 
   // Voucher / Pricing state
-  subtotalK: number;
-  shippingK: number;
-  totalDiscountK: number;
-  grandTotalK: number;
+  subtotalVnd: number;
+  shippingVnd: number;
+  totalDiscountVnd: number;
+  grandTotalVnd: number;
   totalAfterDiscountVnd: number;
   hasUnavailableItems: boolean;
   orderPoints: number;
@@ -77,10 +76,10 @@ export const CartFooter = memo(function CartFooter({
   shippingFee,
   setIsAddressPickerOpen,
   setIsDiscountPickerOpen,
-  subtotalK,
-  shippingK,
-  totalDiscountK,
-  grandTotalK,
+  subtotalVnd,
+  shippingVnd,
+  totalDiscountVnd,
+  grandTotalVnd,
   totalAfterDiscountVnd,
   hasUnavailableItems,
   orderPoints,
@@ -205,8 +204,8 @@ export const CartFooter = memo(function CartFooter({
                 <p className="text-[10px] text-orange-600/80 leading-tight truncate">
                   {!isLoggedIn
                     ? "Đăng nhập để xem ưu đãi"
-                    : totalDiscountK > 0
-                      ? `Đã áp dụng giảm ${formatKa(totalDiscountK * 1000, "floor")}`
+                    : totalDiscountVnd > 0
+                      ? `Đã áp dụng giảm ${totalDiscountVnd.toLocaleString("vi-VN")}đ`
                       : "Chọn mã ưu đãi"}
                 </p>
               </div>
@@ -255,13 +254,13 @@ export const CartFooter = memo(function CartFooter({
         <div className="flex min-w-0 flex-[9] flex-col justify-end gap-0.5">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-medium text-primary/50">Tạm tính</span>
-            <span className="text-xs font-bold text-primary/60">{formatKa(subtotalK * 1000)}</span>
+            <span className="text-xs font-bold text-primary/60">{subtotalVnd.toLocaleString("vi-VN")}đ</span>
           </div>
 
           {orderType === "DELIVERY" && shippingFee !== null ? (
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-medium text-primary/50">Phí ship</span>
-              <span className="text-xs font-bold text-primary/60">{formatKa(shippingK * 1000, "ceil")}</span>
+              <span className="text-xs font-bold text-primary/60">{shippingVnd.toLocaleString("vi-VN")}đ</span>
             </div>
           ) : (
             <div className="flex items-center justify-between invisible">
@@ -270,10 +269,10 @@ export const CartFooter = memo(function CartFooter({
             </div>
           )}
 
-          {totalDiscountK > 0 ? (
+          {totalDiscountVnd > 0 ? (
             <div className="flex items-center justify-between text-orange-600">
               <span className="text-[10px] font-medium">Giảm giá</span>
-              <span className="text-xs font-bold">-{formatKa(totalDiscountK * 1000, "floor")}</span>
+              <span className="text-xs font-bold">-{totalDiscountVnd.toLocaleString("vi-VN")}đ</span>
             </div>
           ) : (
             <div className="flex items-center justify-between invisible">
@@ -288,7 +287,7 @@ export const CartFooter = memo(function CartFooter({
             <span className="text-[9px] font-bold text-primary/40 uppercase tracking-widest leading-none">Tổng tiền</span>
             <div className="flex flex-col items-end">
               <span className="font-serif text-xl font-bold text-primary leading-none">
-                {formatKa(grandTotalK * 1000, "ceil")}
+                {grandTotalVnd.toLocaleString("vi-VN")}đ
               </span>
               {isLoggedIn && totalPoints > 0 && (
                 <button

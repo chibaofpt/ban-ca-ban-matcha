@@ -11,6 +11,7 @@ export interface Powder {
   name: string;
   manufacturer: string | null;
   description: string | null;
+  image_url: string | null;
   price_per_gram: number;
   type: PowderType;
   /** Flavour profile scores 1–5; null if not set. */
@@ -23,6 +24,23 @@ export interface Powder {
   reference_latte_item_id: string | null;
   /** Per-powder gram overrides (COALESCE level 2). Empty = use default_powder_gram. */
   size_config: PowderSizeConfigEntry[];
+}
+
+/** Editable powder fields sent by the admin UI. */
+export interface PowderMutationPayload {
+  name: string;
+  manufacturer: string;
+  description?: string | null;
+  price_per_gram: number;
+  type: PowderType;
+  reference_latte_item_id?: string | null;
+  fragrance?: number | null;
+  body?: number | null;
+  bitterness?: number | null;
+  umami?: number | null;
+  color?: number | null;
+  is_available: boolean;
+  size_config?: PowderSizeConfigEntry[];
 }
 
 /** System-wide size fallback (COALESCE level 3). Always 3 entries: SMALL, MEDIUM, LARGE. */

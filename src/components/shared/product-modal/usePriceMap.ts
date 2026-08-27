@@ -2,10 +2,12 @@ import { useMemo } from "react";
 import type { AddonGroup, MenuItem, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import type { Powder, DefaultPowderGram } from "@/src/lib/types/powder";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
+import { computeProductDiscountBenefit } from "@/src/hooks/useAddVoucherToCart";
 import {
   applyProductVoucherCredit,
   calcLattePrice,
   calcFusionPrice,
+  calcBaseLiquidDelta,
   resolveGram,
   ceilTo1000,
 } from "@/src/utils/pricing";
@@ -63,7 +65,7 @@ export function usePriceMap({
 
       let baseDrinkPrice = 0;
       if (isLatte) {
-        const milk_ml = sizeObj?.milk_ml ?? 0;
+        const milk_ml = sizeObj?.base_liquid_ml ?? sizeObj?.milk_ml ?? 0;
         const milk = milkTypes.find((candidate) => candidate.id === (milkId ?? selectedMilkId));
         const milk_price_per_ml = milk?.price_per_ml ?? 40;
         baseDrinkPrice = calcLattePrice({ base_price_vnd, gram, powder_price_per_gram: pwd_price_per_gram, milk_ml, milk_price_per_ml });
@@ -75,7 +77,26 @@ export function usePriceMap({
           const defBase = latteItems.find((i) => i.id === defaultPowder.reference_latte_item_id)?.sizes.find((s) => s.size === targetSize)?.base_price_vnd ?? 0;
           premium_latte = selBase - defBase;
         }
-        baseDrinkPrice = calcFusionPrice({ base_price_vnd, gram, powder_price_per_gram: pwd_price_per_gram, premium_latte });
+        const selectedLiquid = milkTypes.find(
+          (candidate) => candidate.id === (milkId ?? selectedMilkId),
+        );
+        const defaultLiquid = milkTypes.find(
+          (candidate) => candidate.id === item.default_base_liquid_id,
+        );
+        const baseLiquidDelta = selectedLiquid && defaultLiquid
+          ? calcBaseLiquidDelta(
+              sizeObj?.base_liquid_ml ?? sizeObj?.milk_ml ?? 0,
+              selectedLiquid.price_per_ml,
+              defaultLiquid.price_per_ml,
+            )
+          : 0;
+        baseDrinkPrice = calcFusionPrice({
+          base_price_vnd,
+          gram,
+          powder_price_per_gram: pwd_price_per_gram,
+          premium_latte,
+          base_liquid_delta_vnd: baseLiquidDelta,
+        });
       }
 
       let addonsCost = 0;
@@ -123,7 +144,22 @@ export function usePriceMap({
     // 2. Apply Product Voucher deduction
     const activeProductVoucher = availableVouchers?.find(v => v.qr_token === selectedProductVoucherId);
     const effectiveFreeVoucherId = freeVoucherId || selectedProductVoucherId;
-    const effectiveFreeCoveredPrice = freeVoucherCoveredPriceVnd ?? activeProductVoucher?.covered_price_vnd ?? undefined;
+    const productDiscountBenefit = activeProductVoucher?.voucher_type === "PRODUCT_DISCOUNT"
+      ? computeProductDiscountBenefit(
+          activeProductVoucher,
+          currentPriceContext.baseDrinkPrice,
+          activeProductVoucher.reference_size
+            ? getPriceForContext(activeProductVoucher.reference_size, activePowderId).baseDrinkPrice
+            : null,
+        )
+      : undefined;
+    const effectiveFreeCoveredPrice = freeVoucherCoveredPriceVnd
+      ?? productDiscountBenefit
+      ?? activeProductVoucher?.covered_price_vnd
+      ?? undefined;
+    const effectiveProductVoucherType = activeProductVoucher?.voucher_type === "PRODUCT_DISCOUNT"
+      ? "PRODUCT_DISCOUNT" as const
+      : effectiveFreeVoucherId ? "PRODUCT" as const : undefined;
 
     if (effectiveFreeVoucherId && effectiveFreeCoveredPrice !== undefined) {
       const baseDrinkPrice = finalUnitPrice - finalAddonsCost;
@@ -145,7 +181,8 @@ export function usePriceMap({
       finalAddonsCost,
       totalCost,
       effectiveFreeVoucherId,
-      effectiveFreeCoveredPrice
+      effectiveFreeCoveredPrice,
+      effectiveProductVoucherType,
     };
   }, [
     item, latteItems, milkTypes, addonGroups, powders, defaultPowderGrams, selectedSize, activePowderId,

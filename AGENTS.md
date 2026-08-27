@@ -1,124 +1,135 @@
 # Bạn Cá Bán Matcha — Agent Entry Point
 
-> Load this file **first, every session**. No silent workarounds — if something conflicts, stop and ask.
+> Đọc file này đầu tiên trong mọi session. Không dùng workaround im lặng khi resource, code và test mâu thuẫn.
 
----
+## CodeGraph bootstrap
 
-## Current State
+- For code-related sessions, run one task-focused CodeGraph query before `rg` or raw reads; treat its source as already read and narrow a follow-up query only when needed.
+- Skip non-code or unindexed tasks; never initialize an index without the user, and use normal tools only for missing or stale details.
 
-- [x] Phase 1 — Supabase, Prisma tables, auth routes, middleware, Login/Register pages
-- [x] Phase 2 — Admin menu CRUD (edit + delete)
-- [x] Phase 3 — Orders + Points
-- [x] Phase 4 — Vouchers + QR
-- [ ] Phase 5 — Promotions + OTP + Redis
+## Current state
 
-> When a task is done: change `[ ]` → `[x]`. Read this section first every session.
+- [x] Supabase, Prisma, custom auth
+- [x] Admin menu CRUD
+- [x] Orders và points
+- [x] Vouchers và QR
+- [ ] Promotions, OTP và application cache — chỉ triển khai khi có task Phase 5 được duyệt
 
----
+## Resource router
 
-## Index — Read Before Acting
+Chỉ đọc resource liên quan task; không đọc tất cả mặc định.
 
-| Task | File |
+| Khi task chạm | Đọc trước |
 |---|---|
-| Create / move any file or folder | `STRUCTURE.md` |
-| API route, request/response shape | `API.md` |
-| DB schema, Prisma, migration, enum | `SCHEMA.md` |
-| Deferred issues, unresolved decisions, env vars | `NOTES.md` |
-| Order lifecycle, status, points | `.agents/skills/order-flow/SKILL.md` |
-| Voucher rules, stacking, lifecycle | `.agents/skills/voucher-flow/SKILL.md` |
-| Price formulas and rounding | `.agents/skills/pricing-logic/SKILL.md` |
-| Nontech mode (co-founder sửa UI/report) | `.agents/skills/nontech-mode/SKILL.md` |
-| Nontech push code (QA + đẩy code) | `.agents/skills/nontech-push-code/SKILL.md` |
+| Architecture, data flow, shared UI/pattern | `SPECIFICATION.md` |
+| Tạo/move/split file | `STRUCTURE.md` |
+| API path, method, request/response | `API.md` và `api-layer` skill |
+| Prisma/schema/migration | `SCHEMA.md`, Prisma files và `supabase` skill |
+| Order lifecycle/status/points | `order-flow` skill |
+| Voucher eligibility/lifecycle | `voucher-flow` skill |
+| Pricing/rounding | `pricing-logic` skill |
+| UI/mobile/form/overlay | `mobile-ux` skill + UI section của `SPECIFICATION.md` |
+| Test/feature/business bug | `tdd` skill |
+| Sub-agent, chia agent, Backend/Frontend/QA agent, delegate hoặc làm song song | `subagent-orchestration` skill |
+| Deferred/unresolved/env | `NOTES.md` hoặc `.env.local.example` |
+| Push staging/production | `push-to-dev` hoặc `production-deploy` skill |
 
-> Never skip reading the relevant file. Do not rely on memory alone.
+Ownership cụ thể thắng mô tả tổng quát. Nếu canonical resource, code và test không khớp, phân loại documentation drift hay implementation defect trước khi sửa; không tự chọn phía thuận tiện.
 
----
+## Change contract
 
-## Behavior Rules
+Trước khi sửa production code, ghi ngay trong task/plan:
 
-- Do not open browser or run `npm run dev` / `npm run build` after changes
-- After completing a task: write code, save file, stop
-- Daily dev: `npm run migrate:dev` — agent may run automatically
-- Do not use `db push` — it breaks Prisma migration history.
-- Pre-release: Commit `prisma/migrations` folder to git.
-- Production deploy: `prisma migrate deploy` (in Vercel build command) — reads committed migration files.
-- Env structure: `.env` / `.env.staging` / `.env.prod` / `.env.local` are gitignored. Use `.env.local.example` as template.
-- When modifying business logic: check if the relevant skill needs updating
+```text
+Expected behavior:
+Current failure:
+Allowed production files:
+Invariants that must not change:
+Forbidden actions:
+Tests:
+Resource Impact:
+```
 
----
+`Resource Impact`: `None`, `Business specification`, `API contract`, `Schema semantics`, `Architecture/UI standard`, `Environment`, `Workflow/skill`, hoặc tập hợp cần thiết.
 
-## Stack — Never Deviate
+### Scope classes
 
-| Layer | Technology | Notes |
-|---|---|---|
-| Framework | Next.js 16 App Router, TypeScript strict | No `any` — ever |
-| Styling | Tailwind CSS | Framer Motion allowed for mobile UX only |
-| ORM | Prisma | No raw SQL unless explicitly asked |
-| Database | Supabase PostgreSQL | Must use `?pgbouncer=true` in connection string |
-| Auth | Custom phone + password, `jose`, httpOnly cookies | No NextAuth, no Supabase Auth |
-| Validation | Zod | Every API input — no exceptions |
-| Forms | React Hook Form + Zod resolver | |
-| State | Zustand — cart only, localStorage | |
-| HTTP client | Axios — 1 instance at `src/lib/api/client.ts` | Do not create another instance |
-| File storage | Supabase Storage | Bucket: `menu-images` |
-| SMS / ZNS | ESMS.vn | `console.log` in dev, real calls in prod |
-| QR generate | `qrcode` npm, client-side | |
-| QR scan | `html5-qrcode`, mobile camera | |
-| Error tracking | Sentry | |
-| Cache | Upstash Redis | **Phase 5 ONLY** — do not add before then |
-| Deploy | Vercel serverless | |
+- **Micro:** tối đa 3 production files; không schema/API/dependency/move.
+- **Standard:** 4–8 production files hoặc behavior cục bộ.
+- **Architecture:** cross-domain, schema/API/auth/order/voucher/pricing, dependency hoặc file movement.
 
----
+Với Micro/Standard, mặc định cấm rename/move/split/delete, whole-file format, cleanup refactor, dependency/schema/API changes và unrelated lint fixes. Dùng patch hunk nhỏ.
 
-## Hard Rules — Apply to Every Task
+Dừng và re-plan khi Micro vượt 3 production files, chạm ngoài allowlist, có rename/delete/move, production churn vượt 150 dòng, hoặc churn quá 25% trong file từ 100 dòng. `churn = additions + deletions`; từ chối EOL/format-only churn.
 
-- No `any` in TypeScript — ever
-- Money = integers in VND, never floats or decimals
-- Gram quantities = Prisma `Decimal` — not money, not Float
-- API success: `{ data: T }` / error: `{ error: string, code: string }`
-- Error responses with additional payload use `details` key, never `data`: `{ error: string, code: string, details: {...} }`
-- Never expose `users.id` or `vouchers.id` — always use `qr_token`
-- Multi-step DB writes → `prisma.$transaction()`
-- Before adding a table, column, enum value, or relation, audit the current Prisma schema and
-  migrations. Reuse existing fields and relations whenever they can represent the approved rule;
-  never add duplicate or merely convenient derived fields without explicit justification.
-- Do not rename an existing API route, HTTP method, request field, response field, or feature
-  solely for terminology or refactoring. Preserve the current contract unless the user explicitly
-  approves a necessary breaking change and migration path.
-- Server always re-fetches prices from DB — never trust client-sent prices
-- `points_log` rows are immutable — reversal = insert new negative-delta row
-- `"use client"` only when hooks or browser events are needed
-- No `window.confirm` — always use `ConfirmModal`
-- No hardcoded secrets — always `process.env`, add new vars to `.env.local.example`
-- Every exported function needs a one-line JSDoc
-- File max 300 lines, ideal 150–200. Break down large components.
-- Every page exports `metadata`. Dynamic pages use `generateMetadata`
-- Never import `lib/` inside `src/` — backend is server-only
-- Pricing: `src/utils/pricing.ts` (pure) → `lib/pricing.ts` (DB wrapper). Never duplicate.
-- Customer and staff order entry points must use the same order pricing and voucher calculator.
-- All final prices ceil to nearest 1,000 VND server-side
-- Never hard delete Latte `menu_item` — soft delete only. Check `reference_latte_item_id` first.
-- `menu_item_addons` junction table does not exist — do not create it
-- Categories: exactly 2 — `latte` and `fusion`. No others.
-- `addon_groups` is global — no junction table, no per-item config
-- `milk_type` is global — latte only, determined by `category` at query time
-- Phone normalized to `+84` before any DB storage or comparison
-- Ghost user: `password_hash = "GHOST_USER_NO_PASSWORD"` — register updates existing row
-- Cart persisted to localStorage via Zustand — not saved to DB
-- Admin first user: created manually via Supabase dashboard — no seed, no setup route
-- No Redis, no OTP, no Zalo ZNS until Phase 5
-- 1 🐟 = 1,000 VND — DB stores integer VND only
-- Timing-safe: always run bcrypt compare even if user not found
-- **Adapter/Wrapper Pattern**: All external services (Supabase Storage, Realtime, etc.) MUST be isolated using wrappers (e.g., pure TS functions in `lib/` or custom hooks in `hooks/`). Never import `@supabase/supabase-js` or other 3rd-party SDKs directly into UI components.
+Production file mới tối đa 300 dòng. Existing file trên 300 dòng được grandfathered; chỉ refactor bằng task riêng có characterization tests.
 
----
+## Stack — do not deviate
 
-## Decision Log — Moved to Skills
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 16 App Router, TypeScript strict |
+| Styling | Tailwind; Framer Motion cho mobile UX/meaningful motion |
+| ORM/DB | Prisma + Supabase PostgreSQL |
+| Auth | Custom phone/password, `jose`, httpOnly cookies |
+| Validation/form | Zod; React Hook Form + Zod resolver |
+| State | Zustand chỉ cho cart/localStorage |
+| HTTP | Một Axios instance tại `src/lib/api/client.ts` |
+| Storage | Supabase Storage bucket `menu-images` |
+| QR | `qrcode` client; `html5-qrcode` scanner |
+| Error/cache/deploy | Sentry; Upstash security rate limit only; Vercel |
 
-> Domain-specific rules have been moved to lazy-loaded skills:
-> - Pricing formulas, gram/milk/addon/powder pricing → `pricing-logic` skill
-> - Order creation workflow, status, store hours, anonymous orders → `order-flow` skill
-> - Voucher types, stacking, lifecycle, points, QR scan → `voucher-flow` skill
->
-> Agent: read the relevant skill when working on domain-specific tasks.
-> Skills extend (never contradict) the Hard Rules above.
+Không dùng NextAuth/Supabase Auth, raw SQL nếu chưa được yêu cầu, Redis application cache/OTP/ZNS trước Phase 5, hoặc third-party SDK trực tiếp trong UI.
+
+## Hard rules
+
+- Không dùng TypeScript `any`.
+- Money là integer VND; gram là Prisma `Decimal`; final price ceil 1.000 VND server-side.
+- Success `{ data: T }`; error `{ error, code }`; payload bổ sung dùng `details`, không dùng `data`.
+- Không expose `users.id` hoặc `vouchers.id`; dùng `qr_token` theo API compatibility rules.
+- Multi-step DB writes dùng `prisma.$transaction()`.
+- Trước schema change, audit schema+migrations; reuse field/relation phù hợp, không thêm derived/convenience field.
+- Không rename route/method/field/feature vì thuật ngữ; breaking change cần user duyệt migration/compatibility.
+- Server re-fetch giá từ DB; không tin client price.
+- `points_log` immutable; reversal là row delta âm mới.
+- `"use client"` chỉ khi cần hooks/browser event.
+- Không `window.confirm`; dùng `ConfirmModal`.
+- Không secret hardcode; env mới phải thêm `.env.local.example`.
+- Exported function mới cần one-line JSDoc.
+- Mọi page export metadata hoặc `generateMetadata`.
+- Client `src/` không import `lib/` server-only.
+- Pricing chỉ ở `src/utils/pricing.ts` → `lib/pricing.ts`; customer/staff dùng chung calculator.
+- Latte soft delete; kiểm tra `reference_latte_item_id`; không tạo `menu_item_addons`.
+- Categories đúng `latte`, `fusion`, `extras`; `extras` là fixed-price merchandise, không cấu hình drink.
+- `addon_groups` global; Base Liquid reuse `milk_type`, không thêm discriminator/junction.
+- Fusion mới/sửa cần default Base Liquid; legacy Fusion chưa config vẫn compatible đến khi edit.
+- `menu_item_sizes.base_liquid_ml = NULL` fallback `default_size_config.milk_ml`.
+- Phone normalize `+84`; ghost user hash là `GHOST_USER_NO_PASSWORD`.
+- Cart chỉ localStorage; admin đầu tiên tạo thủ công, không seed/setup route.
+- 1 🐟 = 1.000 VND.
+- Login luôn chạy bcrypt compare kể cả user không tồn tại.
+- External services phải qua adapter/wrapper trong `lib/` hoặc hook; UI không import SDK trực tiếp.
+
+## Database and verification
+
+- Daily dev migration: `npm run migrate:dev`; không dùng `prisma db push`.
+- Commit `prisma/migrations`; production dùng `prisma migrate deploy` qua build command.
+- Không mở browser hay chạy `npm run dev`/`npm run build` sau thay đổi trong agent workflow.
+- Trong implementation chạy targeted tests; trước staging chạy lint, type-check, full tests và `npm run resources:check`.
+- Reviewer chỉ review. Push/release agent không tự sửa lỗi; trả finding về implementer.
+
+## Completion resource gate
+
+- Business rule → domain skill + regression tests.
+- API → `API.md` + consumer types/services/tests.
+- DB → Prisma migration + `SCHEMA.md`; thêm `API.md` nếu public contract đổi.
+- Architecture/shared UI/integration → `SPECIFICATION.md`.
+- Placement/import → `STRUCTURE.md`.
+- Env → `.env.local.example`.
+- Deferred/unresolved → `NOTES.md`.
+- Workflow/release → skill tương ứng.
+- Code được sửa để khớp spec hiện có → `None`.
+
+Completion report phải nêu resource đã cập nhật hoặc lý do `None`. Git là change history; không tạo `changes/`, task changelog, `task.md` hay `implementation_plan.md`.
+
+@RTK.md

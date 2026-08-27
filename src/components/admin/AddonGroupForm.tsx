@@ -3,12 +3,20 @@
 import { useForm, useFieldArray, Controller, useWatch } from "react-hook-form";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/src/utils/cn";
-import type { AddonGroupFormFields as FormFields, AddonGroupFormPayload } from "@/src/components/admin/addonGroupFormModel";
+import CatalogImageFields from "@/src/components/admin/CatalogImageFields";
+import type {
+  AddonGroupFormFields as FormFields,
+  AddonGroupFormSubmission,
+} from "@/src/components/admin/addonGroupFormModel";
+
+function createOptionImageKey(): string {
+  return `new-${crypto.randomUUID()}`;
+}
 
 interface AddonGroupFormProps {
   mode: "create" | "edit";
   defaultValues?: Partial<FormFields>;
-  onSubmit: (data: AddonGroupFormPayload) => Promise<void>;
+  onSubmit: (data: AddonGroupFormSubmission) => Promise<void>;
   isSubmitting: boolean;
 }
 
@@ -22,18 +30,29 @@ export default function AddonGroupForm({
     register,
     control,
     handleSubmit,
+    setValue,
+    setError,
+    clearErrors,
     formState: { errors },
   } = useForm<FormFields>({
     defaultValues: {
       name: "",
       description: "",
       type: "SELECTOR",
-      is_required: false,
-      min_quantity: "",
       max_quantity: "",
       is_active: true,
       options: [
-        { label: "", price_vnd: "0", is_default: false, sort_order: "0", gram_value: "" }
+        {
+          image_key: createOptionImageKey(),
+          image_url: null,
+          image_file: null,
+          image_filename: "",
+          label: "",
+          price_vnd: "0",
+          is_active: true,
+          sort_order: "0",
+          gram_value: "",
+        }
       ],
       ...defaultValues,
     },
@@ -42,31 +61,51 @@ export default function AddonGroupForm({
   const { fields, append, remove } = useFieldArray({
     control,
     name: "options",
+    keyName: "fieldKey",
   });
 
   const type = useWatch({ control, name: "type" });
-  const groupName = useWatch({ control, name: "name" });
-  const isExtraMatcha = groupName.toLowerCase().includes("extra matcha");
 
   const onFormSubmit = async (values: FormFields) => {
+    let hasImageError = false;
+    values.options.forEach((option, index) => {
+      const filename = option.image_filename.trim();
+      if (/\.\.|[/\\\0]/.test(filename)) {
+        setError(`options.${index}.image_filename`, { message: "Tên file ảnh không hợp lệ." });
+        hasImageError = true;
+      } else if (filename && !option.image_file && !option.image_url) {
+        setError(`options.${index}.image_filename`, { message: "Vui lòng chọn ảnh trước khi đặt tên file SEO." });
+        hasImageError = true;
+      } else {
+        clearErrors(`options.${index}.image_filename`);
+      }
+    });
+    if (hasImageError) return;
+
     const payload = {
       name: values.name.trim(),
       description: values.description.trim() || null,
       type: values.type,
-      is_required: values.is_required,
-      min_quantity: values.type === "QUANTITY" && values.min_quantity ? Number(values.min_quantity) : null,
       max_quantity: values.type === "QUANTITY" && values.max_quantity ? Number(values.max_quantity) : null,
       is_active: values.is_active,
       options: values.options.map((opt, idx) => ({
         id: opt.id,
+        image_key: opt.image_key,
         label: opt.label.trim(),
         price_vnd: Number(opt.price_vnd),
-        is_default: opt.is_default,
+        is_active: opt.is_active,
         sort_order: opt.sort_order !== "" ? Number(opt.sort_order) : idx,
         gram_value: opt.gram_value !== "" ? Number(opt.gram_value) : null,
       })),
     };
-    await onSubmit(payload);
+    await onSubmit({
+      payload,
+      optionImages: values.options.map((option) => ({
+        imageKey: option.image_key,
+        imageFile: option.image_file,
+        imageFilename: option.image_filename,
+      })),
+    });
   };
 
   const inputClass = "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1 disabled:opacity-50";
@@ -96,37 +135,23 @@ export default function AddonGroupForm({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div>
           <div>
             <label className={labelClass}>Loại hiển thị</label>
             <select {...register("type")} className={inputClass}>
               <option value="SELECTOR">Selector (chỉ chọn 1)</option>
-              <option value="TOGGLE">Toggle (chọn nhiều)</option>
+              <option value="TOGGLE">Toggle (bật / tắt)</option>
               <option value="QUANTITY">Quantity (+/- số lượng)</option>
             </select>
           </div>
           
-          <div className="flex flex-col justify-end pb-2">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                {...register("is_required")}
-                className="w-4 h-4 rounded text-primary focus:ring-primary"
-              />
-              <span className={labelClass}>Bắt buộc chọn</span>
-            </label>
-          </div>
         </div>
 
         {type === "QUANTITY" && (
-          <div className="grid grid-cols-2 gap-4 pt-2 border-t border-border/50">
-            <div>
-              <label className={labelClass}>Số lượng tối thiểu</label>
-              <input type="number" min="0" {...register("min_quantity")} className={inputClass} placeholder="0" />
-            </div>
+          <div className="pt-2 border-t border-border/50">
             <div>
               <label className={labelClass}>Số lượng tối đa</label>
-              <input type="number" min="1" {...register("max_quantity")} className={inputClass} placeholder="Không giới hạn" />
+              <input type="number" min="1" {...register("max_quantity")} className={inputClass} placeholder="Bắt buộc" />
             </div>
           </div>
         )}
@@ -138,7 +163,17 @@ export default function AddonGroupForm({
           <h3 className="font-semibold text-foreground">Danh sách Options</h3>
           <button
             type="button"
-            onClick={() => append({ label: "", price_vnd: "0", is_default: false, sort_order: String(fields.length), gram_value: "" })}
+            onClick={() => append({
+              image_key: createOptionImageKey(),
+              image_url: null,
+              image_file: null,
+              image_filename: "",
+              label: "",
+              price_vnd: "0",
+              is_active: true,
+              sort_order: String(fields.length),
+              gram_value: "",
+            })}
             className="flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition bg-primary/10 hover:bg-primary/20 px-3 py-1.5 rounded-lg"
           >
             <Plus size={16} /> Thêm option
@@ -151,7 +186,40 @@ export default function AddonGroupForm({
 
         <div className="space-y-3">
           {fields.map((field, index) => (
-            <div key={field.id} className="relative flex items-start gap-3 p-4 rounded-xl border border-border bg-card shadow-sm group">
+            <div key={field.fieldKey} className="group relative flex flex-col items-stretch gap-4 rounded-xl border border-border bg-card p-4 shadow-sm sm:flex-row sm:items-start">
+              <input type="hidden" {...register(`options.${index}.image_key`)} />
+              <input type="hidden" {...register(`options.${index}.image_url`)} />
+              <Controller
+                name={`options.${index}.image_filename`}
+                control={control}
+                render={({ field: filenameField }) => (
+                  <div className="shrink-0 sm:w-40">
+                    <CatalogImageFields
+                      currentImageUrl={field.image_url}
+                      label="Ảnh option"
+                      cropPreset="compact"
+                      layout="inline"
+                      inputId={`addon-option-image-${field.image_key}`}
+                      imageFilename={filenameField.value}
+                      disabled={isSubmitting}
+                      onFileChange={(file) => {
+                        setValue(`options.${index}.image_file`, file, { shouldDirty: true });
+                        clearErrors(`options.${index}.image_file`);
+                      }}
+                      onFilenameChange={filenameField.onChange}
+                      onError={(message) => {
+                        if (message) setError(`options.${index}.image_file`, { message });
+                        else clearErrors(`options.${index}.image_file`);
+                      }}
+                    />
+                    {(errors.options?.[index]?.image_file?.message || errors.options?.[index]?.image_filename?.message) && (
+                      <p className={errorClass}>
+                        {errors.options[index]?.image_file?.message ?? errors.options[index]?.image_filename?.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+              />
               
               <div className="flex-1 grid grid-cols-12 gap-4">
                 <div className="col-span-12 sm:col-span-5">
@@ -164,7 +232,7 @@ export default function AddonGroupForm({
                   {errors.options?.[index]?.label && <p className={errorClass}>{errors.options[index]?.label?.message}</p>}
                 </div>
                 
-                <div className={cn("col-span-6", isExtraMatcha ? "sm:col-span-3" : "sm:col-span-4")}>
+                <div className="col-span-6 sm:col-span-3">
                   <label className="text-xs text-muted-foreground mb-1 block">Giá (VND) *</label>
                   <input
                     type="number"
@@ -178,27 +246,26 @@ export default function AddonGroupForm({
                   {errors.options?.[index]?.price_vnd && <p className={errorClass}>{errors.options[index]?.price_vnd?.message}</p>}
                 </div>
 
-                {isExtraMatcha && (
-                  <div className="col-span-6 sm:col-span-2">
-                    <label className="text-xs text-muted-foreground mb-1 block">Gram (+)</label>
-                    <input
-                      type="number"
-                      step="0.1"
-                      {...register(`options.${index}.gram_value`)}
-                      placeholder="VD: 1.5"
-                      className={cn(inputClass, "mt-0 border-amber-200 bg-amber-50 dark:bg-amber-950/20")}
-                    />
-                  </div>
-                )}
+                <div className="col-span-6 sm:col-span-2">
+                  <label className="text-xs text-muted-foreground mb-1 block">Gram động</label>
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    {...register(`options.${index}.gram_value`)}
+                    placeholder="Để trống nếu giá cố định"
+                    className={cn(inputClass, "mt-0 border-amber-200 bg-amber-50 dark:bg-amber-950/20")}
+                  />
+                </div>
 
-                <div className={cn("col-span-12", isExtraMatcha ? "sm:col-span-2" : "sm:col-span-3", "flex flex-col justify-end pb-2")}>
+                <div className="col-span-12 sm:col-span-2 flex flex-col justify-end pb-2">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
-                      {...register(`options.${index}.is_default`)}
+                      {...register(`options.${index}.is_active`)}
                       className="w-4 h-4 rounded text-primary focus:ring-primary"
                     />
-                    <span className="text-sm font-medium">Mặc định</span>
+                    <span className="text-sm font-medium">Đang bán</span>
                   </label>
                 </div>
               </div>
@@ -206,7 +273,7 @@ export default function AddonGroupForm({
               <button
                 type="button"
                 onClick={() => remove(index)}
-                disabled={fields.length === 1}
+                disabled={fields.length === 1 || Boolean(field.id)}
                 className="absolute -top-2 -right-2 p-1.5 rounded-full bg-destructive/10 text-destructive hover:bg-destructive hover:text-white transition opacity-0 group-hover:opacity-100 disabled:opacity-0 shadow-sm"
                 title="Xóa option"
               >

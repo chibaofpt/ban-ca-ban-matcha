@@ -12,11 +12,18 @@ const nextConfig: NextConfig = {
     ];
   },
   images: {
+    minimumCacheTTL: 31536000,
+    qualities: [60, 75],
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "*.supabase.co",
-        pathname: "/storage/v1/object/public/**",
+        hostname: "nqwfbmghziubdhvtgyao.supabase.co",
+        pathname: "/storage/v1/object/public/menu-images/**",
+      },
+      {
+        protocol: "https",
+        hostname: "mnklsbzkefuefpqvghrr.supabase.co",
+        pathname: "/storage/v1/object/public/menu-images/**",
       },
     ],
   },

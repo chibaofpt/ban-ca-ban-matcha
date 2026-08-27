@@ -13,6 +13,7 @@ interface MilkSelectorProps {
   activePowderId: string;
 }
 
+/** Displays milk / base liquid options with differential pricing and optional image. */
 export function MilkSelector({
   milkTypes,
   selectedMilkId,
@@ -25,17 +26,19 @@ export function MilkSelector({
   if (milkTypes.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-3 gap-2 mt-3">
+    <div className="mt-2 grid grid-cols-2 gap-2">
       {milkTypes.map((milk) => {
         const isDefault = milk.id === defaultMilkId;
         const milkPrice = getPriceForContext(selectedSize, activePowderId, milk.id).baseDrinkPrice;
         const defMilkPrice = getPriceForContext(selectedSize, activePowderId, defaultMilkId).baseDrinkPrice;
         const diff = milkPrice - defMilkPrice;
-        
+
         return (
           <OptionCard
             key={milk.id}
             label={milk.name}
+            imageUrl={milk.image_url ?? undefined}
+            imageAlt={`Ảnh ${milk.name}`}
             sub={
               isDefault
                 ? "Mặc định"
@@ -47,6 +50,7 @@ export function MilkSelector({
             }
             isActive={selectedMilkId === milk.id}
             onClick={() => onChange(milk.id)}
+            layout="stacked"
           />
         );
       })}

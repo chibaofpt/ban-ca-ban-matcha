@@ -7,10 +7,15 @@ import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
 import { generateOrderCode } from "@/lib/orderCode";
 import { getOrderValueViolation } from "@/lib/orderLimits";
 import { processOrderItems } from "@/lib/orders";
+import { resolveOrderBundles, type OrderBundleDatabase } from "@/lib/orderBundle";
 import { prisma } from "@/lib/prisma";
 import { sendPushToRoles } from "@/lib/push";
 import type { CustomerOrderInput } from "@/lib/validations/order";
 import { buildVietQRUrl } from "@/lib/vietqr";
+import {
+  ensureAutoGrantedVouchers,
+  type VoucherIssuanceDatabase,
+} from "@/lib/voucherIssuance";
 
 const AUTO_CANCEL_MINUTES = 20;
 
@@ -22,6 +27,7 @@ export async function createCustomerOrder(
   const fulfillment = await resolveCustomerFulfillment(data, userId);
   if (!fulfillment.ok) return fulfillment.response;
 
+  await ensureAutoGrantedVouchers(prisma as unknown as VoucherIssuanceDatabase, userId);
   await lazyExpireVouchers(userId);
   const itemVoucherResult = await resolveCustomerItemVouchers(data, userId);
   if (!itemVoucherResult.ok) return itemVoucherResult.response;
@@ -38,16 +44,29 @@ export async function createCustomerOrder(
     productVoucherMap,
     addonVoucherMap,
   );
-  const calculatorItems = resolvedItems.map((item) => ({
+  const bundles = data.bundle_applications.length > 0
+    ? await resolveOrderBundles(prisma as unknown as OrderBundleDatabase, {
+        voucher_owner_id: userId,
+        items: data.items,
+        resolved_items: resolvedItems,
+        bundle_applications: data.bundle_applications,
+      })
+    : { bundles: [], line_discounts_vnd: data.items.map(() => 0), skipped_qr_tokens: [] };
+  const calculatorItems = resolvedItems.map((item, index) => ({
     menu_item_id: item.menu_item_id,
     unit_price_vnd: item.unit_price_vnd,
     addons_price_vnd: item.addons_price_vnd,
     quantity: item.quantity,
     line_total: item.line_total,
+    bundle_discount_vnd: bundles.line_discounts_vnd[index] ?? 0,
     product_voucher_id: item.product_voucher_id,
-    product_voucher_covered_vnd: item.product_voucher_id
-      ? (productVoucherMap.get(item.product_voucher_id)?.covered_price_vnd ?? 0)
+    item_voucher_id: item.item_voucher_id,
+    product_voucher_covered_vnd: (item.item_voucher_id ?? item.product_voucher_id)
+      ? (productVoucherMap.get(item.item_voucher_id ?? item.product_voucher_id ?? "")?.covered_price_vnd ?? 0)
       : 0,
+    product_voucher_discount_vnd: productVoucherMap.get(item.product_voucher_id ?? "")?.voucher_type === "PRODUCT_DISCOUNT"
+      ? item.product_voucher_discount_vnd
+      : undefined,
     addon_vouchers: item.addon_voucher_ids.map((voucher) => {
       const addon = item.resolvedAddons.find(
         (resolvedAddon) => resolvedAddon.addon_option_id === voucher.addon_option_id,
@@ -94,6 +113,7 @@ export async function createCustomerOrder(
     appliedProductVoucherIds: Array.from(productVoucherMap.keys()).filter((id) =>
       appliedIds.has(id),
     ),
+    appliedBundles: bundles,
   });
 
   const paymentQrUrl = buildVietQRUrl({
@@ -106,6 +126,7 @@ export async function createCustomerOrder(
       return qrToken ? [qrToken] : [];
     },
   );
+  skippedVouchers.push(...bundles.skipped_qr_tokens.filter((token) => !skippedVouchers.includes(token)));
 
   after(() => {
     console.log(`[AFTER JOB] Starting background push notification for new order: ${order.order_code}`);

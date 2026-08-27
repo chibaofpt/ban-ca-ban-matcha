@@ -6,6 +6,7 @@ import { logSystemEvent } from "@/lib/logger";
 import { OrderValidationError, PriceChangedError } from "@/lib/orders";
 import { checkRateLimits, getClientIp } from "@/lib/rateLimit";
 import { customerOrderSchema } from "@/lib/validations/order";
+import { BundlePromotionError } from "@/lib/promotionBundle";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     return await createCustomerOrder(parsed.data, session.id);
   } catch (error) {
+    if (error instanceof BundlePromotionError) {
+      const voucherMissing = error.reason === "BUNDLE_VOUCHER_NOT_FOUND";
+      return NextResponse.json(
+        {
+          error: error.message,
+          code: voucherMissing ? "NOT_FOUND" : "BUSINESS_RULE_VIOLATION",
+          details: { reason: error.reason },
+        },
+        { status: voucherMissing ? 404 : 422 },
+      );
+    }
     if (error instanceof OrderValidationError) {
       const statusMap: Record<string, number> = {
         VALIDATION_ERROR: 400,
@@ -110,8 +122,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     1,
     Math.min(100, parseInt(searchParams.get("limit") || "10", 10)),
   );
+  const rawStatus = searchParams.get("status");
+  const statusFilter =
+    rawStatus === "active" || rawStatus === "cancelled" ? rawStatus : undefined;
   try {
-    return await getCustomerOrderHistory(session.id, page, limit);
+    return await getCustomerOrderHistory(session.id, page, limit, statusFilter);
   } catch (error) {
     console.error("[GET /api/orders]", error);
     return NextResponse.json(

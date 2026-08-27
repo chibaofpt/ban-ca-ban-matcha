@@ -16,19 +16,7 @@ description: >
 
 ---
 
-## File Map
-
-| File | Layer | Purpose |
-|---|---|---|
-| `src/utils/pricing.ts` | CLIENT + SERVER | Pure pricing functions, no DB deps. Rounding, formulas, gram resolution. |
-| `lib/pricing.ts` | SERVER ONLY | Thin wrapper: fetch all pricing data from DB → call `src/utils/pricing.ts` |
-| `src/lib/store/powderStore.ts` | CLIENT | Caches `/api/powders` response for real-time price estimates |
-| `app/api/powders/route.ts` | SERVER | Public endpoint — includes `price_per_gram`, `powder_size_config`, `default_powder_gram` |
-| `app/api/menu/route.ts` | SERVER | Returns `sizes[].milk_ml` plus global `milk_types` and `addon_groups` for frontend pricing |
-
-> Frontend needs 2 API calls on app load: `GET /api/menu` + `GET /api/powders`. Both cached in state, not refetched per interaction.
-
----
+Inspect current files, callers and tests with `rg`; do not maintain file paths or sizes in this skill.
 
 ## Price Formulas
 
@@ -37,7 +25,7 @@ description: >
 ceil(
   base_price_vnd[size]
   + effective_gram[size] × powder.price_per_gram
-  + default_size_config[size].milk_ml × milk_type.price_per_ml
+  + effective_base_liquid_ml[size] × selected_base_liquid.price_per_ml
 , 1000)
 ```
 
@@ -47,6 +35,7 @@ ceil(
   base_price_vnd[size]
   + effective_gram[size] × selected_powder.price_per_gram
   + Premium_Latte[size]
+  + effective_base_liquid_ml[size] × (selected_base_liquid.price_per_ml - item_default_base_liquid.price_per_ml)
 , 1000)
 ```
 
@@ -84,6 +73,11 @@ addons_price_vnd = sum(addon unit price × quantity)
 - When creating a PRODUCT voucher package, snapshot `covered_price_vnd` from the selected
   drink configuration only; exclude all selected or included addons.
 - Apply an ADDON voucher to one unit of its matching addon only; never to Extra Matcha.
+- Price `extras` directly from `menu_items.unit_price_vnd`; do not run drink recipe pricing.
+- ITEM vouchers cover one matching extras unit at its current server price and create no surplus.
+- BUNDLE reference prices are never admin-entered. Resolve stored default powder/Base Liquid
+  snapshots through this canonical calculator at checkout; exclude addons and charge only the
+  positive difference between actual reward drink price and baseline.
 - Preserve gross prices as order snapshots and store reductions separately.
 - Let one shared order calculator consume resolved drink/addon prices for both customer and
   staff orders. Do not repeat voucher arithmetic in cart state or API routes.
@@ -102,23 +96,32 @@ For each item + size, resolve grams in this order:
 
 ---
 
-## Milk Pricing
+## Base Liquid Pricing
 
-- `is_default = true` (sữa bò, 40 VND/ml): always included in Latte base price, hidden in UI selector.
-- `milk_ml` per size comes from `default_size_config` → embedded in `GET /api/menu` response as `sizes[].milk_ml`.
-- Active milk types are returned once as `MenuData.milk_types`, never duplicated inside each Latte item.
-- Frontend recalculates on milk swap: `(new_milk.price_per_ml - default_milk.price_per_ml) × milk_ml[size]`.
+- The physical `milk_type` table is the shared Base Liquid catalog; do not add a `kind` field.
+- Latte uses the global `is_default = true` row. Admin is responsible for allowing milk entries only.
+- Fusion uses `menu_items.default_base_liquid_id`; new/edited Fusion items require it. A legacy unconfigured Fusion contributes no Base Liquid delta.
+- Effective volume is `menu_item_sizes.base_liquid_ml ?? default_size_config[size].milk_ml`.
+- Persist that resolved volume to `order_items.base_liquid_ml` at order time. Historical consumption
+  must use the immutable snapshot; current recipe fallback is permitted only for pre-migration null rows.
+- Allowed swaps come from `menu_item_allowed_base_liquid`; the default is always implicitly allowed.
+- Frontend and server calculate swap delta as `(selected.price_per_ml - default.price_per_ml) × effective_ml`; Fusion may increase or decrease before the final single rounding step.
+- Active catalog rows are returned once as `MenuData.base_liquids`; `milk_types` remains a compatibility alias.
 - No pre-computed price field in API responses — frontend computes all prices client-side.
-- Milk applies to `latte` items only, determined by `category` at query time.
+- Hide the selector when default + active allowed options contains at most one entry.
 
 ---
 
 ## Addon Pricing
 
 - `addon_options.price_vnd` is global — changing it affects all items immediately.
+- Every addon group is opt-in. No selection is the canonical zero state; do not create zero-value
+  sentinel/default options.
 - Active addon groups are returned once as `MenuData.addon_groups`, never duplicated inside each menu item.
+- Only active options are public and orderable. Retire referenced options with `is_active = false`.
 - **Extra matcha** is special:
   - `price_vnd = 0` in DB (placeholder).
+  - Active options have positive `gram_value`; the legacy 0g row remains inactive during rollout.
   - Actual price = `addon_option.gram_value × selected_powder.price_per_gram`.
   - Server computes at order time → snapshot into `order_item_addons.unit_price_vnd`.
   - Frontend estimates in real-time using `price_per_gram` from `/api/powders` cached state + `gram_value` from menu response.

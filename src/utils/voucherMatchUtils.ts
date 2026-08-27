@@ -13,6 +13,7 @@ import type { CartItem } from "@/src/lib/types/cart";
 /** Returns true if a voucher is ACTIVE and not expired at the given timestamp. */
 export function isVoucherUsable(voucher: MyVoucher, now: Date = new Date()): boolean {
   if (voucher.status !== "ACTIVE") return false;
+  if (!voucher.availability.can_apply) return false;
   if (voucher.expires_at !== null && new Date(voucher.expires_at) <= now) return false;
   return true;
 }
@@ -53,10 +54,18 @@ export function buildProductVoucherMap(
   vouchers: MyVoucher[],
   cartItems: CartItem[]
 ): Map<string, MyVoucher[]> {
-  const usable = filterUsableVouchers(vouchers, "PRODUCT");
+  const usable = vouchers.filter(
+    (voucher) =>
+      (voucher.voucher_type === "PRODUCT" || voucher.voucher_type === "PRODUCT_DISCOUNT" || voucher.voucher_type === "ITEM") &&
+      isVoucherUsable(voucher),
+  );
   const result = new Map<string, MyVoucher[]>();
   for (const item of cartItems) {
-    const matches = usable.filter((v) => v.menu_item_id === item.menuItemId);
+    const matches = usable.filter((v) =>
+      ((v.eligible_menu_items?.length ?? 0) > 0
+        ? v.eligible_menu_items!.some((target) => target.menu_item_id === item.menuItemId)
+        : v.menu_item_id === item.menuItemId) &&
+      (v.voucher_type !== "PRODUCT_DISCOUNT" || (item.size !== null && (v.eligible_sizes ?? []).includes(item.size))));
     if (matches.length > 0) {
       result.set(item.menuItemId, matches);
     }

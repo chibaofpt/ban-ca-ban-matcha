@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockGetSession = vi.fn();
 const mockUserFindUnique = vi.fn();
 const mockPointsLogFindMany = vi.fn();
+const mockPointsLogCount = vi.fn();
 const mockTransaction = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
@@ -16,6 +17,7 @@ vi.mock("@/lib/prisma", () => ({
     },
     pointsLog: {
       findMany: (...args: unknown[]) => mockPointsLogFindMany(...args),
+      count: (...args: unknown[]) => mockPointsLogCount(...args),
     },
     $transaction: (...args: unknown[]) => mockTransaction(...args),
   },
@@ -37,6 +39,7 @@ describe("GET /api/profile/points — grouped events", () => {
     });
     mockUserFindUnique.mockReturnValue("user-query");
     mockPointsLogFindMany.mockReturnValue("logs-query");
+    mockPointsLogCount.mockReturnValue("count-query");
     mockTransaction.mockResolvedValue([
       { points_balance: 42 },
       [
@@ -51,6 +54,7 @@ describe("GET /api/profile/points — grouped events", () => {
           staff: null,
         },
       ],
+      1,
     ]);
   });
 
@@ -72,7 +76,12 @@ describe("GET /api/profile/points — grouped events", () => {
       page: 1,
       limit: 10,
       totalPages: 1,
+      has_more: false,
+      next_cursor: null,
     });
+    expect(mockPointsLogFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 11, skip: 0 }),
+    );
   });
 
   it("không expose UUID nội bộ", async () => {
@@ -91,6 +100,20 @@ describe("GET /api/profile/points — grouped events", () => {
     expect(response.status).toBe(400);
     expect(body.code).toBe("VALIDATION_ERROR");
     expect(mockGetSession).not.toHaveBeenCalled();
+  });
+
+  it("dùng opaque cursor để seek trong DB", async () => {
+    const id = "550e8400-e29b-41d4-a716-446655440000";
+    const cursor = Buffer.from(id, "utf8").toString("base64url");
+
+    const response = await GET(makeRequest(`?cursor=${cursor}&limit=10`) as never);
+
+    expect(response.status).toBe(200);
+    expect(mockPointsLogFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      cursor: { id },
+      skip: 1,
+      take: 11,
+    }));
   });
 
   it("trả 401 khi chưa đăng nhập", async () => {
@@ -115,7 +138,7 @@ describe("GET /api/profile/points — grouped events", () => {
   });
 
   it("trả 404 khi user không tồn tại", async () => {
-    mockTransaction.mockResolvedValue([null, []]);
+    mockTransaction.mockResolvedValue([null, [], 0]);
 
     const response = await GET(makeRequest() as never);
 

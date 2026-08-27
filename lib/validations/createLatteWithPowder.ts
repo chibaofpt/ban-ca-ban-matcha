@@ -23,6 +23,7 @@ const inlinePowderSchema = z.object({
 const sizeRowSchema = z.object({
   size: z.enum(["SMALL", "MEDIUM", "LARGE"]),
   base_price_vnd: z.number().int().min(0).nullable(),
+  base_liquid_ml: z.number().int().positive().nullable().optional(),
 });
 
 const sizesSchema = z
@@ -60,6 +61,7 @@ export const createLatteWithPowderSchema = z.object({
   sizes: sizesSchema,
   custom_powder_grams: customPowderGramsSchema,
   image_filename: imageFilenameSchema,
+  allowed_base_liquid_ids: z.array(z.string().uuid()).default([]),
 
   // ── Inline powder fields ──────────────────────────────────────────────────
   new_powder: inlinePowderSchema,

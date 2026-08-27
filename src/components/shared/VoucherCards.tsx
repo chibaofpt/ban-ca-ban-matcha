@@ -2,14 +2,13 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { Clock, Loader2 } from "lucide-react";
+import { CheckCircle2, Clock, Loader2 } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import {
   type MyVoucher,
   type VoucherPackage,
 } from "@/src/services/customerVoucherService";
 import {
-  canInteract,
   canExchange,
   getVoucherBenefitText,
   getPackageBenefitText,
@@ -17,8 +16,10 @@ import {
   formatVoucherExpiry,
   formatRedeemedDate,
   getTicketHighlightText,
+  getVoucherAvailabilityMessage,
   VOUCHER_TYPE_CONFIG,
 } from "@/src/lib/utils/voucherModalHelpers";
+import type { VoucherActionModel } from "@/src/utils/customerVoucherSelection";
 
 // ── VoucherCard (Section 1 - Ticket Layout) ───────────────────────────────────
 
@@ -28,7 +29,9 @@ export function VoucherCard({
   isDisabled,
   disabledReason,
   isSelected,
-  onClick
+  onClick,
+  actionModel,
+  onAction,
 }: {
   voucher: MyVoucher;
   actionNode?: React.ReactNode;
@@ -36,42 +39,53 @@ export function VoucherCard({
   disabledReason?: string;
   isSelected?: boolean;
   onClick?: () => void;
+  actionModel?: VoucherActionModel;
+  onAction?: () => void;
 }) {
-  const isInteractable = canInteract(voucher) && !isDisabled;
+  const isInteractable = Boolean(onClick);
   const typeConfig = VOUCHER_TYPE_CONFIG[voucher.voucher_type];
-  const highlight = getTicketHighlightText(voucher.voucher_type, voucher.discount_type, voucher.discount_value);
+  const highlight = getTicketHighlightText(voucher.voucher_type, voucher.discount_type, voucher.discount_value, voucher.reference_size);
 
   const isExpired = voucher.status === "EXPIRED";
   const isRedeemed = voucher.status === "REDEEMED";
   const isReserved = voucher.status === "RESERVED";
-  const isDimmed = isExpired || isRedeemed || isDisabled;
+  const availabilityReason = getVoucherAvailabilityMessage(voucher);
+  const isDimmed = isExpired || isRedeemed || isDisabled || !voucher.availability.can_apply;
 
   return (
     <motion.div
       layout
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      onClick={isInteractable ? onClick : undefined}
+      onClick={onClick}
       className={cn(
-        "rounded-xl shadow-sm border overflow-hidden flex relative transition-colors",
+        "rounded-xl shadow-sm border overflow-hidden flex relative transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         isSelected ? "bg-[#f2f7ed] border-[#8ab275] hover:border-[#8ab275]" : "bg-card",
         isDimmed && "opacity-60 grayscale-[40%]",
         isInteractable && onClick && !isSelected && "cursor-pointer hover:border-primary/50"
       )}
     >
+      {isInteractable ? (
+        <button
+          type="button"
+          aria-label={`Xem chi tiết ${voucher.package.name}`}
+          onClick={(event) => { event.stopPropagation(); onClick?.(); }}
+          className="absolute inset-0 z-20 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        />
+      ) : null}
       {/* Left side: Highlight Ticket */}
       <div className={cn(
-        "w-[32%] flex flex-col items-center justify-center p-3 border-r-2 border-dashed",
+        "w-[32%] flex flex-col items-center justify-center px-3 py-2 border-r-2 border-dashed",
         isDimmed ? "bg-muted/50 text-muted-foreground border-border/60" : 
         isSelected ? "bg-[#e6f0de] text-[#4d7338] border-[#8ab275]/40" : "bg-primary/5 text-primary border-border/60"
       )}>
-        <span className="font-black text-xl lg:text-2xl tracking-tighter leading-none text-center">{highlight.text}</span>
+        <span className="font-black text-lg lg:text-xl tracking-tighter leading-none text-center">{highlight.text}</span>
         <span className="text-[10px] font-bold uppercase tracking-wider opacity-80 mt-1">{highlight.subtext}</span>
       </div>
 
       {/* Right side: Info */}
-      <div className={cn("flex-1 min-w-0 p-3 flex flex-col justify-center z-10", isSelected ? "bg-transparent" : "bg-card")}>
-        <div className="flex items-center gap-1.5 flex-wrap mb-1">
+      <div className={cn("flex-1 min-w-0 px-3 py-2 flex flex-col justify-center", isSelected ? "bg-transparent" : "bg-card")}>
+        <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
           <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold", typeConfig.badgeCls)}>
             {typeConfig.label}
           </span>
@@ -90,6 +104,11 @@ export function VoucherCard({
               Đã dùng
             </span>
           )}
+          {voucher.status === "ACTIVE" && !voucher.availability.can_apply ? (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+              Tạm không dùng được
+            </span>
+          ) : null}
         </div>
         
         <p className="font-bold text-sm text-foreground leading-tight line-clamp-1">
@@ -102,18 +121,46 @@ export function VoucherCard({
         {disabledReason && (
           <p className="text-[10px] text-red-500 mt-0.5 line-clamp-1">{disabledReason}</p>
         )}
+        {!disabledReason && availabilityReason ? (
+          <p className="mt-0.5 line-clamp-2 text-[10px] text-amber-700">{availabilityReason}</p>
+        ) : null}
 
-        <div className="mt-2 flex items-center justify-between">
+        <div className="mt-1 flex items-center justify-between">
           <p className="text-[10px] text-muted-foreground flex items-center gap-1">
             <Clock size={10} />
             {isRedeemed ? formatRedeemedDate(voucher.redeemed_at) : formatVoucherExpiry(voucher.expires_at)}
           </p>
           
-          {actionNode && (
-             <div onClick={(e) => { e.stopPropagation(); }}>
-               {actionNode}
-             </div>
-          )}
+          {actionModel?.kind === "selection" ? (
+            <button
+              type="button"
+              aria-label={actionModel.selected ? "Bỏ chọn voucher" : "Chọn voucher"}
+              aria-pressed={actionModel.selected}
+              disabled={actionModel.disabled}
+              title={actionModel.reason}
+              onClick={(event) => { event.stopPropagation(); onAction?.(); }}
+              className="relative z-30 ml-2 flex min-h-11 min-w-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {actionModel.selected ? (
+                <CheckCircle2 className="h-6 w-6 text-primary" />
+              ) : (
+                <span className="h-6 w-6 rounded-full border-2 border-border/60" />
+              )}
+            </button>
+          ) : actionModel?.kind === "use-now" ? (
+            <button
+              type="button"
+              disabled={actionModel.disabled}
+              title={actionModel.reason}
+              onClick={(event) => { event.stopPropagation(); onAction?.(); }}
+              className="relative z-30 ml-2 flex min-h-11 items-center justify-center rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {actionModel.busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+              {actionModel.label}
+            </button>
+          ) : actionNode ? (
+            <div onClick={(e) => { e.stopPropagation(); }}>{actionNode}</div>
+          ) : null}
         </div>
       </div>
     </motion.div>
@@ -135,10 +182,12 @@ export function PackageCard({
 }) {
   const { ok, reason } = canExchange(pkg, userBalance, pkg.user_redeemed_count ?? 0);
   const typeConfig = VOUCHER_TYPE_CONFIG[pkg.voucher_type] ?? VOUCHER_TYPE_CONFIG.DISCOUNT;
-  const highlight = getTicketHighlightText(pkg.voucher_type, pkg.discount_type, pkg.discount_value);
+  const highlight = getTicketHighlightText(pkg.voucher_type, pkg.discount_type, pkg.discount_value, pkg.reference_size);
 
   // Calculate progress for insufficient points
-  const progressPercent = Math.min(100, Math.round((userBalance / pkg.points_cost) * 100));
+  const progressPercent = pkg.points_cost > 0
+    ? Math.min(100, Math.round((userBalance / pkg.points_cost) * 100))
+    : 100;
 
   return (
     <motion.div
@@ -167,15 +216,17 @@ export function PackageCard({
           <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold", typeConfig.badgeCls)}>
             {typeConfig.label}
           </span>
-          {pkg.quantity !== null && pkg.quantity <= 10 && pkg.quantity > 0 && (
+          {(pkg.remaining_quantity ?? pkg.quantity) !== null &&
+            (pkg.remaining_quantity ?? pkg.quantity)! <= 10 &&
+            (pkg.remaining_quantity ?? pkg.quantity)! > 0 && (
             <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-red-100 text-red-700">
-              Còn {pkg.quantity}
+              Còn {pkg.remaining_quantity ?? pkg.quantity}
             </span>
           )}
         </div>
 
         <p className="font-bold text-sm text-foreground leading-tight line-clamp-1">{pkg.name}</p>
-        <p className="text-xs text-primary font-medium mt-0.5 line-clamp-1">{getPackageBenefitText(pkg)}</p>
+        <p className="text-xs text-primary font-medium mt-0.5 line-clamp-2">{getPackageBenefitText(pkg)}</p>
 
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           {pkg.expires_after_days !== null ? (
@@ -189,7 +240,7 @@ export function PackageCard({
             {(() => {
               if (isExchanging) {
                 return (
-                  <div className="flex items-center justify-center h-7 w-20 bg-primary/10 text-primary rounded-md">
+                  <div className="flex min-h-11 min-w-20 items-center justify-center rounded-md bg-primary/10 text-primary">
                     <Loader2 size={14} className="animate-spin" />
                   </div>
                 );
@@ -212,9 +263,9 @@ export function PackageCard({
               return (
                 <button
                   onClick={() => onExchange(pkg)}
-                  className="bg-primary text-primary-foreground text-[10px] font-bold px-3 py-1.5 rounded-md hover:bg-primary/90 transition shadow-sm whitespace-nowrap"
+                  className="min-h-11 bg-primary text-primary-foreground text-xs font-bold px-3 py-2 rounded-md hover:bg-primary/90 transition shadow-sm whitespace-nowrap"
                 >
-                  Đổi {pkg.points_cost} 🐟
+                  {pkg.acquisition_mode === "FREE_CLAIM" ? "Nhận miễn phí" : `Đổi ${pkg.points_cost} 🐟`}
                 </button>
               );
             })()}

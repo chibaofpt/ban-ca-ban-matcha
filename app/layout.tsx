@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Spectral } from "next/font/google";
-import Navbar from "@/src/components/common/Navbar";
 import Footer from "@/src/components/common/Footer";
+import Navbar from "@/src/components/common/Navbar";
 import AuthModal from "@/src/components/common/AuthModal";
 import AuthGuardProvider from "@/src/components/common/AuthGuardProvider";
 import StoreStatusBanner from "@/src/components/common/StoreStatusBanner";
@@ -88,10 +88,10 @@ export default function RootLayout({
           <AuthGuardProvider>
             <Navbar />
             <AuthModal />
-            <main className="flex-1 flex flex-col">
+            <div className="flex-1">
               <StoreStatusBanner />
               {children}
-            </main>
+            </div>
             <Footer />
             <Toaster richColors position="top-center" />
             {process.env.NODE_ENV === "development" && (

@@ -300,12 +300,17 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
                             <span className="font-semibold">
                               {it.menuItem.name}{" "}
                               <span className="font-normal text-muted-foreground">
-                                {formatOrderSize(it.size)}
+                                {it.size ? formatOrderSize(it.size) : "Add-on"}
                               </span>
                             </span>
                             <OrderItemDetails item={it} />
                           </div>
-                          <span className="font-medium text-foreground shrink-0 mt-0.5">×{it.quantity}</span>
+                          <div className="flex flex-col items-end shrink-0 mt-0.5 gap-0.5">
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              {Math.round((it.unit_price_vnd + it.addons_price_vnd) / 1000).toLocaleString("vi-VN")}K
+                            </span>
+                            <span className="font-medium text-foreground tabular-nums">×{it.quantity}</span>
+                          </div>
                         </li>
                       ))}
                       {order.discountVouchers && order.discountVouchers.length > 0 && (

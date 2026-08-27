@@ -13,7 +13,8 @@ interface CartItemVoucherPickerProps {
   applicableProductVouchers: Map<string, MyVoucher[]>;
   applicableAddonVouchersMap: Map<string, MyVoucher[]>;
   onClose: () => void;
-  onApplyProductVoucher: (cartId: string, voucherId: string, coveredPriceVnd: number) => void;
+  onApplyProductVoucher: (cartId: string, voucher: MyVoucher) => void;
+  getProductVoucherSavings: (item: CartItem, voucher: MyVoucher) => number;
   onRemoveProductVoucher: (cartId: string) => void;
   onApplyAddonVoucher: (cartId: string, voucherId: string, addonOptionId: string) => void;
   onRemoveAddonVoucher: (cartId: string, voucherId: string) => void;
@@ -26,6 +27,7 @@ export const CartItemVoucherPicker = ({
   applicableAddonVouchersMap,
   onClose,
   onApplyProductVoucher,
+  getProductVoucherSavings,
   onRemoveProductVoucher,
   onApplyAddonVoucher,
   onRemoveAddonVoucher
@@ -69,10 +71,9 @@ export const CartItemVoucherPicker = ({
             <p className="text-xs font-bold text-primary/50 uppercase tracking-widest">Miễn phí món</p>
             <div className="space-y-2">
               {applicableProductVouchers.get(activeItem.menuItemId)?.map(v => {
-                const savings = estimateProductSavings(
-                  v,
-                  activeItem.originalClientPriceVnd - activeItem.addonsPrice
-                );
+                const savings = v.voucher_type === "PRODUCT_DISCOUNT"
+                  ? getProductVoucherSavings(activeItem, v)
+                  : estimateProductSavings(v, activeItem.originalClientPriceVnd - activeItem.addonsPrice);
                 const isSelected = activeItem.productVoucherId === v.qr_token;
                 const isAlreadyUsed = items.some(c => c.cartId !== activeItem.cartId && c.productVoucherId === v.qr_token);
                 
@@ -85,7 +86,7 @@ export const CartItemVoucherPicker = ({
                       if (isSelected) {
                         onRemoveProductVoucher(activeItem.cartId);
                       } else {
-                        onApplyProductVoucher(activeItem.cartId, v.qr_token, v.covered_price_vnd ?? 0);
+                        onApplyProductVoucher(activeItem.cartId, v);
                       }
                       onClose();
                     }}

@@ -24,13 +24,20 @@ vi.mock("@/lib/rateLimit", () => ({
 const mockVoucherFindUnique = vi.fn();
 const mockVoucherCreate = vi.fn();
 const mockVoucherUpdate = vi.fn();
+const mockVoucherUpdateMany = vi.fn();
 const mockVoucherCount = vi.fn();
 const mockUserFindUnique = vi.fn();
 const mockUserUpdate = vi.fn();
 const mockPointsLogCreate = vi.fn();
 const mockMenuItemFindUnique = vi.fn();
+const mockMenuItemFindMany = vi.fn();
+const mockMatchaPowderFindMany = vi.fn();
+const mockMilkTypeFindMany = vi.fn();
+const mockAddonOptionFindMany = vi.fn();
 const mockVoucherPackageFindUnique = vi.fn();
 const mockTransaction = vi.fn();
+const mockVoucherGrantFindUnique = vi.fn();
+const mockVoucherGrantCreate = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -39,6 +46,7 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: (...args: unknown[]) => mockVoucherFindUnique(...args),
       create: (...args: unknown[]) => mockVoucherCreate(...args),
       update: (...args: unknown[]) => mockVoucherUpdate(...args),
+      updateMany: (...args: unknown[]) => mockVoucherUpdateMany(...args),
       count: (...args: unknown[]) => mockVoucherCount(...args),
     },
     user: {
@@ -50,7 +58,11 @@ vi.mock("@/lib/prisma", () => ({
     },
     menuItem: {
       findUnique: (...args: unknown[]) => mockMenuItemFindUnique(...args),
+      findMany: (...args: unknown[]) => mockMenuItemFindMany(...args),
     },
+    matchaPowder: { findMany: (...args: unknown[]) => mockMatchaPowderFindMany(...args) },
+    milkType: { findMany: (...args: unknown[]) => mockMilkTypeFindMany(...args) },
+    addonOption: { findMany: (...args: unknown[]) => mockAddonOptionFindMany(...args) },
     voucherPackage: {
       findUnique: (...args: unknown[]) => mockVoucherPackageFindUnique(...args),
     },
@@ -67,6 +79,8 @@ const USER_ID = "550e8400-e29b-41d4-a716-446655440001";
 const PKG_ID = "550e8400-e29b-41d4-a716-446655440002";
 const VOUCHER_ID = "550e8400-e29b-41d4-a716-446655440003";
 const MENU_ITEM_ID = "550e8400-e29b-41d4-a716-446655440004";
+const POWDER_ID = "550e8400-e29b-41d4-a716-446655440005";
+const LIQUID_ID = "550e8400-e29b-41d4-a716-446655440006";
 const QR_TOKEN = "qr-abc-123";
 
 const customerSession = { id: USER_ID, role: "CUSTOMER" };
@@ -76,6 +90,7 @@ const activePackage = {
   name: "Free Trà Xanh Sữa M",
   description: null,
   voucher_type: "PRODUCT",
+  acquisition_mode: "POINTS_EXCHANGE",
   points_cost: 5,
   discount_type: null,
   discount_value: null,
@@ -86,11 +101,14 @@ const activePackage = {
   included_addon_option_ids: [],
   addon_option_id: null,
   covered_price_vnd: 65000,
+  covered_delivery_fee_vnd: null,
+  min_order_vnd: null,
   is_active: true,
   expires_after_days: 30,
   quantity: null,        // unlimited
   max_per_user: 1,
   created_at: new Date(),
+  bundleRule: null,
 };
 
 const createdVoucher = {
@@ -113,22 +131,32 @@ function makeRequest(body: unknown, url = "http://localhost/api/profile/vouchers
 
 function setupTransaction() {
   type TransactionMock = {
-    $queryRaw: ReturnType<typeof vi.fn>;
-    user: { update: ReturnType<typeof vi.fn> };
+    voucherPackage: { findUnique: typeof mockVoucherPackageFindUnique };
+    user: { updateMany: ReturnType<typeof vi.fn> };
     voucher: {
       create: typeof mockVoucherCreate;
       update: typeof mockVoucherUpdate;
       count: typeof mockVoucherCount;
     };
     pointsLog: { create: typeof mockPointsLogCreate };
+    voucherGrant: {
+      findUnique: typeof mockVoucherGrantFindUnique;
+      create: typeof mockVoucherGrantCreate;
+    };
+    menuItem: { findMany: typeof mockMenuItemFindMany };
+    matchaPowder: { findMany: typeof mockMatchaPowderFindMany };
+    milkType: { findMany: typeof mockMilkTypeFindMany };
+    addonOption: { findMany: typeof mockAddonOptionFindMany };
   };
   mockTransaction.mockImplementation(async (fn: (tx: TransactionMock) => unknown) => {
     const tx = {
-      $queryRaw: vi.fn().mockResolvedValue([]),
+      voucherPackage: { findUnique: mockVoucherPackageFindUnique },
       user: {
-        update: vi.fn().mockImplementation(async (args) => {
+        updateMany: vi.fn().mockImplementation(async (args) => {
           await mockUserUpdate(args);
-          return { points_balance: 100 };
+          const user = await mockUserFindUnique();
+          const required = args.where.points_balance.gte as number;
+          return { count: user && user.points_balance >= required ? 1 : 0 };
         }),
       },
       voucher: {
@@ -137,6 +165,14 @@ function setupTransaction() {
         count: mockVoucherCount,
       },
       pointsLog: { create: mockPointsLogCreate },
+      voucherGrant: {
+        findUnique: mockVoucherGrantFindUnique,
+        create: mockVoucherGrantCreate,
+      },
+      menuItem: { findMany: mockMenuItemFindMany },
+      matchaPowder: { findMany: mockMatchaPowderFindMany },
+      milkType: { findMany: mockMilkTypeFindMany },
+      addonOption: { findMany: mockAddonOptionFindMany },
     };
     return fn(tx);
   });
@@ -153,6 +189,16 @@ describe("POST /api/profile/vouchers/exchange", () => {
     mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 4, retryAfterSeconds: 0 });
     // Default: unlimited quantity, user hasn't redeemed yet
     mockVoucherCount.mockResolvedValue(0);
+    mockVoucherGrantFindUnique.mockResolvedValue(null);
+    mockMenuItemFindMany.mockResolvedValue([{
+      id: MENU_ITEM_ID, name: "Trà Xanh", category: "latte", is_available: true,
+      unit_price_vnd: null, matcha_powder_id: POWDER_ID, default_powder_id: null,
+      default_base_liquid_id: null, sizes: [{ size: "SMALL", base_price_vnd: 45_000 }], allowedBaseLiquids: [],
+    }]);
+    mockMatchaPowderFindMany.mockResolvedValue([{ id: POWDER_ID, name: "Meyumi", price_per_gram: 100, is_available: true }]);
+    mockMilkTypeFindMany.mockResolvedValue([{ id: LIQUID_ID, is_active: true, is_default: true, display_order: 0 }]);
+    mockAddonOptionFindMany.mockResolvedValue([]);
+    setupTransaction();
   });
 
   it("returns 401 when no session", async () => {
@@ -352,24 +398,42 @@ describe("POST /api/profile/vouchers/refund", () => {
     voucher_type: "PRODUCT",
     status: "ACTIVE",
     menu_item_id: MENU_ITEM_ID,
-    // size + matcha_powder_id required by refund route L101-L112
     size: "SMALL",
-    matcha_powder_id: null,
-    package: { points_cost: 5 },
+    matcha_powder_id: POWDER_ID,
+    milk_type_id: LIQUID_ID,
+    addon_option_id: null,
+    issued_via: "POINTS_EXCHANGE",
+    expires_at: new Date(Date.now() + 86_400_000),
+    pointsLogs: [{ delta: -5, reason: "voucher_purchase" }],
+    package: { points_cost: 99, bundleRule: null },
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSession.mockResolvedValue(customerSession);
     mockVoucherUpdate.mockResolvedValue({});
+    mockVoucherUpdateMany.mockResolvedValue({ count: 1 });
     mockUserUpdate.mockResolvedValue({});
     mockPointsLogCreate.mockResolvedValue({});
+    mockMenuItemFindMany.mockResolvedValue([{
+      id: MENU_ITEM_ID, is_available: true, name: "Trà Xanh", category: "latte",
+      unit_price_vnd: null, matcha_powder_id: POWDER_ID, default_powder_id: null,
+      default_base_liquid_id: null, sizes: [{ size: "SMALL", base_price_vnd: 45_000 }],
+      allowedBaseLiquids: [],
+    }]);
+    mockMatchaPowderFindMany.mockResolvedValue([{ id: POWDER_ID, name: "Meyumi", price_per_gram: 100, is_available: true }]);
+    mockMilkTypeFindMany.mockResolvedValue([{ id: LIQUID_ID, is_active: true, is_default: true, display_order: 0 }]);
+    mockAddonOptionFindMany.mockResolvedValue([]);
 
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
       const tx = {
-        voucher: { update: mockVoucherUpdate },
+        voucher: { findUnique: mockVoucherFindUnique, updateMany: mockVoucherUpdateMany },
         user: { update: mockUserUpdate },
         pointsLog: { create: mockPointsLogCreate },
+        menuItem: { findMany: mockMenuItemFindMany },
+        matchaPowder: { findMany: mockMatchaPowderFindMany },
+        milkType: { findMany: mockMilkTypeFindMany },
+        addonOption: { findMany: mockAddonOptionFindMany },
       };
       return fn(tx);
     });
@@ -405,11 +469,14 @@ describe("POST /api/profile/vouchers/refund", () => {
     expect((await res.json()).code).toBe("NOT_FOUND");
   });
 
-  it("returns 400 when voucher is not PRODUCT type", async () => {
-    mockVoucherFindUnique.mockResolvedValue({ ...productVoucher, voucher_type: "DISCOUNT" });
+  it("không hoàn voucher vẫn còn sử dụng được", async () => {
+    mockVoucherFindUnique.mockResolvedValue({
+      ...productVoucher, voucher_type: "DISCOUNT", menu_item_id: null, size: null,
+      matcha_powder_id: null, milk_type_id: null,
+    });
     const res = await refundPOST(makeRefundReq(refundPayload));
-    expect(res.status).toBe(400);
-    expect((await res.json()).code).toBe("VALIDATION_ERROR");
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe("CONFLICT");
   });
 
   it("returns 409 when voucher is already REDEEMED", async () => {
@@ -428,15 +495,6 @@ describe("POST /api/profile/vouchers/refund", () => {
 
   it("returns 409 when menu item is still available (cannot refund)", async () => {
     mockVoucherFindUnique.mockResolvedValue(productVoucher);
-    mockMenuItemFindUnique.mockResolvedValue({
-      is_available: true,
-      name: "Trà Xanh",
-      category: "latte",
-      default_powder_id: null,
-      // sizes + fusionAllowedPowders required by refund route L101-L112
-      sizes: [{ size: "SMALL", base_price_vnd: 45000 }],
-      fusionAllowedPowders: [],
-    });
     const res = await refundPOST(makeRefundReq(refundPayload));
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe("CONFLICT");
@@ -444,7 +502,7 @@ describe("POST /api/profile/vouchers/refund", () => {
 
   it("refunds successfully when menu item is unavailable (soft-deleted)", async () => {
     mockVoucherFindUnique.mockResolvedValue(productVoucher);
-    mockMenuItemFindUnique.mockResolvedValue({ is_available: false, name: "Trà Xanh (ngưng)" });
+    mockMenuItemFindMany.mockResolvedValue([]);
 
     const res = await refundPOST(makeRefundReq(refundPayload));
     expect(res.status).toBe(200);
@@ -453,9 +511,27 @@ describe("POST /api/profile/vouchers/refund", () => {
     expect(json.data.points_refunded).toBe(5);
   });
 
+  it("refunds an ITEM voucher for an unavailable extras item", async () => {
+    mockVoucherFindUnique.mockResolvedValue({
+      ...productVoucher,
+      voucher_type: "ITEM",
+      size: null,
+      matcha_powder_id: null,
+      milk_type_id: null,
+    });
+    mockMenuItemFindMany.mockResolvedValue([]);
+
+    const res = await refundPOST(makeRefundReq(refundPayload));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      data: { status: "REFUNDED", points_refunded: 5 },
+    });
+  });
+
   it("refunds successfully when menu item is null (hard deleted edge case)", async () => {
     mockVoucherFindUnique.mockResolvedValue(productVoucher);
-    mockMenuItemFindUnique.mockResolvedValue(null);
+    mockMenuItemFindMany.mockResolvedValue([]);
 
     const res = await refundPOST(makeRefundReq(refundPayload));
     expect(res.status).toBe(200);
@@ -464,21 +540,21 @@ describe("POST /api/profile/vouchers/refund", () => {
 
   it("marks voucher as REFUNDED in transaction", async () => {
     mockVoucherFindUnique.mockResolvedValue(productVoucher);
-    mockMenuItemFindUnique.mockResolvedValue({ is_available: false, name: "Trà Xanh (ngưng)" });
+    mockMenuItemFindMany.mockResolvedValue([]);
 
     await refundPOST(makeRefundReq(refundPayload));
 
-    expect(mockVoucherUpdate).toHaveBeenCalledWith(
+    expect(mockVoucherUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: VOUCHER_ID },
+        where: expect.objectContaining({ id: VOUCHER_ID, status: "ACTIVE" }),
         data: { status: "REFUNDED" },
       })
     );
   });
 
-  it("increments user points_balance by package.points_cost", async () => {
-    mockVoucherFindUnique.mockResolvedValue(productVoucher); // points_cost = 5
-    mockMenuItemFindUnique.mockResolvedValue({ is_available: false, name: "Trà Xanh (ngưng)" });
+  it("hoàn đúng điểm từ immutable purchase log thay vì package hiện tại", async () => {
+    mockVoucherFindUnique.mockResolvedValue(productVoucher);
+    mockMenuItemFindMany.mockResolvedValue([]);
 
     await refundPOST(makeRefundReq(refundPayload));
 
@@ -490,8 +566,8 @@ describe("POST /api/profile/vouchers/refund", () => {
   });
 
   it("logs points_log with reason 'voucher_refund' and correct delta", async () => {
-    mockVoucherFindUnique.mockResolvedValue(productVoucher); // points_cost = 5
-    mockMenuItemFindUnique.mockResolvedValue({ is_available: false, name: "Trà Xanh (ngưng)" });
+    mockVoucherFindUnique.mockResolvedValue(productVoucher);
+    mockMenuItemFindMany.mockResolvedValue([]);
 
     await refundPOST(makeRefundReq(refundPayload));
 
@@ -504,6 +580,48 @@ describe("POST /api/profile/vouchers/refund", () => {
         }),
       })
     );
+  });
+
+  it("từ chối voucher miễn phí dù target không còn sử dụng được", async () => {
+    mockVoucherFindUnique.mockResolvedValue({ ...productVoucher, issued_via: "FREE_CLAIM" });
+    mockMenuItemFindMany.mockResolvedValue([]);
+    const res = await refundPOST(makeRefundReq(refundPayload));
+    expect(res.status).toBe(422);
+    expect((await res.json()).details.reason).toBe("REFUND_NOT_POINTS_EXCHANGE");
+  });
+
+  it("trả audit missing thay vì đoán theo giá package hiện tại", async () => {
+    mockVoucherFindUnique.mockResolvedValue({ ...productVoucher, pointsLogs: [] });
+    mockMenuItemFindMany.mockResolvedValue([]);
+    const res = await refundPOST(makeRefundReq(refundPayload));
+    expect(res.status).toBe(422);
+    expect((await res.json()).details.reason).toBe("REFUND_AUDIT_MISSING");
+  });
+
+  it("chặn double-refund khi expected-state updateMany không còn match", async () => {
+    mockVoucherFindUnique.mockResolvedValue(productVoucher);
+    mockMenuItemFindMany.mockResolvedValue([]);
+    mockVoucherUpdateMany.mockResolvedValue({ count: 0 });
+    const res = await refundPOST(makeRefundReq(refundPayload));
+    expect(res.status).toBe(409);
+    expect(mockUserUpdate).not.toHaveBeenCalled();
+  });
+
+  it("đọc target và audit bên trong transaction trước khi claim trạng thái", async () => {
+    mockVoucherFindUnique.mockResolvedValue(productVoucher);
+    mockMenuItemFindMany.mockResolvedValue([]);
+    await refundPOST(makeRefundReq(refundPayload));
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    expect(mockTransaction.mock.invocationCallOrder[0]).toBeLessThan(mockVoucherFindUnique.mock.invocationCallOrder[0]!);
+    expect(mockMenuItemFindMany.mock.invocationCallOrder[0]).toBeLessThan(mockVoucherUpdateMany.mock.invocationCallOrder[0]!);
+  });
+
+  it("retry P2034 có giới hạn rồi trả 409 thay vì 500", async () => {
+    mockTransaction.mockRejectedValue({ code: "P2034" });
+    const res = await refundPOST(makeRefundReq(refundPayload));
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe("CONFLICT");
+    expect(mockTransaction).toHaveBeenCalledTimes(3);
   });
 
   it("returns 500 on DB error", async () => {

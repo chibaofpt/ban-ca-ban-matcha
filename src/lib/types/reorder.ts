@@ -11,6 +11,7 @@ export type ReorderWarningType =
   | "ADDON_UNAVAILABLE"
   | "PRICE_CHANGED"
   | "MILK_UNAVAILABLE"
+  | "BASE_LIQUID_UNAVAILABLE"
   | "POWDER_UNAVAILABLE";
 
 export interface ReorderWarning {
@@ -22,7 +23,7 @@ export interface ReorderWarning {
 export interface HistoryOrderItem {
   menu_item_id: string;
   quantity: number;
-  size: Size;
+  size: Size | null;
   unit_price_vnd: number;
   addons_price_vnd: number;
   sweetness: SweetnessLevel;

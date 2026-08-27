@@ -5,12 +5,11 @@
  * Prisma does not work in Edge Runtime — PostgREST is zero-dependency
  * and works with NEXT_PUBLIC_SUPABASE_URL + a server-only Supabase secret key.
  *
- * Redis session caching: findSessionWithUser caches the PostgREST result for
- * CACHE_TTL.SESSION seconds (900s = 15 min). On token rotation, old cache key
- * is deleted by deleteSession.
+ * Refresh-token validation is always authoritative through PostgREST. Redis
+ * cache keys from older releases are only evicted and are never trusted.
  */
 
-import { cacheGet, cacheSet, cacheDelete } from './redis';
+import { cacheDelete } from './redis';
 
 /** Session row joined with user data — returned by findSessionWithUser. */
 export interface SessionWithUser {
@@ -30,6 +29,9 @@ export interface NewSession {
   refresh_token: string;
   expires_at: string;
 }
+
+/** Outcome of an authoritative refresh-session rotation claim. */
+export type RotationClaim = "acquired" | "not_acquired" | "error";
 
 /**
  * Returns base URL and auth headers for Supabase PostgREST.
@@ -64,18 +66,10 @@ function getSupabaseConfig(): { baseUrl: string; headers: Record<string, string>
 
 /**
  * Finds a session by refresh_token and joins the user row.
- * Checks Redis cache first — PostgREST query only on cache miss.
+ * Always checks PostgREST so a revoked DB row cannot survive through Redis.
  * Returns null if not found, expired, or on network error.
  */
 export async function findSessionWithUser(refreshToken: string): Promise<SessionWithUser | null> {
-  const SESSION_CACHE_TTL = 900; // 15 minutes — matches access token TTL
-  const cacheKey = `session:${refreshToken}`;
-
-  // 1. Try Redis cache first (avoids PostgREST round-trip on most rotations)
-  const cached = await cacheGet<SessionWithUser>(cacheKey);
-  if (cached !== null) return cached;
-
-  // 2. Cache miss — fetch from PostgREST
   try {
     const { baseUrl, headers } = getSupabaseConfig();
     const url = new URL(`${baseUrl}/sessions`);
@@ -88,14 +82,7 @@ export async function findSessionWithUser(refreshToken: string): Promise<Session
     if (!res.ok) return null;
 
     const rows = (await res.json()) as SessionWithUser[];
-    const session = rows.length > 0 ? rows[0] : null;
-
-    // 3. Warm cache (awaited — Edge Runtime cannot guarantee fire-and-forget completes)
-    if (session) {
-      await cacheSet(cacheKey, session, SESSION_CACHE_TTL);
-    }
-
-    return session;
+    return rows.length > 0 ? rows[0] : null;
   } catch {
     return null;
   }
@@ -103,7 +90,7 @@ export async function findSessionWithUser(refreshToken: string): Promise<Session
 
 /**
  * Deletes a session by id. Also removes from Redis cache.
- * Fire-and-forget — never throws.
+ * Best-effort — never throws.
  */
 export async function deleteSession(sessionId: string, refreshToken?: string): Promise<void> {
   try {
@@ -125,7 +112,7 @@ export async function deleteSession(sessionId: string, refreshToken?: string): P
 /**
  * Evicts the session cache for a given refresh token.
  * Call this immediately after token rotation to prevent replay of the old token.
- * Fire-and-forget — never throws.
+ * Best-effort — never throws.
  */
 export async function evictSessionCache(refreshToken: string): Promise<void> {
   try {
@@ -139,19 +126,22 @@ export async function evictSessionCache(refreshToken: string): Promise<void> {
  * Truncates a session's lifetime to 30 seconds (Grace Period for Token Rotation).
  * This prevents concurrent middleware requests from seeing a missing session.
  */
-export async function updateSessionGracePeriod(sessionId: string): Promise<void> {
+export async function updateSessionGracePeriod(sessionId: string): Promise<boolean> {
   try {
     const { baseUrl, headers } = getSupabaseConfig();
     const url = new URL(`${baseUrl}/sessions`);
     url.searchParams.set("id", `eq.${sessionId}`);
 
-    await fetch(url.toString(), {
+    const res = await fetch(url.toString(), {
       method: "PATCH",
-      headers,
+      headers: { ...headers, "Prefer": "return=representation" },
       body: JSON.stringify({ expires_at: new Date(Date.now() + 30 * 1000).toISOString() }),
     });
+    if (!res.ok) return false;
+    const rows = (await res.json()) as unknown[];
+    return Array.isArray(rows) && rows.length > 0;
   } catch {
-    // Best-effort
+    return false;
   }
 }
 
@@ -204,7 +194,7 @@ export async function createSession(userId: string): Promise<NewSession> {
  * Stale locks older than 30 seconds are automatically overridden to handle
  * the edge case where a rotation process crashed mid-flight.
  */
-export async function markSessionRotating(sessionId: string): Promise<boolean> {
+export async function markSessionRotating(sessionId: string): Promise<RotationClaim> {
   try {
     const { baseUrl, headers } = getSupabaseConfig();
     const staleThreshold = new Date(Date.now() - 30_000).toISOString();
@@ -223,13 +213,11 @@ export async function markSessionRotating(sessionId: string): Promise<boolean> {
       body: JSON.stringify({ rotating_at: new Date().toISOString() }),
     });
 
-    if (!res.ok) return false;
+    if (!res.ok) return "error";
     const rows = (await res.json()) as unknown[];
-    // If 0 rows updated → another request holds a fresh lock
-    return Array.isArray(rows) && rows.length > 0;
+    return Array.isArray(rows) && rows.length > 0 ? "acquired" : "not_acquired";
   } catch {
-    // On network error, allow rotation to proceed (fail-open for availability)
-    return true;
+    return "error";
   }
 }
 

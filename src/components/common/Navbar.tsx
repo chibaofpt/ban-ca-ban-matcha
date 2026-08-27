@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence, useScroll, useMotionValueEvent } from "framer-motion";
-import { ShoppingBag, Menu, X, LogIn, LogOut, Home, UtensilsCrossed, ClipboardList, UserCircle } from "lucide-react";
+import { ShoppingBag, Menu, X, LogIn, LogOut, UtensilsCrossed, ClipboardList, UserCircle } from "lucide-react";
 import { useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { NavLink } from "@/src/components/common/NavLink";
@@ -61,7 +61,9 @@ const Navbar = () => {
     logout();
     queryClient.removeQueries({ queryKey: ["customer"] });
     setOpen(false);
-    router.push("/");
+    if (pathname !== "/" && pathname !== "/menu") {
+      router.push("/");
+    }
   };
 
   const close = () => setOpen(false);
@@ -97,15 +99,6 @@ const Navbar = () => {
 
           {/* ── Desktop links ── */}
           <div className="hidden md:flex items-center gap-6">
-            <NavLink
-              href="/"
-              className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-1.5"
-              activeClassName="text-primary"
-            >
-              <Home className="w-3.5 h-3.5" />
-              Trang chủ
-            </NavLink>
-
             <NavLink
               href="/menu"
               className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-1.5"
@@ -215,16 +208,6 @@ const Navbar = () => {
               className="md:hidden absolute top-full left-0 right-0 z-50 overflow-hidden bg-white/98 backdrop-blur-md border-t border-border/40 shadow-lg"
             >
               <div className="max-w-6xl mx-auto px-6 py-4 flex flex-col items-end gap-1 text-right">
-                <NavLink
-                  href="/"
-                  onClick={close}
-                  className="flex min-h-11 w-full flex-row-reverse items-center justify-end gap-2 text-sm font-medium text-foreground/80 transition-colors hover:text-primary"
-                  activeClassName="text-primary"
-                >
-                  <Home className="w-4 h-4" />
-                  Trang chủ
-                </NavLink>
-
                 <NavLink
                   href="/menu"
                   onClick={close}

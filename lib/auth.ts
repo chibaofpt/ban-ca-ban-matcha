@@ -137,7 +137,7 @@ export async function clearAuthCookies() {
 
   // Evict Redis session cache immediately so the session is truly invalid
   if (refreshToken) {
-    void cacheDelete(`session:${refreshToken}`);
+    await cacheDelete(`session:${refreshToken}`);
   }
 
   cookieStore.delete("access_token");

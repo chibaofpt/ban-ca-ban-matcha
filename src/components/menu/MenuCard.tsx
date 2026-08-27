@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import Image from 'next/image';
 import { Coffee, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -44,8 +44,12 @@ const MenuCard: React.FC<MenuCardProps> = ({
   const sizes = item.sizes.filter((s) => s.base_price_vnd != null);
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
+  const [loadedImageUrl, setLoadedImageUrl] = useState<string | null>(null);
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
 
   const isLatte = item.category === "latte";
+  const canRenderImage = Boolean(item.image_url && failedImageUrl !== item.image_url);
+  const isImageLoaded = Boolean(item.image_url && loadedImageUrl === item.image_url);
   const defaultPowderId = isLatte ? item.powder?.id : item.resolved_default_powder_id;
   const defaultMilk = milkTypes.find((milk) => milk.is_default) ?? milkTypes[0];
 
@@ -61,7 +65,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
         base_price_vnd: base,
         gram,
         powder_price_per_gram: pwdPrice,
-        milk_ml: sizeObj.milk_ml ?? 0,
+        milk_ml: sizeObj.base_liquid_ml ?? sizeObj.milk_ml ?? 0,
         milk_price_per_ml: defaultMilk?.price_per_ml ?? 40
       });
     } else {
@@ -100,18 +104,25 @@ const MenuCard: React.FC<MenuCardProps> = ({
     >
       {/* Image Area */}
       <div className="h-[80%] aspect-square bg-[#eef1eb] relative overflow-hidden flex-shrink-0 rounded-2xl">
-        {item.image_url ? (
-          <Image
-            src={item.image_url}
-            alt={item.name}
-            fill
-            sizes="(max-width: 640px) 50vw, 33vw"
-            className="object-cover transition-transform duration-300 ease-out group-hover:scale-105"
-            quality={75}
-            priority={priority}
-            placeholder="blur"
-            blurDataURL="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-          />
+        {canRenderImage && item.image_url ? (
+          <>
+            <div
+              aria-hidden="true"
+              className={`absolute inset-0 bg-primary/10 transition-opacity duration-300 ${isImageLoaded ? "opacity-0" : "animate-pulse opacity-100"}`}
+            />
+            <Image
+              src={item.image_url}
+              alt={item.name}
+              fill
+              sizes="(max-width: 767px) 104px, 120px"
+              className={`object-cover transition-[opacity,transform] duration-300 ease-out group-hover:scale-105 ${isImageLoaded ? "opacity-100" : "opacity-0"}`}
+              quality={75}
+              priority={priority}
+              loading={priority ? "eager" : "lazy"}
+              onLoad={() => setLoadedImageUrl(item.image_url)}
+              onError={() => setFailedImageUrl(item.image_url)}
+            />
+          </>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <Coffee className="h-10 w-10 text-[#b8c9b4] transition-transform duration-300 group-hover:scale-110" />
@@ -120,7 +131,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
       </div>
 
       {/* Content Area */}
-      <div className="flex flex-col flex-1 h-[80%] justify-between py-1 text-left items-start">
+      <div className="flex flex-col flex-1 h-[80%] justify-between py-1 text-left items-start min-w-0">
         <div className="w-full">
           <h3 className="font-serif font-medium text-lg text-[#2d4a22] leading-tight line-clamp-2 mb-1">
             {item.name}
@@ -137,45 +148,50 @@ const MenuCard: React.FC<MenuCardProps> = ({
           )}
         </div>
 
-        {/* Sizes & Prices + Cart Button */}
-        {/* Fixed 44px slot; the temporary stepper expands left without shifting prices. */}
-        <div className="mt-auto pt-2 flex items-end w-full">
-          <div className="flex flex-1 justify-between">
-            {(['SMALL', 'MEDIUM', 'LARGE'] as const).map((sizeKey) => {
-              const s = sizes.find(s => s.size === sizeKey);
-              const isDefault = sizeKey === 'MEDIUM';
+        {/* Sizes & Prices + Cart Button — inline row, stepper expands left */}
+        <div className="mt-auto pt-2 flex items-center w-full gap-2">
+          {item.category === "extras" ? (
+            <div className="flex flex-1 items-center min-w-0">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-[#446c35]">Đơn giá</span>
+                <span className="text-base font-bold text-[#5b9a2b]">{formatKa(item.unit_price_vnd ?? 0, "ceil")}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-1 justify-between min-w-0">
+              {(['SMALL', 'MEDIUM', 'LARGE'] as const).map((sizeKey) => {
+                const s = sizes.find(s => s.size === sizeKey);
+                const isDefault = sizeKey === 'MEDIUM';
 
-              if (!s) {
-                return <div key={sizeKey}></div>;
-              }
+                if (!s) {
+                  return <div key={sizeKey} />;
+                }
 
-              const price = getDisplayPrice(s);
-              return (
-                <div key={sizeKey} className="flex flex-col items-center gap-0.5">
-                  <span className={`uppercase tracking-wide whitespace-nowrap ${isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
-                    {SIZE_CARD_LABELS[sizeKey] ?? sizeKey}
-                  </span>
-                  <span className={`${isDefault ? 'text-base font-bold text-[#5b9a2b]' : 'text-sm font-semibold text-primary/50'}`}>
-                    {formatKa(price, "ceil")}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                const price = getDisplayPrice(s);
+                return (
+                  <div key={sizeKey} className="flex flex-col items-center gap-0.5">
+                    <span className={`uppercase tracking-wide whitespace-nowrap ${isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
+                      {SIZE_CARD_LABELS[sizeKey] ?? sizeKey}
+                    </span>
+                    <span className={`${isDefault ? 'text-base font-bold text-[#5b9a2b]' : 'text-sm font-semibold text-primary/50'}`}>
+                      {formatKa(price, "ceil")}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-          {/* Fixed-width slot so the button area never shifts prices */}
-          <div className="flex w-11 shrink-0 justify-end">
-            <CartQuantityButton
-              quantity={cartQuantity}
-              variantCount={cartVariantCount}
-              hasVoucher={cartHasVoucher}
-              onAdd={() => onItemClick(item)}
-              onOpenVariants={() => onItemClick(item)}
-              onIncrement={handleIncrement}
-              onDecrement={handleDecrement}
-              onRemove={handleRemove}
-            />
-          </div>
+          <CartQuantityButton
+            quantity={cartQuantity}
+            variantCount={cartVariantCount}
+            hasVoucher={cartHasVoucher}
+            onAdd={() => onItemClick(item)}
+            onOpenVariants={() => onItemClick(item)}
+            onIncrement={handleIncrement}
+            onDecrement={handleDecrement}
+            onRemove={handleRemove}
+          />
         </div>
       </div>
     </motion.div>

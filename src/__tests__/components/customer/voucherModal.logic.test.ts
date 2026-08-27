@@ -13,13 +13,21 @@ import {
   canInteract,
   computePointsAfterExchange,
   getVoucherBenefitText,
-  canExchange,
-  getExchangeErrorMessage,
-  formatExpiryLabel,
   formatVoucherExpiry,
-  groupPackagesByType,
+  canApplyOwnedVoucher,
+  getVoucherAvailabilityMessage,
+  getVoucherRefundConfirmation,
+  getTicketHighlightText,
 } from "@/src/lib/utils/voucherModalHelpers";
 import type { MyVoucher, VoucherPackage } from "@/src/services/customerVoucherService";
+import { isVoucherUsable } from "@/src/utils/voucherMatchUtils";
+
+describe("PRODUCT_DISCOUNT ticket highlight", () => {
+  it("renders SMALL and MEDIUM reference sizes", () => {
+    expect(getTicketHighlightText("PRODUCT_DISCOUNT", null, null, "SMALL").text).toBe("SIZE S");
+    expect(getTicketHighlightText("PRODUCT_DISCOUNT", null, null, "MEDIUM").text).toBe("SIZE M");
+  });
+});
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -45,6 +53,12 @@ function makeVoucher(overrides: Partial<MyVoucher> = {}): MyVoucher {
     package: { name: "Giảm 20%", description: null, points_cost: 50 },
     menuItem: null,
     addonOption: null,
+    availability: {
+      status: "USABLE",
+      can_apply: true,
+      can_refund: false,
+      refund_points: 0,
+    },
     ...overrides,
   } as MyVoucher;
 }
@@ -118,7 +132,6 @@ describe("filterModalVouchers", () => {
     expect(filterModalVouchers(vouchers)).toHaveLength(0);
   });
 });
-
 describe("filterHistoryVouchers", () => {
   it("chỉ trả về REDEEMED và EXPIRED, không trộn voucher còn hiệu lực", () => {
     const vouchers = [
@@ -213,6 +226,10 @@ describe("computePointsAfterExchange", () => {
 // ── getVoucherBenefitText ─────────────────────────────────────────────────────
 
 describe("getVoucherBenefitText", () => {
+  it("PRODUCT_DISCOUNT PAY_AS_SIZE hiển thị đúng size tham chiếu", () => {
+    expect(getVoucherBenefitText(makeVoucher({ voucher_type: "PRODUCT_DISCOUNT", product_discount_mode: "PAY_AS_SIZE", reference_size: "SMALL" }))).toContain("nhỏ");
+    expect(getVoucherBenefitText(makeVoucher({ voucher_type: "PRODUCT_DISCOUNT", product_discount_mode: "PAY_AS_SIZE", reference_size: "MEDIUM" }))).toContain("vừa");
+  });
   it("DISCOUNT PERCENT → 'Giảm X% toàn đơn'", () => {
     const v = makeVoucher({ voucher_type: "DISCOUNT", discount_type: "PERCENT", discount_value: 20 });
     expect(getVoucherBenefitText(v)).toBe("Giảm 20% toàn đơn");
@@ -257,77 +274,6 @@ describe("getVoucherBenefitText", () => {
   });
 });
 
-// ── canExchange ────────────────────────────────────────────────────────────────
-
-describe("canExchange", () => {
-  it("ok = true khi đủ điểm, còn hàng, chưa limit", () => {
-    const pkg = makePackage({ points_cost: 50, quantity: 10, max_per_user: 2 });
-    expect(canExchange(pkg, 100, 0)).toEqual({ ok: true });
-  });
-
-  it("ok = false + insufficient_points khi không đủ điểm", () => {
-    const pkg = makePackage({ points_cost: 100, quantity: 10, max_per_user: 1 });
-    expect(canExchange(pkg, 50, 0)).toEqual({ ok: false, reason: "insufficient_points" });
-  });
-
-  it("ok = false + sold_out khi quantity = 0", () => {
-    const pkg = makePackage({ points_cost: 50, quantity: 0, max_per_user: 1 });
-    expect(canExchange(pkg, 200, 0)).toEqual({ ok: false, reason: "sold_out" });
-  });
-
-  it("ok = true khi quantity = null (vô hạn)", () => {
-    const pkg = makePackage({ points_cost: 50, quantity: null, max_per_user: 1 });
-    expect(canExchange(pkg, 200, 0)).toEqual({ ok: true });
-  });
-
-  it("ok = false + limit_reached khi đã đổi đủ max_per_user", () => {
-    const pkg = makePackage({ points_cost: 50, quantity: 100, max_per_user: 1 });
-    expect(canExchange(pkg, 200, 1)).toEqual({ ok: false, reason: "limit_reached" });
-  });
-});
-
-// ── getExchangeErrorMessage ───────────────────────────────────────────────────
-
-describe("getExchangeErrorMessage", () => {
-  it("INSUFFICIENT_POINTS → có chứa số điểm", () => {
-    const msg = getExchangeErrorMessage("INSUFFICIENT_POINTS", 100, 20);
-    expect(msg).toContain("100");
-    expect(msg).toContain("20");
-  });
-
-  it("VOUCHER_LIMIT_REACHED → chứa 'đủ số lượng'", () => {
-    expect(getExchangeErrorMessage("VOUCHER_LIMIT_REACHED")).toContain("đủ số lượng");
-  });
-
-  it("VOUCHER_SOLD_OUT → chứa 'hết'", () => {
-    expect(getExchangeErrorMessage("VOUCHER_SOLD_OUT")).toContain("hết");
-  });
-
-  it("NOT_FOUND → chứa 'không còn'", () => {
-    expect(getExchangeErrorMessage("NOT_FOUND")).toContain("không còn");
-  });
-
-  it("mã lỗi không xác định → chứa 'thử lại'", () => {
-    expect(getExchangeErrorMessage("UNKNOWN_CODE")).toContain("thử lại");
-  });
-});
-
-// ── formatExpiryLabel ─────────────────────────────────────────────────────────
-
-describe("formatExpiryLabel", () => {
-  it("null → 'Vô thời hạn'", () => {
-    expect(formatExpiryLabel(null)).toBe("Vô thời hạn");
-  });
-
-  it("1 → '1 ngày'", () => {
-    expect(formatExpiryLabel(1)).toBe("1 ngày");
-  });
-
-  it("30 → '30 ngày'", () => {
-    expect(formatExpiryLabel(30)).toBe("30 ngày");
-  });
-});
-
 // ── formatVoucherExpiry ───────────────────────────────────────────────────────
 
 describe("formatVoucherExpiry", () => {
@@ -352,35 +298,64 @@ describe("formatVoucherExpiry", () => {
     const past = new Date(Date.now() - 1000).toISOString();
     expect(formatVoucherExpiry(past)).toBe("Đã hết hạn");
   });
+
+  it("ITEM với menuItem → tên Add-on miễn phí", () => {
+    const v = makeVoucher({
+      voucher_type: "ITEM",
+      menuItem: { name: "Kem vanilla", is_available: true },
+    });
+    expect(getVoucherBenefitText(v)).toBe("Kem vanilla miễn phí");
+  });
 });
 
-// ── groupPackagesByType ───────────────────────────────────────────────────────
+describe("availability voucher", () => {
+  it("khóa áp voucher khi backend đánh dấu không còn qualifier", () => {
+    const voucher = makeVoucher({
+      availability: {
+        status: "NO_ACTIVE_QUALIFIER",
+        can_apply: false,
+        can_refund: true,
+        refund_points: 80,
+      },
+    });
 
-describe("groupPackagesByType", () => {
-  it("nhóm đúng 3 loại DISCOUNT/PRODUCT/ADDON", () => {
-    const packages = [
-      makePackage({ id: "p1", voucher_type: "DISCOUNT" }),
-      makePackage({ id: "p2", voucher_type: "PRODUCT" }),
-      makePackage({ id: "p3", voucher_type: "ADDON" }),
-      makePackage({ id: "p4", voucher_type: "DISCOUNT" }),
-    ];
-    const result = groupPackagesByType(packages);
-    expect(result.DISCOUNT).toHaveLength(2);
-    expect(result.PRODUCT).toHaveLength(1);
-    expect(result.ADDON).toHaveLength(1);
+    expect(canApplyOwnedVoucher(voucher)).toBe(false);
+    expect(getVoucherAvailabilityMessage(voucher)).toBe(
+      "Các món mua kèm hiện đang ngưng phục vụ.",
+    );
   });
 
-  it("bucket rỗng khi không có gói thuộc loại đó", () => {
-    const packages = [makePackage({ voucher_type: "DISCOUNT" })];
-    const result = groupPackagesByType(packages);
-    expect(result.PRODUCT).toHaveLength(0);
-    expect(result.ADDON).toHaveLength(0);
+  it("không đưa voucher backend đánh dấu unusable vào picker", () => {
+    const voucher = makeVoucher({
+      availability: {
+        status: "TARGET_UNAVAILABLE",
+        can_apply: false,
+        can_refund: true,
+        refund_points: 50,
+      },
+    });
+
+    expect(isVoucherUsable(voucher)).toBe(false);
   });
 
-  it("mảng rỗng → 3 bucket đều rỗng", () => {
-    const result = groupPackagesByType([]);
-    expect(result.DISCOUNT).toHaveLength(0);
-    expect(result.PRODUCT).toHaveLength(0);
-    expect(result.ADDON).toHaveLength(0);
+  it("hiển thị đúng lý do khi quà tặng không còn phục vụ", () => {
+    const voucher = makeVoucher({
+      availability: {
+        status: "NO_ACTIVE_REWARD",
+        can_apply: false,
+        can_refund: false,
+        refund_points: 0,
+      },
+    });
+
+    expect(getVoucherAvailabilityMessage(voucher)).toBe(
+      "Quà tặng hiện không còn phục vụ.",
+    );
+  });
+
+  it("nội dung hoàn điểm ghi rõ không thể hoàn tác và không khôi phục lượt đổi", () => {
+    expect(getVoucherRefundConfirmation(80)).toContain("80 điểm");
+    expect(getVoucherRefundConfirmation(80)).toContain("không thể sử dụng lại");
+    expect(getVoucherRefundConfirmation(80)).toContain("không được khôi phục");
   });
 });

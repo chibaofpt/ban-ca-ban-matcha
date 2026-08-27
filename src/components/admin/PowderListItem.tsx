@@ -2,6 +2,8 @@
 
 import { cn } from "@/src/utils/cn";
 import type { Powder } from "@/src/lib/types/powder";
+import Image from "next/image";
+import { ImageIcon } from "lucide-react";
 
 interface PowderListItemProps {
   item: Powder;
@@ -36,9 +38,19 @@ export default function PowderListItem({ item, onClick }: PowderListItemProps) {
         "border-b border-border/50 last:border-b-0"
       )}
     >
-      {/* Ảnh / Placeholder — chừa chỗ cho image_url sau */}
       <div className="shrink-0 w-10 h-10 rounded-xl bg-secondary/50 flex items-center justify-center overflow-hidden border border-border/40">
-        <span className="text-lg">🍵</span>
+        {item.image_url ? (
+          <Image
+            src={item.image_url}
+            alt={`Ảnh ${item.name}`}
+            width={40}
+            height={40}
+            sizes="40px"
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <ImageIcon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        )}
       </div>
 
       {/* Nội dung chính */}

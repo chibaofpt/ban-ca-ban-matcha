@@ -24,6 +24,12 @@ const eslintConfig = defineConfig([
     "scratch_update_kb.js",
     "scratch_update_kb2.js",
     "update_staff_orders.js",
+    "scripts/check-invalid.js",
+    "scripts/check-packages.js",
+    "scripts/check-prod-migrations.js",
+    "scripts/check-prod-tables.js",
+    "scripts/check-scopes.js",
+    "scripts/fix-prod.js",
   ]),
 ]);
 

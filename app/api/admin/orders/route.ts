@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import type { OrderType, Prisma } from "@prisma/client";
-import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 import { toPublicOrderDto } from "@/lib/orderPublicDto";
+import { resolveStaffIdentifier } from "@/lib/publicIdentifiers";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +46,14 @@ export async function GET(req: NextRequest) {
 
       // 2. Staff filter
       if (staffId) {
-        where.handled_by = staffId;
+        const staff = await resolveStaffIdentifier(staffId);
+        if (!staff) {
+          return NextResponse.json(
+            { error: "Staff not found", code: "NOT_FOUND" },
+            { status: 404 },
+          );
+        }
+        where.handled_by = staff.id;
       } else if (staffName) {
         where.handler = {
           name: { contains: staffName, mode: "insensitive" },
@@ -135,40 +142,6 @@ export async function GET(req: NextRequest) {
     ]);
 
     const totalPages = Math.ceil(total / limit);
-
-    // Lazy auto-cancel: expire any PENDING orders past their deadline.
-    // Triggered on every admin list fetch — cron is daily safety net only.
-    const now = new Date();
-    const expiredOrders = orders.filter(
-      (o) => o.status === "PENDING" && o.auto_cancel_at && o.auto_cancel_at <= now
-    );
-    if (expiredOrders.length > 0) {
-      await Promise.all(
-        expiredOrders.map(async (order) => {
-          try {
-            const wasCancelled = await prisma.$transaction(
-              async (tx) => {
-                const claim = await tx.order.updateMany({
-                  where: { id: order.id, status: "PENDING" },
-                  data: { status: "CANCELLED" },
-                });
-                if (claim.count !== 1) return false;
-                await restoreVouchersOnCancel(tx, order.id);
-                return true;
-              },
-              { maxWait: 5000, timeout: 10000 }
-            );
-            if (wasCancelled) {
-              order.status = "CANCELLED"; // update in-memory for response
-            }
-          } catch (err) {
-            console.error("[GET /api/admin/orders lazy-cancel] Failed", {
-              name: err instanceof Error ? err.name : typeof err,
-            });
-          }
-        })
-      );
-    }
 
     return NextResponse.json({
       data: orders.map((order) => toPublicOrderDto(order)),

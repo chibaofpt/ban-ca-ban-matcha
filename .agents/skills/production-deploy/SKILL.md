@@ -35,6 +35,7 @@ description: >
   npm.cmd run lint
   npx.cmd tsc --noEmit
   npm.cmd run test
+  npm.cmd run resources:check
   npx.cmd dotenv -e .env.prod -- prisma validate
   ```
 
@@ -52,6 +53,9 @@ description: >
   cannot be bypassed with a simple confirmation.
 - If any new migration exists, ask the user to confirm that a production backup was checked in the
   Supabase Dashboard. Stop if the user cannot confirm it. Do not run production migrations locally.
+- Require both `cancel-expired-orders` and `clean-sessions` Supabase cron jobs to be installed and
+  smoke-tested against the production deployment. This gate is mandatory even when staging was
+  explicitly allowed to run without those schedules.
 - If the code introduces an application environment variable, require it in `.env.local.example` and list only
   its name. Require user confirmation that it is configured in both Vercel Preview and Production. Do not block
   merely because a shared application variable is intentionally absent from `.env.staging` or `.env.prod`.

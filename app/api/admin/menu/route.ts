@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createMenuSchema } from "@/lib/validations/menu";
 import {
+  MENU_IMAGE_OUTPUT_CONTENT_TYPE,
   buildMenuImagePath,
   removeMenuImages,
   uploadMenuImage,
@@ -28,12 +29,13 @@ export async function GET(): Promise<NextResponse> {
     return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
 
   try {
-    const [items, defaultSizeConfigs] = await Promise.all([
+    const [items, defaultSizeConfigs, baseLiquids] = await Promise.all([
       prisma.menuItem.findMany({
         orderBy: [{ category: "asc" }, { sort_order: "asc" }],
         include: ADMIN_MENU_INCLUDE,
       }),
       prisma.defaultSizeConfig.findMany(),
+      prisma.milkType.findMany({ orderBy: { display_order: "asc" } }),
     ]);
 
     const milkMlMap: Record<string, number> = {};
@@ -41,13 +43,15 @@ export async function GET(): Promise<NextResponse> {
 
     const latte: ReturnType<typeof formatAdminMenuItem>[] = [];
     const fusion: ReturnType<typeof formatAdminMenuItem>[] = [];
+    const extras: ReturnType<typeof formatAdminMenuItem>[] = [];
     let maxUpdatedAt = new Date(0);
 
     for (const item of items) {
       if (item.updated_at > maxUpdatedAt) maxUpdatedAt = item.updated_at;
       const formatted = formatAdminMenuItem(item, milkMlMap);
       if (item.category === "latte") latte.push(formatted);
-      else fusion.push(formatted);
+      else if (item.category === "fusion") fusion.push(formatted);
+      else extras.push(formatted);
     }
 
     return NextResponse.json({
@@ -55,6 +59,12 @@ export async function GET(): Promise<NextResponse> {
         updated_at: maxUpdatedAt.toISOString(),
         latte,
         fusion,
+        extras,
+        base_liquids: baseLiquids,
+        default_size_config: defaultSizeConfigs.map((config) => ({
+          size: config.size,
+          base_liquid_ml: config.milk_ml,
+        })),
       },
     });
   } catch (err) {
@@ -95,20 +105,29 @@ export async function POST(req: Request): Promise<NextResponse> {
       default_powder_id: formData.get("default_powder_id") && /^[0-9a-fA-F]{8}-/.test(formData.get("default_powder_id") as string)
         ? formData.get("default_powder_id") as string 
         : null,
+      default_base_liquid_id:
+        formData.get("default_base_liquid_id") && /^[0-9a-fA-F]{8}-/.test(formData.get("default_base_liquid_id") as string)
+          ? formData.get("default_base_liquid_id") as string
+          : undefined,
+      unit_price_vnd: formData.get("unit_price_vnd") ? Number(formData.get("unit_price_vnd")) : undefined,
       base_liquid_note: formData.get("base_liquid_note") || null,
       image_filename: formData.get("image_filename") || undefined,
     };
 
     const sizesStr = formData.get("sizes") as string | null;
-    if (!sizesStr)
+    if (!sizesStr && formData.get("category") === "extras") {
+      raw.sizes = [];
+    } else if (!sizesStr) {
       return NextResponse.json({ error: "sizes là bắt buộc", code: "VALIDATION_ERROR" }, { status: 400 });
-    try {
-      raw.sizes = JSON.parse(sizesStr);
-    } catch {
-      return NextResponse.json(
-        { error: "Định dạng sizes không hợp lệ (phải là JSON)", code: "VALIDATION_ERROR" },
-        { status: 400 }
-      );
+    } else {
+      try {
+        raw.sizes = JSON.parse(sizesStr);
+      } catch {
+        return NextResponse.json(
+          { error: "Định dạng sizes không hợp lệ (phải là JSON)", code: "VALIDATION_ERROR" },
+          { status: 400 }
+        );
+      }
     }
 
     const cpgStr = formData.get("custom_powder_grams") as string | null;
@@ -119,6 +138,17 @@ export async function POST(req: Request): Promise<NextResponse> {
         return NextResponse.json(
           { error: "Định dạng custom_powder_grams không hợp lệ", code: "VALIDATION_ERROR" },
           { status: 400 }
+        );
+      }
+    }
+    const allowedBaseLiquidIds = formData.get("allowed_base_liquid_ids");
+    if (typeof allowedBaseLiquidIds === "string" && allowedBaseLiquidIds.length > 0) {
+      try {
+        raw.allowed_base_liquid_ids = JSON.parse(allowedBaseLiquidIds);
+      } catch {
+        return NextResponse.json(
+          { error: "Định dạng allowed_base_liquid_ids không hợp lệ", code: "VALIDATION_ERROR" },
+          { status: 400 },
         );
       }
     }
@@ -136,6 +166,73 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
     const validData = validation.data;
+
+    const activeBaseLiquids = await prisma.milkType.findMany({
+      where: { is_active: true },
+      select: { id: true, is_default: true },
+    });
+    const activeBaseLiquidIds = new Set(activeBaseLiquids.map((liquid) => liquid.id));
+    if (validData.category === "extras") {
+      let image_url: string | null = null;
+      const imageFile = formData.get("image");
+      if (imageFile instanceof File && imageFile.size > 0) {
+        const allowed = ["image/jpeg", "image/png", "image/webp"];
+        if (!allowed.includes(imageFile.type) || imageFile.size > 5 * 1024 * 1024) {
+          return NextResponse.json(
+            { error: "Ảnh Add-on không hợp lệ (JPEG/PNG/WEBP, tối đa 5MB)", code: "VALIDATION_ERROR" },
+            { status: 400 },
+          );
+        }
+        const imagePath = buildMenuImagePath({
+          category: "extras",
+          productName: validData.name,
+          requestedName: validData.image_filename,
+          contentType: MENU_IMAGE_OUTPUT_CONTENT_TYPE,
+        });
+        image_url = await uploadMenuImage(imagePath, Buffer.from(await imageFile.arrayBuffer()), imageFile.type);
+        uploadedImagePath = imagePath;
+      }
+      const createdExtra = await prisma.$transaction(async (tx) => tx.menuItem.create({
+        data: {
+          name: validData.name,
+          description: validData.description ?? null,
+          category: validData.category,
+          unit_price_vnd: validData.unit_price_vnd,
+          is_available: validData.is_available,
+          is_seasonal: validData.is_seasonal,
+          sort_order: validData.sort_order,
+          image_url,
+          custom_powder_grams: undefined,
+          base_liquid_note: null,
+          matcha_powder_id: null,
+          default_powder_id: null,
+          default_base_liquid_id: null,
+        },
+        include: ADMIN_MENU_INCLUDE,
+      }));
+      const milkMlMap: Record<string, number> = {};
+      const defaultSizeConfigs = await prisma.defaultSizeConfig.findMany();
+      for (const c of defaultSizeConfigs) milkMlMap[c.size] = c.milk_ml;
+      await invalidateMenuCaches();
+      return NextResponse.json({ data: formatAdminMenuItem(createdExtra, milkMlMap) }, { status: 201 });
+    }
+    const resolvedDefaultBaseLiquidId = validData.category === "latte"
+      ? activeBaseLiquids.find((liquid) => liquid.is_default)?.id ?? null
+      : validData.default_base_liquid_id;
+    if (!resolvedDefaultBaseLiquidId || !activeBaseLiquidIds.has(resolvedDefaultBaseLiquidId)) {
+      return NextResponse.json(
+        { error: "Base Liquid mặc định không khả dụng", code: "BUSINESS_RULE_VIOLATION" },
+        { status: 422 },
+      );
+    }
+    const allowedBaseLiquidIdsToSave = [...new Set(validData.allowed_base_liquid_ids)]
+      .filter((id) => id !== resolvedDefaultBaseLiquidId);
+    if (allowedBaseLiquidIdsToSave.some((id) => !activeBaseLiquidIds.has(id))) {
+      return NextResponse.json(
+        { error: "Danh sách Base Liquid có lựa chọn không khả dụng", code: "BUSINESS_RULE_VIOLATION" },
+        { status: 422 },
+      );
+    }
 
     // ── Check uniqueness of powder ──────────────────────────────────────────
     if (validData.category === "latte" && validData.matcha_powder_id) {
@@ -170,7 +267,7 @@ export async function POST(req: Request): Promise<NextResponse> {
         category: validData.category,
         productName: validData.name,
         requestedName: validData.image_filename,
-        contentType: imageFile.type,
+        contentType: MENU_IMAGE_OUTPUT_CONTENT_TYPE,
       });
       image_url = await uploadMenuImage(imagePath, buffer, imageFile.type);
       uploadedImagePath = imagePath;
@@ -184,6 +281,7 @@ export async function POST(req: Request): Promise<NextResponse> {
             name: validData.name,
             description: validData.description ?? null,
             category: validData.category,
+            unit_price_vnd: null,
             is_available: validData.is_available,
             is_seasonal: validData.is_seasonal,
             sort_order: validData.sort_order,
@@ -196,6 +294,8 @@ export async function POST(req: Request): Promise<NextResponse> {
               validData.category === "latte" ? (validData.matcha_powder_id ?? null) : null,
             default_powder_id:
               validData.category === "fusion" ? (validData.default_powder_id ?? null) : null,
+            default_base_liquid_id:
+              validData.category === "fusion" ? resolvedDefaultBaseLiquidId : null,
           },
         });
 
@@ -204,8 +304,18 @@ export async function POST(req: Request): Promise<NextResponse> {
             menu_item_id: item.id,
             size: s.size,
             base_price_vnd: s.base_price_vnd,
+            base_liquid_ml: s.base_liquid_ml ?? null,
           })),
         });
+
+        if (allowedBaseLiquidIdsToSave.length > 0) {
+          await tx.menuItemAllowedBaseLiquid.createMany({
+            data: allowedBaseLiquidIdsToSave.map((baseLiquidId) => ({
+              menu_item_id: item.id,
+              base_liquid_id: baseLiquidId,
+            })),
+          });
+        }
 
         // Re-fetch with full include to return correct AdminMenuItem shape
         return tx.menuItem.findUniqueOrThrow({

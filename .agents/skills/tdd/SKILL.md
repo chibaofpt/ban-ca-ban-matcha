@@ -1,127 +1,166 @@
 ---
 name: tdd
 description: >
-  Viết test trước khi implement — áp dụng TDD workflow cho project Bạn Cá Bán Matcha.
-  Use this skill whenever implementing features from an implementation plan, creating
-  new API routes, business logic, services, or any significant workflow/feature.
-  Also trigger on: "viết test", "test lại", "kiểm tra logic", "cover test cho",
-  "write test", "add test", "test plan".
+  Select and execute the appropriate test-first lane for Bạn Cá Bán Matcha features,
+  implementation plans, API routes, business logic, services, refactors, significant
+  workflows, and business bug fixes. Also use when the user asks to write, update, review,
+  or plan tests. Skip synthetic tests for changes without executable behavior.
 ---
 
-# TDD Skill
+# Adaptive TDD
 
-> Viết test skeleton → implement code → chạy test verify.
-> Skill này là một phần bắt buộc của workflow implement — không được skip.
+Choose the test lane that provides meaningful evidence, confirm the expected signal,
+implement the smallest patch, and verify it. Never create `implementation_plan.md`,
+`task.md`, or change-history files.
 
----
+## When to Trigger
 
-## Khi nào trigger
-
-| Trigger | Mô tả |
+| Trigger | Required response |
 |---|---|
-| Implementation plan được approve | Agent viết test TRƯỚC khi implement bất kỳ file nào |
-| User yêu cầu trực tiếp | "viết test", "test lại", "kiểm tra logic", "cover test cho..." |
-| Tạo feature / workflow mới | Bất kỳ feature có business logic phức tạp |
-| Bug fix có business logic | Fix bug mà cần verify nhiều nhánh logic |
+| The user approves an implementation plan | Record the Test Plan in the current task; do not create a plan file |
+| The user explicitly requests tests or logic verification | Select a test lane and cover the requested behavior |
+| A feature or workflow adds meaningful behavior | Add focused behavior coverage before implementation |
+| A business-logic bug requires multi-branch verification | Add a regression test that proves the defect |
+| A refactor moves, splits, or replaces behavior | Add or confirm characterization coverage before structural edits |
 
----
+## Test-Lane Decision
 
-## Workflow — Thứ tự bắt buộc
+Record exactly one lane in the current task or approved plan before production edits:
 
-### Bước 1: Xác định Test Scope (trong implementation plan)
+| Lane | Use when | First check |
+|---|---|---|
+| `REQUIRED_RED` | New behavior, business/API/security logic, or a bug fix | Write or update a regression test and confirm it fails for the intended reason |
+| `CHARACTERIZATION_FIRST` | Refactor, move, split, or behavior-preserving replacement | Capture current behavior and confirm the characterization test passes |
+| `UPDATE_EXISTING` | Existing coverage should change with the approved behavior | Update the closest test and confirm a meaningful failure |
+| `NOT_NEEDED` | Docs, metadata/config, pure style/layout, generated output, or another change without executable behavior | Explain why a test adds no signal and select static or targeted verification |
 
-Khi viết `implementation_plan.md`, PHẢI thêm section **"Test Plan"** ở cuối (trước Verification Plan).
+Business, API, and security behavior normally requires a regression test. Pure text, style,
+layout, or documentation changes do not need artificial tests. If behavior is hidden behind
+a shared utility and uncertainty remains, choose the safer executable lane.
+
+When this skill runs inside `subagent-orchestration`, one implementer owns the entire test-
+to-code loop. The independent reviewer audits the evidence but never edits tests or
+production code.
+
+## Required Workflow
+
+### Step 1: Define Test Scope in the Current Task or Plan
+
+Write a proportional **Test Plan** before production edits:
 
 ```markdown
 ## Test Plan
 
 ### Backend Tests
 
-#### [file test path] — [mô tả]
+#### [test file path] — [behavior under test]
 - `describe("...")` — context
-  - `it("case 1")` — mô tả ngắn gọn
-  - `it("case 2")` — mô tả ngắn gọn
+  - `it("case 1")` — concise behavior
+  - `it("case 2")` — concise behavior
 
-### Frontend Tests (nếu có)
+### Frontend Tests (when applicable)
 
-#### [file test path] — [mô tả]
+#### [test file path] — [behavior under test]
 - `describe("...")` — context
-  - `it("case 1")` — mô tả
+  - `it("case 1")` — concise behavior
 ```
 
-**Quy tắc xác định file nào cần test:**
+Use these criteria when deciding what needs executable coverage:
 
-| Cần test ✅ | Không cần test ❌ |
+| Test | Usually do not add a dedicated test |
 |---|---|
-| Route handler có business logic phức tạp (validation, transition rules, pricing) | Route CRUD đơn giản (chỉ findMany + trả về) |
-| Helper/utility functions có logic tính toán (cancelOrder, pricing) | Config files, constants |
-| Service functions có data transformation | Page entry files (`app/**/page.tsx`) |
-| State logic phức tạp (Zustand slices với side effects) | UI-only components không có logic |
-| Validation schemas có custom transforms | Re-export files |
+| Route handlers with validation, transition, pricing, or other business rules | Simple CRUD routes that only query and return data |
+| Helpers or utilities with calculations such as cancellation or pricing | Configuration files and constants |
+| Services that transform data | Page entry files such as `app/**/page.tsx` |
+| Complex state logic or Zustand slices with side effects | UI-only components without logic |
+| Validation schemas with custom transforms or refinements | Re-export files |
 
-### Bước 2: User review Test Plan cùng với Implementation Plan
+Cover relevant happy paths, authorization, validation, business rules, and edge cases. Omit
+categories that do not apply.
 
-Test Plan là một phần của `implementation_plan.md` → user review và approve tất cả cùng lúc.
+### Step 2: Review the Lane and Test Plan
 
-### Bước 3: Viết test skeleton (sau khi user approve)
+- Confirm that each test proves an approved behavior or protects an existing invariant.
+- Reuse the closest domain test instead of creating duplicate coverage.
+- For `NOT_NEEDED`, name the lint, type, static, snapshot, or targeted existing check that
+  will replace a new test.
+- If the test expectation conflicts with canonical resources or contracts, classify
+  documentation drift versus implementation defect before editing either side.
 
-**Viết test file đầy đủ TRƯỚC khi implement bất kỳ production code nào.**
+### Step 3: Establish Red or Characterization Evidence
 
-- Tests sẽ FAIL — đây là hành vi đúng (TDD).
-- Mock tất cả dependencies (prisma, auth, external services).
-- Chạy test 1 lần để xác nhận tests compile và fail đúng chỗ (không fail vì syntax error).
+For `REQUIRED_RED` and `UPDATE_EXISTING`, write the complete test change before production
+code and run it once:
 
-### Bước 4: Implement production code
+- The test should fail because the approved behavior is missing or wrong.
+- The test must compile and reach the intended assertion.
+- Syntax, import, fixture, environment, or unrelated baseline failures are not valid red
+  evidence.
+- Mock external boundaries such as Prisma, auth, and external services, but do not mock the
+  behavior being proven.
 
-Implement code theo plan. Tests sẽ dần pass.
+For `CHARACTERIZATION_FIRST`, capture the current contract and run it once before structural
+changes. The meaningful evidence is a passing baseline; do not invert an assertion merely
+to manufacture red.
 
-### Bước 5: Chạy test, fix cho đến khi ALL PASS
+Targeted command:
 
 ```bash
-node node_modules/vitest/vitest.mjs run [test-file-path]
+rtk node node_modules/vitest/vitest.mjs run <test-file-path>
 ```
 
-Sau đó chạy full suite:
+### Step 4: Implement the Smallest Production Patch
+
+Implement only the approved behavior and allowed files. Preserve repository contracts and
+avoid unrelated refactors or test rewrites.
+
+### Step 5: Reach Green and Run the Final Gate
+
+- Re-run the targeted test after each coherent patch until it passes.
+- Do not repeatedly run the full suite during implementation.
+- At the final gate, run the repository-wide suite once together with the lint, type-check,
+  and resource checks required by `AGENTS.md`.
+- Separate pre-existing baseline failures from regressions introduced by the change.
+
 ```bash
-node node_modules/vitest/vitest.mjs run
+rtk node node_modules/vitest/vitest.mjs run <test-file-path>
+rtk node node_modules/vitest/vitest.mjs run
 ```
-
----
 
 ## Test File Organization
 
-### Quy tắc gộp/tách file
+### Merge or Split Rules
 
-- **Gộp vào file test hiện có** nếu cùng domain (ví dụ: thêm test cancel mới → gộp vào `order-cancel.test.ts`).
-- **Tạo file mới** CHỈ khi:
-  - Chưa có file test nào cho domain đó
-  - File hiện có đã quá 300 dòng VÀ feature mới đủ lớn (>10 test cases)
+- Merge new cases into an existing test file when they belong to the same domain. For
+  example, add cancellation cases to `order-cancel.test.ts`.
+- Create a new test file only when no suitable domain test exists, or the existing file is
+  already over 300 lines and the new feature is independently substantial with more than
+  10 test cases.
 
-### Cấu trúc thư mục (giữ nguyên hiện tại)
+Keep the existing directory structure:
 
-```
-lib/__tests__/                          ← Backend: route handlers, helpers, business logic
+```text
+lib/__tests__/                           Backend routes, helpers, and business logic
 src/__tests__/
-  ├── components/{domain}/              ← Frontend: logic-only tests (không render React)
-  ├── services/                         ← Frontend: service mock tests
-  ├── lib/                              ← Frontend: utility/helper logic
-  └── pricing/                          ← Integration tests (pricing pipeline)
+  components/{domain}/                  Frontend logic-only tests without React rendering
+  services/                             Frontend service mock tests
+  lib/                                  Frontend utilities and helpers
+  pricing/                              Pricing-pipeline integration tests
 ```
 
-### Naming convention
+Naming conventions:
 
-- Backend: `lib/__tests__/{domain-feature}.test.ts` (ví dụ: `order-cancel.test.ts`, `vouchers.test.ts`)
-- Frontend components: `src/__tests__/components/{domain}/{Feature}.logic.test.ts`
-- Frontend services: `src/__tests__/services/{domain}Service.test.ts`
+- Backend: `lib/__tests__/{domain-feature}.test.ts`, such as `order-cancel.test.ts` or
+  `vouchers.test.ts`.
+- Frontend components: `src/__tests__/components/{domain}/{Feature}.logic.test.ts`.
+- Frontend services: `src/__tests__/services/{domain}Service.test.ts`.
 
----
+## Required Test Conventions
 
-## Test Patterns — Conventions bắt buộc
+### Language
 
-### Ngôn ngữ
-
-- `describe()` / `it()` block descriptions: **Tiếng Việt**
-- Code, comments, variable names: **Tiếng Anh**
+- Write `describe()` and `it()` descriptions in Vietnamese.
+- Write code, comments, and variable names in English.
 
 ```typescript
 describe("PATCH /api/staff/orders/[id] — huỷ đơn", () => {
@@ -133,10 +172,11 @@ describe("PATCH /api/staff/orders/[id] — huỷ đơn", () => {
 });
 ```
 
-### Mocking pattern
+### Mocking Pattern
+
+Declare mocks before importing the subject:
 
 ```typescript
-// ── Khai báo mock trước import ──────────────────────────────────
 const mockGetSession = vi.fn();
 const mockOrderFindUnique = vi.fn();
 
@@ -151,113 +191,118 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-// ── Import SAU mock ──────────────────────────────────────────────
 import { PATCH } from "@/app/api/staff/orders/[id]/route";
 ```
 
-### Transaction mock pattern
+### Transaction Mock Pattern
 
 ```typescript
 mockTransaction.mockImplementation(
   async (fn: (tx: unknown) => Promise<unknown>) => {
     const tx = {
-      order:  { findUnique: mockFn, update: mockFn },
+      order: { findUnique: mockFn, update: mockFn },
       voucher: { findUnique: mockFn, update: mockFn },
-      // ... chỉ include tables mà code thực sự dùng
+      // Include only models used by the implementation.
     };
     return fn(tx);
   }
 );
 ```
 
-### Test structure
+### Test Structure
 
-Mỗi `describe` block nên follow pattern:
+Each `describe` block should organize only the applicable groups:
 
 ```typescript
-describe("Feature / Endpoint", () => {
+describe("Tính năng / Endpoint", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Setup common mocks
+    // Set up common mocks.
   });
 
   // Group 1: Happy paths
-  it("case thành công 1", async () => { ... });
-  it("case thành công 2", async () => { ... });
+  it("xử lý thành công trường hợp thứ nhất", async () => { ... });
+  it("xử lý thành công trường hợp thứ hai", async () => { ... });
 
-  // Group 2: Auth & Role errors
+  // Group 2: Authentication and role errors
   it("trả 401 khi chưa đăng nhập", async () => { ... });
   it("trả 403 khi role không đủ", async () => { ... });
 
   // Group 3: Validation errors
   it("trả 400 khi input không hợp lệ", async () => { ... });
 
-  // Group 4: Business rule errors
+  // Group 4: Business-rule errors
   it("trả 422 khi vi phạm business rule", async () => { ... });
 
   // Group 5: Edge cases
-  it("race condition: đã bị cancel bởi request khác → skip", async () => { ... });
+  it("bỏ qua khi request khác đã hủy đơn", async () => { ... });
 });
 ```
 
-### Race Condition & Limit Bypass (Security Tests)
+## Concurrency and Limit-Bypass Security Tests
 
-Khi implement logic liên quan đến giới hạn (limits), số dư (balances), hoặc trạng thái sử dụng (voucher status), BẮT BUỘC phải thêm các test cases phòng chống **Race Condition (TOCTOU)** và **Double-Spend**:
+Add the following cases when the implementation actually touches limits, balances, voucher
+status, or parent/sub-item mappings. Do not add generic concurrency tests to unrelated CRUD
+or UI work.
 
-1. **Voucher / Point Limit Race Conditions**:
-   - Limit checks (`count`, `balance`) phải nằm BÊN TRONG transaction và phải đi kèm cơ chế lock (ví dụ: `SELECT ... FOR UPDATE` khóa row cha) hoặc check lại condition khi update (`decrement`).
-   - Mẫu test: `it("ném lỗi hoặc rollback transaction khi xử lý concurrent request vượt quá limit/số dư")`
+1. **Voucher or point limit races**
+   - Place `count` and `balance` checks inside the transaction.
+   - Pair the check with an appropriate locking or atomic conditional-update strategy.
+   - Prove that concurrent requests exceeding the limit or balance fail or roll back.
 
-2. **Double-Spend Status Race Conditions**:
-   - Các logic chuyển trạng thái (ví dụ: voucher từ `ACTIVE` → `RESERVED`/`REDEEMED`) BẮT BUỘC phải dùng `updateMany` kết hợp expected state (VD: `where: { id, status: 'ACTIVE' }`), và phải rollback nếu `count === 0`. KHÔNG ĐƯỢC dùng `update` thông thường.
-   - Mẫu test: `it("chặn double-spend khi update trạng thái bằng cách check count của updateMany")`
+2. **Double-spend state races**
+   - For transitions such as `ACTIVE` to `RESERVED` or `REDEEMED`, use a conditional
+     expected-state update such as `updateMany`.
+   - Roll back or return the correct error when the updated row count is zero.
+   - Prove that two requests cannot consume the same voucher or state transition.
 
-3. **Input Validation Mismatch (Cross-array verification)**:
-   - Khi áp dụng các sub-item mapping (như ADDON voucher), BẮT BUỘC phải check ID của sub-item đó có thực sự tồn tại trong array payload của Parent (món nước) hay không.
-   - Mẫu test: `it("trả 400 khi voucher áp dụng cho addon ID không tồn tại trong danh sách addon của món")`
+3. **Cross-array input verification**
+   - When applying a sub-item mapping such as an ADDON voucher, verify that the referenced
+     sub-item ID exists in the parent item's submitted array.
+   - Prove that an absent add-on ID returns the correct validation error.
 
----
+## Completion Checklist
 
-## Checklist — Agent tự kiểm tra trước khi submit
+### Test Plan
 
-### Khi viết implementation plan:
-- [ ] Có section "Test Plan" liệt kê test cases
-- [ ] Test cases bao phủ: happy path, auth errors, validation errors, business rule errors, edge cases
+- [ ] The current task contains a Test Plan or a documented `NOT_NEEDED` decision.
+- [ ] Cases cover the applicable happy path, auth, validation, business, and edge behavior.
+- [ ] The chosen test file is the closest existing domain file when one exists.
 
-### Khi viết test skeleton:
-- [ ] Mock khai báo TRƯỚC `import`
-- [ ] `vi.clearAllMocks()` trong `beforeEach`
-- [ ] Không dùng `any` — type mocks correctly
-- [ ] Test descriptions bằng tiếng Việt
-- [ ] Gộp vào file test hiện có nếu cùng domain
+### Test Change
 
-### Khi implement xong:
-- [ ] Chạy test file riêng → ALL PASS
-- [ ] Chạy full suite → không regression
-- [ ] Cập nhật task.md ghi nhận test status
+- [ ] Mocks are declared before imports.
+- [ ] `vi.clearAllMocks()` runs in `beforeEach`.
+- [ ] No TypeScript `any` is used.
+- [ ] Test descriptions are in Vietnamese.
+- [ ] Red or characterization evidence is meaningful and recorded.
 
----
+### Implementation Completion
 
-## Ví dụ Test Plan trong Implementation Plan
+- [ ] The targeted test passes.
+- [ ] The final full suite has no new regression, or baseline failures are explicitly separated.
+- [ ] The completion report includes targeted/full test status and Resource Impact.
+
+## Example Test Plan
 
 ```markdown
 ## Test Plan
 
 ### Backend Tests
 
-#### `lib/__tests__/order-cancel.test.ts` — Thêm test cases cho admin cancel rules
-- `describe("PATCH /api/staff/orders/[id] — admin cancel")`
-  - `it("Staff cố hủy đơn → 400")` — chỉ ADMIN mới cancel được
-  - `it("Admin hủy COUNTER COMPLETED → reverse points")` — trừ lại order_complete
-  - `it("Points balance floor về 0")` — khách đã tiêu điểm, không cho âm
-  - `it("Admin hủy PICKUP COMPLETED → 400")` — block cancel online completed
-  - `it("Admin hủy PENDING → 200")` — cho phép cancel online chưa complete
-  - `it("Restore voucher RESERVED → ACTIVE")` — voucher phải về ACTIVE
+#### `lib/__tests__/order-cancel.test.ts` — Add admin cancellation-rule cases
+- `describe("PATCH /api/staff/orders/[id] — admin hủy đơn")`
+  - `it("Staff cố hủy đơn → 400")` — only ADMIN may cancel
+  - `it("Admin hủy COUNTER COMPLETED → hoàn điểm")` — reverse `order_complete`
+  - `it("Số dư điểm không thấp hơn 0")` — do not allow a negative customer balance
+  - `it("Admin hủy PICKUP COMPLETED → 400")` — block completed online cancellation
+  - `it("Admin hủy PENDING → 200")` — allow cancellation before completion
+  - `it("Khôi phục voucher RESERVED → ACTIVE")` — restore the voucher lifecycle
 
 ### Frontend Tests
 
-#### `src/__tests__/services/orderService.test.ts` — Thêm test cho adminCancelOrder
-- `describe("adminCancelOrder")`
-  - `it("gọi PATCH với status CANCELLED")` — đúng endpoint, đúng body
-  - `it("throw error khi API trả 400")` — handle lỗi
+#### `src/__tests__/services/orderService.test.ts` — Add `adminCancelOrder` coverage
+- `describe("adminCancelOrder — hủy đơn bởi admin")`
+  - `it("gọi PATCH với status CANCELLED")` — verify endpoint and payload
+  - `it("ném lỗi khi API trả 400")` — verify error handling
 ```

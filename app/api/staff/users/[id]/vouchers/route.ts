@@ -7,9 +7,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
 import { resolveCustomerIdentifier } from "@/lib/publicIdentifiers";
 import { toPublicVoucherDto } from "@/lib/voucherPublicDto";
+import { attachBundleRewardBaselines } from "@/lib/voucherBundleDto";
+import {
+  attachOwnedVoucherAvailability,
+  loadVoucherAvailabilityCatalog,
+  type VoucherAvailabilityDatabase,
+} from "@/lib/voucherAvailability";
 
 export const dynamic = "force-dynamic";
 
@@ -34,22 +39,62 @@ export async function GET(
     if (!user) return NextResponse.json({ data: [] });
 
     const userId = user.id;
-    await lazyExpireVouchers(userId);
     const vouchers = await prisma.voucher.findMany({
       where: {
         user_id: userId,
         status: "ACTIVE",
+        OR: [{ expires_at: null }, { expires_at: { gt: new Date() } }],
       },
       orderBy: { created_at: "desc" },
+      take: 50,
       include: {
-        package: { select: { name: true, description: true, points_cost: true } },
+        package: {
+          select: {
+            name: true,
+            description: true,
+            points_cost: true,
+            acquisition_mode: true,
+            ends_at: true,
+            bundleRule: {
+              select: {
+                buy_quantity: true,
+                reward_quantity: true,
+                reward_kind: true,
+                reward_mode: true,
+                benefit_scaling: true,
+                max_applications_order: true,
+                max_reward_units_order: true,
+                productScopes: {
+                  select: {
+                    role: true,
+                    menu_item_id: true,
+                    default_powder_id: true,
+                    default_base_liquid_id: true,
+                    sizes: { select: { size: true } },
+                    menuItem: { select: { name: true, category: true, is_available: true } },
+                  },
+                },
+                addonRewards: { select: { addon_option_id: true } },
+              },
+            },
+          },
+        },
         menuItem: { select: { name: true, is_available: true } },
+        menuItemScopes: { include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } } },
         addonOption: { select: { label: true } },
         staff: { select: { name: true, role: true } },
+        pointsLogs: {
+          where: { reason: "voucher_purchase" },
+          select: { delta: true, reason: true },
+          take: 1,
+        },
       },
     });
 
-    return NextResponse.json({ data: vouchers.map(toPublicVoucherDto) });
+    const catalog = await loadVoucherAvailabilityCatalog(prisma as unknown as VoucherAvailabilityDatabase);
+    const withAvailability = attachOwnedVoucherAvailability(vouchers, catalog);
+    const withBaselines = await attachBundleRewardBaselines(prisma, withAvailability);
+    return NextResponse.json({ data: withBaselines.map(toPublicVoucherDto) });
   } catch (err) {
     console.error("[GET /api/staff/users/[id]/vouchers]", {
       name: err instanceof Error ? err.name : typeof err,

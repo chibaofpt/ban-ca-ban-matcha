@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { updateMenuSchema } from "@/lib/validations/menu";
 import {
+  MENU_IMAGE_OUTPUT_CONTENT_TYPE,
   buildMenuImagePath,
   contentTypeForMenuImagePath,
   copyMenuImage,
@@ -14,7 +15,13 @@ import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
 import { captureServerException } from "@/lib/observability";
 import { ADMIN_MENU_INCLUDE, formatAdminMenuItem } from "@/lib/adminMenuDto";
 import { parseAdminMenuUpdate } from "@/lib/adminMenuRequest";
-import { asMenuStorageCategory, validateMenuImageFile, validateUniqueLattePowder } from "@/lib/adminMenuUpdate";
+import {
+  asMenuStorageCategory,
+  buildMenuItemSizeUpdate,
+  isAvailabilityOnlyMenuUpdate,
+  validateMenuImageFile,
+  validateUniqueLattePowder,
+} from "@/lib/adminMenuUpdate";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +67,78 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       );
     }
     const validData = validation.data;
+    const availabilityOnlyUpdate = isAvailabilityOnlyMenuUpdate(raw);
+
+    if (existing.category !== "extras" && validData.unit_price_vnd != null) {
+      return NextResponse.json(
+        { error: "Đồ uống không sử dụng giá cố định", code: "VALIDATION_ERROR" },
+        { status: 422 },
+      );
+    }
+    if (existing.category === "extras" && validData.unit_price_vnd === null) {
+      return NextResponse.json(
+        { error: "Add-on phải có đơn giá", code: "VALIDATION_ERROR" },
+        { status: 422 },
+      );
+    }
+    if (
+      existing.category === "extras" &&
+      validData.unit_price_vnd !== undefined &&
+      validData.unit_price_vnd !== existing.unit_price_vnd
+    ) {
+      const now = new Date();
+      const activeItemVoucherCount = await prisma.voucher.count({
+        where: {
+          menu_item_id: id,
+          voucher_type: "ITEM",
+          status: { in: ["ACTIVE", "RESERVED"] },
+          OR: [{ expires_at: null }, { expires_at: { gt: now } }],
+        },
+      });
+      if (activeItemVoucherCount > 0 && validData.confirm_price_change !== true) {
+        return NextResponse.json(
+          {
+            error: "Add-on đang có voucher ITEM còn hiệu lực",
+            code: "CONFLICT",
+            details: {
+              reason: "ACTIVE_ITEM_VOUCHERS",
+              count: activeItemVoucherCount,
+              old_unit_price_vnd: existing.unit_price_vnd,
+              new_unit_price_vnd: validData.unit_price_vnd,
+            },
+          },
+          { status: 409 },
+        );
+      }
+    }
+    let resolvedDefaultBaseLiquidId = existing.default_base_liquid_id;
+    let allowedBaseLiquidIdsToSave: string[] | undefined;
+    if (!availabilityOnlyUpdate && existing.category !== "extras") {
+      const activeBaseLiquids = await prisma.milkType.findMany({
+        where: { is_active: true },
+        select: { id: true, is_default: true },
+      });
+      const activeBaseLiquidIds = new Set(activeBaseLiquids.map((liquid) => liquid.id));
+      resolvedDefaultBaseLiquidId = existing.category === "latte"
+        ? activeBaseLiquids.find((liquid) => liquid.is_default)?.id ?? null
+        : validData.default_base_liquid_id ?? existing.default_base_liquid_id;
+      if (!resolvedDefaultBaseLiquidId || !activeBaseLiquidIds.has(resolvedDefaultBaseLiquidId)) {
+        return NextResponse.json(
+          { error: "Base Liquid mặc định không khả dụng", code: "BUSINESS_RULE_VIOLATION" },
+          { status: 422 },
+        );
+      }
+      allowedBaseLiquidIdsToSave = validData.allowed_base_liquid_ids === undefined
+        ? undefined
+        : [...new Set(validData.allowed_base_liquid_ids)]
+          .filter((baseLiquidId) => baseLiquidId !== resolvedDefaultBaseLiquidId);
+      if (allowedBaseLiquidIdsToSave?.some((baseLiquidId) => !activeBaseLiquidIds.has(baseLiquidId))) {
+        return NextResponse.json(
+          { error: "Danh sách Base Liquid có lựa chọn không khả dụng", code: "BUSINESS_RULE_VIOLATION" },
+          { status: 422 },
+        );
+      }
+    }
 
     // ── Check uniqueness of powder ──────────────────────────────────────────
     const powderConflict = await validateUniqueLattePowder({
@@ -81,7 +160,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           category: asMenuStorageCategory(existing.category),
           productName: validData.name ?? existing.name,
           requestedName: validData.image_filename,
-          contentType: imageFile.type,
+          contentType: MENU_IMAGE_OUTPUT_CONTENT_TYPE,
         });
         image_url = await uploadMenuImage(imagePath, buffer, imageFile.type);
         newImagePath = imagePath;
@@ -130,6 +209,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
             ...(validData.is_seasonal !== undefined && { is_seasonal: validData.is_seasonal }),
             ...(validData.is_available !== undefined && { is_available: validData.is_available }),
             ...(validData.sort_order !== undefined && { sort_order: validData.sort_order }),
+            ...(existing.category === "extras" && validData.unit_price_vnd !== undefined && {
+              unit_price_vnd: validData.unit_price_vnd,
+            }),
             ...(validData.base_liquid_note !== undefined && {
               base_liquid_note: validData.base_liquid_note,
             }),
@@ -145,22 +227,42 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
               validData.default_powder_id !== undefined && {
                 default_powder_id: validData.default_powder_id,
               }),
+            ...(existing.category === "fusion" && !availabilityOnlyUpdate && {
+              default_base_liquid_id: resolvedDefaultBaseLiquidId,
+            }),
             ...(image_url !== undefined && { image_url }),
             updated_at: new Date(),
           },
         });
 
         // Upsert sizes if provided
-        if (validData.sizes && validData.sizes.length > 0) {
+        if (existing.category !== "extras" && validData.sizes && validData.sizes.length > 0) {
           await Promise.all(
             validData.sizes.map((s) =>
               tx.menuItemSize.upsert({
                 where: { menu_item_id_size: { menu_item_id: id, size: s.size } },
-                create: { menu_item_id: id, size: s.size, base_price_vnd: s.base_price_vnd },
-                update: { base_price_vnd: s.base_price_vnd },
+                create: {
+                  menu_item_id: id,
+                  size: s.size,
+                  base_price_vnd: s.base_price_vnd,
+                  base_liquid_ml: s.base_liquid_ml ?? null,
+                },
+                update: buildMenuItemSizeUpdate(s),
               })
             )
           );
+        }
+
+        if (allowedBaseLiquidIdsToSave !== undefined) {
+          await tx.menuItemAllowedBaseLiquid.deleteMany({ where: { menu_item_id: id } });
+          if (allowedBaseLiquidIdsToSave.length > 0) {
+            await tx.menuItemAllowedBaseLiquid.createMany({
+              data: allowedBaseLiquidIdsToSave.map((baseLiquidId) => ({
+                menu_item_id: id,
+                base_liquid_id: baseLiquidId,
+              })),
+            });
+          }
         }
 
         // Sync fusionAllowedPowders if provided (Fusion items only)

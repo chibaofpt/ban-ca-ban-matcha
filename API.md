@@ -1,6 +1,9 @@
-# Bạn Cá Bán Matcha — API Routes
+# Bạn Cá Bán Matcha — API Contracts
 
-> Read this file when implementing or modifying any API route.
+> **Authority:** public API paths, HTTP methods, request/response contracts and compatibility.
+> **Read when:** creating or changing a route, service, DTO or API consumer.
+> **Update when:** a supported path/method/field/response behavior changes.
+> **Does not own:** domain formulas, physical database fields or frontend architecture.
 
 ---
 
@@ -104,76 +107,97 @@ Both set as `httpOnly`, `secure`, `sameSite=strict`.
 }
 ```
 
-Applied to: `GET /api/orders`, `GET /api/admin/points-log`
+Applied where the endpoint contract below explicitly exposes `limit` and `offset`; `GET /api/orders`
+is the canonical current example.
 
 ---
 
 ## Image Upload Flow
 
-- Client calls `POST /api/admin/menu` or `PUT /api/admin/menu/[id]` with `multipart/form-data`
+- Client calls the menu, addon-group, powder, or **milk-type** admin create/update route with `multipart/form-data`
 - Route handler uploads to Supabase Storage via `lib/storage.ts`
 - Bucket: `menu-images` (public bucket)
 - Size limit: 5MB
 - Allowed types: `image/jpeg`, `image/png`, `image/webp`
+- Ảnh upload mới được server xoay theo EXIF, resize không upscale và loại metadata: menu/powder lưu WebP tối đa 800×800 quality 75; milk type/add-on lưu WebP tối đa 320×320 quality 70
+- Storage object mới dùng `Content-Type: image/webp`, cache một năm và `upsert: false`; `image_url` vẫn là URL string như trước
 - Optional `image_filename` controls the SEO-friendly Storage object name; it is not stored in a database column
+- Addon/powder/milk-type multipart requests keep their existing JSON contract inside the `payload` field and remain backward-compatible with direct JSON requests
+- Milk-type PUT also accepts `remove_image: true` in the JSON payload to explicitly nullify `image_url` and delete the Storage object
 - Replacing or renaming an image deletes the previous object only after the database update succeeds
-- Soft-deleted menu items retain their image references and are protected from cleanup
-- Daily cleanup deletes only unreferenced objects older than 48 hours; start with `IMAGE_CLEANUP_DRY_RUN=true`
+- Soft-deleted menu items, addon groups, and powders retain their image references and are protected from cleanup
+- Cleanup chỉ xét object không còn được menu item, addon group, powder hoặc milk type tham chiếu và đã cũ hơn 48 giờ; luôn bắt đầu với `IMAGE_CLEANUP_DRY_RUN=true`
 
 ---
 
-## Routes
+## Route inventory
 
-### Public
+This table is exhaustive and machine-checked by `npm run resources:check`. Detailed contracts remain below.
 
-| Route | Method | Purpose |
-|---|---|---|
-| `/api/auth/register` | POST | Create account |
-| `/api/auth/check-phone` | POST | Check registration/login routing for a normalized phone |
-| `/api/auth/login` | POST | Login, issue tokens |
-| `/api/auth/logout` | POST | Delete session, clear cookies |
-| `/api/auth/refresh` | POST | Swap refresh token → new access token |
-| `/api/auth/me` | GET | Return the current authenticated session profile |
-| `/api/menu` | GET | All available items with computed prices |
-| `/api/powders` | GET | Full powder catalogue with pricing and size config |
-| `/api/store-status` | GET | Current store open/closed status, today + weekly schedule |
-| `/api/voucher-packages` | GET | Active voucher packages available for redemption |
+| Route | Method |
+|---|---|
+| `/api/admin/addon-groups` | GET, POST |
+| `/api/admin/addon-groups/[id]` | PUT, DELETE |
+| `/api/admin/base-liquids` | GET, POST |
+| `/api/admin/base-liquids/[id]` | PUT, DELETE |
+| `/api/admin/logs` | GET |
+| `/api/admin/menu` | GET, POST |
+| `/api/admin/menu/[id]` | PUT, DELETE |
+| `/api/admin/menu/create-latte-with-powder` | POST |
+| `/api/admin/milk-types` | GET, POST |
+| `/api/admin/milk-types/[id]` | PUT, DELETE |
+| `/api/admin/orders` | GET |
+| `/api/admin/orders/[id]/confirm-payment` | PATCH |
+| `/api/admin/powders` | GET, POST |
+| `/api/admin/powders/[id]` | PUT, DELETE |
+| `/api/admin/report` | GET |
+| `/api/admin/staff` | GET |
+| `/api/admin/store-closure` | POST |
+| `/api/admin/store-schedule` | GET, PUT |
+| `/api/admin/voucher-packages` | GET, POST |
+| `/api/admin/voucher-packages/[id]` | PUT, DELETE |
+| `/api/admin/voucher-packages/[id]/owners` | GET |
+| `/api/auth/check-phone` | POST |
+| `/api/auth/login` | POST |
+| `/api/auth/logout` | POST |
+| `/api/auth/me` | GET |
+| `/api/auth/refresh` | POST |
+| `/api/auth/register` | POST |
+| `/api/cron/cancel-expired-orders` | GET |
+| `/api/cron/clean-sessions` | GET |
+| `/api/cron/cleanup-menu-images` | GET |
+| `/api/delivery/autocomplete` | GET |
+| `/api/delivery/estimate` | GET |
+| `/api/delivery/geocode` | GET |
+| `/api/delivery/reverse-geocode` | GET |
+| `/api/menu` | GET |
+| `/api/orders` | GET, POST |
+| `/api/orders/[id]` | GET, PATCH |
+| `/api/powders` | GET |
+| `/api/profile` | GET, PATCH |
+| `/api/profile/addresses` | GET, POST |
+| `/api/profile/addresses/[id]` | PUT, DELETE |
+| `/api/profile/points` | GET |
+| `/api/profile/vouchers` | GET |
+| `/api/profile/vouchers/sync` | POST |
+| `/api/profile/vouchers/claim` | POST |
+| `/api/profile/vouchers/exchange` | POST |
+| `/api/profile/vouchers/refund` | POST |
+| `/api/push/subscribe` | POST |
+| `/api/push/unsubscribe` | POST |
+| `/api/report` | GET |
+| `/api/staff/orders` | GET, POST |
+| `/api/staff/orders/[id]` | GET, PATCH |
+| `/api/staff/scan` | GET |
+| `/api/staff/scan-fallback` | POST |
+| `/api/staff/users` | GET |
+| `/api/staff/users/[id]/vouchers` | GET |
+| `/api/staff/users/[id]/vouchers/exchange` | POST |
+| `/api/staff/vouchers/[id]/redeem` | PATCH |
+| `/api/store-status` | GET |
+| `/api/voucher-packages` | GET |
 
-Auth mutation routes are rate-limited by hashed IP. Read-only `/api/auth/me` and logout are excluded.
-
-### Customer — CUSTOMER role
-
-| Route | Method | Purpose |
-|---|---|---|
-| `/api/orders` | POST | Create order from cart |
-| `/api/orders` | GET | List own orders (newest first, limit 20) |
-| `/api/orders/[id]` | GET | Own order detail |
-| `/api/profile` | GET/PATCH | Read or update own profile info |
-| `/api/profile/points` | GET | Balance + grouped point events (10 events/page) |
-| `/api/profile/vouchers` | GET | Own vouchers in all lifecycle statuses |
-| `/api/profile/vouchers/exchange` | POST | Spend points on a voucher package to receive a Voucher |
-| `/api/profile/vouchers/refund` | POST | Auto-refund points if the voucher's target item is no longer available |
-| `/api/push/subscribe` | POST | Upsert the current account's browser push subscription |
-| `/api/push/unsubscribe` | POST | Remove the current account's browser push subscription |
-| `/api/delivery/autocomplete` | GET | Authenticated Goong address suggestions (`q=2..200` chars) |
-| `/api/delivery/geocode` | GET | Authenticated forward geocode (`address=5..500` chars) |
-| `/api/delivery/reverse-geocode` | GET | Authenticated reverse geocode (finite bounded `lat`/`lng`) |
-| `/api/delivery/estimate` | GET | Authenticated road distance, duration, and authoritative fee estimate |
-
-### Staff — STAFF or ADMIN
-
-| Route | Method | Purpose |
-|---|---|---|
-| `/api/staff/orders` | POST | Create counter order: CASH completes immediately; BANK_TRANSFER waits for payment |
-| `/api/staff/orders` | GET | List orders for current staff member |
-| `/api/staff/orders/[id]` | GET | Recover an authorized counter transfer and its pending VietQR |
-| `/api/staff/orders/[id]` | PATCH | Update order status (auto-award points on COMPLETED) |
-| `/api/staff/scan` | GET | Resolve QR token → user or voucher |
-| `/api/staff/scan-fallback` | POST | Privacy-safe manual QR short-code recovery |
-| `/api/staff/vouchers/[id]/redeem` | PATCH | Mark voucher REDEEMED offline; `[id]` carries voucher `qr_token` |
-| `/api/staff/users` | GET | Search customers by name or last digits of phone |
-| `/api/staff/users/[id]/vouchers` | GET | List ACTIVE vouchers; `[id]` carries customer `qr_token` |
-| `/api/staff/users/[id]/vouchers/exchange` | POST | Staff-assisted exchange; `[id]` carries customer `qr_token` |
+Auth mutations are rate-limited by hashed IP. Authorization details are defined by each contract and middleware.
 
 ### Payload and value ceilings
 
@@ -216,57 +240,71 @@ promotion, or messaging feature.
 
 | Route | Schedule | Purpose |
 |---|---|---|
-| `/api/cron/cancel-expired-orders` | Supabase `*/5 * * * *` UTC; Vercel `0 0 * * *` UTC backup | Cancel expired PENDING orders in bounded batches and release reservations |
-| `/api/cron/clean-sessions` | Supabase `15 20 * * *` UTC | Delete expired sessions in at most 5 batches of 500 |
-| `/api/cron/cleanup-menu-images` | Supabase `0 17 * * *` UTC | Dry-run/delete orphaned menu images older than 48 hours |
+| `/api/cron/cancel-expired-orders` | Required Supabase `*/5 * * * *` UTC; Vercel `0 0 * * *` UTC backup | Cancel expired PENDING orders in bounded batches and release reservations |
+| `/api/cron/clean-sessions` | Required Supabase `15 20 * * *` UTC | Delete expired sessions in at most 5 batches of 500 |
+| `/api/cron/cleanup-menu-images` | Chưa cấu hình lịch ở staging/production | Dry-run/delete orphaned menu images older than 48 hours |
 
 Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-side
 `CRON_SECRET` fails closed with `500 INTERNAL_ERROR`; a missing or incorrect bearer token returns
 `401 UNAUTHORIZED`. No worker starts unless this check succeeds.
 
+Supabase Cron must use a Vault-backed deployment URL and `CRON_SECRET`. Staging may omit these
+jobs when the release owner explicitly accepts that expired-order and session cleanup behavior cannot
+be exercised there. Production release remains blocked until both required jobs are installed and
+smoke-tested against the production deployment.
+
 `/api/push/test` has been deleted and is not a supported development or production contract.
-
-### Admin — ADMIN only
-
-| Route | Method | Purpose |
-|---|---|---|
-| `/api/admin/points/add` | POST | Manually add points (max 100) |
-| `/api/admin/orders/[id]/status` | PATCH | Update order status |
-| `/api/admin/orders/[id]/confirm-payment` | PATCH | Confirm VietQR payment for PENDING order |
-| `/api/admin/menu` | GET | All items including unavailable |
-| `/api/admin/menu` | POST | Create menu item |
-| `/api/admin/menu/[id]` | PUT | Update menu item |
-| `/api/admin/menu/[id]` | DELETE | Soft delete (`is_available = false`) |
-| `/api/admin/addon-groups` | GET | List all addon groups |
-| `/api/admin/addon-groups` | POST | Create addon group |
-| `/api/admin/addon-groups/[id]` | PUT | Update addon group |
-| `/api/admin/addon-groups/[id]` | DELETE | Soft delete (`is_active = false`) |
-| `/api/admin/voucher-packages` | GET | List all voucher packages |
-| `/api/admin/voucher-packages` | POST | Create voucher package |
-| `/api/admin/voucher-packages/[id]` | PUT | Update voucher package |
-| `/api/admin/voucher-packages/[id]` | DELETE | Deactivate (`is_active = false`) |
-| `/api/admin/points-log` | GET | All manual adjustment logs |
-| `/api/admin/points-log/[id]/reverse` | POST | Reverse a manual points entry |
-| `/api/admin/matcha-powders` | GET | List all powders |
-| `/api/admin/matcha-powders` | POST | Create powder |
-| `/api/admin/matcha-powders/[id]` | PUT | Update powder |
-| `/api/admin/matcha-powders/[id]` | DELETE | Soft delete (`is_available = false`) |
-| `/api/admin/milk-types` | GET | List all milk types |
-| `/api/admin/milk-types` | POST | Create milk type |
-| `/api/admin/milk-types/[id]` | PUT | Update milk type |
-| `/api/admin/milk-types/[id]` | DELETE | Deactivate (`is_active = false`) |
-| `/api/admin/default-size-config` | GET | Get SMALL/MEDIUM/LARGE system config |
-| `/api/admin/default-size-config` | PUT | Update SMALL/MEDIUM/LARGE config (affects all prices immediately) |
-| `/api/admin/fusion-powders` | POST | Attach powder to Fusion item's allowed list |
-| `/api/admin/fusion-powders` | DELETE | Detach powder from Fusion item's allowed list |
-| `/api/admin/store-schedule` | GET | Get weekly opening hours (0–14 rows grouped by day) |
-| `/api/admin/store-schedule` | PUT | Replace entire schedule (deleteMany + createMany in transaction) |
-| `/api/admin/store-closure` | POST | Temporarily close (`action=close`) or reopen (`action=open`) the store |
-| `/api/admin/promotions` | POST/PUT/DELETE | Phase 5 only |
 
 ---
 
 ## Request / Response Specs
+
+### `GET /api/admin/report?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&staffId?=qr_token`
+
+ADMIN-only. `startDate` and `endDate` are required; `staffId` optionally limits completed orders
+to the selected staff member. Public `qr_token` is canonical; a legacy UUID is accepted for one
+release through the server resolver and recorded as compatibility telemetry. Dates are evaluated
+in `Asia/Ho_Chi_Minh`.
+
+```ts
+{
+  data: {
+    summary: {
+      total_orders: number
+      total_cups: number
+      total_extras_units: number
+      total_revenue_vnd: number
+    }
+    powder_usage: { powder_name: string, total_grams: number }[]
+    milk_usage: { milk_name: string, total_ml: number }[]
+    latte_sales: ItemSales[]
+    fusion_sales: ItemSales[]
+    extras_sales: ItemSales[]
+    addon_usage: {
+      addon_option_id: string
+      addon_label: string
+      group_name: string
+      total_count: number
+      powder_breakdown: {
+        powder_name: string
+        total_grams: number
+      }[]
+    }[]
+    revenue_by_type: {
+      order_type: "COUNTER" | "PICKUP" | "DELIVERY"
+      total_revenue_vnd: number
+      order_count: number
+    }[]
+    top_products: { name: string, category: string, total_cups: number }[]
+  }
+}
+```
+
+- `addon_usage` is grouped by stable `addon_option_id`, never label text. Existing display fields
+  remain for backward compatibility.
+- `total_count` and every `powder_breakdown.total_grams` include both the addon quantity and the
+  corresponding order-item quantity.
+- `powder_breakdown` is always an array; it is empty for an addon that does not consume matcha.
 
 ### `POST /api/auth/register`
 ```ts
@@ -300,7 +338,7 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
 }
 ```
 
-### `GET /api/profile/points?page=1&limit=10`
+### `GET /api/profile/points?page=1&limit=10&cursor?=opaque`
 ```ts
 {
   data: {
@@ -324,19 +362,42 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
       } | null
     }[]
     meta: {
-      total: number                    // grouped events, not raw log rows
+      total: number                    // raw immutable rows during the page compatibility bridge
       page: number
       limit: number
       totalPages: number
+      has_more: boolean
+      next_cursor: string | null
     }
   }
 }
 ```
 
-- Default `page=1`, `limit=10`; maximum `limit=50`. Invalid values return `400 VALIDATION_ERROR`.
+- Default `page=1`, `limit=10`; maximum `limit=50`, maximum compatibility page `100`. New clients
+  follow the opaque `next_cursor`; `page` remains a one-release bounded compatibility bridge.
+  Invalid values return `400 VALIDATION_ERROR`.
 - `order_complete` + `voucher_surplus` group by order; reversal reasons form a separate event.
-- Pagination happens after grouping, so one order event is never split across pages.
+- The database query is bounded and ordered by `(created_at DESC, id DESC)`; the endpoint never
+  loads a customer's complete `points_log` history into application memory.
+- Grouping is applied within the bounded page. New cursor consumers must treat `next_cursor` as
+  authoritative; the legacy `total`/`totalPages` fields count immutable rows until that bridge is removed.
 - The response never exposes `order_id`, `voucher_id`, or `performed_by`.
+
+### `GET /api/admin/staff`
+
+Returns `{ qr_token, id, name, role }[]`. `qr_token` is canonical. During the one-release bridge,
+`id` contains the same public `qr_token`; raw `users.id` is never returned.
+
+### `GET /api/profile/vouchers?status?=&limit=50&cursor?=opaque`
+
+Read-only, maximum 50 rows, ordered by `(created_at DESC, id DESC)`. Returns
+`meta: { limit, has_more, next_cursor }`. Effective expiry is projected without writing data.
+
+### `POST /api/profile/vouchers/sync`
+
+CUSTOMER-only explicit reconciliation for automatic grants and expired ACTIVE vouchers. Returns
+`{ data: { granted_count, expired_count } }`. Customer clients call this mutation before reading
+the wallet; GET routes never grant, expire, or cancel records.
 
 ### `PATCH /api/profile`
 ```ts
@@ -356,6 +417,7 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
     name: string
     manufacturer: string | null
     description: string | null
+    image_url: string | null
     price_per_gram: number
     type: "RECOMMEND" | "NEW" | "SEASONAL" | "NONE"
     fragrance: number | null
@@ -384,7 +446,9 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
     updated_at: string              // MAX(menu_items.updated_at) — ISO timestamp for cache invalidation
     latte: MenuItem[]
     fusion: MenuItem[]
-    milk_types: MilkType[]           // active global list; Latte only at display time
+    extras: MenuItem[]              // fixed-price merchandise; rendered below Fusion
+    milk_types: BaseLiquid[]         // legacy response field; active global Base Liquid catalog
+    base_liquids: BaseLiquid[]       // preferred alias, same rows as milk_types
     addon_groups: AddonGroup[]       // active global list; applies to every item
   }
 }
@@ -394,11 +458,15 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
   id: string
   name: string
   description: string | null
-  category: "latte" | "fusion"
+  category: "latte" | "fusion" | "extras"
+  unit_price_vnd: number | null     // required for extras; null for drinks
   is_seasonal: boolean
   image_url: string | null
   sort_order: number
   base_liquid_note: string | null   // Fusion only
+  default_base_liquid_id: string | null
+  resolved_default_base_liquid_id: string | null
+  allowed_base_liquid_ids: string[] // active, excludes implicit default
 
   // Latte only
   powder: {
@@ -414,40 +482,93 @@ Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-sid
   sizes: {
     size: "SMALL" | "MEDIUM" | "LARGE"
     base_price_vnd: number            // null sizes excluded entirely
-    milk_ml: number                   // from default_size_config — frontend uses for milk swap recalculation
+    base_liquid_ml: number            // resolved override or default_size_config fallback
+    base_liquid_ml_override: number | null
+    milk_ml: number                    // legacy alias of base_liquid_ml
   }[]
 }
 
-// MilkType — MenuData.milk_types is global, Latte only at display time
-type MilkType = {
+// BaseLiquid — physical storage remains milk_type
+type BaseLiquid = {
   id: string
   name: string
   price_per_ml: number
   is_default: boolean
   display_order: number
+  image_url: string | null   // Supabase Storage public URL; null when no image uploaded
 }
 
 // AddonGroup — MenuData.addon_groups is global, applies to every item
 type AddonGroup = {
   id: string
   name: string
+  image_url: string | null
   type: "SELECTOR" | "TOGGLE" | "QUANTITY"
-  is_required: boolean
-  min_quantity: number | null
   max_quantity: number | null
   options: {
     id: string
     label: string
+    image_url: string | null         // own option image; UI falls back to AddonGroup.image_url
     price_vnd: number               // extra matcha: 0 — actual price = gram_value × powder.price_per_gram
-    gram_value: number | null       // extra matcha only: gram amount (0, 1, 2, 3, 4). null for others.
-    is_default: boolean
+    gram_value: number | null       // extra matcha only: positive gram amount. null for fixed-price addons.
     sort_order: number
   }[]
 }
 ```
 
+All addon groups are optional. The client sends no row for an unselected group. Public menu data
+contains only active groups with at least one active option and only active options. The public
+contract intentionally omits rollout-only DB fields `is_required`, `min_quantity`, `is_default`,
+and option `is_active`.
+
+### Admin addon group mutation
+```ts
+// POST/PUT /api/admin/addon-groups[/id]
+{
+  name: string
+  description?: string | null
+  type: "SELECTOR" | "TOGGLE" | "QUANTITY"
+  max_quantity?: number | null      // required positive only for QUANTITY
+  is_active: boolean
+  options: {
+    id?: string
+    image_key?: string              // multipart correlation key; 1-64 letters, digits, _ or -
+    label: string
+    price_vnd: number
+    gram_value?: number | null
+    is_active: boolean              // soft-delete lifecycle
+    sort_order: number
+  }[]
+}
+```
+
+`SELECTOR` accepts at most one selected option per order line. `TOGGLE` and `QUANTITY` must each
+have exactly one active option. Dynamic-gram options are valid only in `SELECTOR`, must all have a
+positive `gram_value` and `price_vnd = 0`, and cannot be mixed with fixed-price active options.
+Omitting an existing option from an update does not delete it; retire it with `is_active = false`.
+
+### Admin addon/powder image mutations
+```ts
+// POST/PUT /api/admin/addon-groups[/id]
+// POST/PUT /api/admin/powders[/id]
+// multipart/form-data; direct application/json remains supported when no image is uploaded
+{
+  payload: string        // JSON.stringify(existing request payload)
+  image?: File          // JPEG, PNG, or WebP; max 5MB
+  image_filename?: string // optional SEO object name; may rename an existing image
+  option_image_<image_key>?: File
+  option_image_filename_<image_key>?: string
+}
+```
+
+Option images reuse the `menu-images` bucket and compact pipeline: square WebP, maximum 320px,
+quality 70, one-year cache. The server correlates every option file with a unique `image_key`,
+rejects unmatched keys, rolls back newly uploaded objects when the database transaction fails,
+and removes replaced objects only after commit. JSON requests and group-level images remain
+backward compatible.
+
 ### `GET /api/admin/menu`
-Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, but does not return the public global `milk_types` or `addon_groups` collections. It also:
+Uses the same `updated_at`, `latte`, `fusion`, and `extras` grouping as `GET /api/menu`, but does not return the public global `milk_types` or `addon_groups` collections. It also:
 - Includes items with `is_available = false`
 - Includes `default_powder_id` (raw, may be null) alongside `resolved_default_powder_id`
 - Includes all 3 size rows including those with `base_price_vnd = null`
@@ -459,21 +580,133 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
 {
   name: string
   description?: string
-  category: "latte" | "fusion"
+  category: "latte" | "fusion" | "extras"
+  unit_price_vnd?: number             // extras only; integer >= 1,000 and divisible by 1,000
   is_seasonal?: boolean
   image?: File
   sort_order?: number
   matcha_powder_id?: string           // Latte only
   default_powder_id?: string          // Fusion only
   base_liquid_note?: string           // Fusion only
+  default_base_liquid_id?: string     // required for new/edited Fusion
+  allowed_base_liquid_ids?: string[]  // default is implicit; do not include it
   custom_powder_grams?: { SMALL?: number, MEDIUM?: number, LARGE?: number }
-  sizes: {
+  sizes: {                            // drink categories only; extras sends []
     size: "SMALL" | "MEDIUM" | "LARGE"
     base_price_vnd: number | null
+    base_liquid_ml?: number | null    // null/omitted = system fallback
   }[]
 }
-// Server: INSERT menu_items + 3 menu_item_sizes in prisma.$transaction()
+// Server: INSERT menu_items + 3 menu_item_sizes + allowed Base Liquids in prisma.$transaction()
 // Addons apply globally — no junction rows needed
+```
+
+### `POST /api/admin/voucher-packages` for BUNDLE
+
+```ts
+{
+  voucher_type: "BUNDLE"
+  name: string
+  description?: string
+  acquisition_mode: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT"
+  points_cost: number              // positive only for POINTS_EXCHANGE
+  ends_at?: string | null          // exclusive UTC instant; no starts_at, active immediately
+  min_order_vnd?: number | null
+  expires_after_days?: number | null
+  quantity?: number | null
+  max_per_user: number
+  bundle_rule: {
+    buy_quantity: number
+    reward_quantity: number
+    reward_kind: "PRODUCT" | "ADDON"
+    reward_mode: "SAME_CONFIG" | "FIXED_CONFIG" | "ALLOWED_SCOPE"
+    benefit_scaling: "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM"
+    max_applications_per_order: number
+    max_reward_units_per_order?: number | null
+    qualifier_products: ProductScope[]
+    reward_products: ProductScope[]
+    reward_addon_option_ids: string[]
+  }
+}
+
+type ProductScope = {
+  menu_item_id: string
+  default_powder_id?: string | null
+  default_base_liquid_id?: string | null
+  allowed_sizes: ("SMALL" | "MEDIUM" | "LARGE")[]
+}
+```
+
+Rules are immutable after creation; `PUT /api/admin/voucher-packages/[id]` only accepts name,
+description, and `is_active`. Qualifier/reward arrays support multiple products, including seasonal
+items. Each BUNDLE has one reward kind. Package `min_order_vnd` excludes product-vouchered drink
+units and addon-vouchered addon units from the eligible subtotal.
+
+`GET /api/admin/voucher-packages` keeps `_count.vouchers` and additionally returns `stats` with
+`issued_count`, current `active_count`, `reserved_count`, `redeemed_count`, effective
+`expired_count`, `refunded_count`, and nullable `remaining_quantity`. Every voucher row counts as
+issued. An `ACTIVE` voucher whose `expires_at <= now` is presented as expired without a write.
+
+`GET /api/admin/voucher-packages/[id]/owners?q=&status=&cursor=` is ADMIN-only. `q` is required
+(2–50 characters), strips a leading `@` for Instagram matching, and accepts local `0` or `+84`
+phone forms. `status` is `ALL`, `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, or `REFUNDED` and uses
+the same effective-expiry semantics without expiring `RESERVED`. It returns at most 20 users,
+grouped voucher instances, and `next_cursor` based on the public user `qr_token`. User and voucher
+internal IDs are never returned.
+
+All package/wallet voucher responses expose the same grouped `qualifier_products` and
+`reward_products`. Each product additionally contains
+`menu_item: { name, category, is_available }`. There is no public `reference_price_vnd`; the
+server resolves the immutable default configuration snapshot against current menu pricing at
+checkout.
+
+For owned BUNDLE voucher responses from `GET /api/profile/vouchers` and
+`GET /api/staff/users/[id]/vouchers`, each reward product of `FIXED_CONFIG` or
+`ALLOWED_SCOPE` additionally returns the response-only current baseline below. This is batched
+across the list, is recalculated on every fetch, and is never accepted in an order request.
+`SAME_CONFIG` has no baseline field because it derives its baseline from selected qualifier units.
+
+Owned customer and Staff voucher responses also expose live target availability. BUNDLE product
+and addon arrays contain only currently orderable choices; inactive options and unavailable sizes
+are omitted instead of returned disabled. The voucher remains visible in the wallet when unusable.
+
+```ts
+availability: {
+  status: "USABLE" | "TARGET_UNAVAILABLE" | "NO_ACTIVE_QUALIFIER" |
+    "NO_ACTIVE_REWARD" | "NO_ACTIVE_CONFIGURATION"
+  can_apply: boolean
+  can_refund: boolean
+  refund_points: number
+}
+```
+
+Latte scopes keep their fixed powder and are removed when that powder is inactive. Fusion scopes
+resolve an effective active powder deterministically. `default_powder_id` and
+`default_base_liquid_id` in the owned response are effective live selections; immutable configured
+snapshots remain server-side.
+
+Admin create/publish, public package catalog, every issuance mode, and admin reactivation apply the
+same live target rules to `ITEM`, `PRODUCT`, `ADDON`, and `BUNDLE`. A target-bearing package is not
+published, listed, issued, or reactivated when its current target is unusable. `DISCOUNT` and
+`FREESHIP` remain lifecycle-only because they have no menu target.
+
+```ts
+{
+  baseline_prices_vnd?: Partial<Record<"SMALL" | "MEDIUM" | "LARGE", number>>
+  baseline_price_vnd?: number // extras only
+}
+```
+
+Admin selects the final usable Vietnam calendar date. The UI sends the next day at 00:00 UTC+7;
+the server treats the package as usable only while `now < ends_at`. `quantity` is the single
+campaign issuance limit; there is no second limit inside `bundle_rule`.
+
+### `POST /api/profile/vouchers/claim`
+```ts
+{ package_id: string }
+// FREE_CLAIM only. Repeated/concurrent claims are idempotent.
+// Response: { data: { qr_token: string, voucher_type: VoucherType,
+//   status: "ACTIVE", expires_at: string | null, already_granted: boolean } }
 ```
 
 ### `PUT /api/admin/menu/[id]`
@@ -493,34 +726,50 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
   sizes?: {
     size: "SMALL" | "MEDIUM" | "LARGE"
     base_price_vnd: number | null
+    base_liquid_ml?: number | null    // omitted preserves current override; null clears to system fallback
   }[]                                 // upsert on (menu_item_id, size)
 }
 ```
+
+The JSON quick-toggle payload `{ is_available: boolean }` remains valid for legacy Fusion rows
+without a configured default Base Liquid. Any full edit still requires a valid active default.
 
 ### `POST /api/orders` — Customer
 ```ts
 {
   order_type: "PICKUP" | "DELIVERY"
   items: {
+    client_line_id?: string           // required when bundle_applications is non-empty
     menu_item_id: string
     quantity: number
-    size: "SMALL" | "MEDIUM" | "LARGE"
+    size: "SMALL" | "MEDIUM" | "LARGE" | null // null only for extras
     sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL" | "EXTRA"
     ice_option?: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE"
     coldwhisk?: boolean
     note?: string
     addon_option_ids: { option_id: string, quantity: number }[]
     product_voucher_id?: string       // voucher qr_token; legacy UUID accepted for one release
+    item_voucher_id?: string          // ITEM qr_token; extras only, mutually exclusive with PRODUCT
     addon_voucher_ids?: {
       voucher_id: string              // voucher qr_token; legacy UUID accepted for one release
       addon_option_id: string
     }[]
     selected_powder_id?: string       // Fusion only
-    selected_milk_type_id?: string    // Latte only, optional (defaults to sữa bò)
+    selected_base_liquid_id?: string  // preferred for Latte and configured Fusion
+    selected_milk_type_id?: string    // one-release legacy alias; must not conflict with preferred field
     client_price_vnd: number          // REQUIRED — frontend computed price. Missing = VALIDATION_ERROR.
   }[]
   discount_voucher_ids?: string[]    // voucher qr_token values
   freeship_voucher_id?: string       // voucher qr_token; DELIVERY only; max 1
+  bundle_applications?: {
+    voucher_qr_token: string
+    qualifier_allocations: { client_line_id: string, quantity: number }[]
+    reward_allocations: {
+      client_line_id: string
+      quantity: number
+      addon_option_id?: string
+    }[]
+  }[]
   pickup_time?: string
   note?: string
   delivery_address?: string
@@ -561,15 +810,17 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
   customer_name?: string
   payment_method?: "CASH" | "BANK_TRANSFER" // default CASH; backward compatible
   items: {
+    client_line_id?: string           // required with BUNDLE
     menu_item_id: string
     quantity: number
-    size: "SMALL" | "MEDIUM" | "LARGE"
+    size: "SMALL" | "MEDIUM" | "LARGE" | null // null only for extras
     sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL" | "EXTRA"
     ice_option?: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE"
     coldwhisk?: boolean
     note?: string
     addon_option_ids: { option_id: string, quantity: number }[]
     product_voucher_id?: string       // voucher qr_token; legacy UUID accepted for one release
+    item_voucher_id?: string          // ITEM qr_token; extras only
     addon_voucher_ids?: {
       voucher_id: string              // voucher qr_token; legacy UUID accepted for one release
       addon_option_id: string
@@ -579,6 +830,15 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
     client_price_vnd: number          // REQUIRED
   }[]
   discount_voucher_ids?: string[]    // voucher qr_token values
+  bundle_applications?: {
+    voucher_qr_token: string
+    qualifier_allocations: { client_line_id: string, quantity: number }[]
+    reward_allocations: {
+      client_line_id: string
+      quantity: number
+      addon_option_id?: string
+    }[]
+  }[]
   customer_qr_token?: string          // user qr_token; required for STAFF with known-customer vouchers
 }
 
@@ -603,6 +863,13 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
   }
 }
 ```
+
+### `GET /api/staff/orders?status=PENDING&order_type=COUNTER&mine=true`
+
+- Returns only `COUNTER + BANK_TRANSFER + PENDING` orders created by the current Staff/Admin.
+- Used by the POS “Chờ CK” launcher; `limit=100` is sufficient because each order expires after 20 minutes.
+- Expired rows are lazily cancelled and excluded client-side when no longer recoverable.
+- Omitting `mine=true` preserves the existing management-list behavior.
 
 ### `GET /api/staff/orders/[id]` — Staff/Admin payment recovery
 
@@ -630,30 +897,30 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
 }
 ```
 
-### `POST /api/admin/fusion-powders`
-```ts
-{ menu_item_id: string, powder_id: string }
-```
-
-### `DELETE /api/admin/fusion-powders`
-```ts
-{ menu_item_id: string, powder_id: string }
-```
-
-### `GET /api/admin/default-size-config`
-```ts
-{ data: { size: "SMALL" | "MEDIUM" | "LARGE", milk_ml: number, powder_gram: number }[] }
-```
-
-### `PUT /api/admin/default-size-config`
-```ts
-{ sizes: { size: "SMALL" | "MEDIUM" | "LARGE", milk_ml?: number, powder_gram?: number }[] }
-```
+For both customer and Staff order creation, a BUNDLE token that is truly missing or not visible to
+the caller returns `404 NOT_FOUND`. A present BUNDLE that fails live eligibility returns
+`422 BUSINESS_RULE_VIOLATION` with `details.reason` set to the server reason; the HTTP boundary
+does not expose a separate `BUNDLE_NOT_ELIGIBLE` error code.
 
 ### `POST /api/profile/vouchers/exchange`
 ```ts
 { package_id: string }
 ```
+
+### `POST /api/profile/vouchers/refund`
+```ts
+{ qr_token: string }
+
+// Success
+{ data: { qr_token: string, status: "REFUNDED", points_refunded: number } }
+```
+
+Refund is allowed only for an unexpired `ACTIVE` voucher issued through `POINTS_EXCHANGE` whose
+live availability is unusable. The refund equals `abs(points_log.delta)` from its immutable
+`voucher_purchase` entry; current package cost is never used. Missing audit returns
+`422 BUSINESS_RULE_VIOLATION` with `details.reason = "REFUND_AUDIT_MISSING"`. An expected-state
+race, including an exhausted Serializable `P2034` retry, returns `409 CONFLICT`. Refund does not
+restore package quantity or per-user redemption count.
 
 ### `GET /api/staff/users?q=xxxx`
 ```ts
@@ -672,12 +939,7 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
 { data: { type: "user", data: { qr_token: string, name: string, phone_number: string, points_balance: number } } }
 
 // voucher
-{ data: { type: "voucher", data: { qr_token: string, voucher_type: "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED", expires_at: string | null } } }
-```
-
-### `PATCH /api/admin/orders/[id]/status`
-```ts
-{ status: "PENDING" | "ADMIN_CONFIRMED" | "STAFF_DONE" | "COMPLETED" | "CANCELLED" }
+{ data: { type: "voucher", data: { qr_token: string, voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED", expires_at: string | null } } }
 ```
 
 ---
@@ -685,11 +947,11 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
 ## Business Logic Notes
 
 ### Menu
-- `GET /api/menu`: query `menu_items WHERE is_available = true`, sizes `WHERE base_price_vnd IS NOT NULL`, `addon_groups WHERE is_active = true` (no junction join), and `milk_types WHERE is_active = true`. Addon groups and milk types are returned once at `data` level; consumers apply milk only when `category = "latte"`.
+- `GET /api/menu`: return the active global Base Liquid catalog once, plus each item's resolved default, active allowed IDs, and effective per-size volume. Consumers show the selector only when default + allowed contains more than one option.
 - `updated_at` in response = `MAX(menu_items.updated_at)` across all items including unavailable ones.
-- Fusion `default_powder_id = NULL`: resolve fallback (Meyumi → Hana → MH-3 → cheapest `price_per_gram` WHERE `is_available = true`). Return `resolved_default_powder_id` — never NULL.
+- Fusion missing/inactive default: resolve fallback (Meyumi → Hana → MH-3 → lowest active `price_per_gram` → lowest ID). Return `resolved_default_powder_id` when any powder is active.
 - `allowed_powder_ids`: join `fusion_allowed_powder` + filter `matcha_powder.is_available = true`.
-- `POST /api/admin/menu`: INSERT `menu_items` + 3 `menu_item_sizes` in one `prisma.$transaction()`. No other writes needed.
+- `POST /api/admin/menu`: INSERT `menu_items` + 3 `menu_item_sizes` + `menu_item_allowed_base_liquid` rows in one `prisma.$transaction()`.
 - `DELETE /api/admin/addon-groups/[id]`: set `is_active = false`. Never hard delete.
 - Admin soft-deleting a Latte item: check `matcha_powder.reference_latte_item_id` and warn if any powder references it.
 
@@ -703,7 +965,11 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
 ### Orders
 - Latte: server sets `selected_powder_id` from `menu_item.matcha_powder_id` — client must not send it.
 - Fusion: server validates `selected_powder_id` is either `resolved_default_powder_id` OR exists in `fusion_allowed_powder` for that item. Default powder is always accepted.
-- If `selected_milk_type_id` not sent for Latte → server uses `milk_type WHERE is_default = true` (sữa bò).
+- Latte resolves the global default Base Liquid; Fusion resolves its per-item default. A requested swap must be the default or an active item-allowed row.
+- Fusion without Base Liquid configuration remains legacy-compatible and has no selector or liquid price delta until Admin edits it.
+- On every new customer or staff order, server snapshots the effective Base Liquid volume into
+  `order_items.base_liquid_ml` together with the resolved physical liquid ID. Historical
+  consumption reports read this snapshot first and use current recipe data only for legacy null rows.
 - Customer and staff routes must call the same server order/voucher calculator.
 - `subtotal_vnd` is gross merchandise before vouchers; `total_vnd` is merchandise after all
   non-shipping vouchers; `grand_total_vnd` is the final amount including shipping and FREESHIP.
@@ -722,8 +988,8 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
   shipping fee. A mismatching `client_shipping_fee_vnd` returns `409 SHIPPING_FEE_CHANGED`.
 - The client map uses lazy MapLibre rendering with Goong style/tiles. Goong API-backed search and
   geocoding remain usable when rendering fails, providing the manual address-selection fallback.
-- Persisted customer cart schema is version `3`. Migrating any older cart keeps its items (and the
-  earlier size conversion) but clears PRODUCT/ADDON/order-level voucher identifiers and credits,
+- Persisted customer cart schema is version `7`. Migrating an older cart keeps compatible items but
+  clears stale PRODUCT/ITEM/ADDON and order-level voucher identifiers and credits,
   then recomputes client item prices so legacy database UUIDs cannot be resubmitted.
 - **Anonymous orders** (`phone_number` omitted):
   - `orders.user_id = NULL`
@@ -732,11 +998,25 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
   - Display as "Khách vãng lai" in all order list views
 
 ### Vouchers
-- Apply vouchers strictly in this order: `PRODUCT → ADDON → DISCOUNT → FREESHIP`.
+- Apply vouchers strictly in this order: `BUNDLE → ITEM/PRODUCT/PRODUCT_DISCOUNT → ADDON → DISCOUNT → FREESHIP`.
+- `product_voucher_id` accepts a PRODUCT or PRODUCT_DISCOUNT public token. PRODUCT_DISCOUNT
+  matches `menu_item_id` plus `eligible_sizes`; FIXED_AMOUNT uses `discount_value`, while
+  PAY_AS_SIZE charges the canonical current reference-size price for the same powder/Base Liquid.
+  It excludes addons, has null `covered_price_vnd`, and never creates surplus.
+- For PRODUCT_DISCOUNT package creation, new clients send `eligible_menu_item_ids` (1–100 unique
+  UUIDs) together with the legacy `menu_item_id` anchor. If both are present, the anchor must be in
+  the array; legacy requests containing only `menu_item_id` remain valid. Package and owned-voucher
+  responses add `eligible_menu_items` entries containing `menu_item_id`, `name`, `category`,
+  `is_available`, and `is_seasonal`.
+- ITEM: extras only, matches `menu_item_id`, makes one unit free at its current server price,
+  has no surplus, and cannot be redeemed outside an order. A target price change does not change
+  eligibility or coverage; target soft-delete follows PRODUCT refund policy.
 - PRODUCT: match `menu_item_id` only. Apply one voucher to one drink unit. Limit
   `covered_price_vnd` to base + powder + milk + Premium Latte; never spill credit into addons.
   Compute the package snapshot from those drink components only; included addon IDs are
   descriptive and never expand coverage.
+- The PRODUCT “Dùng ngay” cart flow resolves the voucher Base Liquid against the item's current
+  default/allow-list and includes the same Latte cost or Fusion swap delta as normal add-to-cart.
 - ADDON: apply to one unit of the exact `addon_option_id`. Allow multiple ADDON vouchers on one
   item only when their addon IDs differ. Never apply to Extra Matcha.
 - DISCOUNT: check `min_order_vnd` after PRODUCT and ADDON. Apply multiple FIXED vouchers first
@@ -776,6 +1056,6 @@ Uses the same `updated_at`, `latte`, and `fusion` grouping as `GET /api/menu`, b
 | `voucher_surplus` | Aggregate PRODUCT surplus awarded when order → COMPLETED |
 | `order_complete_reversed` | Reversal after a completed COUNTER order is cancelled |
 | `voucher_surplus_reversed` | Reversal of aggregate PRODUCT surplus after cancellation |
-| `voucher_refund` | Target item soft-deleted → full points refund |
+| `voucher_refund` | Unusable points-exchange voucher → exact immutable purchase-points refund |
 | `reversed_by_admin` | Admin reverses a manual adjustment |
 | `registration_bonus` | New customer registration bonus |

@@ -59,10 +59,12 @@ vi.mock("@/lib/pricing", () => ({
     powderPriceMap: {},
     powderSizeConfigMap: {},
     defaultMilkPricePerMl: 40,
-    milkPriceMap: {},
+    defaultBaseLiquidId: "550e8400-e29b-41d4-a716-446655440099",
+    milkPriceMap: { "550e8400-e29b-41d4-a716-446655440099": 40 },
   }),
   resolveOrderItemPrice: vi.fn().mockReturnValue(69000),
   resolveOrderItemPremiumLatte: vi.fn().mockResolvedValue(0),
+  resolveOrderItemBaseLiquidMl: vi.fn().mockReturnValue(200),
 }));
 
 // Mock lib/prisma — $transaction must be vi.fn() so tests can mockImplementation() per test
@@ -74,6 +76,7 @@ vi.mock("@/lib/prisma", () => ({
     address: { findFirst: (...args: unknown[]) => mockAddressFindFirst(...args) },
     order: { findUnique: vi.fn() },
     voucher: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+    voucherPackage: { findMany: vi.fn().mockResolvedValue([]) },
     user: { update: vi.fn() },
     pointsLog: { create: vi.fn() },
   },
@@ -164,7 +167,20 @@ function setupTx(overrides: {
   
   // Mock global prisma for reads outside transaction
   const mockMenuItemFind = vi.fn().mockResolvedValue(overrides.menuItem !== undefined ? overrides.menuItem : latteMenuItem);
-  const mockAddonOptionFind = vi.fn().mockResolvedValue(overrides.addonOption !== undefined ? overrides.addonOption : null);
+  const addonOption = overrides.addonOption
+    ? {
+        is_active: true,
+        group: {
+          id: "550e8400-e29b-41d4-a716-446655440099",
+          type: "SELECTOR",
+          is_active: true,
+          max_quantity: null,
+          options: [],
+        },
+        ...overrides.addonOption,
+      }
+    : null;
+  const mockAddonOptionFind = vi.fn().mockResolvedValue(addonOption);
   
   (prisma.menuItem.findUnique as ReturnType<typeof vi.fn>) = mockMenuItemFind;
   (prisma.addonOption.findUnique as ReturnType<typeof vi.fn>) = mockAddonOptionFind;
@@ -257,8 +273,9 @@ describe("POST /api/orders", () => {
       powderPriceMap: {},
       powderSizeConfigMap: {},
       defaultMilkPricePerMl: 40,
-      milkPriceMap: {},
-      availablePowders: [],
+      defaultBaseLiquidId: "550e8400-e29b-41d4-a716-446655440099",
+      milkPriceMap: { "550e8400-e29b-41d4-a716-446655440099": 40 },
+      availablePowders: [{ id: POWDER_ID, name: "Bột test" }],
     });
     vi.mocked(resolveOrderItemPrice).mockReturnValue(69000);
     vi.mocked(resolveOrderItemPremiumLatte).mockResolvedValue(0);
@@ -942,6 +959,47 @@ describe("GET /api/orders", () => {
         orderBy: { created_at: "desc" },
       })
     );
+  });
+
+  it("không lazy-cancel đơn PENDING quá hạn khi đọc lịch sử", async () => {
+    const expiredOrder = {
+      id: "o-expired",
+      user_id: USER_ID,
+      status: "PENDING",
+      order_type: "PICKUP",
+      order_code: "BCBM-EXPIRED",
+      auto_cancel_at: new Date(Date.now() - 5 * 60 * 1000),
+      grand_total_vnd: 50_000,
+      total_vnd: 50_000,
+      created_at: new Date("2026-05-02T00:00:00.000Z"),
+    };
+    Object.assign(prisma.order, { findMany: vi.fn().mockResolvedValue([expiredOrder]) });
+
+    const response = await GET(makeGetReq());
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).data[0].status).toBe("PENDING");
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(prisma.$transaction).mock.calls[0]?.[0]).toBeInstanceOf(Array);
+  });
+
+  it("trả discount_applied_vnd của addon voucher trong history DTO", async () => {
+    Object.assign(prisma.order, { findMany: vi.fn().mockResolvedValue([{
+      id: "o-addon", user_id: USER_ID, status: "COMPLETED", created_at: "2026-05-02",
+      order_code: null, order_type: "PICKUP", grand_total_vnd: 50_000, total_vnd: 50_000,
+      discountVouchers: [],
+      items: [{
+        product_voucher_id: null, item_voucher_id: null,
+        productVoucher: null, itemVoucher: null,
+        addonVouchers: [{ discount_applied_vnd: 8_000, voucher: { package: { name: "Free kem" } } }],
+      }],
+    }]) });
+
+    const json = await (await GET(makeGetReq())).json();
+    expect(json.data[0].items[0].addonVouchers).toEqual([{
+      discount_applied_vnd: 8_000,
+      voucher: { package: { name: "Free kem" } },
+    }]);
   });
 
   it("returns 500 on database error", async () => {

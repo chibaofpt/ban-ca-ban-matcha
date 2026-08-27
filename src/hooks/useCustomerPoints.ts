@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { getCustomerPoints } from "@/src/services/pointsService";
+import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
 
 const customerPointsKey = (page: number, limit: number) =>
-  ["customer", "points", { page, limit }] as const;
+  [...VOUCHER_QUERY_KEYS.CUSTOMER_POINTS, { page, limit }] as const;
 
 /**
  * Hook fetch và cache điểm cá của khách hàng.

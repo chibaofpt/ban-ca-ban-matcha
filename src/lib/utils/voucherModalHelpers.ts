@@ -55,6 +55,31 @@ export function canInteract(voucher: MyVoucher): boolean {
   return voucher.status === "ACTIVE";
 }
 
+/** Return whether the owned voucher can enter its apply flow according to live backend data. */
+export function canApplyOwnedVoucher(voucher: MyVoucher): boolean {
+  return voucher.status === "ACTIVE" && voucher.availability.can_apply;
+}
+
+/** Map server-owned availability state to a concise Vietnamese explanation. */
+export function getVoucherAvailabilityMessage(voucher: MyVoucher): string | null {
+  if (voucher.availability.status === "USABLE") return null;
+  switch (voucher.availability.status) {
+    case "TARGET_UNAVAILABLE":
+      return "Món áp dụng voucher hiện đang ngưng phục vụ.";
+    case "NO_ACTIVE_QUALIFIER":
+      return "Các món mua kèm hiện đang ngưng phục vụ.";
+    case "NO_ACTIVE_REWARD":
+      return "Quà tặng hiện không còn phục vụ.";
+    case "NO_ACTIVE_CONFIGURATION":
+      return "Món hiện không còn cấu hình bột hoặc sữa phù hợp.";
+  }
+}
+
+/** Build the canonical irreversible refund confirmation copy. */
+export function getVoucherRefundConfirmation(points: number): string {
+  return `Bạn sẽ nhận lại ${points.toLocaleString("vi-VN")} điểm. Voucher này sẽ bị huỷ và không thể sử dụng lại. Lượt đổi của gói này không được khôi phục.`;
+}
+
 // ── Section 2: Exchange Packages ─────────────────────────────────────────────
 
 /**
@@ -62,7 +87,9 @@ export function canInteract(voucher: MyVoucher): boolean {
  */
 export function filterModalPackages(packages: VoucherPackage[]): VoucherPackage[] {
   return packages.filter(
-    (pkg) => pkg.user_redeemed_count === undefined || pkg.user_redeemed_count < pkg.max_per_user
+    (pkg) =>
+      pkg.acquisition_mode !== "AUTO_GRANT" &&
+      (pkg.user_redeemed_count === undefined || pkg.user_redeemed_count < pkg.max_per_user)
   );
 }
 
@@ -78,7 +105,8 @@ export function canExchange(
   if (userBalance < pkg.points_cost) {
     return { ok: false, reason: "insufficient_points" };
   }
-  if (pkg.quantity !== null && pkg.quantity <= 0) {
+  const remainingQuantity = pkg.remaining_quantity ?? pkg.quantity;
+  if (remainingQuantity !== null && remainingQuantity <= 0) {
     return { ok: false, reason: "sold_out" };
   }
   if (userRedeemedCount >= pkg.max_per_user) {
@@ -115,15 +143,20 @@ export function getExchangeErrorMessage(
  */
 export function groupPackagesByType(packages: VoucherPackage[]): {
   DISCOUNT: VoucherPackage[];
+  ITEM: VoucherPackage[];
   PRODUCT: VoucherPackage[];
   ADDON: VoucherPackage[];
+  BUNDLE: VoucherPackage[];
 } {
   return {
     DISCOUNT: packages.filter((p) => p.voucher_type === "DISCOUNT"),
+    ITEM: packages.filter((p) => p.voucher_type === "ITEM"),
     PRODUCT: packages.filter((p) => p.voucher_type === "PRODUCT"),
     ADDON: packages.filter((p) => p.voucher_type === "ADDON"),
+    BUNDLE: packages.filter((p) => p.voucher_type === "BUNDLE"),
   };
 }
+
 
 // ── Points ────────────────────────────────────────────────────────────────────
 
@@ -178,8 +211,13 @@ export function formatRedeemedDate(redeemedAt: string | null): string {
 export function getTicketHighlightText(
   vType: string,
   discountType?: "PERCENT" | "FIXED" | null,
-  discountValue?: number | null
+  discountValue?: number | null,
+  referenceSize?: "SMALL" | "MEDIUM" | "LARGE" | null,
 ): { text: string; subtext: string } {
+  if (vType === "PRODUCT_DISCOUNT") {
+    const sizeLabel = referenceSize === "SMALL" ? "S" : referenceSize === "LARGE" ? "L" : "M";
+    return discountValue ? { text: `${Math.floor(discountValue / 1000)}K`, subtext: "GIẢM MÓN" } : { text: `SIZE ${sizeLabel}`, subtext: "TRẢ GIÁ" };
+  }
   if (vType === "DISCOUNT") {
     if (discountType === "PERCENT") return { text: `${discountValue}%`, subtext: "GIẢM" };
     if (discountType === "FIXED" && discountValue) {
@@ -187,12 +225,13 @@ export function getTicketHighlightText(
       return { text: `${discountValue}`, subtext: "GIẢM" };
     }
   }
-  if (vType === "PRODUCT" || vType === "ADDON") {
+  if (vType === "ITEM" || vType === "PRODUCT" || vType === "ADDON") {
     return { text: "FREE", subtext: "TẶNG" };
   }
   if (vType === "FREESHIP") {
     return { text: "SHIP", subtext: "FREE" };
   }
+  if (vType === "BUNDLE") return { text: "X+Y", subtext: "COMBO" };
   return { text: "GIFT", subtext: "VOUCHER" };
 }
 
@@ -210,12 +249,20 @@ export function getVoucherBenefitText(v: MyVoucher): string {
     const itemName = v.menuItem?.name ?? "Sản phẩm";
     return `${itemName}${v.size ? ` Size ${v.size}` : ""} miễn phí`;
   }
+  if (v.voucher_type === "PRODUCT_DISCOUNT") {
+    const referenceLabel = v.reference_size === "SMALL" ? "nhỏ" : v.reference_size === "LARGE" ? "lớn" : "vừa";
+    return v.product_discount_mode === "PAY_AS_SIZE" ? `Trả giá size ${referenceLabel}` : `Giảm ${(v.discount_value ?? 0).toLocaleString("vi-VN")}đ`;
+  }
   if (v.voucher_type === "ADDON") {
     return `Topping ${v.addonOption?.label ?? "Addon"} miễn phí`;
   }
   if (v.voucher_type === "FREESHIP") {
     return `Freeship tối đa ${(v.covered_delivery_fee_vnd ?? 0).toLocaleString("vi-VN")}đ`;
   }
+  if (v.voucher_type === "ITEM") {
+    return `${v.menuItem?.name ?? "Add-on"} miễn phí`;
+  }
+  if (v.voucher_type === "BUNDLE") return v.package.description ?? "Ưu đãi mua X tặng Y";
   return v.package.name;
 }
 
@@ -224,13 +271,36 @@ export function getVoucherBenefitText(v: MyVoucher): string {
  * Used in Section 2 (Exchange) cards.
  */
 export function getPackageBenefitText(pkg: VoucherPackage): string {
+  if (pkg.voucher_type === "BUNDLE" && pkg.bundleRule) {
+    const qualifiers = pkg.bundleRule.qualifier_products
+      .map((scope) => scope.menu_item.name)
+      .filter((name): name is string => Boolean(name));
+    const rewardNames = pkg.bundleRule.reward_kind === "PRODUCT"
+      ? pkg.bundleRule.reward_products
+          .map((scope) => scope.menu_item.name)
+          .filter((name): name is string => Boolean(name))
+      : [];
+    const qualifierLabel = qualifiers.join(", ") || "món trong nhóm";
+    const rewardLabel = pkg.bundleRule.reward_mode === "SAME_CONFIG"
+      ? "cùng món và cấu hình"
+      : rewardNames.join(", ") || (pkg.bundleRule.reward_kind === "PRODUCT" ? "món trong nhóm" : "addon trong nhóm");
+    return `Mua ${pkg.bundleRule.buy_quantity} ${qualifierLabel} · Tặng ${pkg.bundleRule.reward_quantity} ${rewardLabel}`;
+  }
+
   if (pkg.voucher_type === "DISCOUNT") {
     if (pkg.discount_type === "PERCENT") return `Giảm ${pkg.discount_value}% toàn đơn`;
     if (pkg.discount_type === "FIXED")
       return `Giảm ${(pkg.discount_value ?? 0).toLocaleString("vi-VN")}đ toàn đơn`;
   }
+  if (pkg.voucher_type === "ITEM" && pkg.menuItem) {
+    return `${pkg.menuItem.name} miễn phí`;
+  }
   if (pkg.voucher_type === "PRODUCT" && pkg.menuItem) {
     return `${pkg.menuItem.name} Size ${pkg.size} miễn phí`;
+  }
+  if (pkg.voucher_type === "PRODUCT_DISCOUNT") {
+    const referenceLabel = pkg.reference_size === "SMALL" ? "nhỏ" : pkg.reference_size === "LARGE" ? "lớn" : "vừa";
+    return pkg.product_discount_mode === "PAY_AS_SIZE" ? `Trả giá size ${referenceLabel}` : `Giảm ${(pkg.discount_value ?? 0).toLocaleString("vi-VN")}đ`;
   }
   if (pkg.voucher_type === "ADDON" && pkg.addonOption) {
     return `Topping ${pkg.addonOption.label} miễn phí`;
@@ -240,11 +310,14 @@ export function getPackageBenefitText(pkg: VoucherPackage): string {
 
 /** Badge config for voucher types */
 export const VOUCHER_TYPE_CONFIG: Record<
-  "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP",
+  "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE",
   { label: string; badgeCls: string }
 > = {
+  ITEM: { label: "Add-on", badgeCls: "bg-amber-100 text-amber-800" },
   DISCOUNT: { label: "Giảm giá", badgeCls: "bg-blue-100 text-blue-800" },
   PRODUCT: { label: "Sản phẩm", badgeCls: "bg-green-100 text-green-800" },
+  PRODUCT_DISCOUNT: { label: "Giảm theo món", badgeCls: "bg-emerald-100 text-emerald-800" },
   ADDON: { label: "Topping", badgeCls: "bg-purple-100 text-purple-800" },
   FREESHIP: { label: "Freeship", badgeCls: "bg-orange-100 text-orange-800" },
+  BUNDLE: { label: "Mua X tặng Y", badgeCls: "bg-rose-100 text-rose-800" },
 };

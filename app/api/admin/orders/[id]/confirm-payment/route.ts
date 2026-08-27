@@ -114,15 +114,19 @@ export async function PATCH(
         const voucherItems = await tx.orderItem.findMany({
           where: { 
             order_id: id,
-            product_voucher_id: { not: null },
+            OR: [{ product_voucher_id: { not: null } }, { item_voucher_id: { not: null } }],
           },
-          select: { product_voucher_id: true },
+          select: { product_voucher_id: true, item_voucher_id: true },
         });
 
         const addonVouchers = await tx.orderItemAddonVoucher.findMany({
           where: { orderItem: { order_id: id } },
           select: { voucher_id: true }
         });
+        const bundleApplications = await tx.orderBundleApplication.findMany({
+              where: { order_id: id },
+              select: { voucher_id: true },
+            });
 
         // 3. Build unique set of all voucher IDs
         const allVoucherIds = new Set<string>();
@@ -132,6 +136,7 @@ export async function PATCH(
         }
         for (const item of voucherItems) {
           if (item.product_voucher_id) allVoucherIds.add(item.product_voucher_id);
+          if (item.item_voucher_id) allVoucherIds.add(item.item_voucher_id);
         }
         for (const av of addonVouchers) {
           allVoucherIds.add(av.voucher_id);
@@ -139,9 +144,22 @@ export async function PATCH(
         if (order.freeship_voucher_id) {
           allVoucherIds.add(order.freeship_voucher_id);
         }
+        for (const application of bundleApplications) allVoucherIds.add(application.voucher_id);
 
         // ── Conditional batch redeem: RESERVED → REDEEMED ──
         await redeemOrderVouchers(tx, Array.from(allVoucherIds), "ONLINE", session.id);
+        if (bundleApplications.length > 0) {
+          const promoted = await tx.orderBundleApplication.updateMany({
+            where: { order_id: id, status: "RESERVED" },
+            data: { status: "REDEEMED" },
+          });
+          if (promoted.count !== bundleApplications.length) {
+            throw new VoucherRedeemError(
+              "VOUCHER_MISMATCH",
+              "BUNDLE application changed concurrently",
+            );
+          }
+        }
 
         // NOTE: No order_complete or voucher_surplus points at ADMIN_CONFIRMED.
         // Points are awarded only at COMPLETED in the generic PATCH endpoint.

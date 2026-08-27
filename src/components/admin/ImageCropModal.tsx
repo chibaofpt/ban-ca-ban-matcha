@@ -8,21 +8,25 @@ import { X, ZoomIn, ZoomOut, Check } from "lucide-react";
 interface ImageCropModalProps {
   /** URL.createObjectURL hoặc data URL của ảnh gốc */
   imageSrc: string;
-  /** Callback nhận Blob WebP 1200×1200 sau khi crop xong */
+  /** Callback nhận Blob WebP sau khi crop xong */
   onCropDone: (blob: Blob) => void;
   /** Đóng modal mà không thay đổi gì */
   onClose: () => void;
+  /** Kích thước cạnh của ảnh vuông đầu ra. */
+  outputSize?: number;
+  /** Chất lượng WebP canvas từ 0 đến 1. */
+  outputQuality?: number;
 }
 
 /**
- * Crop vùng được chọn từ ảnh và trả về Blob WebP 1200×1200px.
+ * Crop vùng được chọn từ ảnh và trả về Blob WebP vuông theo cấu hình.
  * Dùng canvas API để resize + convert, không cần server-side xử lý.
  */
 async function cropImageToWebP(
   imageSrc: string,
   pixelCrop: Area,
-  outputSize = 1200,
-  quality = 0.85
+  outputSize = 800,
+  quality = 0.75
 ): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -64,11 +68,13 @@ async function cropImageToWebP(
   });
 }
 
-/** Modal crop ảnh tỉ lệ 1:1, output WebP 1200×1200px quality 0.85. */
+/** Modal crop ảnh tỉ lệ 1:1 thành WebP theo kích thước và quality đã chọn. */
 export default function ImageCropModal({
   imageSrc,
   onCropDone,
   onClose,
+  outputSize = 800,
+  outputQuality = 0.75,
 }: ImageCropModalProps) {
   const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -85,7 +91,12 @@ export default function ImageCropModal({
     setIsProcessing(true);
     setProcessingError(null);
     try {
-      const blob = await cropImageToWebP(imageSrc, croppedAreaPixels);
+      const blob = await cropImageToWebP(
+        imageSrc,
+        croppedAreaPixels,
+        outputSize,
+        outputQuality,
+      );
       onCropDone(blob);
     } catch {
       setProcessingError("Không thể xử lý ảnh này. Vui lòng chọn ảnh khác.");

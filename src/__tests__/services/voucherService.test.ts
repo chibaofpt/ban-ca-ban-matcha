@@ -23,6 +23,8 @@ import {
   listActiveVoucherPackages,
   listMyVouchers,
   exchangeVoucher,
+  claimFreeVoucher,
+  refundVoucher,
 } from "@/src/services/customerVoucherService";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -138,22 +140,87 @@ describe("listActiveVoucherPackages", () => {
   });
 });
 
+describe("claimFreeVoucher", () => {
+  it("gọi endpoint FREE_CLAIM và trả trạng thái idempotent", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({
+      data: { data: { already_granted: true } },
+    });
+
+    const result = await claimFreeVoucher("pkg-free-1");
+
+    expect(apiClient.post).toHaveBeenCalledWith(
+      "/api/profile/vouchers/claim",
+      { package_id: "pkg-free-1" },
+    );
+    expect(result).toEqual({ already_granted: true });
+  });
+});
+
+describe("refundVoucher", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("gọi endpoint hoàn điểm bằng qr_token và trả số điểm mới", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({
+      data: {
+        data: {
+          qr_token: "bundle-refund-token",
+          status: "REFUNDED",
+          points_refunded: 80,
+        },
+      },
+    });
+
+    const result = await refundVoucher("bundle-refund-token");
+
+    expect(apiClient.post).toHaveBeenCalledWith(
+      "/api/profile/vouchers/refund",
+      { qr_token: "bundle-refund-token" },
+    );
+    expect(result).toEqual({
+      qr_token: "bundle-refund-token",
+      status: "REFUNDED",
+      points_refunded: 80,
+    });
+  });
+
+  it("giữ nguyên lỗi nghiệp vụ để UI hiển thị feedback", async () => {
+    vi.mocked(apiClient.post).mockRejectedValueOnce({
+      response: {
+        status: 422,
+        data: {
+          error: "Voucher đã có lựa chọn trở lại",
+          code: "BUSINESS_RULE_VIOLATION",
+        },
+      },
+    });
+
+    await expect(refundVoucher("bundle-refund-token")).rejects.toMatchObject({
+      response: { data: { code: "BUSINESS_RULE_VIOLATION" } },
+    });
+  });
+});
+
 // ── listMyVouchers ────────────────────────────────────────────────────────────
 
 describe("listMyVouchers", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("gọi đúng endpoint GET /api/profile/vouchers", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({
+      data: { data: { granted_count: 0, expired_count: 0 } },
+    });
     vi.mocked(apiClient.get).mockResolvedValueOnce({
       data: { data: [] },
     });
 
     await listMyVouchers();
 
+    expect(apiClient.post).toHaveBeenCalledWith("/api/profile/vouchers/sync");
     expect(apiClient.get).toHaveBeenCalledWith("/api/profile/vouchers");
   });
 
   it("trả về mảng voucher của người dùng", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: {} } });
     vi.mocked(apiClient.get).mockResolvedValueOnce({
       data: { data: [mockMyVoucher] },
     });
@@ -166,6 +233,7 @@ describe("listMyVouchers", () => {
   });
 
   it("voucher có package info lồng nhau", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: {} } });
     vi.mocked(apiClient.get).mockResolvedValueOnce({
       data: { data: [mockMyVoucher] },
     });
@@ -177,6 +245,7 @@ describe("listMyVouchers", () => {
   });
 
   it("trả về mảng rỗng khi không có voucher nào", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: {} } });
     vi.mocked(apiClient.get).mockResolvedValueOnce({
       data: { data: [] },
     });

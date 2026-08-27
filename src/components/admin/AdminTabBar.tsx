@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ClipboardList, Package, Gift, Receipt, Settings } from "lucide-react";
+import { ClipboardList, Package, Gift, Megaphone, Receipt, Settings } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { Role } from "@/src/lib/types/user";
 import * as authService from "@/src/services/authService";
@@ -18,13 +18,18 @@ interface Tab {
   roles: Role[];
 }
 
-const TABS: Tab[] = [
+const LEGACY_TABS: Tab[] = [
   { to: "/staff/orders", label: "Tạo Order", icon: ClipboardList, roles: ["ADMIN", "STAFF"] },
   { to: "/staff/orders-list", label: "Đơn hàng", icon: Receipt, roles: ["STAFF"] },
   { to: "/admin/orders", label: "Đơn hàng", icon: Receipt, roles: ["ADMIN"] },
   { to: "/admin/menu", label: "Menu", icon: Package, roles: ["ADMIN"] },
   { to: "/admin/voucher-packages", label: "Điểm & Voucher", icon: Gift, roles: ["ADMIN"] },
+  { to: "/admin/promotions", label: "Khuyến mãi", icon: Megaphone, roles: ["ADMIN"] },
 ];
+
+const TABS: Tab[] = LEGACY_TABS
+  .filter((tab) => tab.to !== "/admin/promotions")
+  .map((tab) => tab.to === "/admin/voucher-packages" ? { ...tab, label: "Voucher & ưu đãi" } : tab);
 
 interface AdminTabBarProps {
   /** Display name of the currently signed-in user. */

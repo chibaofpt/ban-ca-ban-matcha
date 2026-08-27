@@ -8,8 +8,8 @@ export const reportQuerySchema = z.object({
   endDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "endDate must be YYYY-MM-DD"),
-  /** Admin only — filter by specific staff user id */
-  staffId: z.string().uuid().optional(),
+  /** Admin only — public staff qr_token; legacy UUID accepted server-side for one release. */
+  staffId: z.string().min(1).max(255).optional(),
 });
 
 export type ReportQuery = z.infer<typeof reportQuerySchema>;

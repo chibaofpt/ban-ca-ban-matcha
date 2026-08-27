@@ -24,7 +24,7 @@ export function getMenuItemCartInfo(items: CartItem[], menuItemId: string): Menu
     if (item.menuItemId !== menuItemId) continue;
     quantity += item.quantity;
     variantCount++;
-    if (item.productVoucherId || (item.addonVouchers && item.addonVouchers.length > 0)) {
+    if (item.productVoucherId || item.itemVoucherId || (item.addonVouchers && item.addonVouchers.length > 0)) {
       hasVoucher = true;
     }
   }

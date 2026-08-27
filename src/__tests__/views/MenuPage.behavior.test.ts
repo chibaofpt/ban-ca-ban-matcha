@@ -1,3 +1,5 @@
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { createElement, type RefObject } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mocks khai báo TRƯỚC import ────────────────────────────────────────────
@@ -5,6 +7,19 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockFetchMenu = vi.fn();
 const mockFetchPowders = vi.fn();
 const mockSetPowderData = vi.fn();
+let mockQueriesLoaded = false;
+
+vi.mock("@tanstack/react-query", () => ({
+  useQuery: ({ queryKey }: { queryKey: string[] }) => {
+    if (queryKey[0] === "menu") {
+      return { data: mockQueriesLoaded ? mockMenuData : undefined, isLoading: !mockQueriesLoaded, isError: false };
+    }
+    if (queryKey[0] === "powders") {
+      return { data: mockQueriesLoaded ? mockPowderData : undefined, isLoading: !mockQueriesLoaded, isError: false };
+    }
+    return { data: [] };
+  },
+}));
 
 vi.mock("@/src/services/menuService", () => ({
   fetchMenu: () => mockFetchMenu(),
@@ -21,11 +36,37 @@ vi.mock("@/src/lib/store/powderStore", () => ({
 
 vi.mock("@/src/lib/store/authStore", () => ({
   useIsLoggedIn: () => false,
+  useIsLoggedInSynced: () => true,
 }));
 
-vi.mock("@/src/lib/store/pointsStore", () => ({
-  usePointsStore: (selector: (s: { points: null; fetchPoints: () => void }) => unknown) =>
-    selector({ points: null, fetchPoints: vi.fn() }),
+vi.mock("@/src/lib/store/cartStore", () => ({
+  useCartStore: (selector: (state: { items: never[]; updateQuantity: () => void; removeItem: () => void }) => unknown) =>
+    selector({ items: [], updateQuantity: vi.fn(), removeItem: vi.fn() }),
+}));
+
+vi.mock("@/src/hooks/useVoucherPackages", () => ({ useVoucherPackages: () => ({ data: [] }) }));
+vi.mock("@/src/hooks/useCustomerPoints", () => ({ useCustomerPoints: () => ({ data: 0 }) }));
+vi.mock("@/src/components/menu/CartButton", () => ({ default: () => null }));
+vi.mock("@/src/components/menu/CartDrawer", () => ({ default: () => null }));
+vi.mock("@/src/components/menu/ExistingCartItemSheet", () => ({ ExistingCartItemSheet: () => null }));
+vi.mock("@/src/components/shared/ProductModal", () => ({ default: () => null }));
+vi.mock("@/src/components/shared/VoucherModal", () => ({ default: () => null }));
+vi.mock("@/src/components/menu/TabBar", () => ({
+  default: ({ activeTab }: { activeTab: string }) => createElement("div", { "data-testid": "active-tab" }, activeTab),
+}));
+vi.mock("@/src/components/menu/MenuPanels", () => ({
+  MenuPanels: ({ loading, latteSectionRef, fusionSectionRef, extrasSectionRef, seasonalSectionRef }: {
+    loading: boolean;
+    latteSectionRef: RefObject<HTMLDivElement | null>;
+    fusionSectionRef: RefObject<HTMLDivElement | null>;
+    extrasSectionRef: RefObject<HTMLDivElement | null>;
+    seasonalSectionRef: RefObject<HTMLDivElement | null>;
+  }) => loading ? null : createElement("div", null,
+    createElement("div", { ref: latteSectionRef, "data-section": "latte" }),
+    createElement("div", { ref: fusionSectionRef, "data-section": "fusion" }),
+    createElement("div", { ref: extrasSectionRef, "data-section": "extras" }),
+    createElement("div", { ref: seasonalSectionRef, "data-section": "seasonal" }),
+  ),
 }));
 
 vi.mock("@/src/lib/store/voucherModalStore", () => ({
@@ -63,6 +104,8 @@ const mockPowderData = {
   powders: [],
   default_powder_gram: { M: 3, L: 4, XL: 5 },
 };
+
+import MenuPage from "@/src/views/MenuPage";
 
 // ── Logic tests — MenuPage data fetching contracts ─────────────────────────
 
@@ -179,5 +222,31 @@ describe("MenuPage — Contract 4: error handling", () => {
 
     expect(consoleError).toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+});
+
+describe("MenuPage — thanh danh mục theo vị trí cuộn", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockQueriesLoaded = false;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(0);
+      return 1;
+    });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const section = this.getAttribute("data-section");
+      const top = section === "fusion" ? 100 : section === "extras" ? 400 : section === "seasonal" ? 700 : 0;
+      return { top, bottom: top, left: 0, right: 0, width: 0, height: 0, x: 0, y: top, toJSON: () => ({}) };
+    });
+  });
+
+  it("bắt đầu theo dõi cuộn sau khi các section được render", () => {
+    const view = render(createElement(MenuPage));
+    mockQueriesLoaded = true;
+    view.rerender(createElement(MenuPage));
+
+    act(() => fireEvent.scroll(window));
+
+    expect(screen.getByTestId("active-tab").textContent).toBe("fusion");
   });
 });

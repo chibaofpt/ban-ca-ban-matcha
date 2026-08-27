@@ -43,7 +43,10 @@ const AuthModal = () => {
             transition={{ duration: 0.22, ease: "easeOut" }}
             className="fixed inset-0 z-[201] flex items-center justify-center p-4 pointer-events-none"
           >
-            <div className="relative w-full max-w-sm bg-card border border-border rounded-2xl shadow-2xl p-8 pointer-events-auto">
+            <div
+              data-prevent-drawer-close="true"
+              className="relative w-full max-w-sm bg-card border border-border rounded-2xl shadow-2xl p-8 pointer-events-auto"
+            >
               {/* Close button */}
               <button
                 onClick={close}

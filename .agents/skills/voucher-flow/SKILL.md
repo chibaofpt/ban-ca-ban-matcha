@@ -3,7 +3,8 @@ name: voucher-flow
 description: >
   Standardize voucher eligibility, application order, stacking, lifecycle, surplus,
   points, and QR rules for Bạn Cá Bán Matcha. Use for voucher apply/reserve/redeem,
-  PRODUCT credit, ADDON voucher, DISCOUNT, FREESHIP, covered_price_vnd,
+  PRODUCT credit, PRODUCT_DISCOUNT, FIXED_AMOUNT, PAY_AS_SIZE, ADDON voucher,
+  DISCOUNT, FREESHIP, covered_price_vnd,
   min_order_vnd, voucher surplus, voucher expiry, points, QR scan,
   voucher packages, lib/vouchers.ts, or any order calculation involving vouchers.
 ---
@@ -15,27 +16,15 @@ Also read `order-flow` for order status and `pricing-logic` for drink price comp
 
 ---
 
-## File Map
+Inspect current files, callers and tests with `rg`; do not maintain file paths or sizes in this skill.
 
-| File | Layer | Purpose |
-|---|---|---|
-| `lib/vouchers.ts` | SERVER | Voucher validation, application, and redemption (8.2 KB) |
-| `src/utils/voucherMatchUtils.ts` | CLIENT | Voucher matching utilities (7.2 KB) |
-| `src/lib/utils/voucherModalHelpers.ts` | CLIENT | Modal display helpers (7.4 KB) |
-| `app/api/profile/vouchers/route.ts` | SERVER | List customer's vouchers in all lifecycle statuses |
-| `app/api/profile/vouchers/exchange/route.ts` | SERVER | Spend points → get voucher |
-| `app/api/profile/vouchers/refund/route.ts` | SERVER | Auto-refund when item unavailable |
-| `app/api/staff/scan/route.ts` | SERVER | QR scan → resolve user or voucher |
-| `app/api/staff/vouchers/[id]/redeem/route.ts` | SERVER | Offline voucher redemption |
-| `app/api/admin/voucher-packages/route.ts` | SERVER | Package CRUD (13.8 KB) |
-
----
-
-## 4 Voucher Types
+## Voucher Types
 
 | Type | Level | What It Covers |
 |---|---|---|
+| `ITEM` | Item-level | One fixed-price `extras` unit at its current server price; no surplus. |
 | `PRODUCT` | Item-level | One drink unit matching `menu_item_id`; covers drink components only. |
+| `PRODUCT_DISCOUNT` | Item-level, selected from main cart | Discounts one configured drink/size using `FIXED_AMOUNT` or `PAY_AS_SIZE`; excludes addons. |
 | `ADDON` | Addon-level | One unit of a specific `addon_option_id`; never Extra Matcha. |
 | `DISCOUNT` | Order-level | Reduces `total_vnd`. `PERCENT` or `FIXED` via `discount_type`. |
 | `FREESHIP` | Order-level | Covers delivery fee up to `covered_delivery_fee_vnd`. |
@@ -49,7 +38,7 @@ calculator for customer and staff orders; never duplicate or reorder these calcu
 
 **Application order** (strict — never reorder):
 ```
-PRODUCT → ADDON → DISCOUNT → FREESHIP
+BUNDLE → ITEM/PRODUCT/PRODUCT_DISCOUNT → ADDON → DISCOUNT → FREESHIP
 ```
 
 ### Canonical money terms
@@ -58,7 +47,7 @@ PRODUCT → ADDON → DISCOUNT → FREESHIP
   Premium Latte where applicable; exclude all addons.
 - `subtotal_vnd`: gross merchandise subtotal before vouchers; include drinks and addons;
   exclude shipping.
-- `item_discount_vnd`: total PRODUCT and ADDON reductions.
+- `item_discount_vnd`: total BUNDLE, ITEM, PRODUCT, and ADDON reductions.
 - `discountable_subtotal_vnd = max(0, subtotal_vnd - item_discount_vnd)`.
 - `total_voucher_discount_vnd`: order-level DISCOUNT reduction only.
 - `total_vnd = max(0, discountable_subtotal_vnd - total_voucher_discount_vnd)`.
@@ -96,8 +85,9 @@ ACTIVE → REFUNDED                                (auto: target item soft-delet
 
 - Treat `expires_at <= now` as unusable in every list, apply, exchange, and scan flow,
   regardless of stored status.
-- **Lazy synchronization is implemented**: `lazyExpireVouchers(userId)` writes `status = EXPIRED`
-  for `ACTIVE` vouchers past `expires_at` before list, apply, and scan flows. No cron needed.
+- `lazyExpireVouchers(userId)` may write `status = EXPIRED` only from an explicit mutation or an
+  existing mutation flow. Customer wallet reconciliation uses `POST /api/profile/vouchers/sync`;
+  GET wallet/staff-list routes project effective expiry without writing.
 - Never lazy-expire `RESERVED` vouchers — the reservation is still valid.
 - If an order is cancelled after the voucher's `expires_at`, set status = `EXPIRED`, not `ACTIVE`.
   This is handled by `cancelOrder` / `restoreVouchersOnCancel`.
@@ -106,13 +96,15 @@ ACTIVE → REFUNDED                                (auto: target item soft-delet
 
 ## PRODUCT Voucher Details
 
-- Match only `voucher.menu_item_id === order_item.menu_item_id`. Treat size, powder, milk,
+- Match only `voucher.menu_item_id === order_item.menu_item_id`. Treat size, powder, Base Liquid,
   and included-addon snapshots as descriptive data, not eligibility constraints.
 - Apply one PRODUCT voucher to one drink unit. Split a voucher-bearing unit into its own
   cart line when the original line quantity is greater than one.
 - At package creation, compute `covered_price_vnd` from the selected drink configuration only.
   Exclude every addon, including IDs retained in `included_addon_option_ids`.
 - Keep `covered_price_vnd` fixed from voucher issuance; never recompute an issued voucher.
+- “Dùng ngay” must resolve the voucher's saved Base Liquid against the item's current default and
+  allow-list, store the resolved selection in cart, and include the normal Latte cost/Fusion delta.
 - Limit PRODUCT credit to `drink_price_vnd`. Never spill unused credit into addons.
 
 ```text
@@ -151,9 +143,108 @@ and `order_discount_vouchers.discount_applied_vnd` have been **dropped** (migrat
 
 ---
 
+## PRODUCT_DISCOUNT Voucher Details
+
+- Present `PRODUCT_DISCOUNT` in the customer's main cart voucher list, while persisting the
+  applied token on exactly one qualifying drink unit through the existing product-voucher fields.
+- Keep other item-level `PRODUCT`, `ITEM`, and `ADDON` vouchers in their per-item selection flows.
+- Match an exact configured `menu_item_id` and an allowed current size. Also require `ACTIVE`,
+  `availability.can_apply`, no conflicting BUNDLE allocation, and a positive incremental benefit.
+- `FIXED_AMOUNT` benefit:
+
+```text
+product_discount_vnd = min(current_drink_price_vnd, discount_value)
+```
+
+- `PAY_AS_SIZE` benefit, using the same selected powder and Base Liquid and excluding addons:
+
+```text
+product_discount_vnd = max(
+  current_eligible_size_drink_price_vnd - current_reference_size_drink_price_vnd,
+  0
+)
+```
+
+- Keep an ACTIVE but currently ineligible voucher visible in the cart picker. Disable only its
+  selection control, expose a specific reason, and keep voucher details readable.
+- Apply immediately when exactly one cart target qualifies. When multiple targets qualify, require
+  explicit target selection in a nested customer bottom sheet.
+- If the selected cart line has quantity greater than one, split one unit before applying.
+- Replacing a product-level voucher must release only the previous voucher on the selected unit.
+- Removing the selected voucher must restore that unit's normal calculated drink price.
+- A selected voucher remains visible and removable even if later cart changes make it ineligible.
+- Do not allow a PRODUCT_DISCOUNT token and a BUNDLE allocation to overlap on the same cart unit.
+- Server order resolution remains authoritative: re-fetch configuration and prices and reject
+  stale or invalid client selections before reserving the voucher.
+
+---
+
+## ITEM Voucher Details
+
+- Target `extras` menu items only; match exact `menu_item_id`.
+- Apply to one standalone unit, cover its current server price completely, and create no surplus.
+- Split a voucher-bearing quantity into its own quantity-one cart/order line.
+- A voucher token may appear on only one cart line. Customer and staff cart stores must move the
+  voucher to the newest target and restore the previous line price; persisted carts are normalized
+  during version migration before checkout.
+- Keep `covered_price_vnd`, size, powder, Base Liquid, and addon configuration null.
+- ITEM is order-only: direct offline redemption is forbidden. Reserve/redeem/restore it with the
+  same order lifecycle as PRODUCT, and refund active vouchers when the target is soft-deleted.
+- Admin price changes warn about active valid ITEM vouchers, but existing vouchers continue to
+  cover the full new current price.
+
+---
+
+## BUNDLE Voucher Details
+
+- A BUNDLE voucher package owns one immutable BUNDLE rule directly. There is no Promotion layer.
+  Deactivation stops new issuance; it does not invalidate vouchers already issued.
+- Packages are effective immediately. `ends_at` is optional; there is no `starts_at`. Admin picks
+  the final usable Vietnam calendar date; store it as the exclusive next-day 00:00 at UTC+7 and
+  require `now < ends_at`.
+- Acquisition modes are `POINTS_EXCHANGE`, `FREE_CLAIM`, and `AUTO_GRANT`. Free/auto modes cost
+  zero points. `voucher_grants` makes free issuance idempotent under concurrent requests.
+- Registration attempts AUTO_GRANT immediately. Wallet and authenticated order entry points retry
+  lazily, covering accounts created while a campaign is active. Anonymous orders never receive or
+  use BUNDLE vouchers; ghost users are eligible after their user row exists.
+- Customer acquisition lists expose the live global `remaining_quantity`, exclude `AUTO_GRANT`,
+  and use one shared FREE_CLAIM / POINTS_EXCHANGE catalog in the wallet and cart. A points exchange
+  always requires confirmation; BUNDLE vouchers use an in-cart CTA instead of offline QR redemption.
+- Accept multiple distinct BUNDLE voucher instances per order through `bundle_applications`. Each
+  application owns explicit qualifier and reward allocations keyed by stable `client_line_id`.
+  A token appears once, and product/addon unit quantities cannot overlap across applications.
+  The server re-resolves products, configuration, addons, and prices before evaluating them.
+- Resolve voucher ownership through an explicit `voucher_owner_id`, never by assuming the order
+  host owns every line. This boundary is required for future group orders.
+- Product scopes may target drinks or `extras`. Extras have null configuration for all reward modes.
+- `SAME_CONFIG` means the qualifier and reward use the same menu item. Qualifiers may use any
+  configured allowed size; reward baseline is the current server price of the smallest selected
+  qualifier size/configuration. `FIXED_CONFIG` has exactly one configured reward product;
+  `ALLOWED_SCOPE` has one or more selectable reward products. Both use the current server price of
+  the stored default powder/Base Liquid snapshot at the actual reward size as baseline.
+- Customer powder/Base Liquid changes remain allowed. Charge only `max(actual reward drink price -
+  baseline, 0)`; a cheaper configuration has zero payable difference and creates no surplus.
+  Product BUNDLE benefits never cover addons.
+- Addon rewards may scale per bundle, once per order, or per qualifying item. Pool allocations
+  across eligible items, reject Extra Matcha, and never overlap PRODUCT/ADDON voucher benefits.
+- Reward units never count again as qualifiers, including when the same menu item appears in both
+  roles. Qualifier and reward allocations may overlap only up to distinct paid units.
+- `min_order_vnd` is evaluated from paid merchandise: exclude units covered by ITEM/PRODUCT/BUNDLE
+  and exclude addon units covered by ADDON vouchers. A drink carrying only
+  an ADDON voucher still counts as a qualifying product.
+- Qualifier and reward products are grouped by menu item: one default powder, one default Base
+  Liquid, and multiple allowed sizes. Qualifier eligibility matches menu item + allowed size only.
+  One BUNDLE package has exactly one reward kind: PRODUCT or ADDON.
+- Admin BUNDLE scope configures each product independently as one immutable default configuration
+  plus its allowed sizes. Prices are never entered or stored as BUNDLE reference credit.
+- Reserve at order creation, redeem on payment confirmation/completion, and restore on cancellation.
+  Direct offline QR redemption of BUNDLE vouchers is forbidden.
+
 ## ADDON Voucher Details
 
 - Match the exact `addon_option_id` on the selected order item.
+- New issuance, exchange, and package reactivation require the target option and its group to be
+  active. Dynamic-gram options are never eligible.
 - Cover the current price of one addon unit only. For quantity three, one voucher discounts
   one unit and the customer pays for two units.
 - Allow multiple ADDON vouchers on one menu item only when their `addon_option_id` values

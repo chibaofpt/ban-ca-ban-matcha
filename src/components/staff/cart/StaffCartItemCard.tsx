@@ -26,6 +26,7 @@ interface StaffCartItemCardProps {
   onRemoveProduct?: (cartId: string) => void;
   onRemoveAddon?: (cartId: string, voucherId: string) => void;
   onOpenVoucherPicker: (cartId: string) => void;
+  bundleAllocationBadges?: Array<{ token: string; label: string; quantity: number }>;
 }
 
 const StaffCartItemCard = ({
@@ -42,13 +43,14 @@ const StaffCartItemCard = ({
   onChangeQuantity,
   onRemoveProduct,
   onRemoveAddon,
-  onOpenVoucherPicker
+  onOpenVoucherPicker,
+  bundleAllocationBadges = [],
 }: StaffCartItemCardProps) => {
-  const hasMoreProductVouchers = !c.productVoucherId && applicableProductVouchers.length > 0;
+  const hasMoreProductVouchers = !c.productVoucherId && !c.itemVoucherId && applicableProductVouchers.length > 0;
   const hasMoreAddonVouchers = applicableAddonVouchers.length > 0;
   const hasAvailableVouchers = hasMoreProductVouchers || hasMoreAddonVouchers;
   
-  const appliedProductVoucherId = c.productVoucherId;
+  const appliedProductVoucherId = c.productVoucherId ?? c.itemVoucherId;
   const appliedAddonVouchers = c.addonVouchers ?? [];
 
   const line1Chips = line1ItemDetails(c, menuItem, milkTypes, powderData?.data);
@@ -69,7 +71,7 @@ const StaffCartItemCard = ({
       <div className="flex flex-col items-center gap-2 shrink-0">
         <div className="w-16 h-16 rounded-xl overflow-hidden bg-secondary/40 flex items-center justify-center text-3xl">
           {c.imageUrl ? (
-            <Image src={c.imageUrl} alt={c.name} width={64} height={64} unoptimized className="w-full h-full object-cover" />
+            <Image src={c.imageUrl} alt={c.name} width={64} height={64} sizes="64px" className="w-full h-full object-cover" />
           ) : (
             "🍵"
           )}
@@ -138,6 +140,15 @@ const StaffCartItemCard = ({
           )}
           {noteText && (
             <span className="text-[10px] font-medium bg-primary/5 text-primary/80 px-1.5 py-0.5 rounded italic inline-block w-fit">📝 {noteText}</span>
+          )}
+          {bundleAllocationBadges.length > 0 && (
+            <div className="flex flex-wrap gap-1" aria-label="Phân bổ ưu đãi BUNDLE">
+              {bundleAllocationBadges.map((badge) => (
+                <span key={badge.token} className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                  {badge.label}: {badge.quantity} phần
+                </span>
+              ))}
+            </div>
           )}
         </div>
 

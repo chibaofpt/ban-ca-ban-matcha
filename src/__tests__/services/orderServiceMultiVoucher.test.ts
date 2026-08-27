@@ -28,7 +28,7 @@ vi.mock("@/src/lib/api/client", () => ({
 }));
 
 import { apiClient } from "@/src/lib/api/client";
-import { createOrder, PriceChangedError } from "@/src/services/orderService";
+import { createOrder, PriceChangedError, BundleNotEligibleError } from "@/src/services/orderService";
 import type { CartItem } from "@/src/lib/types/cart";
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
@@ -105,6 +105,35 @@ describe("createOrder — payload shape without vouchers", () => {
     expect("addon_voucher_ids" in payload).toBe(false);
     // Trường mới
     expect(payload.discount_voucher_ids).toEqual([]);
+  });
+});
+
+describe("createOrder — payload BUNDLE công khai", () => {
+  beforeEach(() => vi.clearAllMocks());
+  it("gửi application gồm qualifier/reward và không gửi field legacy", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: mockOrderResult } });
+
+    await createOrder([makeCartItem({ cartId: "line-public-1", quantity: 2 })], {
+      bundleApplications: [{
+        voucher_qr_token: "bundle-public-token",
+        qualifier_allocations: [{ client_line_id: "line-public-1", quantity: 1 }],
+        reward_allocations: [{ client_line_id: "line-public-1", quantity: 1 }],
+      }],
+    });
+
+    const payload = vi.mocked(apiClient.post).mock.calls[0]?.[1];
+    expect(payload).toEqual(
+      expect.objectContaining({
+        bundle_applications: [{
+          voucher_qr_token: "bundle-public-token",
+          qualifier_allocations: [{ client_line_id: "line-public-1", quantity: 1 }],
+          reward_allocations: [{ client_line_id: "line-public-1", quantity: 1 }],
+        }],
+        items: [expect.objectContaining({ client_line_id: "line-public-1" })],
+      }),
+    );
+    expect(payload).not.toHaveProperty("bundle_voucher_qr_token");
+    expect(payload).not.toHaveProperty("bundle_reward_allocations");
   });
 });
 
@@ -332,5 +361,99 @@ describe("CartItem type — addonVouchers field (mới thêm)", () => {
   it("CartItem không có addonVouchers → undefined", () => {
     const item: CartItem = makeCartItem();
     expect(item.addonVouchers).toBeUndefined();
+  });
+});
+
+describe("createOrder — BundleNotEligibleError e skipped_vouchers", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("422 BUNDLE_NOT_ELIGIBLE → throw BundleNotEligibleError com reason", async () => {
+    vi.mocked(apiClient.post).mockRejectedValueOnce({
+      response: {
+        status: 422,
+        data: {
+          code: "BUNDLE_NOT_ELIGIBLE",
+          error: "Voucher bundle không hợp lệ",
+          details: { reason: "Không đủ số lượng món mua" },
+        },
+      },
+    });
+
+    const cart = [makeCartItem()];
+    await expect(createOrder(cart)).rejects.toBeInstanceOf(BundleNotEligibleError);
+  });
+
+  it("422 BUSINESS_RULE_VIOLATION với availability reason → lỗi BUNDLE để reconcile", async () => {
+    vi.mocked(apiClient.post).mockRejectedValueOnce({
+      response: {
+        status: 422,
+        data: {
+          code: "BUSINESS_RULE_VIOLATION",
+          error: "Bundle voucher is unavailable",
+          details: { reason: "NO_ACTIVE_REWARD" },
+        },
+      },
+    });
+
+    let caught: unknown;
+    try { await createOrder([makeCartItem()]); } catch (error) { caught = error; }
+    expect(caught).toBeInstanceOf(BundleNotEligibleError);
+    expect((caught as BundleNotEligibleError).reason).toBe("NO_ACTIVE_REWARD");
+  });
+
+  it("BundleNotEligibleError chứa reason từ server", async () => {
+    vi.mocked(apiClient.post).mockRejectedValueOnce({
+      response: {
+        status: 422,
+        data: {
+          code: "BUNDLE_NOT_ELIGIBLE",
+          error: "Voucher bundle không hợp lệ",
+          details: { reason: "Không đủ số lượng món mua" },
+        },
+      },
+    });
+
+    const cart = [makeCartItem()];
+    let caught: unknown;
+    try { await createOrder(cart); } catch (e) { caught = e; }
+    expect(caught).toBeInstanceOf(BundleNotEligibleError);
+    expect((caught as BundleNotEligibleError).reason).toBe("Không đủ số lượng món mua");
+  });
+
+  it("trả skipped_vouchers trong kết quả thành công", async () => {
+    const result = { ...mockOrderResult, skipped_vouchers: ["bundle-token-skipped"] };
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: result } });
+
+    const cart = [makeCartItem()];
+    const order = await createOrder(cart);
+    expect(order.skipped_vouchers).toEqual(["bundle-token-skipped"]);
+  });
+
+  it("gửi 2 bundle applications trong cùng một đơn", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: mockOrderResult } });
+
+    await createOrder(
+      [makeCartItem({ cartId: "line-a", quantity: 2 }), makeCartItem({ cartId: "line-b", quantity: 2 })],
+      {
+        bundleApplications: [
+          {
+            voucher_qr_token: "bundle-token-1",
+            qualifier_allocations: [{ client_line_id: "line-a", quantity: 2 }],
+            reward_allocations: [{ client_line_id: "line-a", quantity: 1 }],
+          },
+          {
+            voucher_qr_token: "bundle-token-2",
+            qualifier_allocations: [{ client_line_id: "line-b", quantity: 2 }],
+            reward_allocations: [{ client_line_id: "line-b", quantity: 1 }],
+          },
+        ],
+      },
+    );
+
+    const payload = vi.mocked(apiClient.post).mock.calls[0]?.[1] as Record<string, unknown>;
+    const apps = payload.bundle_applications as unknown[];
+    expect(apps).toHaveLength(2);
+    expect(apps[0]).toMatchObject({ voucher_qr_token: "bundle-token-1" });
+    expect(apps[1]).toMatchObject({ voucher_qr_token: "bundle-token-2" });
   });
 });

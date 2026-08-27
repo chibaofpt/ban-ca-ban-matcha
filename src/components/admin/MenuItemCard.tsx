@@ -40,24 +40,7 @@ export default function MenuItemCard({
           <span className="text-4xl select-none opacity-50 group-hover:scale-110 transition-transform duration-500">🍵</span>
         )}
 
-        {/* Badges */}
-        <div className="absolute top-2.5 left-2.5 flex gap-1.5 flex-wrap">
-          <span
-            className={cn(
-              "rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur-md border",
-              item.category === "latte"
-                ? "bg-emerald-500/20 text-emerald-800 border-emerald-500/30"
-                : "bg-violet-500/20 text-violet-800 border-violet-500/30"
-            )}
-          >
-            {item.category}
-          </span>
-          {item.is_seasonal && (
-            <span className="rounded-full bg-amber-500/20 text-amber-800 border border-amber-500/30 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur-md">
-              Mùa vụ
-            </span>
-          )}
-        </div>
+
       </div>
 
       {/* Body */}

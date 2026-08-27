@@ -26,7 +26,9 @@ function stripOrderItem(value: unknown): unknown {
   if (!isRecord(value)) return value;
   const safe = { ...value };
   delete safe.product_voucher_id;
+  delete safe.item_voucher_id;
   if ("productVoucher" in safe) safe.productVoucher = stripVoucher(safe.productVoucher);
+  if ("itemVoucher" in safe) safe.itemVoucher = stripVoucher(safe.itemVoucher);
   if (Array.isArray(safe.addonVouchers)) {
     safe.addonVouchers = safe.addonVouchers.map(stripVoucherLink);
   }

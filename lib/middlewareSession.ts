@@ -121,13 +121,14 @@ export async function resolveSessionFull(
     role: session.user.role,
     phone_number: session.user.phone_number,
   };
-  if (!(await markSessionRotating(session.id))) {
-    return { user: sessionUser, cookieUpdates: null };
-  }
+  const rotationClaim = await markSessionRotating(session.id);
+  if (rotationClaim !== "acquired") return { user: null, cookieUpdates: null };
 
   try {
     await evictSessionCache(refreshToken);
-    await updateSessionGracePeriod(session.id);
+    if (!(await updateSessionGracePeriod(session.id))) {
+      return { user: null, cookieUpdates: null };
+    }
     const newSession = await createSession(session.user_id);
     return {
       user: sessionUser,

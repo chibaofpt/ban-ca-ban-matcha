@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { imageFilenameSchema } from "@/lib/validations/menu";
 
 const powderTypeEnum = z.enum(["RECOMMEND", "NEW", "SEASONAL", "NONE"]);
 const sizeEnum = z.enum(["SMALL", "MEDIUM", "LARGE"]);
@@ -12,6 +13,7 @@ export const createPowderSchema = z.object({
   name: z.string().min(1, "Vui lòng nhập tên bột").max(100, "Tên bột không được vượt quá 100 ký tự"),
   manufacturer: z.string().min(1, "Vui lòng nhập nhà sản xuất").max(100, "Nhà sản xuất không được vượt quá 100 ký tự"),
   description: z.string().max(500, "Mô tả không được vượt quá 500 ký tự").optional().nullable(),
+  image_filename: imageFilenameSchema,
   price_per_gram: z.number().int("Giá phải là số nguyên").min(0, "Giá không được âm"),
   type: powderTypeEnum.default("NONE"),
   reference_latte_item_id: z.string().uuid("ID tham chiếu không hợp lệ").optional().nullable(),

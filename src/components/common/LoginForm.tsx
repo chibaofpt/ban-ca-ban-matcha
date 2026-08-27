@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { AtSign, Lock, Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,6 +16,7 @@ import { classifyLoginIdentifier } from "@/src/lib/utils/loginIdentifier";
 
 const LoginForm = () => {
   const router = useRouter();
+  const pathname = usePathname();
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -50,11 +51,14 @@ const LoginForm = () => {
       const user = await loginRequest(payload);
       queryClient.removeQueries({ queryKey: ["customer"] });
 
-      // Thực hiện điều hướng TRƯỚC KHI đóng modal để tránh lỗi component bị unmount làm hủy lệnh router
-      router.push(user.role === "ADMIN" || user.role === "STAFF" ? "/staff/orders" : "/menu");
-      router.refresh();
+      const isStaffUser = user.role === "ADMIN" || user.role === "STAFF";
+      const isOnMenu = pathname === "/" || pathname === "/menu";
+      if (isStaffUser || !isOnMenu) {
+        router.push(isStaffUser ? "/staff/orders" : "/menu");
+        router.refresh();
+      }
 
-      // Cập nhật state và đóng modal sau
+      // Auth state enables customer TanStack queries without remounting the menu/cart.
       login(user.phone_number, user.name);
       resetForceLogout(); // Allow force-logout to fire again after re-login (BUG-3)
       close();

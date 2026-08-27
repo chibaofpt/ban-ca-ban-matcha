@@ -100,10 +100,10 @@ export const CartQuantityButton: React.FC<CartQuantityButtonProps> = ({
       <button
         type="button"
         aria-label="Thêm món vào giỏ"
-        className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-[#5b9a2b] shadow-sm transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b9a2b] focus-visible:ring-offset-2"
+        className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-[#5b9a2b] shadow-sm transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5b9a2b] focus-visible:ring-offset-2"
         onClick={handleAdd}
       >
-        <Plus className="text-white" size={20} strokeWidth={3} />
+        <Plus className="text-white" size={16} strokeWidth={3} />
       </button>
     );
   }
@@ -112,54 +112,54 @@ export const CartQuantityButton: React.FC<CartQuantityButtonProps> = ({
     <div
       ref={containerRef}
       onClick={(e) => e.stopPropagation()}
-      className="relative flex h-11 w-11 shrink-0 justify-end"
+      className="flex shrink-0 justify-end"
     >
       <motion.div
         initial={false}
-        animate={{ width: isExpanded ? 116 : 44 }}
+        animate={{ width: isExpanded ? 104 : 40 }}
         transition={{ type: "spring", stiffness: 500, damping: 35 }}
-        className="absolute right-0 z-10 flex h-11 items-center overflow-hidden rounded-full border-2 border-[#5b9a2b] bg-white shadow-sm"
+        className="flex h-10 items-center overflow-hidden rounded-full border-2 border-[#5b9a2b] bg-white shadow-sm"
       >
         {!isExpanded ? (
           <button
             type="button"
             aria-label="Mở điều khiển số lượng"
-            className="absolute inset-0 flex h-full w-full cursor-pointer items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b9a2b]"
+            className="flex h-full w-full cursor-pointer items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b9a2b]"
             onClick={handleBadgeClick}
           >
-            <span className="text-sm font-bold text-[#5b9a2b] select-none">
+            <span className="text-base font-bold text-[#5b9a2b] select-none">
               {quantity}
             </span>
           </button>
         ) : (
-          <div className="flex items-center justify-between w-full px-1 absolute inset-0">
+          <div className="flex w-full items-center justify-between px-0.5">
             <button
               type="button"
               onClick={handleDecrement}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[#5b9a2b]/10 active:bg-[#5b9a2b]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b9a2b]"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[#5b9a2b]/10 active:bg-[#5b9a2b]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b9a2b]"
               aria-label={quantity === 1 ? "Xóa khỏi giỏ" : "Giảm số lượng"}
             >
               {quantity === 1 ? (
                 <Trash2 className="text-red-500" size={14} strokeWidth={2.5} />
               ) : (
-                <Minus className="text-[#5b9a2b]" size={16} strokeWidth={2.5} />
+                <Minus className="text-[#5b9a2b]" size={15} strokeWidth={2.5} />
               )}
             </button>
-            <span className="text-sm font-bold text-[#5b9a2b] w-5 text-center select-none shrink-0">
+            <span className="w-4 shrink-0 select-none text-center text-sm font-bold text-[#5b9a2b]">
               {quantity}
             </span>
             <button
               type="button"
               onClick={handleIncrement}
               disabled={quantity >= MAX_QUANTITY}
-              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b9a2b] ${
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#5b9a2b] ${
                 quantity >= MAX_QUANTITY
                   ? "opacity-30 cursor-not-allowed"
                   : "hover:bg-[#5b9a2b]/10 active:bg-[#5b9a2b]/20"
               }`}
               aria-label="Tăng số lượng"
             >
-              <Plus className="text-[#5b9a2b]" size={16} strokeWidth={2.5} />
+              <Plus className="text-[#5b9a2b]" size={15} strokeWidth={2.5} />
             </button>
           </div>
         )}

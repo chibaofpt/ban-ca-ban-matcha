@@ -8,11 +8,13 @@ export interface RawOrderItem {
   /** FK to menu_items.id */
   menu_item_id: string;
   quantity: number;
-  size: "SMALL" | "MEDIUM" | "LARGE";
+  size: "SMALL" | "MEDIUM" | "LARGE" | null;
   /** null for Latte items (server resolves to matcha_powder_id) */
   selected_powder_id: string | null;
   /** null for Fusion items */
   selected_milk_type_id: string | null;
+  /** Immutable order-time snapshot. Missing/null only for legacy orders. */
+  base_liquid_ml?: number | null;
   menuItem: {
     name: string;
     /** "latte" | "fusion" */
@@ -21,6 +23,7 @@ export interface RawOrderItem {
     matcha_powder_id: string | null;
     /** Per-item gram overrides; null when not set */
     custom_powder_grams: Record<string, number> | null;
+    sizes?: Array<{ size: "SMALL" | "MEDIUM" | "LARGE"; base_liquid_ml: number | null }>;
   };
   addons: Array<{
     quantity: number;
@@ -65,6 +68,9 @@ export interface MilkConfig {
 export interface ReportSummary {
   total_orders: number;
   total_cups: number;
+  /** Breakdown tổng ly theo size (SMALL/MEDIUM/LARGE) */
+  cups_by_size: { SMALL: number; MEDIUM: number; LARGE: number };
+  total_extras_units: number;
   total_revenue_vnd: number;
 }
 
@@ -90,6 +96,7 @@ export interface DailyReportResult {
   milk_usage: MilkUsage[];
   latte_sales: ItemSales[];
   fusion_sales: ItemSales[];
+  extras_sales: ItemSales[];
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +115,7 @@ export function resolveEffectiveGram(
   powderSizeEntries: PowderSizeEntry[],
   defaultSizeEntries: DefaultSizeEntry[]
 ): number {
+  if (!item.size) return 0;
   const powderId = item.selected_powder_id ?? item.menuItem.matcha_powder_id;
   if (!powderId) return 0;
 
@@ -148,7 +156,9 @@ export function buildReport(
   // -- Accumulators --
   let totalOrders = 0;
   let totalCups = 0;
+  let totalExtrasUnits = 0;
   let totalRevenue = 0;
+  const cupsBySize = { SMALL: 0, MEDIUM: 0, LARGE: 0 };
 
   /** powder_id → total grams */
   const powderGramMap = new Map<string, number>();
@@ -157,7 +167,7 @@ export function buildReport(
   /** menu_item_id → { name, category, sizes } */
   const salesMap = new Map<
     string,
-    { name: string; category: string; sizes: { SMALL: number; MEDIUM: number; LARGE: number } }
+    { name: string; category: string; total_cups: number; sizes: { SMALL: number; MEDIUM: number; LARGE: number } }
   >();
 
   for (const order of orders) {
@@ -166,7 +176,12 @@ export function buildReport(
 
     for (const item of order.items) {
       const qty = item.quantity;
-      totalCups += qty;
+      if (item.menuItem.category === "extras") {
+        totalExtrasUnits += qty;
+      } else {
+        totalCups += qty;
+        if (item.size) cupsBySize[item.size] += qty;
+      }
 
       // -- Powder usage --
       const powderId = item.selected_powder_id ?? item.menuItem.matcha_powder_id;
@@ -178,18 +193,22 @@ export function buildReport(
         const extraGram = item.addons.reduce((sum, addon) => {
           const gv = addon.addonOption.gram_value;
           if (gv == null) return sum;
-          return sum + gv * addon.quantity;
+          return sum + gv * addon.quantity * qty;
         }, 0);
 
         const prev = powderGramMap.get(powderId) ?? 0;
         powderGramMap.set(powderId, prev + baseTotal + extraGram);
       }
 
-      // -- Milk usage (Latte only) --
-      if (item.menuItem.category === "latte" && item.selected_milk_type_id) {
+      // -- Base Liquid usage (Latte and configured Fusion) --
+      if (item.selected_milk_type_id) {
         const defaultSize = defaultSizeEntries.find((e) => e.size === item.size);
-        if (defaultSize) {
-          const mlTotal = defaultSize.milk_ml * qty;
+        const legacyRecipeMl = item.menuItem.sizes?.find(
+          (row) => row.size === item.size,
+        )?.base_liquid_ml;
+        const effectiveMl = item.base_liquid_ml ?? legacyRecipeMl ?? defaultSize?.milk_ml;
+        if (effectiveMl !== undefined) {
+          const mlTotal = effectiveMl * qty;
           const prevMl = milkMlMap.get(item.selected_milk_type_id) ?? 0;
           milkMlMap.set(item.selected_milk_type_id, prevMl + mlTotal);
         }
@@ -198,11 +217,13 @@ export function buildReport(
       // -- Sales breakdown --
       const existing = salesMap.get(item.menu_item_id);
       if (existing) {
-        existing.sizes[item.size] += qty;
+        existing.total_cups += qty;
+        if (item.size) existing.sizes[item.size] += qty;
       } else {
         salesMap.set(item.menu_item_id, {
           name: item.menuItem.name,
           category: item.menuItem.category,
+          total_cups: qty,
           sizes: {
             SMALL: item.size === "SMALL" ? qty : 0,
             MEDIUM: item.size === "MEDIUM" ? qty : 0,
@@ -231,13 +252,16 @@ export function buildReport(
   // -- Build latte_sales and fusion_sales --
   const latteSales: ItemSales[] = [];
   const fusionSales: ItemSales[] = [];
-  for (const [, { name, category, sizes }] of salesMap) {
-    const totalCupsItem = sizes.SMALL + sizes.MEDIUM + sizes.LARGE;
+  const extrasSales: ItemSales[] = [];
+  for (const [, { name, category, sizes, total_cups }] of salesMap) {
+    const totalCupsItem = total_cups;
     const entry: ItemSales = { name, sizes, total_cups: totalCupsItem };
     if (category === "latte") {
       latteSales.push(entry);
-    } else {
+    } else if (category === "fusion") {
       fusionSales.push(entry);
+    } else if (category === "extras") {
+      extrasSales.push(entry);
     }
   }
 
@@ -245,12 +269,15 @@ export function buildReport(
     summary: {
       total_orders: totalOrders,
       total_cups: totalCups,
+      cups_by_size: cupsBySize,
+      total_extras_units: totalExtrasUnits,
       total_revenue_vnd: totalRevenue,
     },
     powder_usage: powderUsage,
     milk_usage: milkUsage,
     latte_sales: latteSales,
     fusion_sales: fusionSales,
+    extras_sales: extrasSales,
   };
 }
 
@@ -260,6 +287,7 @@ export function buildReport(
 
 /** Order item addon for admin report (includes label + group) */
 export interface RawAdminAddonItem {
+  addon_option_id: string;
   quantity: number;
   unit_price_vnd: number;
   addonOption: {
@@ -286,9 +314,16 @@ export interface RawAdminOrder extends Omit<RawOrder, "items"> {
 // ---------------------------------------------------------------------------
 
 export interface AddonUsageResult {
+  addon_option_id: string;
   addon_label: string;
   group_name: string;
   total_count: number;
+  powder_breakdown: AddonPowderBreakdownResult[];
+}
+
+export interface AddonPowderBreakdownResult {
+  powder_name: string;
+  total_grams: number;
 }
 
 export interface RevenueByTypeResult {
@@ -335,8 +370,14 @@ export function buildAdminReport(
     defaultSizeEntries
   );
 
-  // -- Addon usage accumulator: label → { group_name, total_count } --
-  const addonMap = new Map<string, { group_name: string; total_count: number }>();
+  // -- Addon usage accumulator: option ID → display data and powder totals --
+  const addonMap = new Map<string, {
+    addon_label: string;
+    group_name: string;
+    total_count: number;
+    powder_grams_by_id: Map<string, number>;
+  }>();
+  const powderNameById = new Map(powders.map((powder) => [powder.id, powder.name]));
 
   // -- Revenue by type accumulator --
   const revenueMap = new Map<
@@ -363,13 +404,27 @@ export function buildAdminReport(
     for (const item of order.items) {
       for (const addon of item.addons) {
         if (addon.quantity <= 0) continue;
-        const label = addon.addonOption.label;
-        const groupName = addon.addonOption.group?.name ?? "";
-        const existing = addonMap.get(label);
+        const usageQuantity = addon.quantity * item.quantity;
+        const optionId = addon.addon_option_id;
+        const existing = addonMap.get(optionId);
         if (existing) {
-          existing.total_count += addon.quantity;
+          existing.total_count += usageQuantity;
         } else {
-          addonMap.set(label, { group_name: groupName, total_count: addon.quantity });
+          addonMap.set(optionId, {
+            addon_label: addon.addonOption.label,
+            group_name: addon.addonOption.group?.name ?? "",
+            total_count: usageQuantity,
+            powder_grams_by_id: new Map<string, number>(),
+          });
+        }
+
+        const powderId = item.selected_powder_id ?? item.menuItem.matcha_powder_id;
+        const gramValue = addon.addonOption.gram_value;
+        if (powderId && gramValue != null) {
+          const entry = addonMap.get(optionId);
+          if (!entry) continue;
+          const previousGrams = entry.powder_grams_by_id.get(powderId) ?? 0;
+          entry.powder_grams_by_id.set(powderId, previousGrams + gramValue * usageQuantity);
         }
       }
     }
@@ -377,10 +432,24 @@ export function buildAdminReport(
 
   // -- Build addon_usage array (sorted descending by total_count) --
   const addonUsage: AddonUsageResult[] = [];
-  for (const [label, { group_name, total_count }] of addonMap) {
-    addonUsage.push({ addon_label: label, group_name, total_count });
+  for (const [addon_option_id, entry] of addonMap) {
+    const powder_breakdown = Array.from(entry.powder_grams_by_id, ([powderId, total_grams]) => ({
+      powder_name: powderNameById.get(powderId) ?? "Không rõ",
+      total_grams,
+    })).sort((a, b) => b.total_grams - a.total_grams || a.powder_name.localeCompare(b.powder_name));
+    addonUsage.push({
+      addon_option_id,
+      addon_label: entry.addon_label,
+      group_name: entry.group_name,
+      total_count: entry.total_count,
+      powder_breakdown,
+    });
   }
-  addonUsage.sort((a, b) => b.total_count - a.total_count || a.addon_label.localeCompare(b.addon_label));
+  addonUsage.sort((a, b) =>
+    b.total_count - a.total_count ||
+    a.addon_label.localeCompare(b.addon_label) ||
+    a.addon_option_id.localeCompare(b.addon_option_id),
+  );
 
   // -- Build revenue_by_type array (sorted descending by revenue) --
   const revenueByType: RevenueByTypeResult[] = [];
@@ -393,6 +462,7 @@ export function buildAdminReport(
   const topProducts: TopProductResult[] = [
     ...base.latte_sales.map((s) => ({ name: s.name, category: "latte", total_cups: s.total_cups })),
     ...base.fusion_sales.map((s) => ({ name: s.name, category: "fusion", total_cups: s.total_cups })),
+    ...base.extras_sales.map((s) => ({ name: s.name, category: "extras", total_cups: s.total_cups })),
   ].sort((a, b) => b.total_cups - a.total_cups || a.name.localeCompare(b.name));
 
 
