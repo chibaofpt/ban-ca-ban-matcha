@@ -123,7 +123,21 @@ Test layers hermetic không chứng minh PostgreSQL hay deployment thật. Live-
 qua `scripts/staging-tests/cli.mjs`, không được collect trong `npm test`; node tests của runner chỉ
 chứng minh orchestration bằng HTTP/DB boundary doubles.
 
-Các lệnh `test:live:staging:plan`, `:smoke`, `:full` và `:recover -- --run-id <id>` fail closed.
+Luồng self-service theo thứ tự: release owner chạy
+`test:live:staging:configure -- --branch <branch>`, push revision và chờ deployment `READY`; operator
+chạy `test:live:staging:attest -- --deployment <dpl-id>`, rồi mới chạy `:plan`, `:smoke`, `:full`
+hoặc `:recover -- --run-id <id>`. Configure và attest đều fail closed; chúng không deploy hay push.
+Operator yêu cầu cả `.env.staging` và `.env.staging.local`, load stage trước rồi local (local thắng).
+`TEST_STAGING_CONFIG_DIR` là optional absolute directory pointer chỉ đọc từ process environment trước
+khi mở hai file; đặt key này bên trong một trong hai file không có hiệu lực. Năm nonsecret pins
+`TEST_VERCEL_PROJECT_ID`, `TEST_VERCEL_TEAM_ID`, `TEST_VERCEL_GIT_BRANCH`,
+`TEST_STAGING_POOLER_HOST`, `TEST_RELEASE_WINDOW_ID` mới được phép process-env overlay lên file config.
+Attestation sống tối đa 2 giờ và ghim deployment Vercel `source=git`, exact branch/SHA, release-window
+assertion, branch env metadata cùng fingerprint public catalog API/DB. Sensitive DB variables chỉ được
+chứng minh bằng configuration provenance + fresh Git deployment (`deploymentSecretReadback=false`).
+
+Các profile `test:live:staging:plan`, `:smoke`, `:full` và `:recover` fail closed và lấy URL,
+deployment ID/SHA cùng staging target từ attestation hiện hành, không tin các target pin nhập tay.
 `plan` chỉ đọc; `smoke`/`full` không đổi skip hoặc case chưa triển khai thành PASS; `recover` chỉ xử
 lý đúng một run đã journal. Target phải là immutable Vercel Preview staging, có deployment ID/SHA,
 Supabase ref và DB binding đã attestation; không fallback production hoặc lưu secret trong report.

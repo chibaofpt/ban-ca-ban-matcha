@@ -87,9 +87,11 @@ export function validateTarget(env, evidence = {}, requirePushSandbox = false) {
 /** Remove secrets and recovery identifiers from report-safe values. */
 export function redact(value, key = "") {
   if (SECRET_KEY.test(key)) return "[REDACTED]";
-  if (Array.isArray(value)) return value.map((item) => redact(item));
+  if (Array.isArray(value)) return value.map((item) => redact(item, key));
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([itemKey, item]) => [itemKey, redact(item, itemKey)]));
   if (typeof value === "string") {
+    // Runner reason namespaces are codes, not custom-scheme URLs.
+    if (key === "reasons" && /^(?:FULL|SMOKE):[A-Z][A-Z0-9_]*$/.test(value)) return value;
     try { new URL(value); return "[REDACTED]"; } catch { /* not a URL */ }
   }
   return value;

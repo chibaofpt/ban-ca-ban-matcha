@@ -19,6 +19,12 @@ Không implement nội dung trong file này nếu task hiện tại chưa đư�
 - Không bổ sung fixture, nạp cá hay đổi voucher ngoài ngân sách để lấp khoảng trống coverage.
   Plan/report phải tách `NOT_IMPLEMENTED` khỏi thiếu inventory/quota/cấu hình; chạy staging vẫn
   cần deployment đã xác minh đúng revision, DB binding và push `log_only`.
+- Attestation staging dựa vào Vercel phân loại deployment `source=git`, metadata branch-scoped còn
+  nguyên, Git tree đã review và release-window assertion do operator kiểm soát. Đây là trust boundary
+  của quy trình release, không chứng minh chống một local process độc hại sửa workspace đồng thời.
+  Vercel không cung cấp effective readback cho sensitive `DATABASE_URL`/`DIRECT_URL`; evidence chỉ
+  chứng minh configuration provenance, fresh Git deployment và runtime catalog fingerprint, không
+  tuyên bố đã đọc lại plaintext secret hay loại trừ mọi platform-side override ngoài evidence đó.
 
 ### Compatibility cleanup
 

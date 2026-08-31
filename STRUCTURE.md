@@ -35,9 +35,11 @@ Feature container trong `src/components/<domain>` được phép gọi `src/serv
 ## Import boundaries
 
 Staging live-write tooling nằm trong `scripts/staging-tests/`: `journeys/` chia theo hành trình,
-helper chung quản lý target, auth, journal, oracle, pacing và recovery. Regression hermetic của
+`operator.mjs` bọc các profile; `configure*.mjs`, `attest*.mjs` và `vercel-control.mjs` quản lý
+control-plane/provenance. Helper chung quản lý target, auth, journal, oracle, pacing và recovery. Regression hermetic của
 tooling nằm tại `lib/__tests__/staging-*.test.ts`; tên này không có nghĩa chúng gọi DB thật.
-CLI chỉ chạy bằng lệnh live opt-in. `.staging-test-runs/` chứa attestation, journal, run-state,
+CLI chỉ chạy bằng lệnh live opt-in. `.staging-test-runs/` chứa configuration proof, attestation,
+journal, run-state,
 report và thư mục `sessions/` riêng; toàn bộ bị bỏ Git, không dùng làm fixture committed.
 
 - Client code không import `lib/` server-only.

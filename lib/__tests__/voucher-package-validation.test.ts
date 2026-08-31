@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createVoucherPackageSchema } from "@/lib/validations/voucherPackage";
 
 const UUID = {
@@ -75,6 +75,9 @@ function makeBundle() {
 }
 
 describe("Validation gói BUNDLE grouped products", () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date("2026-06-01T00:00:00.000Z")); });
+  afterEach(() => { vi.useRealTimers(); });
+
   it("nhận một product có nhiều allowed sizes và snapshot default", () => {
     expect(createVoucherPackageSchema.safeParse(makeBundle()).success).toBe(true);
   });

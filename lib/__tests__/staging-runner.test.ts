@@ -1,12 +1,13 @@
 // @vitest-environment node
 
-import { describe, expect, it } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { combineStatus, redact, statusExitCode, validateRunId, validateTarget } from "../../scripts/staging-tests/core.mjs";
 import { createJournal, journalNeedsRecovery } from "../../scripts/staging-tests/journal.mjs";
+import { persistReport, printReport } from "../../scripts/staging-tests/reports.mjs";
 
 const targetEnv = {
   NEXT_PUBLIC_APP_ENV: "staging", VERCEL_ENV: "preview", TEST_BASE_URL: "https://release-123.vercel.app", PRODUCTION_BASE_URL: "https://example.com",
@@ -109,6 +110,51 @@ describe("Staging runner — báo cáo và recovery", () => {
       password: "[REDACTED]", cookie: "[REDACTED]", database_url: "[REDACTED]",
       nested: { qr_token: "[REDACTED]", user_id: "[REDACTED]" },
     });
+  });
+
+  it("giữ mã lý do có namespace trong báo cáo lồng nhau", () => {
+    expect(redact({ reasons: ["FULL:VOUCHER_TYPE_MISSING_ITEM"], nested: {
+      reasons: ["SMOKE:QUOTA_EXHAUSTED"], status: "PARTIAL",
+    } })).toEqual({ reasons: ["FULL:VOUCHER_TYPE_MISSING_ITEM"], nested: {
+      reasons: ["SMOKE:QUOTA_EXHAUSTED"], status: "PARTIAL",
+    } });
+  });
+
+  it("ghi và in mã lý do nguyên vẹn nhưng vẫn che secret và URL", () => {
+    const temporary = mkdtempSync(path.join(tmpdir(), "bcbm-report-"));
+    const output = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      const report = {
+        runId: "run_report123", profile: "full", status: "PARTIAL",
+        reasons: ["FULL:VOUCHER_TYPE_MISSING_ITEM", "SMOKE:QUOTA_EXHAUSTED"],
+        summary: {
+          password: "FULL:DO_NOT_LEAK", cookie: "sid=private", authorization: "Bearer private",
+          database_url: "postgres://u:p@db/x", direct_url: "postgres://u:p@db/x",
+          token: "private", qr_token: "private", user_id: "private", voucher_id: "private",
+          links: ["FULL:DO_NOT_LEAK", "https://u:p@example.com/x?token=private", "postgresql://u:p@db/x",
+            "custom:private", "FULL:CODE?token=private", "SMOKE://u:p@example.com", "FULL:CODE#private"],
+          details: ["SMOKE:TOKENVALUE"],
+        },
+      };
+      const expected = {
+        runId: "run_report123", profile: "full", status: "PARTIAL",
+        reasons: ["FULL:VOUCHER_TYPE_MISSING_ITEM", "SMOKE:QUOTA_EXHAUSTED"],
+        summary: {
+          password: "[REDACTED]", cookie: "[REDACTED]", authorization: "[REDACTED]",
+          database_url: "[REDACTED]", direct_url: "[REDACTED]", token: "[REDACTED]",
+          qr_token: "[REDACTED]", user_id: "[REDACTED]", voucher_id: "[REDACTED]",
+          links: ["[REDACTED]", "[REDACTED]", "[REDACTED]", "[REDACTED]", "[REDACTED]", "[REDACTED]", "[REDACTED]"],
+          details: ["[REDACTED]"],
+        },
+      };
+      const file = persistReport({ runRoot: temporary, report });
+      expect(JSON.parse(readFileSync(file, "utf8"))).toEqual(expected);
+      expect(printReport(report)).toBe(2);
+      expect(JSON.parse(output.mock.calls[0][0])).toEqual(expected);
+    } finally {
+      output.mockRestore();
+      rmSync(temporary, { recursive: true, force: true });
+    }
   });
 
   it("FAIL thắng PARTIAL và ánh xạ đúng exit code", () => {
