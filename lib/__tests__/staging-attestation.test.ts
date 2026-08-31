@@ -114,7 +114,11 @@ describe("Staging configure — database branch-scoped", () => {
     let rows: ReturnType<typeof row>[] = [];
     const git = { currentBranch: vi.fn(async () => "codex/release") };
     const spawn = vi.fn((_executable: string, _args: string[], options: { input?: string }) => {
-      const body = JSON.parse(options.input ?? "{}");
+      const payload: unknown = JSON.parse(options.input ?? "null");
+      const body = Array.isArray(payload) ? payload[0] : payload;
+      if (!body || typeof body !== "object" || !("key" in body) || typeof body.key !== "string") {
+        throw new Error("unexpected Vercel env payload");
+      }
       const journal = readFileSync(path.join(root, ".staging-test-runs", "deployment-environment-configuration.ndjson"), "utf8");
       expect(JSON.parse(journal.trim().split("\n").at(-1) ?? "{}")).toMatchObject({ kind: "INTENT", key: body.key });
       const created = row(body.key);
@@ -143,8 +147,13 @@ describe("Staging configure — database branch-scoped", () => {
       expect(JSON.parse(proof)).toMatchObject({ projectId: "prj_1", teamId: "team_1", branch: "codex/release",
         deploymentSecretReadback: false, readableClaims: { appEnvironment: "staging", pushMode: "log_only" } });
       expect(spawn).toHaveBeenCalledTimes(2);
-      const bodies = spawn.mock.calls.map(call => JSON.parse(call[2].input ?? "{}"));
+      const bodies = spawn.mock.calls.map(call => {
+        const payload: unknown = JSON.parse(call[2].input ?? "null");
+        return Array.isArray(payload) ? payload[0] : payload;
+      });
       for (const body of bodies) {
+        if (!body || typeof body !== "object" || !("value" in body) || typeof body.value !== "string"
+          || !("key" in body) || typeof body.key !== "string") throw new Error("unexpected Vercel env payload");
         const configured = new URL(body.value);
         expect(configured.searchParams.get("connection_limit")).toBe("1");
         expect(configured.searchParams.get("connect_timeout")).toBe("10");
@@ -324,6 +333,11 @@ describe("Staging configure — database branch-scoped", () => {
       await expect(vercel.upsertSensitive({ projectId: "prj_1", teamId: "team_1", branch: "codex/release",
         key: "DIRECT_URL", value: "postgresql://u:patch-secret@db/postgres", existingId: "env_DIRECT_URL" }))
         .resolves.toEqual(row("DIRECT_URL"));
+      expect(JSON.parse(calls[0].options.input ?? "null")).toEqual([expect.objectContaining({
+        key: "DATABASE_URL", type: "sensitive", target: ["preview"], gitBranch: "codex/release",
+      })]);
+      expect(JSON.parse(calls[1].options.input ?? "null")).toEqual(expect.objectContaining({ key: "DIRECT_URL" }));
+      expect(Array.isArray(JSON.parse(calls[1].options.input ?? "null"))).toBe(false);
       expect(calls).toHaveLength(2);
       expect(calls[0].executable).toBe(process.execPath);
       expect(calls[0].args).toEqual(expect.arrayContaining(["exec", "--yes", "--package=vercel@59.10.0", "--", "vercel", "--input", "-"]));

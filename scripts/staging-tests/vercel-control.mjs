@@ -84,7 +84,7 @@ export function createControlPlane({ cwd = process.cwd(), spawn = spawnSync,
         const body = { key, value, type: "sensitive", target: ["preview"], gitBranch: branch,
           customEnvironmentIds: [] };
         if (existingId) return api(`/v9/projects/${projectId}/env/${existingId}?teamId=${teamId}`, "PATCH", body);
-        return createdRow(api(`/v10/projects/${projectId}/env?teamId=${teamId}`, "POST", body));
+        return createdRow(api(`/v10/projects/${projectId}/env?teamId=${teamId}`, "POST", [body]));
       },
     },
   };
