@@ -322,8 +322,11 @@ describe("Staging configure — database branch-scoped", () => {
       writeFileSync(path.join(root, ".vercel", "project.json"), JSON.stringify({ projectId: "prj_1", orgId: "team_1" }));
       const spawn = vi.fn((executable: string, args: string[], options: { input?: string; shell?: boolean }) => {
         calls.push({ executable, args, options });
-        return { status: 0, stdout: JSON.stringify(args.includes("PATCH")
-          ? row("DIRECT_URL") : { created: [row("DATABASE_URL")], failed: [] }) };
+        if (args.includes("update")) return { status: 0, stdout: "Updated\n" };
+        if (!args.includes("POST") && args.some(argument => argument.includes("/env?"))) {
+          return { status: 0, stdout: JSON.stringify({ envs: [row("DIRECT_URL")], pagination: {} }) };
+        }
+        return { status: 0, stdout: JSON.stringify({ created: [row("DATABASE_URL")], failed: [] }) };
       });
       const { vercel } = createControlPlane({ cwd: root, spawn: controlSpawn(spawn) });
       await expect(vercel.linkage()).resolves.toEqual({ projectId: "prj_1", teamId: "team_1" });
@@ -336,18 +339,33 @@ describe("Staging configure — database branch-scoped", () => {
       expect(JSON.parse(calls[0].options.input ?? "null")).toEqual([expect.objectContaining({
         key: "DATABASE_URL", type: "sensitive", target: ["preview"], gitBranch: "codex/release",
       })]);
-      expect(JSON.parse(calls[1].options.input ?? "null")).toEqual(expect.objectContaining({ key: "DIRECT_URL" }));
-      expect(Array.isArray(JSON.parse(calls[1].options.input ?? "null"))).toBe(false);
-      expect(calls).toHaveLength(2);
+      expect(calls).toHaveLength(3);
       expect(calls[0].executable).toBe(process.execPath);
       expect(calls[0].args).toEqual(expect.arrayContaining(["exec", "--yes", "--package=vercel@59.10.0", "--", "vercel", "--input", "-"]));
       expect(calls[0].options).toMatchObject({ cwd: root });
       expect(calls[0].args.join(" ")).not.toContain("adapter-secret");
       expect(calls[0].options).toMatchObject({ shell: false });
       expect(calls[0].options.input).toContain("adapter-secret");
-      expect(calls[1].args).toContain("PATCH");
+      expect(calls[1].args).toEqual(expect.arrayContaining(["env", "update", "DIRECT_URL", "preview",
+        "codex/release", "--sensitive", "--yes"]));
       expect(calls[1].args.join(" ")).not.toContain("patch-secret");
+      expect(calls[1].options.input).toBe("postgresql://u:patch-secret@db/postgres");
+      expect(calls[2].args.join(" ")).toContain("/v10/projects/prj_1/env?teamId=team_1&target=preview");
     } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it.each([
+    ["thiếu row", []],
+    ["sai branch", [{ ...row("DIRECT_URL"), gitBranch: "codex/other" }]],
+    ["trùng row khác id", [row("DIRECT_URL"), row("DIRECT_URL", "env_DIRECT_URL_other")]],
+  ])("fail closed khi inventory sau update %s", async (_case, envs) => {
+    const spawn = vi.fn<BoundarySpawn>((_executable, args) => args.includes("update")
+      ? { status: 0, stdout: "Updated\n" }
+      : { status: 0, stdout: JSON.stringify({ envs, pagination: {} }) });
+    const { vercel } = createControlPlane({ cwd: process.cwd(), spawn: controlSpawn(spawn) });
+    await expect(vercel.upsertSensitive({ projectId: "prj_1", teamId: "team_1", branch: "codex/release",
+      key: "DIRECT_URL", value: "postgresql://u:private@db/postgres", existingId: "env_DIRECT_URL" }))
+      .rejects.toThrow("VERCEL_CONTROL_UPDATED_ENV_INVALID");
   });
 
   it("Vercel deployment list uses documented branch and sha query parameters", async () => {

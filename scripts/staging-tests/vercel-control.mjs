@@ -83,7 +83,22 @@ export function createControlPlane({ cwd = process.cwd(), spawn = spawnSync,
       async upsertSensitive({ projectId, teamId, branch, key, value, existingId }) {
         const body = { key, value, type: "sensitive", target: ["preview"], gitBranch: branch,
           customEnvironmentIds: [] };
-        if (existingId) return api(`/v9/projects/${projectId}/env/${existingId}?teamId=${teamId}`, "PATCH", body);
+        if (existingId) {
+          command(execPath, [resolveNpmCli({ execPath, source, fsImpl }), "exec", "--yes",
+            "--package=vercel@59.10.0", "--", "vercel", "env", "update", key, "preview", branch,
+            "--sensitive", "--yes"], value, spawn, cwd);
+          const inventory = await this.inventory({ projectId, teamId });
+          if (!Array.isArray(inventory?.envs) || inventory.pagination?.next) failure("VERCEL_CONTROL_UPDATED_ENV_INVALID");
+          const candidates = inventory.envs.filter(row => row.key === key && row.gitBranch === branch);
+          if (candidates.length !== 1) failure("VERCEL_CONTROL_UPDATED_ENV_INVALID");
+          const updated = candidates[0];
+          if (updated.id !== existingId || updated.type !== "sensitive" || !Array.isArray(updated.target)
+            || updated.target.length !== 1 || updated.target[0] !== "preview"
+            || !Array.isArray(updated.customEnvironmentIds) || updated.customEnvironmentIds.length !== 0) {
+            failure("VERCEL_CONTROL_UPDATED_ENV_INVALID");
+          }
+          return updated;
+        }
         return createdRow(api(`/v10/projects/${projectId}/env?teamId=${teamId}`, "POST", [body]));
       },
     },
