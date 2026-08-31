@@ -129,6 +129,15 @@ rtk node node_modules/vitest/vitest.mjs run
 
 ## Test File Organization
 
+Select the runner that matches the evidence type. Hermetic node tests may double database or
+external boundaries only when those systems are not the claim. Live staging is opt-in and excluded
+from the default suite.
+
+Before making a database claim, read
+[references/database-testing.md](references/database-testing.md) and select `NONE`,
+`STAGING_READ`, `STAGING_WRITE`, or `ISOLATED_MIGRATION`. Static source/schema checks do not prove
+database execution, constraints, rollback, isolation, or data-plane authorization.
+
 ### Merge or Split Rules
 
 - Merge new cases into an existing test file when they belong to the same domain. For
@@ -195,6 +204,10 @@ import { PATCH } from "@/app/api/staff/orders/[id]/route";
 ```
 
 ### Transaction Mock Pattern
+
+This pattern proves callback/application handling only. It does not prove database race safety,
+locks, isolation, constraints, Decimal behavior, or rollback; those claims require the matching
+real database evidence class from [references/database-testing.md](references/database-testing.md).
 
 ```typescript
 mockTransaction.mockImplementation(

@@ -55,6 +55,17 @@ interface PushPayload {
 const PUSH_PAGE_SIZE = 100;
 const PUSH_CONCURRENCY = 10;
 
+function shouldLogOnly(): boolean {
+  if (process.env.PUSH_DELIVERY_MODE !== "log_only") return false;
+
+  const isSafeStaging = process.env.NEXT_PUBLIC_APP_ENV === "staging"
+    && process.env.VERCEL_ENV === "preview";
+  if (!isSafeStaging) {
+    console.error("[Push Notification] Invalid log_only configuration; retaining real delivery.");
+  }
+  return isSafeStaging;
+}
+
 function getPushStatusCode(error: unknown): number | undefined {
   if (typeof error !== "object" || error === null || !("statusCode" in error)) return undefined;
   return typeof error.statusCode === "number" ? error.statusCode : undefined;
@@ -105,6 +116,10 @@ export async function sendPushToRoles(
   excludeUserId?: string
 ): Promise<void> {
   try {
+    if (shouldLogOnly()) {
+      console.log(`[Push Notification] log_only: skipped delivery for roles: ${roles.join(", ")}`);
+      return;
+    }
     if (!initVapid()) {
       console.warn(`[Push Notification] Skipped sending to ${roles.join(", ")} because VAPID keys are missing.`);
       return;
@@ -155,6 +170,10 @@ export async function sendPushToUser(
   payload: PushPayload
 ): Promise<number> {
   try {
+    if (shouldLogOnly()) {
+      console.log("[Push Notification] log_only: skipped delivery for one user.");
+      return 0;
+    }
     if (!initVapid()) {
       console.warn("[Push Notification] Skipped because VAPID keys are missing.");
       return 0;

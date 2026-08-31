@@ -6,7 +6,7 @@
  * All tests FAIL until lib/push.ts is implemented (TDD).
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { afterEach, describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mocks declared before imports ────────────────────────────────────────────
 
@@ -35,7 +35,7 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 // ── Import AFTER mocks ───────────────────────────────────────────────────────
-import { sendPushToRoles } from "@/lib/push";
+import { sendPushToRoles, sendPushToUser } from "@/lib/push";
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -79,6 +79,12 @@ const testPayload = {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("sendPushToRoles — gửi push theo role", () => {
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_APP_ENV;
+    delete process.env.VERCEL_ENV;
+    delete process.env.PUSH_DELIVERY_MODE;
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY = "fake-public-key";
@@ -133,6 +139,49 @@ describe("sendPushToRoles — gửi push theo role", () => {
 
     await sendPushToRoles(["ADMIN"], testPayload);
 
+    expect(mockSendNotification).not.toHaveBeenCalled();
+  });
+
+  it("không truy vấn subscription hoặc gọi web-push trong staging preview log-only", async () => {
+    process.env.NEXT_PUBLIC_APP_ENV = "staging";
+    process.env.VERCEL_ENV = "preview";
+    process.env.PUSH_DELIVERY_MODE = "log_only";
+
+    await sendPushToRoles(["ADMIN"], testPayload);
+
+    expect(mockPushSubscriptionFindMany).not.toHaveBeenCalled();
+    expect(mockPushSubscriptionUpdateMany).not.toHaveBeenCalled();
+    expect(mockSendNotification).not.toHaveBeenCalled();
+  });
+
+  it("không suppress delivery khi VERCEL_ENV chưa được xác định", async () => {
+    process.env.NEXT_PUBLIC_APP_ENV = "staging";
+    process.env.PUSH_DELIVERY_MODE = "log_only";
+    mockPushSubscriptionFindMany.mockResolvedValue([]);
+
+    await sendPushToRoles(["ADMIN"], testPayload);
+
+    expect(mockPushSubscriptionFindMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("không suppress delivery trong production dù mode là log_only", async () => {
+    process.env.NEXT_PUBLIC_APP_ENV = "production";
+    process.env.VERCEL_ENV = "production";
+    process.env.PUSH_DELIVERY_MODE = "log_only";
+    mockPushSubscriptionFindMany.mockResolvedValue([]);
+
+    await sendPushToRoles(["ADMIN"], testPayload);
+
+    expect(mockPushSubscriptionFindMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("sendPushToUser không truy vấn hoặc gửi trong staging preview log-only", async () => {
+    process.env.NEXT_PUBLIC_APP_ENV = "staging";
+    process.env.VERCEL_ENV = "preview";
+    process.env.PUSH_DELIVERY_MODE = "log_only";
+
+    await expect(sendPushToUser(ADMIN_ID, testPayload)).resolves.toBe(0);
+    expect(mockPushSubscriptionFindMany).not.toHaveBeenCalled();
     expect(mockSendNotification).not.toHaveBeenCalled();
   });
 

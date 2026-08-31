@@ -14,6 +14,12 @@ Không implement nội dung trong file này nếu task hiện tại chưa đư�
 
 ## Approved but deferred
 
+### Staging order/voucher coverage chưa hoàn tất
+
+- Không bổ sung fixture, nạp cá hay đổi voucher ngoài ngân sách để lấp khoảng trống coverage.
+  Plan/report phải tách `NOT_IMPLEMENTED` khỏi thiếu inventory/quota/cấu hình; chạy staging vẫn
+  cần deployment đã xác minh đúng revision, DB binding và push `log_only`.
+
 ### Compatibility cleanup
 
 - Sau khi client cũ đã hết và staging/production soak đủ, tạo migration riêng để bỏ `addon_groups.is_required`, `addon_groups.min_quantity`, `addon_options.is_default`. Đến lúc đó chúng chỉ là compatibility columns và không được quay lại API/business logic.

@@ -27,11 +27,18 @@ API URL/types tiếp tục thuộc các voucher service hiện có, còn persist
 | `lib/` | Server-only business logic, Prisma và external adapters |
 | `lib/validations/` | Shared server Zod schemas |
 | `prisma/` | Physical schema và committed migrations |
+| `scripts/` | Operator tooling; staging writes remain opt-in and fail-closed |
 | `.agents/skills/<name>/SKILL.md` | Project-local reusable workflow skill |
 
 Feature container trong `src/components/<domain>` được phép gọi `src/services`; leaf UI và mọi file trong `src/components/ui` thì không. Không di chuyển component chỉ để thỏa một layer lý tưởng trong lúc sửa bug.
 
 ## Import boundaries
+
+Staging live-write tooling nằm trong `scripts/staging-tests/`: `journeys/` chia theo hành trình,
+helper chung quản lý target, auth, journal, oracle, pacing và recovery. Regression hermetic của
+tooling nằm tại `lib/__tests__/staging-*.test.ts`; tên này không có nghĩa chúng gọi DB thật.
+CLI chỉ chạy bằng lệnh live opt-in. `.staging-test-runs/` chứa attestation, journal, run-state,
+report và thư mục `sessions/` riêng; toàn bộ bị bỏ Git, không dùng làm fixture committed.
 
 - Client code không import `lib/` server-only.
 - `src/services` dùng duy nhất `src/lib/api/client.ts`; không tạo Axios instance khác.

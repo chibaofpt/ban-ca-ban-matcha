@@ -116,3 +116,19 @@ Button dùng variants `primary`, `secondary`, `outline`, `ghost`, `destructive`;
 | Workflow/release | Skill tương ứng |
 
 Nếu code chỉ được sửa để khớp resource hiện có, Resource Impact là `None`; không chỉnh wording chỉ để tạo diff tài liệu.
+
+## Staging order/voucher verification
+
+Test layers hermetic không chứng minh PostgreSQL hay deployment thật. Live-write chạy standalone
+qua `scripts/staging-tests/cli.mjs`, không được collect trong `npm test`; node tests của runner chỉ
+chứng minh orchestration bằng HTTP/DB boundary doubles.
+
+Các lệnh `test:live:staging:plan`, `:smoke`, `:full` và `:recover -- --run-id <id>` fail closed.
+`plan` chỉ đọc; `smoke`/`full` không đổi skip hoặc case chưa triển khai thành PASS; `recover` chỉ xử
+lý đúng một run đã journal. Target phải là immutable Vercel Preview staging, có deployment ID/SHA,
+Supabase ref và DB binding đã attestation; không fallback production hoặc lưu secret trong report.
+
+Staging write còn yêu cầu `PUSH_DELIVERY_MODE=log_only`, `NEXT_PUBLIC_APP_ENV=staging` và
+`VERCEL_ENV=preview`. `lib/push.ts` chỉ bỏ subscription read/web-push trong đúng tổ hợp này;
+production, biến chưa đặt hoặc môi trường không khớp giữ delivery hiện có. Mỗi mutation phải có
+intent durable trước dispatch; outcome mơ hồ dừng ghi để reconciliation/recovery, không tự retry.
