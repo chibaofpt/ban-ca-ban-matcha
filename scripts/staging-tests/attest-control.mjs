@@ -142,8 +142,9 @@ export async function attestStaging({ cwd = process.cwd(), deploymentId, env, gi
   const project = await vercel.project({ projectId: proof.projectId, teamId: proof.teamId });
   const deployment = await vercel.deployment({ deploymentId, teamId: proof.teamId });
   const listed = await vercel.deployments({ projectId: proof.projectId, teamId: proof.teamId, branch, sha: head });
-  const matches = (listed?.deployments ?? []).filter(item => (item.uid ?? item.id) === deploymentId);
-  assert(!listed?.pagination?.next && matches.length === 1, "ATTEST_DEPLOYMENT_LIST_AMBIGUOUS");
+  const listedDeployments = listed?.deployments ?? [];
+  const matches = listedDeployments.filter(item => (item.uid ?? item.id) === deploymentId);
+  assert(listedDeployments.length === 1 && matches.length === 1, "ATTEST_DEPLOYMENT_LIST_AMBIGUOUS");
   assert(matches[0].source === "git" && matches[0].target == null, "ATTEST_DEPLOYMENT_SOURCE_INVALID");
   assert(deployment.readyState === "READY" && deployment.projectId === proof.projectId && deployment.target == null
     && !deployment.customEnvironment && (deployment.uid ?? deployment.id) === deploymentId, "ATTEST_DEPLOYMENT_IDENTITY_INVALID");

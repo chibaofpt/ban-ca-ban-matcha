@@ -46,13 +46,13 @@ export function readVerifiedFile(file, fsImpl = fs) {
   let handle;
   try {
     handle = fsImpl.openSync(file, "r");
-    const opened = fsImpl.fstatSync(handle);
-    const linked = fsImpl.lstatSync(file);
+    const opened = fsImpl.fstatSync(handle, { bigint: true });
+    const linked = fsImpl.lstatSync(file, { bigint: true });
     if (!opened.isFile() || linked.isSymbolicLink() || !sameIdentity(opened, linked)) {
       failure("OPERATOR_ENV_FILE_UNSAFE");
     }
     const contents = fsImpl.readFileSync(handle, "utf8");
-    const after = fsImpl.lstatSync(file);
+    const after = fsImpl.lstatSync(file, { bigint: true });
     const parentAfter = verifiedDirectory(parent, fsImpl);
     if (!sameIdentity(opened, after) || parentBefore !== parentAfter) failure("OPERATOR_ENV_FILE_CHANGED");
     return contents;

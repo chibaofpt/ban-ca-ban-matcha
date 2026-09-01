@@ -403,6 +403,7 @@ describe("Staging configure — database branch-scoped", () => {
       const endpoint = spawn.mock.calls[0][1].find((argument: string) => argument.startsWith("/v6/deployments?"));
       expect(endpoint).toContain("branch=codex%2Frelease");
       expect(endpoint).toContain(`sha=${"a".repeat(40)}`);
+      expect(endpoint).toContain("limit=2");
       expect(endpoint).not.toContain("meta-githubCommitRef");
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
@@ -513,15 +514,17 @@ describe("Staging operator — cấu hình portable", () => {
     const root = mkdtempSync(path.join(tmpdir(), "staging-operator-race-"));
     const file = path.join(root, ".env.staging");
     const backup = path.join(root, "opened.env");
+    const replacement = path.join(root, "replacement.env");
     let closed = 0;
     try {
       writeFileSync(file, `${stage}\n`);
+      writeFileSync(replacement, "DATABASE_URL=replaced\n");
       const facade = Object.assign(Object.create(fs), {
         readFileSync(target: string | number, encoding: BufferEncoding) {
           const contents = fs.readFileSync(target, encoding);
           if (typeof target === "number") {
             fs.renameSync(file, backup);
-            writeFileSync(file, "DATABASE_URL=replaced\n");
+            fs.renameSync(replacement, file);
           }
           return contents;
         },

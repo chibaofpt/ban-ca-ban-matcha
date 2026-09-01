@@ -106,6 +106,20 @@ describe("Staging attest — Vercel Git provenance", () => {
       } finally { rmSync(state.root, { recursive: true, force: true }); }
     });
 
+  it("chấp nhận cursor của Vercel khi query giới hạn trả đúng một deployment", async () => {
+    const state = fixture("git");
+    const boundary = runnerBoundary();
+    state.vercel.deployments.mockResolvedValue({
+      deployments: [{ uid: "dpl_1", source: "git", target: null }],
+      pagination: { count: 1, next: base - 8_000, prev: base - 8_000 },
+    });
+    try {
+      await expect(attestStaging({ cwd: state.root, deploymentId: "dpl_1", env, git: state.git,
+        vercel: state.vercel, openDatabase: () => boundary.db, fetchImpl: boundary.fetchImpl,
+        now: () => base })).resolves.toBeDefined();
+    } finally { rmSync(state.root, { recursive: true, force: true }); }
+  });
+
   it("invalidates an old artifact before a failed refresh", async () => {
     const state = fixture("cli");
     const oldFile = path.join(state.root, ".staging-test-runs", "attestation.json");

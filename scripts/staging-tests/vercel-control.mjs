@@ -72,7 +72,7 @@ export function createControlPlane({ cwd = process.cwd(), spawn = spawnSync,
         return api(`/v13/deployments/${deploymentId}?teamId=${teamId}`);
       },
       async deployments({ projectId, teamId, branch, sha }) {
-        const query = new URLSearchParams({ projectId, teamId, target: "preview", branch, sha });
+        const query = new URLSearchParams({ projectId, teamId, target: "preview", branch, sha, limit: "2" });
         return api(`/v6/deployments?${query}`);
       },
       async readableConfig({ projectId, teamId, branch }) {
