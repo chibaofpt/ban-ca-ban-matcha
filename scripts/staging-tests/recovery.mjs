@@ -19,7 +19,7 @@ export async function classifyUnresolvedOperation(entry, db, { capturedRefreshTo
       return { state: "AMBIGUOUS", code: "REFRESH_COOKIE_NOT_OBSERVED" };
     }
     const session = await db.session(capturedRefreshToken);
-    return session?.id === recovery.sessionId && session.user_id === recovery.userId
+    return session?.id !== recovery.sessionId && session?.user_id === recovery.userId
       ? { state: "APPLIED", sessionId: session.id }
       : { state: "AMBIGUOUS", code: "REFRESH_SESSION_NOT_PROVEN" };
   }

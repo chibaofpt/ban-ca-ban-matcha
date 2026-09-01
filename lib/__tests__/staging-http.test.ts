@@ -89,7 +89,8 @@ describe("HTTP staging — admission trước raw dispatch", () => {
     const beforeDispatch = ({ pathname, method }: { pathname: string; method: string }) =>
       method === "POST" && ["/api/auth/login", "/api/auth/refresh"].includes(pathname) ? pacer.reserve() : undefined;
     const db = { actorState: async () => ({ sessions: [] }), session: async (candidate: string) =>
-      candidate === token ? { id: "session-b", user_id: "b" } : null };
+      candidate === "initial" ? { id: "session-b-old", user_id: "b" }
+        : candidate === "rotated" ? { id: "session-b-new", user_id: "b" } : null };
     const fetchImpl = async (url: URL) => {
       raw.push({ route: url.pathname, at: clock });
       if (url.pathname === "/api/auth/refresh") token = "rotated";
@@ -109,7 +110,7 @@ describe("HTTP staging — admission trước raw dispatch", () => {
       expect(raw.filter(request => request.route === "/api/auth/login")).toHaveLength(1);
       expect(JSON.parse(readFileSync(path.join(runDir, "sessions", "customerB.json"), "utf8")))
         .toEqual({ refresh_token: "rotated" });
-      expect(prepared.sessionId).toBe("session-b");
+      expect(prepared.sessionId).toBe("session-b-new");
       expect(entries.map(entry => entry.state)).toEqual(["INTENT", "APPLIED", "INTENT", "APPLIED"]);
     } finally { rmSync(runDir, { recursive: true, force: true }); }
   });

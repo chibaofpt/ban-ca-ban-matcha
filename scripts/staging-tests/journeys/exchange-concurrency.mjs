@@ -36,7 +36,8 @@ export async function runExchangeConcurrency(ctx) {
     send: () => actor.api.request("/api/profile/vouchers/exchange", {
       method: "POST", body: { package_id: pkg.id }, mutation: true, timeoutMs: 30_000,
     }),
-    isKnownNotApplied: response => response.status === 409 && response.body?.code === "CONFLICT",
+    isKnownNotApplied: response => response.status === 409 && response.body?.code === "CONFLICT"
+      || response.status === 422 && response.body?.code === "VOUCHER_LIMIT_REACHED",
     reconcile: async response => {
       const state = await ctx.db.actorState(userId);
       const newVouchers = state.vouchers.filter(voucher => !baselineVoucherIds.has(voucher.id));
@@ -59,7 +60,8 @@ export async function runExchangeConcurrency(ctx) {
     prerequisite(!responses.some(response => response.status === 429), "EXCHANGE_RACE_RATE_LIMITED");
     invariant(responses.filter(response => response.status === 201 && response.ok).length === 1,
       "EXCHANGE_RACE_WINNER_COUNT_INVALID");
-    invariant(responses.filter(response => response.status === 409 && response.body?.code === "CONFLICT").length === 1,
+    invariant(responses.filter(response => response.status === 409 && response.body?.code === "CONFLICT"
+      || response.status === 422 && response.body?.code === "VOUCHER_LIMIT_REACHED").length === 1,
       "EXCHANGE_RACE_LOSER_CONTRACT_INVALID");
   } catch (error) { failure = error; }
   if (ambiguous(failure)) throw failure;

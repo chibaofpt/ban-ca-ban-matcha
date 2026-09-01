@@ -276,7 +276,7 @@ describe("Staging voucher concurrency", () => {
 });
 
 function exchangeBoundary({ mode = "normal", maxPerUser = 1, balance = 100 }:
-  { mode?: "normal" | "ambiguous"; maxPerUser?: number; balance?: number } = {}) {
+  { mode?: "normal" | "ambiguous" | "limit-422"; maxPerUser?: number; balance?: number } = {}) {
   const pkg = { id: "20000000-0000-4000-8000-000000000001", points_cost: 10, max_per_user: maxPerUser, ends_at: null };
   const state = { user: { id: "u", role: "CUSTOMER", points_balance: balance },
     sessions: [{ id: "old" }], vouchers: [] as Array<Record<string, unknown>>,
@@ -299,7 +299,9 @@ function exchangeBoundary({ mode = "normal", maxPerUser = 1, balance = 100 }:
       if (arrivals === 2) release();
       await barrier;
     }
-    if (state.vouchers.length) return { ok: false, status: 409, body: { code: "CONFLICT" } };
+    if (state.vouchers.length) return mode === "limit-422"
+      ? { ok: false, status: 422, body: { code: "VOUCHER_LIMIT_REACHED" } }
+      : { ok: false, status: 409, body: { code: "CONFLICT" } };
     const voucher = { id: "v", qr_token: "token", package_id: pkg.id, voucher_type: "DISCOUNT", status: "ACTIVE" };
     state.vouchers.push(voucher);
     state.ledger.push({ id: "log", user_id: "u", voucher_id: "v", order_id: null, reversed_log_id: null,
@@ -321,6 +323,12 @@ function exchangeBoundary({ mode = "normal", maxPerUser = 1, balance = 100 }:
 }
 
 describe("Staging exchange concurrency", () => {
+  it("chấp nhận loser 422 VOUCHER_LIMIT_REACHED sau đúng một winner", async () => {
+    const { ctx, state } = exchangeBoundary({ mode: "limit-422" });
+    await expect(runExchangeConcurrency(ctx)).resolves.toMatchObject({ status: "PASS" });
+    expect(state.vouchers).toHaveLength(1);
+    expect(state.ledger).toHaveLength(1);
+  });
   it("chỉ phát hành một voucher và một ledger khi hai request tranh cùng quota", async () => {
     const { ctx, state, addVoucher, logout } = exchangeBoundary();
     expect(await runExchangeConcurrency(ctx)).toMatchObject({ status: "PASS",

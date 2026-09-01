@@ -164,7 +164,8 @@ export async function executeFull({ runRoot, runId, env, attestation, fetchImpl 
             }
           } });
           const prepared = prepareLongRunningActor({ actor, userId: options.expectedUserId, db: context.db,
-            journal, dispatchPacer, now, assertWriteAllowed });
+            journal, dispatchPacer, now, assertWriteAllowed,
+            onSessionRotated: sessionId => runState.addSession(options.name, sessionId) });
           prepared[ACTOR_SLOT_RELEASE] = release;
           return prepared;
         } catch (error) { release(); throw error; }
@@ -304,7 +305,7 @@ export async function executeFull({ runRoot, runId, env, attestation, fetchImpl 
     const exact = loadRunState({ fs, runDir: journal.runDir });
     const reconciliation = await reconcileRun({ db: context.db, baselines: exact.baselines, actorIds: exact.actorIds,
       runSessionIds: exact.runSessionIds, markers: exact.markers, voucherIds: exact.voucherIds,
-      initialCatalogFingerprint: exact.catalogFingerprint,
+      initialCatalogFingerprint: exact.catalogFingerprint, now, sleep, deadline,
     });
     invariant(reconciliation.ok, "FULL_FINAL_RECONCILIATION_FAILED");
     const itemTypes = ["product-discount", "addon", "item"];

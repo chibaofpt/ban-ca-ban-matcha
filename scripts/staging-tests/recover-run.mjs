@@ -12,7 +12,8 @@ import { invariant } from "./errors.mjs";
 import { prepareLongRunningActor } from "./session-renewal.mjs";
 
 /** Recover only an exact run through existing authenticated APIs; never manufacture credentials. */
-export async function executeRecovery({ runRoot, runId, env, attestation, fetchImpl, preflightFn = preflight }) {
+export async function executeRecovery({ runRoot, runId, env, attestation, fetchImpl, preflightFn = preflight,
+  now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadline = now() + 60_000 }) {
   validateRunId(runId);
   const runDir = path.resolve(runRoot, runId);
   invariant(path.dirname(runDir) === path.resolve(runRoot), "RECOVERY_PATH_INVALID");
@@ -75,7 +76,8 @@ export async function executeRecovery({ runRoot, runId, env, attestation, fetchI
         invariant(!state.baselines[name].sessionIds.includes(session.id), "RECOVERY_BASELINE_SESSION_FORBIDDEN");
         sessionIds[name] ??= new Set(); sessionIds[name].add(session.id);
         actor.sessionId = session.id;
-        prepareLongRunningActor({ actor, userId: session.user_id, db, journal, renewImmediately: true });
+        prepareLongRunningActor({ actor, userId: session.user_id, db, journal, renewImmediately: true,
+          onSessionRotated: sessionId => sessionIds[name].add(sessionId) });
       }
       actors[name] = actor;
     }
@@ -119,7 +121,7 @@ export async function executeRecovery({ runRoot, runId, env, attestation, fetchI
     const reconciliation = await reconcileRun({ db, baselines: state.baselines, actorIds: state.actorIds,
       runSessionIds: Object.fromEntries(Object.entries(sessionIds).map(([name, ids]) => [name, [...ids]])),
       markers: [...markers], voucherIds: [...voucherIds], initialCatalogFingerprint: state.catalogFingerprint,
-      recovery: true,
+      recovery: true, now, sleep, deadline,
     });
     invariant(reconciliation.ok, "RECOVERY_FINAL_RECONCILIATION_FAILED");
     return { status: "PASS", reasons: [], summary: { ordersReconciled: orders.length, auditRetained: true } };

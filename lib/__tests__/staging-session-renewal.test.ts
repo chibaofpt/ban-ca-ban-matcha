@@ -68,13 +68,16 @@ describe("Long staging journeys — refresh and actual dispatch", () => {
       if (route === "/api/auth/refresh") jar.absorb(["refresh_token=new-secret"]);
       return { ok: true, status: 200, body: { data: { success: true } } };
     }) };
+    const onSessionRotated = vi.fn();
     const actor = prepareLongRunningActor({ actor: { name: "customerB", sessionId: "s", api }, userId: "u", journal,
-      db: { session: vi.fn(async () => ({ id: "s", user_id: "u" })) }, now: () => time,
+      db: { session: vi.fn(async () => ({ id: "s-new", user_id: "u" })) }, now: () => time, onSessionRotated,
       dispatchPacer: { reserve: async () => { calls.push("pace"); time += 601_000; } },
     });
     await actor.api.request("/api/orders", { method: "POST", mutation: true });
     expect(calls).toEqual(["pace", "/api/auth/refresh", "/api/orders"]);
     expect(journal.recordIntent.mock.calls[0][0]).toBe("refresh");
+    expect(actor.sessionId).toBe("s-new");
+    expect(onSessionRotated).toHaveBeenCalledWith("s-new");
     expect(JSON.stringify(journal.recordIntent.mock.calls)).not.toContain("secret");
   });
 
@@ -88,5 +91,17 @@ describe("Long staging journeys — refresh and actual dispatch", () => {
     await expect(actor.api.request("/api/orders", { method: "POST", mutation: true })).rejects.toThrow();
     expect(request.mock.calls).toHaveLength(1);
     expect(request).toHaveBeenCalledWith("/api/auth/refresh", expect.anything());
+  });
+
+  it("từ chối refresh giữ nguyên token dù DB ánh xạ sang session id mới", async () => {
+    let time = 0;
+    const jar = new CookieJar({ refresh_token: "unchanged" });
+    const request = vi.fn(async () => ({ ok: true, status: 200, body: { data: {} } }));
+    const actor = prepareLongRunningActor({ actor: { name: "customerB", sessionId: "old", api: { jar, request } },
+      userId: "u", db: { session: vi.fn(async () => ({ id: "new", user_id: "u" })) },
+      journal: { recordIntent: vi.fn(), recordOutcome: vi.fn() }, now: () => time, dispatchPacer: undefined });
+    time = 601_000;
+    await expect(actor.api.request("/api/orders", { method: "POST", mutation: true }))
+      .rejects.toThrow("SESSION_REFRESH_TOKEN_UNCHANGED");
   });
 });

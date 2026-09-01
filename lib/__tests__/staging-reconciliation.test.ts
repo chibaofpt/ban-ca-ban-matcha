@@ -54,4 +54,50 @@ describe("Staging reconciliation — audit và dữ liệu giữ chỗ", () => {
       "RUN_VOUCHER_RESERVATION_REMAINS", "CATALOG_CHANGED",
     ]));
   });
+
+  it("chấp nhận session run đã hết hạn như audit residue", () => {
+    const result = evaluateFinalState({
+      baseline: { pointsBalance: 100, ledger, sessionIds: ["existing"] },
+      current: { pointsBalance: 100, ledger, sessionIds: ["existing", "rotated"],
+        sessions: [{ id: "existing", expires_at: null }, { id: "rotated", expires_at: "2026-01-01T00:00:00Z" }] },
+      runSessionIds: ["rotated"], orders: [], activeUses: [], now: () => Date.parse("2026-01-02T00:00:00Z"),
+      initialCatalogFingerprint: "catalog", finalCatalogFingerprint: "catalog",
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("đợi refresh grace rồi đối soát lại session read-only", async () => {
+    let time = Date.parse("2026-01-01T00:00:00Z");
+    const states = [
+      { user: { points_balance: 100 }, ledger, sessions: [{ id: "existing", expires_at: null },
+        { id: "predecessor", expires_at: new Date(time + 30_000).toISOString() }] },
+      { user: { points_balance: 100 }, ledger, sessions: [{ id: "existing", expires_at: null },
+        { id: "predecessor", expires_at: new Date(time - 1).toISOString() }] },
+    ];
+    const db = { ordersByMarkers: vi.fn(async () => []), activeUses: vi.fn(async () => []), vouchers: vi.fn(async () => []),
+      catalog: vi.fn(async () => ({ fingerprint: "catalog" })), actorState: vi.fn(async () => states.shift()!) };
+    const sleep = vi.fn(async (ms: number) => { time += ms; });
+    const result = await reconcileRun({ db, baselines: { customerA: { pointsBalance: 100, ledger, sessionIds: ["existing"] } },
+      actorIds: { customerA: "u" }, runSessionIds: { customerA: ["predecessor"] }, markers: [], voucherIds: [],
+      initialCatalogFingerprint: "catalog", now: () => time, sleep, deadline: time + 31_000 });
+    expect(result.ok).toBe(true);
+    expect(sleep).toHaveBeenCalledOnce();
+    expect(db.actorState).toHaveBeenCalledTimes(2);
+  });
+
+  it("fail closed khi deadline không đủ đợi refresh grace", async () => {
+    const time = Date.parse("2026-01-01T00:00:00Z");
+    const session = { id: "predecessor", expires_at: new Date(time + 30_000).toISOString() };
+    const db = { ordersByMarkers: vi.fn(async () => []), activeUses: vi.fn(async () => []), vouchers: vi.fn(async () => []),
+      catalog: vi.fn(async () => ({ fingerprint: "catalog" })), actorState: vi.fn(async () => ({
+        user: { points_balance: 100 }, ledger, sessions: [session],
+      })) };
+    const sleep = vi.fn();
+    const result = await reconcileRun({ db, baselines: { customerA: { pointsBalance: 100, ledger, sessionIds: [] } },
+      actorIds: { customerA: "u" }, runSessionIds: { customerA: ["predecessor"] }, markers: [], voucherIds: [],
+      initialCatalogFingerprint: "catalog", now: () => time, sleep, deadline: time + 10_000 });
+    expect(result.ok).toBe(false);
+    expect(result.failures).toContain("RUN_SESSION_GRACE_DEADLINE_EXCEEDED");
+    expect(sleep).not.toHaveBeenCalled();
+  });
 });

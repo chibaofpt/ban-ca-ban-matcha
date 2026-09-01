@@ -30,7 +30,8 @@ describe("Staging recovery — exact mutation reconciliation", () => {
       items: [{ note: marker }] };
     let staffSession: { id: string; user_id: string; expires_at: Date } | null = { id: "staff-session", user_id: "staff-user", expires_at: new Date("2099-01-01") };
     const fetchImpl = vi.fn(async (url: URL, init: RequestInit) => {
-      if (url.pathname === "/api/auth/refresh") return new Response('{"data":{"success":true}}', { status: 200, headers: { "set-cookie": "refresh_token=staff-renewed; Path=/" } });
+      if (url.pathname === "/api/auth/refresh") { staffSession = { ...staffSession!, id: "staff-session-renewed" };
+        return new Response('{"data":{"success":true}}', { status: 200, headers: { "set-cookie": "refresh_token=staff-renewed; Path=/" } }); }
       if (url.pathname === "/api/staff/orders/counter-order" && init.method === "PATCH") { order.status = "CANCELLED"; return new Response('{"data":{"status":"CANCELLED"}}'); }
       if (url.pathname === "/api/auth/logout") { staffSession = null; return new Response('{"data":{"success":true}}', { headers: { "set-cookie": "refresh_token=; Max-Age=0; Path=/" } }); }
       if (url.pathname === "/api/auth/me") return new Response('{"code":"UNAUTHORIZED"}', { status: 401 });
@@ -54,7 +55,7 @@ describe("Staging recovery — exact mutation reconciliation", () => {
   });
   it("đối soát refresh chỉ bằng cookie đã nhận, không lấy token từ DB", async () => {
     const entry = { type: "refresh", recovery: { actor: "customerB", userId: "u", sessionId: "s", baselineRefreshFingerprint: fingerprint("old-secret") } };
-    const db = { session: vi.fn(async () => ({ id: "s", user_id: "u" })) };
+    const db = { session: vi.fn(async () => ({ id: "s-new", user_id: "u" })) };
     await expect(classifyUnresolvedOperation(entry, db, { capturedRefreshToken: "new-secret" })).resolves.toMatchObject({ state: "APPLIED" });
     await expect(classifyUnresolvedOperation(entry, db, { capturedRefreshToken: "old-secret" })).resolves.toMatchObject({ state: "AMBIGUOUS" });
     expect(db.session).toHaveBeenCalledTimes(1);
@@ -99,7 +100,8 @@ describe("Staging recovery — exact mutation reconciliation", () => {
     let session: { id: string; user_id: string; expires_at: Date } | null = { id: "session", user_id: "u", expires_at: new Date("2099-01-01") };
     let accessFresh = false;
     const fetchImpl = vi.fn(async (url: URL, init: RequestInit) => {
-      if (url.pathname === "/api/auth/refresh") { accessFresh = true; return new Response('{"data":{"success":true}}', { status: 200, headers: { "set-cookie": "refresh_token=renewed-run-only; Path=/; HttpOnly" } }); }
+      if (url.pathname === "/api/auth/refresh") { accessFresh = true; session = { ...session!, id: "session-renewed" };
+        return new Response('{"data":{"success":true}}', { status: 200, headers: { "set-cookie": "refresh_token=renewed-run-only; Path=/; HttpOnly" } }); }
       if (url.pathname === "/api/orders/o" && !accessFresh) return new Response('{"code":"UNAUTHORIZED"}', { status: 401 });
       if (url.pathname === "/api/orders/o" && init.method === "PATCH") { order.status = "CANCELLED"; return new Response('{"data":{"status":"CANCELLED"}}', { status: 200 }); }
       if (url.pathname === "/api/auth/logout") { session = null; return new Response('{"data":{"success":true}}', { status: 200, headers: { "set-cookie": "refresh_token=; Max-Age=0; Path=/" } }); }

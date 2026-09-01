@@ -4,7 +4,7 @@ import { assertWriteGate, invariant } from "./errors.mjs";
 
 /** Attach scheduled authentication renewal and actual-dispatch pacing to one run actor. */
 export function prepareLongRunningActor({ actor, userId, db, journal, dispatchPacer, now = Date.now,
-  renewImmediately = false, assertWriteAllowed = () => {} }) {
+  renewImmediately = false, assertWriteAllowed = () => {}, onSessionRotated = () => {} }) {
   const rawApi = actor.api;
   let renewAt = renewImmediately ? 0 : now() + 600_000;
   let pendingRenewal;
@@ -21,13 +21,16 @@ export function prepareLongRunningActor({ actor, userId, db, journal, dispatchPa
         const token = rawApi.jar.serialize().refresh_token;
         if (!token || token === before) return "AMBIGUOUS";
         const session = await db.session(token);
-        return session?.id === actor.sessionId && session.user_id === userId ? "APPLIED" : "AMBIGUOUS";
+        return session?.id !== actor.sessionId && session?.user_id === userId ? "APPLIED" : "AMBIGUOUS";
       },
     });
     invariant(response.ok, "SESSION_REFRESH_FAILED");
     const token = rawApi.jar.serialize().refresh_token;
+    invariant(token && token !== before, "SESSION_REFRESH_TOKEN_UNCHANGED");
     const session = token ? await db.session(token) : null;
-    invariant(session?.id === actor.sessionId && session.user_id === userId, "SESSION_REFRESH_IDENTITY_MISMATCH");
+    invariant(session?.id && session.id !== actor.sessionId && session.user_id === userId, "SESSION_REFRESH_IDENTITY_MISMATCH");
+    actor.sessionId = session.id;
+    onSessionRotated(session.id);
     actor.refreshToken = token;
     renewAt = now() + 600_000;
   }
