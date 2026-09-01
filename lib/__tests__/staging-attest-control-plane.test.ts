@@ -8,7 +8,8 @@ import { runnerBoundary } from "./staging-runner-boundary";
 import { launchProfile } from "../../scripts/staging-tests/operator.mjs";
 
 type BoundarySpawn = (executable: string, args: string[], options: { env?: NodeJS.ProcessEnv }) => { status: number | null };
-type ProfileLaunch = (options: { cwd: string; profile: string; args?: string[]; spawn?: BoundarySpawn }) => number;
+type GitSpawn = (command: string, args: string[], options: { cwd?: string }) => { status: number | null; stdout: string; error?: Error };
+type ProfileLaunch = (options: { cwd: string; profile: string; args?: string[]; spawn?: BoundarySpawn; gitSpawn?: GitSpawn }) => number;
 const launch = launchProfile as unknown as ProfileLaunch;
 
 const SHA = "a".repeat(40);
@@ -165,6 +166,22 @@ describe("Staging attest — Vercel Git provenance", () => {
       expect(launch({ cwd: state.root, profile: "recover", args: ["--run-id", "run_12345678"], spawn })).toBe(2);
       expect(spawn.mock.calls[0][2].env).toMatchObject({ TEST_BASE_URL: "https://verified.vercel.app",
         TEST_DEPLOYMENT_ID: "dpl_1", TEST_DEPLOYMENT_SHA: SHA });
+      writeFileSync(result.file, JSON.stringify({ ...result.evidence, recoveryOnly: true,
+        mode: "recovery-runner-descendant", runId: "run_12345678", runnerSha: SHA, runnerBaseSha: "b".repeat(40) }));
+      const recoverySpawn = vi.fn<BoundarySpawn>(() => ({ status: 2 }));
+      const gitSpawn = vi.fn((_command: string, args: string[]) => ({ status: 0,
+        stdout: args.includes("status") ? "" : `${SHA}\n` }));
+      expect(launch({ cwd: state.root, profile: "recover", args: ["--run-id", "run_12345678"],
+        spawn: recoverySpawn, gitSpawn })).toBe(2);
+      expect(() => launch({ cwd: state.root, profile: "full", spawn: vi.fn(), gitSpawn }))
+        .toThrow("OPERATOR_RECOVERY_ATTESTATION_FORBIDDEN");
+      const dirtyGit = vi.fn((_command: string, args: string[]) => ({ status: 0,
+        stdout: args.includes("status") ? "?? unexpected.txt\n" : `${SHA}\n` }));
+      const dirtySpawn = vi.fn<BoundarySpawn>(() => ({ status: 2 }));
+      expect(() => launch({ cwd: state.root, profile: "recover", args: ["--run-id", "run_12345678"],
+        spawn: dirtySpawn, gitSpawn: dirtyGit })).toThrow("OPERATOR_RUNNER_TREE_DIRTY");
+      expect(dirtySpawn).not.toHaveBeenCalled();
+      writeFileSync(result.file, JSON.stringify(result.evidence));
       state.vercel.deployments.mockResolvedValue({ deployments: [{ uid: "dpl_1", source: "cli", target: null }], pagination: {} });
       let markerCloses = 0;
       const racingFs = new Proxy(fs, { get(target, property) {
@@ -195,6 +212,119 @@ describe("Staging attest — Vercel Git provenance", () => {
       expect(() => launch({ cwd: state.root, profile: "full", spawn: expiredSpawn })).toThrow("OPERATOR_ATTESTATION_INVALID");
       expect(expiredSpawn).not.toHaveBeenCalled();
     } finally { rmSync(state.root, { recursive: true, force: true }); }
+  });
+
+  it("cấp attestation recovery-only cho runner descendant an toàn", async () => {
+    const state = fixture("git");
+    const boundary = runnerBoundary();
+    const oldSha = "b".repeat(40);
+    const runId = "run_12345678";
+    const runDir = path.join(state.root, ".staging-test-runs", runId);
+    fs.mkdirSync(runDir);
+    writeFileSync(path.join(runDir, "state.ndjson"), `${JSON.stringify({ event: "INITIAL", target: {
+      origin: "https://verified.vercel.app", supabaseRef: "stage-ref", deploymentId: "dpl_1" } })}\n`);
+    writeFileSync(path.join(runDir, "journal.ndjson"), `${JSON.stringify({ state: "INTENT",
+      at: new Date(base - 7_000).toISOString() })}\n`);
+    writeFileSync(path.join(state.root, ".staging-test-runs", "attestation.json"), JSON.stringify({
+      deploymentId: "dpl_1", deploymentSha: oldSha, deploymentOrigin: "https://verified.vercel.app",
+      projectId: "prj_1", teamId: "team_1", branch, supabaseRef: "stage-ref",
+      poolerHost: "aws-1.pooler.supabase.com", source: "vercel-api", environment: "preview",
+      appEnvironment: "staging", immutableDeployment: true, pushMode: "log_only", pushGuardVerified: true,
+      pushGuardEvidence: { reviewedBlob: PUSH_BLOB, cleanTree: true, source: "git" }, deploymentSecretReadback: false,
+      provenanceMode: "vercel-classified-git+observed-configured-branch", databaseFingerprint: "catalog-fingerprint",
+      apiDatabaseFingerprint: "catalog-fingerprint", databaseBinding: { deploymentId: "dpl_1", deploymentSha: oldSha,
+        supabaseRef: "stage-ref", verified: true, source: "deployment-environment",
+        proofMode: "accepted-sensitive-branch-configuration-and-fresh-git-source-deployment", deploymentSecretReadback: false },
+      releaseWindowAssertion: { id: "window-1", assertedByOperator: true },
+      verifiedAt: new Date(base - 9_000).toISOString(), expiresAt: new Date(base - 6_000).toISOString(),
+    }));
+    state.deployment.gitSource.sha = oldSha;
+    state.deployment.meta.githubCommitSha = oldSha;
+    state.vercel.deployments.mockResolvedValue({ deployments: [{ uid: "dpl_1", source: "git", target: null }], pagination: {} });
+    Object.assign(state.git, { isAncestor: vi.fn(async () => true),
+      diffNameStatus: vi.fn(async () => "M\tscripts/staging-tests/session-renewal.mjs\nA\tlib/__tests__/staging-recovery.test.ts\n"),
+      pushBlobAt: vi.fn(async () => PUSH_BLOB) });
+    try {
+      const result = await attestStaging({ cwd: state.root, deploymentId: "dpl_1", recoverRunId: runId,
+        env, git: state.git, vercel: state.vercel, openDatabase: () => boundary.db,
+        fetchImpl: boundary.fetchImpl, now: () => base });
+      expect(result.evidence).toMatchObject({ recoveryOnly: true, mode: "recovery-runner-descendant", runId,
+        runnerSha: SHA, runnerBaseSha: oldSha, deploymentSha: oldSha });
+      const archive = path.join(runDir, "historical-attestation.json");
+      expect(fs.lstatSync(archive).isFile()).toBe(true);
+      state.vercel.deployments.mockResolvedValue({ deployments: [{ uid: "dpl_1", source: "cli", target: null }], pagination: {} });
+      await expect(attestStaging({ cwd: state.root, deploymentId: "dpl_1", recoverRunId: runId,
+        env, git: state.git, vercel: state.vercel, openDatabase: () => boundary.db,
+        fetchImpl: boundary.fetchImpl, now: () => base })).rejects.toThrow("ATTEST_DEPLOYMENT_SOURCE_INVALID");
+      expect(JSON.parse(fs.readFileSync(result.file, "utf8"))).toEqual({ invalidated: true });
+      state.vercel.deployments.mockResolvedValue({ deployments: [{ uid: "dpl_1", source: "git", target: null }], pagination: {} });
+      await expect(attestStaging({ cwd: state.root, deploymentId: "dpl_1", recoverRunId: runId,
+        env, git: state.git, vercel: state.vercel, openDatabase: () => boundary.db,
+        fetchImpl: boundary.fetchImpl, now: () => base })).resolves.toBeDefined();
+      const incomplete = JSON.parse(fs.readFileSync(archive, "utf8"));
+      delete incomplete.databaseBinding.verified;
+      writeFileSync(archive, JSON.stringify(incomplete));
+      writeFileSync(result.file, JSON.stringify({ invalidated: true }));
+      await expect(attestStaging({ cwd: state.root, deploymentId: "dpl_1", recoverRunId: runId,
+        env, git: state.git, vercel: state.vercel, openDatabase: () => boundary.db,
+        fetchImpl: boundary.fetchImpl, now: () => base })).rejects.toThrow("ATTEST_HISTORICAL_EVIDENCE_INVALID");
+    } finally { rmSync(state.root, { recursive: true, force: true }); }
+  });
+
+  it("invalidates historical global proof for a malformed recovery run without archiving", async () => {
+    const state = fixture("git");
+    const global = path.join(state.root, ".staging-test-runs", "attestation.json");
+    writeFileSync(global, JSON.stringify({ historical: true }));
+    try {
+      await expect(attestStaging({ cwd: state.root, deploymentId: "dpl_1", recoverRunId: "../wrong",
+        env, git: state.git, vercel: state.vercel, openDatabase: vi.fn(), now: () => base }))
+        .rejects.toThrow("ATTEST_RECOVERY_RUN_ID_INVALID");
+      expect(JSON.parse(fs.readFileSync(global, "utf8"))).toEqual({ invalidated: true });
+      expect(fs.existsSync(path.join(state.root, ".staging-test-runs", "wrong", "historical-attestation.json"))).toBe(false);
+    } finally { rmSync(state.root, { recursive: true, force: true }); }
+  });
+
+  it("rejects recovery evidence for another run before consulting its archive", async () => {
+    const state = fixture("git");
+    const requested = "run_abcdefgh";
+    const runDir = path.join(state.root, ".staging-test-runs", requested);
+    fs.mkdirSync(runDir);
+    writeFileSync(path.join(runDir, "historical-attestation.json"), "archive-must-not-be-used");
+    writeFileSync(path.join(state.root, ".staging-test-runs", "attestation.json"), JSON.stringify({
+      recoveryOnly: true, mode: "recovery-runner-descendant", runId: "run_other123", deploymentId: "dpl_1",
+      projectId: "prj_1", teamId: "team_1", branch, supabaseRef: "stage-ref", poolerHost: "aws-1.pooler.supabase.com",
+      releaseWindowAssertion: { id: "window-1" },
+    }));
+    try {
+      await expect(attestStaging({ cwd: state.root, deploymentId: "dpl_1", recoverRunId: requested,
+        env, git: state.git, vercel: state.vercel, openDatabase: vi.fn(), now: () => base }))
+        .rejects.toThrow("ATTEST_RECOVERY_GLOBAL_MISMATCH");
+      expect(fs.readFileSync(path.join(runDir, "historical-attestation.json"), "utf8")).toBe("archive-must-not-be-used");
+      expect(JSON.parse(fs.readFileSync(path.join(state.root, ".staging-test-runs", "attestation.json"), "utf8")))
+        .toEqual({ invalidated: true });
+    } finally { rmSync(state.root, { recursive: true, force: true }); }
+  });
+
+  it("rejects a symlinked exact run directory without archiving outside", async () => {
+    const state = fixture("git");
+    const outside = mkdtempSync(path.join(tmpdir(), "staging-run-outside-"));
+    const runId = "run_87654321";
+    writeFileSync(path.join(outside, "state.ndjson"), `${JSON.stringify({ event: "INITIAL", target: {} })}\n`);
+    writeFileSync(path.join(outside, "journal.ndjson"), `${JSON.stringify({ state: "INTENT", at: new Date(base).toISOString() })}\n`);
+    writeFileSync(path.join(outside, "historical-attestation.json"), "outside-archive-remains");
+    fs.symlinkSync(outside, path.join(state.root, ".staging-test-runs", runId), "junction");
+    writeFileSync(path.join(state.root, ".staging-test-runs", "attestation.json"), JSON.stringify({ historical: true }));
+    try {
+      await expect(attestStaging({ cwd: state.root, deploymentId: "dpl_1", recoverRunId: runId,
+        env, git: state.git, vercel: state.vercel, openDatabase: vi.fn(), now: () => base }))
+        .rejects.toThrow("ATTEST_RECOVERY_RUN_DIRECTORY_UNSAFE");
+      expect(fs.readFileSync(path.join(outside, "historical-attestation.json"), "utf8")).toBe("outside-archive-remains");
+      expect(JSON.parse(fs.readFileSync(path.join(state.root, ".staging-test-runs", "attestation.json"), "utf8")))
+        .toEqual({ invalidated: true });
+    } finally {
+      rmSync(state.root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it.each([

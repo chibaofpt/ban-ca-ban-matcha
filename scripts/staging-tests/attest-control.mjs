@@ -33,6 +33,49 @@ function exactRow(all, expected, branch) {
 
 function proofFile(cwd) { return path.join(cwd, ".staging-test-runs", "deployment-environment-proof.json"); }
 
+function validateHistoricalAttestation(value, env, deploymentId, firstIntentAt) {
+  const verified = Date.parse(value.verifiedAt);
+  const expires = Date.parse(value.expiresAt);
+  const intent = Date.parse(firstIntentAt);
+  assert(Number.isFinite(verified) && Number.isFinite(expires) && Number.isFinite(intent)
+    && expires > verified && expires - verified <= 2 * 60 * 60_000 && verified <= intent && intent <= expires,
+  "ATTEST_HISTORICAL_WINDOW_INVALID");
+  assert(!value.recoveryOnly && value.source === "vercel-api" && value.environment === "preview"
+    && value.appEnvironment === "staging" && value.immutableDeployment === true
+    && value.projectId === env.TEST_VERCEL_PROJECT_ID && value.teamId === env.TEST_VERCEL_TEAM_ID
+    && value.branch === env.TEST_VERCEL_GIT_BRANCH && value.supabaseRef === env.TEST_STAGING_SUPABASE_REF
+    && value.poolerHost === env.TEST_STAGING_POOLER_HOST && value.deploymentId === deploymentId
+    && /^[0-9a-f]{40}$/.test(value.deploymentSha) && value.databaseBinding?.deploymentId === deploymentId
+    && value.databaseBinding?.deploymentSha === value.deploymentSha
+    && value.databaseBinding?.supabaseRef === value.supabaseRef
+    && value.databaseBinding?.verified === true && value.databaseBinding?.source === "deployment-environment"
+    && value.deploymentSecretReadback === false
+    && value.databaseBinding?.proofMode === "accepted-sensitive-branch-configuration-and-fresh-git-source-deployment"
+    && value.databaseBinding?.deploymentSecretReadback === false
+    && value.databaseFingerprint && value.databaseFingerprint === value.apiDatabaseFingerprint
+    && value.pushMode === "log_only" && value.pushGuardVerified === true
+    && value.pushGuardEvidence?.reviewedBlob === PUSH_BLOB && value.pushGuardEvidence?.cleanTree === true
+    && value.pushGuardEvidence?.source === "git"
+    && value.provenanceMode === "vercel-classified-git+observed-configured-branch"
+    && value.releaseWindowAssertion?.id === env.TEST_RELEASE_WINDOW_ID
+    && value.releaseWindowAssertion?.assertedByOperator === true, "ATTEST_HISTORICAL_EVIDENCE_INVALID");
+}
+
+function preserveHistorical(runDir, bytes, fsImpl) {
+  const runStat = fsImpl.lstatSync(runDir);
+  assert(runStat.isDirectory() && !runStat.isSymbolicLink(), "ATTEST_RECOVERY_RUN_DIRECTORY_UNSAFE");
+  const file = path.join(runDir, "historical-attestation.json");
+  if (fsImpl.existsSync(file)) {
+    assert(readVerifiedFile(file, fsImpl) === bytes, "ATTEST_HISTORICAL_ARCHIVE_CONFLICT");
+    return file;
+  }
+  const temporary = `${file}.${process.pid}.tmp`;
+  try { fsImpl.writeFileSync(temporary, bytes, { flag: "wx", mode: 0o600 }); fsImpl.renameSync(temporary, file); }
+  finally { if (fsImpl.existsSync(temporary)) fsImpl.rmSync(temporary); }
+  assert(readVerifiedFile(file, fsImpl) === bytes, "ATTEST_HISTORICAL_ARCHIVE_INVALID");
+  return file;
+}
+
 function invalidatePreviousAttestation(cwd, fsImpl) {
   const root = path.join(cwd, ".staging-test-runs");
   const rootStat = fsImpl.lstatSync(root);
@@ -118,9 +161,62 @@ function writeAttestation(cwd, evidence, fsImpl) {
 
 /** Verify one explicit Git-integration deployment and issue a short-lived staging attestation. */
 export async function attestStaging({ cwd = process.cwd(), deploymentId, env, git, vercel, openDatabase,
-  fetchImpl = fetch, now = Date.now, fsImpl = fs }) {
+  fetchImpl = fetch, now = Date.now, fsImpl = fs, recoverRunId = "" }) {
   assert(/^dpl_[A-Za-z0-9]+$/.test(deploymentId ?? ""), "ATTEST_DEPLOYMENT_ID_INVALID");
-  invalidatePreviousAttestation(cwd, fsImpl);
+  let historical;
+  let recoveryState;
+  let globalInvalidated = false;
+  if (recoverRunId) {
+    try {
+      const globalFile = path.join(cwd, ".staging-test-runs", "attestation.json");
+      const globalBytes = readVerifiedFile(globalFile, fsImpl);
+      let exactInvalidMarker = false;
+      let parsedGlobal;
+      try {
+        parsedGlobal = JSON.parse(globalBytes);
+        exactInvalidMarker = parsedGlobal?.invalidated === true && Object.keys(parsedGlobal).length === 1;
+      } catch { /* A malformed global artifact is not a trusted invalid marker. */ }
+      invalidatePreviousAttestation(cwd, fsImpl); globalInvalidated = true;
+      let bytes = globalBytes;
+      let useArchive = exactInvalidMarker;
+      if (parsedGlobal?.recoveryOnly) {
+        assert(parsedGlobal.mode === "recovery-runner-descendant" && parsedGlobal.runId === recoverRunId
+          && parsedGlobal.deploymentId === deploymentId && parsedGlobal.projectId === env.TEST_VERCEL_PROJECT_ID
+          && parsedGlobal.teamId === env.TEST_VERCEL_TEAM_ID && parsedGlobal.branch === env.TEST_VERCEL_GIT_BRANCH
+          && parsedGlobal.supabaseRef === env.TEST_STAGING_SUPABASE_REF
+          && parsedGlobal.poolerHost === env.TEST_STAGING_POOLER_HOST
+          && parsedGlobal.releaseWindowAssertion?.id === env.TEST_RELEASE_WINDOW_ID,
+        "ATTEST_RECOVERY_GLOBAL_MISMATCH");
+        useArchive = true;
+      }
+      const validRunId = /^run_[a-z0-9]{8,64}$/.test(recoverRunId);
+      assert(validRunId, "ATTEST_RECOVERY_RUN_ID_INVALID");
+      const runDir = path.join(cwd, ".staging-test-runs", recoverRunId);
+      const stateRows = readVerifiedFile(path.join(runDir, "state.ndjson"), fsImpl).split("\n").filter(Boolean).map(JSON.parse);
+      assert(stateRows[0]?.event === "INITIAL", "ATTEST_RECOVERY_STATE_INVALID");
+      recoveryState = stateRows[0];
+      if (parsedGlobal?.recoveryOnly) assert(recoveryState.target?.deploymentId === parsedGlobal.deploymentId
+        && recoveryState.target?.origin === parsedGlobal.deploymentOrigin
+        && recoveryState.target?.supabaseRef === parsedGlobal.supabaseRef, "ATTEST_RECOVERY_GLOBAL_MISMATCH");
+      if (useArchive) bytes = readVerifiedFile(path.join(runDir, "historical-attestation.json"), fsImpl);
+      const journal = readVerifiedFile(path.join(runDir, "journal.ndjson"), fsImpl).split("\n").filter(Boolean).map(JSON.parse);
+      const firstIntent = journal.find(row => row.state === "INTENT");
+      assert(firstIntent, "ATTEST_HISTORICAL_WINDOW_INVALID");
+      historical = JSON.parse(bytes);
+      validateHistoricalAttestation(historical, env, deploymentId, firstIntent.at);
+      assert(recoveryState.target?.deploymentId === deploymentId
+        && recoveryState.target?.origin === historical.deploymentOrigin
+        && recoveryState.target?.supabaseRef === historical.supabaseRef, "ATTEST_RECOVERY_TARGET_MISMATCH");
+      preserveHistorical(runDir, bytes, fsImpl);
+    } catch (error) {
+      if (/^ATTEST_/.test(error?.message ?? "")) throw error;
+      if (/^OPERATOR_PATH_|^OPERATOR_CONFIG_DIRECTORY_UNSAFE/.test(error?.message ?? "")) {
+        failure("ATTEST_RECOVERY_RUN_DIRECTORY_UNSAFE");
+      }
+      failure("ATTEST_HISTORICAL_EVIDENCE_INVALID");
+    }
+  }
+  if (!globalInvalidated) invalidatePreviousAttestation(cwd, fsImpl);
   const { proof, configured } = loadProof(cwd, env, now);
   const branch = env.TEST_VERCEL_GIT_BRANCH;
   const [currentBranch, head, status, pushBlob, vercelSource, packageSource] = await Promise.all([
@@ -130,6 +226,18 @@ export async function attestStaging({ cwd = process.cwd(), deploymentId, env, gi
   assert(/^[0-9a-f]{40}$/.test(head), "ATTEST_GIT_HEAD_INVALID");
   assert(status.trim() === "", "ATTEST_GIT_TREE_DIRTY");
   assert(pushBlob === PUSH_BLOB, "ATTEST_PUSH_BLOB_UNREVIEWED");
+  const deployedSha = recoverRunId ? historical.deploymentSha : head;
+  if (recoverRunId) {
+    assert(deployedSha !== head && await git.isAncestor(deployedSha, head), "ATTEST_RUNNER_DESCENDANT_INVALID");
+    const lines = (await git.diffNameStatus(deployedSha, head)).split("\n").filter(Boolean);
+    assert(lines.length > 0 && lines.every(line => {
+      const [status, file, extra] = line.split("\t");
+      return !extra && /^[MA]$/.test(status) && (file.startsWith("scripts/staging-tests/")
+        || /^lib\/__tests__\/staging-[^/]+\.test\.ts$/.test(file));
+    }), "ATTEST_RUNNER_DIFF_UNSAFE");
+    assert(await git.pushBlobAt(deployedSha) === PUSH_BLOB && await git.pushBlobAt(head) === PUSH_BLOB,
+      "ATTEST_PUSH_BLOB_UNREVIEWED");
+  }
   let vercelConfig;
   let packageConfig;
   try { vercelConfig = JSON.parse(vercelSource); packageConfig = JSON.parse(packageSource); }
@@ -141,7 +249,7 @@ export async function attestStaging({ cwd = process.cwd(), deploymentId, env, gi
     "ATTEST_TRACKED_RUNTIME_REWRITE");
   const project = await vercel.project({ projectId: proof.projectId, teamId: proof.teamId });
   const deployment = await vercel.deployment({ deploymentId, teamId: proof.teamId });
-  const listed = await vercel.deployments({ projectId: proof.projectId, teamId: proof.teamId, branch, sha: head });
+  const listed = await vercel.deployments({ projectId: proof.projectId, teamId: proof.teamId, branch, sha: deployedSha });
   const listedDeployments = listed?.deployments ?? [];
   const matches = listedDeployments.filter(item => (item.uid ?? item.id) === deploymentId);
   assert(listedDeployments.length === 1 && matches.length === 1, "ATTEST_DEPLOYMENT_LIST_AMBIGUOUS");
@@ -149,10 +257,10 @@ export async function attestStaging({ cwd = process.cwd(), deploymentId, env, gi
   assert(deployment.readyState === "READY" && deployment.projectId === proof.projectId && deployment.target == null
     && !deployment.customEnvironment && (deployment.uid ?? deployment.id) === deploymentId, "ATTEST_DEPLOYMENT_IDENTITY_INVALID");
   const sha = deployment.gitSource?.sha;
-  assert(deployment.gitSource?.type === "github" && deployment.gitSource.ref === branch && sha === head
+  assert(deployment.gitSource?.type === "github" && deployment.gitSource.ref === branch && sha === deployedSha
     && project.link?.type === "github" && project.link.repoId != null
     && deployment.gitSource.repoId === project.link.repoId && deployment.meta?.githubCommitRef === branch
-    && deployment.meta?.githubCommitSha === head, "ATTEST_DEPLOYMENT_GIT_IDENTITY_INVALID");
+    && deployment.meta?.githubCommitSha === deployedSha, "ATTEST_DEPLOYMENT_GIT_IDENTITY_INVALID");
   const origin = deploymentOrigin(deployment.url);
   const created = millis(deployment.createdAt);
   const versionTimes = [...DB_KEYS.map(key => proof.databaseVariables[key]),
@@ -193,6 +301,8 @@ export async function attestStaging({ cwd = process.cwd(), deploymentId, env, gi
     pushGuardEvidence: { reviewedBlob: pushBlob, cleanTree: true, source: "git" }, deploymentSecretReadback: false,
     provenanceMode: "vercel-classified-git+observed-configured-branch",
     releaseWindowAssertion: { id: proof.releaseWindowId, assertedByOperator: true } };
+  if (recoverRunId) Object.assign(evidence, { recoveryOnly: true, mode: "recovery-runner-descendant",
+    runId: recoverRunId, runnerSha: head, runnerBaseSha: deployedSha });
   assert(validateTarget({ ...env, TEST_BASE_URL: origin, TEST_DEPLOYMENT_ID: deploymentId,
     TEST_DEPLOYMENT_SHA: sha, NEXT_PUBLIC_APP_ENV: "staging", VERCEL_ENV: "preview",
     DATABASE_URL: databaseUrl, DIRECT_URL: databaseUrl }, evidence, true).ok,

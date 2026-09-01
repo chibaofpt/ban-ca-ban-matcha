@@ -61,6 +61,11 @@ export function createControlPlane({ cwd = process.cwd(), spawn = spawnSync,
       async status() { return command("git", gitArgs(["status", "--porcelain", "--untracked-files=all"]), undefined, spawn, cwd); },
       async pushBlob() { return command("git", gitArgs(["rev-parse", "HEAD:lib/push.ts"]), undefined, spawn, cwd).trim(); },
       async trackedFile(file) { return command("git", gitArgs(["show", `HEAD:${file}`]), undefined, spawn, cwd); },
+      async isAncestor(base, head) {
+        command("git", gitArgs(["merge-base", "--is-ancestor", base, head]), undefined, spawn, cwd); return true;
+      },
+      async diffNameStatus(base, head) { return command("git", gitArgs(["diff", "--name-status", `${base}..${head}`]), undefined, spawn, cwd); },
+      async pushBlobAt(revision) { return command("git", gitArgs(["rev-parse", `${revision}:lib/push.ts`]), undefined, spawn, cwd).trim(); },
     },
     vercel: {
       async linkage() { return linkage(); },

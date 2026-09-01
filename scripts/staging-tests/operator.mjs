@@ -105,7 +105,8 @@ function sessionDatabase(value, ref, host) {
 }
 
 /** Overlay one current attestation as the only live deployment target for a profile. */
-export function loadProfileEnvironment({ cwd = process.cwd(), profile, source = process.env, fsImpl = fs } = {}) {
+export function loadProfileEnvironment({ cwd = process.cwd(), profile, args = [], source = process.env, fsImpl = fs,
+  gitSpawn = spawnSync } = {}) {
   const base = loadOperatorEnvironment({ cwd, source, fsImpl });
   const attestation = loadAttestation(path.join(cwd, ".staging-test-runs"));
   if (attestation.projectId !== base.TEST_VERCEL_PROJECT_ID || attestation.teamId !== base.TEST_VERCEL_TEAM_ID
@@ -113,6 +114,16 @@ export function loadProfileEnvironment({ cwd = process.cwd(), profile, source = 
     || attestation.poolerHost !== base.TEST_STAGING_POOLER_HOST
     || attestation.releaseWindowAssertion?.id !== base.TEST_RELEASE_WINDOW_ID
     || attestation.releaseWindowAssertion?.assertedByOperator !== true) failure("OPERATOR_ATTESTATION_PIN_MISMATCH");
+  if (attestation.recoveryOnly) {
+    const runIndex = args.indexOf("--run-id");
+    if (profile !== "recover" || runIndex < 0 || args[runIndex + 1] !== attestation.runId) failure("OPERATOR_RECOVERY_ATTESTATION_FORBIDDEN");
+    const result = gitSpawn("git", ["-c", `safe.directory=${cwd.replaceAll("\\", "/")}`, "rev-parse", "HEAD"],
+      { cwd, encoding: "utf8", windowsHide: true, shell: false });
+    if (result.error || result.status !== 0 || result.stdout.trim() !== attestation.runnerSha) failure("OPERATOR_RUNNER_SHA_MISMATCH");
+    const status = gitSpawn("git", ["-c", `safe.directory=${cwd.replaceAll("\\", "/")}`,
+      "status", "--porcelain", "--untracked-files=all"], { cwd, encoding: "utf8", windowsHide: true, shell: false });
+    if (status.error || status.status !== 0 || status.stdout.trim()) failure("OPERATOR_RUNNER_TREE_DIRTY");
+  }
   const databaseUrl = sessionDatabase(base.DIRECT_URL, attestation.supabaseRef, attestation.poolerHost);
   const env = { ...base, TEST_BASE_URL: attestation.deploymentOrigin, TEST_DEPLOYMENT_ID: attestation.deploymentId,
     TEST_DEPLOYMENT_SHA: attestation.deploymentSha, NEXT_PUBLIC_APP_ENV: "staging", VERCEL_ENV: "preview",
@@ -123,10 +134,10 @@ export function loadProfileEnvironment({ cwd = process.cwd(), profile, source = 
 
 /** Launch an unchanged staging CLI profile without a shell or secret-bearing arguments. */
 export function launchProfile({ cwd = process.cwd(), profile, args = [], spawn = spawnSync,
-  source = process.env, fsImpl = fs }) {
+  source = process.env, fsImpl = fs, gitSpawn = spawnSync }) {
   if (!PROFILES.has(profile)) failure("OPERATOR_PROFILE_INVALID");
   if (!Array.isArray(args) || args.some(value => typeof value !== "string")) failure("OPERATOR_ARGUMENTS_INVALID");
-  const env = loadProfileEnvironment({ cwd, profile, source, fsImpl });
+  const env = loadProfileEnvironment({ cwd, profile, args, source, fsImpl, gitSpawn });
   const result = spawn(process.execPath, [path.join(cwd, "scripts/staging-tests/cli.mjs"), profile, ...args], {
     cwd, env: { ...process.env, ...env }, stdio: "inherit", windowsHide: true,
   });
