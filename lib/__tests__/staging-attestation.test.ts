@@ -76,6 +76,27 @@ describe("Staging configure — database branch-scoped", () => {
     expect(calls).toHaveLength(2);
     for (const call of calls) expect(call.options).toMatchObject({ cwd: selected, shell: false });
   });
+  it("mọi Git command đều ghim safe.directory của worktree", async () => {
+    const selected = path.resolve("separate-workspace");
+    const calls: string[][] = [];
+    const spawn = vi.fn<BoundarySpawn>((_executable, args) => {
+      calls.push(args);
+      if (args.includes("branch")) return { status: 0, stdout: "codex/release\n" };
+      if (args.includes("status")) return { status: 0, stdout: "" };
+      return { status: 0, stdout: `${"a".repeat(40)}\n` };
+    });
+    const { git } = createControlPlane({ cwd: selected, spawn: controlSpawn(spawn) });
+    await expect(Promise.all([git.currentBranch(), git.head(), git.status(), git.pushBlob(),
+      git.trackedFile("vercel.json")])).resolves.toHaveLength(5);
+    const safe = `safe.directory=${selected.replaceAll("\\", "/")}`;
+    expect(calls).toHaveLength(5);
+    for (const args of calls) expect(args.slice(0, 2)).toEqual(["-c", safe]);
+    expect(calls.map(args => args.slice(2))).toEqual([
+      ["branch", "--show-current"], ["rev-parse", "HEAD"], ["status", "--porcelain", "--untracked-files=all"],
+      ["rev-parse", "HEAD:lib/push.ts"], ["show", "HEAD:vercel.json"],
+    ]);
+  });
+
   const env = {
     NEXT_PUBLIC_APP_ENV: "staging", NEXT_PUBLIC_SUPABASE_URL: "https://stage-ref.supabase.co",
     TEST_STAGING_SUPABASE_REF: "stage-ref", TEST_STAGING_POOLER_HOST: "aws-1.pooler.supabase.com",

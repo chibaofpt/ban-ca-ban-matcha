@@ -40,6 +40,7 @@ function createdRow(response) {
 /** Create portable authenticated Vercel and Git boundaries for staging configuration. */
 export function createControlPlane({ cwd = process.cwd(), spawn = spawnSync,
   execPath = process.execPath, source = process.env, fsImpl = fs } = {}) {
+  const gitArgs = args => ["-c", `safe.directory=${cwd.replaceAll("\\", "/")}`, ...args];
   const invoke = (args, body) => command(execPath,
     [resolveNpmCli({ execPath, source, fsImpl }), "exec", "--yes", "--package=vercel@59.10.0", "--", "vercel", ...args],
     body === undefined ? undefined : JSON.stringify(body), spawn, cwd);
@@ -54,13 +55,12 @@ export function createControlPlane({ cwd = process.cwd(), spawn = spawnSync,
   return {
     git: {
       async currentBranch() {
-        return command("git", ["-c", `safe.directory=${cwd.replaceAll("\\", "/")}`,
-          "branch", "--show-current"], undefined, spawn, cwd).trim();
+        return command("git", gitArgs(["branch", "--show-current"]), undefined, spawn, cwd).trim();
       },
-      async head() { return command("git", ["rev-parse", "HEAD"], undefined, spawn, cwd).trim(); },
-      async status() { return command("git", ["status", "--porcelain", "--untracked-files=all"], undefined, spawn, cwd); },
-      async pushBlob() { return command("git", ["rev-parse", "HEAD:lib/push.ts"], undefined, spawn, cwd).trim(); },
-      async trackedFile(file) { return command("git", ["show", `HEAD:${file}`], undefined, spawn, cwd); },
+      async head() { return command("git", gitArgs(["rev-parse", "HEAD"]), undefined, spawn, cwd).trim(); },
+      async status() { return command("git", gitArgs(["status", "--porcelain", "--untracked-files=all"]), undefined, spawn, cwd); },
+      async pushBlob() { return command("git", gitArgs(["rev-parse", "HEAD:lib/push.ts"]), undefined, spawn, cwd).trim(); },
+      async trackedFile(file) { return command("git", gitArgs(["show", `HEAD:${file}`]), undefined, spawn, cwd); },
     },
     vercel: {
       async linkage() { return linkage(); },
