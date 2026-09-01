@@ -92,12 +92,14 @@ export function createControlPlane({ cwd = process.cwd(), spawn = spawnSync,
           const candidates = inventory.envs.filter(row => row.key === key && row.gitBranch === branch);
           if (candidates.length !== 1) failure("VERCEL_CONTROL_UPDATED_ENV_INVALID");
           const updated = candidates[0];
+          const customEnvironmentIds = Object.hasOwn(updated, "customEnvironmentIds")
+            ? updated.customEnvironmentIds : [];
           if (updated.id !== existingId || updated.type !== "sensitive" || !Array.isArray(updated.target)
             || updated.target.length !== 1 || updated.target[0] !== "preview"
-            || !Array.isArray(updated.customEnvironmentIds) || updated.customEnvironmentIds.length !== 0) {
+            || !Array.isArray(customEnvironmentIds) || customEnvironmentIds.length !== 0) {
             failure("VERCEL_CONTROL_UPDATED_ENV_INVALID");
           }
-          return updated;
+          return { ...updated, customEnvironmentIds };
         }
         return createdRow(api(`/v10/projects/${projectId}/env?teamId=${teamId}`, "POST", [body]));
       },

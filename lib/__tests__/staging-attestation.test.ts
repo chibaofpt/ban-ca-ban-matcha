@@ -324,7 +324,9 @@ describe("Staging configure — database branch-scoped", () => {
         calls.push({ executable, args, options });
         if (args.includes("update")) return { status: 0, stdout: "Updated\n" };
         if (!args.includes("POST") && args.some(argument => argument.includes("/env?"))) {
-          return { status: 0, stdout: JSON.stringify({ envs: [row("DIRECT_URL")], pagination: {} }) };
+          const updated = row("DIRECT_URL");
+          delete (updated as Partial<typeof updated>).customEnvironmentIds;
+          return { status: 0, stdout: JSON.stringify({ envs: [updated], pagination: {} }) };
         }
         return { status: 0, stdout: JSON.stringify({ created: [row("DATABASE_URL")], failed: [] }) };
       });
@@ -358,6 +360,9 @@ describe("Staging configure — database branch-scoped", () => {
     ["thiếu row", []],
     ["sai branch", [{ ...row("DIRECT_URL"), gitBranch: "codex/other" }]],
     ["trùng row khác id", [row("DIRECT_URL"), row("DIRECT_URL", "env_DIRECT_URL_other")]],
+    ["custom env không phải array", [{ ...row("DIRECT_URL"), customEnvironmentIds: "custom" }]],
+    ["custom env null", [{ ...row("DIRECT_URL"), customEnvironmentIds: null }]],
+    ["custom env không rỗng", [{ ...row("DIRECT_URL"), customEnvironmentIds: ["env_custom"] }]],
   ])("fail closed khi inventory sau update %s", async (_case, envs) => {
     const spawn = vi.fn<BoundarySpawn>((_executable, args) => args.includes("update")
       ? { status: 0, stdout: "Updated\n" }
