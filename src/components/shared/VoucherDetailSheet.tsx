@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import { useAddVoucherToCart } from "@/src/hooks/useAddVoucherToCart";
@@ -12,9 +12,12 @@ import {
 } from "@/src/lib/utils/voucherUseNowHelpers";
 import {
   canApplyOwnedVoucher,
+  canExchange,
   getTicketHighlightText,
   getVoucherAvailabilityMessage,
   getVoucherBenefitText,
+  getPackageBenefitText,
+  formatExpiryLabel,
   formatVoucherExpiry,
   VOUCHER_TYPE_CONFIG,
 } from "@/src/lib/utils/voucherModalHelpers";
@@ -22,10 +25,11 @@ import { cn } from "@/src/utils/cn";
 import { AddonItemPicker } from "./AddonItemPicker";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { MenuData } from "@/src/lib/types/menu";
-import type { MyVoucher } from "@/src/services/customerVoucherService";
+import type { MyVoucher, VoucherPackage } from "@/src/services/customerVoucherService";
 import { ceilTo1000 } from "@/src/utils/pricing";
 
-interface VoucherDetailSheetProps {
+interface OwnedVoucherDetailSheetProps {
+  packageData?: never;
   voucher: MyVoucher;
   cartItems: CartItem[];
   subtotalVnd: number;
@@ -43,7 +47,26 @@ interface VoucherDetailSheetProps {
   onRemoveAppliedVoucher?: () => void;
 }
 
-export const VoucherDetailSheet = ({
+interface PackageVoucherDetailSheetProps {
+  packageData: VoucherPackage;
+  voucher?: never;
+  points: number;
+  isLoggedIn: boolean;
+  isExchanging: boolean;
+  onBack: () => void;
+  onExchange?: (pkg: VoucherPackage) => void;
+  onLogin?: (pkg: VoucherPackage) => void;
+}
+
+type VoucherDetailSheetProps = OwnedVoucherDetailSheetProps | PackageVoucherDetailSheetProps;
+
+function isPackageVoucherDetail(
+  props: VoucherDetailSheetProps,
+): props is PackageVoucherDetailSheetProps {
+  return props.packageData !== undefined;
+}
+
+const OwnedVoucherDetailSheet = ({
   voucher,
   cartItems,
   subtotalVnd,
@@ -59,7 +82,7 @@ export const VoucherDetailSheet = ({
   isRefunding,
   onSelectProductDiscountTarget,
   onRemoveAppliedVoucher,
-}: VoucherDetailSheetProps) => {
+}: OwnedVoucherDetailSheetProps) => {
   const router = useRouter();
   const { addToCart, loading } = useAddVoucherToCart();
   const { setCartOpen, setSelectedVoucherIds, updateItem, applyAddonVoucher, selectedVoucherIds } = useCartStore();
@@ -313,3 +336,75 @@ export const VoucherDetailSheet = ({
     </motion.div>
   );
 };
+
+function PackageVoucherDetailSheet({
+  packageData: pkg,
+  points,
+  isLoggedIn,
+  isExchanging,
+  onBack,
+  onExchange,
+  onLogin,
+}: PackageVoucherDetailSheetProps) {
+  const config = VOUCHER_TYPE_CONFIG[pkg.voucher_type] ?? VOUCHER_TYPE_CONFIG.DISCOUNT;
+  const highlight = getTicketHighlightText(pkg.voucher_type, pkg.discount_type, pkg.discount_value, pkg.reference_size);
+  const eligibility = canExchange(pkg, points, pkg.user_redeemed_count ?? 0);
+  const deficit = Math.max(0, pkg.points_cost - points);
+  let label = pkg.acquisition_mode === "FREE_CLAIM" ? "Nhận miễn phí" : `Đổi ${pkg.points_cost} 🐟`;
+  let explanation: string | null = null;
+  let disabled = isExchanging;
+  if (pkg.acquisition_mode === "AUTO_GRANT") {
+    label = "Được cấp tự động";
+    explanation = "Ưu đãi này được tự động thêm khi bạn đủ điều kiện.";
+    disabled = true;
+  } else if (!isLoggedIn) {
+    label = "Đăng nhập để nhận ưu đãi";
+  } else if (eligibility.reason === "insufficient_points") {
+    explanation = `Bạn cần thêm ${deficit} 🐟 để đổi ưu đãi này.`;
+    disabled = true;
+  } else if (eligibility.reason === "sold_out") {
+    explanation = "Gói ưu đãi đã hết số lượng.";
+    disabled = true;
+  } else if (eligibility.reason === "limit_reached") {
+    explanation = "Bạn đã nhận đủ số lượt cho phép của gói này.";
+    disabled = true;
+  } else if (!onExchange) {
+    explanation = "Tạm thời chưa thể thực hiện.";
+    disabled = true;
+  }
+  if (!isLoggedIn && !onLogin) {
+    explanation = "Tạm thời chưa thể thực hiện.";
+    disabled = true;
+  }
+  const action = () => (isLoggedIn ? onExchange?.(pkg) : onLogin?.(pkg));
+  return (
+    <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} className="relative flex h-full w-full flex-col overflow-hidden bg-background">
+      <div className="flex shrink-0 items-center gap-3 border-b border-border/40 bg-white px-5 py-4">
+        <button type="button" onClick={onBack} aria-label="Quay lại danh sách voucher" className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/5 focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="h-5 w-5" /></button>
+        <h3 className="font-bold text-primary">Chi tiết ưu đãi</h3>
+      </div>
+      <div className="flex-1 space-y-6 overflow-y-auto p-5">
+        <div className="flex overflow-hidden rounded-xl border bg-white shadow-sm">
+          <div className="flex w-24 shrink-0 flex-col items-center justify-center border-r border-dashed bg-orange-50 p-3"><span className="text-xl font-bold text-orange-600">{highlight.text}</span><span className="text-xs text-orange-500">{highlight.subtext}</span></div>
+          <div className="flex-1 p-4"><div className="mb-2 flex justify-between gap-2"><h4 className="text-sm font-bold text-primary">{pkg.name}</h4><span className={cn("rounded px-2 py-0.5 text-[10px] font-bold", config.badgeCls)}>{config.label}</span></div><p className="text-xs text-primary/70">{getPackageBenefitText(pkg)}</p></div>
+        </div>
+        <div className="space-y-4">
+          <section><h5 className="text-xs font-bold uppercase tracking-widest text-primary/50">Mô tả</h5><p className="whitespace-pre-wrap text-sm text-primary/80">{pkg.description || "Không có mô tả chi tiết."}</p></section>
+          <section><h5 className="text-xs font-bold uppercase tracking-widest text-primary/50">Hạn sử dụng</h5><p className="text-sm text-primary/80">{formatExpiryLabel(pkg.expires_after_days)}</p></section>
+          {pkg.min_order_vnd != null && pkg.min_order_vnd > 0 ? <section><h5 className="text-xs font-bold uppercase tracking-widest text-primary/50">Điều kiện</h5><p className="text-sm text-primary/80">Giá trị đơn tối thiểu: {pkg.min_order_vnd.toLocaleString("vi-VN")}đ</p></section> : null}
+        </div>
+      </div>
+      <div className="shrink-0 border-t bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+        {explanation ? <p className="mb-3 text-center text-xs text-rose-500">{explanation}</p> : null}
+        <button type="button" onClick={action} disabled={disabled} aria-busy={isExchanging} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 font-bold text-primary-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">{isExchanging ? <Loader2 className="h-5 w-5 animate-spin" /> : null}{label}</button>
+      </div>
+    </motion.div>
+  );
+}
+
+/** Render an owned voucher or a catalog package without fabricating cross-mode data. */
+export function VoucherDetailSheet(props: VoucherDetailSheetProps) {
+  return isPackageVoucherDetail(props)
+    ? <PackageVoucherDetailSheet {...props} />
+    : <OwnedVoucherDetailSheet {...props} />;
+}

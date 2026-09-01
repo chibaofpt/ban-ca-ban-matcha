@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 
 /** Unambiguous alphanumeric charset — excludes 0/O, 1/I, L */
 const CHARSET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -18,7 +18,7 @@ function randomSuffix(): string {
  * Generates a unique order code in the format BCBM-XXXXXX.
  * Retries up to MAX_RETRIES times if a collision is detected.
  */
-export async function generateOrderCode(prisma: PrismaClient): Promise<string> {
+export async function generateOrderCode(prisma: Pick<Prisma.TransactionClient, "order">): Promise<string> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const code = `BCBM-${randomSuffix()}`;
     const existing = await prisma.order.findUnique({

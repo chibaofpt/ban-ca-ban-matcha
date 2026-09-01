@@ -88,6 +88,17 @@ Wallet và cart dùng chung voucher frame edge-to-edge với một lớp padding
 trong cùng frame thay vì mở sheet lồng. Cart voucher sheet dùng layer `nested`; target/setup mở
 từ sheet này dùng layer `critical`.
 
+Catalog package cards also keep a full-card content button for detail separate from their quick
+acquisition action. Package detail renders catalog data directly and keeps the selected raw package
+authoritative while catalog filters change. Its footer distinguishes guest login, free claim,
+points exchange/deficit, sold-out, per-user limit, busy, automatic grant, and unavailable callback;
+points exchange always opens confirmation and never closes detail on cancel.
+
+Guest voucher acquisition opens `AuthModal` above the still-open voucher detail with the exact
+package intent. Backdrop/X dismissal clears that intent but leaves the voucher background open.
+After successful login, the intent is cleared before acquisition/confirmation and consumed exactly
+once, including React StrictMode effect replay; an unavailable package produces no mutation.
+
 `ProductModal` dùng dialog desktop và Vaul full-height trên mobile. Browser Back chỉ đóng overlay trên cùng; CTA luôn ghép action với tổng giá bằng ` - `, còn addon selector dùng lưới 3 cột. Header Base Liquid hiển thị Coldwhisk dạng switch có semantics và vẫn nêu nền mặc định khi selector bị ẩn.
 
 Overlay layer chỉ có `base`, `nested`, `critical`. Không tạo z-index tùy ý cho overlay mới.

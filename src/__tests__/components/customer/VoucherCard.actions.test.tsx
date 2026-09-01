@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { VoucherCard } from "@/src/components/shared/VoucherCards";
-import type { MyVoucher } from "@/src/services/customerVoucherService";
+import { PackageCard, VoucherCard } from "@/src/components/shared/VoucherCards";
+import type { MyVoucher, VoucherPackage } from "@/src/services/customerVoucherService";
 
 const voucher = {
   qr_token: "voucher",
@@ -85,5 +85,30 @@ describe("VoucherCard — nội dung và action độc lập", () => {
     expect(action.closest(".z-10")).toBeNull();
     expect(action.querySelector("span")?.className).toContain("h-6");
     expect(action.querySelector("span")?.className).toContain("w-6");
+  });
+});
+
+describe("PackageCard — nội dung và action độc lập", () => {
+  it("mở chi tiết từ nội dung nhưng quick action chỉ thực hiện nhận", () => {
+    const pkg = {
+      id: "free-package", name: "Quà chào bạn", description: "Tặng thức uống", voucher_type: "PRODUCT",
+      acquisition_mode: "FREE_CLAIM", points_cost: 0, discount_type: null, discount_value: null,
+      menu_item_id: null, size: null, matcha_powder_id: null, milk_type_id: null,
+      included_addon_option_ids: [], addon_option_id: null, covered_price_vnd: null,
+      covered_delivery_fee_vnd: null, min_order_vnd: null, is_active: true, expires_after_days: null,
+      quantity: null, max_per_user: 1, created_at: "2026-09-01T00:00:00.000Z",
+    } as VoucherPackage;
+    const onOpen = vi.fn();
+    const onAcquire = vi.fn();
+    render(<PackageCard pkg={pkg} userBalance={0} onClick={onOpen} onExchange={onAcquire} isExchanging={false} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Xem chi tiết Quà chào bạn" }));
+    expect(onOpen).toHaveBeenCalledWith(pkg);
+    fireEvent.click(screen.getByRole("button", { name: "Nhận miễn phí" }));
+    expect(onAcquire).toHaveBeenCalledWith(pkg);
+    expect(onOpen).toHaveBeenCalledOnce();
+    const action = screen.getByRole("button", { name: "Nhận miễn phí" });
+    expect(action.className).toContain("z-30");
+    expect(action.closest(".z-10")).toBeNull();
   });
 });

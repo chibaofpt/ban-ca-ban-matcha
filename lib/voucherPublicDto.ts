@@ -55,6 +55,7 @@ interface VoucherDtoSource {
 /** Map a database voucher to the only voucher shape allowed across API/UI boundaries. */
 export function toPublicVoucherDto(voucher: VoucherDtoSource) {
   return {
+    ...(typeof voucher.package_id === "string" ? { package_id: voucher.package_id } : {}),
     qr_token: voucher.qr_token,
     voucher_type: voucher.voucher_type,
     discount_type: voucher.discount_type,

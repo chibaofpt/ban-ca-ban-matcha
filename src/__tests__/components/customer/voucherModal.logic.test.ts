@@ -181,6 +181,15 @@ describe("filterModalPackages", () => {
     expect(result).toHaveLength(2);
     expect(result.map((pkg) => pkg.id)).toEqual(["p1", "p3"]);
   });
+
+  it("ẩn AUTO_GRANT khỏi catalog nhưng không lọc danh sách voucher đã sở hữu", async () => {
+    const autoPackage = makePackage({ id: "auto", acquisition_mode: "AUTO_GRANT" });
+    const owned = makeVoucher({ package_id: "auto" });
+    const { filterModalPackages, filterModalVouchers } = await import("@/src/lib/utils/voucherModalHelpers");
+
+    expect(filterModalPackages([autoPackage])).toEqual([]);
+    expect(filterModalVouchers([owned])).toEqual([owned]);
+  });
 });
 
 // ── canInteract ────────────────────────────────────────────────────────────────

@@ -106,6 +106,8 @@ export interface VoucherAvailability {
 }
 
 export interface MyVoucher {
+  /** Optional catalog package reference; older wallet responses may omit it. */
+  package_id?: string;
   qr_token: string;
   voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE";
   discount_type: "PERCENT" | "FIXED" | null;

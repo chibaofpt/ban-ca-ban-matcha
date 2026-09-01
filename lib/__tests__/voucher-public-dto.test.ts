@@ -6,7 +6,7 @@ describe("Voucher public DTO", () => {
     const dto = toPublicVoucherDto({
       id: "internal-voucher-id",
       user_id: "internal-user-id",
-      package_id: "internal-package-id",
+      package_id: { internal: "not-public" },
       qr_token: "public-voucher-token",
       voucher_type: "DISCOUNT",
       discount_type: "FIXED",
@@ -36,6 +36,44 @@ describe("Voucher public DTO", () => {
     expect(dto).not.toHaveProperty("id");
     expect(dto).not.toHaveProperty("user_id");
     expect(dto).not.toHaveProperty("package_id");
+    expect(dto).not.toHaveProperty("redeemed_by");
+  });
+
+  it("xuất package_id khi nguồn là chuỗi để client nối voucher với catalog", () => {
+    const source = {
+      id: "internal-voucher-id",
+      user_id: "internal-user-id",
+      package_id: "public-package-reference",
+      redeemed_by: "internal-staff-id",
+      qr_token: "public-voucher-token",
+      voucher_type: "DISCOUNT",
+      discount_type: "FIXED",
+      discount_value: 10_000,
+      menu_item_id: null,
+      size: null,
+      matcha_powder_id: null,
+      milk_type_id: null,
+      included_addon_option_ids: [] as string[],
+      addon_option_id: null,
+      covered_price_vnd: null,
+      covered_delivery_fee_vnd: null,
+      min_order_vnd: null,
+      status: "ACTIVE",
+      used_channel: null,
+      expires_at: null,
+      redeemed_at: null,
+      created_at: new Date("2026-01-01T00:00:00Z"),
+      package: { name: "Giảm 10k", description: null, points_cost: 10 },
+      menuItem: null,
+      addonOption: null,
+      staff: null,
+    } as const;
+
+    const dto = toPublicVoucherDto(source);
+
+    expect(dto).toHaveProperty("package_id", "public-package-reference");
+    expect(dto).not.toHaveProperty("id");
+    expect(dto).not.toHaveProperty("user_id");
     expect(dto).not.toHaveProperty("redeemed_by");
   });
 

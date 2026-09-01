@@ -13,7 +13,7 @@ vi.mock("@/src/hooks/useAddVoucherToCart", () => ({
 
 import { VoucherDetailSheet } from "@/src/components/shared/VoucherDetailSheet";
 import { VoucherCard } from "@/src/components/shared/VoucherCards";
-import type { MyVoucher } from "@/src/services/customerVoucherService";
+import type { MyVoucher, VoucherPackage } from "@/src/services/customerVoucherService";
 
 afterEach(cleanup);
 
@@ -165,5 +165,49 @@ describe("Chi tiết voucher không còn lựa chọn", () => {
     expect(removeButton.className).toContain("text-destructive");
     fireEvent.click(removeButton);
     expect(onRemoveAppliedVoucher).toHaveBeenCalledOnce();
+  });
+});
+
+function makePackage(overrides: Partial<VoucherPackage> = {}): VoucherPackage {
+  return {
+    id: "package-1", name: "Giảm 20K", description: "Ưu đãi riêng của package", voucher_type: "DISCOUNT",
+    acquisition_mode: "POINTS_EXCHANGE", points_cost: 40, discount_type: "FIXED", discount_value: 20_000,
+    menu_item_id: null, size: null, matcha_powder_id: null, milk_type_id: null,
+    included_addon_option_ids: [], addon_option_id: null, covered_price_vnd: null,
+    covered_delivery_fee_vnd: null, min_order_vnd: 100_000, is_active: true, expires_after_days: null,
+    quantity: 10, remaining_quantity: 10, max_per_user: 1, user_redeemed_count: 0,
+    created_at: "2026-09-01T00:00:00.000Z", ...overrides,
+  };
+}
+
+describe("Chi tiết package dùng dữ liệu catalog và footer theo trạng thái", () => {
+  it("hiển thị đúng loại, mô tả, hạn và điều kiện mà không cần dummy voucher", () => {
+    render(<VoucherDetailSheet packageData={makePackage()} points={100} isLoggedIn isExchanging={false} onBack={vi.fn()} onExchange={vi.fn()} />);
+    expect(screen.getByText("Giảm giá")).toBeTruthy();
+    expect(screen.getByText("Ưu đãi riêng của package")).toBeTruthy();
+    expect(screen.getByText("Vô thời hạn")).toBeTruthy();
+    expect(screen.getByText("Giá trị đơn tối thiểu: 100.000đ")).toBeTruthy();
+  });
+
+  it.each([
+    [makePackage(), 100, false, "Đăng nhập để nhận ưu đãi", null],
+    [makePackage({ acquisition_mode: "FREE_CLAIM", points_cost: 0 }), 0, true, "Nhận miễn phí", null],
+    [makePackage(), 100, true, "Đổi 40 🐟", null],
+    [makePackage(), 10, true, "Đổi 40 🐟", "Bạn cần thêm 30 🐟 để đổi ưu đãi này."],
+    [makePackage({ remaining_quantity: 0 }), 100, true, "Đổi 40 🐟", "Gói ưu đãi đã hết số lượng."],
+    [makePackage({ user_redeemed_count: 1 }), 100, true, "Đổi 40 🐟", "Bạn đã nhận đủ số lượt cho phép của gói này."],
+    [makePackage({ acquisition_mode: "AUTO_GRANT", points_cost: 0 }), 0, true, "Được cấp tự động", "Ưu đãi này được tự động thêm khi bạn đủ điều kiện."],
+  ])("render footer package %#", (pkg, points, loggedIn, buttonName, explanation) => {
+    render(<VoucherDetailSheet packageData={pkg} points={points} isLoggedIn={loggedIn} isExchanging={false} onBack={vi.fn()} onExchange={vi.fn()} onLogin={vi.fn()} />);
+    expect(screen.getByRole("button", { name: buttonName })).toBeTruthy();
+    if (explanation) expect(screen.getByText(explanation)).toBeTruthy();
+    cleanup();
+  });
+
+  it("khóa busy và giải thích khi callback phù hợp bị thiếu", () => {
+    const { rerender } = render(<VoucherDetailSheet packageData={makePackage()} points={100} isLoggedIn isExchanging onBack={vi.fn()} onExchange={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /Đổi 40/ }).getAttribute("aria-busy")).toBe("true");
+    rerender(<VoucherDetailSheet packageData={makePackage()} points={100} isLoggedIn isExchanging={false} onBack={vi.fn()} />);
+    expect(screen.getByText("Tạm thời chưa thể thực hiện.")).toBeTruthy();
   });
 });

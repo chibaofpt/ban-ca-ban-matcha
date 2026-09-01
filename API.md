@@ -392,6 +392,9 @@ Returns `{ qr_token, id, name, role }[]`. `qr_token` is canonical. During the on
 
 Read-only, maximum 50 rows, ordered by `(created_at DESC, id DESC)`. Returns
 `meta: { limit, has_more, next_cursor }`. Effective expiry is projected without writing data.
+Each owned voucher may include `package_id?: string` as a public catalog reference. Older
+responses may omit it. The mapper emits it only when the source value is a string; raw
+`vouchers.id`, `users.id`, `user_id`, and `redeemed_by` remain internal and are never returned.
 
 ### `POST /api/profile/vouchers/sync`
 
