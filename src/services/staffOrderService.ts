@@ -24,7 +24,7 @@ export interface CreateStaffOrderPayload {
     ice_option: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
     coldwhisk: boolean;
     note?: string;
-    addon_option_ids: { option_id: string; quantity: number }[];
+    addon_option_ids: string[];
     product_voucher_id?: string;
     item_voucher_id?: string;
     /** ADDON vouchers per item — each targets a specific addon_option_id. */

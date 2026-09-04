@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { ChevronDown, ChevronUp, Phone, Clock, Search, FilterX, Filter, CheckCircle2, XCircle, BarChart3 } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import { formatKa, formatOrderSize } from "@/src/utils/display";
-import { fetchAdminOrders, confirmPayment, adminCancelOrder, type AdminOrderRes } from "@/src/services/adminOrderService";
+import { fetchAdminOrders, confirmPayment, adminCancelOrder, AdminOrderServiceError, type AdminOrderRes } from "@/src/services/adminOrderService";
 import { apiClient } from "@/src/lib/api/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
@@ -199,11 +199,21 @@ export default function AdminOrdersPage() {
 
   const cancelOrderMutation = useMutation({
     mutationFn: adminCancelOrder,
-    onSuccess: () => {
-      toast.success("Đã huỷ đơn hàng");
+    onSuccess: (result) => {
+      const adjustment = result.cancellation_adjustment;
+      toast.success(adjustment && adjustment.reversed_points > 0
+        ? `Đã hủy đơn: trừ lại ${adjustment.reversed_points} điểm, thu hồi ${adjustment.revoked_voucher_count} voucher và hoàn ${adjustment.refunded_points} điểm đổi voucher.`
+        : "Đã huỷ đơn hàng");
       refetch();
     },
     onError: (err: unknown) => {
+      if (err instanceof AdminOrderServiceError &&
+          err.code === "BUSINESS_RULE_VIOLATION" &&
+          err.details && typeof err.details === "object" &&
+          "reason" in err.details && err.details.reason === "INSUFFICIENT_REVERSIBLE_POINTS") {
+        toast.error("Không đủ điểm hoặc voucher hợp lệ để hoàn tác. Đơn hàng chưa bị hủy.");
+        return;
+      }
       const msg = err instanceof Error ? err.message : "Huỷ thất bại";
       toast.error(msg);
     },
@@ -216,7 +226,7 @@ export default function AdminOrdersPage() {
       isOpen: true,
       title: "Huỷ đơn hàng",
       message: isCancellingCompleted
-        ? "Đơn đã hoàn thành. Huỷ sẽ trừ lại điểm tích luỹ của khách. Bạn có chắc chắn không?"
+        ? "Hủy sẽ trừ lại toàn bộ điểm tích lũy và điểm dư của đơn. Nếu thiếu điểm, hệ thống có thể thu hồi voucher đã đổi bằng điểm còn đủ điều kiện, ưu tiên voucher mới nhất. Nếu vẫn thiếu, đơn sẽ không bị hủy. Bạn có chắc chắn không?"
         : "Bạn có chắc chắn muốn huỷ đơn hàng này?",
       isDestructive: true,
       onConfirm: async () => {
@@ -529,8 +539,9 @@ export default function AdminOrdersPage() {
                             </span>
                           ) : canCancel ? (
                             <button
+                              disabled={cancelOrderMutation.isPending}
                               onClick={(e) => handleCancelOrder(e, order.id, order.order_type, order.status)}
-                              className="text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline transition-colors"
+                              className="min-h-10 px-2 text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline transition-colors disabled:opacity-50"
                             >
                               Huỷ đơn
                             </button>

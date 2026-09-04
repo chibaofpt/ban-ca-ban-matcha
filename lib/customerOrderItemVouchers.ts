@@ -3,6 +3,7 @@ import type { ProductVoucherInfo } from "@/lib/orders";
 import { resolveOwnedVoucherIdentifier } from "@/lib/publicIdentifiers";
 import type { CustomerOrderInput } from "@/lib/validations/order";
 import { assertVoucherUsable, VoucherError } from "@/lib/vouchers";
+import type { Prisma } from "@prisma/client";
 
 export interface CustomerItemVoucherContext {
   productVoucherMap: Map<string, ProductVoucherInfo>;
@@ -33,6 +34,8 @@ function voucherErrorResponse(error: VoucherError): NextResponse {
 export async function resolveCustomerItemVouchers(
   data: CustomerOrderInput,
   userId: string,
+  db?: Pick<Prisma.TransactionClient, "voucher">,
+  acceptanceDate = new Date(),
 ): Promise<CustomerItemVoucherResult> {
   const productVoucherMap = new Map<string, ProductVoucherInfo>();
   const addonVoucherMap = new Map<string, string>();
@@ -51,7 +54,7 @@ export async function resolveCustomerItemVouchers(
     }
     const submittedVoucherId = item.item_voucher_id ?? item.product_voucher_id;
     if (!submittedVoucherId) continue;
-    const voucher = await resolveOwnedVoucherIdentifier(submittedVoucherId, userId);
+    const voucher = await resolveOwnedVoucherIdentifier(submittedVoucherId, userId, db);
     if (voucher && productVoucherMap.has(voucher.id)) {
       return {
         ok: false,
@@ -66,7 +69,7 @@ export async function resolveCustomerItemVouchers(
     }
     try {
       const expectedType = item.item_voucher_id ? "ITEM" : "PRODUCT";
-      assertVoucherUsable(voucher, userId, expectedType);
+      assertVoucherUsable(voucher, userId, expectedType, acceptanceDate);
     } catch (error) {
       if (error instanceof VoucherError) {
         return { ok: false, response: voucherErrorResponse(error) };
@@ -77,7 +80,7 @@ export async function resolveCustomerItemVouchers(
       return {
         ok: false,
         response: NextResponse.json(
-            { error: "ITEM voucher is not properly configured", code: "VALIDATION_ERROR" },
+          { error: "ITEM voucher is not properly configured", code: "VALIDATION_ERROR" },
           { status: 400 },
         ),
       };
@@ -100,7 +103,7 @@ export async function resolveCustomerItemVouchers(
   for (const item of data.items) {
     const itemAddonOptionIds = new Set<string>();
     for (const inputVoucher of item.addon_voucher_ids) {
-      const voucher = await resolveOwnedVoucherIdentifier(inputVoucher.voucher_id, userId);
+      const voucher = await resolveOwnedVoucherIdentifier(inputVoucher.voucher_id, userId, db);
       if (voucher && addonVoucherIds.has(voucher.id)) {
         return {
           ok: false,
@@ -127,10 +130,7 @@ export async function resolveCustomerItemVouchers(
       }
       itemAddonOptionIds.add(inputVoucher.addon_option_id);
 
-      const matchingAddon = item.addon_option_ids.find(
-        (addon) => addon.option_id === inputVoucher.addon_option_id,
-      );
-      if (!matchingAddon) {
+      if (!item.addon_option_ids.includes(inputVoucher.addon_option_id)) {
         return {
           ok: false,
           response: NextResponse.json(
@@ -144,7 +144,7 @@ export async function resolveCustomerItemVouchers(
       }
 
       try {
-        assertVoucherUsable(voucher, userId, "ADDON");
+        assertVoucherUsable(voucher, userId, "ADDON", acceptanceDate);
       } catch (error) {
         if (error instanceof VoucherError) {
           return { ok: false, response: voucherErrorResponse(error) };

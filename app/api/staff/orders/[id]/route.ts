@@ -15,6 +15,8 @@ import {
   StaffPaymentAccessError,
 } from "@/lib/staffOrderPayment";
 import { z } from "zod";
+import { CancellationPointsError } from "@/lib/cancellationVoucherRecovery";
+import { runSerializableTransaction } from "@/lib/serializableTransaction";
 
 export const dynamic = "force-dynamic";
 
@@ -66,7 +68,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { status } = parsed.data;
 
     // Wrap the entire update logic in a transaction
-    const updatedOrder = await prisma.$transaction(async (tx) => {
+    const transactionResult = await runSerializableTransaction(prisma, async (tx) => {
       const order = await tx.order.findUnique({
         where: { id },
         include: {
@@ -89,6 +91,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       const isPendingTransfer = isPendingCounterTransfer(order);
       assertCounterTransferOwnership(order, session);
+      if (
+        status === "COMPLETED" &&
+        session.role === "STAFF" &&
+        order.handled_by != null &&
+        order.handled_by !== session.id
+      ) {
+        throw Object.assign(new Error("Staff can only complete orders they handle"), {
+          code: "FORBIDDEN",
+        });
+      }
 
       // Validate transition rules (includes orderType for cancel logic)
       const transitionError = validateStaffOrderTransition(
@@ -117,8 +129,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (order.handled_by === null && session.role === "STAFF") {
         claimData.handled_by = session.id;
       }
-      const claim = await tx.order.updateMany({
-        where:
+      const statusWhere: Prisma.OrderWhereInput =
           status === "ADMIN_CONFIRMED" ||
           (status === "COMPLETED" && isPendingTransfer)
             ? {
@@ -126,7 +137,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                 status: order.status,
                 OR: [{ auto_cancel_at: null }, { auto_cancel_at: { gt: new Date() } }],
               }
-            : { id, status: order.status },
+            : { id, status: order.status };
+      if (session.role === "STAFF" && status !== "CANCELLED") {
+        statusWhere.AND = [{ OR: [{ handled_by: null }, { handled_by: session.id }] }];
+      }
+      const claim = await tx.order.updateMany({
+        where: statusWhere,
         data: claimData,
       });
       if (claim.count !== 1) {
@@ -180,7 +196,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       // ── COUNTER TRANSFER COMPLETED: receive payment, then redeem OFFLINE ──
       if (status === "COMPLETED" && isPendingTransfer) {
-        await redeemCounterTransferVouchers(tx, order, session.id);
+        await redeemCounterTransferVouchers(
+          tx,
+          { ...order, bundleApplications },
+          session.id,
+        );
         dataToUpdate.payment_confirmed_at = new Date();
         dataToUpdate.payment_confirmed_by = session.id;
       }
@@ -244,9 +264,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
 
       // ── CANCELLED: restore vouchers ──
+      let cancellationAdjustment;
       if (status === "CANCELLED") {
         const isCancellingCompleted = order.status === "COMPLETED";
-        await restoreVouchersOnCancel(tx, id, {
+        cancellationAdjustment = await restoreVouchersOnCancel(tx, id, {
           reverseCompletionPoints: isCancellingCompleted,
           performedBy: session.id,
         });
@@ -267,14 +288,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         },
       });
 
-      return result;
-    }, { maxWait: 5000, timeout: 10000 });
+      return { order: result, cancellationAdjustment };
+    });
+    const updatedOrder = transactionResult.order;
 
     return NextResponse.json({
       data: {
         ...toPublicOrderDto(updatedOrder),
         payment_qr_url: getPendingPaymentQrUrl(updatedOrder),
         skipped_vouchers: [],
+        ...(transactionResult.cancellationAdjustment
+          ? { cancellation_adjustment: transactionResult.cancellationAdjustment }
+          : {}),
       },
     });
 
@@ -293,10 +318,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (code === "ORDER_EXPIRED") {
         return NextResponse.json({ error: err.message, code: "ORDER_EXPIRED" }, { status: 422 });
       }
-      if (code === "STATUS_CONFLICT" || err instanceof VoucherRedeemError) {
+      if (err instanceof CancellationPointsError) {
+        return NextResponse.json(
+          {
+            error: err.message,
+            code: err.code,
+            details: { reason: err.reason },
+          },
+          { status: 422 },
+        );
+      }
+      if (code === "STATUS_CONFLICT" || code === "CONFLICT" || err instanceof VoucherRedeemError) {
         return NextResponse.json(
           { error: err.message, code: code ?? "VOUCHER_MISMATCH" },
           { status: 409 }
+        );
+      }
+      if (code === "P2034") {
+        return NextResponse.json(
+          { error: "Concurrent update conflict", code: "CONFLICT" },
+          { status: 409 },
         );
       }
     }

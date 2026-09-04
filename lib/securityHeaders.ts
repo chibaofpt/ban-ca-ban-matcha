@@ -74,7 +74,7 @@ export function buildContentSecurityPolicy(nonce: string): string {
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' data: https://fonts.gstatic.com https://*.goong.io",
-    "img-src 'self' data: blob: https://*.supabase.co https://*.goong.io https://api.qrserver.com https://img.vietqr.io",
+    "img-src 'self' data: blob: https://*.supabase.co https://*.goong.io https://img.vietqr.io",
     "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.goong.io https://*.sentry.io https://*.ingest.sentry.io https://*.ingest.us.sentry.io",
     "worker-src 'self' blob:",
     "media-src 'self' blob:",

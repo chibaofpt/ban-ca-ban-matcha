@@ -68,7 +68,8 @@ RESERVED/REDEEMED → EXPIRED when order CANCELLED (if expires_at <= now)
 
 ACTIVE → REDEEMED + used_channel = OFFLINE       (counter CASH or staff offline scan)
 ACTIVE → RESERVED                                (counter BANK_TRANSFER creation)
-RESERVED → REDEEMED + used_channel = OFFLINE     (counter transfer confirmation)
+RESERVED voucher + RESERVED BUNDLE application
+  → both REDEEMED + voucher.used_channel = OFFLINE (counter transfer confirmation)
 ACTIVE → REFUNDED                                (auto: target item soft-deleted)
 ```
 
@@ -83,7 +84,10 @@ ACTIVE → REFUNDED                                (auto: target item soft-delet
 
 ### Expiry
 
-- Treat `expires_at <= now` as unusable in every list, apply, exchange, and scan flow,
+- For order creation, capture one server `acceptanceDate` at handler entry. Treat
+  `expires_at <= acceptanceDate` as unusable; a voucher valid at acceptance remains usable through
+  later processing and Serializable retries. Do not replace this with commit-time wall clock.
+- Outside an accepted order, treat `expires_at <= now` as unusable in list, exchange and scan flows,
   regardless of stored status.
 - `lazyExpireVouchers(userId)` may write `status = EXPIRED` only from an explicit mutation or an
   existing mutation flow. Customer wallet reconciliation uses `POST /api/profile/vouchers/sync`;
@@ -237,7 +241,8 @@ product_discount_vnd = max(
   One BUNDLE package has exactly one reward kind: PRODUCT or ADDON.
 - Admin BUNDLE scope configures each product independently as one immutable default configuration
   plus its allowed sizes. Prices are never entered or stored as BUNDLE reference credit.
-- Reserve at order creation, redeem on payment confirmation/completion, and restore on cancellation.
+- Reserve at order creation, redeem both the voucher and its order application on payment
+  confirmation/completion, and restore/cancel both sides on cancellation.
   Direct offline QR redemption of BUNDLE vouchers is forbidden.
 
 ## ADDON Voucher Details
@@ -259,6 +264,7 @@ product_discount_vnd = max(
 - Apply FIXED vouchers first in request/selection order, then apply PERCENT to the remainder.
 - Require FIXED `discount_value` to be an integer multiple of 1,000 VND in UI and server Zod.
 - Round a PERCENT reduction down to the nearest 1,000 VND.
+- If `max_discount_vnd` is set, cap the PERCENT reduction at this maximum limit.
 - Cap each reduction at the remaining amount; never produce a negative total.
 - Link which vouchers were used. Do not evenly distribute or fabricate a per-voucher applied
   amount in `order_discount_vouchers`.
@@ -288,7 +294,7 @@ Consume a partially applied voucher because it still creates a benefit. Treat a 
 
 - Copy all business fields from the package when issuing a voucher. Package edits never affect
   already-issued vouchers.
-- Copy voucher type, discount data, product/addon snapshots, `covered_price_vnd`,
+- Copy voucher type, discount data including `max_discount_vnd`, product/addon snapshots, `covered_price_vnd`,
   `covered_delivery_fee_vnd`, `min_order_vnd`, and expiry data.
 - Keep PRODUCT size, powder, milk, and included-addon fields for display/audit only. Do not use
   them as application constraints or let included addons expand PRODUCT monetary coverage.
@@ -309,10 +315,24 @@ Consume a partially applied voucher because it still creates a benefit. Treat a 
 
 ## Voucher Refund
 
-- **Trigger**: voucher's target `menu_item.is_available = false` (soft-deleted).
-- Auto-refund **100% points**. Status → `REFUNDED`.
-- Users **cannot** refund manually — system-triggered only.
+- **Eligibility**: an unexpired ACTIVE `POINTS_EXCHANGE` voucher whose live target/configuration is
+  no longer usable, including a soft-deleted target item.
+- Refund **100% of the immutable `voucher_purchase` cost**. Status → `REFUNDED`.
+- Customer may request reconciliation through the refund API, but cannot choose arbitrary eligible
+  state or refund value; the server re-resolves live availability and purchase audit.
 - `points_log.reason = "voucher_refund"`.
+
+### Completed COUNTER cancellation recovery
+
+- Before cancelling, reverse all outstanding `order_complete` and `voucher_surplus` points using
+  trustworthy linked audit rows for the same user/order/reason.
+- If the balance is insufficient, revoke newest whole vouchers for the same user only when they are
+  unexpired `ACTIVE` `POINTS_EXCHANGE` vouchers with an unreversed negative `voucher_purchase` log.
+  Refund the immutable purchase cost, never the current package cost.
+- Exclude free/granted, reserved, redeemed, expired, refunded, already-refunded vouchers and any
+  voucher restored from the order being cancelled.
+- If trustworthy recovery cannot cover the full outstanding amount, abort every cancellation write
+  with `INSUFFICIENT_REVERSIBLE_POINTS`; never create debt or partially cancel.
 
 ---
 
@@ -340,7 +360,7 @@ Consume a partially applied voucher because it still creates a benefit. Treat a 
 | `voucher_surplus` | Aggregate PRODUCT surplus awarded when order → COMPLETED |
 | `order_complete_reversed` | Reversal after a completed COUNTER order is cancelled |
 | `voucher_surplus_reversed` | Reversal of aggregate PRODUCT surplus after cancellation |
-| `voucher_refund` | Target item soft-deleted → full refund |
+| `voucher_refund` | Full original purchase-cost refund after target soft-delete or eligible completed COUNTER recovery |
 | `reversed_by_admin` | Admin reverses a manual adjustment |
 
 ---

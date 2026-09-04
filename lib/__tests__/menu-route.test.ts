@@ -78,7 +78,7 @@ describe("GET /api/menu — contract dữ liệu chuẩn hóa", () => {
         id: "addon-group-1",
         name: "Kem",
         image_url: "https://cdn/menu-images/products/addons/kem.webp",
-        type: "QUANTITY",
+        max_select: 3, is_dynamic_gram: false,
         max_quantity: 3,
         options: [
           {

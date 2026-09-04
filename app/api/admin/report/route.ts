@@ -10,6 +10,8 @@ import {
   type PowderSizeEntry,
   type DefaultSizeEntry,
 } from "@/lib/reportAggregation";
+import { checkRateLimit } from "@/lib/rateLimit";
+import { collectReportPages, ReportRangeTooLargeError } from "@/lib/reportPagination";
 
 /** GET /api/admin/report — Generate full admin report with addon usage, revenue by type, and top products */
 export async function GET(req: NextRequest) {
@@ -46,23 +48,42 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const limit = await checkRateLimit("reportAccount", session.id);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests", code: "TOO_MANY_REQUESTS" },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
+  }
+
   const { startDate, endDate, staffId } = parsed.data;
 
   // 4. Build date range in Asia/Ho_Chi_Minh (UTC+7)
   const startIso = new Date(`${startDate}T00:00:00+07:00`);
-  const endIso = new Date(`${endDate}T23:59:59+07:00`);
+  const endIso = new Date(new Date(`${endDate}T00:00:00+07:00`).getTime() + 86_400_000);
 
   try {
-    const staff = staffId ? await resolveStaffIdentifier(staffId) : null;
+    return await prisma.$transaction(async (tx) => {
+    const staff = staffId ? await resolveStaffIdentifier(staffId, tx) : null;
     if (staffId && !staff) {
       return NextResponse.json({ error: "Staff not found", code: "NOT_FOUND" }, { status: 404 });
     }
     const handledByFilter = staff?.id;
     // 6. Fetch completed orders with all required relations — includes order_type and addon label/group
-    const orders = await prisma.order.findMany({
+    const where = {
+      status: "COMPLETED" as const,
+      created_at: { gte: startIso, lt: endIso },
+      ...(handledByFilter ? { handled_by: handledByFilter } : {}),
+    };
+    const orders = await collectReportPages(
+      () => tx.order.count({ where }),
+      (skip, take) => tx.order.findMany({
+      skip,
+      take,
+      orderBy: { id: "asc" },
       where: {
         status: "COMPLETED",
-        created_at: { gte: startIso, lte: endIso },
+        created_at: { gte: startIso, lt: endIso },
         ...(handledByFilter ? { handled_by: handledByFilter } : {}),
       },
       select: {
@@ -102,17 +123,17 @@ export async function GET(req: NextRequest) {
           },
         },
       },
-    });
+    }));
 
     // 7. Fetch lookup tables
     const [defaultSizeConfigs, powderSizeConfigs, powders, milkTypes] =
       await Promise.all([
-        prisma.defaultSizeConfig.findMany(),
-        prisma.powderSizeConfig.findMany(),
-        prisma.matchaPowder.findMany({
+        tx.defaultSizeConfig.findMany(),
+        tx.powderSizeConfig.findMany(),
+        tx.matchaPowder.findMany({
           select: { id: true, name: true },
         }),
-        prisma.milkType.findMany({
+        tx.milkType.findMany({
           select: { id: true, name: true },
         }),
       ]);
@@ -218,7 +239,14 @@ export async function GET(req: NextRequest) {
     );
 
     return NextResponse.json({ data: report });
-  } catch {
+    }, { isolationLevel: "RepeatableRead", timeout: 10_000 });
+  } catch (error) {
+    if (error instanceof ReportRangeTooLargeError) {
+      return NextResponse.json(
+        { error: "Report range too large", code: "BUSINESS_RULE_VIOLATION", details: { reason: "REPORT_RANGE_TOO_LARGE" } },
+        { status: 422 },
+      );
+    }
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },
       { status: 500 }

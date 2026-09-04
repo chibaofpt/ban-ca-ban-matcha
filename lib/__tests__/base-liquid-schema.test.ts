@@ -49,7 +49,7 @@ describe("Validation cấu hình Base Liquid", () => {
   });
 });
 
-describe("Kiến trúc migration Base Liquid", () => {
+describe("Static SQL contract — Base Liquid (không thực thi migration)", () => {
   it("có bảng allowed, volume override, index và RLS", () => {
     const migrationRoot = join(process.cwd(), "prisma", "migrations");
     const entries = readFileSync(join(migrationRoot, "migration_lock.toml"), "utf8");

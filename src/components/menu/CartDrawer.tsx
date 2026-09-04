@@ -43,13 +43,14 @@ import {
 } from "@/src/lib/utils/bundleVoucher";
 import type { BundleCreatedRewardEffect } from "@/src/lib/types/cart";
 import { getVoucherAvailabilityMessage } from "@/src/lib/utils/voucherModalHelpers";
-import { computeProductDiscountBenefit, computeVoucherItemPrice } from "@/src/hooks/useAddVoucherToCart";
+import { useAddVoucherToCart, computeProductDiscountBenefit, computeVoucherItemPrice } from "@/src/hooks/useAddVoucherToCart";
 import {
   findUnavailableBundleTokens,
   getBundleCheckoutAvailabilityMessage,
   getReadyBundleApplications,
   hasBlockingBundleApplication,
 } from "@/src/lib/utils/bundleCheckoutError";
+import { ceilTo1000 } from "@/src/utils/pricing";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -125,6 +126,9 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   const isLoggedIn = useIsLoggedIn();
   const currentUser = useCurrentUser();
   const openLogin = useAuthModalStore((s) => s.openLogin);
+  const openLoginWithIntent = useAuthModalStore((s) => s.openLoginWithIntent);
+  const pendingAuthIntent = useAuthModalStore((s) => s.pendingIntent);
+  const clearAuthIntent = useAuthModalStore((s) => s.clearIntent);
   const router = useRouter();
 
   const isStoreOpen = useStoreStatusStore((s) => s.is_open);
@@ -171,7 +175,11 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   const [bundleTokenToRemove, setBundleTokenToRemove] = useState<string | null>(null);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [isAddressPickerOpen, setIsAddressPickerOpen] = useState(false);
+  const [productVoucherForModal, setProductVoucherForModal] = useState<MyVoucher | null>(null);
   const openEdit = useEditModalStore((s) => s.openEdit);
+  const openVoucherLogin = useCallback(() => {
+    openLoginWithIntent({ type: "open_cart_vouchers" });
+  }, [openLoginWithIntent]);
 
   // ── Delivery state ──
   const [orderType, setOrderType] = useState<"PICKUP" | "DELIVERY">("DELIVERY");
@@ -203,6 +211,9 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   const bundleVouchers = filterActiveMainCartVouchers(allVouchers, "BUNDLE").filter(
     (voucher) => voucher.package.bundleRule,
   );
+  const cartProductVouchers = filterActiveMainCartVouchers(allVouchers, "PRODUCT");
+  const cartItemVouchers = filterActiveMainCartVouchers(allVouchers, "ITEM");
+  const cartAddonVouchers = filterActiveMainCartVouchers(allVouchers, "ADDON");
   const bundleCartSummary = useMemo(() => summarizeBundleCart(items), [items]);
   const bundleSelectionStates = useMemo(() => bundleApplications.map((application) => {
     const voucher = bundleVouchers.find((candidate) => candidate.qr_token === application.voucher_qr_token);
@@ -380,7 +391,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
   useEffect(() => {
     const updateTimes = () => {
       const minD = new Date(Date.now() + 10 * 60000);
-      const defD = new Date(Date.now() + 11 * 60000);
+      const defD = new Date(Date.now() + 12 * 60000);
       const pad = (n: number) => n.toString().padStart(2, '0');
 
       const newMinStr = `${pad(minD.getHours())}:${pad(minD.getMinutes())}`;
@@ -440,6 +451,12 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
       });
     return () => { cancelled = true; };
   }, [isCartOpen, isLoggedIn, setSelectedVoucherIds, clearBundleApplications]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !isCartOpen || pendingAuthIntent?.type !== "open_cart_vouchers") return;
+    setIsDiscountPickerOpen(true);
+    clearAuthIntent();
+  }, [clearAuthIntent, isCartOpen, isLoggedIn, pendingAuthIntent]);
 
   // Auto-fetch default address when switching to DELIVERY
   useEffect(() => {
@@ -667,6 +684,71 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
     queryClient,
   ]);
 
+  const { addToCart: addVoucherToCart } = useAddVoucherToCart();
+
+  /** PRODUCT/ITEM "Dùng ngay" from CartDiscountPicker — auto-add item to cart. */
+  const handleUseProductVoucher = useCallback(async (voucher: MyVoucher) => {
+    const result = await addVoucherToCart(voucher);
+    if (result.ok) {
+      setIsDiscountPickerOpen(false);
+    } else {
+      const msg = result.reason === "item_unavailable"
+        ? "Món này đã ngừng phục vụ"
+        : result.reason === "size_unavailable"
+        ? "Size trong voucher không còn khả dụng"
+        : "Không thể áp dụng ưu đãi. Vui lòng thử lại.";
+      import("sonner").then(m => m.toast.error(msg));
+    }
+  }, [addVoucherToCart]);
+
+  /** ADDON "Dùng ngay" from CartDiscountPicker — 3 cases. */
+  const handleUseAddonVoucher = useCallback((voucher: MyVoucher) => {
+    const addonOptionId = voucher.addon_option_id;
+    if (!addonOptionId) return;
+
+    // Case 1: empty cart → redirect to menu
+    if (items.length === 0) {
+      setIsDiscountPickerOpen(false);
+      setCartOpen(false);
+      router.push("/menu");
+      import("sonner").then(m => m.toast.info("Hãy chọn sản phẩm để sử dụng voucher"));
+      return;
+    }
+
+    // Case 2: exactly 1 item with qty 1 → auto-apply addon
+    if (items.length === 1 && items[0].quantity === 1) {
+      const item = items[0];
+      const alreadyHasAddon = item.selectedOptionIds.includes(addonOptionId);
+      if (!alreadyHasAddon) {
+        let addonPrice = 0;
+        let isExtraMatcha = false;
+        for (const group of menuData.addon_groups) {
+          const opt = group.options.find(o => o.id === addonOptionId);
+          if (opt) {
+            if (opt.gram_value != null && opt.gram_value > 0) isExtraMatcha = true;
+            addonPrice = ceilTo1000(opt.price_vnd ?? 0);
+            break;
+          }
+        }
+        if (isExtraMatcha) {
+          import("sonner").then(m => m.toast.error("Voucher này không áp dụng cho Extra Matcha"));
+          return;
+        }
+        updateItem(item.cartId, {
+          selectedOptionIds: [...item.selectedOptionIds, addonOptionId],
+          addonPrices: { ...item.addonPrices, [addonOptionId]: addonPrice },
+          addonsPrice: item.addonsPrice + addonPrice,
+        });
+      }
+      applyAddonVoucher(item.cartId, voucher.qr_token, addonOptionId);
+      setIsDiscountPickerOpen(false);
+      import("sonner").then(m => m.toast.success("Đã áp dụng voucher addon"));
+      return;
+    }
+
+    // Case 3: 2+ items → CartDiscountPicker shows AddonItemPicker overlay (no-op here)
+  }, [items, menuData, updateItem, applyAddonVoucher, setCartOpen, router]);
+
   const handleClose = useCallback(() => {
     setCartOpen(false);
     resetCheckout();
@@ -696,11 +778,6 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-70 bg-foreground/40 backdrop-blur-sm touch-none" />
         <Drawer.Content
-          onInteractOutside={(event) => {
-            if (document.querySelector('[data-prevent-drawer-close="true"]')) {
-              event.preventDefault();
-            }
-          }}
           className="fixed bottom-0 left-0 right-0 h-[100dvh] mx-auto z-71 w-full max-w-md bg-[#fdfcf7] shadow-2xl flex flex-col outline-none after:content-[''] after:absolute after:inset-x-0 after:top-full after:h-[50vh] after:bg-inherit"
         >
           {/* ── Main cart view ───────────────────────────────────────────── */}
@@ -874,6 +951,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
               itemsLength={items.length}
               isLoggedIn={isLoggedIn}
               openLogin={openLogin}
+              openVoucherLogin={openVoucherLogin}
               isStoreClosed={isStoreClosed}
               closure_note={closure_note}
               orderType={orderType}
@@ -969,6 +1047,10 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
                   const clientLineId = reward ? addItem(buildExtrasCartItem(reward, voucherToken)) : null;
                   return clientLineId ? { clientLineId, effect: { kind: "LINE" as const, client_line_id: clientLineId } } : null;
                 }}
+                productVouchers={[...cartProductVouchers, ...cartItemVouchers]}
+                addonVouchers={cartAddonVouchers}
+                onUseProductVoucher={handleUseProductVoucher}
+                onUseAddonVoucher={handleUseAddonVoucher}
               />
             )}
           </AnimatePresence>

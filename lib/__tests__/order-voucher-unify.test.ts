@@ -74,6 +74,7 @@ function makeDiscountVoucher(overrides: {
     discount_type: overrides.discount_type,
     discount_value: overrides.discount_value,
     min_order_vnd: overrides.min_order_vnd ?? null,
+    max_discount_vnd: null,
   };
 }
 

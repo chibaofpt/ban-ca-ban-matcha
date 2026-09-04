@@ -130,6 +130,8 @@ export interface MyVoucher {
   covered_delivery_fee_vnd: number | null;
   /** Minimum order total required. FREESHIP vouchers only. NULL = no minimum. */
   min_order_vnd: number | null;
+  /** Maximum discount amount. PERCENT vouchers only. NULL = no limit. */
+  max_discount_vnd: number | null;
   status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED";
   used_channel: "ONLINE" | "OFFLINE" | null;
   expires_at: string | null;

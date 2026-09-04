@@ -183,6 +183,7 @@ export function StaffCartDrawer({
       voucher_type: "DISCOUNT",
       discount_type: discountVoucher.discount_type,
       discount_value: discountVoucher.discount_value,
+      max_discount_vnd: null,
       covered_price_vnd: null,
       covered_delivery_fee_vnd: null,
       min_order_vnd: null,

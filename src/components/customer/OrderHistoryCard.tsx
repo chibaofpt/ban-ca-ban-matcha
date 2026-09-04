@@ -76,7 +76,7 @@ export function OrderHistoryCard({
         {isPending && order.auto_cancel_at && (
           <div className="flex w-fit items-center gap-1.5 rounded-lg border border-yellow-200 bg-yellow-50 px-2.5 py-1 text-[11px] text-yellow-700">
             <Clock className="h-3 w-3" aria-hidden="true" />
-            <span>Tự huỷ sau:</span>
+            <span>QR có hiệu lực trong:</span>
             <CountdownTimer targetTime={order.auto_cancel_at} className="text-[11px] font-semibold" />
           </div>
         )}

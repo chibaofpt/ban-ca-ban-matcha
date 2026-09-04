@@ -16,7 +16,7 @@ interface MenuImageCropFieldProps {
   compact?: boolean;
 }
 
-/** Image picker that crops uploads to a square WebP before form submission. */
+/** Image picker that reviews a square WebP composition before form submission. */
 export default function MenuImageCropField({
   hasExistingImage,
   currentImageUrl,
@@ -80,7 +80,7 @@ export default function MenuImageCropField({
         {previewUrl ? (
           <Image
             src={previewUrl}
-            alt="Ảnh sản phẩm đã cắt"
+            alt="Bố cục ảnh sản phẩm đã chọn"
             fill
             sizes="220px"
             unoptimized
@@ -126,7 +126,7 @@ export default function MenuImageCropField({
         </button>
       )}
       <p className="text-center text-[11px] text-muted-foreground">
-        Tỉ lệ 1:1 · WebP {outputSize}px · Tối đa 5MB
+        Kéo, thu/phóng và xem trước · Khung 1:1 · WebP {outputSize}px · Tối đa 5MB
       </p>
 
       {cropSourceUrl && (

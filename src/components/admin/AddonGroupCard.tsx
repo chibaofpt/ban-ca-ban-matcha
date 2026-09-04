@@ -14,11 +14,7 @@ interface AddonGroupCardProps {
   onDelete: (item: AdminAddonGroup) => void;
 }
 
-const TYPE_COLORS = {
-  SELECTOR: "bg-blue-100 text-blue-700 border-blue-200",
-  TOGGLE: "bg-amber-100 text-amber-700 border-amber-200",
-  QUANTITY: "bg-purple-100 text-purple-700 border-purple-200",
-};
+
 
 export default function AddonGroupCard({
   item,
@@ -62,10 +58,13 @@ export default function AddonGroupCard({
             <span
               className={cn(
                 "px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase border",
-                TYPE_COLORS[item.type]
+                item.is_dynamic_gram ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-blue-100 text-blue-700 border-blue-200"
               )}
             >
-              {item.type}
+              {item.is_dynamic_gram ? "Matcha" : "Thường"}
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase border bg-purple-100 text-purple-700 border-purple-200">
+              Max: {item.max_select}
             </span>
 
           </div>

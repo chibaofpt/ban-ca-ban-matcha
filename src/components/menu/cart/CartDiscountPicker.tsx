@@ -16,6 +16,7 @@ import type { MenuData } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 import { VoucherDetailSheet } from "@/src/components/shared/VoucherDetailSheet";
+import { AddonItemPicker } from "@/src/components/shared/AddonItemPicker";
 import { buildVoucherActionModel, getProductDiscountSelection } from "@/src/utils/customerVoucherSelection";
 import { getVoucherAvailabilityMessage, type VoucherModalTab } from "@/src/lib/utils/voucherModalHelpers";
 import { BundleVoucherSetupSheet } from "@/src/components/shared/BundleVoucherSetupSheet";
@@ -53,12 +54,21 @@ interface CartDiscountPickerProps {
   onBundleApplicationChange: (voucher: MyVoucher, allocations: import("@/src/lib/utils/bundleVoucher").BundleSelectionAllocation[], effects?: BundleCreatedRewardEffect[]) => { ok: true } | { ok: false; error: string };
   onRequestRemoveBundle: (voucherToken: string) => void;
   onAddExtrasReward: (menuItemId: string, voucherToken: string) => { clientLineId: string; effect: BundleCreatedRewardEffect } | null;
+  /** PRODUCT + ITEM vouchers eligible for "Dùng ngay". */
+  productVouchers: MyVoucher[];
+  /** ADDON vouchers eligible for "Dùng ngay". */
+  addonVouchers: MyVoucher[];
+  /** Callback when PRODUCT/ITEM voucher "Dùng ngay" is pressed. */
+  onUseProductVoucher: (voucher: MyVoucher) => void;
+  /** Callback when ADDON voucher "Dùng ngay" is pressed. */
+  onUseAddonVoucher: (voucher: MyVoucher) => void;
 }
 
 type VoucherPickerView =
   | { kind: "list" }
   | { kind: "detail"; voucher: MyVoucher }
   | { kind: "product-target"; voucher: MyVoucher }
+  | { kind: "addon-target"; voucher: MyVoucher }
   | { kind: "bundle-setup"; voucher: MyVoucher };
 
 export const CartDiscountPicker = ({
@@ -92,6 +102,10 @@ export const CartDiscountPicker = ({
   onBundleApplicationChange,
   onRequestRemoveBundle,
   onAddExtrasReward,
+  productVouchers,
+  addonVouchers,
+  onUseProductVoucher,
+  onUseAddonVoucher,
 }: CartDiscountPickerProps) => {
   const { acquire, isPending } = useVoucherAcquisition();
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
@@ -100,10 +114,13 @@ export const CartDiscountPicker = ({
   const [activeTab, setActiveTab] = useState<VoucherModalTab>("my_vouchers");
   const detailVoucher = activeView.kind === "detail" ? activeView.voucher : null;
   const targetVoucher = activeView.kind === "product-target" ? activeView.voucher : null;
+  const addonTargetVoucher = activeView.kind === "addon-target" ? activeView.voucher : null;
   const bundleSetupVoucher = activeView.kind === "bundle-setup" ? activeView.voucher : null;
 
-  const myVouchers = [...discountVouchers, ...freeshipVouchers, ...productDiscountVouchers, ...bundleVouchers]
-    .filter((voucher) => voucher.status === "ACTIVE");
+  const myVouchers = [
+    ...discountVouchers, ...freeshipVouchers, ...productDiscountVouchers,
+    ...bundleVouchers, ...productVouchers, ...addonVouchers,
+  ].filter((voucher) => voucher.status === "ACTIVE");
 
   const productTargets = (voucher: MyVoucher) => cart.flatMap((item) => {
     const matchesProduct = (voucher.eligible_menu_items?.length ?? 0) > 0
@@ -249,6 +266,14 @@ export const CartDiscountPicker = ({
                       toast.error(selection.reason);
                     }
                   }}
+                  onUseProductVoucher={(voucher) => {
+                    onUseProductVoucher(voucher);
+                    setActiveView({ kind: "list" });
+                  }}
+                  onUseAddonVoucher={(voucher) => {
+                    onUseAddonVoucher(voucher);
+                    setActiveView({ kind: "list" });
+                  }}
                 />
               ) : null}
             </AnimatePresence>
@@ -373,6 +398,13 @@ export const CartDiscountPicker = ({
                         return [...nextSelected, v.qr_token];
                       });
                       return;
+                    case "PRODUCT":
+                    case "ITEM":
+                      onUseProductVoucher(v);
+                      return;
+                    case "ADDON":
+                      onUseAddonVoucher(v);
+                      return;
                     default:
                       return;
                   }
@@ -389,15 +421,19 @@ export const CartDiscountPicker = ({
                       setActiveView({ kind: "detail", voucher: v });
                     }}
                     onAction={handleSelection}
-                    actionModel={buildVoucherActionModel({
-                      context: "cart",
-                      selected: isSelected,
-                      selectable: isSelected || !isDisabled,
-                      disabledReason: disabledReason || null,
-                      estimatedBenefitVnd: productSelection?.kind === "single"
-                        ? productSelection.target.estimatedBenefitVnd
-                        : 0,
-                    })}
+                    actionModel={
+                      v.voucher_type === "PRODUCT" || v.voucher_type === "ITEM" || v.voucher_type === "ADDON"
+                        ? buildVoucherActionModel({ context: "wallet", busy: false })
+                        : buildVoucherActionModel({
+                            context: "cart",
+                            selected: isSelected,
+                            selectable: isSelected || !isDisabled,
+                            disabledReason: disabledReason || null,
+                            estimatedBenefitVnd: productSelection?.kind === "single"
+                              ? productSelection.target.estimatedBenefitVnd
+                              : 0,
+                          })
+                    }
                   />
                 );
               })}
@@ -451,6 +487,22 @@ export const CartDiscountPicker = ({
             );
           }) : null}
         </div>
+      </ResponsiveOverlay>
+      <ResponsiveOverlay
+        open={addonTargetVoucher !== null}
+        onOpenChange={(open) => { if (!open) setActiveView({ kind: "list" }); }}
+        layer="critical"
+        title="Chọn món áp dụng"
+      >
+        {addonTargetVoucher ? (
+          <AddonItemPicker
+            voucher={addonTargetVoucher}
+            cartItems={cart}
+            menuData={menuData}
+            onBack={() => setActiveView({ kind: "list" })}
+            onSuccess={() => setActiveView({ kind: "list" })}
+          />
+        ) : null}
       </ResponsiveOverlay>
       {bundleSetupVoucher ? (
         <BundleVoucherSetupSheet

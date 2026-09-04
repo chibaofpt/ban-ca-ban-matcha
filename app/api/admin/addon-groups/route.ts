@@ -33,8 +33,8 @@ export async function GET() {
       name: g.name,
       description: g.description,
       image_url: g.image_url,
-      type: g.type,
-      max_quantity: g.max_quantity,
+      max_select: g.max_select,
+      is_dynamic_gram: g.is_dynamic_gram,
       is_active: g.is_active,
       created_at: g.created_at,
       options: g.options.map(o => ({
@@ -123,10 +123,11 @@ export async function POST(req: Request) {
           name: validData.name,
           description: validData.description,
           image_url: preparedImage.imageUrl ?? null,
-          type: validData.type,
+          max_select: validData.max_select,
+          is_dynamic_gram: validData.is_dynamic_gram,
           is_required: false,
           min_quantity: null,
-          max_quantity: validData.max_quantity,
+          max_quantity: null,
           is_active: validData.is_active,
         }
       });
@@ -158,8 +159,8 @@ export async function POST(req: Request) {
       name: result.name,
       description: result.description,
       image_url: result.image_url,
-      type: result.type,
-      max_quantity: result.max_quantity,
+      max_select: result.max_select,
+      is_dynamic_gram: result.is_dynamic_gram,
       is_active: result.is_active,
       created_at: result.created_at,
       options: result.options.map(o => ({

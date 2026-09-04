@@ -12,6 +12,10 @@
 - Success: `{ data: T }`
 - Error: `{ error: string, code: string }`
 - Error with payload: `{ error: string, code: string, details: {...} }` — used by `PRICE_CHANGED`
+  and business-rule reasons that callers may handle explicitly.
+- Frontend services must preserve a valid server error's `message`, HTTP status, `code`, and
+  optional `details` for their callers; they do not re-evaluate order eligibility, expiry, menu
+  availability, or pricing. Transport failures without a server response remain connection errors.
 
 ## Contract Stability
 
@@ -64,7 +68,7 @@
 
 | Cookie | Value | Expiry |
 |---|---|---|
-| `access_token` | JWT signed with `JWT_SECRET` | 15 min |
+| `access_token` | JWT signed with `JWT_SECRET`, bound to stable `sid` | 15 min |
 | `refresh_token` | UUID stored in `sessions` table | 7 days |
 
 Both set as `httpOnly`, `secure`, `sameSite=strict`.
@@ -73,9 +77,15 @@ Both set as `httpOnly`, `secure`, `sameSite=strict`.
 
 ## Middleware Behavior
 
-- Reads `access_token` cookie → verifies JWT via `jose`
+- Reads `access_token` cookie → verifies JWT via `jose`, then checks `sid`, user binding and expiry
+  against the database. Deleted sessions/users are rejected at the next authoritative check.
 - On failure: returns `401 UNAUTHORIZED` (API routes) or redirects to `/login` (page routes)
-- Role check: reads `role` claim from JWT payload
+- Role check: uses the current database user role, not a stale JWT role claim.
+- Refresh rotates in place on the same session ID. The immediately previous token is accepted for
+  30 seconds; current/previous requests within that grace reuse the current token. Legacy access
+  tokens without `sid` require a valid refresh session before access can continue.
+- Logout deletes the current session before clearing cookies. Database failure returns an error;
+  the UI must not claim success. A request already past its authoritative check may still finish.
 - Protected routes:
 
 ```
@@ -228,7 +238,8 @@ order or voucher write.
 | Staff order creation | 30/min/account |
 | Voucher exchange | 5/min/account |
 | Push subscribe + unsubscribe combined | 20/10 min/account |
-| All delivery proxies combined | 60/min/account and 120/min/IP |
+| All delivery proxies + address create/update combined | 60/min/account and 120/min/IP |
+| Both report endpoints combined | 6/min/account |
 
 The implementation uses fixed-window Upstash counters, HMAC-hashes every identifier before it
 becomes a Redis key, and returns `429 TOO_MANY_REQUESTS` with deterministic `Retry-After`. It fails
@@ -305,6 +316,13 @@ in `Asia/Ho_Chi_Minh`.
 - `total_count` and every `powder_breakdown.total_grams` include both the addon quantity and the
   corresponding order-item quantity.
 - `powder_breakdown` is always an array; it is empty for an addon that does not consume matcha.
+- `/api/admin/report` and `/api/report` accept an inclusive range of at most 366 calendar days;
+  a larger range returns `400 VALIDATION_ERROR`.
+- Dates must be real Gregorian dates, start ≤ end. The end bound is the following midnight in
+  UTC+7, exclusive. Reads use pages of 100 within a transaction timeout of 10 seconds.
+- Both report routes read at most 10,000 matching orders in one RepeatableRead snapshot. Exceeding
+  that bounded workload returns `422 BUSINESS_RULE_VIOLATION` with
+  `details.reason = "REPORT_RANGE_TOO_LARGE"`; no truncated totals are returned.
 
 ### `POST /api/auth/register`
 ```ts
@@ -318,6 +336,9 @@ in `Asia/Ho_Chi_Minh`.
 ```
 
 ### `POST /api/auth/login`
+Password minimum remains 6 characters. New registration rejects passwords over 72 UTF-8 bytes;
+login accepts at most 72 characters for compatibility with existing bcrypt credentials.
+
 ```ts
 // Exactly one identifier is required. Instagram login is CUSTOMER-only.
 { phone_number: string, password: string }
@@ -506,8 +527,8 @@ type AddonGroup = {
   id: string
   name: string
   image_url: string | null
-  type: "SELECTOR" | "TOGGLE" | "QUANTITY"
-  max_quantity: number | null
+  max_select: number
+  is_dynamic_gram: boolean
   options: {
     id: string
     label: string
@@ -530,8 +551,8 @@ and option `is_active`.
 {
   name: string
   description?: string | null
-  type: "SELECTOR" | "TOGGLE" | "QUANTITY"
-  max_quantity?: number | null      // required positive only for QUANTITY
+  max_select: number
+  is_dynamic_gram: boolean
   is_active: boolean
   options: {
     id?: string
@@ -545,9 +566,9 @@ and option `is_active`.
 }
 ```
 
-`SELECTOR` accepts at most one selected option per order line. `TOGGLE` and `QUANTITY` must each
-have exactly one active option. Dynamic-gram options are valid only in `SELECTOR`, must all have a
-positive `gram_value` and `price_vnd = 0`, and cannot be mixed with fixed-price active options.
+Every group is opt-in and allows the user to select up to `max_select` distinct options.
+Dynamic-gram groups must have `max_select = 1`, and all active options must have a positive `gram_value`
+and `price_vnd = 0`. Dynamic and fixed-price active options cannot be mixed in one group.
 Omitting an existing option from an update does not delete it; retire it with `is_active = false`.
 
 ### Admin addon/powder image mutations
@@ -750,7 +771,7 @@ without a configured default Base Liquid. Any full edit still requires a valid a
     ice_option?: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE"
     coldwhisk?: boolean
     note?: string
-    addon_option_ids: { option_id: string, quantity: number }[]
+    addon_option_ids: string[]
     product_voucher_id?: string       // voucher qr_token; legacy UUID accepted for one release
     item_voucher_id?: string          // ITEM qr_token; extras only, mutually exclusive with PRODUCT
     addon_voucher_ids?: {
@@ -821,7 +842,7 @@ without a configured default Base Liquid. Any full edit still requires a valid a
     ice_option?: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE"
     coldwhisk?: boolean
     note?: string
-    addon_option_ids: { option_id: string, quantity: number }[]
+    addon_option_ids: string[]
     product_voucher_id?: string       // voucher qr_token; legacy UUID accepted for one release
     item_voucher_id?: string          // ITEM qr_token; extras only
     addon_voucher_ids?: {
@@ -882,6 +903,28 @@ without a configured default Base Liquid. Any full edit still requires a valid a
   while a bank-transfer order remains `PENDING`; otherwise it is `null`.
 - Missing orders return `404 NOT_FOUND`; cross-staff access returns `403 FORBIDDEN`.
 
+### `PATCH /api/staff/orders/[id]` — Staff/Admin status transition
+
+```ts
+{ status: "PROCESSING" | "COMPLETED" | "CANCELLED" }
+
+// A successful cancellation may include the server-committed adjustment.
+{
+  data: {
+    // existing public order fields...
+    cancellation_adjustment?: {
+      revoked_voucher_count: number
+      refunded_points: number
+      reversed_points: number
+    }
+  }
+}
+```
+
+When cancellation cannot recover enough eligible points or purchased vouchers, the route returns
+`422 BUSINESS_RULE_VIOLATION` with `details.reason = "INSUFFICIENT_REVERSIBLE_POINTS"`; no later
+point-log or balance write in that application branch is attempted.
+
 ### `PRICE_CHANGED` error response
 ```ts
 // Note: uses `details` key, not `data` — consistent with error shape
@@ -906,6 +949,8 @@ the caller returns `404 NOT_FOUND`. A present BUNDLE that fails live eligibility
 does not expose a separate `BUNDLE_NOT_ELIGIBLE` error code.
 
 ### `POST /api/profile/vouchers/exchange`
+CUSTOMER-only. Authenticated STAFF/ADMIN receive `403 FORBIDDEN` from this customer endpoint.
+
 ```ts
 { package_id: string }
 ```
@@ -937,6 +982,8 @@ restore package quantity or per-user redemption count.
 ```
 
 ### `GET /api/staff/scan?token=xxx`
+Read-only: project effective `EXPIRED` status without updating expired voucher rows during a scan.
+
 ```ts
 // user
 { data: { type: "user", data: { qr_token: string, name: string, phone_number: string, points_balance: number } } }
@@ -948,6 +995,36 @@ restore package quantity or per-user redemption count.
 ---
 
 ## Business Logic Notes
+
+### Staff status updates and completed COUNTER cancellation
+
+- `PATCH /api/staff/orders/[id]` keeps the existing `{ status }` request. Once Staff A has claimed
+  an online order, only A or an Admin may complete it; a competing Staff cannot replace its owner.
+- COUNTER bank transfers use `PENDING → COMPLETED`, not `ADMIN_CONFIRMED`. Payment confirmation
+  redeems the BUNDLE voucher and application together, with voucher channel `OFFLINE`.
+- ADMIN may cancel completed COUNTER orders, but not completed PICKUP/DELIVERY orders. Cancellation
+  reverses all outstanding order and surplus points; historical audit rows remain immutable.
+- When the balance is short, refund whole, newest-first, unexpired ACTIVE POINTS_EXCHANGE vouchers
+  at their original purchase cost. Exclude free/granted, reserved, redeemed, expired or refunded
+  vouchers, and vouchers restored by this cancellation. Excess refunded points remain in the balance.
+- Missing trustworthy audit or insufficient recoverable points returns `422 BUSINESS_RULE_VIOLATION`,
+  `details.reason = "INSUFFICIENT_REVERSIBLE_POINTS"`. Abort all order/voucher/balance/log writes; do
+  not create a negative balance, partially reverse points or partially cancel the order.
+- Successful cancellation adds `data.cancellation_adjustment` to the staff order snapshot:
+  `{ revoked_voucher_count: number, refunded_points: number, reversed_points: number }`.
+  Admin must see the possible voucher recovery before confirming and the committed result afterward.
+- Service errors preserve HTTP status, server message, `code` and `details`; display translation is
+  the UI's responsibility. Controlled state conflicts / exhausted Serializable retries return 409.
+
+### Address and outbound service bounds
+
+- Address create/update validates label ≤50, full address ≤500 and receiver name ≤100 characters;
+  latitude/longitude must be finite and within ±90/±180. Validate before Goong/database work.
+- Goong calls and push delivery set a 5-second timeout. Push endpoints are HTTPS, ≤2048 characters,
+  without credentials/fragment/non-443 port, on approved FCM/Mozilla/Apple/Windows hosts only.
+- Web Push keys must decode to 65-byte uncompressed p256dh and 16-byte auth values, with encoded
+  input bounded before decoding. Revalidate stored subscriptions before delivery and deactivate
+  invalid legacy rows rather than contacting their endpoints.
 
 ### Menu
 - `GET /api/menu`: return the active global Base Liquid catalog once, plus each item's resolved default, active allowed IDs, and effective per-size volume. Consumers show the selector only when default + allowed contains more than one option.

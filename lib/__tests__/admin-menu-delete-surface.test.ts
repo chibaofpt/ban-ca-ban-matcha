@@ -5,7 +5,7 @@ const routeSource = readFileSync("app/api/admin/menu/[id]/route.ts", "utf8");
 const serviceSource = readFileSync("src/services/adminMenuService.ts", "utf8");
 const pageSource = readFileSync("src/views/admin/AdminMenuPage.tsx", "utf8");
 
-describe("Admin menu — không cung cấp hành động xoá món", () => {
+describe("static source contract — admin menu không cung cấp hành động xoá món", () => {
   it("route món không export DELETE", () => {
     expect(routeSource).not.toMatch(/export\s+async\s+function\s+DELETE\b/);
   });

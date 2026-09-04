@@ -28,7 +28,7 @@ vi.mock("@/src/lib/api/client", () => ({
 }));
 
 import { apiClient } from "@/src/lib/api/client";
-import { createOrder, PriceChangedError, BundleNotEligibleError } from "@/src/services/orderService";
+import { createOrder } from "@/src/services/orderService";
 import type { CartItem } from "@/src/lib/types/cart";
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
@@ -48,9 +48,7 @@ function makeCartItem(overrides: Partial<CartItem> = {}): CartItem {
     coldwhisk: false,
     note: "",
     selectedOptionIds: [],
-    quantityMap: {},
     addonsPrice: 0, addonPrices: {},
-    quantityAddonOptions: [],
     clientPriceVnd: 55_000,
     originalClientPriceVnd: 55_000,
     ...overrides,
@@ -306,49 +304,6 @@ describe("createOrder — full mixed scenario", () => {
   });
 });
 
-// ── Error handling ────────────────────────────────────────────────────────────
-
-describe("createOrder — error handling (không thay đổi)", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("409 PRICE_CHANGED → throw PriceChangedError", async () => {
-    vi.mocked(apiClient.post).mockRejectedValueOnce({
-      response: {
-        status: 409,
-        data: {
-          code: "PRICE_CHANGED",
-          details: {
-            conflicts: [
-              {
-                menu_item_id: "item-meyumi",
-                name: "Meyumi",
-                size: "SMALL",
-                client_price_vnd: 55_000,
-                server_price_vnd: 60_000,
-              },
-            ],
-          },
-        },
-      },
-    });
-
-    const cart = [makeCartItem()];
-    await expect(createOrder(cart)).rejects.toBeInstanceOf(PriceChangedError);
-  });
-
-  it("422 VOUCHER_REDEEMED → throw Error với message", async () => {
-    vi.mocked(apiClient.post).mockRejectedValueOnce({
-      response: {
-        status: 422,
-        data: { error: "Voucher has already been used", code: "VOUCHER_REDEEMED" },
-      },
-    });
-
-    const cart = [makeCartItem()];
-    await expect(createOrder(cart)).rejects.toThrow("Voucher has already been used");
-  });
-});
-
 // ── CartItem type test — addonVouchers field must exist ──────────────────────
 
 describe("CartItem type — addonVouchers field (mới thêm)", () => {
@@ -364,61 +319,8 @@ describe("CartItem type — addonVouchers field (mới thêm)", () => {
   });
 });
 
-describe("createOrder — BundleNotEligibleError e skipped_vouchers", () => {
+describe("createOrder — bundle payload và skipped_vouchers", () => {
   beforeEach(() => vi.clearAllMocks());
-
-  it("422 BUNDLE_NOT_ELIGIBLE → throw BundleNotEligibleError com reason", async () => {
-    vi.mocked(apiClient.post).mockRejectedValueOnce({
-      response: {
-        status: 422,
-        data: {
-          code: "BUNDLE_NOT_ELIGIBLE",
-          error: "Voucher bundle không hợp lệ",
-          details: { reason: "Không đủ số lượng món mua" },
-        },
-      },
-    });
-
-    const cart = [makeCartItem()];
-    await expect(createOrder(cart)).rejects.toBeInstanceOf(BundleNotEligibleError);
-  });
-
-  it("422 BUSINESS_RULE_VIOLATION với availability reason → lỗi BUNDLE để reconcile", async () => {
-    vi.mocked(apiClient.post).mockRejectedValueOnce({
-      response: {
-        status: 422,
-        data: {
-          code: "BUSINESS_RULE_VIOLATION",
-          error: "Bundle voucher is unavailable",
-          details: { reason: "NO_ACTIVE_REWARD" },
-        },
-      },
-    });
-
-    let caught: unknown;
-    try { await createOrder([makeCartItem()]); } catch (error) { caught = error; }
-    expect(caught).toBeInstanceOf(BundleNotEligibleError);
-    expect((caught as BundleNotEligibleError).reason).toBe("NO_ACTIVE_REWARD");
-  });
-
-  it("BundleNotEligibleError chứa reason từ server", async () => {
-    vi.mocked(apiClient.post).mockRejectedValueOnce({
-      response: {
-        status: 422,
-        data: {
-          code: "BUNDLE_NOT_ELIGIBLE",
-          error: "Voucher bundle không hợp lệ",
-          details: { reason: "Không đủ số lượng món mua" },
-        },
-      },
-    });
-
-    const cart = [makeCartItem()];
-    let caught: unknown;
-    try { await createOrder(cart); } catch (e) { caught = e; }
-    expect(caught).toBeInstanceOf(BundleNotEligibleError);
-    expect((caught as BundleNotEligibleError).reason).toBe("Không đủ số lượng món mua");
-  });
 
   it("trả skipped_vouchers trong kết quả thành công", async () => {
     const result = { ...mockOrderResult, skipped_vouchers: ["bundle-token-skipped"] };

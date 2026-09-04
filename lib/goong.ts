@@ -1,6 +1,11 @@
 import type { GoongPrediction } from "@/src/lib/types/address";
 
 const GOONG_BASE = "https://rsapi.goong.io";
+const GOONG_TIMEOUT_MS = 5000;
+
+function goongRequestInit(): RequestInit {
+  return { method: "GET", signal: AbortSignal.timeout(GOONG_TIMEOUT_MS) };
+}
 
 interface GoongAutocompleteResponse {
   status: string;
@@ -39,7 +44,7 @@ export async function goongAutocomplete(
     url.searchParams.set("sessiontoken", sessionToken);
   }
 
-  const res = await fetch(url.toString(), { method: "GET" });
+  const res = await fetch(url.toString(), goongRequestInit());
   if (!res.ok) {
     throw new Error(`Goong API error: ${res.status}`);
   }
@@ -72,7 +77,7 @@ export async function goongGeocode(
   url.searchParams.set("api_key", apiKey);
   url.searchParams.set("address", address);
 
-  const res = await fetch(url.toString(), { method: "GET" });
+  const res = await fetch(url.toString(), goongRequestInit());
   if (!res.ok) {
     throw new Error(`Goong API error: ${res.status}`);
   }
@@ -105,7 +110,7 @@ export async function goongDistanceMatrix(
   url.searchParams.set("destinations", `${destLat},${destLng}`);
   url.searchParams.set("vehicle", "bike"); // Use bike routing for better ETA
 
-  const res = await fetch(url.toString(), { method: "GET" });
+  const res = await fetch(url.toString(), goongRequestInit());
   if (!res.ok) {
     throw new Error(`Goong API error: ${res.status}`);
   }
@@ -136,7 +141,7 @@ export async function goongReverseGeocode(
   url.searchParams.set("api_key", apiKey);
   url.searchParams.set("latlng", `${lat},${lng}`);
 
-  const res = await fetch(url.toString(), { method: "GET" });
+  const res = await fetch(url.toString(), goongRequestInit());
   if (!res.ok) {
     throw new Error(`Goong API error: ${res.status}`);
   }

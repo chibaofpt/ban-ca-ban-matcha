@@ -38,8 +38,8 @@ export default function AddonGroupForm({
     defaultValues: {
       name: "",
       description: "",
-      type: "SELECTOR",
-      max_quantity: "",
+      max_select: "1",
+      is_dynamic_gram: false,
       is_active: true,
       options: [
         {
@@ -64,7 +64,7 @@ export default function AddonGroupForm({
     keyName: "fieldKey",
   });
 
-  const type = useWatch({ control, name: "type" });
+
 
   const onFormSubmit = async (values: FormFields) => {
     let hasImageError = false;
@@ -85,8 +85,8 @@ export default function AddonGroupForm({
     const payload = {
       name: values.name.trim(),
       description: values.description.trim() || null,
-      type: values.type,
-      max_quantity: values.type === "QUANTITY" && values.max_quantity ? Number(values.max_quantity) : null,
+      max_select: Number(values.max_select) || 1,
+      is_dynamic_gram: values.is_dynamic_gram,
       is_active: values.is_active,
       options: values.options.map((opt, idx) => ({
         id: opt.id,
@@ -136,25 +136,22 @@ export default function AddonGroupForm({
         </div>
 
         <div>
-          <div>
-            <label className={labelClass}>Loại hiển thị</label>
-            <select {...register("type")} className={inputClass}>
-              <option value="SELECTOR">Selector (chỉ chọn 1)</option>
-              <option value="TOGGLE">Toggle (bật / tắt)</option>
-              <option value="QUANTITY">Quantity (+/- số lượng)</option>
-            </select>
-          </div>
-          
-        </div>
-
-        {type === "QUANTITY" && (
-          <div className="pt-2 border-t border-border/50">
+          <label className={labelClass}>Cấu hình chọn</label>
+          <div className="mt-2 space-y-3">
             <div>
-              <label className={labelClass}>Số lượng tối đa</label>
-              <input type="number" min="1" {...register("max_quantity")} className={inputClass} placeholder="Bắt buộc" />
+              <label className="text-xs text-muted-foreground mb-1 block">Số lượng tối đa được chọn *</label>
+              <input type="number" min="1" {...register("max_select", { required: true, min: 1 })} className={cn(inputClass, "mt-0")} />
             </div>
+            <label className="flex items-center gap-2 cursor-pointer mt-2">
+              <input
+                type="checkbox"
+                {...register("is_dynamic_gram")}
+                className="w-4 h-4 rounded text-primary focus:ring-primary"
+              />
+              <span className="text-sm font-medium">Giá tính theo gram bột (dành cho extra matcha)</span>
+            </label>
           </div>
-        )}
+        </div>
       </div>
 
       {/* ── Options List ── */}

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState } from "react";
 import Image from "next/image";
@@ -108,10 +108,8 @@ export function CartBundleSection({
       iceOption: initial.iceOption,
       coldwhisk: initial.coldwhisk,
       selectedOptionIds: initial.selectedOptionIds,
-      quantityMap: initial.quantityMap,
       addonsPrice: initial.addonsCost,
       addonPrices: initial.addonPrices,
-      quantityAddonOptions: initial.quantityAddonOptions,
       selectedPowderId: fullItem.category === "fusion" ? initial.powderId ?? undefined : undefined,
       selectedBaseLiquidId: fullItem.category === "latte" ? initial.baseLiquidId ?? undefined : undefined,
       selectedMilkTypeId: fullItem.category === "latte" ? initial.milkTypeId ?? undefined : undefined,

@@ -6,7 +6,7 @@ describe("Addon contract opt-in", () => {
     const result = createAddonGroupSchema.safeParse({
       name: "Kem",
       description: null,
-      type: "SELECTOR",
+      max_select: 1, is_dynamic_gram: false,
       max_quantity: null,
       is_active: true,
       options: [
@@ -28,10 +28,10 @@ describe("Addon contract opt-in", () => {
     expect(result.data.options[0].is_active).toBe(true);
   });
 
-  it("từ chối TOGGLE có nhiều hơn một option active", () => {
+  it("chấp nhận max_select=1 với nhiều option (single-select)", () => {
     const result = createAddonGroupSchema.safeParse({
       name: "Đá dừa",
-      type: "TOGGLE",
+      max_select: 1, is_dynamic_gram: false,
       max_quantity: null,
       is_active: true,
       options: [
@@ -40,13 +40,13 @@ describe("Addon contract opt-in", () => {
       ],
     });
 
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
-  it("từ chối QUANTITY không có max_quantity", () => {
+  it("chấp nhận max_select=3 (multi-select) với một option", () => {
     const result = createAddonGroupSchema.safeParse({
       name: "Shot",
-      type: "QUANTITY",
+      max_select: 3, is_dynamic_gram: false,
       max_quantity: null,
       is_active: true,
       options: [
@@ -54,13 +54,13 @@ describe("Addon contract opt-in", () => {
       ],
     });
 
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it("từ chối group trộn option gram động và giá cố định", () => {
     const result = createAddonGroupSchema.safeParse({
       name: "Extra Matcha",
-      type: "SELECTOR",
+      max_select: 1, is_dynamic_gram: false,
       max_quantity: null,
       is_active: true,
       options: [

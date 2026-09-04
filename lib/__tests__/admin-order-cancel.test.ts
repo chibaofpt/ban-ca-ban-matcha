@@ -23,8 +23,11 @@ const mockOrderUpdateManyStaff = vi.fn();
 const mockOrderItemFindManyStaff = vi.fn();
 const mockVoucherFindUniqueStaff = vi.fn();
 const mockVoucherUpdateStaff = vi.fn();
+const mockVoucherFindManyStaff = vi.fn();
+const mockVoucherUpdateManyStaff = vi.fn();
 const mockUserFindUniqueStaff = vi.fn();
 const mockUserUpdateStaff = vi.fn();
+const mockUserUpdateManyStaff = vi.fn();
 const mockPointsLogFindManyStaff = vi.fn();
 const mockPointsLogCreateStaff = vi.fn();
 const mockOrderDiscountVoucherFindManyStaff = vi.fn();
@@ -67,14 +70,18 @@ function makeStaffTx() {
     },
     voucher: {
       findUnique: mockVoucherFindUniqueStaff,
+      findMany: mockVoucherFindManyStaff,
       update:     mockVoucherUpdateStaff,
+      updateMany: mockVoucherUpdateManyStaff,
     },
     orderItem: {
       findMany: mockOrderItemFindManyStaff,
     },
     user: {
       findUnique: mockUserFindUniqueStaff,
+      findUniqueOrThrow: mockUserFindUniqueStaff,
       update:     mockUserUpdateStaff,
+      updateMany: mockUserUpdateManyStaff,
     },
     pointsLog: {
       findMany: mockPointsLogFindManyStaff,
@@ -106,6 +113,8 @@ describe("PATCH /api/staff/orders/[id] — cancel rules", () => {
     mockOrderItemFindManyStaff.mockResolvedValue([]);
     mockPointsLogFindManyStaff.mockResolvedValue([]);
     mockUserFindUniqueStaff.mockResolvedValue({ points_balance: 10 });
+    mockUserUpdateManyStaff.mockResolvedValue({ count: 1 });
+    mockVoucherFindManyStaff.mockResolvedValue([]);
   });
 
   // Dynamic import sau khi mock đã đăng ký
@@ -353,9 +362,9 @@ describe("PATCH /api/staff/orders/[id] — cancel rules", () => {
     expect(res.status).toBe(200);
 
     // Phải trừ điểm user
-    expect(mockUserUpdateStaff).toHaveBeenCalledWith(
+    expect(mockUserUpdateManyStaff).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: USER_ID },
+        where: { id: USER_ID, points_balance: { gte: 5 } },
         data: { points_balance: { decrement: 5 } },
       })
     );
@@ -374,7 +383,7 @@ describe("PATCH /api/staff/orders/[id] — cancel rules", () => {
     );
   });
 
-  it("2c. Points balance không bao giờ âm: khách chỉ còn 3 điểm nhưng cần trừ 5 → floor về 0", async () => {
+  it("2c. Thiếu điểm và không có voucher mua hợp lệ → trả 422 trước các write tiếp theo", async () => {
     mockGetSession.mockResolvedValue(ADMIN_SESSION);
     mockOrderFindUniqueStaff.mockResolvedValue({
       id: "order-uuid-1",
@@ -400,24 +409,62 @@ describe("PATCH /api/staff/orders/[id] — cancel rules", () => {
     });
 
     const PATCH = await getPATCH();
-    await PATCH(makeStaffPatchReq({ status: "CANCELLED" }), {
+    const response = await PATCH(makeStaffPatchReq({ status: "CANCELLED" }), {
       params: Promise.resolve({ id: "order-uuid-1" }),
     });
 
-    // actualDecrement = min(5, 3) = 3 → không trừ quá balance hiện tại
-    expect(mockUserUpdateStaff).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: USER_ID },
-        data: { points_balance: { decrement: 3 } }, // chỉ trừ 3, không phải 5
-      })
-    );
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({
+      code: "BUSINESS_RULE_VIOLATION",
+      details: { reason: "INSUFFICIENT_REVERSIBLE_POINTS" },
+    });
+    expect(mockUserUpdateManyStaff).not.toHaveBeenCalled();
+    expect(mockPointsLogCreateStaff).not.toHaveBeenCalled();
+  });
 
-    // Log âm phản ánh số thực sự trừ được
-    expect(mockPointsLogCreateStaff).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ delta: -3 }),
-      })
+  it("2c-bis. Thiếu 10 điểm, hoàn voucher mới nhất 12 điểm → số dư còn 4", async () => {
+    mockGetSession.mockResolvedValue(ADMIN_SESSION);
+    mockOrderFindUniqueStaff.mockResolvedValue({
+      id: "order-uuid-1", status: "COMPLETED", order_type: "COUNTER",
+      user_id: USER_ID, items: [], points_earned: 10, total_vnd: 100000,
+      handled_by: "staff-uuid-1",
+    });
+    mockPointsLogFindManyStaff.mockImplementation(({ where }: { where: { reason?: string } }) =>
+      Promise.resolve(where.reason === "order_complete"
+        ? [{ id: "award-1", user_id: USER_ID, delta: 10, reason: "order_complete", voucher_id: null }]
+        : []),
     );
+    mockUserFindUniqueStaff.mockResolvedValue({ points_balance: 2 });
+    mockVoucherFindManyStaff.mockResolvedValue([{
+      id: "newest-voucher",
+      pointsLogs: [{ id: "purchase-1", reason: "voucher_purchase", delta: -12, user_id: USER_ID, voucher_id: "newest-voucher", reversalLogs: [] }],
+    }]);
+    mockVoucherUpdateManyStaff.mockResolvedValue({ count: 1 });
+    mockOrderUpdateStaff.mockResolvedValue({
+      id: "order-uuid-1", status: "CANCELLED", user: null, handler: null,
+    });
+
+    const PATCH = await getPATCH();
+    const response = await PATCH(makeStaffPatchReq({ status: "CANCELLED" }), {
+      params: Promise.resolve({ id: "order-uuid-1" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: {
+        cancellation_adjustment: {
+          revoked_voucher_count: 1,
+          refunded_points: 12,
+          reversed_points: 10,
+        },
+      },
+    });
+    expect(mockUserUpdateStaff).toHaveBeenCalledWith(expect.objectContaining({
+      data: { points_balance: { increment: 12 } },
+    }));
+    expect(mockUserUpdateManyStaff).toHaveBeenCalledWith(expect.objectContaining({
+      data: { points_balance: { decrement: 10 } },
+    }));
   });
 
   it("2d. Admin hủy COUNTER COMPLETED không có order_complete log → không lỗi", async () => {
@@ -446,6 +493,44 @@ describe("PATCH /api/staff/orders/[id] — cancel rules", () => {
     expect(res.status).toBe(200);
     expect(mockUserUpdateStaff).not.toHaveBeenCalled(); // anonymous, no user
     expect(mockPointsLogCreateStaff).not.toHaveBeenCalled();
+  });
+
+  it("retry đúng 3 lần khi Serializable gặp P2034 rồi trả 409", async () => {
+    mockGetSession.mockResolvedValue(ADMIN_SESSION);
+    mockTransactionStaff.mockRejectedValue(Object.assign(new Error("write conflict"), { code: "P2034" }));
+
+    const PATCH = await getPATCH();
+    const response = await PATCH(makeStaffPatchReq({ status: "CANCELLED" }), {
+      params: Promise.resolve({ id: "order-uuid-1" }),
+    });
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("CONFLICT");
+    expect(mockTransactionStaff).toHaveBeenCalledTimes(3);
+  });
+
+  it("hoàn tác đủ phần nợ còn lại sau một reversal cũ chưa đủ", async () => {
+    mockGetSession.mockResolvedValue(ADMIN_SESSION);
+    mockOrderFindUniqueStaff.mockResolvedValue({
+      id: "order-uuid-1", status: "COMPLETED", order_type: "COUNTER",
+      user_id: USER_ID, items: [], points_earned: 10, total_vnd: 100000,
+      handled_by: "staff-uuid-1",
+    });
+    mockPointsLogFindManyStaff.mockImplementation(({ where }: { where: { reason?: string } }) =>
+      Promise.resolve(where.reason === "order_complete" ? [{
+        id: "award-partial", user_id: USER_ID, delta: 10, reason: "order_complete",
+        voucher_id: null, reversalLogs: [{ delta: -3, user_id: USER_ID, order_id: "order-uuid-1", reason: "order_complete_reversed", reversed_log_id: "award-partial", reversalLogs: [] }],
+      }] : []),
+    );
+    mockOrderUpdateStaff.mockResolvedValue({ id: "order-uuid-1", status: "CANCELLED" });
+    const PATCH = await getPATCH();
+    const response = await PATCH(makeStaffPatchReq({ status: "CANCELLED" }), {
+      params: Promise.resolve({ id: "order-uuid-1" }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ data: {
+      cancellation_adjustment: { reversed_points: 7 },
+    } });
   });
 
   // ── 6. Restore voucher ────────────────────────────────────────────────────

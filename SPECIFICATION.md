@@ -38,21 +38,35 @@ Không thực hiện repo-wide layer refactor khi sửa feature. Direct API call
 ## Business consistency boundaries
 
 - Customer và staff order phải dùng chung calculator về pricing/voucher.
-- Server luôn đọc lại giá từ DB và ceil giá cuối lên 1.000 VND.
+- Server luôn đọc lại giá từ DB và ceil giá cuối lên 1.000 VND. Customer và Staff checkout giữ
+  menu/pricing, eligibility của voucher được dùng và order writes trong cùng Serializable transaction.
+  Retry đọc lại dữ liệu qua transaction mới, clone input riêng và giữ nguyên mốc tiếp nhận để xét hạn
+  voucher. Fulfillment/Goong và auto-grant issuance preflight ở ngoài; voucher đã cấp ở preflight có thể
+  còn tồn tại nếu checkout thất bại. Không coi toàn bộ HTTP request là một transaction duy nhất.
 - Pure formula nằm ở `src/utils/pricing.ts`; DB wrapper nằm ở `lib/pricing.ts`.
 - Order, voucher và pricing rules chỉ có canonical owner trong domain skill tương ứng.
 - Voucher catalog, owned wallet DTO, issuance, checkout và refund dùng cùng server-side live
   availability resolver; UI không tự suy luận lifecycle của menu configuration.
 - API response và field compatibility thuộc `API.md`; không đổi tên chỉ vì muốn làm sạch thuật ngữ.
-- Auth middleware treats PostgreSQL session state as authoritative. Revocation paths await cache
-  eviction, refresh rotation fails closed when its compare-and-set/grace update is not confirmed,
-  and no positive Redis session cache may outlive a deleted database row.
+- Auth middleware treats PostgreSQL session state as authoritative. Legacy Redis session keys are
+  only evicted, never trusted for authorization. Refresh rotates the existing row and re-reads the
+  winning token; a missing row, failed update or invalid grace/binding fails closed.
+- Access JWT `sid` giữ nguyên qua refresh. Mỗi authoritative check đọc session còn hạn và role hiện
+  tại từ DB; logout xóa session trước khi clear cookie. In-flight request đã qua check có thể hoàn tất.
+- QR user/voucher sinh cục bộ bằng adapter `qrcode` lazy-loaded; không gửi bearer content tới QR
+  service bên ngoài. Hook loại bỏ kết quả cũ khi nội dung đổi hoặc component đã đóng.
+- Báo cáo đếm và đọc trang trong một RepeatableRead snapshot có timeout; chặn phạm vi quá lớn trước
+  khi aggregate, không trả tổng của dữ liệu bị cắt. Chi tiết giới hạn thuộc `API.md`.
+- Redis security rate limits giữ fail-open khi hạ tầng lỗi theo quyết định sản phẩm; không bảo đảm
+  chống DDoS tuyệt đối. Auth/session checks vẫn fail-closed; logs chỉ chứa metadata đã loại secret.
 - GET handlers are read-only. Scheduled lifecycle work runs through authenticated cron routes;
   customer voucher reconciliation is an explicit POST before a wallet read.
 - External SDK luôn nằm sau wrapper/adapter để UI và business logic không phụ thuộc trực tiếp nhà cung cấp.
 - Ảnh catalog đi qua Storage adapter: menu/powder chuẩn hóa WebP tối đa 800px quality 75; milk type, addon group và từng addon option tối đa 320px quality 70, cùng cache một năm. Option ưu tiên ảnh riêng và fallback ảnh group cho dữ liệu cũ. Ảnh Supabase hiển thị qua Next/Vercel Image Optimization với `sizes` theo container; thumbnail sữa/add-on/powder dùng quality 60 và ảnh powder lớn chỉ tải khi mở chi tiết. Menu card giữ khung skeleton ổn định và fade ảnh vào sau khi tải xong.
 
 ## UI system
+
+- Upload ảnh catalog dùng chung khung bố cục 1:1 cho ảnh có nền và ảnh trong suốt. Mặc định vừa toàn bộ ảnh; admin kéo, thu/phóng nhỏ hơn khung, chọn Vừa khung/Lấp đầy/Đặt lại. Phần ngoài khung bị cắt, vùng trống trong khung giữ alpha; không kéo giãn vật thể hay tự đổ nền. Xem trước chính Blob WebP trên nền thẻ, có Chỉnh lại và Dùng ảnh này trước khi gắn vào form; kích thước/quality theo preset catalog hiện có. Nền caro chỉ dùng trong editor, không ghi vào file.
 
 ### Canonical stack
 
@@ -79,6 +93,8 @@ Không thực hiện repo-wide layer refactor khi sửa feature. Direct API call
 
 Shared overlay sở hữu portal, accessible title/description, focus trap/restore, Escape, scroll lock, backdrop, safe area, dismiss policy và layer. Feature code chỉ cung cấp content và callbacks; không tự viết `fixed inset-0` backdrop.
 
+Authentication dùng centered Radix dialog ở layer `critical` trên mọi breakpoint. Dialog đăng nhập được mount toàn cục, phủ lên nhưng không đóng page, cart hoặc voucher sheet đang hoạt động và sở hữu focus trên cùng. Hủy chỉ đóng auth, còn đăng nhập thành công trả quyền điều khiển cho surface nền để tiếp tục intent đã yêu cầu.
+
 Customer voucher list/detail/target/setup dùng chung `ResponsiveOverlay`: mobile là bottom sheet,
 desktop là centered dialog. Voucher card giữ content button mở detail độc lập với action; wallet dùng
 “Dùng ngay”, cart dùng selection button có `aria-pressed`. Voucher không đủ điều kiện vẫn đọc được
@@ -88,16 +104,18 @@ Wallet và cart dùng chung voucher frame edge-to-edge với một lớp padding
 trong cùng frame thay vì mở sheet lồng. Cart voucher sheet dùng layer `nested`; target/setup mở
 từ sheet này dùng layer `critical`.
 
-Catalog package cards also keep a full-card content button for detail separate from their quick
-acquisition action. Package detail renders catalog data directly and keeps the selected raw package
-authoritative while catalog filters change. Its footer distinguishes guest login, free claim,
-points exchange/deficit, sold-out, per-user limit, busy, automatic grant, and unavailable callback;
-points exchange always opens confirmation and never closes detail on cancel.
+Catalog nhận/đổi của customer wallet và cart ẩn `AUTO_GRANT` và gói có
+`(user_redeemed_count ?? 0) >= max_per_user`. Việc ẩn gói không xóa, ẩn hoặc thay đổi voucher đã
+sở hữu, quota hay lịch sử đổi. Detail đang mở phải khóa CTA nếu dữ liệu mới cho biết hết lượt.
 
-Guest voucher acquisition opens `AuthModal` above the still-open voucher detail with the exact
-package intent. Backdrop/X dismissal clears that intent but leaves the voucher background open.
-After successful login, the intent is cleared before acquisition/confirmation and consumed exactly
-once, including React StrictMode effect replay; an unavailable package produces no mutation.
+Footer chi tiết gói chỉ điều phối callbacks hiện có: guest đăng nhập với đúng package intent;
+`FREE_CLAIM` dùng “Nhận miễn phí”; `POINTS_EXCHANGE` hiển thị chi phí cá và vẫn cần xác nhận trước
+khi trừ cá. Busy, hết hàng, hết lượt, `AUTO_GRANT` hoặc thiếu callback thì không được nhận/đổi.
+Thiếu cá khóa đổi và báo đúng số còn thiếu, không thêm điều hướng menu. Eligibility dùng helper
+chung, giữ thứ tự kiểm tra hiện có; footer không tự gọi API.
+
+Auth từ voucher sheet mở ngay trên sheet còn mở, không đợi sheet đóng. Hủy auth bỏ intent nhưng
+giữ surface nền; đăng nhập thành công tiếp tục intent một lần và giữ bước xác nhận đổi bằng cá.
 
 `ProductModal` dùng dialog desktop và Vaul full-height trên mobile. Browser Back chỉ đóng overlay trên cùng; CTA luôn ghép action với tổng giá bằng ` - `, còn addon selector dùng lưới 3 cột. Header Base Liquid hiển thị Coldwhisk dạng switch có semantics và vẫn nêu nền mặc định khi selector bị ẩn.
 
@@ -108,10 +126,36 @@ Button dùng variants `primary`, `secondary`, `outline`, `ghost`, `destructive`;
 ## Legacy UI migration policy
 
 - Existing direct Radix/Vaul imports và manual overlays là legacy, không phải API mẫu.
-- Migrate theo từng flow có tests; không mass-replace modal, button hoặc form.
+- Migrate theo từng flow có kiểm tra contract liên quan và nghiệm thu UI thủ công; không mass-replace modal, button hoặc form.
 - Low-risk trước: local toast, adaptive select và simple admin/auth overlays.
 - High-risk tách riêng: product, cart/staff cart, QR, menu editor, map, crop và report.
 - Sau mỗi batch, thu hẹp legacy allowlist. Chỉ bật guard cứng khi batch tương ứng đã hoàn thành.
+
+## Automated testing strategy
+
+- Backend là trọng tâm: bảo vệ happy path, dữ liệu không hợp lệ, quyền truy cập, tính tiền/điểm,
+  lifecycle voucher và các nhánh lỗi khó tái hiện bằng tay. Giữ regression hiện có và bổ sung theo bug
+  hoặc rủi ro thực tế; không bắt buộc coverage phần trăm hay test mọi file.
+- Chỉ dùng Vitest `node` và `static-contract`. Không chạy test tự động trên staging, database isolated
+  hoặc dịch vụ thật; không tự tạo database/harness để lấp khoảng trống bằng chứng.
+- Chạy pricing, validation, authorization policy, state transition và domain service thật. Mock chỉ ở
+  Prisma/transaction, Redis, nhận session, thời gian và external adapter; dùng fixture tổng hợp cố định,
+  không chọn món/voucher từ dữ liệu vận hành.
+- Expected dùng ví dụ số hoặc quy tắc độc lập, không gọi chính calculator đang test để tính expected.
+- Race test mô phỏng kết quả tranh chấp như `count: 0`, `P2002`, `P2034` để kiểm tra nhánh xử lý,
+  retry và response. Fake không chứng minh database thật có lock, isolation, atomic rollback hay
+  chống double-spend. Static artifact test cũng không chứng minh migration/RLS/constraint đã thực thi.
+- Rate-limit test chạy policy thật với fake Redis có bộ đếm và thời hạn; kiểm tra ngưỡng, tách khóa,
+  không gia hạn cửa sổ mỗi request và reset khi hết hạn. Không coi đó là bằng chứng Redis phân tán.
+- Frontend chỉ test service gửi đúng payload, nhận/unwrap đúng response và giữ thông tin lỗi backend;
+  giữ shared pure calculators và pure security không thuộc UI. Backend quyết định món/voucher có hợp
+  lệ hay không; frontend không sao chép validation nghiệp vụ để thay server.
+- UI/UX, render, hook/view, thao tác và accessibility kiểm tra tay. Thay đổi UI cần nêu bước nghiệm thu
+  cho người dùng, không tự thêm DOM runner.
+- Skill `tdd` sở hữu lane, mock boundary, oracle và cách ghi điều đã/chưa được chứng minh.
+  Full suite chạy một lần trên final code/test tree theo `AGENTS.md`.
+- Báo cáo cũ trong `.staging-test-runs/` vẫn được bỏ Git và không dùng làm fixture hay bằng chứng mới.
+  Chiến lược test này không xóa database staging hoặc thay đổi quy trình deploy/migration.
 
 ## Resource registry
 
@@ -127,33 +171,3 @@ Button dùng variants `primary`, `secondary`, `outline`, `ghost`, `destructive`;
 | Workflow/release | Skill tương ứng |
 
 Nếu code chỉ được sửa để khớp resource hiện có, Resource Impact là `None`; không chỉnh wording chỉ để tạo diff tài liệu.
-
-## Staging order/voucher verification
-
-Test layers hermetic không chứng minh PostgreSQL hay deployment thật. Live-write chạy standalone
-qua `scripts/staging-tests/cli.mjs`, không được collect trong `npm test`; node tests của runner chỉ
-chứng minh orchestration bằng HTTP/DB boundary doubles.
-
-Luồng self-service theo thứ tự: release owner chạy
-`test:live:staging:configure -- --branch <branch>`, push revision và chờ deployment `READY`; operator
-chạy `test:live:staging:attest -- --deployment <dpl-id>`, rồi mới chạy `:plan`, `:smoke`, `:full`
-hoặc `:recover -- --run-id <id>`. Configure và attest đều fail closed; chúng không deploy hay push.
-Operator yêu cầu cả `.env.staging` và `.env.staging.local`, load stage trước rồi local (local thắng).
-`TEST_STAGING_CONFIG_DIR` là optional absolute directory pointer chỉ đọc từ process environment trước
-khi mở hai file; đặt key này bên trong một trong hai file không có hiệu lực. Năm nonsecret pins
-`TEST_VERCEL_PROJECT_ID`, `TEST_VERCEL_TEAM_ID`, `TEST_VERCEL_GIT_BRANCH`,
-`TEST_STAGING_POOLER_HOST`, `TEST_RELEASE_WINDOW_ID` mới được phép process-env overlay lên file config.
-Attestation sống tối đa 2 giờ và ghim deployment Vercel `source=git`, exact branch/SHA, release-window
-assertion, branch env metadata cùng fingerprint public catalog API/DB. Sensitive DB variables chỉ được
-chứng minh bằng configuration provenance + fresh Git deployment (`deploymentSecretReadback=false`).
-
-Các profile `test:live:staging:plan`, `:smoke`, `:full` và `:recover` fail closed và lấy URL,
-deployment ID/SHA cùng staging target từ attestation hiện hành, không tin các target pin nhập tay.
-`plan` chỉ đọc; `smoke`/`full` không đổi skip hoặc case chưa triển khai thành PASS; `recover` chỉ xử
-lý đúng một run đã journal. Target phải là immutable Vercel Preview staging, có deployment ID/SHA,
-Supabase ref và DB binding đã attestation; không fallback production hoặc lưu secret trong report.
-
-Staging write còn yêu cầu `PUSH_DELIVERY_MODE=log_only`, `NEXT_PUBLIC_APP_ENV=staging` và
-`VERCEL_ENV=preview`. `lib/push.ts` chỉ bỏ subscription read/web-push trong đúng tổ hợp này;
-production, biến chưa đặt hoặc môi trường không khớp giữ delivery hiện có. Mỗi mutation phải có
-intent durable trước dispatch; outcome mơ hồ dừng ghi để reconciliation/recovery, không tự retry.

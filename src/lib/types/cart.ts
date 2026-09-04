@@ -22,14 +22,10 @@ export interface CartItem {
   note: string;
   /** Selected option ids for SELECTOR and TOGGLE groups. */
   selectedOptionIds: string[];
-  /** { [addon_group_id]: qty } for QUANTITY groups — display only. */
-  quantityMap: Record<string, number>;
   /** Total addon cost snapshot in VND. */
   addonsPrice: number;
   /** Exact price for each selected addon option. Used for precise Addon Voucher discounts. */
   addonPrices: Record<string, number>;
-  /** Resolved QUANTITY addon options (option_id + qty > 0 only). Sent to API. */
-  quantityAddonOptions: { option_id: string; quantity: number }[];
   /** Fusion only — selected powder id. */
   selectedPowderId?: string;
   /** Latte only — selected milk type id. */

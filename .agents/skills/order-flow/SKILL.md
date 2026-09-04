@@ -48,6 +48,10 @@ Counter transfer: PENDING → COMPLETED (creator Staff or any Admin confirms pay
 - `STAFF_DONE → COMPLETED`: Customer receives the order.
 - At `COMPLETED`, award order points and aggregate PRODUCT surplus in the same transaction.
 - Do not redeem vouchers again at `COMPLETED`.
+- Claim an unassigned online order with an expected-status/expected-owner conditional write. After
+  Staff A claims it, only Staff A or an Admin may finish it; another Staff cannot replace the owner.
+- A COUNTER bank transfer moves directly from `PENDING` to `COMPLETED`. Confirm its BUNDLE voucher
+  and order application together as `REDEEMED`, with voucher channel `OFFLINE`.
 
 ---
 
@@ -55,12 +59,16 @@ Counter transfer: PENDING → COMPLETED (creator Staff or any Admin confirms pay
 
 > Follow this exact order. Never skip or reorder steps.
 
+Capture one `acceptanceDate` at handler entry, before parsing. Use it for every voucher eligibility
+and lazy-expiry decision in all transaction attempts. A voucher with `expires_at > acceptanceDate`
+remains valid through processing and retry; `expires_at <= acceptanceDate` is rejected.
+
 1. **Parse + Validate**: `req.json()` → Zod validate body
 2. **Auth**: `getSession(req)` — customer routes require CUSTOMER role, staff routes require STAFF/ADMIN
 3. **Store hours check** (skip for COUNTER):
    - Call `checkStoreOpen()` from `lib/storeSchedule.ts`
    - PICKUP/DELIVERY rejected with `STORE_CLOSED` (HTTP 503) when closed
-4. **Inside `prisma.$transaction()`**:
+4. **Inside the retryable Serializable `prisma.$transaction()` for both customer and staff**:
    - a. Re-fetch all item prices from DB (never trust client)
    - b. Validate each item: `size` required, `base_price_vnd IS NOT NULL` for that size
    - c. Resolve powder:
@@ -75,9 +83,9 @@ Counter transfer: PENDING → COMPLETED (creator Staff or any Admin confirms pay
    - e. Resolve addons as opt-in selections:
      - Empty `addon_option_ids` is valid and means no addons.
      - Re-fetch option + group lifecycle; reject inactive groups/options and duplicate option IDs.
-     - `SELECTOR`: at most one option per group, quantity exactly 1.
-     - `TOGGLE`: exactly one active configured option, request quantity exactly 1.
-     - `QUANTITY`: exactly one active configured option, quantity from 1 through `max_quantity`.
+     - Each selected option is distinct and has quantity exactly 1.
+     - Enforce at most `addon_groups.max_select` options per group.
+     - Dynamic-gram groups must keep `max_select = 1`.
    - f. **Compute server prices** — see `pricing-logic` skill for formulas and COALESCE rules
    - g. Compare `client_price_vnd` vs server price per item. Mismatch → abort with `PRICE_CHANGED`
    - h. **Apply vouchers** using the shared calculator — see `voucher-flow`; strict order is
@@ -93,6 +101,11 @@ Counter transfer: PENDING → COMPLETED (creator Staff or any Admin confirms pay
    - m. For COUNTER BANK_TRANSFER: set status = `PENDING`, reserve applied vouchers, and defer
      all points until the direct `COMPLETED` payment-confirmation transition
 5. **Return**: customer/pending counter transfer with payment QR URL, or completed cash order
+
+Fulfillment/external preflight and auto-grant issuance remain outside the order transaction. An
+auto-granted voucher may therefore persist if checkout later fails; every voucher actually consumed
+must still be re-fetched and conditionally claimed inside the order transaction. Clone mutable input
+for each retry and keep the original `acceptanceDate`.
 
 ## Counter Transfer POS Recovery
 
@@ -118,6 +131,23 @@ Counter transfer: PENDING → COMPLETED (creator Staff or any Admin confirms pay
 - Staff COUNTER CASH orders: points awarded at creation (already COMPLETED).
 - Staff COUNTER BANK_TRANSFER orders: points awarded only on payment confirmation to COMPLETED.
 - Anonymous orders: `points_earned = 0`, no `points_log` entry.
+
+## Completed COUNTER Cancellation
+
+- Only Admin may cancel a completed COUNTER order. Completed PICKUP/DELIVERY orders remain final.
+- Reverse the full outstanding `order_complete` plus aggregate `voucher_surplus` award. Count a prior
+  negative reversal only when its user, order, reason and parent link match the positive audit row;
+  never edit an existing `points_log` row.
+- If the current balance is short, recover newest whole vouchers belonging to the same user that are
+  `POINTS_EXCHANGE`, `ACTIVE` and unexpired. Refund their exact immutable negative
+  `voucher_purchase` cost, not the package's current cost.
+- Exclude free/granted, reserved, redeemed, expired, refunded, already-refunded vouchers and vouchers
+  restored by the cancelled order. Stop after the balance is sufficient; any excess refund remains.
+- Missing trustworthy audit or a remaining shortfall aborts the whole transaction with
+  `422 BUSINESS_RULE_VIOLATION` and `details.reason = INSUFFICIENT_REVERSIBLE_POINTS`. Never create
+  debt, a partial reversal or a partially cancelled order.
+- On success, return `cancellation_adjustment` with `reversed_points`, `revoked_voucher_count` and
+  `refunded_points` so Admin can show the committed outcome.
 
 ## Shared Order Calculator
 

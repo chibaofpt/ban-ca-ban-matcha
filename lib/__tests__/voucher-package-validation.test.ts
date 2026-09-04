@@ -61,7 +61,7 @@ describe("Validation PRODUCT_DISCOUNT", () => {
 function makeBundle() {
   return {
     voucher_type: "BUNDLE" as const, name: "Mua 2 tặng 1", acquisition_mode: "POINTS_EXCHANGE" as const,
-    points_cost: 10, ends_at: "2026-08-31T16:59:59.999Z", min_order_vnd: 100_000,
+    points_cost: 10, ends_at: "2099-08-31T16:59:59.999Z", min_order_vnd: 100_000,
     expires_after_days: 30, quantity: 100, max_per_user: 1,
     bundle_rule: {
       buy_quantity: 2, reward_quantity: 1, reward_kind: "PRODUCT" as "PRODUCT" | "ADDON",

@@ -8,7 +8,6 @@ import { getMenuItemCartInfo } from "@/src/utils/customerUx";
 
 interface MenuPanelsProps {
   loading: boolean;
-  seasonalOnly: boolean;
   latteItems: MenuItem[];
   fusionItems: MenuItem[];
   extrasItems: MenuItem[];
@@ -31,21 +30,18 @@ interface ItemSectionProps {
   onItemClick: (item: MenuItem) => void;
 }
 
-/** Render either the scrollable core categories or the isolated Seasonal view. */
+/** Renders the customer menu as vertically scrollable category sections. */
 export function MenuPanels(props: MenuPanelsProps) {
-  const { loading, seasonalOnly, latteItems, fusionItems, extrasItems, seasonalItems } = props;
+  const { loading, latteItems, fusionItems, extrasItems, seasonalItems } = props;
   return (
     <div className="w-full space-y-8 pb-8 px-0.5">
       {loading ? <MenuSkeleton count={6} /> : (
-        seasonalOnly ? (
+        <>
+          <ItemSection title="Latte" items={latteItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.latteSectionRef} onItemClick={props.onItemClick} />
+          <ItemSection title="Fusion" items={fusionItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.fusionSectionRef} onItemClick={props.onItemClick} />
+          <ItemSection title="Add-on" items={extrasItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.extrasSectionRef} onItemClick={props.onItemClick} />
           <ItemSection title="Seasonal" items={seasonalItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.seasonalSectionRef} onItemClick={props.onItemClick} />
-        ) : (
-          <>
-            <ItemSection title="Latte" items={latteItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.latteSectionRef} onItemClick={props.onItemClick} />
-            <ItemSection title="Fusion" items={fusionItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.fusionSectionRef} onItemClick={props.onItemClick} />
-            <ItemSection title="Add-on" items={extrasItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.extrasSectionRef} onItemClick={props.onItemClick} />
-          </>
-        )
+        </>
       )}
     </div>
   );
@@ -66,7 +62,7 @@ function ItemSection({
     <div>
       <div
         ref={sectionRef}
-        className={`scroll-mt-32 flex items-center gap-3 mb-4${isFusion ? "" : " mt-2"}`}
+        className={`scroll-mt-36 flex items-center gap-3 mb-4${isFusion ? "" : " mt-2"}`}
       >
         <h2 className="font-serif text-xl font-bold text-[#2d4a22]">{title}</h2>
         <div className="flex-1 h-px bg-primary/10" />

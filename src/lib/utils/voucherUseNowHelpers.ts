@@ -16,11 +16,9 @@ export interface BundleItemConfig {
   iceOption: IceOption;
   coldwhisk: boolean;
   selectedOptionIds: string[];
-  quantityMap: Record<string, number>;
   unitPriceVnd: number;
   addonsCost: number;
   addonPrices: Record<string, number>;
-  quantityAddonOptions: { option_id: string; quantity: number }[];
 }
 
 export interface CanApplyDiscountResult {
@@ -129,11 +127,9 @@ export function buildBundleItemConfig(
     iceOption: "NORMAL",
     coldwhisk: false,
     selectedOptionIds: [],
-    quantityMap: {},
     unitPriceVnd,
     addonsCost: 0,
     addonPrices: {},
-    quantityAddonOptions: [],
   };
 }
 
@@ -193,10 +189,8 @@ export function cartItemToBundleConfig(
     iceOption: cartItem.iceOption,
     coldwhisk: cartItem.coldwhisk,
     selectedOptionIds: cartItem.selectedOptionIds,
-    quantityMap: cartItem.quantityMap,
     unitPriceVnd: cartItem.clientPriceVnd,
     addonsCost: cartItem.addonsPrice,
     addonPrices: cartItem.addonPrices,
-    quantityAddonOptions: cartItem.quantityAddonOptions,
   };
 }

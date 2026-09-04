@@ -16,8 +16,8 @@ export interface AddonGroupFormOption {
 export interface AddonGroupFormFields {
   name: string;
   description: string;
-  type: "SELECTOR" | "TOGGLE" | "QUANTITY";
-  max_quantity: string;
+  max_select: string;
+  is_dynamic_gram: boolean;
   is_active: boolean;
   options: AddonGroupFormOption[];
 }
@@ -25,8 +25,8 @@ export interface AddonGroupFormFields {
 export interface AddonGroupFormPayload {
   name: string;
   description: string | null;
-  type: AddonGroupFormFields["type"];
-  max_quantity: number | null;
+  max_select: number;
+  is_dynamic_gram: boolean;
   is_active: boolean;
   options: Array<{
     id?: string;
@@ -53,8 +53,8 @@ export function buildAddonGroupDefaultValues(item: AdminAddonGroup): Partial<Add
   return {
     name: item.name,
     description: item.description ?? "",
-    type: item.type,
-    max_quantity: item.max_quantity !== null ? String(item.max_quantity) : "",
+    max_select: String(item.max_select),
+    is_dynamic_gram: item.is_dynamic_gram,
     is_active: item.is_active,
     options: item.options.map((option) => ({
       id: option.id,

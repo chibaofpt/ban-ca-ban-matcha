@@ -18,7 +18,7 @@ describe("thứ tự tính giá BUNDLE → PRODUCT → ADDON → DISCOUNT", () =
         },
       ],
       discountVouchers: [
-        { id: "discount", discount_type: "PERCENT", discount_value: 10, min_order_vnd: null },
+        { id: "discount", discount_type: "PERCENT", discount_value: 10, min_order_vnd: null, max_discount_vnd: null },
       ],
       freeshipVoucher: null,
       shipping_fee_vnd: 0,

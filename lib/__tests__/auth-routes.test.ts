@@ -5,19 +5,17 @@
  *  - POST /api/auth/register — session limit (EDGE-4)
  *  - GET  /api/auth/me — new route (BUG-2)
  *
- * Strategy: mock lib/prisma, lib/auth, bcryptjs — test all business rule branches.
+ * APPLICATION_LOGIC: real auth signing/cookie policy and session creation.
+ * Prisma, cookie acquisition and bcrypt are boundaries; existing limiter and voucher
+ * stubs keep those separate domains outside these route claims.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { jwtVerify } from "jose";
 
 // ── Mocks (khai báo TRƯỚC import) ──────────────────────────────────────────────
 
 const mockGetSession = vi.fn();
-const mockSetAuthCookies = vi.fn();
-const mockClearAuthCookies = vi.fn();
-const mockSignJwt = vi.fn();
-const mockCreateSession = vi.fn();
-const mockNormalizePhone = vi.fn();
 
 // Rate limit mocks
 const mockCheckLoginFailLimit = vi.fn();
@@ -43,14 +41,15 @@ const mockCacheDelete = vi.fn();
 const mockBcryptCompare = vi.fn();
 const mockBcryptHash = vi.fn();
 
-vi.mock("@/lib/auth", () => ({
+vi.hoisted(() => { process.env.JWT_SECRET = "auth-route-cookie-test-secret-at-least-32-bytes"; });
+const mockCookieSet = vi.fn();
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: () => undefined, set: mockCookieSet, delete: vi.fn() }),
+  headers: async () => new Headers(),
+}));
+vi.mock("@/lib/auth", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/auth")>(),
   getSession: () => mockGetSession(),
-  setAuthCookies: (...args: unknown[]) => mockSetAuthCookies(...args),
-  clearAuthCookies: () => mockClearAuthCookies(),
-  signJwt: (...args: unknown[]) => mockSignJwt(...args),
-  createSession: (...args: unknown[]) => mockCreateSession(...args),
-  normalizePhone: (phone: string) => mockNormalizePhone(phone),
-  getRefreshTokenCookie: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("@/lib/rateLimit", () => ({
@@ -149,9 +148,6 @@ const GHOST_USER = {
 describe("POST /api/auth/check-phone — ghost user exclusion", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mockNormalizePhone.mockImplementation((p: string) =>
-      p.startsWith("0") ? `+84${p.slice(1)}` : p
-    );
   });
 
   it("trả về exists: true khi số điện thoại đã có tài khoản thật", async () => {
@@ -206,12 +202,7 @@ describe("POST /api/auth/check-phone — ghost user exclusion", () => {
 describe("POST /api/auth/login — ghost user guard", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mockNormalizePhone.mockImplementation((p: string) =>
-      p.startsWith("0") ? `+84${p.slice(1)}` : p
-    );
-    mockSignJwt.mockResolvedValue("access-token-xyz");
-    mockCreateSession.mockResolvedValue("refresh-token-xyz");
-    mockSetAuthCookies.mockResolvedValue(undefined);
+    mockSessionCreate.mockResolvedValue({ id: "created-session-id", refresh_token: "created-refresh-token" });
     mockCacheDelete.mockResolvedValue(undefined);
     mockEnsureAutoGrantedVouchers.mockResolvedValue({ granted: 0, already_granted: 0 });
     // Default: rate limits allow through
@@ -255,7 +246,12 @@ describe("POST /api/auth/login — ghost user guard", () => {
 
     expect(res.status).toBe(200);
     expect(body.data.name).toBe("Nguyen Van A");
-    expect(mockSetAuthCookies).toHaveBeenCalledOnce();
+    const token = mockCookieSet.mock.calls.find(([key]) => key === "access_token")?.[1] as string;
+    expect((await jwtVerify(token, new TextEncoder().encode("auth-route-cookie-test-secret-at-least-32-bytes"))).payload)
+      .toMatchObject({ id: "user-real-uuid", sid: "created-session-id", role: "CUSTOMER" });
+    expect(mockCookieSet).toHaveBeenCalledWith("refresh_token", "created-refresh-token", expect.objectContaining({
+      httpOnly: true, sameSite: "strict", maxAge: 604800,
+    }));
   });
 
   it("trả về 401 INVALID_CREDENTIALS khi sai mật khẩu", async () => {
@@ -285,13 +281,8 @@ describe("POST /api/auth/login — ghost user guard", () => {
 describe("POST /api/auth/login — session limit (max 5)", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mockNormalizePhone.mockImplementation((p: string) =>
-      p.startsWith("0") ? `+84${p.slice(1)}` : p
-    );
     mockBcryptCompare.mockResolvedValue(true);
-    mockSignJwt.mockResolvedValue("access-token");
-    mockCreateSession.mockResolvedValue("refresh-token");
-    mockSetAuthCookies.mockResolvedValue(undefined);
+    mockSessionCreate.mockResolvedValue({ id: "created-session-id", refresh_token: "created-refresh-token" });
     mockSessionDeleteMany.mockResolvedValue({ count: 0 });
     // Default: rate limits allow through
     mockCheckLoginFailLimit.mockResolvedValue({ allowed: true, remaining: 4 });
@@ -360,9 +351,6 @@ describe("POST /api/auth/login — session limit (max 5)", () => {
 describe("POST /api/auth/login — IP rate limit và phone flood guard", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mockNormalizePhone.mockImplementation((p: string) =>
-      p.startsWith("0") ? `+84${p.slice(1)}` : p
-    );
     mockRecordLoginFail.mockResolvedValue(undefined);
     mockRecordPhoneFloodAttempt.mockResolvedValue(undefined);
     mockResetLoginFail.mockResolvedValue(undefined);
@@ -412,9 +400,6 @@ describe("POST /api/auth/login — IP rate limit và phone flood guard", () => {
 describe("POST /api/auth/login — ghi nhận thất bại", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mockNormalizePhone.mockImplementation((p: string) =>
-      p.startsWith("0") ? `+84${p.slice(1)}` : p
-    );
     mockCheckLoginFailLimit.mockResolvedValue({ allowed: true, remaining: 4 });
     mockCheckPhoneFloodGuard.mockResolvedValue({ allowed: true });
     mockRecordLoginFail.mockResolvedValue(undefined);
@@ -457,14 +442,9 @@ describe("POST /api/auth/login — ghi nhận thất bại", () => {
 describe("POST /api/auth/login — reset khi đúng", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mockNormalizePhone.mockImplementation((p: string) =>
-      p.startsWith("0") ? `+84${p.slice(1)}` : p
-    );
     mockCheckLoginFailLimit.mockResolvedValue({ allowed: true, remaining: 4 });
     mockCheckPhoneFloodGuard.mockResolvedValue({ allowed: true });
-    mockSignJwt.mockResolvedValue("access-token");
-    mockCreateSession.mockResolvedValue("refresh-token");
-    mockSetAuthCookies.mockResolvedValue(undefined);
+    mockSessionCreate.mockResolvedValue({ id: "created-session-id", refresh_token: "created-refresh-token" });
     mockRecordLoginFail.mockResolvedValue(undefined);
     mockRecordPhoneFloodAttempt.mockResolvedValue(undefined);
     mockResetLoginFail.mockResolvedValue(undefined);
@@ -497,12 +477,7 @@ describe("POST /api/auth/login — reset khi đúng", () => {
 describe("POST /api/auth/login — fail-open khi Redis down", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mockNormalizePhone.mockImplementation((p: string) =>
-      p.startsWith("0") ? `+84${p.slice(1)}` : p
-    );
-    mockSignJwt.mockResolvedValue("access-token");
-    mockCreateSession.mockResolvedValue("refresh-token");
-    mockSetAuthCookies.mockResolvedValue(undefined);
+    mockSessionCreate.mockResolvedValue({ id: "created-session-id", refresh_token: "created-refresh-token" });
     mockResetLoginFail.mockResolvedValue(undefined);
     mockResetPhoneFlood.mockResolvedValue(undefined);
     mockRecordLoginFail.mockResolvedValue(undefined);
@@ -530,13 +505,8 @@ describe("POST /api/auth/login — fail-open khi Redis down", () => {
 describe("POST /api/auth/register — session limit và ghost user conversion", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mockNormalizePhone.mockImplementation((p: string) =>
-      p.startsWith("0") ? `+84${p.slice(1)}` : p
-    );
     mockBcryptHash.mockResolvedValue("$2a$12$hashed");
     mockBcryptCompare.mockResolvedValue(false);
-    mockSignJwt.mockResolvedValue("access-token");
-    mockSetAuthCookies.mockResolvedValue(undefined);
   });
 
   it("đăng ký user mới thành công → trả 201 và set cookies", async () => {
@@ -550,7 +520,7 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
           },
           session: {
             findMany: vi.fn().mockResolvedValue([]),
-            create: vi.fn().mockResolvedValue({ refresh_token: "new-refresh-token" }),
+            create: vi.fn().mockResolvedValue({ id: "registered-session-id", refresh_token: "new-refresh-token" }),
             deleteMany: vi.fn(),
           },
           pointsLog: { create: vi.fn() },
@@ -566,7 +536,12 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
 
     expect(res.status).toBe(201);
     expect(body.data.role).toBe("CUSTOMER");
-    expect(mockSetAuthCookies).toHaveBeenCalledOnce();
+    const token = mockCookieSet.mock.calls.find(([key]) => key === "access_token")?.[1] as string;
+    expect((await jwtVerify(token, new TextEncoder().encode("auth-route-cookie-test-secret-at-least-32-bytes"))).payload)
+      .toMatchObject({ id: "new-user-id", sid: "registered-session-id", role: "CUSTOMER" });
+    expect(mockCookieSet).toHaveBeenCalledWith("refresh_token", "new-refresh-token", expect.objectContaining({
+      httpOnly: true, sameSite: "strict", maxAge: 604800,
+    }));
     expect(mockEnsureAutoGrantedVouchers).toHaveBeenCalledWith(expect.anything(), "new-user-id");
   });
 
@@ -586,7 +561,7 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
   it("convert ghost user thành real user khi đăng ký với số điện thoại ghost", async () => {
     mockUserFindUnique.mockResolvedValueOnce(GHOST_USER);
     const mockTxUserUpdate = vi.fn().mockResolvedValue({ ...GHOST_USER, password_hash: "$2a$12$hashed", name: "Real Name" });
-    const mockTxSessionCreate = vi.fn().mockResolvedValue({ refresh_token: "new-refresh-token" });
+    const mockTxSessionCreate = vi.fn().mockResolvedValue({ id: "registered-session-id", refresh_token: "new-refresh-token" });
     const mockTxSessionFindMany = vi.fn().mockResolvedValue([]);
     const mockTxSessionDeleteMany = vi.fn();
     const mockTxPointsLogCreate = vi.fn();
@@ -622,7 +597,7 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
   it("xóa session cũ nhất khi ghost user đã có 5 session active (edge case đặc biệt)", async () => {
     mockUserFindUnique.mockResolvedValueOnce(GHOST_USER);
     const mockTxUserUpdate = vi.fn().mockResolvedValue({ ...GHOST_USER, password_hash: "$2a$12$hashed" });
-    const mockTxSessionCreate = vi.fn().mockResolvedValue({ refresh_token: "new-token" });
+    const mockTxSessionCreate = vi.fn().mockResolvedValue({ id: "registered-session-id", refresh_token: "new-token" });
     const mockTxSessionFindMany = vi.fn().mockResolvedValue([
       { id: "s1" }, { id: "s2" }, { id: "s3" }, { id: "s4" }, { id: "s5" },
     ]);

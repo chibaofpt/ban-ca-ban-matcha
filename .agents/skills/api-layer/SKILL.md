@@ -16,6 +16,10 @@ description: >
 
 ## Contract and Schema Preservation
 
+`API.md` is authoritative for backend paths, methods, request fields, response shapes, HTTP
+statuses, error codes, and `details` payloads. This skill does not rename or simplify that
+contract. Resolve a conflict against `API.md` before changing a consumer or route.
+
 - Inspect existing routes, services, shared types, tests, Prisma fields, and migrations before
   designing a change.
 - Reuse an existing endpoint and payload shape when it can support the approved behavior.
@@ -69,20 +73,40 @@ apiClient.interceptors.response.use(
 **Shared types (`src/lib/types/api.ts`):**
 ```typescript
 export type ApiResponse<T> = { data: T };
-export type ApiError = { error: string; code: string };
+export type ApiError<TDetails = unknown> = {
+  error: string;
+  code: string;
+  details?: TDetails;
+};
 ```
+
+`ApiError<TDetails>` is only the shared server payload. It does not carry HTTP status or define a
+runtime error class.
 
 **Service pattern:**
 ```typescript
 // src/services/orderService.ts
 import { apiClient } from "@/src/lib/api/client";
-import type { ApiResponse } from "@/src/lib/types/api";
+import type { ApiError, ApiResponse } from "@/src/lib/types/api";
 import type { Order } from "@/src/lib/types/order";
 
 const URL = {
   base: "/api/orders",
   byId: (id: string) => `/api/orders/${id}`,
 } as const;
+
+/** Error exposed by the order service after a structured server response. */
+export class ApiServiceError<TDetails = unknown> extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code: string,
+    public readonly details?: TDetails,
+  ) {
+    super(message);
+    this.name = "ApiServiceError";
+  }
+}
 
 /** Fetch all orders for the current user */
 export async function getOrders(): Promise<Order[]> {
@@ -97,9 +121,25 @@ export async function createOrder(payload: CreateOrderPayload): Promise<Order> {
 }
 ```
 
+**Consumer error preservation:** `ApiServiceError` is the existing exported `Error` subclass in
+`src/services/orderService.ts`; do not create a shared runtime error class in
+`src/lib/types/api.ts`. When the service translates a server `ApiError`, pass `apiError.error` as
+the constructor `message`, so callers receive it as standard `Error.message`, while preserving
+the HTTP `status`, `code`, and optional `details` on the subclass. Do not replace a structured
+server error with a generic client string before its consumer can act on it.
+For `422 BUSINESS_RULE_VIOLATION`, preserve `details.reason` exactly as defined in `API.md`.
+Service tests assert the outbound URL/method/payload, successful response/DTO unwrapping, and
+this preserved error shape; rendered UI/UX is manually accepted under the TDD policy.
+
 ---
 
 ## Backend — app/api/**/route.ts
+
+Follow the contract in `API.md`, including documented status and error-code mappings. Backend
+errors use `{ error, code }` and may include canonical `details`; a business-rule rejection uses
+`422 BUSINESS_RULE_VIOLATION` with `details.reason` when `API.md` defines that reason. Never
+move error payload into `data`, invent a replacement code, or drop the documented detail merely
+because a current consumer does not render it.
 
 **Mandatory order — never swap steps:**
 1. Parse body with `.catch(() => null)`

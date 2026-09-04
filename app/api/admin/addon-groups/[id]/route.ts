@@ -54,8 +54,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         name: updated.name,
         description: updated.description,
         image_url: updated.image_url,
-        type: updated.type,
-        max_quantity: updated.max_quantity,
+        max_select: updated.max_select,
+        is_dynamic_gram: updated.is_dynamic_gram,
         is_active: updated.is_active,
         created_at: updated.created_at,
         options: updated.options.map(o => ({
@@ -84,6 +84,14 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     const validData = validation.data;
+
+    // Server lock: is_dynamic_gram groups must keep max_select = 1
+    if (validData.is_dynamic_gram && validData.max_select !== 1) {
+      return NextResponse.json(
+        { error: "Nhóm giá theo gram bột chỉ cho phép chọn 1 option", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
     const optionImageKeys = new Set(
       validData.options.flatMap((option) => option.image_key ? [option.image_key] : []),
     );
@@ -136,10 +144,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           name: validData.name,
           description: validData.description,
           ...(preparedImage.imageUrl !== undefined && { image_url: preparedImage.imageUrl }),
-          type: validData.type,
+          max_select: validData.max_select,
+          is_dynamic_gram: validData.is_dynamic_gram,
           is_required: false,
           min_quantity: null,
-          max_quantity: validData.max_quantity,
+          max_quantity: null,
           is_active: validData.is_active,
         }
       });
@@ -206,8 +215,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       name: result.name,
       description: result.description,
       image_url: result.image_url,
-      type: result.type,
-      max_quantity: result.max_quantity,
+      max_select: result.max_select,
+      is_dynamic_gram: result.is_dynamic_gram,
       is_active: result.is_active,
       created_at: result.created_at,
       options: result.options.map(o => ({
@@ -269,8 +278,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       name: updated.name,
       description: updated.description,
       image_url: updated.image_url,
-      type: updated.type,
-      max_quantity: updated.max_quantity,
+      max_select: updated.max_select,
+      is_dynamic_gram: updated.is_dynamic_gram,
       is_active: updated.is_active,
       created_at: updated.created_at,
     } });

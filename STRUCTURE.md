@@ -27,20 +27,25 @@ API URL/types tiếp tục thuộc các voucher service hiện có, còn persist
 | `lib/` | Server-only business logic, Prisma và external adapters |
 | `lib/validations/` | Shared server Zod schemas |
 | `prisma/` | Physical schema và committed migrations |
-| `scripts/` | Operator tooling; staging writes remain opt-in and fail-closed |
+| `scripts/` | Operator tooling; data repair mặc định dry-run, apply phải chỉ rõ đối tượng |
 | `.agents/skills/<name>/SKILL.md` | Project-local reusable workflow skill |
 
 Feature container trong `src/components/<domain>` được phép gọi `src/services`; leaf UI và mọi file trong `src/components/ui` thì không. Không di chuyển component chỉ để thỏa một layer lý tưởng trong lúc sửa bug.
 
-## Import boundaries
+## Test placement
 
-Staging live-write tooling nằm trong `scripts/staging-tests/`: `journeys/` chia theo hành trình,
-`operator.mjs` bọc các profile; `configure*.mjs`, `attest*.mjs` và `vercel-control.mjs` quản lý
-control-plane/provenance. Helper chung quản lý target, auth, journal, oracle, pacing và recovery. Regression hermetic của
-tooling nằm tại `lib/__tests__/staging-*.test.ts`; tên này không có nghĩa chúng gọi DB thật.
-CLI chỉ chạy bằng lệnh live opt-in. `.staging-test-runs/` chứa configuration proof, attestation,
-journal, run-state,
-report và thư mục `sessions/` riêng; toàn bộ bị bỏ Git, không dùng làm fixture committed.
+- `lib/__tests__/**/*.{test,spec}.ts` chạy trong Vitest project `node` cho route và server logic.
+- `src/__tests__/services/` kiểm tra payload, response thành công và lỗi từ API qua service thật.
+- `src/__tests__/utils/` giữ pure calculator dùng chung; `src/__tests__/lib/` giữ response mapping,
+  helper backend được kiểm tra tại vị trí cũ và pure security không phụ thuộc UI.
+- `src/__tests__/api/` hiện chứa test backend route; không phân loại thành UI chỉ vì nằm trong `src/`.
+- Các test chỉ đọc source/schema/SQL được khai báo trong project `static-contract`; chúng chỉ chứng minh
+  artifact tĩnh, không chứng minh migration đã chạy hoặc PostgreSQL thực thi đúng.
+- Test dùng dữ liệu tổng hợp cố định, chạy logic sở hữu thật và mock các ranh giới bên ngoài theo skill
+  `tdd`. Không duy trì runner staging, isolated database, DOM/component/hook/view hoặc live fixtures.
+- UI/UX được kiểm tra thủ công; không tái tạo môi trường trình duyệt trong bộ test Node.
+
+## Import boundaries
 
 - Client code không import `lib/` server-only.
 - `src/services` dùng duy nhất `src/lib/api/client.ts`; không tạo Axios instance khác.

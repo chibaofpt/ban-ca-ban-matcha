@@ -1,6 +1,9 @@
 import { apiClient } from '@/src/lib/api/client';
 import type { OrderRes } from './staffOrdersListService';
 import type { OrderType, PaymentMethod } from '@/src/lib/types/order';
+import type { ApiError, ApiResponse } from '@/src/lib/types/api';
+import type { StaffOrderResult } from '@/src/lib/types/order';
+import { isAxiosError } from 'axios';
 
 const ORDER_URLS = {
   staffById: (orderId: string) => `/api/staff/orders/${orderId}`,
@@ -62,7 +65,36 @@ export async function confirmPayment(
   await apiClient.patch(ORDER_URLS.confirmPayment(orderId));
 }
 
-/** Admin huỷ một đơn hàng (bất kỳ trạng thái nào trừ COMPLETED). */
-export async function adminCancelOrder(orderId: string): Promise<void> {
-  await apiClient.patch(ORDER_URLS.staffById(orderId), { status: 'CANCELLED' });
+/** Cancel an eligible order and return the server-committed point/voucher adjustment. */
+export async function adminCancelOrder(orderId: string): Promise<StaffOrderResult> {
+  try {
+    const response = await apiClient.patch<ApiResponse<StaffOrderResult>>(
+      ORDER_URLS.staffById(orderId), { status: 'CANCELLED' },
+    );
+    return response.data.data;
+  } catch (error: unknown) {
+    if (isAxiosError<ApiError<{ reason?: string }>>(error) && error.response &&
+      typeof error.response.data?.error === 'string' &&
+      typeof error.response.data.code === 'string') {
+      throw new AdminOrderServiceError(
+        error.response.data.error,
+        error.response.status,
+        error.response.data.code,
+        error.response.data.details,
+      );
+    }
+    throw error;
+  }
+}
+
+export class AdminOrderServiceError<TDetails = unknown> extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code: string,
+    public readonly details?: TDetails,
+  ) {
+    super(message);
+    this.name = 'AdminOrderServiceError';
+  }
 }

@@ -8,7 +8,13 @@ function readProjectFile(relativePath: string): string {
   return readFileSync(path.join(projectRoot, relativePath), "utf8");
 }
 
-describe("Quyền riêng tư của log bảo mật", () => {
+describe("static source contract — quyền riêng tư của log bảo mật", () => {
+  it("Redis không ghi cache keys hoặc raw exception có thể chứa refresh token", () => {
+    const source = readProjectFile("lib/redis.ts");
+    expect(source).not.toContain("failed:', key");
+    expect(source).not.toContain("failed:', keys");
+    expect(source).not.toMatch(/console\.error\([^\n]*\berr\b/);
+  });
   it("không ghi raw form hay log từng bước trong API tạo và cập nhật menu", () => {
     const createRoute = readProjectFile("app/api/admin/menu/route.ts");
     const updateRoute = readProjectFile("app/api/admin/menu/[id]/route.ts");

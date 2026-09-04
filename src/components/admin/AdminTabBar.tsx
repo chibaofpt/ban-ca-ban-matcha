@@ -10,6 +10,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import StoreSettingsModal from "@/src/components/admin/StoreSettingsModal";
 import { useAuthStore } from "@/src/lib/store/authStore";
+import { toast } from "sonner";
 
 interface Tab {
   to: string;
@@ -53,8 +54,9 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
     try {
       await authService.logout();
       authStoreLogout();
-    } finally {
       router.replace("/");
+    } catch {
+      toast.error("Không thể đăng xuất lúc này. Vui lòng thử lại.");
     }
   };
 

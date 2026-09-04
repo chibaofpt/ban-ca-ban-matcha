@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Clock } from "lucide-react";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { getVoucherBenefitText, formatVoucherExpiry } from "@/src/lib/utils/voucherModalHelpers";
+import { useQrCode } from "@/src/hooks/useQrCode";
 
 interface QrModalProps {
   voucher: MyVoucher;
@@ -15,7 +16,7 @@ interface QrModalProps {
  * Used as a stacked modal inside VoucherModal.
  */
 export function QrModal({ voucher, onClose }: QrModalProps) {
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(voucher.qr_token)}`;
+  const qrUrl = useQrCode(voucher.qr_token, 250);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -40,13 +41,13 @@ export function QrModal({ voucher, onClose }: QrModalProps) {
           <p className="text-xs text-muted-foreground">{getVoucherBenefitText(voucher)}</p>
         </div>
 
-        <div className="flex justify-center">
+        <div className="flex justify-center min-h-56 items-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          {qrUrl && <img
             src={qrUrl}
             alt="QR Code Voucher"
             className="w-56 h-56 rounded-xl border border-border"
-          />
+          />}
         </div>
 
         <div className="bg-secondary/30 rounded-xl p-3 text-xs text-center space-y-1">

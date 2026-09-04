@@ -44,7 +44,8 @@ describe("Service upload ảnh catalog", () => {
     const image = new File(["image"], "addon.png", { type: "image/png" });
     const payload = {
       name: "Kem",
-      type: "TOGGLE" as const,
+      max_select: 1,
+      is_dynamic_gram: false,
       is_active: true,
       options: [{ label: "Kem", price_vnd: 10000, is_active: true, sort_order: 0 }],
     };
@@ -62,7 +63,8 @@ describe("Service upload ảnh catalog", () => {
     const matchaImage = new File(["matcha"], "matcha.webp", { type: "image/webp" });
     const payload = {
       name: "Topping",
-      type: "SELECTOR" as const,
+      max_select: 1,
+      is_dynamic_gram: false,
       is_active: true,
       options: [
         { image_key: "cream", label: "Kem", price_vnd: 10000, is_active: true, sort_order: 0 },

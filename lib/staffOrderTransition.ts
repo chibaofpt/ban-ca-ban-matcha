@@ -11,6 +11,9 @@ export function validateStaffOrderTransition(
   switch (newStatus) {
     case "ADMIN_CONFIRMED":
       if (role !== "ADMIN") return "Only ADMIN can confirm payment";
+      if (orderType === "COUNTER") {
+        return "Counter bank transfers must be completed directly";
+      }
       if (currentStatus !== "PENDING") {
         return "Can only confirm payment for PENDING orders";
       }

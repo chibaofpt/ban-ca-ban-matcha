@@ -28,8 +28,8 @@ export interface AddonGroup {
   id: string;
   name: string;
   image_url: string | null;
-  type: "SELECTOR" | "TOGGLE" | "QUANTITY";
-  max_quantity: number | null;
+  max_select: number;
+  is_dynamic_gram: boolean;
   options: AddonOption[];
 }
 

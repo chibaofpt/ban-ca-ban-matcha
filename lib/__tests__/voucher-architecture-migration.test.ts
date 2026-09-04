@@ -11,7 +11,7 @@ function readMigration(): string {
   return readFileSync(migrationPath, "utf8");
 }
 
-describe("Migration hợp nhất Promotion vào Voucher", () => {
+describe("static SQL contract — hợp nhất Promotion vào Voucher (không thực thi migration)", () => {
   it("chuyển ngày kết thúc và rule BUNDLE sang voucher package", () => {
     const sql = readMigration();
 

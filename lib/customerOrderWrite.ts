@@ -42,7 +42,7 @@ async function reserveVoucher(
 }
 
 /** Persists a customer order and atomically reserves every applied voucher. */
-export async function writeCustomerOrder(params: CreateCustomerOrderParams) {
+export async function writeCustomerOrder(params: CreateCustomerOrderParams, transaction?: Prisma.TransactionClient) {
   const {
     data,
     userId,
@@ -58,8 +58,7 @@ export async function writeCustomerOrder(params: CreateCustomerOrderParams) {
     appliedBundles,
   } = params;
 
-  return prisma.$transaction(
-    async (tx) => {
+  const write = async (tx: Prisma.TransactionClient) => {
       const order = await tx.order.create({
         data: {
           user_id: userId,
@@ -177,7 +176,8 @@ export async function writeCustomerOrder(params: CreateCustomerOrderParams) {
         });
       }
       return order;
-    },
-    { isolationLevel: "Serializable", maxWait: 5000, timeout: 10000 },
+    };
+  return transaction ? write(transaction) : prisma.$transaction(
+    write, { isolationLevel: "Serializable", maxWait: 5000, timeout: 10000 },
   );
 }

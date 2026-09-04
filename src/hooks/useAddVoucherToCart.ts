@@ -187,10 +187,8 @@ export function useAddVoucherToCart() {
             coldwhisk: false,
             note: "",
             selectedOptionIds: [],
-            quantityMap: {},
             addonsPrice: 0,
             addonPrices: {},
-            quantityAddonOptions: [],
             clientPriceVnd: 0,
             originalClientPriceVnd: menuItem.unit_price_vnd,
             itemVoucherId: voucher.qr_token,
@@ -270,23 +268,7 @@ export function useAddVoucherToCart() {
             : option.price_vnd;
           addonPrices[option.id] = ceilTo1000(rawPrice);
         }
-        const quantityAddonOptions = menuData.addon_groups
-          .filter((group) => group.type === "QUANTITY")
-          .flatMap((group) =>
-            group.options
-              .filter((option) => includedAddonIds.includes(option.id))
-              .map((option) => ({ option_id: option.id, quantity: 1 }))
-          );
-        const quantityMap = Object.fromEntries(
-          menuData.addon_groups
-            .filter((group) => group.type === "QUANTITY")
-            .map((group) => [
-              group.id,
-              quantityAddonOptions.filter((option) =>
-                group.options.some((groupOption) => groupOption.id === option.option_id)
-              ).length,
-            ])
-        );
+
 
         // Build CartItem with separated drink/addon prices for correct PRODUCT credit capping
         const cartItemBase: Omit<CartItem, "cartId"> = {
@@ -302,10 +284,8 @@ export function useAddVoucherToCart() {
           coldwhisk: false,
           note: "",
           selectedOptionIds,
-          quantityMap,
           addonsPrice: addonsCost,
           addonPrices,
-          quantityAddonOptions,
           selectedPowderId: menuItem.category === "fusion" ? (voucher.matcha_powder_id ?? undefined) : undefined,
           selectedMilkTypeId: menuItem.category === "latte" ? (resolvedBaseLiquidId ?? undefined) : undefined,
           selectedBaseLiquidId: resolvedBaseLiquidId ?? undefined,

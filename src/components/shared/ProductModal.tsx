@@ -112,10 +112,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
     }
     return [];
   });
-  const [quantityMap, setQuantityMap] = useState<Record<string, number>>(() => {
-    if (editingItem) return editingItem.quantityMap;
-    return Object.fromEntries(addonGroups.filter((group) => group.type === "QUANTITY").map((group) => [group.id, 0]));
-  });
+
   const [quantity, setQuantity] = useState(() => {
     const startsWithVoucher =
       editingItem?.productVoucherId !== undefined ||
@@ -148,12 +145,9 @@ const BaseModal: React.FC<ProductModalProps> = ({
   }, [availableVouchers, item.id, usedVoucherIds]);
 
   const applicableAddonVouchers = useMemo(() => {
-    const currentAddonIds = new Set([
-      ...selectedOptionIds,
-      ...addonGroups.filter(group => group.type === "QUANTITY" && (quantityMap[group.id] ?? 0) > 0).map(group => group.options[0]?.id).filter(Boolean)
-    ]);
+    const currentAddonIds = new Set(selectedOptionIds);
     return filterUsableVouchers(availableVouchers ?? [], "ADDON").filter(v => v.addon_option_id !== null && currentAddonIds.has(v.addon_option_id) && !usedVoucherIds.has(v.qr_token));
-  }, [availableVouchers, selectedOptionIds, quantityMap, addonGroups, usedVoucherIds]);
+  }, [availableVouchers, selectedOptionIds, usedVoucherIds]);
 
   const isProductVoucherApplied = selectedProductVoucherId !== null || freeVoucherId !== undefined;
   const isVoucherApplied = !disableVoucherApplication && (isProductVoucherApplied || selectedAddonVoucherIds.length > 0);
@@ -167,18 +161,8 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const activePowder = useMemo(() => powders.find((p) => p.id === activePowderId), [powders, activePowderId]);
   const activePowderPricePerGram = activePowder?.price_per_gram ?? 0;
 
-  const quantityGroups = useMemo(() => addonGroups.filter((group) => group.type === "QUANTITY"), [addonGroups]);
-  const selectorGroups = useMemo(() => addonGroups.filter((group) => group.type === "SELECTOR"), [addonGroups]);
-  const toggleGroups = useMemo(() => addonGroups.filter((group) => group.type === "TOGGLE"), [addonGroups]);
-
-  const matchaSelectorGroups = useMemo(
-    () => selectorGroups.filter((group) => group.options.every((option) => option.gram_value != null)),
-    [selectorGroups],
-  );
-  const otherSelectorGroups = useMemo(
-    () => selectorGroups.filter((group) => group.options.some((option) => option.gram_value == null)),
-    [selectorGroups],
-  );
+  const dynamicGramGroups = useMemo(() => addonGroups.filter((group) => group.is_dynamic_gram), [addonGroups]);
+  const normalGroups = useMemo(() => addonGroups.filter((group) => !group.is_dynamic_gram), [addonGroups]);
   const baseLiquidOptions = useMemo(
     () => getBaseLiquidOptionsForItem(item, milkTypes),
     [item, milkTypes],
@@ -205,7 +189,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
     effectiveProductVoucherType,
   } = usePriceMap({
     item, latteItems, milkTypes, addonGroups, powders, defaultPowderGrams, selectedSize, activePowderId,
-    selectedMilkId, quantityMap, selectedOptionIds, selectedAddonVoucherIds,
+    selectedMilkId, selectedOptionIds, selectedAddonVoucherIds,
     availableVouchers, selectedProductVoucherId, freeVoucherId, freeVoucherCoveredPriceVnd, quantity
   });
 
@@ -215,23 +199,24 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const closeWithHistory = useModalHistory(onClose);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
-  const handleSelectorToggle = useCallback((groupId: string, optionId: string) => {
-    const group = addonGroups.find(candidate => candidate.id === groupId);
+  const handleOptionToggle = useCallback((groupId: string, optionId: string) => {
+    const group = addonGroups.find(g => g.id === groupId);
     if (!group) return;
-    const groupOptionIds = group.options.map((o) => o.id);
-    setSelectedOptionIds((prev) => {
+    const groupOptionIds = group.options.map(o => o.id);
+    setSelectedOptionIds(prev => {
       if (prev.includes(optionId)) {
-        return prev.filter((id) => id !== optionId);
+        return prev.filter(id => id !== optionId);
       }
-      return [...prev.filter((id) => !groupOptionIds.includes(id)), optionId];
+      const currentInGroup = prev.filter(id => groupOptionIds.includes(id));
+      if (currentInGroup.length >= group.max_select) {
+        if (group.max_select === 1) {
+          return [...prev.filter(id => !groupOptionIds.includes(id)), optionId];
+        }
+        return prev; // Block: at max
+      }
+      return [...prev, optionId];
     });
   }, [addonGroups]);
-
-  const handleToggleChange = useCallback((optionId: string) => {
-    setSelectedOptionIds((prev) =>
-      prev.includes(optionId) ? prev.filter((id) => id !== optionId) : [...prev, optionId]
-    );
-  }, []);
 
 
 
@@ -245,13 +230,6 @@ const BaseModal: React.FC<ProductModalProps> = ({
   }, [closeWithHistory]);
 
   const handleAddToCart = useCallback(() => {
-    const quantityAddonOptions = addonGroups
-      .filter((g) => g.type === "QUANTITY")
-      .flatMap((g) => {
-        const qty = quantityMap[g.id] ?? 0;
-        return qty > 0 && g.options[0] ? [{ option_id: g.options[0].id, quantity: qty }] : [];
-      });
-
     const finalAddonVouchers = selectedAddonVoucherIds.map(vid => {
         const v = availableVouchers?.find(av => av.qr_token === vid);
         return v ? { 
@@ -264,7 +242,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
     const cartItemData: Omit<CartItem, "cartId"> = {
       menuItemId: item.id, name: item.name, category: item.category, imageUrl: item.image_url,
       size: selectedSize, unitPrice: currentPriceContext.unitPrice, quantity, sweetness, iceOption, coldwhisk,
-      note, selectedOptionIds, quantityMap, addonsPrice: currentPriceContext.addonsCost, addonPrices: currentPriceContext.addonPricesMap, quantityAddonOptions,
+      note, selectedOptionIds, addonsPrice: currentPriceContext.addonsCost, addonPrices: currentPriceContext.addonPricesMap,
       selectedPowderId: isLatte ? undefined : selectedPowderId,
       selectedBaseLiquidId: selectedMilkId || undefined,
       selectedMilkTypeId: isLatte ? selectedMilkId : undefined,
@@ -309,7 +287,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
     
     handleClose();
   }, [
-    item, quantityMap, selectedAddonVoucherIds, availableVouchers, currentPriceContext,
+    item, selectedAddonVoucherIds, availableVouchers, currentPriceContext,
     selectedSize, finalUnitPrice, quantity, sweetness, iceOption, coldwhisk, note,
     selectedOptionIds, isLatte, selectedPowderId, selectedMilkId, effectiveFreeVoucherId,
     effectiveFreeCoveredPrice, effectiveProductVoucherType, onConfirm, editingItem, updateItem, addItem, handleClose,
@@ -563,118 +541,72 @@ const BaseModal: React.FC<ProductModalProps> = ({
           </div>
 
           {/* 6. TOPPING (Kem + Đá dừa) */}
-          {(otherSelectorGroups.length > 0 || toggleGroups.length > 0) && (
+          {normalGroups.length > 0 && (
             <div className="mt-5">
               <SectionLabel text="Topping" />
               <div className="grid grid-cols-3 gap-2">
-                {otherSelectorGroups.map((group) =>
-                  group.options.map((opt) => {
+                {normalGroups.map((group) => {
+                  const selectedCount = selectedOptionIds.filter(id => group.options.some(o => o.id === id)).length;
+                  const isAtMax = selectedCount >= group.max_select;
+                  
+                  return group.options.map((opt) => {
+                    const isActive = selectedOptionIds.includes(opt.id);
+                    const isDisabled = !isActive && isAtMax && group.max_select > 1;
                     return (
-                      <OptionCard
-                        key={opt.id}
-                        label={opt.label}
-                        imageUrl={resolveAddonOptionImage(opt.image_url, group.image_url)}
-                        imageAlt={`Ảnh ${opt.label}`}
-                        sub={opt.price_vnd > 0 ? `+${formatKa(opt.price_vnd, "ceil")}` : undefined}
-                        isActive={selectedOptionIds.includes(opt.id)}
-                        onClick={() => handleSelectorToggle(group.id, opt.id)}
-                        layout="stacked"
-                      />
+                      <div key={opt.id} className={isDisabled ? "opacity-50 grayscale pointer-events-none" : ""}>
+                        <OptionCard
+                          label={opt.label}
+                          imageUrl={resolveAddonOptionImage(opt.image_url, group.image_url)}
+                          imageAlt={`Ảnh ${opt.label}`}
+                          sub={opt.price_vnd > 0 ? `+${formatKa(opt.price_vnd, "ceil")}` : undefined}
+                          isActive={isActive}
+                          onClick={() => {
+                            if (!isDisabled) {
+                              handleOptionToggle(group.id, opt.id);
+                            }
+                          }}
+                          layout="stacked"
+                        />
+                      </div>
                     );
-                  })
-                )}
-                {toggleGroups.map((group) => {
-                  const opt = group.options[0];
-                  if (!opt) return null;
-                  return (
-                    <OptionCard
-                      key={group.id}
-                      label={group.name}
-                      imageUrl={resolveAddonOptionImage(opt.image_url, group.image_url)}
-                      imageAlt={`Ảnh ${opt.label}`}
-                      sub={opt.price_vnd > 0 ? `+${formatKa(opt.price_vnd, "ceil")}` : undefined}
-                      isActive={selectedOptionIds.includes(opt.id)}
-                      onClick={() => handleToggleChange(opt.id)}
-                      layout="stacked"
-                    />
-                  );
+                  });
                 })}
               </div>
             </div>
           )}
 
-          {/* 7. EXTRA MATCHA (SELECTOR) */}
-          {matchaSelectorGroups.map((group) => (
+          {/* 7. EXTRA MATCHA */}
+          {dynamicGramGroups.map((group) => (
             <div key={group.id} className="mt-5">
               <SectionLabel text={group.name} />
               <div className="grid grid-cols-4 gap-2">
                 {group.options.map((opt) => {
                   const price = ceilTo1000(opt.gram_value != null ? opt.gram_value * activePowderPricePerGram : opt.price_vnd);
+                  const selectedCount = selectedOptionIds.filter(id => group.options.some(o => o.id === id)).length;
+                  const isAtMax = selectedCount >= group.max_select;
+                  const isActive = selectedOptionIds.includes(opt.id);
+                  const isDisabled = !isActive && isAtMax && group.max_select > 1;
+
                   return (
-                    <OptionCard
-                      key={opt.id}
-                      label={opt.label}
-                      imageUrl={resolveAddonOptionImage(opt.image_url, group.image_url)}
-                      imageAlt={`Ảnh ${opt.label}`}
-                      sub={price > 0 ? `+${formatKa(price, "ceil")}` : "0 ká"}
-                      isActive={selectedOptionIds.includes(opt.id)}
-                      onClick={() => handleSelectorToggle(group.id, opt.id)}
-                    />
+                    <div key={opt.id} className={isDisabled ? "opacity-50 grayscale pointer-events-none" : ""}>
+                      <OptionCard
+                        label={opt.label}
+                        imageUrl={resolveAddonOptionImage(opt.image_url, group.image_url)}
+                        imageAlt={`Ảnh ${opt.label}`}
+                        sub={price > 0 ? `+${formatKa(price, "ceil")}` : "0 ká"}
+                        isActive={isActive}
+                        onClick={() => {
+                          if (!isDisabled) {
+                            handleOptionToggle(group.id, opt.id);
+                          }
+                        }}
+                      />
+                    </div>
                   );
                 })}
               </div>
             </div>
           ))}
-
-          {/* 8. EXTRA MATCHA (QUANTITY - IF ANY) */}
-          {quantityGroups.map((group) => {
-            const qty = quantityMap[group.id] ?? 0;
-            const max = group.max_quantity ?? 10;
-            const opt = group.options[0];
-            if (!opt) return null;
-            const rawPricePerQty = opt.gram_value != null
-              ? opt.gram_value * activePowderPricePerGram
-              : opt.price_vnd;
-
-            // Build the string: "1g: +Xk, 2g: +Yk, 3g: +Zk..." up to 3 items max.
-            const listLimit = Math.min(3, max);
-            const pricesStr = Array.from({ length: listLimit }).map((_, i) => {
-              const amount = i + 1;
-              const cost = ceilTo1000(amount * rawPricePerQty);
-              return `${amount}g: +${formatKa(cost, "ceil")}`;
-            }).join(", ") + (max > listLimit ? "..." : "");
-
-            return (
-              <div key={group.id} className="mt-5">
-                <SectionLabel text={group.name} />
-                <div className="flex items-center justify-between bg-white rounded-2xl border-2 border-border px-5 py-4">
-                  <div>
-                    <p className="text-sm font-bold text-primary">{group.name}</p>
-                    <p className={cn("mt-1 text-xs", rawPricePerQty > 0 ? "font-semibold text-[#c74646]" : "font-medium text-primary/65")}>
-                      {rawPricePerQty > 0 ? pricesStr : "Miễn phí"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 bg-[#d9e4d4] rounded-xl px-3 py-2">
-                    <button
-                      onClick={() => setQuantityMap((p) => ({ ...p, [group.id]: Math.max(0, qty - 1) }))}
-                      className="flex h-11 w-11 items-center justify-center rounded-full bg-white/60 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      aria-label={`Giảm ${group.name}`}
-                    >
-                      <Minus className="h-4 w-4 text-primary" />
-                    </button>
-                    <span className="text-base font-bold w-5 text-center text-primary">{qty}</span>
-                    <button
-                      onClick={() => setQuantityMap((p) => ({ ...p, [group.id]: Math.min(max, qty + 1) }))}
-                      className="flex h-11 w-11 items-center justify-center rounded-full bg-white/60 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      aria-label={`Tăng ${group.name}`}
-                    >
-                      <Plus className="h-4 w-4 text-primary" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
 
 
 
@@ -860,10 +792,8 @@ const ExtrasModal: React.FC<ProductModalProps> = ({
       coldwhisk: false,
       note,
       selectedOptionIds: [],
-      quantityMap: {},
       addonsPrice: 0,
       addonPrices: {},
-      quantityAddonOptions: [],
       clientPriceVnd: finalPrice,
       originalClientPriceVnd: unitPrice,
       itemVoucherId: voucherId ?? undefined,

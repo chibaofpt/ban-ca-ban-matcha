@@ -36,7 +36,12 @@ export default function MenuPage() {
   const fusionSectionRef = useRef<HTMLDivElement | null>(null);
   const extrasSectionRef = useRef<HTMLDivElement | null>(null);
   const seasonalSectionRef = useRef<HTMLDivElement | null>(null);
+  const stickyHeaderRef = useRef<HTMLDivElement | null>(null);
   const isScrollingProgrammatically = useRef(false);
+  /** Tab selected via tap — held until user scrolls enough to prevent jitter. */
+  const programmaticTab = useRef<TabId | null>(null);
+  const scrollYAtSettle = useRef(0);
+
   const setPowderData = usePowderStore((state) => state.setPowderData);
   const isLoggedIn = useIsLoggedIn();
   const isLoggedInSynced = useIsLoggedInSynced();
@@ -73,45 +78,55 @@ export default function MenuPage() {
   }, [menuError, powderError]);
 
   const scrollToSection = useCallback((ref: RefObject<HTMLDivElement | null>) => {
-    ref.current?.scrollIntoView({
+    const el = ref.current;
+    if (!el) return;
+    const headerH = stickyHeaderRef.current?.getBoundingClientRect().height ?? 148;
+    const elTop = el.getBoundingClientRect().top + window.scrollY;
+    window.scrollTo({
+      top: elTop - headerH - 4, // 4px breathing room below header
       behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-      block: "start",
     });
   }, []);
 
   const handleTabChange = useCallback((newTab: TabId) => {
     setActiveTab(newTab);
-    if (newTab === "seasonal") {
-      isScrollingProgrammatically.current = false;
-      window.scrollTo({
-        top: 0,
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-      });
-      return;
-    }
+    programmaticTab.current = newTab;
 
     isScrollingProgrammatically.current = true;
-    const refMap: Record<Exclude<TabId, "seasonal">, RefObject<HTMLDivElement | null>> = {
+    const refMap: Record<TabId, RefObject<HTMLDivElement | null>> = {
       latte: latteSectionRef,
       fusion: fusionSectionRef,
       extras: extrasSectionRef,
+      seasonal: seasonalSectionRef,
     };
     window.requestAnimationFrame(() => scrollToSection(refMap[newTab]));
-    setTimeout(() => { isScrollingProgrammatically.current = false; }, 900);
+    setTimeout(() => {
+      isScrollingProgrammatically.current = false;
+      scrollYAtSettle.current = window.scrollY;
+    }, 900);
   }, [scrollToSection]);
 
-  const isSeasonalView = activeTab === "seasonal";
 
   useEffect(() => {
-    if (isSeasonalView) return;
-
     const fusionSection = fusionSectionRef.current;
     const extrasSection = extrasSectionRef.current;
+    const seasonalSection = seasonalSectionRef.current;
     if (!fusionSection || !extrasSection) return;
     const updateActiveSection = () => {
       if (isScrollingProgrammatically.current) return;
-      const stickyOffset = 140;
-      if (extrasSection.getBoundingClientRect().top <= stickyOffset) {
+
+      // After programmatic scroll, hold the selected tab until user scrolls
+      // ≥ 20 px from the settled position to prevent jitter caused by
+      // interrupted smooth-scroll animations.
+      if (programmaticTab.current !== null) {
+        if (Math.abs(window.scrollY - scrollYAtSettle.current) < 20) return;
+        programmaticTab.current = null;
+      }
+
+      const stickyOffset = (stickyHeaderRef.current?.getBoundingClientRect().height ?? 148) + 8;
+      if (seasonalSection && seasonalSection.getBoundingClientRect().top <= stickyOffset) {
+        setActiveTab("seasonal");
+      } else if (extrasSection.getBoundingClientRect().top <= stickyOffset) {
         setActiveTab("extras");
       } else if (fusionSection.getBoundingClientRect().top <= stickyOffset) {
         setActiveTab("fusion");
@@ -136,7 +151,7 @@ export default function MenuPage() {
       window.removeEventListener("resize", handleScroll);
       if (animationFrameId !== null) window.cancelAnimationFrame(animationFrameId);
     };
-  }, [isMenuContentLoading, isSeasonalView]);
+  }, [isMenuContentLoading]);
 
   const handleItemClick = useCallback((item: MenuItem) => {
     if (cartItems.some((cartItem) => cartItem.menuItemId === item.id)) {
@@ -161,7 +176,7 @@ export default function MenuPage() {
     <main className="min-h-screen touch-pan-y overflow-x-clip overscroll-x-none bg-[#fdfcf7] px-2 pb-24 font-sans text-foreground sm:px-6">
 
       {/* Sticky header + tab bar — direct child of <main>, no h-full ancestor, so sticky sticks on window scroll */}
-      <div className="sticky top-0 z-20 -mx-2 bg-[#fdfcf7]/90 px-2 pb-1 pt-4 backdrop-blur-md sm:-mx-6 sm:px-6">
+      <div ref={stickyHeaderRef} className="sticky top-0 z-20 -mx-2 bg-[#fdfcf7]/90 px-2 pb-1 pt-4 backdrop-blur-md sm:-mx-6 sm:px-6">
         <div className="max-w-2xl md:max-w-4xl lg:max-w-6xl xl:max-w-7xl mx-auto">
           <div className="mb-4 grid grid-cols-[1fr_auto_1fr] items-center">
             <h1 className="col-start-2 font-serif text-2xl font-bold text-primary md:text-3xl">Menu</h1>
@@ -179,7 +194,6 @@ export default function MenuPage() {
         <div className="relative w-full">
           <MenuPanels
             loading={isMenuContentLoading}
-            seasonalOnly={isSeasonalView}
             latteItems={data?.latte ?? []}
             fusionItems={data?.fusion ?? []}
             extrasItems={data?.extras ?? []}

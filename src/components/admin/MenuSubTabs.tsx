@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { motion } from "framer-motion";
 import { cn } from "@/src/utils/cn";
 
 interface SubTab {
@@ -25,7 +24,7 @@ export default function MenuSubTabs() {
 
   return (
     <div className="sticky top-14 z-30 bg-background border-b border-border">
-      <div className="flex overflow-x-auto scrollbar-none max-w-7xl mx-auto px-4 md:px-8">
+      <div className="flex overflow-x-auto scrollbar-none max-w-7xl mx-auto px-4 md:px-8 py-2 gap-2">
         {SUB_TABS.map(({ href, label, exact }) => {
           const isActive = exact
             ? pathname === href
@@ -36,20 +35,13 @@ export default function MenuSubTabs() {
               key={href}
               href={href}
               className={cn(
-                "relative flex-shrink-0 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap",
+                "relative flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap",
                 isActive
-                  ? "text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "bg-foreground text-background"
+                  : "bg-transparent text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
               )}
             >
               {label}
-              {isActive && (
-                <motion.div
-                  layoutId="menu-sub-tab-indicator"
-                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full"
-                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                />
-              )}
             </Link>
           );
         })}

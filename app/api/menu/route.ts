@@ -79,8 +79,8 @@ async function fetchMenuData(): Promise<MenuData> {
         id: g.id,
         name: g.name,
         image_url: g.image_url ?? null,
-        type: g.type,
-        max_quantity: g.max_quantity ?? null,
+        max_select: g.max_select,
+        is_dynamic_gram: g.is_dynamic_gram,
         options: g.options.map((o): AddonOption => ({
           id: o.id,
           label: o.label,

@@ -15,40 +15,37 @@ import RegisterForm from "./RegisterForm";
 const AuthModal = () => {
   const open = useAuthModalStore((s) => s.open);
   const mode = useAuthModalStore((s) => s.mode);
-  const close = useAuthModalStore((s) => s.close);
-  const clearIntent = useAuthModalStore((s) => s.clearIntent);
-  const dismiss = () => {
-    clearIntent();
-    close();
-  };
-
+  const dismiss = useAuthModalStore((s) => s.dismiss);
   const title = mode === "login" ? "Đăng nhập" : "Đăng ký";
+
   return (
-    <div data-prevent-drawer-close="true" className="contents">
-      <ResponsiveOverlay
-        open={open}
-        title={title}
-        description="Xác thực tài khoản để tiếp tục với Bạn Cá Bán Matcha"
-        size="sm"
-        layer="critical"
-        showCloseButton={false}
-        onOpenChange={(nextOpen) => { if (!nextOpen) dismiss(); }}
-      >
-        <div data-prevent-drawer-close="true" className="relative px-2 pb-2 pt-1">
-          <button
-            type="button"
-            onClick={dismiss}
-            aria-label="Đóng"
-            className="absolute -right-2 -top-2 z-10 flex min-h-10 min-w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <X className="h-4 w-4" />
-          </button>
-          <AnimatePresence mode="wait">
-            {mode === "login" ? <LoginForm key="login" /> : <RegisterForm key="register" />}
-          </AnimatePresence>
-        </div>
-      </ResponsiveOverlay>
-    </div>
+    <ResponsiveOverlay
+      open={open}
+      title={title}
+      description={`${title} tài khoản Bạn Cá Bán Matcha`}
+      layer="critical"
+      size="sm"
+      mobileMode="dialog"
+      presentation="bare"
+      showCloseButton={false}
+      className="w-[calc(100%-2rem)] max-w-sm rounded-2xl border border-border bg-card shadow-2xl"
+      onOpenChange={(nextOpen) => { if (!nextOpen) dismiss(); }}
+    >
+      <div className="relative p-8">
+        <button
+          type="button"
+          onClick={dismiss}
+          aria-label="Đóng"
+          className="absolute right-3 top-3 flex size-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
+        <AnimatePresence mode="wait">
+          {mode === "login" ? <LoginForm key="login" /> : <RegisterForm key="register" />}
+        </AnimatePresence>
+      </div>
+    </ResponsiveOverlay>
   );
 };
 

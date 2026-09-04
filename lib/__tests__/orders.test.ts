@@ -93,7 +93,7 @@ function makeTx(overrides: {
           is_active: true,
           group: {
             id: "group-default",
-            type: "TOGGLE",
+            max_select: 1, is_dynamic_gram: false,
             is_active: true,
             max_quantity: null,
             options: [{ id: where.id, is_active: true }],
@@ -258,7 +258,7 @@ describe("processOrderItems", () => {
           quantity: 1,
           size: "MEDIUM",
           sweetness: "QUARTER",
-          addon_option_ids: [{ option_id: ADDON_KEM_ID, quantity: 1 }],
+          addon_option_ids: [ADDON_KEM_ID],
           client_price_vnd: 77000, // 69000 + 8000
         },
       ],
@@ -294,7 +294,7 @@ describe("processOrderItems", () => {
           quantity: 1,
           size: "MEDIUM",
           sweetness: "QUARTER",
-          addon_option_ids: [{ option_id: ADDON_EXTRA_MATCHA_ID, quantity: 1 }],
+          addon_option_ids: [ADDON_EXTRA_MATCHA_ID],
           client_price_vnd: 81000, // 69000 + 12000
         },
       ],
@@ -318,7 +318,7 @@ describe("processOrderItems", () => {
           is_active: false,
           group: {
             id: "group-extra",
-            type: "SELECTOR",
+            max_select: 1, is_dynamic_gram: false,
             is_active: true,
             max_quantity: null,
             options: [{ id: ADDON_EXTRA_MATCHA_ID, is_active: false }],
@@ -333,7 +333,7 @@ describe("processOrderItems", () => {
         quantity: 1,
         size: "MEDIUM",
         sweetness: "QUARTER",
-        addon_option_ids: [{ option_id: ADDON_EXTRA_MATCHA_ID, quantity: 1 }],
+        addon_option_ids: [ADDON_EXTRA_MATCHA_ID],
         client_price_vnd: 69000,
       }],
       tx as never,
@@ -367,7 +367,7 @@ describe("processOrderItems", () => {
     mockResolveOrderItemPrice.mockReturnValue(69_000);
     const group = {
       id: "group-cream",
-      type: "SELECTOR",
+      max_select: 1, is_dynamic_gram: false,
       is_active: true,
       max_quantity: null,
       options: [{ id: "cream-half", is_active: true }, { id: "cream-one", is_active: true }],
@@ -386,41 +386,10 @@ describe("processOrderItems", () => {
       size: "MEDIUM",
       sweetness: "FULL",
       addon_option_ids: [
-        { option_id: "cream-half", quantity: 1 },
-        { option_id: "cream-one", quantity: 1 },
+        "cream-half",
+        "cream-one",
       ],
       client_price_vnd: 129_000,
-    }], tx as never)).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
-  });
-
-  it("từ chối quantity khác 1 cho SELECTOR", async () => {
-    mockResolveOrderItemPrice.mockReturnValue(69_000);
-    const tx = makeTx({
-      menuItemResult: latteMenuItem,
-      addonResults: {
-        [ADDON_KEM_ID]: {
-          id: ADDON_KEM_ID,
-          price_vnd: 20_000,
-          gram_value: null,
-          is_active: true,
-          group: {
-            id: "group-cream",
-            type: "SELECTOR",
-            is_active: true,
-            max_quantity: null,
-            options: [{ id: ADDON_KEM_ID, is_active: true }],
-          },
-        },
-      },
-    });
-
-    await expect(processOrderItems([{
-      menu_item_id: MENU_ITEM_ID,
-      quantity: 1,
-      size: "MEDIUM",
-      sweetness: "FULL",
-      addon_option_ids: [{ option_id: ADDON_KEM_ID, quantity: 2 }],
-      client_price_vnd: 109_000,
     }], tx as never)).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   });
 
@@ -445,7 +414,7 @@ describe("processOrderItems", () => {
           quantity: 1,
           size: "MEDIUM",
           sweetness: "QUARTER",
-          addon_option_ids: [{ option_id: ADDON_KEM_ID, quantity: 1 }],
+          addon_option_ids: [ADDON_KEM_ID],
           product_voucher_id: "voucher-xyz",
           client_price_vnd: 8000, // 0 (drink fully covered) + 8000 (addon)
         },
@@ -517,7 +486,7 @@ describe("processOrderItems", () => {
           quantity: 1,
           size: "MEDIUM",
           sweetness: "QUARTER",
-          addon_option_ids: [{ option_id: ADDON_KEM_ID, quantity: 1 }],
+          addon_option_ids: [ADDON_KEM_ID],
           addon_voucher_ids: [{ voucher_id: "addon-voucher-123", addon_option_id: ADDON_KEM_ID }],
           client_price_vnd: 69000, // 69000 + 8000 - 8000
         },
@@ -844,7 +813,7 @@ describe("processOrderItems", () => {
             quantity: 1,
             size: "MEDIUM",
             sweetness: "QUARTER",
-            addon_option_ids: [{ option_id: "nonexistent-addon", quantity: 1 }],
+            addon_option_ids: ["nonexistent-addon"],
             client_price_vnd: 69000,
           },
         ],

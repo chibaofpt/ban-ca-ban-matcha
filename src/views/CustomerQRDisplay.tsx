@@ -1,31 +1,31 @@
 "use client";
 
+import { useQrCode } from "@/src/hooks/useQrCode";
+
 interface CustomerQRDisplayProps {
   qrToken: string;
 }
 
 /**
  * Client component to display the customer's personal QR code.
- * Uses the qrserver API for simple image rendering.
+ * Generates the QR image locally without sending the token to a third party.
  */
 export function CustomerQRDisplay({ qrToken }: CustomerQRDisplayProps) {
   // We use a generous size to ensure the scanner can read it easily
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
-    qrToken
-  )}`;
+  const qrUrl = useQrCode(qrToken, 300);
 
   const fallbackCode = qrToken.slice(-6).toUpperCase();
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className="bg-white p-3 rounded-2xl shadow-sm border border-border">
+      <div className="bg-white p-3 rounded-2xl shadow-sm border border-border min-h-56 min-w-56">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        {qrUrl && <img
           src={qrUrl}
           alt="Mã QR Cá Nhân"
           className="w-56 h-56 rounded-lg"
           draggable={false}
-        />
+        />}
       </div>
       <div className="bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-xl px-4 py-2 text-center w-full space-y-1">
         <p className="text-xs font-medium">Mã nhập thủ công</p>

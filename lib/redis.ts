@@ -36,8 +36,8 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
   try {
     const value = await client.get<T>(key);
     return value ?? null;
-  } catch (err) {
-    console.error('[Redis] cacheGet failed:', key, err);
+  } catch {
+    console.error('[Redis] cacheGet failed');
     return null;
   }
 }
@@ -49,8 +49,8 @@ export async function cacheSet<T>(key: string, value: T, ttlSeconds: number): Pr
 
   try {
     await client.set(key, value, { ex: ttlSeconds });
-  } catch (err) {
-    console.error('[Redis] cacheSet failed:', key, err);
+  } catch {
+    console.error('[Redis] cacheSet failed');
   }
 }
 
@@ -61,8 +61,8 @@ export async function cacheDelete(...keys: string[]): Promise<void> {
 
   try {
     await client.del(...keys);
-  } catch (err) {
-    console.error('[Redis] cacheDelete failed:', keys, err);
+  } catch {
+    console.error('[Redis] cacheDelete failed');
   }
 }
 

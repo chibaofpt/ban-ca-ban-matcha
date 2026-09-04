@@ -9,6 +9,7 @@ import { getOrderValueViolation } from "@/lib/orderLimits";
 import { processOrderItems } from "@/lib/orders";
 import { resolveOrderBundles, type OrderBundleDatabase } from "@/lib/orderBundle";
 import { prisma } from "@/lib/prisma";
+import { runSerializableTransaction } from "@/lib/serializableTransaction";
 import { sendPushToRoles } from "@/lib/push";
 import type { CustomerOrderInput } from "@/lib/validations/order";
 import { buildVietQRUrl } from "@/lib/vietqr";
@@ -23,13 +24,17 @@ const AUTO_CANCEL_MINUTES = 20;
 export async function createCustomerOrder(
   data: CustomerOrderInput,
   userId: string,
+  acceptanceDate = new Date(),
 ): Promise<NextResponse> {
   const fulfillment = await resolveCustomerFulfillment(data, userId);
   if (!fulfillment.ok) return fulfillment.response;
 
   await ensureAutoGrantedVouchers(prisma as unknown as VoucherIssuanceDatabase, userId);
-  await lazyExpireVouchers(userId);
-  const itemVoucherResult = await resolveCustomerItemVouchers(data, userId);
+  const originalData = data;
+  const response = await runSerializableTransaction(prisma, async (tx) => {
+  const data = structuredClone(originalData);
+  await lazyExpireVouchers(userId, acceptanceDate, tx);
+  const itemVoucherResult = await resolveCustomerItemVouchers(data, userId, tx, acceptanceDate);
   if (!itemVoucherResult.ok) return itemVoucherResult.response;
   const {
     productVoucherMap,
@@ -40,13 +45,14 @@ export async function createCustomerOrder(
 
   const resolvedItems = await processOrderItems(
     data.items,
-    prisma,
+    tx,
     productVoucherMap,
     addonVoucherMap,
   );
   const bundles = data.bundle_applications.length > 0
-    ? await resolveOrderBundles(prisma as unknown as OrderBundleDatabase, {
+    ? await resolveOrderBundles(tx as unknown as OrderBundleDatabase, {
         voucher_owner_id: userId,
+        now: acceptanceDate,
         items: data.items,
         resolved_items: resolvedItems,
         bundle_applications: data.bundle_applications,
@@ -87,6 +93,8 @@ export async function createCustomerOrder(
     calculatorItems,
     fulfillment.delivery.shipping_fee_vnd,
     voucherQrTokens,
+    tx,
+    acceptanceDate,
   );
   if (!discountResult.ok) return discountResult.response;
   const { calculation, discountVouchers, freeshipVoucherId } = discountResult.context;
@@ -97,7 +105,7 @@ export async function createCustomerOrder(
   }
 
   const appliedIds = new Set(calculation.appliedVoucherIds);
-  const orderCode = await generateOrderCode(prisma);
+  const orderCode = await generateOrderCode(tx);
   const autoCancelAt = new Date(Date.now() + AUTO_CANCEL_MINUTES * 60 * 1000);
   const order = await writeCustomerOrder({
     data,
@@ -114,7 +122,7 @@ export async function createCustomerOrder(
       appliedIds.has(id),
     ),
     appliedBundles: bundles,
-  });
+  }, tx);
 
   const paymentQrUrl = buildVietQRUrl({
     amount: calculation.grand_total_vnd,
@@ -127,21 +135,6 @@ export async function createCustomerOrder(
     },
   );
   skippedVouchers.push(...bundles.skipped_qr_tokens.filter((token) => !skippedVouchers.includes(token)));
-
-  after(() => {
-    console.log(`[AFTER JOB] Starting background push notification for new order: ${order.order_code}`);
-    sendPushToRoles(["ADMIN"], {
-      title: "🔔 Đơn hàng mới (Online)",
-      body: `${order.order_code} — ${data.items.length} món — ${new Intl.NumberFormat("vi-VN").format(order.grand_total_vnd)}đ`,
-      url: "/admin/orders",
-    })
-      .then(() => console.log(`[AFTER JOB] Successfully completed push task for order: ${order.order_code}`))
-      .catch((error: unknown) => {
-        console.error("[AFTER JOB] Failed to send push", {
-          name: error instanceof Error ? error.name : typeof error,
-        });
-      });
-  });
 
   return NextResponse.json(
     {
@@ -165,4 +158,22 @@ export async function createCustomerOrder(
     },
     { status: 201 },
   );
+  });
+  if (response.status === 201) {
+    const payload = await response.clone().json() as {
+      data: { order_code: string; grand_total_vnd: number };
+    };
+    after(() => {
+      sendPushToRoles(["ADMIN"], {
+        title: "🔔 Đơn hàng mới (Online)",
+        body: `${payload.data.order_code} — ${data.items.length} món — ${new Intl.NumberFormat("vi-VN").format(payload.data.grand_total_vnd)}đ`,
+        url: "/admin/orders",
+      }).catch((error: unknown) => {
+        console.error("[AFTER JOB] Failed to send push", {
+          name: error instanceof Error ? error.name : typeof error,
+        });
+      });
+    });
+  }
+  return response;
 }

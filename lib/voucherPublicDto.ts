@@ -32,6 +32,7 @@ interface VoucherDtoSource {
   covered_price_vnd: number | null;
   covered_delivery_fee_vnd: number | null;
   min_order_vnd: number | null;
+  max_discount_vnd: number | null;
   status: VoucherStatus;
   used_channel: UsedChannel | null;
   expires_at: Date | null;
@@ -72,6 +73,7 @@ export function toPublicVoucherDto(voucher: VoucherDtoSource) {
     covered_price_vnd: voucher.covered_price_vnd,
     covered_delivery_fee_vnd: voucher.covered_delivery_fee_vnd,
     min_order_vnd: voucher.min_order_vnd,
+    max_discount_vnd: voucher.max_discount_vnd,
     status: voucher.status,
     used_channel: voucher.used_channel,
     expires_at: voucher.expires_at,

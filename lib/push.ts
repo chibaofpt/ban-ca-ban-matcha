@@ -1,6 +1,7 @@
 import type { PushSubscription, Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import webpush from "web-push";
+import { subscribeSchema } from "@/lib/validations/push";
 
 let isVapidInitialized = false;
 
@@ -81,10 +82,16 @@ async function deliverPushPage(
   for (let offset = 0; offset < subscriptions.length; offset += PUSH_CONCURRENCY) {
     const chunk = subscriptions.slice(offset, offset + PUSH_CONCURRENCY);
     await Promise.allSettled(chunk.map(async (sub) => {
+      const subscription = { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } };
+      if (!subscribeSchema.safeParse(subscription).success) {
+        invalidIds.push(sub.id);
+        return;
+      }
       try {
         await webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          subscription,
           payloadString,
+          { timeout: 5000 },
         );
         sent += 1;
       } catch (error: unknown) {

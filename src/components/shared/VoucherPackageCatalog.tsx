@@ -45,8 +45,8 @@ export function VoucherPackageCatalog({
           pkg={pkg}
           userBalance={pointsBalance}
           onExchange={onAcquire}
-          onClick={onPackageClick}
           isExchanging={pendingPackageId === pkg.id}
+          onClick={onPackageClick}
         />
       ))}
     </div>

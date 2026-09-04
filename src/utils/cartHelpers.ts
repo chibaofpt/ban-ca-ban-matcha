@@ -13,8 +13,8 @@ export function buildExtrasCartItem(
   return {
     menuItemId: item.id, name: item.name, category: "extras", imageUrl: item.image_url,
     size: null, unitPrice, quantity: 1, sweetness: "FULL", iceOption: "NORMAL",
-    coldwhisk: false, note: "", selectedOptionIds: [], quantityMap: {}, addonsPrice: 0,
-    addonPrices: {}, quantityAddonOptions: [], clientPriceVnd: unitPrice,
+    coldwhisk: false, note: "", selectedOptionIds: [], addonsPrice: 0,
+    addonPrices: {}, clientPriceVnd: unitPrice,
     originalClientPriceVnd: unitPrice, bundleRewardVoucherToken,
   };
 }
@@ -88,52 +88,33 @@ export function addonsDetails(
   const chips: string[] = [];
   if (!menuItem) return chips;
 
-  // SELECTOR + TOGGLE addons
   for (const g of addonGroups) {
-    if (g.type === "SELECTOR" || g.type === "TOGGLE") {
-      for (const opt of g.options) {
-        if (item.selectedOptionIds.includes(opt.id)) {
-          // Extra matcha
-          if (opt.gram_value != null) {
-            if (powders) {
-              const powderId = item.category === "fusion" ? item.selectedPowderId : menuItem.powder?.id;
-              const pwd = powders.find(p => p.id === powderId);
-              if (pwd) {
-                const pwdPricePerGram = pwd.price_per_gram ?? 0;
-                const rawCost = opt.gram_value * pwdPricePerGram;
-                const cost = ceilTo1000(rawCost);
-                const priceSuffix = cost > 0 ? ` (+${cost / 1000}k)` : "";
-                chips.push(`+${opt.gram_value}g ${pwd.name}${priceSuffix}`);
-              } else {
-                chips.push(`+${opt.gram_value}g${opt.price_vnd > 0 ? ` (+${opt.price_vnd / 1000}k)` : ""}`);
-              }
+    for (const opt of g.options) {
+      if (item.selectedOptionIds.includes(opt.id)) {
+        // Extra matcha
+        if (opt.gram_value != null) {
+          if (powders) {
+            const powderId = item.category === "fusion" ? item.selectedPowderId : menuItem.powder?.id;
+            const pwd = powders.find(p => p.id === powderId);
+            if (pwd) {
+              const pwdPricePerGram = pwd.price_per_gram ?? 0;
+              const rawCost = opt.gram_value * pwdPricePerGram;
+              const cost = ceilTo1000(rawCost);
+              const priceSuffix = cost > 0 ? ` (+${cost / 1000}k)` : "";
+              chips.push(`+${opt.gram_value}g ${pwd.name}${priceSuffix}`);
             } else {
-               chips.push(`+${opt.gram_value}g${opt.price_vnd > 0 ? ` (+${opt.price_vnd / 1000}k)` : ""}`);
+              chips.push(`+${opt.gram_value}g${opt.price_vnd > 0 ? ` (+${opt.price_vnd / 1000}k)` : ""}`);
             }
-            continue;
+          } else {
+            chips.push(`+${opt.gram_value}g${opt.price_vnd > 0 ? ` (+${opt.price_vnd / 1000}k)` : ""}`);
           }
-
-          // Other SELECTOR / TOGGLE addons
-          const price = opt.price_vnd;
-          const priceSuffix = price > 0 ? ` (+${price / 1000}k)` : "";
-          chips.push(`${opt.label}${priceSuffix}`);
+          continue;
         }
-      }
-    }
-  }
 
-  // QUANTITY addons
-  for (const g of addonGroups) {
-    if (g.type === "QUANTITY") {
-      const qty = item.quantityMap[g.id] ?? 0;
-      if (qty > 0 && g.options[0]) {
-        const opt = g.options[0];
-        
-        // Other quantity addons
-        const rawCost = qty * opt.price_vnd;
-        const cost = ceilTo1000(rawCost);
-        const priceSuffix = cost > 0 ? ` (+${cost / 1000}k)` : "";
-        chips.push(`${qty}x ${g.name}${priceSuffix}`);
+        // Fixed-price addons
+        const price = opt.price_vnd;
+        const priceSuffix = price > 0 ? ` (+${price / 1000}k)` : "";
+        chips.push(`${opt.label}${priceSuffix}`);
       }
     }
   }

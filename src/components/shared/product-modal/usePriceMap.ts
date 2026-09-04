@@ -22,7 +22,6 @@ interface UsePriceMapProps {
   selectedSize: Size;
   activePowderId: string;
   selectedMilkId: string;
-  quantityMap: Record<string, number>;
   selectedOptionIds: string[];
   selectedAddonVoucherIds: string[];
   availableVouchers?: MyVoucher[];
@@ -42,7 +41,6 @@ export function usePriceMap({
   selectedSize,
   activePowderId,
   selectedMilkId,
-  quantityMap,
   selectedOptionIds,
   selectedAddonVoucherIds,
   availableVouchers,
@@ -103,23 +101,12 @@ export function usePriceMap({
       const addonPricesMap: Record<string, number> = {};
 
       for (const g of addonGroups) {
-        if (g.type === "QUANTITY") {
-          const qty = quantityMap[g.id] ?? 0;
-          const opt = g.options[0];
-          if (qty > 0 && opt) {
-            const rawCost = qty * (opt.gram_value != null ? opt.gram_value * pwd_price_per_gram : opt.price_vnd);
+        for (const opt of g.options) {
+          if (selectedOptionIds.includes(opt.id)) {
+            const rawCost = opt.gram_value != null ? opt.gram_value * pwd_price_per_gram : opt.price_vnd;
             const lineCost = ceilTo1000(rawCost);
             addonsCost += lineCost;
-            addonPricesMap[opt.id] = ceilTo1000(opt.gram_value != null ? opt.gram_value * pwd_price_per_gram : opt.price_vnd);
-          }
-        } else {
-          for (const opt of g.options) {
-            if (selectedOptionIds.includes(opt.id)) {
-              const rawCost = opt.gram_value != null ? opt.gram_value * pwd_price_per_gram : opt.price_vnd;
-              const lineCost = ceilTo1000(rawCost);
-              addonsCost += lineCost;
-              addonPricesMap[opt.id] = lineCost;
-            }
+            addonPricesMap[opt.id] = lineCost;
           }
         }
       }
@@ -186,7 +173,7 @@ export function usePriceMap({
     };
   }, [
     item, latteItems, milkTypes, addonGroups, powders, defaultPowderGrams, selectedSize, activePowderId,
-    selectedMilkId, quantityMap, selectedOptionIds, selectedAddonVoucherIds,
+    selectedMilkId, selectedOptionIds, selectedAddonVoucherIds,
     availableVouchers, selectedProductVoucherId, freeVoucherId, freeVoucherCoveredPriceVnd, quantity, isLatte
   ]);
 }

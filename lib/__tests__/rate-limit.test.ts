@@ -121,15 +121,94 @@ describe("Rate limit tập trung", () => {
   });
 
   it("fail-open và báo Sentry khi Redis lỗi", async () => {
-    const error = new Error("Redis unavailable");
+    const error = new Error("https://redis.example/rest token=super-secret");
     mockIncr.mockRejectedValue(error);
 
     const result = await checkRateLimit("customerOrderUser", "user-1");
 
     expect(result.allowed).toBe(true);
-    expect(mockCaptureServerException).toHaveBeenCalledWith(error, {
+    expect(mockCaptureServerException).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "RATE_LIMIT_UPSTREAM_FAILURE" }), {
       operation: "rate_limit",
       rule: "customerOrderUser",
+      code: "REDIS_OPERATION_FAILED",
     });
+    expect(JSON.stringify(mockCaptureServerException.mock.calls)).not.toContain("super-secret");
+  });
+
+  it("cho phép đúng N request, chặn request N+1 và giữ TTL counter đầu tiên", async () => {
+    const counts = new Map<string, number>();
+    const expirations = new Map<string, number>();
+    mockIncr.mockImplementation(async (key: string) => {
+      const next = (counts.get(key) ?? 0) + 1;
+      counts.set(key, next);
+      return next;
+    });
+    mockExpire.mockImplementation(async (key: string, seconds: number) => {
+      expirations.set(key, seconds);
+      return 1;
+    });
+    mockTtl.mockImplementation(async (key: string) => expirations.get(key) ?? -1);
+
+    const results = await Promise.all(Array.from({ length: 6 }, () => checkRateLimit("customerOrderUser", "user-1")));
+
+    expect(results.filter((result) => result.allowed).map((result) => result.remaining).sort((a, b) => a - b))
+      .toEqual([0, 1, 2, 3, 4]);
+    expect(results.filter((result) => !result.allowed))
+      .toEqual([{ allowed: false, remaining: 0, retryAfterSeconds: 600 }]);
+    expect(mockExpire).toHaveBeenCalledTimes(1);
+  });
+
+  it("tách counter theo identifier và rule", async () => {
+    const counts = new Map<string, number>();
+    mockIncr.mockImplementation(async (key: string) => {
+      const next = (counts.get(key) ?? 0) + 1;
+      counts.set(key, next);
+      return next;
+    });
+    mockExpire.mockResolvedValue(1);
+
+    const [firstUser, otherUser, otherRule] = await Promise.all([
+      checkRateLimit("customerOrderUser", "user-1"),
+      checkRateLimit("customerOrderUser", "user-2"),
+      checkRateLimit("customerOrderIp", "user-1"),
+    ]);
+
+    expect(firstUser).toMatchObject({ allowed: true, remaining: 4 });
+    expect(otherUser).toMatchObject({ allowed: true, remaining: 4 });
+    expect(otherRule).toMatchObject({ allowed: true, remaining: 49 });
+    expect(counts.size).toBe(3);
+  });
+
+  it("hết TTL thì window mới bắt đầu lại, không bị request giữa window kéo dài", async () => {
+    let nowSeconds = 0;
+    const counters = new Map<string, { count: number; expiresAt: number }>();
+    mockIncr.mockImplementation(async (key: string) => {
+      const existing = counters.get(key);
+      if (!existing || existing.expiresAt <= nowSeconds) {
+        counters.set(key, { count: 1, expiresAt: Number.POSITIVE_INFINITY });
+        return 1;
+      }
+      existing.count += 1;
+      return existing.count;
+    });
+    mockExpire.mockImplementation(async (key: string, seconds: number) => {
+      const counter = counters.get(key);
+      if (counter) counter.expiresAt = nowSeconds + seconds;
+      return 1;
+    });
+    mockTtl.mockImplementation(async (key: string) => {
+      const counter = counters.get(key);
+      return counter ? Math.max(0, counter.expiresAt - nowSeconds) : -2;
+    });
+
+    await checkRateLimit("customerOrderUser", "user-1");
+    nowSeconds = 599;
+    await checkRateLimit("customerOrderUser", "user-1");
+    nowSeconds = 600;
+    const reset = await checkRateLimit("customerOrderUser", "user-1");
+
+    expect(reset).toEqual({ allowed: true, remaining: 4, retryAfterSeconds: 0 });
+    expect(mockExpire).toHaveBeenCalledTimes(2);
   });
 });

@@ -143,11 +143,11 @@ export async function POST(req: Request) {
     }
 
     // Create session
-    const refreshToken = await createSession(user.id, user.role);
-    const accessToken = await signJwt({ id: user.id, role: user.role, phone_number: user.phone_number });
+    const session = await createSession(user.id, user.role);
+    const accessToken = await signJwt({ id: user.id, role: user.role, phone_number: user.phone_number, sid: session.id });
 
     // Set cookies
-    await setAuthCookies(accessToken, refreshToken, user.role);
+    await setAuthCookies(accessToken, session.refreshToken, user.role);
 
     return NextResponse.json(
       {
@@ -160,8 +160,8 @@ export async function POST(req: Request) {
       },
       { status: 200 }
     );
-  } catch (err: unknown) {
-    console.error("Login Error:", err);
+  } catch {
+    console.error("Login temporarily unavailable");
     return NextResponse.json({ error: "Đã xảy ra lỗi hệ thống", code: "INTERNAL_ERROR" }, { status: 500 });
   }
 }

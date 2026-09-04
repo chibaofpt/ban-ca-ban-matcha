@@ -2,11 +2,11 @@
  * Tests for POST /api/staff/orders — COUNTER order creation.
  * Focuses on calculator integration, DISCOUNT min_order, aggregate surplus, anon guard.
  *
- * Mock strategy: mock lib/prisma, lib/auth, lib/pricing, lib/storeSchedule.
- * Keep lib/orders and lib/orderCalculator real (already tested separately).
+ * APPLICATION_LOGIC: fake Prisma/session/Redis boundaries; execute owned pricing and policy.
+ * This suite does not prove transaction rollback, isolation, or database constraints.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 
 // ── Mocks declared before dynamic imports ─────────────────────────────────────
@@ -20,31 +20,22 @@ const mockPointsLogCreate = vi.fn();
 const mockUserFindUnique = vi.fn();
 const mockUserCreate = vi.fn();
 const mockOrderDiscountVoucherCreate = vi.fn();
-const mockCheckRateLimit = vi.fn();
+const redisCounters = new Map<string, number>();
+const redisExpiries = new Map<string, number>();
+const redisBoundary = {
+  incr: async (key: string) => {
+    const value = (redisCounters.get(key) ?? 0) + 1;
+    redisCounters.set(key, value);
+    return value;
+  },
+  expire: async (key: string, seconds: number) => { redisExpiries.set(key, seconds); return 1; },
+  ttl: async (key: string) => redisExpiries.get(key) ?? -1,
+};
 
-vi.mock("@/lib/auth", () => ({
-  getSession: () => mockGetSession(),
-  normalizePhone: (p: string) => p,
-}));
-
-vi.mock("@/lib/pricing", () => ({
-  buildPricingContext: vi.fn().mockResolvedValue({
-    defaultSizeConfigs: [
-      { size: "SMALL" as const, milk_ml: 130, powder_gram: 3.5 },
-      { size: "MEDIUM" as const, milk_ml: 200, powder_gram: 4.5 },
-      { size: "LARGE" as const, milk_ml: 300, powder_gram: 8.0 },
-    ],
-    powderPriceMap: {},
-    powderSizeConfigMap: {},
-    defaultMilkPricePerMl: 40,
-    defaultBaseLiquidId: "550e8400-e29b-41d4-a716-446655440099",
-    milkPriceMap: { "550e8400-e29b-41d4-a716-446655440099": 40 },
-    availablePowders: [{ id: "550e8400-e29b-41d4-a716-446655440002", name: "Bột test" }],
-  }),
-  resolveOrderItemPrice: vi.fn().mockReturnValue(69000),
-  resolveOrderItemPremiumLatte: vi.fn().mockResolvedValue(0),
-  resolveOrderItemBaseLiquidMl: vi.fn().mockReturnValue(200),
-}));
+vi.mock("@/lib/auth", async (importOriginal) => {
+  vi.stubEnv("JWT_SECRET", "hermetic-staff-order-test-secret-32chars");
+  return { ...(await importOriginal<typeof import("@/lib/auth")>()), getSession: () => mockGetSession() };
+});
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -68,14 +59,11 @@ vi.mock("@/lib/cancelOrder", () => ({
   restoreVouchersOnCancel: vi.fn(),
 }));
 
-vi.mock("@/lib/rateLimit", () => ({
-  checkRateLimit: (...args: unknown[]) => mockCheckRateLimit(...args),
-}));
+vi.mock("@/lib/redis", () => ({ getRedisClient: () => redisBoundary }));
 
 // Import AFTER mocks
 import { POST } from "@/app/api/staff/orders/route";
 import { prisma } from "@/lib/prisma";
-import { buildPricingContext, resolveOrderItemPrice } from "@/lib/pricing";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -137,8 +125,8 @@ function validPayload(overrides?: Partial<{
   };
 }
 
-function setupTx() {
-  const mockMenuItemFind = vi.fn().mockResolvedValue(latteMenuItem);
+function setupTx(basePriceVnd = 55000) {
+  const mockMenuItemFind = vi.fn().mockResolvedValue({ ...latteMenuItem, sizes: [{ size: "MEDIUM", base_price_vnd: basePriceVnd, base_liquid_ml: 200 }] });
   const mockAddonOptionFind = vi.fn().mockResolvedValue(null);
 
   (prisma.menuItem.findUnique as ReturnType<typeof vi.fn>) = mockMenuItemFind;
@@ -158,6 +146,11 @@ function setupTx() {
   (prisma.$transaction as ReturnType<typeof vi.fn>).mockImplementation(
     async (fn: (tx: unknown) => unknown) => {
       const tx = {
+        defaultSizeConfig: { findMany: vi.fn().mockResolvedValue([{ size: "MEDIUM", milk_ml: 200, powder_gram: 4.5 }]) },
+        powderSizeConfig: { findMany: vi.fn().mockResolvedValue([]) },
+        matchaPowder: { findMany: vi.fn().mockResolvedValue([{ id: latteMenuItem.matcha_powder_id, name: "Test", price_per_gram: 1200, is_available: true, reference_latte_item_id: null }]) },
+        milkType: { findMany: vi.fn().mockResolvedValue([{ id: "550e8400-e29b-41d4-a716-446655440099", is_default: true, is_active: true, price_per_ml: 40, display_order: 0 }]) },
+        menuItemSize: { findMany: vi.fn().mockResolvedValue([]) },
         menuItem: { findUnique: mockMenuItemFind },
         addonOption: { findUnique: mockAddonOptionFind },
         voucher: {
@@ -184,49 +177,34 @@ function setupTx() {
 describe("POST /api/staff/orders — COUNTER integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    redisCounters.clear();
+    redisExpiries.clear();
+    vi.stubEnv("JWT_SECRET", "hermetic-staff-order-test-secret-32chars");
     mockGetSession.mockResolvedValue(staffSession);
     mockUserUpdate.mockResolvedValue({});
     mockPointsLogCreate.mockResolvedValue({});
-    vi.mocked(buildPricingContext).mockResolvedValue({
-      defaultSizeConfigs: [
-        { size: "SMALL" as const, milk_ml: 130, powder_gram: 3.5 },
-        { size: "MEDIUM" as const, milk_ml: 200, powder_gram: 4.5 },
-        { size: "LARGE" as const, milk_ml: 300, powder_gram: 8.0 },
-      ],
-      powderPriceMap: {},
-      powderSizeConfigMap: {},
-      defaultMilkPricePerMl: 40,
-      defaultBaseLiquidId: "550e8400-e29b-41d4-a716-446655440099",
-      milkPriceMap: { "550e8400-e29b-41d4-a716-446655440099": 40 },
-    availablePowders: [{ id: "550e8400-e29b-41d4-a716-446655440002", name: "Bột test" }],
-    });
-    vi.mocked(resolveOrderItemPrice).mockReturnValue(69000);
-    mockCheckRateLimit.mockResolvedValue({
-      allowed: true,
-      remaining: 29,
-      retryAfterSeconds: 0,
-    });
   });
+  afterEach(() => vi.unstubAllEnvs());
 
   it("trả 429 theo account trước khi xử lý business logic", async () => {
-    mockCheckRateLimit.mockResolvedValue({
-      allowed: false,
-      remaining: 0,
-      retryAfterSeconds: 45,
-    });
+    setupTx();
+    for (let index = 0; index < 30; index += 1) {
+      expect((await POST(makeReq(validPayload()))).status).toBe(201);
+    }
+    mockUserFindUnique.mockClear();
+    mockOrderCreate.mockClear();
 
     const res = await POST(makeReq(validPayload()));
 
     expect(res.status).toBe(429);
-    expect(res.headers.get("Retry-After")).toBe("45");
+    expect(res.headers.get("Retry-After")).toBe("60");
     expect((await res.json()).code).toBe("TOO_MANY_REQUESTS");
-    expect(mockCheckRateLimit).toHaveBeenCalledWith("staffOrderAccount", STAFF_ID);
     expect(mockUserFindUnique).not.toHaveBeenCalled();
+    expect(mockOrderCreate).not.toHaveBeenCalled();
   });
 
   it("trả 422 trước khi ghi khi tổng server vượt 20.000.000đ", async () => {
-    setupTx();
-    vi.mocked(resolveOrderItemPrice).mockReturnValue(20_000_001);
+    setupTx(20_000_000);
 
     const res = await POST(makeReq(validPayload({
       items: [{
@@ -235,7 +213,7 @@ describe("POST /api/staff/orders — COUNTER integration", () => {
         size: "MEDIUM",
         sweetness: "FULL",
         addon_option_ids: [],
-        client_price_vnd: 20_000_001,
+        client_price_vnd: 20_014_000,
       }],
     })));
 
@@ -244,7 +222,6 @@ describe("POST /api/staff/orders — COUNTER integration", () => {
       code: "BUSINESS_RULE_VIOLATION",
       details: { reason: "ORDER_VALUE_EXCEEDED" },
     });
-    expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(mockOrderCreate).not.toHaveBeenCalled();
   });
 

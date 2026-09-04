@@ -12,7 +12,7 @@ function baseOrder() {
     order_type: "PICKUP",
     items: [
       { client_line_id: UUID.line, menu_item_id: UUID.menu, quantity: 2, size: "SMALL",
-        addon_option_ids: [] as Array<{ option_id: string; quantity: number }>, addon_voucher_ids: [], client_price_vnd: 45_000 },
+        addon_option_ids: [] as string[], addon_voucher_ids: [], client_price_vnd: 45_000 },
       { client_line_id: UUID.line2, menu_item_id: UUID.menu, quantity: 2, size: "MEDIUM",
         addon_option_ids: [], addon_voucher_ids: [], client_price_vnd: 55_000 },
     ],
@@ -37,7 +37,7 @@ describe("Validation order có nhiều BUNDLE applications", () => {
 
   it("nhận addon reward nằm trên qualifier line", () => {
     const input = baseOrder();
-    input.items[0]!.addon_option_ids.push({ option_id: UUID.addon, quantity: 1 });
+    input.items[0]!.addon_option_ids.push(UUID.addon);
     input.bundle_applications[0]!.reward_allocations = [{ client_line_id: UUID.line,
       quantity: 1, addon_option_id: UUID.addon }];
     expect(customerOrderSchema.safeParse(input).success).toBe(true);

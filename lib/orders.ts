@@ -66,7 +66,7 @@ export interface OrderItemInput {
   ice_option?: IceOption;
   coldwhisk?: boolean;
   note?: string;
-  addon_option_ids: { option_id: string; quantity: number }[];
+  addon_option_ids: string[];
   product_voucher_id?: string;
   item_voucher_id?: string;
   addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
@@ -420,23 +420,23 @@ async function resolveOneItem(
   let original_addons_price_vnd = 0;
   const resolvedAddons: ProcessedAddon[] = [];
   const selectedAddonOptionIds = new Set<string>();
-  const selectedAddonGroupIds = new Set<string>();
+  const selectedAddonGroupCounts = new Map<string, number>();
 
-  for (const addon of item.addon_option_ids) {
-    if (selectedAddonOptionIds.has(addon.option_id)) {
+  for (const optionId of item.addon_option_ids) {
+    if (selectedAddonOptionIds.has(optionId)) {
       throw new OrderValidationError("VALIDATION_ERROR", "Addon option bị trùng trong cùng một món.");
     }
-    selectedAddonOptionIds.add(addon.option_id);
+    selectedAddonOptionIds.add(optionId);
 
     const option = await (client as PrismaClient).addonOption.findUnique({
-      where: { id: addon.option_id },
+      where: { id: optionId },
       include: {
         group: {
-          include: {
-            options: {
-              where: { is_active: true },
-              select: { id: true },
-            },
+          select: {
+            id: true,
+            is_active: true,
+            max_select: true,
+            is_dynamic_gram: true,
           },
         },
       },
@@ -444,44 +444,18 @@ async function resolveOneItem(
     if (!option || !option.is_active || !option.group.is_active) {
       throw new OrderValidationError(
         "NOT_FOUND",
-        `Addon option not found or inactive: ${addon.option_id}`
+        `Addon option not found or inactive: ${optionId}`
       );
     }
 
-    if (selectedAddonGroupIds.has(option.group.id)) {
+    const groupCount = selectedAddonGroupCounts.get(option.group.id) ?? 0;
+    if (groupCount >= option.group.max_select) {
       throw new OrderValidationError(
         "VALIDATION_ERROR",
-        "Mỗi nhóm addon chỉ được chọn một option.",
+        `Nhóm addon chỉ cho phép chọn tối đa ${option.group.max_select} option.`,
       );
     }
-    selectedAddonGroupIds.add(option.group.id);
-
-    if (option.group.type === "SELECTOR" || option.group.type === "TOGGLE") {
-      if (addon.quantity !== 1) {
-        throw new OrderValidationError(
-          "VALIDATION_ERROR",
-          `${option.group.type} chỉ chấp nhận quantity = 1.`,
-        );
-      }
-    } else {
-      const maxQuantity = option.group.max_quantity;
-      if (maxQuantity == null || addon.quantity > maxQuantity) {
-        throw new OrderValidationError(
-          "VALIDATION_ERROR",
-          "Số lượng addon vượt quá giới hạn của nhóm.",
-        );
-      }
-    }
-
-    if (
-      (option.group.type === "TOGGLE" || option.group.type === "QUANTITY") &&
-      (option.group.options.length !== 1 || option.group.options[0]?.id !== option.id)
-    ) {
-      throw new OrderValidationError(
-        "VALIDATION_ERROR",
-        `Cấu hình ${option.group.type} không hợp lệ.`,
-      );
-    }
+    selectedAddonGroupCounts.set(option.group.id, groupCount + 1);
 
     let addonUnitPrice: number;
     if (option.gram_value !== null && Number(option.gram_value) > 0) {
@@ -492,11 +466,10 @@ async function resolveOneItem(
       addonUnitPrice = option.price_vnd;
     }
 
-    const addonLineCost = addonUnitPrice * addon.quantity;
-    original_addons_price_vnd += addonLineCost;
+    original_addons_price_vnd += addonUnitPrice;
     resolvedAddons.push({
       addon_option_id: option.id,
-      quantity: addon.quantity,
+      quantity: 1,
       unit_price_vnd: addonUnitPrice,
       gram_value: option.gram_value ? Number(option.gram_value) : null,
       discount_applied_vnd: 0,

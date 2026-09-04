@@ -4,15 +4,22 @@ import { create } from "zustand";
 
 export type AuthModalMode = "login" | "register";
 export type VoucherAcquireIntent = { type: 'voucher_acquire'; packageId: string };
+export type AuthModalIntent =
+  | VoucherAcquireIntent
+  | { type: "open_voucher_wallet" }
+  | { type: "open_cart_vouchers" };
 
 interface AuthModalState {
   open: boolean;
   mode: AuthModalMode;
-  pendingIntent: VoucherAcquireIntent | null;
+  pendingIntent: AuthModalIntent | null;
   openLogin: () => void;
-  openLoginWithIntent: (intent: VoucherAcquireIntent) => void;
+  openLoginWithIntent: (intent: AuthModalIntent) => void;
   openRegister: () => void;
+  /** Close after successful authentication while preserving the pending intent. */
   close: () => void;
+  /** Dismiss authentication and abandon the pending intent. */
+  dismiss: () => void;
   switchTo: (mode: AuthModalMode) => void;
   clearIntent: () => void;
 }
@@ -30,6 +37,7 @@ export const useAuthModalStore = create<AuthModalState>()((set) => ({
   openLoginWithIntent: (intent) => set({ open: true, mode: "login", pendingIntent: intent }),
   openRegister: () => set({ open: true, mode: "register", pendingIntent: null }),
   close: () => set({ open: false }),
+  dismiss: () => set({ open: false, pendingIntent: null }),
   switchTo: (mode) => set({ mode }),
   clearIntent: () => set({ pendingIntent: null }),
 }));

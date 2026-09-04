@@ -5,6 +5,8 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NextRequest } from "next/server";
 import type { Address as PrismaAddress } from "@prisma/client";
+import { goongDistanceMatrix } from "@/lib/goong";
+import { checkRateLimits } from "@/lib/rateLimit";
 
 vi.mock("@/lib/auth", () => ({
   getSession: vi.fn(),
@@ -13,6 +15,11 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/goong", () => ({
   getStoreLocation: vi.fn(() => ({ lat: 10.762622, lng: 106.660172 })),
   goongDistanceMatrix: vi.fn(async () => ({ distanceKm: 2.5, durationMinutes: 10 })),
+}));
+
+vi.mock("@/lib/rateLimit", () => ({
+  checkRateLimits: vi.fn(),
+  getClientIp: vi.fn(() => "203.0.113.8"),
 }));
 
 vi.mock("@/lib/prisma", () => {
@@ -60,6 +67,7 @@ describe("Address CRUD API", () => {
       role: "CUSTOMER",
       phone_number: "+84901234567",
     });
+    vi.mocked(checkRateLimits).mockResolvedValue({ allowed: true, remaining: 59, retryAfterSeconds: 0 });
   });
 
   function createRequest(method: string, body?: unknown, url = "http://localhost/api/profile/addresses") {
@@ -94,6 +102,33 @@ describe("Address CRUD API", () => {
   });
 
   describe("POST /api/profile/addresses", () => {
+    it("từ chối label quá dài trước khi gọi Goong", async () => {
+      const req = createRequest("POST", {
+        label: "N".repeat(51),
+        full_address: "123 Test",
+        lat: 10,
+        lng: 106,
+        receiver_name: "Test",
+        receiver_phone: "+84901234567",
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(400);
+      expect(goongDistanceMatrix).not.toHaveBeenCalled();
+    });
+    it("dùng chung quota delivery account và IP trước khi gọi Goong", async () => {
+      vi.mocked(checkRateLimits).mockResolvedValue({ allowed: false, remaining: 0, retryAfterSeconds: 17 });
+      const req = createRequest("POST", {
+        label: "Nhà", full_address: "123 Test", lat: 10, lng: 106,
+        receiver_name: "Test", receiver_phone: "+84901234567",
+      });
+      const res = await POST(req);
+      expect(res.status).toBe(429);
+      expect(checkRateLimits).toHaveBeenCalledWith([
+        { ruleName: "deliveryAccount", identifier: mockUserId },
+        { ruleName: "deliveryIp", identifier: "203.0.113.8" },
+      ]);
+      expect(goongDistanceMatrix).not.toHaveBeenCalled();
+    });
     it("POST /api/profile/addresses: quá 4 address -> báo lỗi MAX_ADDRESSES_REACHED", async () => {
       vi.mocked(prisma.address.count).mockResolvedValue(4);
 

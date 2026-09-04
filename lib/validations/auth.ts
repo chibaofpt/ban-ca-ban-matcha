@@ -2,6 +2,15 @@ import { z } from "zod";
 
 const instagramPattern = /^[a-z0-9._]{1,30}$/;
 
+/** Validates the canonical UUID shape used by database refresh tokens. */
+export const RefreshTokenSchema = z.string().uuid().max(36);
+
+const passwordSchema = z.string()
+  .min(6, "Mật khẩu phải có ít nhất 6 ký tự")
+  .refine((value) => new TextEncoder().encode(value).length <= 72, {
+    message: "Mật khẩu không được vượt quá 72 byte UTF-8",
+  });
+
 /** Normalize an Instagram username for storage and lookup. */
 export function normalizeInstagramUsername(value: string): string {
   return value.trim().replace(/^@/, "").toLowerCase();
@@ -29,10 +38,7 @@ export const RegisterStep1Schema = z.object({
   phone_number: z
     .string()
     .regex(/^(0|\+84)\d{9}$/, "Số điện thoại không hợp lệ (ví dụ: 0912345678)"),
-  password: z
-    .string()
-    .min(6, "Mật khẩu phải có ít nhất 6 ký tự")
-    .max(72, "Mật khẩu không được vượt quá 72 ký tự"),
+  password: passwordSchema,
 });
 
 /**
@@ -66,7 +72,7 @@ export const LoginSchema = z
       )
       .optional(),
     insta_name: InstagramUsernameSchema.optional(),
-    password: z.string().min(6, "Mật khẩu phải có ít nhất 6 ký tự"),
+    password: z.string().min(6, "Mật khẩu phải có ít nhất 6 ký tự").max(72, "Mật khẩu không được vượt quá 72 ký tự"),
   })
   .superRefine((value, context) => {
     const identifierCount =

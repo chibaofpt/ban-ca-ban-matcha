@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 
 /** POST /api/orders — Customer places a PICKUP/DELIVERY order. Returns payment QR. */
 export async function POST(req: NextRequest): Promise<NextResponse> {
+  const acceptanceDate = new Date();
   const body = await req.json().catch(() => null);
   const parsed = customerOrderSchema.safeParse(body);
   if (!parsed.success) {
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    return await createCustomerOrder(parsed.data, session.id);
+    return await createCustomerOrder(parsed.data, session.id, acceptanceDate);
   } catch (error) {
     if (error instanceof BundlePromotionError) {
       const voucherMissing = error.reason === "BUNDLE_VOUCHER_NOT_FOUND";

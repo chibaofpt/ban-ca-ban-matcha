@@ -29,12 +29,25 @@ Chỉ đọc resource liên quan task; không đọc tất cả mặc định.
 | Voucher eligibility/lifecycle | `voucher-flow` skill |
 | Pricing/rounding | `pricing-logic` skill |
 | UI/mobile/form/overlay | `mobile-ux` skill + UI section của `SPECIFICATION.md` |
-| Test/feature/business bug | `tdd` skill |
+| Test/TDD, executable behavior, business bug hoặc behavior-preserving refactor | `tdd` skill |
 | Sub-agent, chia agent, Backend/Frontend/QA agent, delegate hoặc làm song song | `subagent-orchestration` skill |
 | Deferred/unresolved/env | `NOTES.md` hoặc `.env.local.example` |
 | Push staging/production | `push-to-dev` hoặc `production-deploy` skill |
 
 Ownership cụ thể thắng mô tả tổng quát. Nếu canonical resource, code và test không khớp, phân loại documentation drift hay implementation defect trước khi sửa; không tự chọn phía thuận tiện.
+
+### TDD routing
+
+- Load `tdd` khi user yêu cầu test/TDD/test review, khi một slice đổi executable behavior hoặc public contract, và khi refactor/move/split phải bảo toàn behavior.
+- Approved plan tự nó không trigger TDD. Nếu mọi slice đều không có executable behavior và user không yêu cầu test, không load skill; ghi `NOT_NEEDED`, lý do và named verification trong `Tests`.
+- Task hỗn hợp hoặc chưa chắc có executable behavior thì load `tdd`. Skill này là nguồn chi tiết cho lane theo từng slice, Test Seam, oracle, mocking và evidence.
+
+### Project mock/manual evidence
+
+- Automated test evidence là backend-first, mock-only và chỉ dùng runner `node` hoặc `static-contract`; không thêm hoặc dùng staging, live, isolated-DB, hay DOM/UI runner cho strategy này.
+- Chạy real owned pricing, validation, authorization, state transition và domain helper. Chỉ mock boundary database/transaction, Redis, session/cookie acquisition, time/random/UUID và external adapter khi boundary đó không phải subject của claim.
+- Frontend automated scope chỉ gồm service payload, successful response/DTO unwrapping, response error, shared pure calculator và non-UI pure security. UI/UX phải ghi manual acceptance check; không tạo component test tổng quát để thay thế.
+- Completion/handoff phải nêu evidence label, claims proved và claims explicitly not proved. Fake transaction, fake Redis hoặc simulated race không chứng minh lock, isolation, rollback, constraint, actual concurrency hay external-service behavior.
 
 ## Change contract
 
@@ -49,6 +62,8 @@ Forbidden actions:
 Tests:
 Resource Impact:
 ```
+
+`Tests` phải nêu load decision; nếu load `tdd`, ghi lane theo từng vertical slice, Test Seam và verification tương ứng.
 
 `Resource Impact`: `None`, `Business specification`, `API contract`, `Schema semantics`, `Architecture/UI standard`, `Environment`, `Workflow/skill`, hoặc tập hợp cần thiết.
 
@@ -115,7 +130,8 @@ Không dùng NextAuth/Supabase Auth, raw SQL nếu chưa được yêu cầu, Re
 - Daily dev migration: `npm run migrate:dev`; không dùng `prisma db push`.
 - Commit `prisma/migrations`; production dùng `prisma migrate deploy` qua build command.
 - Không mở browser hay chạy `npm run dev`/`npm run build` sau thay đổi trong agent workflow.
-- Trong implementation chạy targeted tests; trước staging chạy lint, type-check, full tests và `npm run resources:check`.
+- Trong implementation và review/repair chỉ chạy targeted tests. Trước khi accept executable change, chạy impacted tests rồi full suite một lần trên final code/test tree; mọi production/test edit sau đó làm gate hết hiệu lực.
+- Trước staging chạy lint, type-check và `npm run resources:check`; chỉ reuse full-suite evidence khi code/test tree không đổi.
 - Reviewer chỉ review. Push/release agent không tự sửa lỗi; trả finding về implementer.
 
 ## Completion resource gate

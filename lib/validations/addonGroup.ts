@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { imageFilenameSchema } from "@/lib/validations/menu";
 
-export const addonTypeEnum = z.enum(["SELECTOR", "TOGGLE", "QUANTITY"]);
+
 
 export const addonOptionInputSchema = z.object({
   id: z.string().uuid().optional(),
@@ -17,8 +17,8 @@ export const createAddonGroupSchema = z.object({
   name: z.string().min(1, "Vui lòng nhập tên nhóm").max(100),
   description: z.string().max(500).optional().nullable(),
   image_filename: imageFilenameSchema,
-  type: addonTypeEnum,
-  max_quantity: z.coerce.number().int().min(1).nullable().optional(),
+  max_select: z.coerce.number().int().min(1),
+  is_dynamic_gram: z.boolean().default(false),
   is_active: z.boolean().default(true),
   options: z.array(addonOptionInputSchema).min(1, "Phải có ít nhất 1 option"),
 }).superRefine((data, ctx) => {
@@ -32,34 +32,22 @@ export const createAddonGroupSchema = z.object({
   if (data.is_active && activeOptions.length === 0) {
     ctx.addIssue({ code: "custom", path: ["options"], message: "Nhóm đang mở bán phải có ít nhất 1 option active" });
   }
-  if ((data.type === "TOGGLE" || data.type === "QUANTITY") && activeOptions.length !== 1) {
-    ctx.addIssue({ code: "custom", path: ["options"], message: `${data.type} phải có đúng 1 option active` });
-  }
-  if (data.type === "QUANTITY" && data.max_quantity == null) {
-    ctx.addIssue({ code: "custom", path: ["max_quantity"], message: "QUANTITY phải có số lượng tối đa" });
-  }
-  if (data.type !== "QUANTITY" && data.max_quantity != null) {
-    ctx.addIssue({ code: "custom", path: ["max_quantity"], message: "Chỉ QUANTITY được có số lượng tối đa" });
-  }
 
-  const dynamicOptions = activeOptions.filter((option) => option.gram_value != null);
-  if (dynamicOptions.length > 0) {
-    if (data.type !== "SELECTOR" || dynamicOptions.length !== activeOptions.length) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["options"],
-        message: "Option gram động phải nằm trong SELECTOR và không được trộn với giá cố định",
-      });
+  if (data.is_dynamic_gram) {
+    if (data.max_select !== 1) {
+      ctx.addIssue({ code: "custom", path: ["max_select"], message: "Nhóm giá theo gram bột chỉ cho phép chọn 1 option" });
     }
-    if (dynamicOptions.some((option) => option.price_vnd !== 0)) {
-      ctx.addIssue({ code: "custom", path: ["options"], message: "Option gram động phải có price_vnd = 0" });
+    if (activeOptions.some((o) => !o.gram_value || o.gram_value <= 0 || o.price_vnd !== 0)) {
+      ctx.addIssue({ code: "custom", path: ["options"], message: "Option gram động phải có gram_value > 0 và price_vnd = 0" });
+    }
+  } else {
+    if (activeOptions.some((o) => o.gram_value != null)) {
+      ctx.addIssue({ code: "custom", path: ["options"], message: "Không được set gram_value cho nhóm giá cố định" });
     }
   }
 });
 
 export const updateAddonGroupSchema = createAddonGroupSchema;
-
-export type AddonType = z.infer<typeof addonTypeEnum>;
 export type AddonOptionInput = z.infer<typeof addonOptionInputSchema>;
 export type CreateAddonGroupInput = z.infer<typeof createAddonGroupSchema>;
 export type UpdateAddonGroupInput = z.infer<typeof updateAddonGroupSchema>;

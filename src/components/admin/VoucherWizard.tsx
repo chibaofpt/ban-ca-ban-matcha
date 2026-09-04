@@ -88,7 +88,12 @@ function BenefitFields({ draft, update, menuOptions, bundleMenuItems, addonOptio
   }
   if (draft.voucherType === "ADDON") return <AdaptiveSelect label="Addon được tặng" options={addonOptions} value={draft.addonOptionId} onChange={(value) => update("addonOptionId", value as string)} />;
   if (draft.voucherType === "FREESHIP") return <div className="space-y-4"><NumberField label="Phí giao tối đa được hỗ trợ" value={draft.coveredDeliveryFeeVnd} min={1_000} step={1_000} onChange={(value) => update("coveredDeliveryFeeVnd", value ?? 0)} /><NumberField label="Giá trị đơn tối thiểu" value={draft.minOrderVnd} min={1_000} step={1_000} onChange={(value) => update("minOrderVnd", value)} /></div>;
-  return <div className="space-y-4"><AdaptiveSelect label="Kiểu giảm" options={[{ value: "PERCENT", label: "Phần trăm" }, { value: "FIXED", label: "Số tiền" }]} value={draft.discountType} onChange={(value) => update("discountType", value as VoucherDraft["discountType"])} /><NumberField label={draft.discountType === "PERCENT" ? "Mức giảm (%)" : "Mức giảm (VND)"} value={draft.discountValue} min={1} step={draft.discountType === "FIXED" ? 1_000 : 1} onChange={(value) => update("discountValue", value ?? 0)} /><NumberField label="Giá trị đơn tối thiểu" value={draft.minOrderVnd} min={1_000} step={1_000} onChange={(value) => update("minOrderVnd", value)} /></div>;
+  return <div className="space-y-4">
+    <AdaptiveSelect label="Kiểu giảm" options={[{ value: "PERCENT", label: "Phần trăm" }, { value: "FIXED", label: "Số tiền" }]} value={draft.discountType} onChange={(value) => update("discountType", value as VoucherDraft["discountType"])} />
+    <NumberField label={draft.discountType === "PERCENT" ? "Mức giảm (%)" : "Mức giảm (VND)"} value={draft.discountValue} min={1} step={draft.discountType === "FIXED" ? 1_000 : 1} onChange={(value) => update("discountValue", value ?? 0)} />
+    {draft.discountType === "PERCENT" && <NumberField label="Mức giảm tối đa (VND)" value={draft.maxDiscountVnd} min={1_000} step={1_000} onChange={(value) => update("maxDiscountVnd", value)} />}
+    <NumberField label="Giá trị đơn tối thiểu" value={draft.minOrderVnd} min={1_000} step={1_000} onChange={(value) => update("minOrderVnd", value)} />
+  </div>;
 }
 
 /** Three-step admin wizard for creating every voucher type in one place. */

@@ -13,6 +13,7 @@ export type OverlayLayer = "base" | "nested" | "critical";
 export type OverlaySize = "sm" | "md" | "lg" | "full";
 export type OverlayDismissPolicy = "default" | "explicit-only" | "locked-while-busy";
 export type OverlayPresentation = "default" | "bare";
+export type OverlayMobileMode = "sheet" | "dialog";
 
 interface ResponsiveOverlayProps {
   open: boolean;
@@ -26,6 +27,7 @@ interface ResponsiveOverlayProps {
   busy?: boolean;
   showCloseButton?: boolean;
   presentation?: OverlayPresentation;
+  mobileMode?: OverlayMobileMode;
   className?: string;
   onOpenChange: (open: boolean) => void;
   onAfterClose?: () => void;
@@ -71,11 +73,13 @@ export function ResponsiveOverlay({
   busy = false,
   showCloseButton = true,
   presentation = "default",
+  mobileMode = "sheet",
   className,
   onOpenChange,
   onAfterClose,
 }: ResponsiveOverlayProps) {
   const isDesktop = useSyncExternalStore(subscribeDesktop, getDesktopSnapshot, getServerDesktopSnapshot);
+  const usesDialog = isDesktop || mobileMode === "dialog";
   const wasOpen = useRef(open);
   const canDismiss = dismissPolicy === "default" || (dismissPolicy === "locked-while-busy" && !busy);
   const canExplicitlyClose = !(dismissPolicy === "locked-while-busy" && busy);
@@ -87,11 +91,11 @@ export function ResponsiveOverlay({
   };
 
   useEffect(() => {
-    if (isDesktop && wasOpen.current && !open) onAfterClose?.();
+    if (usesDialog && wasOpen.current && !open) onAfterClose?.();
     wasOpen.current = open;
-  }, [isDesktop, onAfterClose, open]);
+  }, [onAfterClose, open, usesDialog]);
 
-  if (isDesktop) {
+  if (usesDialog) {
     return (
       <Dialog.Root open={open} onOpenChange={requestOpenChange}>
         <Dialog.Portal>

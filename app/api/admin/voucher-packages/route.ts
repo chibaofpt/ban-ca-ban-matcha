@@ -432,6 +432,7 @@ export async function POST(req: NextRequest) {
         discount_type: data.discount_type,
         discount_value: data.discount_value,
         min_order_vnd: data.min_order_vnd ?? null,
+        max_discount_vnd: data.discount_type === "PERCENT" ? (data.max_discount_vnd ?? null) : null,
       },
     });
 
