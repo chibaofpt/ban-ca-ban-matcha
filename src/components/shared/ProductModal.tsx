@@ -548,7 +548,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
             return (
               <div key={group.id} className="mt-5">
                 <SectionLabel text={group.name} />
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {group.options.map((opt) => {
                     const isActive = selectedOptionIds.includes(opt.id);
                     const isDisabled = !isActive && isAtMax && group.max_select > 1;
@@ -583,7 +583,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
             return (
               <div key={group.id} className="mt-5">
                 <SectionLabel text={group.name} />
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-4 gap-2">
                   {group.options.map((opt) => {
                     const price = ceilTo1000(opt.gram_value != null ? opt.gram_value * activePowderPricePerGram : opt.price_vnd);
                     const isActive = selectedOptionIds.includes(opt.id);

@@ -138,6 +138,23 @@ is the canonical current example.
 - Soft-deleted menu items, addon groups, and powders retain their image references and are protected from cleanup
 - Cleanup chỉ xét object không còn được menu item, addon group, powder hoặc milk type tham chiếu và đã cũ hơn 48 giờ; luôn bắt đầu với `IMAGE_CLEANUP_DRY_RUN=true`
 
+### `PUT /api/admin/base-liquids/[id]` (legacy alias: `/api/admin/milk-types/[id]`)
+
+The existing JSON or multipart `payload` update may include:
+
+```ts
+{
+  available_menu_item_ids?: string[] // unique Latte/Fusion UUIDs
+}
+```
+
+Omitting the field preserves the current item availability, except that an update whose resulting
+Base Liquid is the global default removes redundant explicit Latte rows. Supplying the field
+atomically replaces the explicit `menu_item_allowed_base_liquid` rows for this Base Liquid. The
+global Latte default and each Fusion item's own default remain implicitly available and are never
+duplicated in the join table. Unavailable menu items may be configured; missing IDs and `extras`
+IDs return `422 BUSINESS_RULE_VIOLATION`. The response remains `{ data: BaseLiquid }`.
+
 ---
 
 ## Route inventory

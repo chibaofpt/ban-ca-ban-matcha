@@ -1,6 +1,7 @@
 "use client";
 
 import { useForm, Controller } from "react-hook-form";
+import type { ReactNode } from "react";
 import { cn } from "@/src/utils/cn";
 import type { AdminMilkType } from "@/src/lib/types/milkType";
 
@@ -25,6 +26,8 @@ interface MilkTypeFormProps {
   defaultValues?: Partial<FormFields>;
   onSubmit: (data: MilkTypeFormPayload) => Promise<void>;
   isSubmitting: boolean;
+  onDefaultChange?: (isDefault: boolean) => void;
+  availabilityFields?: ReactNode;
 }
 
 export function buildMilkTypeDefaultValues(item: AdminMilkType): Partial<FormFields> {
@@ -41,6 +44,8 @@ export default function MilkTypeForm({
   defaultValues,
   onSubmit,
   isSubmitting,
+  onDefaultChange,
+  availabilityFields,
 }: MilkTypeFormProps) {
   const {
     register,
@@ -107,7 +112,9 @@ export default function MilkTypeForm({
         <label className="flex items-center gap-3 cursor-pointer">
           <input
             type="checkbox"
-            {...register("is_default")}
+            {...register("is_default", {
+              onChange: (event) => onDefaultChange?.(event.target.checked),
+            })}
             disabled={isEditingDefault}
             className="w-4 h-4 rounded text-primary focus:ring-primary disabled:opacity-50"
           />
@@ -152,6 +159,8 @@ export default function MilkTypeForm({
           />
         </div>
       </div>
+
+      {availabilityFields}
 
       <div className="flex gap-2 justify-end pt-4">
         <button

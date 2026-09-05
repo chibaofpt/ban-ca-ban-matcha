@@ -47,6 +47,9 @@ Không thực hiện repo-wide layer refactor khi sửa feature. Direct API call
 - Order, voucher và pricing rules chỉ có canonical owner trong domain skill tương ứng.
 - Voucher catalog, owned wallet DTO, issuance, checkout và refund dùng cùng server-side live
   availability resolver; UI không tự suy luận lifecycle của menu configuration.
+- Cấu hình Base Liquid theo món có một nguồn dữ liệu hai chiều: editor món và editor Base Liquid
+  cùng đọc/ghi `menu_item_allowed_base_liquid`. Default Latte toàn hệ thống và default Fusion theo
+  món là availability ngầm, không tạo row trùng trong bảng nối.
 - API response và field compatibility thuộc `API.md`; không đổi tên chỉ vì muốn làm sạch thuật ngữ.
 - Auth middleware treats PostgreSQL session state as authoritative. Legacy Redis session keys are
   only evicted, never trusted for authorization. Refresh rotates the existing row and re-reads the
@@ -68,6 +71,9 @@ Không thực hiện repo-wide layer refactor khi sửa feature. Direct API call
 
 - Upload ảnh catalog dùng chung khung bố cục 1:1 cho ảnh có nền và ảnh trong suốt. Mặc định vừa toàn bộ ảnh; admin kéo, thu/phóng nhỏ hơn khung, chọn Vừa khung/Lấp đầy/Đặt lại. Phần ngoài khung bị cắt, vùng trống trong khung giữ alpha; không kéo giãn vật thể hay tự đổ nền. Xem trước chính Blob WebP trên nền thẻ, có Chỉnh lại và Dùng ảnh này trước khi gắn vào form; kích thước/quality theo preset catalog hiện có. Nền caro chỉ dùng trong editor, không ghi vào file.
 - Bốn tab con của Menu admin luôn chia đều một hàng và chuyển bằng nhấn; không dùng swipe hoặc thanh cuộn ngang.
+- Editor Base Liquid cho phép tìm kiếm, lọc Latte/Fusion và chọn hàng loạt món, kể cả món tạm ngưng
+  bán. Các món dùng liquid đó làm default hiển thị đã chọn nhưng khóa; lưu xong phải invalidate dữ
+  liệu Menu để editor món phản ánh cùng allow-list.
 
 ### Canonical stack
 
@@ -118,7 +124,7 @@ chung, giữ thứ tự kiểm tra hiện có; footer không tự gọi API.
 Auth từ voucher sheet mở ngay trên sheet còn mở, không đợi sheet đóng. Hủy auth bỏ intent nhưng
 giữ surface nền; đăng nhập thành công tiếp tục intent một lần và giữ bước xác nhận đổi bằng cá.
 
-`ProductModal` dùng dialog desktop và Vaul full-height trên mobile. Browser Back chỉ đóng overlay trên cùng; CTA luôn ghép action với tổng giá bằng ` - `, còn addon selector dùng lưới 3 cột. Header Base Liquid hiển thị Coldwhisk dạng switch có semantics và vẫn nêu nền mặc định khi selector bị ẩn.
+`ProductModal` dùng dialog desktop và Vaul full-height trên mobile. Browser Back chỉ đóng overlay trên cùng; CTA luôn ghép action với tổng giá bằng ` - `. Add-on giá cố định dùng lưới 3 cột; add-on theo gram (Extra Matcha) dùng lưới 4 cột. Header Base Liquid hiển thị Coldwhisk dạng switch có semantics và vẫn nêu nền mặc định khi selector bị ẩn.
 
 Overlay layer chỉ có `base`, `nested`, `critical`. Không tạo z-index tùy ý cho overlay mới.
 

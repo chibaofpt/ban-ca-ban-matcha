@@ -48,6 +48,37 @@ export interface AddonGroupFormSubmission {
   }>;
 }
 
+/** Convert editable form values into the canonical admin add-on mutation contract. */
+export function buildAddonGroupSubmission(values: AddonGroupFormFields): AddonGroupFormSubmission {
+  const isDynamicGram = values.is_dynamic_gram;
+
+  return {
+    payload: {
+      name: values.name.trim(),
+      description: values.description.trim() || null,
+      max_select: isDynamicGram ? 1 : Number(values.max_select) || 1,
+      is_dynamic_gram: isDynamicGram,
+      is_active: values.is_active,
+      options: values.options.map((option, index) => ({
+        id: option.id,
+        image_key: option.image_key,
+        label: option.label.trim(),
+        price_vnd: isDynamicGram ? 0 : Number(option.price_vnd),
+        is_active: option.is_active,
+        sort_order: option.sort_order !== "" ? Number(option.sort_order) : index,
+        gram_value: isDynamicGram && option.gram_value !== ""
+          ? Number(option.gram_value)
+          : null,
+      })),
+    },
+    optionImages: values.options.map((option) => ({
+      imageKey: option.image_key,
+      imageFile: option.image_file,
+      imageFilename: option.image_filename,
+    })),
+  };
+}
+
 /** Convert an admin addon group DTO into editable form values. */
 export function buildAddonGroupDefaultValues(item: AdminAddonGroup): Partial<AddonGroupFormFields> {
   return {

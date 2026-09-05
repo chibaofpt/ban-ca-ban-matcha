@@ -13,9 +13,6 @@ interface AddonGroupCardProps {
   onToggleActive: (id: string, next: boolean) => void;
   onDelete: (item: AdminAddonGroup) => void;
 }
-
-
-
 export default function AddonGroupCard({
   item,
   onEdit,
@@ -23,144 +20,141 @@ export default function AddonGroupCard({
   onDelete,
 }: AddonGroupCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const activeOptionCount = item.options.filter((option) => option.is_active).length;
+  const optionsRegionId = `addon-options-${item.id}`;
 
   return (
     <div
       className={cn(
-        "rounded-2xl border border-border bg-card overflow-hidden shadow-sm transition",
+        "overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition",
         !item.is_active && "opacity-60"
       )}
     >
-      {/* Header / Collapsed State */}
-      <div
-        onClick={() => setExpanded(!expanded)}
-        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 cursor-pointer hover:bg-secondary/20 transition"
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/50 bg-secondary/30">
+      <div className="flex flex-col sm:flex-row sm:items-stretch">
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={optionsRegionId}
+          onClick={() => setExpanded((current) => !current)}
+          className="flex min-w-0 flex-1 items-start gap-3 p-4 text-left transition-colors hover:bg-secondary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
+        >
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/50 bg-secondary/30">
             {item.image_url ? (
               <Image
                 src={item.image_url}
                 alt={`Ảnh ${item.name}`}
-                width={48}
-                height={48}
-                sizes="48px"
+                width={56}
+                height={56}
+                sizes="56px"
+                quality={60}
                 className="h-full w-full object-cover"
               />
             ) : (
               <ImageIcon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
             )}
           </div>
-          <div className="min-w-0 flex-1 flex flex-col gap-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-semibold text-foreground text-base">{item.name}</h3>
-            
-            <span
-              className={cn(
-                "px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase border",
-                item.is_dynamic_gram ? "bg-amber-100 text-amber-700 border-amber-200" : "bg-blue-100 text-blue-700 border-blue-200"
-              )}
-            >
-              {item.is_dynamic_gram ? "Matcha" : "Thường"}
-            </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase border bg-purple-100 text-purple-700 border-purple-200">
-              Max: {item.max_select}
-            </span>
-
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-base font-semibold text-foreground">{item.name}</h3>
+              <span className={cn(
+                "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                item.is_dynamic_gram
+                  ? "border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                  : "border-blue-200 bg-blue-100 text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300",
+              )}>
+                {item.is_dynamic_gram ? "Theo gram" : "Giá cố định"}
+              </span>
+              <span className="rounded-full border border-border bg-secondary/40 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                Chọn tối đa {item.max_select}
+              </span>
+            </div>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              {activeOptionCount}/{item.options.length} tùy chọn đang hiển thị
+            </p>
+            {item.description ? (
+              <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{item.description}</p>
+            ) : null}
           </div>
-          
-          <div className="text-sm text-muted-foreground flex items-center gap-3">
-            <span>{item.options.length} options</span>
-            {item.description && (
-              <>
-                <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
-                <span className="line-clamp-1">{item.description}</span>
-              </>
+          <ChevronDown
+            className={cn(
+              "mt-1 h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200",
+              expanded && "rotate-180",
             )}
-          </div>
-          </div>
-        </div>
+            aria-hidden="true"
+          />
+        </button>
 
-        {/* Actions */}
-        <div className="flex items-center gap-3 sm:gap-4 ml-auto">
+        <div className="flex items-center justify-end gap-2 border-t border-border/60 px-3 py-2 sm:border-l sm:border-t-0">
+          <span className="mr-auto text-xs font-medium text-muted-foreground sm:sr-only">
+            {item.is_active ? "Nhóm đang bật" : "Nhóm đã ẩn"}
+          </span>
           <button
             type="button"
             role="switch"
+            aria-label={`Trạng thái nhóm ${item.name}`}
             aria-checked={item.is_active}
             onClick={(e) => {
               e.stopPropagation();
               onToggleActive(item.id, !item.is_active);
             }}
-            className={cn(
-              "relative inline-flex h-5 w-9 rounded-full transition shrink-0",
-              item.is_active ? "bg-primary" : "bg-border"
-            )}
+            className="flex h-10 w-12 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
-            <span
-              className={cn(
-                "block h-4 w-4 rounded-full bg-white shadow transition-transform m-0.5",
-                item.is_active ? "translate-x-4" : "translate-x-0"
-              )}
-            />
+            <span className={cn("relative h-6 w-11 rounded-full transition-colors", item.is_active ? "bg-primary" : "bg-border")}>
+              <span className={cn("absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform", item.is_active && "translate-x-5")} />
+            </span>
           </button>
-          
-          <div className="w-px h-5 bg-border shrink-0" />
 
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onEdit(item);
             }}
-            className="p-2 text-muted-foreground hover:text-primary transition bg-secondary/30 rounded-lg hover:bg-primary/10"
+            className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/30 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            aria-label={`Sửa nhóm ${item.name}`}
             title="Sửa nhóm"
           >
             <Pencil size={16} />
           </button>
-          
+
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onDelete(item);
             }}
-            className="p-2 text-muted-foreground hover:text-destructive transition bg-secondary/30 rounded-lg hover:bg-destructive/10"
+            className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/30 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
+            aria-label={`Ẩn nhóm ${item.name}`}
             title="Xóa nhóm"
           >
             <Trash2 size={16} />
           </button>
-
-          <ChevronDown
-            size={20}
-            className={cn(
-              "text-muted-foreground transition-transform duration-200 shrink-0",
-              expanded && "rotate-180"
-            )}
-          />
         </div>
       </div>
 
-      {/* Expanded State (Options list) */}
       <div
+        id={optionsRegionId}
         className={cn(
           "grid transition-all duration-300 ease-in-out",
           expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
         )}
       >
         <div className="overflow-hidden">
-          <div className="p-4 pt-0 border-t border-border/50 bg-secondary/10">
+          <div className="border-t border-border/50 bg-secondary/10 p-4">
             {item.options.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">Nhóm này chưa có option nào.</p>
+              <p className="py-4 text-center text-sm text-muted-foreground">Nhóm này chưa có tùy chọn nào.</p>
             ) : (
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {item.options.map((opt) => (
-                  <div key={opt.id} className={cn("bg-card border border-border rounded-xl p-3 flex gap-3 shadow-sm", !opt.is_active && "opacity-50")}>
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-secondary/30">
+                  <div key={opt.id} className={cn("flex gap-3 rounded-xl border border-border bg-card p-3 shadow-sm", !opt.is_active && "opacity-60")}>
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-secondary/30">
                       {(opt.image_url ?? item.image_url) ? (
                         <Image
                           src={(opt.image_url ?? item.image_url) as string}
                           alt={`Ảnh ${opt.label}`}
-                          width={48}
-                          height={48}
-                          sizes="48px"
+                          width={56}
+                          height={56}
+                          sizes="56px"
                           quality={60}
                           loading="lazy"
                           className="h-full w-full object-cover"
@@ -169,28 +163,20 @@ export default function AddonGroupCard({
                         <ImageIcon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
                       )}
                     </div>
-                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                    <div className="flex justify-between items-start gap-2">
-                      <span className="text-sm font-medium text-foreground leading-tight">
-                        {opt.label}
-                      </span>
-                      {!opt.is_active && (
-                        <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold bg-primary/10 text-primary uppercase">
-                          Đã ẩn
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-end justify-between mt-auto pt-1">
-                      <span className="text-sm font-semibold text-primary">
-                        {opt.price_vnd > 0 ? `+${formatMoney(opt.price_vnd)}` : "Miễn phí"}
-                      </span>
-                      {opt.gram_value !== null && (
-                        <span className="text-xs font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
-                          {opt.gram_value > 0 ? `+${opt.gram_value}g` : `${opt.gram_value}g`}
-                        </span>
-                      )}
-                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-sm font-semibold leading-tight text-foreground">{opt.label}</span>
+                        <span className="shrink-0 text-[10px] font-medium text-muted-foreground">#{opt.sort_order}</span>
+                      </div>
+                      <p className="mt-1 text-sm font-semibold text-primary">
+                        {item.is_dynamic_gram
+                          ? opt.gram_value !== null ? `+${opt.gram_value}g` : "Chưa có gram"
+                          : opt.price_vnd > 0 ? `+${formatMoney(opt.price_vnd)}` : "Miễn phí"}
+                      </p>
+                      <p className="mt-auto pt-1 text-[11px] text-muted-foreground">
+                        {item.is_dynamic_gram ? "Giá tính theo bột đã chọn" : "Giá cộng cố định"}
+                        {!opt.is_active ? " · Đã ẩn" : " · Đang hiển thị"}
+                      </p>
                     </div>
                   </div>
                 ))}

@@ -14,6 +14,7 @@ import {
 } from "@/src/services/adminMilkTypeService";
 import type { AdminMilkType } from "@/src/lib/types/milkType";
 import { cn } from "@/src/utils/cn";
+import { listAdminMenuItems } from "@/src/services/adminMenuService";
 
 type ModalState =
   | { open: false }
@@ -31,13 +32,25 @@ export default function AdminMilkTypesPage() {
 
   const {
     data: milkTypes = [],
-    isLoading,
-    isError,
-    refetch,
+    isLoading: isMilkTypesLoading,
+    isError: isMilkTypesError,
+    refetch: refetchMilkTypes,
   } = useQuery({
     queryKey: ["admin", "milk-types"],
     queryFn: listAdminMilkTypes,
   });
+  const {
+    data: menuData,
+    isLoading: isMenuLoading,
+    isError: isMenuError,
+    refetch: refetchMenu,
+  } = useQuery({
+    queryKey: ["admin", "menu"],
+    queryFn: listAdminMenuItems,
+  });
+  const menuItems = menuData ? [...menuData.latte, ...menuData.fusion] : [];
+  const isLoading = isMilkTypesLoading || isMenuLoading;
+  const isError = isMilkTypesError || isMenuError;
 
   const showToast = (msg: string, type: "success" | "error" = "success") => {
     setToast({ msg, type });
@@ -59,11 +72,13 @@ export default function AdminMilkTypesPage() {
 
   const handleCreateSuccess = (newItem: AdminMilkType) => {
     queryClient.invalidateQueries({ queryKey: ["admin", "milk-types"] });
+    queryClient.invalidateQueries({ queryKey: ["admin", "menu"] });
     showToast(`Đã thêm loại sữa "${newItem.name}"`);
   };
 
   const handleEditSuccess = (updatedItem: AdminMilkType) => {
     queryClient.invalidateQueries({ queryKey: ["admin", "milk-types"] });
+    queryClient.invalidateQueries({ queryKey: ["admin", "menu"] });
     showToast(`Đã cập nhật loại sữa "${updatedItem.name}"`);
   };
 
@@ -194,7 +209,10 @@ export default function AdminMilkTypesPage() {
           <button
             type="button"
             aria-label="Làm mới"
-            onClick={() => refetch()}
+            onClick={() => {
+              void refetchMilkTypes();
+              void refetchMenu();
+            }}
             className="rounded-xl p-2 hover:bg-secondary/60 transition text-muted-foreground"
           >
             <RefreshCw size={16} />
@@ -258,7 +276,10 @@ export default function AdminMilkTypesPage() {
           <p className="text-sm text-destructive">Không thể tải danh sách. Vui lòng thử lại.</p>
           <button
             type="button"
-            onClick={() => refetch()}
+            onClick={() => {
+              void refetchMilkTypes();
+              void refetchMenu();
+            }}
             className="mt-3 text-sm text-primary hover:underline"
           >
             Thử lại
@@ -298,6 +319,7 @@ export default function AdminMilkTypesPage() {
         <MilkTypeModal
           mode={modalState.mode}
           item={modalState.mode === "edit" ? modalState.item : undefined}
+          menuItems={menuItems}
           onClose={() => setModalState({ open: false })}
           onSuccess={handleModalSuccess}
         />

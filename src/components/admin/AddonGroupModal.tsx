@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "lucide-react";
 import AddonGroupForm from "@/src/components/admin/AddonGroupForm";
 import {
   buildAddonGroupDefaultValues,
@@ -9,8 +8,8 @@ import {
 } from "@/src/components/admin/addonGroupFormModel";
 import { createAddonGroup, updateAddonGroup } from "@/src/services/adminAddonService";
 import type { AdminAddonGroup } from "@/src/lib/types/addonGroup";
-import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
 import CatalogImageFields from "@/src/components/admin/CatalogImageFields";
+import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 
 interface AddonGroupModalProps {
   mode: "create" | "edit";
@@ -25,7 +24,6 @@ export default function AddonGroupModal({
   onClose,
   onSuccess,
 }: AddonGroupModalProps) {
-  useBodyScrollLock(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -64,51 +62,38 @@ export default function AddonGroupModal({
   const defaultValues = mode === "edit" && item ? buildAddonGroupDefaultValues(item) : undefined;
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 py-6"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <ResponsiveOverlay
+      open
+      title={mode === "create" ? "Thêm nhóm add-on" : `Sửa nhóm “${item?.name}”`}
+      description="Cấu hình cách tính giá, số lựa chọn và từng tùy chọn trong nhóm."
+      size="lg"
+      busy={isSubmitting}
+      dismissPolicy="locked-while-busy"
+      onOpenChange={(open) => { if (!open) onClose(); }}
     >
-      <div className="relative w-full max-w-2xl bg-card rounded-2xl shadow-xl flex flex-col max-h-full">
-        <div className="flex items-center justify-between px-6 py-5 border-b border-border flex-shrink-0">
-          <h2 className="text-lg font-semibold text-foreground">
-            {mode === "create" ? "Thêm nhóm addon mới" : `Sửa nhóm "${item?.name}"`}
-          </h2>
-          <button
-            type="button"
-            aria-label="Đóng"
-            onClick={onClose}
-            className="rounded-lg p-1.5 hover:bg-secondary/60 transition text-muted-foreground hover:text-foreground"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="overflow-y-auto overscroll-contain px-6 py-5 flex-1 custom-scrollbar">
-          {errorMsg && (
-            <div className="mb-5 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium">
-              {errorMsg}
-            </div>
-          )}
-          <CatalogImageFields
-            currentImageUrl={item?.image_url}
-            label="Ảnh mặc định của nhóm"
-            cropPreset="compact"
-            imageFilename={imageFilename}
-            disabled={isSubmitting}
-            onFileChange={setImageFile}
-            onFilenameChange={setImageFilename}
-            onError={setErrorMsg}
-          />
-          <AddonGroupForm
-            mode={mode}
-            defaultValues={defaultValues}
-            onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
-          />
-        </div>
+      <div className="space-y-6">
+        {errorMsg && (
+          <div className="rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive">
+            {errorMsg}
+          </div>
+        )}
+        <CatalogImageFields
+          currentImageUrl={item?.image_url}
+          label="Ảnh mặc định của nhóm"
+          cropPreset="compact"
+          imageFilename={imageFilename}
+          disabled={isSubmitting}
+          onFileChange={setImageFile}
+          onFilenameChange={setImageFilename}
+          onError={setErrorMsg}
+        />
+        <AddonGroupForm
+          mode={mode}
+          defaultValues={defaultValues}
+          onSubmit={handleSubmit}
+          isSubmitting={isSubmitting}
+        />
       </div>
-    </div>
+    </ResponsiveOverlay>
   );
 }

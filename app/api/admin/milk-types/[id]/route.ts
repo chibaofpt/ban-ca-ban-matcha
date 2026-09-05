@@ -93,6 +93,33 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     const nextIsDefault = validData.is_default ?? existing.is_default;
     const nextIsActive = validData.is_active ?? existing.is_active;
+    const requestedMenuItemIds = validData.available_menu_item_ids;
+    let availabilityMenuItems: Array<{
+      id: string;
+      category: string;
+      default_base_liquid_id: string | null;
+    }> = [];
+    let previousAvailabilityIds: string[] = [];
+    if (requestedMenuItemIds !== undefined) {
+      const [selectedItems, previousRows] = await Promise.all([
+        prisma.menuItem.findMany({
+          where: { id: { in: requestedMenuItemIds }, category: { in: ["latte", "fusion"] } },
+          select: { id: true, category: true, default_base_liquid_id: true },
+        }),
+        prisma.menuItemAllowedBaseLiquid.findMany({
+          where: { base_liquid_id: id },
+          select: { menu_item_id: true },
+        }),
+      ]);
+      if (selectedItems.length !== requestedMenuItemIds.length) {
+        return NextResponse.json(
+          { error: "Danh sách món có lựa chọn không khả dụng", code: "BUSINESS_RULE_VIOLATION" },
+          { status: 422 },
+        );
+      }
+      availabilityMenuItems = selectedItems;
+      previousAvailabilityIds = previousRows.map((row) => row.menu_item_id);
+    }
     if (nextIsDefault && !nextIsActive) {
       return NextResponse.json(
         { error: "Base Liquid mặc định phải đang hoạt động", code: "VALIDATION_ERROR" },
@@ -181,9 +208,40 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           ...(imageUpdate !== undefined ? { image_url: imageUpdate } : {}),
         },
       });
+      if (requestedMenuItemIds !== undefined) {
+        const explicitMenuItemIds = availabilityMenuItems
+          .filter((menuItem) => !(
+            (nextIsDefault && menuItem.category === "latte")
+            || menuItem.default_base_liquid_id === id
+          ))
+          .map((menuItem) => menuItem.id);
+        await tx.menuItemAllowedBaseLiquid.deleteMany({ where: { base_liquid_id: id } });
+        if (explicitMenuItemIds.length > 0) {
+          await tx.menuItemAllowedBaseLiquid.createMany({
+            data: explicitMenuItemIds.map((menuItemId) => ({
+              menu_item_id: menuItemId,
+              base_liquid_id: id,
+            })),
+          });
+        }
+      } else if (nextIsDefault) {
+        await tx.menuItemAllowedBaseLiquid.deleteMany({
+          where: {
+            base_liquid_id: id,
+            menuItem: { category: "latte" },
+          },
+        });
+      }
+      const affectedAvailabilityIds = [...new Set([
+        ...previousAvailabilityIds,
+        ...(requestedMenuItemIds ?? []),
+      ])];
       await tx.menuItem.updateMany({
         where: {
           OR: [
+            ...(affectedAvailabilityIds.length > 0
+              ? [{ id: { in: affectedAvailabilityIds } }]
+              : []),
             { default_base_liquid_id: id },
             { allowedBaseLiquids: { some: { base_liquid_id: id } } },
             ...(existing.is_default || validData.is_default ? [{ category: "latte" }] : []),
