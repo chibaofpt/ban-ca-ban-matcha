@@ -57,8 +57,10 @@ export default function MenuImageCropField({
   };
 
   const finishCrop = (blob: Blob) => {
-    const croppedFile = new File([blob], `crop-${Date.now()}.webp`, {
-      type: "image/webp",
+    const contentType = blob.type === "image/webp" ? "image/webp" : "image/png";
+    const extension = contentType === "image/webp" ? "webp" : "png";
+    const croppedFile = new File([blob], `crop-${Date.now()}.${extension}`, {
+      type: contentType,
     });
     setPreviewUrl(URL.createObjectURL(blob));
     setCropSourceUrl(null);

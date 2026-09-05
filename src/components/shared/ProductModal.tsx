@@ -540,16 +540,16 @@ const BaseModal: React.FC<ProductModalProps> = ({
             </div>
           </div>
 
-          {/* 6. TOPPING (Kem + Đá dừa) */}
-          {normalGroups.length > 0 && (
-            <div className="mt-5">
-              <SectionLabel text="Topping" />
-              <div className="grid grid-cols-3 gap-2">
-                {normalGroups.map((group) => {
-                  const selectedCount = selectedOptionIds.filter(id => group.options.some(o => o.id === id)).length;
-                  const isAtMax = selectedCount >= group.max_select;
+                    {/* 6. NORMAL ADDONS (Grouped by name) */}
+          {normalGroups.map((group) => {
+            const selectedCount = selectedOptionIds.filter(id => group.options.some(o => o.id === id)).length;
+            const isAtMax = selectedCount >= group.max_select;
 
-                  return group.options.map((opt) => {
+            return (
+              <div key={group.id} className="mt-5">
+                <SectionLabel text={group.name} />
+                <div className="grid grid-cols-2 gap-2">
+                  {group.options.map((opt) => {
                     const isActive = selectedOptionIds.includes(opt.id);
                     const isDisabled = !isActive && isAtMax && group.max_select > 1;
                     return (
@@ -557,7 +557,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
                         <OptionCard
                           label={opt.label}
                           imageUrl={resolveAddonOptionImage(opt.image_url, group.image_url)}
-                          imageAlt={`Ảnh ${opt.label}`}
+                          imageAlt={`?nh ${opt.label}`}
                           sub={opt.price_vnd > 0 ? `+${formatKa(opt.price_vnd, "ceil")}` : undefined}
                           isActive={isActive}
                           onClick={() => {
@@ -569,46 +569,48 @@ const BaseModal: React.FC<ProductModalProps> = ({
                         />
                       </div>
                     );
-                  });
-                })}
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })}
 
-          {/* 7. EXTRA MATCHA */}
-          {dynamicGramGroups.map((group) => (
-            <div key={group.id} className="mt-5">
-              <SectionLabel text={group.name} />
-              <div className="grid grid-cols-4 gap-2">
-                {group.options.map((opt) => {
-                  const price = ceilTo1000(opt.gram_value != null ? opt.gram_value * activePowderPricePerGram : opt.price_vnd);
-                  const selectedCount = selectedOptionIds.filter(id => group.options.some(o => o.id === id)).length;
-                  const isAtMax = selectedCount >= group.max_select;
-                  const isActive = selectedOptionIds.includes(opt.id);
-                  const isDisabled = !isActive && isAtMax && group.max_select > 1;
+          {/* 7. DYNAMIC GRAM ADDONS (Extra Matcha) */}
+          {dynamicGramGroups.map((group) => {
+            const selectedCount = selectedOptionIds.filter(id => group.options.some(o => o.id === id)).length;
+            const isAtMax = selectedCount >= group.max_select;
 
-                  return (
-                    <div key={opt.id} className={isDisabled ? "opacity-50 grayscale pointer-events-none" : ""}>
-                      <OptionCard
-                        label={opt.label}
-                        imageUrl={resolveAddonOptionImage(opt.image_url, group.image_url)}
-                        imageAlt={`Ảnh ${opt.label}`}
-                        sub={price > 0 ? `+${formatKa(price, "ceil")}` : "0 ká"}
-                        isActive={isActive}
-                        onClick={() => {
-                          if (!isDisabled) {
-                            handleOptionToggle(group.id, opt.id);
-                          }
-                        }}
-                      />
-                    </div>
-                  );
-                })}
+            return (
+              <div key={group.id} className="mt-5">
+                <SectionLabel text={group.name} />
+                <div className="grid grid-cols-2 gap-2">
+                  {group.options.map((opt) => {
+                    const price = ceilTo1000(opt.gram_value != null ? opt.gram_value * activePowderPricePerGram : opt.price_vnd);
+                    const isActive = selectedOptionIds.includes(opt.id);
+                    const isDisabled = !isActive && isAtMax && group.max_select > 1;
+
+                    return (
+                      <div key={opt.id} className={isDisabled ? "opacity-50 grayscale pointer-events-none" : ""}>
+                        <OptionCard
+                          label={opt.label}
+                          imageUrl={resolveAddonOptionImage(opt.image_url, group.image_url)}
+                          imageAlt={`?nh ${opt.label}`}
+                          sub={price > 0 ? `+${formatKa(price, "ceil")}` : "0 k�"}
+                          isActive={isActive}
+                          onClick={() => {
+                            if (!isDisabled) {
+                              handleOptionToggle(group.id, opt.id);
+                            }
+                          }}
+                          layout="stacked"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
-
-
+            );
+          })}
 
           {/* 8. GHI CHÚ */}
           <div className="mt-7">

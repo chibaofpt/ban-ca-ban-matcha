@@ -10,7 +10,7 @@ import { X, ZoomIn, ZoomOut, Check } from "lucide-react";
 interface ImageCropModalProps {
   /** URL.createObjectURL hoặc data URL của ảnh gốc */
   imageSrc: string;
-  /** Callback nhận Blob WebP sau khi crop xong */
+  /** Callback nhận Blob WebP, hoặc PNG fallback khi trình duyệt không encode WebP. */
   onCropDone: (blob: Blob) => void;
   /** Đóng modal mà không thay đổi gì */
   onClose: () => void;
@@ -21,7 +21,7 @@ interface ImageCropModalProps {
 }
 
 /**
- * Render the unbounded percentage crop onto a transparent square WebP canvas.
+ * Render the unbounded percentage crop onto a transparent square image canvas.
  * Drawing the whole image preserves padding when the crop extends beyond its edges.
  */
 async function cropImageToWebP(
@@ -52,14 +52,30 @@ async function cropImageToWebP(
         100 / area.height * outputSize
       );
 
-      canvas.toBlob(
-        (blob) => {
-          if (blob?.type === "image/webp") resolve(blob);
-          else reject(new Error("Không thể tạo blob từ canvas."));
-        },
-        "image/webp",
-        quality
-      );
+      const encodePng = () => {
+        try {
+          canvas.toBlob(
+            (blob) => blob?.type === "image/png"
+              ? resolve(blob)
+              : reject(new Error("Không thể tạo blob từ canvas.")),
+            "image/png",
+          );
+        } catch {
+          reject(new Error("Không thể tạo blob từ canvas."));
+        }
+      };
+      try {
+        canvas.toBlob(
+          (blob) => {
+            if (blob?.type === "image/webp" || blob?.type === "image/png") resolve(blob);
+            else encodePng();
+          },
+          "image/webp",
+          quality,
+        );
+      } catch {
+        encodePng();
+      }
     };
     image.onerror = () => reject(new Error("Không thể load ảnh để crop."));
     image.src = imageSrc;

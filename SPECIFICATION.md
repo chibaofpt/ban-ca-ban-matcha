@@ -67,6 +67,7 @@ Không thực hiện repo-wide layer refactor khi sửa feature. Direct API call
 ## UI system
 
 - Upload ảnh catalog dùng chung khung bố cục 1:1 cho ảnh có nền và ảnh trong suốt. Mặc định vừa toàn bộ ảnh; admin kéo, thu/phóng nhỏ hơn khung, chọn Vừa khung/Lấp đầy/Đặt lại. Phần ngoài khung bị cắt, vùng trống trong khung giữ alpha; không kéo giãn vật thể hay tự đổ nền. Xem trước chính Blob WebP trên nền thẻ, có Chỉnh lại và Dùng ảnh này trước khi gắn vào form; kích thước/quality theo preset catalog hiện có. Nền caro chỉ dùng trong editor, không ghi vào file.
+- Bốn tab con của Menu admin luôn chia đều một hàng và chuyển bằng nhấn; không dùng swipe hoặc thanh cuộn ngang.
 
 ### Canonical stack
 

@@ -47,7 +47,7 @@ function OptionCard({ label, meta, sub, isActive, onClick, imageUrl, imageAlt, s
                 sizes="32px"
                 quality={60}
                 loading="lazy"
-                className="h-8 w-8 shrink-0 rounded-lg object-cover"
+                className="h-8 w-8 shrink-0 rounded-sm object-cover"
               />
             )}
             {sub && (
@@ -89,7 +89,7 @@ function OptionCard({ label, meta, sub, isActive, onClick, imageUrl, imageAlt, s
           sizes="32px"
           quality={60}
           loading="lazy"
-          className="h-8 w-8 shrink-0 rounded-lg object-cover"
+          className="h-8 w-8 shrink-0 rounded-sm object-cover"
         />
       )}
       <span className={cn("min-w-0", imageUrl ? "flex flex-col" : "contents")}>
