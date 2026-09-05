@@ -548,7 +548,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
                 {normalGroups.map((group) => {
                   const selectedCount = selectedOptionIds.filter(id => group.options.some(o => o.id === id)).length;
                   const isAtMax = selectedCount >= group.max_select;
-                  
+
                   return group.options.map((opt) => {
                     const isActive = selectedOptionIds.includes(opt.id);
                     const isDisabled = !isActive && isAtMax && group.max_select > 1;

@@ -129,7 +129,7 @@ Không dùng NextAuth/Supabase Auth, raw SQL nếu chưa được yêu cầu, Re
 
 - Daily dev migration: `npm run migrate:dev`; không dùng `prisma db push`.
 - Commit `prisma/migrations`; production dùng `prisma migrate deploy` qua build command.
-- Không mở browser hay chạy `npm run dev`/`npm run build` sau thay đổi trong agent workflow.
+- Không mở browser hay chạy `npm run dev`/`npm run build` sau thay đổi trong agent workflow, ngoại trừ local staging build không migrate được quy định riêng trong `push-to-dev`.
 - Trong implementation và review/repair chỉ chạy targeted tests. Trước khi accept executable change, chạy impacted tests rồi full suite một lần trên final code/test tree; mọi production/test edit sau đó làm gate hết hiệu lực.
 - Trước staging chạy lint, type-check và `npm run resources:check`; chỉ reuse full-suite evidence khi code/test tree không đổi.
 - Reviewer chỉ review. Push/release agent không tự sửa lỗi; trả finding về implementer.

@@ -32,7 +32,7 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("@/lib/auth", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/auth")>(),
-  
+
 }));
 
 vi.mock("@/lib/rateLimit", () => ({

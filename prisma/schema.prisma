@@ -875,4 +875,3 @@ model PushSubscription {
   @@index([user_id])
   @@map("push_subscriptions")
 }
-
