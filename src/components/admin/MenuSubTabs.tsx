@@ -24,7 +24,7 @@ export default function MenuSubTabs() {
 
   return (
     <div className="sticky top-14 z-30 bg-background border-b border-border">
-      <nav aria-label="Danh mục quản lý menu" className="mx-auto grid max-w-7xl grid-cols-4 gap-2 px-4 py-2 md:px-8">
+      <nav aria-label="Danh mục quản lý menu" className="mx-auto grid max-w-7xl grid-cols-4 gap-2 px-2 py-2 md:px-8">
         {SUB_TABS.map(({ href, label, exact }) => {
           const isActive = exact
             ? pathname === href

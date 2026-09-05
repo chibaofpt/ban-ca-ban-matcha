@@ -40,7 +40,7 @@ void formatOrderType;
 
 export default function AdminOrdersPage() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<OrderTabKey>("counter");
+  const [activeTab, setActiveTab] = useState<OrderTabKey>("all");
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [confirmModal, setConfirmModal] = useState<{
@@ -93,6 +93,7 @@ export default function AdminOrdersPage() {
       endDate: activeTab !== "pending" ? endIso : undefined,
       order_type: orderTypeParam || undefined,
       status: statusParam || undefined,
+      exclude_cancelled: activeTab === "all" || undefined,
       page,
       limit: 10,
     });
@@ -287,7 +288,7 @@ export default function AdminOrdersPage() {
   };
 
   return (
-    <div className="px-4 md:px-0 py-4 space-y-4 pb-24 md:pb-8 max-w-7xl mx-auto">
+    <div className="px-2 md:px-0 py-4 space-y-4 pb-24 md:pb-8 max-w-7xl mx-auto">
       <div className="flex items-baseline justify-between">
         <h1 className="font-serif text-2xl font-semibold text-foreground">Quản lý Đơn hàng</h1>
         <div className="flex gap-3 items-center">
@@ -552,7 +553,7 @@ export default function AdminOrdersPage() {
                             </span>
                           )}
                           <span className="text-[11px] text-muted-foreground ml-auto">
-                            Staff: {order.handler?.name ?? "Chưa nhận"}
+                            Người nhận: {order.handler?.role === "ADMIN" ? "Admin" : order.handler?.name ?? "Chưa nhận"}
                           </span>
                         </div>
                       );

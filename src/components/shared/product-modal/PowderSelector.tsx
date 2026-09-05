@@ -199,7 +199,7 @@ export function PowderSelector({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start gap-2 pr-9 leading-tight">
                     <span className="min-w-0 flex-1 text-sm font-bold text-primary">{powder.name}</span>
-                    <span className={cn("shrink-0 text-xs font-bold", difference > 0 ? "text-[#c74646]" : "text-primary/70")}>
+                    <span className={cn("shrink-0 text-sm font-bold", difference > 0 ? "text-[#c74646]" : "text-primary/70")}>
                       {priceLabel}
                     </span>
                   </div>

@@ -11,7 +11,7 @@ const ORDER_URLS = {
 } as const;
 
 export interface AdminOrderRes extends OrderRes {
-  handler: { name: string } | null;
+  handler: { name: string; role: "ADMIN" | "STAFF" } | null;
 }
 
 export interface AdminOrderFilters {
@@ -22,6 +22,7 @@ export interface AdminOrderFilters {
   staffName?: string;
   order_type?: string;
   status?: string;
+  exclude_cancelled?: boolean;
   page?: number;
   limit?: number;
 }
@@ -45,6 +46,7 @@ export async function fetchAdminOrders(filters: AdminOrderFilters = {}): Promise
   if (filters.staffName) params.append('staffName', filters.staffName);
   if (filters.order_type) params.append('order_type', filters.order_type);
   if (filters.status) params.append('status', filters.status);
+  if (filters.exclude_cancelled) params.append('exclude_cancelled', 'true');
   if (filters.page) params.append('page', filters.page.toString());
   if (filters.limit) params.append('limit', filters.limit.toString());
 

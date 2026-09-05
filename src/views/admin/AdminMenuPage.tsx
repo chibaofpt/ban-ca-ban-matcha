@@ -28,7 +28,7 @@ type ModalState =
 export default function AdminMenuPage() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<"all" | "latte" | "fusion" | "extras">("all");
+  const [categoryFilter, setCategoryFilter] = useState<"all" | "latte" | "fusion" | "unavailable">("all");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [modalState, setModalState] = useState<ModalState>({ open: false });
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
@@ -83,18 +83,25 @@ export default function AdminMenuPage() {
 
   const filteredItems = allItems
     .filter((item) => {
-      const matchesCategory =
-        categoryFilter === "all" || item.category === categoryFilter;
       const matchesSearch =
         searchQuery.trim() === "" ||
         item.name.toLowerCase().includes(searchQuery.trim().toLowerCase());
-      return matchesCategory && matchesSearch;
+
+      if (!matchesSearch) return false;
+
+      switch (categoryFilter) {
+        case "unavailable":
+          return !item.is_available;
+        case "latte":
+          return item.category === "latte" && item.is_available;
+        case "fusion":
+          return item.category === "fusion" && item.is_available;
+        case "all":
+        default:
+          return item.is_available;
+      }
     })
-    .sort((a, b) => {
-      // Đang bán (true) lên trước ngưng bán (false)
-      if (a.is_available === b.is_available) return 0;
-      return a.is_available ? -1 : 1;
-    });
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -238,20 +245,20 @@ export default function AdminMenuPage() {
             className="pl-8 pr-3 py-2 rounded-xl border border-border bg-background text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40"
           />
         </div>
-        <div className="flex rounded-xl border border-border overflow-hidden text-sm">
-          {(["all", "latte", "fusion"] as const).map((cat) => (
+        <div className="flex rounded-xl border border-border overflow-hidden text-base">
+          {(["all", "latte", "fusion", "unavailable"] as const).map((cat) => (
             <button
               key={cat}
               type="button"
               onClick={() => setCategoryFilter(cat)}
               className={cn(
-                "px-3 py-2 transition",
+                "px-4 py-2.5 transition font-semibold",
                 categoryFilter === cat
                   ? "bg-primary text-primary-foreground"
-                  : "hover:bg-secondary/40"
+                  : "hover:bg-secondary/40 text-muted-foreground"
               )}
             >
-              {cat === "all" ? "Tất cả" : cat.charAt(0).toUpperCase() + cat.slice(1)}
+              {cat === "all" ? "Tất cả" : cat === "unavailable" ? "Ngừng bán" : cat.charAt(0).toUpperCase() + cat.slice(1)}
             </button>
           ))}
         </div>

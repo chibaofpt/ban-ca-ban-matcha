@@ -286,6 +286,7 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `max_select` int — default 1. Maximum distinct options allowed.
 - `is_dynamic_gram` bool — default false. If true, options use `gram_value` and price is computed from powder.
 - `is_active` bool — default true. `false` = hidden from all items globally.
+- `sort_order` int — non-negative dense display rank; ties fall back to `id`.
 - `created_at` timestamp
 
 > Active groups attached to every item in `GET /api/menu` — no junction join.
@@ -293,6 +294,9 @@ Soft delete only — set `is_active = false`, never hard delete.
 > Every group is opt-in: an empty selection means "no addon". `max_select` specifies the maximum
 > number of options a user can select from this group.
 > A dynamic-gram group must have `max_select = 1`.
+> Public and admin reads use `(sort_order ASC, id ASC)`. Index `idx_addon_groups_sort_order_id`
+> supports this catalogue order. The migration backfills legacy groups by
+> `(created_at DESC, id ASC)` into dense zero-based ranks.
 
 ---
 
@@ -304,10 +308,12 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `price_vnd` int — 0 if no charge. Extra matcha: always 0 here — actual price computed from `gram_value × selected_powder.price_per_gram` at order time.
 - `gram_value` Decimal nullable — Extra matcha only: positive gram amount (1.0–4.0 in the current seed). Null for all fixed-price addon types.
 - `is_active` bool — default true. Referenced options are retired by setting false, never hard deleted.
-- `sort_order` int
+- `sort_order` int — non-negative dense rank within its group; ties fall back to `id`.
 
 > Extra Matcha active seed options: +1g, +2g, +3g, +4g. The legacy 0g option is inactive;
 > absence represents no extra matcha.
+> Index `idx_addon_options_group_sort_order_id` supports stable nested reads. The sort-order
+> migration normalizes every group's active and inactive options by legacy `(sort_order, id)`.
 > Server uses `gram_value` to compute: `unit_price_vnd = gram_value × selected_powder.price_per_gram`.
 > A dynamic-gram group must be `SELECTOR`; every active option must have positive `gram_value` and
 > `price_vnd = 0`. Dynamic and fixed-price active options cannot be mixed in one group.

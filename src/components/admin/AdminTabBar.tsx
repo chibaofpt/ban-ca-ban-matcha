@@ -64,7 +64,7 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
     <>
       {/* Top bar */}
       <header className="sticky top-0 z-40 bg-primary text-primary-foreground shadow-md">
-        <div className="flex items-center justify-between px-4 md:px-8 h-14 max-w-7xl mx-auto w-full">
+        <div className="flex items-center justify-between px-2 md:px-8 h-14 max-w-7xl mx-auto w-full">
           <div className="flex items-center gap-2">
             <span className="text-2xl">🐟</span>
             <span className="font-serif text-lg font-semibold">Bánh Cá Admin</span>

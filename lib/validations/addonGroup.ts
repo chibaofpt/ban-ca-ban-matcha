@@ -9,7 +9,7 @@ export const addonOptionInputSchema = z.object({
   label: z.string().min(1, "Vui lòng nhập tên option").max(100),
   price_vnd: z.coerce.number().int().min(0),
   is_active: z.boolean().default(true),
-  sort_order: z.coerce.number().int().default(0),
+  sort_order: z.coerce.number().int().min(0).default(0),
   gram_value: z.coerce.number().positive().nullable().optional(),
 });
 
@@ -48,6 +48,49 @@ export const createAddonGroupSchema = z.object({
 });
 
 export const updateAddonGroupSchema = createAddonGroupSchema;
+
+export const updateAddonGroupDetailsSchema = z.object({
+  name: z.string().min(1, "Vui lòng nhập tên nhóm").max(100),
+  description: z.string().max(500).optional().nullable(),
+  image_filename: imageFilenameSchema,
+  max_select: z.coerce.number().int().min(1),
+}).strict();
+
+export const updateAddonOptionDetailsSchema = z.object({
+  label: z.string().min(1, "Vui lòng nhập tên option").max(100),
+  image_filename: imageFilenameSchema,
+  price_vnd: z.coerce.number().int().min(0),
+  gram_value: z.coerce.number().positive().nullable().optional(),
+}).strict();
+
+export const createAddonOptionSchema = updateAddonOptionDetailsSchema.extend({
+  is_active: z.boolean().default(true),
+});
+
+export const toggleAddonOptionSchema = z.object({
+  is_active: z.boolean(),
+}).strict();
+
+export const reorderAddonGroupsSchema = z.object({
+  groups: z.array(z.object({
+    id: z.string().uuid(),
+    option_ids: z.array(z.string().uuid()),
+  }).strict()),
+}).strict().superRefine((data, ctx) => {
+  const groupIds = data.groups.map((group) => group.id);
+  if (new Set(groupIds).size !== groupIds.length) {
+    ctx.addIssue({ code: "custom", path: ["groups"], message: "Group ids must be unique" });
+  }
+
+  const optionIds = data.groups.flatMap((group) => group.option_ids);
+  if (new Set(optionIds).size !== optionIds.length) {
+    ctx.addIssue({ code: "custom", path: ["groups"], message: "Option ids must be unique" });
+  }
+});
+
 export type AddonOptionInput = z.infer<typeof addonOptionInputSchema>;
 export type CreateAddonGroupInput = z.infer<typeof createAddonGroupSchema>;
 export type UpdateAddonGroupInput = z.infer<typeof updateAddonGroupSchema>;
+export type UpdateAddonGroupDetailsInput = z.infer<typeof updateAddonGroupDetailsSchema>;
+export type CreateAddonOptionInput = z.infer<typeof createAddonOptionSchema>;
+export type UpdateAddonOptionDetailsInput = z.infer<typeof updateAddonOptionDetailsSchema>;

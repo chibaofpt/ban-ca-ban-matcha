@@ -28,6 +28,7 @@ export interface AddonGroup {
   id: string;
   name: string;
   image_url: string | null;
+  sort_order: number;
   max_select: number;
   is_dynamic_gram: boolean;
   options: AddonOption[];

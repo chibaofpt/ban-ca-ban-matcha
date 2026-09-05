@@ -71,4 +71,18 @@ describe("Addon contract opt-in", () => {
 
     expect(result.success).toBe(false);
   });
+
+  it("từ chối thứ tự option âm", () => {
+    const result = createAddonGroupSchema.safeParse({
+      name: "Kem",
+      max_select: 1,
+      is_dynamic_gram: false,
+      is_active: true,
+      options: [
+        { label: "Kem sữa", price_vnd: 10_000, sort_order: -1, gram_value: null, is_active: true },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
 });

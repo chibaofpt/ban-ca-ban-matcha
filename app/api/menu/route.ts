@@ -48,10 +48,11 @@ async function fetchMenuData(): Promise<MenuData> {
         }),
         prisma.addonGroup.findMany({
           where: { is_active: true },
+          orderBy: [{ sort_order: "asc" }, { id: "asc" }],
           include: {
             options: {
               where: { is_active: true },
-              orderBy: { sort_order: "asc" },
+              orderBy: [{ sort_order: "asc" }, { id: "asc" }],
             },
           },
         }),
@@ -79,6 +80,7 @@ async function fetchMenuData(): Promise<MenuData> {
         id: g.id,
         name: g.name,
         image_url: g.image_url ?? null,
+        sort_order: g.sort_order,
         max_select: g.max_select,
         is_dynamic_gram: g.is_dynamic_gram,
         options: g.options.map((o): AddonOption => ({

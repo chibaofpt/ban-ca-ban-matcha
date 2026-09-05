@@ -65,7 +65,7 @@ Không thực hiện repo-wide layer refactor khi sửa feature. Direct API call
 - GET handlers are read-only. Scheduled lifecycle work runs through authenticated cron routes;
   customer voucher reconciliation is an explicit POST before a wallet read.
 - External SDK luôn nằm sau wrapper/adapter để UI và business logic không phụ thuộc trực tiếp nhà cung cấp.
-- Ảnh catalog đi qua Storage adapter: menu/powder chuẩn hóa WebP tối đa 800px quality 75; milk type, addon group và từng addon option tối đa 320px quality 70, cùng cache một năm. Option ưu tiên ảnh riêng và fallback ảnh group cho dữ liệu cũ. Ảnh Supabase hiển thị qua Next/Vercel Image Optimization với `sizes` theo container; thumbnail sữa/add-on/powder dùng quality 60 và ảnh powder lớn chỉ tải khi mở chi tiết. Menu card giữ khung skeleton ổn định và fade ảnh vào sau khi tải xong.
+- Ảnh catalog đi qua Storage adapter: menu/powder chuẩn hóa WebP tối đa 800px quality 75; milk type, addon group và từng addon option tối đa 320px quality 70, cùng cache một năm. Addon option chỉ hiển thị ảnh riêng; khi không có ảnh riêng thì để trống, không fallback ảnh group. Ảnh Supabase hiển thị qua Next/Vercel Image Optimization với `sizes` theo container; thumbnail sữa/add-on/powder dùng quality 60 và ảnh powder lớn chỉ tải khi mở chi tiết. Menu card giữ khung skeleton ổn định và fade ảnh vào sau khi tải xong.
 
 ## UI system
 
@@ -125,6 +125,20 @@ Auth từ voucher sheet mở ngay trên sheet còn mở, không đợi sheet đ�
 giữ surface nền; đăng nhập thành công tiếp tục intent một lần và giữ bước xác nhận đổi bằng cá.
 
 `ProductModal` dùng dialog desktop và Vaul full-height trên mobile. Browser Back chỉ đóng overlay trên cùng; CTA luôn ghép action với tổng giá bằng ` - `. Add-on giá cố định dùng lưới 3 cột; add-on theo gram (Extra Matcha) dùng lưới 4 cột. Header Base Liquid hiển thị Coldwhisk dạng switch có semantics và vẫn nêu nền mặc định khi selector bị ẩn.
+
+Admin Add-ons hiển thị toàn bộ group cùng toàn bộ option, không dùng expand/collapse. Group là card
+bao ngoài với ảnh 64px; option là hàng một cột có ảnh riêng 44px và không fallback ảnh group trong
+admin. Nút edit và toggle nằm ở vùng action đầu card/hàng; không hiển thị action delete. Tạo group
+và tạo option tiếp tục dùng responsive bottom sheet/dialog, còn chỉnh sửa group/option đã tồn tại
+dùng form inline và tại một thời điểm chỉ có một editor. Khi chuyển editor có dữ liệu bẩn phải xác
+nhận bỏ thay đổi bằng `ConfirmModal`. Group editor cho sửa ảnh, SEO filename, title, description và
+`max_select`; kiểu giá hiển thị bằng segmented buttons nhưng bị khóa sau khi tạo. Group theo gram
+luôn giữ `max_select = 1`.
+
+Group và option có nút Lên/Xuống với touch target tối thiểu 40×40px. Trong filter trạng thái, thao
+tác group đổi chỗ với peer đang nhìn thấy nhưng gửi toàn bộ snapshot active + inactive; khi đang tìm
+kiếm thì khóa reorder group. Option luôn reorder trong toàn bộ group. Thứ tự group duy nhất này được
+`ProductModal` giữ nguyên; từng group vẫn chọn layout 3 cột cho giá cố định hoặc 4 cột cho gram.
 
 Overlay layer chỉ có `base`, `nested`, `critical`. Không tạo z-index tùy ý cho overlay mới.
 

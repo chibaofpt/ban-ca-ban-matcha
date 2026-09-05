@@ -1,8 +1,8 @@
 import { cn } from "@/src/utils/cn";
-import { Receipt, ShoppingBag, Clock, XCircle } from "lucide-react";
+import { List, Receipt, ShoppingBag, Clock, XCircle } from "lucide-react";
 import { motion } from "framer-motion";
 
-export type OrderTabKey = "counter" | "customer" | "pending" | "cancelled";
+export type OrderTabKey = "all" | "counter" | "customer" | "pending" | "cancelled";
 
 interface OrderTabsProps {
   activeTab: OrderTabKey;
@@ -13,6 +13,7 @@ interface OrderTabsProps {
 
 /** 
  * Reusable tab bar for Staff and Admin order pages.
+ * - All: all non-cancelled orders (Admin only)
  * - Tại quầy: COUNTER orders
  * - Khách đặt: PICKUP/DELIVERY orders (ADMIN_CONFIRMED and beyond)
  * - Chờ CK: Admin sees all PENDING; Staff sees only their own counter transfers
@@ -20,6 +21,9 @@ interface OrderTabsProps {
  */
 export function OrderTabs({ activeTab, onTabChange, pendingCount, isAdmin }: OrderTabsProps) {
   const tabs = [
+    ...(isAdmin ? [
+      { id: "all" as OrderTabKey, label: "All", icon: List }
+    ] : []),
     { id: "counter" as OrderTabKey, label: "Tại quầy", icon: Receipt },
     { id: "customer" as OrderTabKey, label: "Khách đặt", icon: ShoppingBag },
     { id: "pending" as OrderTabKey, label: "Chờ CK", icon: Clock },
@@ -39,7 +43,7 @@ export function OrderTabs({ activeTab, onTabChange, pendingCount, isAdmin }: Ord
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
             className={cn(
-              "relative flex flex-1 items-center justify-center py-2 px-1 sm:px-3 rounded-md transition-colors",
+              "relative flex min-h-10 flex-1 items-center justify-center py-2 px-1 sm:px-3 rounded-md transition-colors",
               isActive
                 ? "text-primary-foreground"
                 : "text-muted-foreground hover:text-foreground hover:bg-secondary/50"

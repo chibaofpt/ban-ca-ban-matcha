@@ -363,8 +363,10 @@ model AddonGroup {
   max_quantity Int?
   created_at   DateTime      @default(now()) @db.Timestamptz(6)
   is_active    Boolean       @default(true)
+  sort_order   Int           @default(0)
   options      AddonOption[]
 
+  @@index([sort_order, id], map: "idx_addon_groups_sort_order_id")
   @@map("addon_groups")
 }
 
@@ -387,6 +389,7 @@ model AddonOption {
   addonVoucherLinks OrderItemAddonVoucher[]
   bundleRewards     VoucherBundleAddonReward[]
 
+  @@index([addon_group_id, sort_order, id], map: "idx_addon_options_group_sort_order_id")
   @@map("addon_options")
 }
 

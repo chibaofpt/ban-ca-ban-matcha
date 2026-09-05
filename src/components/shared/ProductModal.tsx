@@ -58,12 +58,11 @@ const subscribeToDesktopViewport = (onChange: () => void) => {
 const getDesktopSnapshot = () => window.matchMedia(DESKTOP_MEDIA_QUERY).matches;
 const getDesktopServerSnapshot = () => false;
 
-/** Resolve an addon option image while preserving the legacy group-image fallback. */
+/** Resolve an addon option image (removed legacy group-image fallback per user request). */
 export function resolveAddonOptionImage(
   optionImageUrl: string | null,
-  groupImageUrl: string | null,
 ): string | null {
-  return optionImageUrl ?? groupImageUrl;
+  return optionImageUrl;
 }
 
 // Extracted OptionCard, SizeSelector, MilkSelector, PowderSelector are imported
@@ -161,8 +160,11 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const activePowder = useMemo(() => powders.find((p) => p.id === activePowderId), [powders, activePowderId]);
   const activePowderPricePerGram = activePowder?.price_per_gram ?? 0;
 
-  const dynamicGramGroups = useMemo(() => addonGroups.filter((group) => group.is_dynamic_gram), [addonGroups]);
-  const normalGroups = useMemo(() => addonGroups.filter((group) => !group.is_dynamic_gram), [addonGroups]);
+  const orderedAddonGroups = useMemo(
+    () => [...addonGroups].sort((left, right) =>
+      left.sort_order - right.sort_order || left.id.localeCompare(right.id)),
+    [addonGroups],
+  );
   const baseLiquidOptions = useMemo(
     () => getBaseLiquidOptionsForItem(item, milkTypes),
     [item, milkTypes],
@@ -291,7 +293,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
     selectedSize, finalUnitPrice, quantity, sweetness, iceOption, coldwhisk, note,
     selectedOptionIds, isLatte, selectedPowderId, selectedMilkId, effectiveFreeVoucherId,
     effectiveFreeCoveredPrice, effectiveProductVoucherType, onConfirm, editingItem, updateItem, addItem, handleClose,
-    addonGroups, disableVoucherApplication,
+    disableVoucherApplication,
   ]);
 
   const sweetnessIdx = useMemo(() => SWEETNESS_OPTIONS.findIndex((o) => o.value === sweetness), [sweetness]);
@@ -350,9 +352,9 @@ const BaseModal: React.FC<ProductModalProps> = ({
         </button>
 
         {/* overflow-x-clip overscroll-x-none prevents diagonal wiggle */}
-        <div className="flex flex-col flex-1 min-h-0 h-full overflow-y-auto overflow-x-clip overscroll-contain overscroll-x-none px-5 md:px-8 pt-7 pb-44 md:pb-40 md:pt-0">
+        <div className="flex flex-col flex-1 min-h-0 h-full overflow-y-auto overflow-x-clip overscroll-contain overscroll-x-none px-4 md:px-8 pt-7 pb-44 md:pb-40 md:pt-0">
           {item.image_url ? (
-            <div className="md:hidden -mx-5 -mt-7 shrink-0 bg-[#fdfcf7]">
+            <div className="md:hidden -mx-4 -mt-7 shrink-0 bg-[#fdfcf7]">
               <div className="relative h-[40dvh] w-full overflow-hidden bg-[#fdfcf7]">
                 <Image
                   src={item.image_url}
@@ -378,7 +380,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
             </div>
           ) : (
             /* No image — back button floats top-left as standalone */
-            <div className="md:hidden -mx-5 -mt-7 shrink-0 relative h-16">
+            <div className="md:hidden -mx-4 -mt-7 shrink-0 relative h-16">
               <button
                 type="button"
                 onClick={handleClose}
@@ -540,62 +542,28 @@ const BaseModal: React.FC<ProductModalProps> = ({
             </div>
           </div>
 
-                    {/* 6. NORMAL ADDONS (Grouped by name) */}
-          {normalGroups.map((group) => {
+          {/* 6. ADD-ON GROUPS IN ADMIN-DEFINED ORDER */}
+          {orderedAddonGroups.map((group) => {
             const selectedCount = selectedOptionIds.filter(id => group.options.some(o => o.id === id)).length;
             const isAtMax = selectedCount >= group.max_select;
 
             return (
               <div key={group.id} className="mt-5">
                 <SectionLabel text={group.name} />
-                <div className="grid grid-cols-3 gap-2">
+                <div className={group.is_dynamic_gram ? "grid grid-cols-4 gap-2" : "grid grid-cols-3 gap-2"}>
                   {group.options.map((opt) => {
+                    const price = group.is_dynamic_gram
+                      ? ceilTo1000(opt.gram_value != null ? opt.gram_value * activePowderPricePerGram : opt.price_vnd)
+                      : opt.price_vnd;
                     const isActive = selectedOptionIds.includes(opt.id);
                     const isDisabled = !isActive && isAtMax && group.max_select > 1;
                     return (
                       <div key={opt.id} className={isDisabled ? "opacity-50 grayscale pointer-events-none" : ""}>
                         <OptionCard
                           label={opt.label}
-                          imageUrl={resolveAddonOptionImage(opt.image_url, group.image_url)}
-                          imageAlt={`?nh ${opt.label}`}
-                          sub={opt.price_vnd > 0 ? `+${formatKa(opt.price_vnd, "ceil")}` : undefined}
-                          isActive={isActive}
-                          onClick={() => {
-                            if (!isDisabled) {
-                              handleOptionToggle(group.id, opt.id);
-                            }
-                          }}
-                          layout="stacked"
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* 7. DYNAMIC GRAM ADDONS (Extra Matcha) */}
-          {dynamicGramGroups.map((group) => {
-            const selectedCount = selectedOptionIds.filter(id => group.options.some(o => o.id === id)).length;
-            const isAtMax = selectedCount >= group.max_select;
-
-            return (
-              <div key={group.id} className="mt-5">
-                <SectionLabel text={group.name} />
-                <div className="grid grid-cols-4 gap-2">
-                  {group.options.map((opt) => {
-                    const price = ceilTo1000(opt.gram_value != null ? opt.gram_value * activePowderPricePerGram : opt.price_vnd);
-                    const isActive = selectedOptionIds.includes(opt.id);
-                    const isDisabled = !isActive && isAtMax && group.max_select > 1;
-
-                    return (
-                      <div key={opt.id} className={isDisabled ? "opacity-50 grayscale pointer-events-none" : ""}>
-                        <OptionCard
-                          label={opt.label}
-                          imageUrl={resolveAddonOptionImage(opt.image_url, group.image_url)}
-                          imageAlt={`?nh ${opt.label}`}
-                          sub={price > 0 ? `+${formatKa(price, "ceil")}` : "0 k�"}
+                          imageUrl={resolveAddonOptionImage(opt.image_url)}
+                          imageAlt={`Ảnh ${opt.label}`}
+                          sub={price > 0 ? `+${formatKa(price, "ceil")}` : group.is_dynamic_gram ? "0 k" : undefined}
                           isActive={isActive}
                           onClick={() => {
                             if (!isDisabled) {

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { updateAddonGroupSchema } from "@/lib/validations/addonGroup";
+import {
+  updateAddonGroupDetailsSchema,
+  updateAddonGroupSchema,
+} from "@/lib/validations/addonGroup";
 import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
 import { parseCatalogRequest } from "@/lib/catalogRequest";
 import {
@@ -9,6 +12,8 @@ import {
   prepareCatalogImage,
 } from "@/lib/catalogImage";
 import { removeMenuImages } from "@/lib/storage";
+import { ADMIN_ADDON_OPTION_ORDER_BY, mapAdminAddonGroup } from "@/lib/adminAddonGroup";
+import { runSerializableTransaction } from "@/lib/serializableTransaction";
 
 export const dynamic = "force-dynamic";
 
@@ -42,36 +47,94 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       if (typeof raw.is_active !== "boolean") {
         return NextResponse.json({ error: "is_active must be a boolean", code: "VALIDATION_ERROR" }, { status: 400 });
       }
-
-      const updated = await prisma.addonGroup.update({
-        where: { id },
-        data: { is_active: raw.is_active },
-        include: { options: { orderBy: { sort_order: 'asc' } } }
+      const nextIsActive = raw.is_active;
+      const toggleResult = await runSerializableTransaction(prisma, async (tx) => {
+        const current = await tx.addonGroup.findUnique({
+          where: { id },
+          include: { options: true },
+        });
+        if (!current) return { kind: "not_found" } as const;
+        if (nextIsActive && !current.options.some((option) => option.is_active)) {
+          return { kind: "business_rule" } as const;
+        }
+        await tx.addonGroup.update({
+          where: { id },
+          data: { is_active: nextIsActive },
+        });
+        const group = await tx.addonGroup.findUniqueOrThrow({
+          where: { id },
+          include: { options: { orderBy: ADMIN_ADDON_OPTION_ORDER_BY } },
+        });
+        return { kind: "updated", group } as const;
       });
+      if (toggleResult.kind === "not_found") {
+        return NextResponse.json(
+          { error: "Nhóm addon không tồn tại", code: "NOT_FOUND" },
+          { status: 404 },
+        );
+      }
+      if (toggleResult.kind === "business_rule") {
+        return NextResponse.json(
+          {
+            error: "Nhóm đang hiển thị phải có ít nhất một option đang bật",
+            code: "BUSINESS_RULE_VIOLATION",
+            details: { reason: "ACTIVE_GROUP_REQUIRES_ACTIVE_OPTION" },
+          },
+          { status: 422 },
+        );
+      }
 
-      const mappedUpdated = {
-        id: updated.id,
-        name: updated.name,
-        description: updated.description,
-        image_url: updated.image_url,
-        max_select: updated.max_select,
-        is_dynamic_gram: updated.is_dynamic_gram,
-        is_active: updated.is_active,
-        created_at: updated.created_at,
-        options: updated.options.map(o => ({
-          id: o.id,
-          addon_group_id: o.addon_group_id,
-          label: o.label,
-          image_url: o.image_url,
-          price_vnd: o.price_vnd,
-          is_active: o.is_active,
-          sort_order: o.sort_order,
-          gram_value: o.gram_value ? Number(o.gram_value) : null
-        }))
-      };
+      const mappedUpdated = mapAdminAddonGroup(toggleResult.group);
 
       await invalidateMenuCaches();
       return NextResponse.json({ data: mappedUpdated });
+    }
+
+    if (!("options" in raw)) {
+      const validation = updateAddonGroupDetailsSchema.safeParse(raw);
+      if (!validation.success) {
+        return NextResponse.json(
+          { error: validation.error.issues[0].message, code: "VALIDATION_ERROR" },
+          { status: 400 },
+        );
+      }
+      if (existing.is_dynamic_gram && validation.data.max_select !== 1) {
+        return NextResponse.json(
+          {
+            error: "Nhóm giá theo gram bột chỉ cho phép chọn 1 option",
+            code: "BUSINESS_RULE_VIOLATION",
+            details: { reason: "DYNAMIC_GRAM_MAX_SELECT_LOCKED" },
+          },
+          { status: 422 },
+        );
+      }
+
+      const preparedImage = await prepareCatalogImage({
+        kind: "addons",
+        entityName: validation.data.name,
+        requestedName: validation.data.image_filename,
+        imageFile: parsedRequest.imageFile,
+        currentImageUrl: existing.image_url,
+      });
+      if (preparedImage.newPath) newImagePaths.push(preparedImage.newPath);
+      if (preparedImage.oldPath) oldImagePaths.push(preparedImage.oldPath);
+
+      const updated = await prisma.addonGroup.update({
+        where: { id },
+        data: {
+          name: validation.data.name,
+          description: validation.data.description,
+          max_select: validation.data.max_select,
+          ...(preparedImage.imageUrl !== undefined && { image_url: preparedImage.imageUrl }),
+        },
+        include: { options: { orderBy: ADMIN_ADDON_OPTION_ORDER_BY } },
+      });
+      databaseCommitted = true;
+      if (oldImagePaths.length > 0) {
+        await removeMenuImages(oldImagePaths).catch(() => undefined);
+      }
+      await invalidateMenuCaches();
+      return NextResponse.json({ data: mapAdminAddonGroup(updated) });
     }
 
     // Full update
@@ -84,6 +147,17 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     const validData = validation.data;
+
+    if (validData.is_dynamic_gram !== existing.is_dynamic_gram) {
+      return NextResponse.json(
+        {
+          error: "Không thể thay đổi kiểu tính giá sau khi tạo nhóm addon",
+          code: "BUSINESS_RULE_VIOLATION",
+          details: { reason: "ADDON_PRICING_TYPE_IMMUTABLE" },
+        },
+        { status: 422 },
+      );
+    }
 
     // Server lock: is_dynamic_gram groups must keep max_select = 1
     if (validData.is_dynamic_gram && validData.max_select !== 1) {
@@ -204,32 +278,13 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       return tx.addonGroup.findUniqueOrThrow({
         where: { id },
         include: {
-          options: { orderBy: { sort_order: 'asc' } }
+          options: { orderBy: ADMIN_ADDON_OPTION_ORDER_BY }
         }
       });
     });
     databaseCommitted = true;
 
-    const mappedResult = {
-      id: result.id,
-      name: result.name,
-      description: result.description,
-      image_url: result.image_url,
-      max_select: result.max_select,
-      is_dynamic_gram: result.is_dynamic_gram,
-      is_active: result.is_active,
-      created_at: result.created_at,
-      options: result.options.map(o => ({
-        id: o.id,
-        addon_group_id: o.addon_group_id,
-        label: o.label,
-        image_url: o.image_url,
-        price_vnd: o.price_vnd,
-        is_active: o.is_active,
-        sort_order: o.sort_order,
-        gram_value: o.gram_value ? Number(o.gram_value) : null
-      }))
-    };
+    const mappedResult = mapAdminAddonGroup(result);
 
     if (oldImagePaths.length > 0) {
       await removeMenuImages(oldImagePaths).catch(() => undefined);
@@ -245,6 +300,12 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json(
         { error: imageMessage, code: "VALIDATION_ERROR" },
         { status: 400 },
+      );
+    }
+    if (error instanceof Error && "code" in error && error.code === "P2034") {
+      return NextResponse.json(
+        { error: "Dữ liệu addon vừa thay đổi. Vui lòng thử lại.", code: "CONFLICT" },
+        { status: 409 },
       );
     }
     console.error("[PUT /api/admin/addon-groups/[id]] Error:", error instanceof Error ? error.message : error);
@@ -278,6 +339,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       name: updated.name,
       description: updated.description,
       image_url: updated.image_url,
+      sort_order: updated.sort_order,
       max_select: updated.max_select,
       is_dynamic_gram: updated.is_dynamic_gram,
       is_active: updated.is_active,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useForm, useFieldArray, Controller, useWatch } from "react-hook-form";
-import { BadgeDollarSign, Plus, Scale, X } from "lucide-react";
+import { ArrowDown, ArrowUp, BadgeDollarSign, Plus, Scale, X } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import CatalogImageFields from "@/src/components/admin/CatalogImageFields";
 import type {
@@ -59,13 +59,24 @@ export default function AddonGroupForm({
     },
   });
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, move, remove } = useFieldArray({
     control,
     name: "options",
     keyName: "fieldKey",
   });
   const isDynamicGram = useWatch({ control, name: "is_dynamic_gram" });
   const watchedOptions = useWatch({ control, name: "options" });
+
+  const moveOption = (from: number, to: number) => {
+    const reordered = [...(watchedOptions ?? [])];
+    const [selected] = reordered.splice(from, 1);
+    if (!selected) return;
+    reordered.splice(to, 0, selected);
+    move(from, to);
+    reordered.forEach((_, index) => {
+      setValue(`options.${index}.sort_order`, String(index), { shouldDirty: true });
+    });
+  };
 
   const onFormSubmit = async (values: FormFields) => {
     if (values.is_active && !values.options.some((option) => option.is_active)) {
@@ -238,21 +249,30 @@ export default function AddonGroupForm({
             <div key={field.fieldKey} className="relative rounded-2xl border border-border bg-card p-4 shadow-sm">
               <input type="hidden" {...register(`options.${index}.image_key`)} />
               <input type="hidden" {...register(`options.${index}.image_url`)} />
+              <input type="hidden" {...register(`options.${index}.sort_order`)} />
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-foreground">Tùy chọn {index + 1}</p>
                   <p className="text-xs text-muted-foreground">Thứ tự hiển thị và trạng thái được lưu riêng.</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => remove(index)}
-                  disabled={fields.length === 1 || Boolean(field.id)}
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 disabled:cursor-not-allowed disabled:opacity-30"
-                  aria-label={`Xóa tùy chọn ${index + 1}`}
-                  title={field.id ? "Ẩn tùy chọn đã lưu bằng trạng thái Đang bán" : "Xóa tùy chọn"}
-                >
-                  <X size={18} />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button type="button" onClick={() => moveOption(index, index - 1)} disabled={index === 0} className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary disabled:opacity-30" aria-label={`Đưa tùy chọn ${index + 1} lên`}>
+                    <ArrowUp size={17} />
+                  </button>
+                  <button type="button" onClick={() => moveOption(index, index + 1)} disabled={index === fields.length - 1} className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary disabled:opacity-30" aria-label={`Đưa tùy chọn ${index + 1} xuống`}>
+                    <ArrowDown size={17} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => remove(index)}
+                    disabled={fields.length === 1 || Boolean(field.id)}
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 disabled:cursor-not-allowed disabled:opacity-30"
+                    aria-label={`Xóa tùy chọn ${index + 1}`}
+                    title={field.id ? "Ẩn tùy chọn đã lưu bằng trạng thái Đang bán" : "Xóa tùy chọn"}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-[10rem_minmax(0,1fr)]">
@@ -331,19 +351,6 @@ export default function AddonGroupForm({
                       {errors.options?.[index]?.price_vnd && <p className={errorClass}>{errors.options[index]?.price_vnd?.message}</p>}
                     </div>
                   )}
-
-                  <div>
-                    <label className="mb-1 block text-xs text-muted-foreground">Thứ tự hiển thị</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1"
-                      {...register(`options.${index}.sort_order`, {
-                        min: { value: 0, message: "Thứ tự không được âm" },
-                      })}
-                      className={cn(inputClass, "mt-0")}
-                    />
-                  </div>
 
                   <label className="col-span-2 flex min-h-10 items-center gap-3 rounded-xl bg-secondary/30 px-3 py-2">
                     <input

@@ -1,190 +1,180 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, ImageIcon, Pencil, Trash2 } from "lucide-react";
 import Image from "next/image";
+import { ArrowDown, ArrowUp, ImageIcon, Pencil, Plus } from "lucide-react";
+import AddonGroupInlineForm from "@/src/components/admin/AddonGroupInlineForm";
+import AddonOptionRow from "@/src/components/admin/AddonOptionRow";
+import type {
+  AddonGroupDetailsMutationPayload,
+  AddonOptionDetailsMutationPayload,
+  AdminAddonGroup,
+} from "@/src/lib/types/addonGroup";
 import { cn } from "@/src/utils/cn";
-import type { AdminAddonGroup } from "@/src/lib/types/addonGroup";
-import { formatMoney } from "@/src/utils/pricing";
 
 interface AddonGroupCardProps {
   item: AdminAddonGroup;
-  onEdit: (item: AdminAddonGroup) => void;
-  onToggleActive: (id: string, next: boolean) => void;
-  onDelete: (item: AdminAddonGroup) => void;
+  isFirst: boolean;
+  isLast: boolean;
+  canReorderGroup: boolean;
+  isEditingGroup: boolean;
+  editingOptionId: string | null;
+  busyKey: string | null;
+  onEditGroup: () => void;
+  onCancelEdit: () => void;
+  onDirtyChange: (dirty: boolean) => void;
+  onToggleGroup: (next: boolean) => void;
+  onReorderGroup: (direction: "up" | "down") => void;
+  onCreateOption: () => void;
+  onEditOption: (optionId: string) => void;
+  onToggleOption: (optionId: string, next: boolean) => void;
+  onReorderOption: (optionId: string, direction: "up" | "down") => void;
+  onSaveGroup: (
+    payload: AddonGroupDetailsMutationPayload,
+    imageFile: File | null,
+    imageFilename: string,
+  ) => Promise<void>;
+  onSaveOption: (
+    optionId: string,
+    payload: AddonOptionDetailsMutationPayload,
+    imageFile: File | null,
+    imageFilename: string,
+  ) => Promise<void>;
 }
+
+/** Display a complete add-on group with its always-visible option list. */
 export default function AddonGroupCard({
   item,
-  onEdit,
-  onToggleActive,
-  onDelete,
+  isFirst,
+  isLast,
+  canReorderGroup,
+  isEditingGroup,
+  editingOptionId,
+  busyKey,
+  onEditGroup,
+  onCancelEdit,
+  onDirtyChange,
+  onToggleGroup,
+  onReorderGroup,
+  onCreateOption,
+  onEditOption,
+  onToggleOption,
+  onReorderOption,
+  onSaveGroup,
+  onSaveOption,
 }: AddonGroupCardProps) {
-  const [expanded, setExpanded] = useState(false);
   const activeOptionCount = item.options.filter((option) => option.is_active).length;
-  const optionsRegionId = `addon-options-${item.id}`;
+  const isGroupBusy = busyKey === `group:${item.id}` || busyKey === `group-toggle:${item.id}`;
+  const isReordering = busyKey === "reorder";
 
   return (
-    <div
-      className={cn(
-        "overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition",
-        !item.is_active && "opacity-60"
-      )}
-    >
-      <div className="flex flex-col sm:flex-row sm:items-stretch">
-        <button
-          type="button"
-          aria-expanded={expanded}
-          aria-controls={optionsRegionId}
-          onClick={() => setExpanded((current) => !current)}
-          className="flex min-w-0 flex-1 items-start gap-3 p-4 text-left transition-colors hover:bg-secondary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40"
-        >
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/50 bg-secondary/30">
-            {item.image_url ? (
-              <Image
-                src={item.image_url}
-                alt={`Ảnh ${item.name}`}
-                width={56}
-                height={56}
-                sizes="56px"
-                quality={60}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <ImageIcon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-base font-semibold text-foreground">{item.name}</h3>
-              <span className={cn(
-                "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                item.is_dynamic_gram
-                  ? "border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
-                  : "border-blue-200 bg-blue-100 text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300",
-              )}>
-                {item.is_dynamic_gram ? "Theo gram" : "Giá cố định"}
-              </span>
-              <span className="rounded-full border border-border bg-secondary/40 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                Chọn tối đa {item.max_select}
-              </span>
-            </div>
-            <p className="mt-1.5 text-sm text-muted-foreground">
-              {activeOptionCount}/{item.options.length} tùy chọn đang hiển thị
-            </p>
-            {item.description ? (
-              <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{item.description}</p>
-            ) : null}
-          </div>
-          <ChevronDown
-            className={cn(
-              "mt-1 h-5 w-5 shrink-0 text-muted-foreground transition-transform duration-200",
-              expanded && "rotate-180",
-            )}
-            aria-hidden="true"
-          />
-        </button>
+    <article className={cn("overflow-hidden rounded-2xl border border-border bg-card shadow-sm", !item.is_active && "border-dashed")}>
+      <header className="flex flex-wrap items-start gap-4 p-4 sm:p-5">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-secondary/30">
+          {item.image_url ? (
+            <Image src={item.image_url} alt={`Ảnh ${item.name}`} width={64} height={64} sizes="64px" quality={65} className="h-full w-full object-cover" />
+          ) : (
+            <ImageIcon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+          )}
+        </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-border/60 px-3 py-2 sm:border-l sm:border-t-0">
-          <span className="mr-auto text-xs font-medium text-muted-foreground sm:sr-only">
-            {item.is_active ? "Nhóm đang bật" : "Nhóm đã ẩn"}
-          </span>
+        <div className="min-w-[12rem] flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-bold text-foreground">{item.name}</h2>
+            <span className={cn(
+              "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+              item.is_dynamic_gram
+                ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                : "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300",
+            )}>
+              {item.is_dynamic_gram ? "Theo gram bột" : "Giá cố định"}
+            </span>
+            {!item.is_active ? <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">Đã ẩn</span> : null}
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Chọn tối đa {item.max_select} · {activeOptionCount}/{item.options.length} option đang hiển thị
+          </p>
+          {item.description ? <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.description}</p> : null}
+        </div>
+
+        <div className="ml-auto flex items-center gap-1">
+          <button type="button" onClick={() => onReorderGroup("up")} disabled={!canReorderGroup || isFirst || isReordering} className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground hover:bg-secondary disabled:opacity-30" aria-label={`Đưa nhóm ${item.name} lên`}>
+            <ArrowUp className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={() => onReorderGroup("down")} disabled={!canReorderGroup || isLast || isReordering} className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground hover:bg-secondary disabled:opacity-30" aria-label={`Đưa nhóm ${item.name} xuống`}>
+            <ArrowDown className="h-4 w-4" />
+          </button>
+          <button
+            id={`edit-group-${item.id}`}
+            type="button"
+            onClick={onEditGroup}
+            disabled={isGroupBusy}
+            className="flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground hover:bg-primary/10 hover:text-primary disabled:opacity-40"
+            aria-label={`Sửa nhóm ${item.name}`}
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
           <button
             type="button"
             role="switch"
-            aria-label={`Trạng thái nhóm ${item.name}`}
             aria-checked={item.is_active}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleActive(item.id, !item.is_active);
-            }}
-            className="flex h-10 w-12 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            aria-label={`Trạng thái nhóm ${item.name}`}
+            onClick={() => onToggleGroup(!item.is_active)}
+            disabled={isGroupBusy}
+            className="flex h-10 w-12 items-center justify-center rounded-full disabled:opacity-40"
           >
             <span className={cn("relative h-6 w-11 rounded-full transition-colors", item.is_active ? "bg-primary" : "bg-border")}>
               <span className={cn("absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform", item.is_active && "translate-x-5")} />
             </span>
           </button>
-
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(item);
-            }}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/30 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-            aria-label={`Sửa nhóm ${item.name}`}
-            title="Sửa nhóm"
-          >
-            <Pencil size={16} />
-          </button>
-
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(item);
-            }}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary/30 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
-            aria-label={`Ẩn nhóm ${item.name}`}
-            title="Xóa nhóm"
-          >
-            <Trash2 size={16} />
-          </button>
         </div>
-      </div>
+      </header>
 
-      <div
-        id={optionsRegionId}
-        className={cn(
-          "grid transition-all duration-300 ease-in-out",
-          expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-        )}
-      >
-        <div className="overflow-hidden">
-          <div className="border-t border-border/50 bg-secondary/10 p-4">
-            {item.options.length === 0 ? (
-              <p className="py-4 text-center text-sm text-muted-foreground">Nhóm này chưa có tùy chọn nào.</p>
-            ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {item.options.map((opt) => (
-                  <div key={opt.id} className={cn("flex gap-3 rounded-xl border border-border bg-card p-3 shadow-sm", !opt.is_active && "opacity-60")}>
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-secondary/30">
-                      {(opt.image_url ?? item.image_url) ? (
-                        <Image
-                          src={(opt.image_url ?? item.image_url) as string}
-                          alt={`Ảnh ${opt.label}`}
-                          width={56}
-                          height={56}
-                          sizes="56px"
-                          quality={60}
-                          loading="lazy"
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <ImageIcon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-                      )}
-                    </div>
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="text-sm font-semibold leading-tight text-foreground">{opt.label}</span>
-                        <span className="shrink-0 text-[10px] font-medium text-muted-foreground">#{opt.sort_order}</span>
-                      </div>
-                      <p className="mt-1 text-sm font-semibold text-primary">
-                        {item.is_dynamic_gram
-                          ? opt.gram_value !== null ? `+${opt.gram_value}g` : "Chưa có gram"
-                          : opt.price_vnd > 0 ? `+${formatMoney(opt.price_vnd)}` : "Miễn phí"}
-                      </p>
-                      <p className="mt-auto pt-1 text-[11px] text-muted-foreground">
-                        {item.is_dynamic_gram ? "Giá tính theo bột đã chọn" : "Giá cộng cố định"}
-                        {!opt.is_active ? " · Đã ẩn" : " · Đang hiển thị"}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+      {isEditingGroup ? (
+        <AddonGroupInlineForm
+          item={item}
+          isSubmitting={isGroupBusy}
+          onDirtyChange={onDirtyChange}
+          onCancel={onCancelEdit}
+          onSubmit={onSaveGroup}
+        />
+      ) : null}
+
+      <section className="border-t border-border/60 bg-secondary/10 p-4 sm:p-5" aria-label={`Options của ${item.name}`}>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-bold text-foreground">Add-on options</h3>
+            <p className="text-xs text-muted-foreground">Thứ tự dưới đây cũng là thứ tự trong product modal.</p>
           </div>
+          <button type="button" onClick={onCreateOption} className="flex min-h-10 items-center gap-2 rounded-xl border border-border bg-background px-3 text-sm font-medium hover:bg-secondary/50">
+            <Plus className="h-4 w-4" />
+            Thêm option
+          </button>
         </div>
-      </div>
-    </div>
+
+        {item.options.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-border bg-background px-4 py-6 text-center text-sm text-muted-foreground">Nhóm này chưa có option.</p>
+        ) : (
+          <div className="space-y-2">
+            {item.options.map((option, index) => (
+              <AddonOptionRow
+                key={option.id}
+                group={item}
+                option={option}
+                isFirst={index === 0}
+                isLast={index === item.options.length - 1}
+                isEditing={editingOptionId === option.id}
+                isBusy={busyKey === `option:${option.id}` || busyKey === `option-toggle:${option.id}` || isReordering}
+                onEdit={() => onEditOption(option.id)}
+                onCancelEdit={onCancelEdit}
+                onDirtyChange={onDirtyChange}
+                onToggle={(next) => onToggleOption(option.id, next)}
+                onReorder={(direction) => onReorderOption(option.id, direction)}
+                onSave={(payload, file, filename) => onSaveOption(option.id, payload, file, filename)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+    </article>
   );
 }

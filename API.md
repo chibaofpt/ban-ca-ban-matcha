@@ -165,6 +165,9 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 |---|---|
 | `/api/admin/addon-groups` | GET, POST |
 | `/api/admin/addon-groups/[id]` | PUT, DELETE |
+| `/api/admin/addon-groups/[id]/options` | POST |
+| `/api/admin/addon-groups/[id]/options/[optionId]` | PUT |
+| `/api/admin/addon-groups/reorder` | PUT |
 | `/api/admin/base-liquids` | GET, POST |
 | `/api/admin/base-liquids/[id]` | PUT, DELETE |
 | `/api/admin/logs` | GET |
@@ -223,6 +226,10 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/staff/vouchers/[id]/redeem` | PATCH |
 | `/api/store-status` | GET |
 | `/api/voucher-packages` | GET |
+
+`GET /api/admin/orders` accepts `exclude_cancelled=true` for the Admin “All” tab. Results remain
+ordered by `created_at DESC`; each non-null `handler` includes `name` and `role` so the Admin UI can
+distinguish orders received by an Admin from those received by Staff.
 
 Auth mutations are rate-limited by hashed IP. Authorization details are defined by each contract and middleware.
 
@@ -544,12 +551,13 @@ type AddonGroup = {
   id: string
   name: string
   image_url: string | null
+  sort_order: number
   max_select: number
   is_dynamic_gram: boolean
   options: {
     id: string
     label: string
-    image_url: string | null         // own option image; UI falls back to AddonGroup.image_url
+    image_url: string | null         // own option image; UI leaves it empty instead of falling back to group image
     price_vnd: number               // extra matcha: 0 — actual price = gram_value × powder.price_per_gram
     gram_value: number | null       // extra matcha only: positive gram amount. null for fixed-price addons.
     sort_order: number
@@ -560,7 +568,8 @@ type AddonGroup = {
 All addon groups are optional. The client sends no row for an unselected group. Public menu data
 contains only active groups with at least one active option and only active options. The public
 contract intentionally omits rollout-only DB fields `is_required`, `min_quantity`, `is_default`,
-and option `is_active`.
+and option `is_active`. Groups are ordered by `(sort_order, id)` and their options by
+`(sort_order, id)`; this single sequence is the display order used by `ProductModal`.
 
 ### Admin addon group mutation
 ```ts
@@ -587,10 +596,47 @@ Every group is opt-in and allows the user to select up to `max_select` distinct 
 Dynamic-gram groups must have `max_select = 1`, and all active options must have a positive `gram_value`
 and `price_vnd = 0`. Dynamic and fixed-price active options cannot be mixed in one group.
 Omitting an existing option from an update does not delete it; retire it with `is_active = false`.
+The compound PUT contract remains available for compatibility, but `is_dynamic_gram` is immutable
+after group creation. Attempting to change it returns `422` with
+`details.reason = "ADDON_PRICING_TYPE_IMMUTABLE"`.
+
+### Focused admin addon mutations
+```ts
+// PUT /api/admin/addon-groups/[id] — inline details only
+{ name: string, description?: string | null, max_select: number }
+
+// POST /api/admin/addon-groups/[id]/options
+{ label: string, price_vnd: number, gram_value?: number | null, is_active: boolean }
+
+// PUT /api/admin/addon-groups/[id]/options/[optionId] — inline details only
+{ label: string, price_vnd: number, gram_value?: number | null }
+
+// PUT /api/admin/addon-groups/[id]/options/[optionId] — quick toggle
+{ is_active: boolean }
+
+// PUT /api/admin/addon-groups/reorder — complete active + inactive catalogue snapshot
+{
+  groups: Array<{
+    id: string
+    option_ids: string[]
+  }>
+}
+```
+
+Focused create/update routes accept direct JSON or the same `payload` + `image` +
+`image_filename` multipart shape used elsewhere. They return the complete parent
+`AdminAddonGroup`. New groups and options append after every existing active and inactive peer.
+The reorder route validates exact group membership, exact option ownership and duplicate IDs,
+then derives dense zero-based ranks inside a Serializable transaction. A stale or incomplete
+snapshot returns `409` with `details.reason = "ADDON_CATALOG_MEMBERSHIP_CHANGED"`; there is no ETag,
+and the last successfully committed full snapshot is canonical. Hiding the final active option of
+an active group, or activating a group without an active option, returns `422` with
+`details.reason = "ACTIVE_GROUP_REQUIRES_ACTIVE_OPTION"`.
 
 ### Admin addon/powder image mutations
 ```ts
 // POST/PUT /api/admin/addon-groups[/id]
+// POST/PUT /api/admin/addon-groups/[id]/options[/optionId]
 // POST/PUT /api/admin/powders[/id]
 // multipart/form-data; direct application/json remains supported when no image is uploaded
 {
