@@ -25,7 +25,7 @@ interface MenuSubTabsProps {
 /** MenuSubTabs — fixed four-column sub-tab bar rendered inside the /admin/menu layout. */
 export default function MenuSubTabs({ selectedHref, onSelect }: MenuSubTabsProps) {
   return (
-    <div className="sticky top-14 z-30 bg-background border-b border-border">
+    <div className="sticky z-30 bg-background border-b border-border">
       <nav aria-label="Danh mục quản lý menu" className="mx-auto grid max-w-7xl grid-cols-4 gap-2 px-2 py-0.5 md:px-8">
         {SUB_TABS.map(({ href, label, exact }) => {
           const isActive = exact

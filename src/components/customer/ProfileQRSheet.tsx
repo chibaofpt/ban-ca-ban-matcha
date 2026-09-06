@@ -41,7 +41,7 @@ export function ProfileQRSheet({
               <X className="h-5 w-5" />
             </button>
           </header>
-          <div className="overflow-y-auto overscroll-contain px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5">
+          <div className="overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5">
             <CustomerQRDisplay qrToken={qrToken} />
           </div>
         </Drawer.Content>

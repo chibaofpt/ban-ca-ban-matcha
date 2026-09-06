@@ -127,7 +127,7 @@ export function ExistingCartItemSheet({
             </button>
           </div>
 
-          <div className="flex-1 space-y-2 overflow-y-auto overscroll-contain px-5 py-4">
+          <div className="flex-1 space-y-2 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-5 py-4">
             {items.map((item) => {
               const isSelected = item.cartId === selectedItem?.cartId;
               const tags = buildDetailTags(item, addonGroups, milkTypes, powders);

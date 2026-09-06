@@ -406,7 +406,7 @@ export const BundleVoucherSetupSheet = ({
 
   /** List of scope items for the pick sub-view. */
   const renderScopeList = () => (
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none">
       {currentScopes.map((scope, idx) => {
         const menuItem = findMenuItem(menuData, scope.menu_item_id);
         return (
@@ -541,7 +541,7 @@ export const BundleVoucherSetupSheet = ({
       title="Chọn món cho ưu đãi"
     >
       <div className="flex flex-col">
-        <div className="flex-1 overflow-y-auto p-5 space-y-6">
+        <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none p-5 space-y-6">
 
           {/* ── QUALIFIER SECTION ── */}
           <div className="space-y-3">

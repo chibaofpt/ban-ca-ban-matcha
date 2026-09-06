@@ -142,7 +142,7 @@ export function CustomerSelectModal({
 
             {/* Search results */}
             {searchResults.length > 0 && (
-              <div className="rounded-xl border border-border bg-background shadow-sm divide-y divide-border overflow-hidden max-h-60 overflow-y-auto overscroll-contain">
+              <div className="rounded-xl border border-border bg-background shadow-sm divide-y divide-border overflow-hidden max-h-60 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain">
                 {searchResults.map((c) => (
                   <button
                     key={c.qr_token}

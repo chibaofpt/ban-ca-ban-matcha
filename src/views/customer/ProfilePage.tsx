@@ -58,7 +58,7 @@ export default function ProfilePage() {
   if (isLoading) return <ProfileSkeleton />;
   if (isError || !profile) {
     return (
-      <main className="container max-w-md px-4 py-10">
+      <main className="container max-w-md px-4 py-10 touch-pan-y overflow-x-clip overscroll-x-none">
         <div className="rounded-2xl border border-destructive/20 bg-destructive/10 p-5 text-center">
           <p className="text-sm text-destructive">
             Chưa thể tải thông tin tài khoản.
@@ -76,7 +76,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="container max-w-md space-y-6 px-4 py-6 animate-fade-in">
+    <main className="container max-w-md space-y-6 px-4 py-6 animate-fade-in touch-pan-y overflow-x-clip overscroll-x-none">
       <header className="space-y-1">
         <h1 className="font-serif text-2xl font-bold">Tài khoản của tôi</h1>
         <p className="text-sm text-muted-foreground">
@@ -210,7 +210,7 @@ function ProfileActionRow({
 function ProfileSkeleton() {
   return (
     <main
-      className="container max-w-md space-y-6 px-4 py-6"
+      className="container max-w-md space-y-6 px-4 py-6 touch-pan-y overflow-x-clip overscroll-x-none"
       aria-busy="true"
       aria-label="Đang tải tài khoản"
     >

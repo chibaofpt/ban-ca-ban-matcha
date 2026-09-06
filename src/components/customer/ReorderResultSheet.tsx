@@ -27,7 +27,7 @@ export default function ReorderResultSheet({
         <Drawer.Overlay className="fixed inset-0 z-[100] bg-black/40" />
         <Drawer.Content className="fixed inset-x-0 bottom-0 z-[101] mx-auto flex max-h-[90dvh] max-w-lg flex-col rounded-t-[20px] bg-card text-foreground outline-none">
           <Drawer.Handle className="mt-3 bg-muted-foreground/30" />
-          <div className="flex-1 overflow-y-auto rounded-t-[20px] bg-card p-4">
+          <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none rounded-t-[20px] bg-card p-4">
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">

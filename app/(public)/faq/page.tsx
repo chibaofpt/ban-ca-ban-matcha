@@ -53,7 +53,7 @@ const jsonLd = {
 export default async function FAQPage() {
   const nonce = (await headers()).get('x-nonce') ?? undefined;
   return (
-    <main className="min-h-screen bg-background pt-10">
+    <main className="min-h-screen bg-background pt-10 touch-pan-y overflow-x-clip overscroll-x-none">
       <script
         nonce={nonce}
         type="application/ld+json"

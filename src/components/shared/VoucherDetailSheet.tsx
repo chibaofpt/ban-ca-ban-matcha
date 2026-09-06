@@ -142,7 +142,7 @@ function PackageVoucherDetailSheet({
         <h3 className="font-bold text-primary">Chi tiết ưu đãi</h3>
       </div>
 
-      <div className="flex-1 space-y-6 overflow-y-auto overscroll-contain p-5">
+      <div className="flex-1 space-y-6 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain p-5">
         <div className="flex overflow-hidden rounded-xl border bg-card shadow-sm">
           <div className="flex w-24 shrink-0 flex-col items-center justify-center border-r border-dashed bg-primary/5 p-3">
             <span className="text-xl font-bold text-primary">{highlight.text}</span>
@@ -366,7 +366,7 @@ const OwnedVoucherDetailSheet = ({
         <h3 className="font-bold text-primary">Chi tiết ưu đãi</h3>
       </div>
 
-      <div className="flex-1 overflow-y-auto overscroll-contain p-5 space-y-6">
+      <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain p-5 space-y-6">
         <div className="flex bg-card rounded-xl border shadow-sm overflow-hidden">
           <div className="w-24 bg-primary/5 flex flex-col items-center justify-center p-3 border-r border-dashed shrink-0">
             <span className="font-bold text-xl text-primary">{highlight.text}</span>

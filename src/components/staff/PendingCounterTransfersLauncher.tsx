@@ -86,7 +86,7 @@ export function PendingCounterTransfersLauncher({
                 <X className="h-4 w-4" aria-hidden="true" />
               </button>
             </div>
-            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
               {payments.map((payment) => (
                 <motion.button
                   key={payment.id}

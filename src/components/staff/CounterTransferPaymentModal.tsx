@@ -43,7 +43,7 @@ export function CounterTransferPaymentModal({
           aria-labelledby="counter-payment-title"
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="max-h-[95vh] w-full max-w-md overflow-y-auto rounded-3xl bg-card p-4 shadow-2xl"
+          className="max-h-[95vh] w-full max-w-md overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none rounded-3xl bg-card p-4 shadow-2xl"
         >
           <div className="relative mb-3 text-center">
             <button

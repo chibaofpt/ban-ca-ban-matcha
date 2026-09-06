@@ -73,7 +73,7 @@ function PowderDetailSheet({ powder, open, onOpenChange }: PowderDetailSheetProp
             <div className="w-12 h-1.5 bg-border rounded-full" />
           </div>
 
-          <div className="flex-1 overflow-y-auto overscroll-contain px-5 pb-8">
+          <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-5 pb-8">
             {/* Close button */}
             <button
               type="button"

@@ -83,7 +83,7 @@ export default function RootLayout({
       className={`${spectral.variable} antialiased scroll-smooth scroll-pt-16`}
       suppressHydrationWarning
     >
-      <body className="min-h-screen flex flex-col bg-paper text-foreground font-sans border-border transition-colors duration-300 text-ink">
+      <body className="min-h-screen flex flex-col bg-paper text-foreground font-sans border-border transition-colors duration-300 text-ink touch-pan-y overflow-x-clip overscroll-x-none">
         <ReactQueryProvider>
           <AuthGuardProvider>
             <Navbar />

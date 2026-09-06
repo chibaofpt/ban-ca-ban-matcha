@@ -309,7 +309,7 @@ export function StaffCartDrawer({
         {/* Item list */}
         <div
           data-testid="staff-cart-items"
-          className="min-h-0 flex-[0_1_auto] space-y-4 overflow-y-auto overscroll-contain p-4"
+          className="min-h-0 flex-[0_1_auto] space-y-4 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain p-4"
         >
           {cart.length === 0 ? (
              <div className="text-center py-10 text-muted-foreground space-y-3">
@@ -485,7 +485,7 @@ export function StaffCartDrawer({
                 <h3 className="font-bold text-primary">Ưu đãi cho món</h3>
               </div>
 
-              <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-6">
+              <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain p-4 space-y-6">
                 {/* Item context */}
                 <div className="flex items-center gap-3 p-3 bg-secondary/20 border border-border/50 rounded-2xl">
                   <div className="w-12 h-12 rounded-xl overflow-hidden bg-secondary/40">
@@ -593,7 +593,7 @@ export function StaffCartDrawer({
                 <h3 className="font-bold text-primary">Mã giảm giá đơn hàng</h3>
               </div>
 
-              <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-3">
+              <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain p-4 space-y-3">
                 {discountVouchers.length === 0 && (
                   <p className="text-center text-sm text-muted-foreground mt-10">Không có mã giảm giá nào</p>
                 )}
