@@ -56,6 +56,7 @@ Không implement nội dung trong file này nếu task hiện tại chưa đư�
 
 ### Product/SEO follow-ups
 
+- Mở lại search top-level cho danh sách Sản phẩm, Bột và Base Liquid trong một task UI riêng. Hiện các control này được chủ động ẩn để giữ giao diện compact; state và filter wiring vẫn được giữ. Search/multi-select bên trong editor Base Liquid không thuộc phần tạm ẩn này.
 - SEO sitemap/robots bằng Next.js built-in.
 - Product structured data JSON-LD trên menu item pages.
 

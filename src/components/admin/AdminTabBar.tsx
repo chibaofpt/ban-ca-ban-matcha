@@ -6,7 +6,7 @@ import { ClipboardList, Package, Gift, Megaphone, Receipt, Settings } from "luci
 import { cn } from "@/src/utils/cn";
 import type { Role } from "@/src/lib/types/user";
 import * as authService from "@/src/services/authService";
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { motion } from "framer-motion";
 import StoreSettingsModal from "@/src/components/admin/StoreSettingsModal";
 import { useAuthStore } from "@/src/lib/store/authStore";
@@ -46,9 +46,30 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
   const pathname = usePathname();
   const router = useRouter();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<{ to: string; from: string } | null>(null);
   const authStoreLogout = useAuthStore((s) => s.logout);
 
   const tabs = TABS.filter((t) => t.roles.includes(userRole));
+  const selectedPath = pendingNavigation?.from === pathname ? pendingNavigation.to : pathname;
+  const isNavigationPending = selectedPath !== pathname;
+
+  const handleTabClick = (event: MouseEvent<HTMLAnchorElement>, to: string) => {
+    const target = event.currentTarget.target;
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      (target !== "" && target !== "_self") ||
+      pathname === to
+    ) {
+      return;
+    }
+
+    setPendingNavigation({ to, from: pathname });
+  };
 
   const handleLogout = async () => {
     try {
@@ -73,11 +94,13 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
           {/* Desktop Navigation Links */}
           <div className="hidden md:flex items-center gap-1 h-full mx-6">
             {tabs.map(({ to, label, icon: Icon }) => {
-              const isActive = pathname === to || pathname.startsWith(to + "/");
+              const isActive = selectedPath === to || selectedPath.startsWith(to + "/");
               return (
                 <Link
                   key={to}
                   href={to}
+                  aria-current={isActive ? "page" : undefined}
+                  onClick={(event) => handleTabClick(event, to)}
                   className={cn(
                     "relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors",
                     isActive
@@ -141,7 +164,7 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
       </header>
 
       {/* Main Content */}
-      {children}
+      {isNavigationPending ? <AdminRouteSkeleton /> : children}
 
       {/* Bottom tab bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)]">
@@ -157,11 +180,13 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
           )}
         >
           {tabs.map(({ to, label, icon: Icon }) => {
-            const isActive = pathname === to || pathname.startsWith(to + "/");
+            const isActive = selectedPath === to || selectedPath.startsWith(to + "/");
             return (
               <Link
                 key={to}
                 href={to}
+                aria-current={isActive ? "page" : undefined}
+                onClick={(event) => handleTabClick(event, to)}
                 className={cn(
                   "relative flex flex-col items-center justify-center py-2 text-xs transition-colors w-full",
                   isActive ? "text-primary font-medium" : "text-muted-foreground hover:text-foreground",
@@ -195,5 +220,33 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
         />
       )}
     </>
+  );
+}
+
+function AdminRouteSkeleton() {
+  return (
+    <main
+      aria-busy="true"
+      aria-label="Đang tải nội dung quản lý"
+      className="mx-auto w-full max-w-7xl flex-1 space-y-6 px-2 pb-20 pt-6 md:px-8 md:pb-6"
+    >
+      <div className="flex items-center justify-between gap-4">
+        <div className="space-y-2">
+          <div className="h-7 w-36 animate-pulse rounded-md bg-secondary/40" />
+          <div className="h-4 w-48 animate-pulse rounded-md bg-secondary/30" />
+        </div>
+        <div className="h-10 w-28 animate-pulse rounded-xl bg-secondary/40" />
+      </div>
+      <div className="flex gap-2">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div key={index} className="h-8 w-20 animate-pulse rounded-full bg-secondary/30" />
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+        {Array.from({ length: 8 }).map((_, index) => (
+          <div key={index} className="h-40 animate-pulse rounded-2xl bg-secondary/30" />
+        ))}
+      </div>
+    </main>
   );
 }

@@ -33,6 +33,7 @@ export default function AdminMilkTypesPage() {
   const {
     data: milkTypes = [],
     isLoading: isMilkTypesLoading,
+    isFetching: isMilkTypesFetching,
     isError: isMilkTypesError,
     refetch: refetchMilkTypes,
   } = useQuery({
@@ -42,6 +43,7 @@ export default function AdminMilkTypesPage() {
   const {
     data: menuData,
     isLoading: isMenuLoading,
+    isFetching: isMenuFetching,
     isError: isMenuError,
     refetch: refetchMenu,
   } = useQuery({
@@ -50,6 +52,7 @@ export default function AdminMilkTypesPage() {
   });
   const menuItems = menuData ? [...menuData.latte, ...menuData.fusion] : [];
   const isLoading = isMilkTypesLoading || isMenuLoading;
+  const isRefreshing = isMilkTypesFetching || isMenuFetching;
   const isError = isMilkTypesError || isMenuError;
 
   const showToast = (msg: string, type: "success" | "error" = "success") => {
@@ -198,7 +201,7 @@ export default function AdminMilkTypesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex items-center justify-between gap-4 flex-wrap p-2">
         <div>
           <h1 className="text-xl font-bold text-foreground">Base Liquid</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -208,14 +211,15 @@ export default function AdminMilkTypesPage() {
         <div className="flex gap-2">
           <button
             type="button"
-            aria-label="Làm mới"
+            aria-label={isRefreshing ? "Đang tải lại" : "Tải lại"}
             onClick={() => {
               void refetchMilkTypes();
               void refetchMenu();
             }}
-            className="rounded-xl p-2 hover:bg-secondary/60 transition text-muted-foreground"
+            disabled={isRefreshing}
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-border/50 bg-background text-muted-foreground shadow-sm transition hover:bg-secondary/60 hover:text-foreground disabled:cursor-wait disabled:opacity-60"
           >
-            <RefreshCw size={16} />
+            <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
           </button>
           <button
             type="button"
@@ -228,8 +232,8 @@ export default function AdminMilkTypesPage() {
         </div>
       </div>
 
-      <div className="flex gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 no-scrollbar md:mx-0 md:px-0">
+        <div className="relative hidden flex-1 min-w-[200px]">
           <Search
             size={14}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -242,21 +246,22 @@ export default function AdminMilkTypesPage() {
             className="pl-8 pr-3 py-2 rounded-xl border border-border bg-background text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40"
           />
         </div>
-        <div className="flex rounded-xl border border-border overflow-hidden text-sm">
+        <div className="contents">
           {[
-            { id: "active", label: "Đang bán" },
             { id: "all", label: "Tất cả" },
+            { id: "active", label: "Đang bán" },
             { id: "inactive", label: "Đã ẩn" },
           ].map((cat) => (
             <button
               key={cat.id}
               type="button"
               onClick={() => setTypeFilter(cat.id)}
+              aria-pressed={typeFilter === cat.id}
               className={cn(
-                "px-3 py-2 transition",
+                "shrink-0 rounded-full border px-4 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                 typeFilter === cat.id
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-secondary/40 text-muted-foreground hover:text-foreground"
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-card text-foreground hover:bg-secondary/40"
               )}
             >
               {cat.label}

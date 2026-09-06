@@ -144,13 +144,6 @@ export default function ImageCropModal({
       aria-modal="true"
       aria-labelledby="image-crop-title"
       className="fixed inset-0 z-[300] flex flex-col overflow-y-auto bg-black"
-      /**
-       * Chặn touch/pointer events bubble lên SwipeableTabContent (Framer Motion drag="x").
-       * Nếu không chặn, kéo ngang trong crop area sẽ trigger swipe-to-switch-tab.
-       */
-      onPointerDown={(e) => e.stopPropagation()}
-      onTouchStart={(e) => e.stopPropagation()}
-      onTouchMove={(e) => e.stopPropagation()}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-black/80 backdrop-blur-sm border-b border-white/10 shrink-0">

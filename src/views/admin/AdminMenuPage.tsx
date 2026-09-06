@@ -28,7 +28,7 @@ type ModalState =
 export default function AdminMenuPage() {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<"all" | "latte" | "fusion" | "unavailable">("all");
+  const [categoryFilter, setCategoryFilter] = useState<"all" | "latte" | "fusion" | "extras" | "unavailable">("all");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [modalState, setModalState] = useState<ModalState>({ open: false });
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
@@ -39,6 +39,7 @@ export default function AdminMenuPage() {
   const {
     data: menuData,
     isLoading: isMenuLoading,
+    isFetching: isMenuFetching,
     isError: isMenuError,
     refetch: refetchMenu,
   } = useQuery({
@@ -49,6 +50,7 @@ export default function AdminMenuPage() {
   const {
     data: powders = [],
     isLoading: isPowdersLoading,
+    isFetching: isPowdersFetching,
     isError: isPowdersError,
     refetch: refetchPowders,
   } = useQuery({
@@ -57,11 +59,11 @@ export default function AdminMenuPage() {
   });
 
   const isLoading = isMenuLoading || isPowdersLoading;
+  const isRefreshing = isMenuFetching || isPowdersFetching;
   const error = (isMenuError || isPowdersError) ? "Không thể tải danh sách món. Vui lòng thử lại." : null;
 
   const loadData = () => {
-    refetchMenu();
-    refetchPowders();
+    void Promise.all([refetchMenu(), refetchPowders()]);
   };
 
   // ── Data fetching ───────────────────────────────────────────────────────────
@@ -96,6 +98,8 @@ export default function AdminMenuPage() {
           return item.category === "latte" && item.is_available;
         case "fusion":
           return item.category === "fusion" && item.is_available;
+        case "extras":
+          return item.category === "extras" && item.is_available;
         case "all":
         default:
           return item.is_available;
@@ -181,48 +185,51 @@ export default function AdminMenuPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-2 p-2">
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-foreground truncate">Sản phẩm</h1>
-          <p className="text-xs text-muted-foreground mt-0.5 truncate">
+          <p className="mt-0.5 truncate text-sm text-muted-foreground">
             {allItems.length} món · {allItems.filter((i) => i.is_available).length} đang bán
           </p>
         </div>
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          <div className="flex bg-secondary/30 rounded-lg sm:rounded-xl p-0.5 sm:p-1 border border-border/50">
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="flex rounded-xl border border-border/50 bg-secondary/30 p-1">
             <button
               type="button"
+              aria-label="Hiển thị dạng lưới"
               onClick={() => setViewMode("grid")}
               className={cn(
-                "p-1 sm:p-1.5 rounded-md sm:rounded-lg transition-colors",
+                "flex h-10 w-10 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                 viewMode === "grid" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
               )}
             >
-              <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <LayoutGrid className="h-4 w-4" />
             </button>
             <button
               type="button"
+              aria-label="Hiển thị dạng danh sách"
               onClick={() => setViewMode("table")}
               className={cn(
-                "p-1 sm:p-1.5 rounded-md sm:rounded-lg transition-colors",
+                "flex h-10 w-10 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                 viewMode === "table" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
               )}
             >
-              <List className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <List className="h-4 w-4" />
             </button>
           </div>
           <button
             type="button"
-            aria-label="Làm mới"
+            aria-label={isRefreshing ? "Đang tải lại" : "Tải lại"}
             onClick={loadData}
-            className="rounded-lg sm:rounded-xl p-1.5 sm:p-2 sm:px-3 hover:bg-secondary/60 transition border border-border/50 bg-background text-muted-foreground hover:text-foreground shadow-sm flex items-center justify-center h-7 w-7 sm:h-auto sm:w-auto"
+            disabled={isRefreshing}
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-border/50 bg-background text-muted-foreground shadow-sm transition hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-wait disabled:opacity-60"
           >
-            <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
           </button>
           <button
             type="button"
             onClick={() => setModalState({ open: true, mode: "create" })}
-            className="flex items-center justify-center gap-1.5 rounded-lg sm:rounded-xl bg-primary text-primary-foreground h-7 w-7 sm:h-auto sm:w-auto sm:px-4 sm:py-2 text-sm font-medium hover:bg-primary/90 transition shadow-sm shadow-primary/20"
+            className="flex h-10 w-10 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-medium text-primary-foreground shadow-sm shadow-primary/20 transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 sm:w-auto sm:px-4"
           >
             <Plus className="w-4 h-4 sm:w-[15px] sm:h-[15px]" />
             <span className="hidden sm:inline">Thêm món</span>
@@ -231,8 +238,8 @@ export default function AdminMenuPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 no-scrollbar md:mx-0 md:px-0">
+        <div className="relative hidden min-w-[200px] flex-1">
           <Search
             size={14}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -245,20 +252,21 @@ export default function AdminMenuPage() {
             className="pl-8 pr-3 py-2 rounded-xl border border-border bg-background text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40"
           />
         </div>
-        <div className="flex rounded-xl border border-border overflow-hidden text-base">
-          {(["all", "latte", "fusion", "unavailable"] as const).map((cat) => (
+        <div className="contents">
+          {(["all", "latte", "fusion", "extras", "unavailable"] as const).map((cat) => (
             <button
               key={cat}
               type="button"
               onClick={() => setCategoryFilter(cat)}
+              aria-pressed={categoryFilter === cat}
               className={cn(
-                "px-4 py-2.5 transition font-semibold",
+                "shrink-0 rounded-full border px-4 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                 categoryFilter === cat
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-secondary/40 text-muted-foreground"
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-card text-foreground hover:bg-secondary/40"
               )}
             >
-              {cat === "all" ? "Tất cả" : cat === "unavailable" ? "Ngừng bán" : cat.charAt(0).toUpperCase() + cat.slice(1)}
+              {cat === "all" ? "Tất cả" : cat === "unavailable" ? "Ngừng bán" : cat}
             </button>
           ))}
         </div>

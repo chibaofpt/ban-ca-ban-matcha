@@ -16,6 +16,7 @@ interface FormFields {
 interface AddonGroupInlineFormProps {
   item: AdminAddonGroup;
   isSubmitting: boolean;
+  presentation?: "inline" | "overlay";
   onDirtyChange: (dirty: boolean) => void;
   onCancel: () => void;
   onSubmit: (
@@ -25,10 +26,11 @@ interface AddonGroupInlineFormProps {
   ) => Promise<void>;
 }
 
-/** Render the focused inline editor for one existing add-on group. */
+/** Render the focused editor for one existing add-on group. */
 export default function AddonGroupInlineForm({
   item,
   isSubmitting,
+  presentation = "inline",
   onDirtyChange,
   onCancel,
   onSubmit,
@@ -77,8 +79,14 @@ export default function AddonGroupInlineForm({
   const inputClass = "mt-1 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-60";
 
   return (
-    <form onSubmit={submit} className="border-t border-border/60 bg-secondary/10 p-4 sm:p-5">
-      <div className="grid gap-5 lg:grid-cols-[15rem_minmax(0,1fr)]">
+    <form
+      onSubmit={submit}
+      className={cn(presentation === "inline" && "border-t border-border/60 bg-secondary/10 p-4 sm:p-5")}
+    >
+      <div className={cn(
+        "grid gap-5",
+        presentation === "inline" ? "lg:grid-cols-[15rem_minmax(0,1fr)]" : "sm:grid-cols-[12rem_minmax(0,1fr)]",
+      )}>
         <div>
           <CatalogImageFields
             currentImageUrl={item.image_url}

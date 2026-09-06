@@ -9,6 +9,7 @@ import {
 import { createAddonGroup, updateAddonGroup } from "@/src/services/adminAddonService";
 import type { AdminAddonGroup } from "@/src/lib/types/addonGroup";
 import CatalogImageFields from "@/src/components/admin/CatalogImageFields";
+import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 
 interface AddonGroupModalProps {
@@ -28,6 +29,17 @@ export default function AddonGroupModal({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageFilename, setImageFilename] = useState("");
+  const [formDirty, setFormDirty] = useState(false);
+  const [imageDirty, setImageDirty] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+
+  const requestClose = () => {
+    if (!isSubmitting && (formDirty || imageDirty)) {
+      setConfirmDiscard(true);
+      return;
+    }
+    onClose();
+  };
 
   const handleSubmit = async ({ payload, optionImages }: AddonGroupFormSubmission) => {
     const requestedFilename = imageFilename.trim();
@@ -69,7 +81,7 @@ export default function AddonGroupModal({
       size="lg"
       busy={isSubmitting}
       dismissPolicy="locked-while-busy"
-      onOpenChange={(open) => { if (!open) onClose(); }}
+      onOpenChange={(open) => { if (!open) requestClose(); }}
     >
       <div className="space-y-6">
         {errorMsg && (
@@ -83,8 +95,8 @@ export default function AddonGroupModal({
           cropPreset="compact"
           imageFilename={imageFilename}
           disabled={isSubmitting}
-          onFileChange={setImageFile}
-          onFilenameChange={setImageFilename}
+          onFileChange={(file) => { setImageFile(file); setImageDirty(true); }}
+          onFilenameChange={(value) => { setImageFilename(value); setImageDirty(true); }}
           onError={setErrorMsg}
         />
         <AddonGroupForm
@@ -92,8 +104,20 @@ export default function AddonGroupModal({
           defaultValues={defaultValues}
           onSubmit={handleSubmit}
           isSubmitting={isSubmitting}
+          onDirtyChange={setFormDirty}
         />
       </div>
+      {confirmDiscard ? (
+        <ConfirmModal
+          isOpen
+          title="Bỏ thay đổi chưa lưu?"
+          message="Các thay đổi trong nhóm addon mới chưa được lưu. Bạn có muốn bỏ chúng?"
+          confirmLabel="Bỏ thay đổi"
+          isDestructive
+          onConfirm={onClose}
+          onCancel={() => setConfirmDiscard(false)}
+        />
+      ) : null}
     </ResponsiveOverlay>
   );
 }

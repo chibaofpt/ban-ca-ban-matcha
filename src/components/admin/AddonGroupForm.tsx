@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useForm, useFieldArray, Controller, useWatch } from "react-hook-form";
 import { ArrowDown, ArrowUp, BadgeDollarSign, Plus, Scale, X } from "lucide-react";
 import { cn } from "@/src/utils/cn";
@@ -19,6 +20,7 @@ interface AddonGroupFormProps {
   defaultValues?: Partial<FormFields>;
   onSubmit: (data: AddonGroupFormSubmission) => Promise<void>;
   isSubmitting: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export default function AddonGroupForm({
@@ -26,6 +28,7 @@ export default function AddonGroupForm({
   defaultValues,
   onSubmit,
   isSubmitting,
+  onDirtyChange,
 }: AddonGroupFormProps) {
   const {
     register,
@@ -34,7 +37,7 @@ export default function AddonGroupForm({
     setValue,
     setError,
     clearErrors,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<FormFields>({
     defaultValues: {
       name: "",
@@ -66,6 +69,10 @@ export default function AddonGroupForm({
   });
   const isDynamicGram = useWatch({ control, name: "is_dynamic_gram" });
   const watchedOptions = useWatch({ control, name: "options" });
+
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
 
   const moveOption = (from: number, to: number) => {
     const reordered = [...(watchedOptions ?? [])];

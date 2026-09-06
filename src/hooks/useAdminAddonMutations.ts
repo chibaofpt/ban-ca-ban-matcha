@@ -38,11 +38,11 @@ export function useAdminAddonMutations() {
     );
   };
 
-  const run = async <T,>(key: string, task: () => Promise<T>, success: string): Promise<T> => {
+  const run = async <T,>(key: string, task: () => Promise<T>, success?: string): Promise<T> => {
     setBusyKey(key);
     try {
       const result = await task();
-      toast.success(success);
+      if (success) toast.success(success);
       return result;
     } catch (error: unknown) {
       toast.error(errorMessage(error, "Không thể lưu thay đổi. Vui lòng thử lại."));
@@ -50,6 +50,34 @@ export function useAdminAddonMutations() {
     } finally {
       setBusyKey(null);
     }
+  };
+
+  const toggleGroup = async (groupId: string, next: boolean): Promise<void> => {
+    const saved = await run(
+      `group-toggle:${groupId}`,
+      () => toggleAddonGroupActive(groupId, next),
+    );
+    replaceGroup(saved);
+    toast.success(next ? "Đã hiển thị nhóm addon" : "Đã ẩn nhóm addon", {
+      action: !next ? {
+        label: "Hoàn tác",
+        onClick: () => { void toggleGroup(groupId, true).catch(() => undefined); },
+      } : undefined,
+    });
+  };
+
+  const toggleOption = async (groupId: string, optionId: string, next: boolean): Promise<void> => {
+    const saved = await run(
+      `option-toggle:${optionId}`,
+      () => toggleAddonOptionActive(groupId, optionId, next),
+    );
+    replaceGroup(saved);
+    toast.success(next ? "Đã hiển thị option" : "Đã ẩn option", {
+      action: !next ? {
+        label: "Hoàn tác",
+        onClick: () => { void toggleOption(groupId, optionId, true).catch(() => undefined); },
+      } : undefined,
+    });
   };
 
   return {
@@ -104,26 +132,19 @@ export function useAdminAddonMutations() {
       replaceGroup(saved);
       return saved;
     },
-    async toggleGroup(groupId: string, next: boolean) {
-      const saved = await run(
-        `group-toggle:${groupId}`,
-        () => toggleAddonGroupActive(groupId, next),
-        next ? "Đã hiển thị nhóm addon" : "Đã ẩn nhóm addon",
-      );
-      replaceGroup(saved);
-    },
-    async toggleOption(groupId: string, optionId: string, next: boolean) {
-      const saved = await run(
-        `option-toggle:${optionId}`,
-        () => toggleAddonOptionActive(groupId, optionId, next),
-        next ? "Đã hiển thị option" : "Đã ẩn option",
-      );
-      replaceGroup(saved);
-    },
-    async saveOrder(groups: AddonGroupReorderEntry[]) {
-      const saved = await run("reorder", () => reorderAddonGroups(groups), "Đã cập nhật thứ tự hiển thị");
-      queryClient.setQueryData(QUERY_KEY, saved);
-      return saved;
+    toggleGroup,
+    toggleOption,
+    async saveOrder(groups: AddonGroupReorderEntry[], optimisticGroups: AdminAddonGroup[]) {
+      const previous = queryClient.getQueryData<AdminAddonGroup[]>(QUERY_KEY);
+      queryClient.setQueryData(QUERY_KEY, optimisticGroups);
+      try {
+        const saved = await run("reorder", () => reorderAddonGroups(groups), "Đã cập nhật thứ tự hiển thị");
+        queryClient.setQueryData(QUERY_KEY, saved);
+        return saved;
+      } catch (error: unknown) {
+        queryClient.setQueryData(QUERY_KEY, previous);
+        throw error;
+      }
     },
   };
 }
