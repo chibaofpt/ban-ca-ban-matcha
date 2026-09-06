@@ -120,7 +120,7 @@ function ReviewsSheet({ open, onClose }: { open: boolean; onClose: () => void })
       </div>
 
       {/* Scrollable list */}
-      <div className="overflow-y-auto overscroll-contain flex-1 px-4 py-4 flex flex-col gap-3">
+      <div className="overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain flex-1 px-4 py-4 flex flex-col gap-3">
         {REVIEWS.map((review, i) => (
           <ReviewCard
             key={i}

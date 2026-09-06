@@ -135,7 +135,7 @@ export default function MilkTypeAvailabilityFields({
         </motion.button>
       </div>
 
-      <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-border bg-secondary/10 p-2">
+      <div className="max-h-64 space-y-2 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none rounded-xl border border-border bg-secondary/10 p-2">
         {visibleItems.length === 0 ? (
           <p className="px-3 py-6 text-center text-sm text-muted-foreground">Không tìm thấy món phù hợp.</p>
         ) : visibleItems.map((menuItem) => {

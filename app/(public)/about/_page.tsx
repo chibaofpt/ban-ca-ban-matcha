@@ -34,7 +34,7 @@ const jsonLd = {
 
 export default function AboutPage() {
   return (
-    <main className="min-h-screen bg-background pt-10">
+    <main className="min-h-screen bg-background pt-10 touch-pan-y overflow-x-clip overscroll-x-none">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

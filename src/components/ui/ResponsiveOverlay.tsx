@@ -136,7 +136,7 @@ export function ResponsiveOverlay({
                 </Button>
               ) : null}
             </header>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5">{children}</div>
+            <div className="min-h-0 flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-6 py-5">{children}</div>
             {footer ? <footer className="shrink-0 border-t px-6 py-4">{footer}</footer> : null}
             </>}
           </Dialog.Content>
@@ -184,7 +184,7 @@ export function ResponsiveOverlay({
               </Button>
             ) : null}
           </header>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5">{children}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-5 py-5">{children}</div>
           {footer ? <footer className="shrink-0 border-t px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">{footer}</footer> : null}
           </>}
         </Drawer.Content>

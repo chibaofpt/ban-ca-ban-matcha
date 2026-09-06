@@ -57,7 +57,7 @@ export function OrderDetailSheet({
           <Drawer.Description className="sr-only">
             Danh sách tất cả các món trong đơn hàng {order.order_code ?? order.id.slice(0, 8)}.
           </Drawer.Description>
-          <div className="flex-1 overflow-y-auto px-4 py-4">
+          <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none px-4 py-4">
             <OrderHistoryItems
               order={order}
               canReorder={canReorder}

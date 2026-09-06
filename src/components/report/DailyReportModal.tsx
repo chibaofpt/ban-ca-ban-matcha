@@ -261,7 +261,7 @@ export function DailyReportModal({
       </div>
 
       {/* ---- Scrollable Content ---- */}
-      <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 max-w-3xl mx-auto w-full space-y-4 pb-8">
+      <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-4 py-4 max-w-3xl mx-auto w-full space-y-4 pb-8">
         {isLoading ? (
           <>
             <SkeletonCard />

@@ -190,7 +190,7 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="bg-card w-full max-w-lg max-h-[90vh] overflow-y-auto overscroll-contain rounded-2xl shadow-2xl border border-border">
+      <div className="bg-card w-full max-w-lg max-h-[90vh] overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain rounded-2xl shadow-2xl border border-border">
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 bg-card border-b border-border rounded-t-2xl">
           <h2 className="text-lg font-semibold text-foreground">⚙️ Cài đặt cửa hàng</h2>

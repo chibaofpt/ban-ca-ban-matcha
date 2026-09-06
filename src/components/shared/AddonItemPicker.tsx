@@ -81,7 +81,7 @@ export const AddonItemPicker = ({
         </button>
         <h3 className="font-bold text-primary">Chọn món áp dụng</h3>
       </div>
-      <div className="flex-1 overflow-y-auto p-5 space-y-3 overscroll-contain">
+      <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none p-5 space-y-3 overscroll-contain">
         {cartItems.map(item => (
           <button
             key={item.cartId}

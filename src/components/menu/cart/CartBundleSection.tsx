@@ -226,7 +226,7 @@ export function CartBundleSection({
         title="Đổi món"
       >
         <div className="flex flex-col max-h-[60vh]">
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none p-4 space-y-3">
             {swapRole && getScopes(swapRole).map((s, idx) => (
               <button
                 key={idx}

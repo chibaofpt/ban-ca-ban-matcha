@@ -66,7 +66,7 @@ export function VoucherModalFrame({
       </header>
       <VoucherModalTabs activeTab={activeTab} isLoggedIn={isLoggedIn} voucherCount={voucherCount} onChange={onChange} />
       <div
-        className="flex-1 overflow-y-auto overscroll-contain px-4 py-4"
+        className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-4 py-4"
         onTouchStart={(event) => { touchStart.current = { x: event.touches[0].clientX, y: event.touches[0].clientY }; }}
         onTouchEnd={(event) => {
           const dx = event.changedTouches[0].clientX - touchStart.current.x;

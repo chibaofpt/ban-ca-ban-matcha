@@ -98,7 +98,7 @@ export function AddressBookSheet({
               </button>
             </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4">
+            <div className="min-h-0 flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4">
               {state.view === "form" ? (
                 <AddressForm
                   key={editing?.id ?? "new-address"}

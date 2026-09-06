@@ -50,7 +50,7 @@ function SelectionList({
   }
   return (
     <div
-      className={cn("max-h-[48vh] overflow-y-auto p-2", mobile && "min-h-0 flex-1")}
+      className={cn("max-h-[48vh] overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none p-2", mobile && "min-h-0 flex-1")}
       role="listbox"
       aria-multiselectable={multiple}
     >

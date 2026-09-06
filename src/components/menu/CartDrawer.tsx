@@ -810,7 +810,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
             {/* Scrollable content */}
             <div 
               ref={contentRef}
-              className="flex-1 overflow-y-auto overscroll-contain px-5 pb-4 min-h-0"
+              className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-5 pb-4 min-h-0"
             >
               <AnimatePresence mode="wait">
 
@@ -1074,7 +1074,7 @@ const CartDrawer = ({ menuData, powderData }: CartDrawerProps) => {
                   </button>
                   <h3 className="font-bold text-primary leading-tight">Chọn địa chỉ giao hàng</h3>
                 </div>
-                <div className="flex-1 overflow-y-auto overscroll-contain p-4">
+                <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain p-4">
                   <DeliverySection
                     selectedAddressId={deliveryAddress?.id ?? null}
                     onAddressSelect={(addr, dist, fee) => {

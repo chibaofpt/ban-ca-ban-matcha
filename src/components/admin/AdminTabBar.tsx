@@ -228,7 +228,7 @@ function AdminRouteSkeleton() {
     <main
       aria-busy="true"
       aria-label="Đang tải nội dung quản lý"
-      className="mx-auto w-full max-w-7xl flex-1 space-y-6 px-2 pb-20 pt-6 md:px-8 md:pb-6"
+      className="mx-auto w-full max-w-7xl flex-1 space-y-6 px-2 pb-20 pt-6 md:px-8 md:pb-6 touch-pan-y overflow-x-clip overscroll-x-none"
     >
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-2">

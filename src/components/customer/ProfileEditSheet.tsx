@@ -172,7 +172,7 @@ export function ProfileEditSheet({
               onSubmit={handleSubmit(submit)}
               className="flex min-h-0 flex-1 flex-col"
             >
-              <div className="flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
+              <div className="flex-1 space-y-4 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-5 py-4">
                 {serverError && (
                   <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
                     {serverError}

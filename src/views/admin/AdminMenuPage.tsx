@@ -183,7 +183,7 @@ export default function AdminMenuPage() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-2 p-2">
         <div className="min-w-0">

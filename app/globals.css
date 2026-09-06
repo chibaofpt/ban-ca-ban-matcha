@@ -121,9 +121,11 @@ html {
 }
 
 body {
-  /* Do NOT add overflow-x: hidden here — on mobile Safari/Chrome this shifts
-     the scroll container from window to body, which breaks position:sticky.
-     Horizontal overflow is handled by overflow-x-hidden on inner wrappers instead. */
+  /* Do NOT use overflow-x: hidden here — it shifts the scroll container from
+     window to body on mobile Safari/Chrome, breaking position:sticky.
+     overflow-x: clip is applied via Tailwind (overflow-x-clip) in layout.tsx
+     instead — clip does NOT create a scroll container, so sticky is safe.
+     touch-action: pan-y and overscroll-behavior-x: none are also on body. */
 }
 
 .dismissable-sheet {

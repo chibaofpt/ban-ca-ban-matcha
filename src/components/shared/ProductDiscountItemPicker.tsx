@@ -191,7 +191,7 @@ export const ProductDiscountItemPicker = ({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-3 overscroll-contain pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+      <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none p-5 space-y-3 overscroll-contain pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         {eligibleItems.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-12 text-center">
             <p className="text-sm font-semibold text-primary/50">

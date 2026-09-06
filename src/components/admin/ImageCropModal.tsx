@@ -143,7 +143,7 @@ export default function ImageCropModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="image-crop-title"
-      className="fixed inset-0 z-[300] flex flex-col overflow-y-auto bg-black"
+      className="fixed inset-0 z-[300] flex flex-col overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none bg-black"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 bg-black/80 backdrop-blur-sm border-b border-white/10 shrink-0">

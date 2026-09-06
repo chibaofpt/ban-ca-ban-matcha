@@ -13,7 +13,7 @@ export default function Page() {
     <Suspense
       fallback={
         <main
-          className="mx-auto min-h-64 w-full max-w-6xl animate-pulse px-4 py-6"
+          className="mx-auto min-h-64 w-full max-w-6xl animate-pulse px-4 py-6 touch-pan-y overflow-x-clip overscroll-x-none"
           aria-busy="true"
           aria-label="Đang tải lịch sử"
         >

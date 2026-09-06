@@ -35,7 +35,7 @@ export default function HomePage() {
   }, [powderData, setPowderData]);
 
   return (
-    <main className="w-full bg-transparent -mt-16">
+    <main className="w-full bg-transparent -mt-16 touch-pan-y overflow-x-clip overscroll-x-none">
       <style>{`
         html {
           scroll-snap-type: y mandatory;
