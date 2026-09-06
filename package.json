@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "backup:prod": "node scripts/backup-production-db.mjs",
     "sync:maplibre-assets": "node scripts/sync-maplibre-assets.mjs",
     "images:backfill:staging": "dotenv -e .env.staging -- node scripts/backfill-menu-images.cjs",
     "dev": "npm run sync:maplibre-assets && next dev --turbopack",

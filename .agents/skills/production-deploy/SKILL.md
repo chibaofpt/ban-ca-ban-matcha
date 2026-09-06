@@ -24,7 +24,7 @@ description: >
 - Treat env files as purpose-specific rather than requiring identical contents:
   - `.env.local`: local interactive development and shared local values.
   - `.env.staging`: local staging Prisma/CLI commands only.
-  - `.env.prod`: read-only local production validation only; never use it to deploy a migration.
+  - `.env.prod`: read-only local production validation and backup access; never use it to deploy a migration.
   - `.env.local.example`: documented key inventory/template, not a runtime source of truth.
   - Vercel Preview and Production variables: authoritative values for cloud deployments.
 - Require `.env.prod` for production schema validation. Check key names only and require `DATABASE_URL` and
@@ -51,8 +51,6 @@ description: >
   `ALTER COLUMN ... TYPE`, `NOT NULL` without a backfill, a unique constraint over populated data,
   a data rewrite, or another material lock/data-loss risk. These require a separate migration plan and
   cannot be bypassed with a simple confirmation.
-- If any new migration exists, ask the user to confirm that a production backup was checked in the
-  Supabase Dashboard. Stop if the user cannot confirm it. Do not run production migrations locally.
 - Require both `cancel-expired-orders` and `clean-sessions` Supabase cron jobs to be installed and
   smoke-tested against the production deployment. This gate is mandatory even when staging was
   explicitly allowed to run without those schedules.
@@ -67,6 +65,7 @@ description: >
 Continue only when every gate passes and the user explicitly requested production deployment.
 
 ```powershell
+npm.cmd run backup:prod
 git switch main
 git pull --ff-only origin main
 git merge --no-ff origin/dev -m "chore: release dev to production"
@@ -74,6 +73,8 @@ git push origin main
 git switch dev
 ```
 
+- Require `PRODUCTION_BACKUP_OK` before merging; report its path and SHA256. If backup fails, stop without
+  merging or changing any backup artifact. A backup never overrides another failed gate.
 - Never force-push.
 - If the merge conflicts, do not resolve it automatically. Abort the merge to restore the clean pre-merge
   state, then report the conflict to the user.
@@ -81,8 +82,8 @@ git switch dev
 
 ## 4. Verification and Failure Handling
 
-- If Vercel MCP is available, verify that the `main` deployment is READY and inspect recent runtime logs.
-- If Vercel cannot be checked automatically, report `Cannot verify Vercel automatically` and ask the user
+- Use the available Vercel plugin/MCP to verify that the `main` deployment is READY and inspect recent runtime logs.
+- If no suitable plugin/tool is available, report `Cannot verify Vercel automatically` and ask the user
   to open the production link for a smoke test.
 - If a production migration or deployment fails, do not roll back the database, generate `ROLLBACK_*.sql`,
   or run `migrate resolve`. Report the commit SHA, affected migration, and error. The user decides between
@@ -97,7 +98,7 @@ Write the report in Vietnamese:
 Staging test:        PASS / not confirmed
 Code checks:         PASS / FAIL
 Migration safety:    N/A / PASS / BLOCKED
-Production backup:   N/A / user confirmed / not confirmed
+Production backup:   N/A / PASS — local path and SHA256 / FAIL
 Environment vars:    N/A / confirmed / not confirmed
 Merge and push:      PASS / FAIL
 Vercel verification: READY / Cannot verify / FAIL
@@ -108,5 +109,7 @@ VERDICT: RELEASED / BLOCKED — reason
 ## Hard Rules
 
 - Never merge `main` when any gate fails or is blocked.
+- Backup is create-only: never restore, modify, move, rename, delete, or automatically use it after an error;
+  stop, report the failure, and let the user decide.
 - Never reset production, copy staging data to production, or edit an applied migration.
 - Never roll back the database automatically. A Vercel rollback rolls back code, not schema or data.
