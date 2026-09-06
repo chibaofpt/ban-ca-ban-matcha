@@ -33,6 +33,9 @@ export async function POST(req: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
   }
+  if (session.role !== "CUSTOMER") {
+    return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+  }
   const rateLimit = await checkRateLimit("voucherExchangeAccount", session.id);
   if (!rateLimit.allowed) {
     return NextResponse.json(

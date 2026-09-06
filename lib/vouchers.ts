@@ -69,7 +69,8 @@ export class VoucherError extends Error {
 export function assertVoucherUsable(
   voucher: Voucher | null,
   userId: string,
-  expectedType: Voucher["voucher_type"]
+  expectedType: Voucher["voucher_type"],
+  now = new Date(),
 ): void {
   if (!voucher || voucher.user_id !== userId) {
     throw new VoucherError("NOT_FOUND", "Voucher not found or does not belong to you");
@@ -83,7 +84,7 @@ export function assertVoucherUsable(
   if ((voucher.status as string) === "RESERVED") {
     throw new VoucherError("CONFLICT", "Voucher is already reserved for another pending order");
   }
-  if (voucher.expires_at !== null && voucher.expires_at <= new Date()) {
+  if (voucher.expires_at !== null && voucher.expires_at <= now) {
     throw new VoucherError("VOUCHER_EXPIRED", "Voucher has expired");
   }
   if (voucher.voucher_type !== expectedType && !(expectedType === "PRODUCT" && voucher.voucher_type === "PRODUCT_DISCOUNT")) {
@@ -102,12 +103,16 @@ export function assertVoucherUsable(
  * Returns 0 if voucher has no valid discount data.
  */
 export function calcDiscountVoucher(
-  voucher: Pick<Voucher, "discount_type" | "discount_value">,
+  voucher: Pick<Voucher, "discount_type" | "discount_value" | "max_discount_vnd">,
   subtotal_vnd: number
 ): number {
   if (voucher.discount_type === "PERCENT" && voucher.discount_value !== null) {
     const rawDiscount = (subtotal_vnd * voucher.discount_value) / 100;
-    return Math.floor(rawDiscount / 1000) * 1000;
+    let capped = Math.floor(rawDiscount / 1000) * 1000;
+    if (voucher.max_discount_vnd != null) {
+      capped = Math.min(capped, voucher.max_discount_vnd);
+    }
+    return capped;
   }
   if (voucher.discount_type === "FIXED" && voucher.discount_value !== null) {
     return Math.min(voucher.discount_value, subtotal_vnd);
@@ -198,7 +203,7 @@ export function calcAggregateSurplusPoints(items: SurplusItem[]): number {
  * @returns total discount amount (NOT the remaining subtotal)
  */
 export function calcMultiDiscountVouchers(
-  vouchers: Pick<Voucher, "discount_type" | "discount_value">[],
+  vouchers: Pick<Voucher, "discount_type" | "discount_value" | "max_discount_vnd">[],
   subtotal_vnd: number
 ): number {
   let remaining = subtotal_vnd;
@@ -217,7 +222,10 @@ export function calcMultiDiscountVouchers(
   if (percentVoucher && percentVoucher.discount_value !== null) {
     const pct = Math.min(percentVoucher.discount_value, 100);
     const rawDiscount = (remaining * pct) / 100;
-    const roundedDiscount = Math.floor(rawDiscount / 1000) * 1000;
+    let roundedDiscount = Math.floor(rawDiscount / 1000) * 1000;
+    if (percentVoucher.max_discount_vnd != null) {
+      roundedDiscount = Math.min(roundedDiscount, percentVoucher.max_discount_vnd);
+    }
     remaining = Math.max(0, remaining - roundedDiscount);
   }
 

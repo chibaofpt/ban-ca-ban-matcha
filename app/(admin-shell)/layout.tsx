@@ -31,7 +31,7 @@ export default async function AdminShellLayout({ children }: { children: ReactNo
   return (
     <div className="min-h-[100dvh] bg-background flex flex-col">
       <AdminTabBar userName={userName} userRole={userRole}>
-        <main className="flex-1 px-4 md:px-8 pt-6 pb-20 md:pb-6 max-w-7xl mx-auto w-full">{children}</main>
+        <main className="flex-1 px-2 md:px-8 pt-6 pb-20 md:pb-6 max-w-7xl mx-auto w-full">{children}</main>
       </AdminTabBar>
       <PushSubscriptionManager />
     </div>

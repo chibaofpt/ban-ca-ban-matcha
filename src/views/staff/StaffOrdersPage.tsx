@@ -79,13 +79,7 @@ function buildOrderItems(cart: CartItem[]): CreateStaffOrderPayload["items"] {
       ice_option: c.iceOption,
       coldwhisk: c.coldwhisk,
       ...(c.note ? { note: c.note } : {}),
-      addon_option_ids: [
-        ...c.selectedOptionIds.map((id) => ({ option_id: id, quantity: 1 })),
-        ...c.quantityAddonOptions.map((opt) => ({
-          option_id: opt.option_id,
-          quantity: opt.quantity,
-        })),
-      ],
+      addon_option_ids: c.selectedOptionIds,
       ...(productVoucherId ? { product_voucher_id: productVoucherId } : {}),
       ...(c.itemVoucherId ? { item_voucher_id: c.itemVoucherId } : {}),
       ...(addonVouchers.length > 0

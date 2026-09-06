@@ -84,7 +84,6 @@ grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
 | `OrderStatus` | `PENDING`, `ADMIN_CONFIRMED`, `STAFF_DONE`, `COMPLETED`, `CANCELLED` |
 | `OrderType` | `COUNTER`, `PICKUP`, `DELIVERY` |
 | `PaymentMethod` | `CASH`, `BANK_TRANSFER` |
-| `AddonType` | `SELECTOR`, `TOGGLE`, `QUANTITY` |
 | `SweetnessLevel` | `NONE`, `QUARTER`, `HALF`, `THREE_QUARTER`, `FULL`, `EXTRA` |
 | `Size` | `SMALL`, `MEDIUM`, `LARGE` |
 | `PowderType` | `RECOMMEND`, `NEW`, `SEASONAL`, `NONE` |
@@ -136,9 +135,13 @@ grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
 ---
 
 ### sessions
-- `id` uuid PK
+- `id` uuid PK — stable across refresh; access JWT `sid` references this row
 - `user_id` uuid FK → users (cascade delete)
 - `refresh_token` string UK — UUID, 7-day expiry
+- `previous_refresh_token` string UK nullable — one preceding token, accepted only within 30 seconds
+  of `rotating_at`; NULL for legacy or not-yet-rotated rows. Tokens are never public DTO fields.
+- `rotating_at` timestamp nullable — last successful in-place rotation; anchors grace and cooldown.
+  Rotation conditionally updates an unexpired existing row; logout must not create a replacement.
 - `expires_at` timestamp
 - `created_at` timestamp
 
@@ -280,18 +283,20 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `name` string — e.g. "Kem", "Đá dừa", "Extra Matcha"
 - `description` string nullable
 - `image_url` string nullable — Supabase Storage public URL
-- `type` AddonType — `SELECTOR` | `TOGGLE` | `QUANTITY`
+- `max_select` int — default 1. Maximum distinct options allowed.
+- `is_dynamic_gram` bool — default false. If true, options use `gram_value` and price is computed from powder.
 - `is_active` bool — default true. `false` = hidden from all items globally.
-- `max_quantity` int nullable — QUANTITY type only
+- `sort_order` int — non-negative dense display rank; ties fall back to `id`.
 - `created_at` timestamp
 
 > Active groups attached to every item in `GET /api/menu` — no junction join.
 > DELETE = set `is_active = false`. Never cascade-delete `addon_options`.
-> Every group is opt-in: an empty selection means “no addon”. `SELECTOR` accepts at most one
-> option, `TOGGLE` has exactly one active option, and `QUANTITY` has exactly one active option plus
-> a required positive `max_quantity`.
-> Phase 1 retains physical columns `is_required` and `min_quantity` only for rollout safety; they
-> are always `false`/`NULL`, absent from API contracts, and scheduled for removal in Phase 2.
+> Every group is opt-in: an empty selection means "no addon". `max_select` specifies the maximum
+> number of options a user can select from this group.
+> A dynamic-gram group must have `max_select = 1`.
+> Public and admin reads use `(sort_order ASC, id ASC)`. Index `idx_addon_groups_sort_order_id`
+> supports this catalogue order. The migration backfills legacy groups by
+> `(created_at DESC, id ASC)` into dense zero-based ranks.
 
 ---
 
@@ -303,10 +308,12 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `price_vnd` int — 0 if no charge. Extra matcha: always 0 here — actual price computed from `gram_value × selected_powder.price_per_gram` at order time.
 - `gram_value` Decimal nullable — Extra matcha only: positive gram amount (1.0–4.0 in the current seed). Null for all fixed-price addon types.
 - `is_active` bool — default true. Referenced options are retired by setting false, never hard deleted.
-- `sort_order` int
+- `sort_order` int — non-negative dense rank within its group; ties fall back to `id`.
 
 > Extra Matcha active seed options: +1g, +2g, +3g, +4g. The legacy 0g option is inactive;
 > absence represents no extra matcha.
+> Index `idx_addon_options_group_sort_order_id` supports stable nested reads. The sort-order
+> migration normalizes every group's active and inactive options by legacy `(sort_order, id)`.
 > Server uses `gram_value` to compute: `unit_price_vnd = gram_value × selected_powder.price_per_gram`.
 > A dynamic-gram group must be `SELECTOR`; every active option must have positive `gram_value` and
 > `price_vnd = 0`. Dynamic and fixed-price active options cannot be mixed in one group.
@@ -390,7 +397,8 @@ Junction table mapping an order to one or more DISCOUNT vouchers.
 ---
 
 ### order_item_addons
-SELECTOR / TOGGLE: quantity = 1. QUANTITY: quantity = units chosen.
+Each selected option appears at most once with `quantity = 1`; an addon group accepts at most
+`addon_groups.max_select` distinct options. Dynamic-gram groups are single-select.
 Extra matcha: `unit_price_vnd` = `gram_value × selected_powder.price_per_gram` (snapshot at order time).
 
 - `id` uuid PK
@@ -435,6 +443,7 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `covered_price_vnd` int nullable — snapshot price for PRODUCT and ADDON; ITEM uses current price
 - `covered_delivery_fee_vnd` int nullable — snapshot max delivery fee for FREESHIP
 - `min_order_vnd` int nullable — minimum for DISCOUNT or FREESHIP
+- `max_discount_vnd` int nullable — maximum cap for DISCOUNT PERCENT; NULL = no limit
 - `is_active` bool — default true
 - `expires_after_days` int nullable
 - `quantity` int nullable — maximum total vouchers issued; NULL = unlimited
@@ -460,6 +469,7 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `issued_via` VoucherIssuedVia — immutable issuance audit (`POINTS_EXCHANGE`, `FREE_CLAIM`, `AUTO_GRANT`, `ADMIN`)
 - `discount_type` DiscountType nullable — copied from package
 - `discount_value` int nullable — copied from package
+- `max_discount_vnd` int nullable — copied from package
 - `menu_item_id` uuid FK nullable → menu_items — copied from package
 - `size` Size nullable — copied from package
 - `matcha_powder_id` uuid FK nullable → matcha_powder — copied from package
@@ -476,9 +486,10 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `redeemed_by` uuid FK nullable → users — STAFF or ADMIN only
 - `created_at` timestamp
 
-> `expires_at` is authoritative for eligibility. Lazy expiry moves only expired `ACTIVE`
-> vouchers to `EXPIRED`; never lazy-expire `RESERVED` vouchers. Cancelling an expired
-> reservation restores it to `EXPIRED`, not `ACTIVE`.
+> `expires_at` is authoritative for eligibility at the server's order acceptance time.
+> A voucher valid then may be committed after expiry, including a transaction retry. Lazy expiry
+> moves only expired `ACTIVE` vouchers to `EXPIRED`; never lazy-expire `RESERVED` vouchers.
+> Cancelling an expired reservation restores it to `EXPIRED`, not `ACTIVE`.
 >
 > Admin package statistics and owner lookup use composite indexes
 > `idx_vouchers_package_status (package_id, status)` and
@@ -489,7 +500,8 @@ Junction table mapping multiple ADDON vouchers to an order item.
 ---
 
 ### points_log
-Immutable. Reversal = insert new negative-delta row.
+Immutable. Reversing awarded points inserts a new negative-delta row; refunding a voucher purchase
+inserts a positive-delta row. Neither operation edits or deletes the original audit row.
 
 - `id` uuid PK
 - `user_id` uuid FK → users (cascade delete)
@@ -502,6 +514,12 @@ Immutable. Reversal = insert new negative-delta row.
 - `created_at` timestamp
 
 Cursor history reads use `idx_points_log_user_created_cursor (user_id, created_at DESC, id DESC)`.
+
+Completed COUNTER cancellation derives the outstanding award from positive `order_complete` and
+`voucher_surplus` logs minus trustworthy linked reversals for the same user, order and reason.
+Recovery refunds use the original negative `voucher_purchase` audit, not the current package cost;
+missing or inconsistent audit must not silently reduce the amount to reverse. Physical fields and
+relations are reused; no debt or derived balance column is added.
 
 `push_subscriptions` fan-out uses partial index `idx_push_subscriptions_active_cursor (id) WHERE
 is_active = true`. The shared trigger function `public.update_updated_at()` pins
@@ -522,7 +540,7 @@ is_active = true`. The shared trigger function `public.update_updated_at()` pins
 | `voucher_surplus` | Aggregate PRODUCT surplus awarded when order → COMPLETED |
 | `order_complete_reversed` | Reversal of an `order_complete` entry when a completed COUNTER order is cancelled |
 | `voucher_surplus_reversed` | Reversal of a `voucher_surplus` entry when a completed COUNTER order is cancelled |
-| `voucher_refund` | Customer gets full points back because item was soft-deleted |
+| `voucher_refund` | Full purchase-cost refund for an eligible voucher, including soft-delete reconciliation or completed COUNTER cancellation recovery |
 | `reversed_by_admin` | Admin reverses a manual adjustment |
 
 ---

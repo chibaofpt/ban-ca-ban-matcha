@@ -3,10 +3,7 @@ import { z } from "zod";
 const sweetnessEnum = z.enum(["NONE", "QUARTER", "HALF", "THREE_QUARTER", "FULL", "EXTRA"]);
 const sizeEnum = z.enum(["SMALL", "MEDIUM", "LARGE"]);
 const iceOptionEnum = z.enum(["NORMAL", "LESS_ICE", "NO_ICE", "SEPARATE_ICE"]);
-const addonOptionBaseSchema = z.object({
-  option_id: z.string().uuid(),
-  quantity: z.number().int().min(1),
-});
+const addonOptionBaseSchema = z.string().uuid();
 const addonVoucherBaseSchema = z.object({
   voucher_id: z.string().uuid(),
   addon_option_id: z.string().uuid(),
@@ -57,20 +54,14 @@ const orderItemBaseSchema = z.object({
 /** Schema for one customer order line, capped at ten cups. */
 export const customerOrderItemSchema = orderItemBaseSchema.extend({
   quantity: z.number().int().min(1).max(10),
-  addon_option_ids: z
-    .array(addonOptionBaseSchema.extend({ quantity: z.number().int().min(1).max(10) }))
-    .max(20)
-    .default([]),
+  addon_option_ids: z.array(addonOptionBaseSchema).max(20).default([]),
   addon_voucher_ids: z.array(addonVoucherBaseSchema).max(10).default([]),
 });
 
 /** Schema for one staff order line, capped at fifty cups. */
 export const staffOrderItemSchema = orderItemBaseSchema.extend({
   quantity: z.number().int().min(1).max(50),
-  addon_option_ids: z
-    .array(addonOptionBaseSchema.extend({ quantity: z.number().int().min(1).max(50) }))
-    .max(50)
-    .default([]),
+  addon_option_ids: z.array(addonOptionBaseSchema).max(50).default([]),
   addon_voucher_ids: z.array(addonVoucherBaseSchema).max(50).default([]),
 });
 

@@ -63,6 +63,12 @@ export const RATE_LIMIT_RULES = {
     prefix: "rl:v1:delivery:ip",
     algorithm: "fixed-window",
   },
+  reportAccount: {
+    limit: 6,
+    windowSeconds: 60,
+    prefix: "rl:v1:report:account",
+    algorithm: "fixed-window",
+  },
 } as const;
 
 const AUTH_MUTATION_PATHS = new Set([

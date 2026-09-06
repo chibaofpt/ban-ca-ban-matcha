@@ -89,6 +89,7 @@ git diff --check
 ```
 
 - Do not run `npm run build`, `npm run build:staging`, `db push`, `migrate reset`, or any production migration during QA.
+- After every QA check passes, as the sole local-build exception, run `npx.cmd prisma generate; if ($LASTEXITCODE -eq 0) { npx.cmd dotenv -e .env.staging -- next build }` before staging files; it must not run migrations or load `.env.prod`.
 - Treat failed checks, whitespace errors, secrets in the diff, unexplained API/schema changes, or business-rule risks as **BLOCKED**.
 - Missing Supabase cron jobs on staging do not block a `dev` push when the release owner explicitly
   accepts that limitation. Record the limitation in the staging handoff; never infer that production

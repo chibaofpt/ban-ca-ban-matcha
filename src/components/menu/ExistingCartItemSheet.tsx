@@ -81,16 +81,6 @@ function buildDetailTags(
     }
   }
 
-  // Addon QUANTITY options
-  const quantityEntries = Object.entries(item.quantityMap ?? {});
-  if (quantityEntries.length > 0) {
-    const allOptions = addonGroups.flatMap((g) => g.options);
-    for (const [optId, qty] of quantityEntries) {
-      if (qty <= 0) continue;
-      const opt = allOptions.find((o) => o.id === optId);
-      if (opt) tags.push(`${opt.label} ×${qty}`);
-    }
-  }
 
   return tags;
 }

@@ -9,10 +9,31 @@ Không implement nội dung trong file này nếu task hiện tại chưa đư�
 
 ## Unresolved
 
+- Fresh migration replay previously failed because `0_init` does not create `users.insta_name`.
+  The current `20260628100500_remove_insta_name` artifact uses `DROP COLUMN IF EXISTS`, but replay
+  and compatibility with already-applied migration checksums remain unverified. Any deployed-history
+  reconciliation requires a separately approved baseline strategy; do not rewrite applied history.
+  The mock-only suite does not execute migrations or prove historical data transforms, SQL-only
+  functions, PostgreSQL constraints or RLS.
+- Applying `20260830120000_add_previous_refresh_token` to deployed databases and running the BUNDLE
+  repair tool on existing data require a separately approved rollout. No automatic production repair.
+
 - Cascade delete cho `voucher_packages.menu_item_id`: chưa được duyệt. Không thêm cascade.
 - Hard delete `menu_item` đang được voucher tham chiếu: chưa được duyệt. Tiếp tục soft delete.
 
 ## Approved but deferred
+
+### Staging order/voucher coverage chưa hoàn tất
+
+- Không bổ sung fixture, nạp cá hay đổi voucher ngoài ngân sách để lấp khoảng trống coverage.
+  Plan/report phải tách `NOT_IMPLEMENTED` khỏi thiếu inventory/quota/cấu hình; chạy staging vẫn
+  cần deployment đã xác minh đúng revision, DB binding và push `log_only`.
+- Attestation staging dựa vào Vercel phân loại deployment `source=git`, metadata branch-scoped còn
+  nguyên, Git tree đã review và release-window assertion do operator kiểm soát. Đây là trust boundary
+  của quy trình release, không chứng minh chống một local process độc hại sửa workspace đồng thời.
+  Vercel không cung cấp effective readback cho sensitive `DATABASE_URL`/`DIRECT_URL`; evidence chỉ
+  chứng minh configuration provenance, fresh Git deployment và runtime catalog fingerprint, không
+  tuyên bố đã đọc lại plaintext secret hay loại trừ mọi platform-side override ngoài evidence đó.
 
 ### Compatibility cleanup
 
@@ -35,6 +56,7 @@ Không implement nội dung trong file này nếu task hiện tại chưa đư�
 
 ### Product/SEO follow-ups
 
+- Mở lại search top-level cho danh sách Sản phẩm, Bột và Base Liquid trong một task UI riêng. Hiện các control này được chủ động ẩn để giữ giao diện compact; state và filter wiring vẫn được giữ. Search/multi-select bên trong editor Base Liquid không thuộc phần tạm ẩn này.
 - SEO sitemap/robots bằng Next.js built-in.
 - Product structured data JSON-LD trên menu item pages.
 
@@ -42,7 +64,7 @@ Không implement nội dung trong file này nếu task hiện tại chưa đư�
 
 - Existing files trên 300 dòng, direct API calls ngoài service và manual overlays được grandfathered.
 - Không lập danh sách line count cố định tại đây vì nhanh lỗi thời; dùng repository scan khi mở task refactor.
-- Mỗi refactor phải là task riêng, có characterization tests, allowlist file và staging regression.
+- Mỗi refactor phải là task riêng, có characterization tests, allowlist file và nghiệm thu UI thủ công khi liên quan.
 - Không tách backend khỏi fullstack Next.js cho đến khi architect duyệt một migration riêng.
 
 ## Environment and operations

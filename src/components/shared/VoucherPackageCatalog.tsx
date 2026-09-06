@@ -10,6 +10,7 @@ interface VoucherPackageCatalogProps {
   pointsBalance: number;
   pendingPackageId: string | null;
   onAcquire: (pkg: VoucherPackage) => void;
+  onPackageClick?: (pkg: VoucherPackage) => void;
   columns?: "one" | "responsive";
 }
 
@@ -19,6 +20,7 @@ export function VoucherPackageCatalog({
   pointsBalance,
   pendingPackageId,
   onAcquire,
+  onPackageClick,
   columns = "responsive",
 }: VoucherPackageCatalogProps) {
   const visible = filterModalPackages(packages);
@@ -44,6 +46,7 @@ export function VoucherPackageCatalog({
           userBalance={pointsBalance}
           onExchange={onAcquire}
           isExchanging={pendingPackageId === pkg.id}
+          onClick={onPackageClick}
         />
       ))}
     </div>

@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     const MAX_ACTIVE_SESSIONS = 5;
 
     // Create or update user, award welcome points, and open a session in one atomic transaction
-    const { user, refreshToken } = await prisma.$transaction(async (tx) => {
+    const { user, session } = await prisma.$transaction(async (tx) => {
       let finalUser;
 
       if (existingUser && existingUser.password_hash === "GHOST_USER_NO_PASSWORD") {
@@ -108,14 +108,14 @@ export async function POST(req: Request) {
         },
       });
 
-      return { user: finalUser, refreshToken: session.refresh_token };
+      return { user: finalUser, session };
     });
 
     // Create access token
-    const accessToken = await signJwt({ id: user.id, role: user.role, phone_number: user.phone_number });
+    const accessToken = await signJwt({ id: user.id, role: user.role, phone_number: user.phone_number, sid: session.id });
 
     // Set cookies
-    await setAuthCookies(accessToken, refreshToken, user.role);
+    await setAuthCookies(accessToken, session.refresh_token, user.role);
 
     // Registration remains successful on a transient grant error; wallet access retries lazily.
     try {
@@ -144,7 +144,7 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
-    console.error("Register Error:", err);
+    console.error("Registration temporarily unavailable");
     return NextResponse.json({ error: "Đã xảy ra lỗi hệ thống", code: "INTERNAL_ERROR" }, { status: 500 });
   }
 }

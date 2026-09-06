@@ -7,6 +7,10 @@
  */
 
 import type { PrismaClient } from "@prisma/client";
+import {
+  reverseCancellationPoints,
+  type CancellationAdjustment,
+} from "@/lib/cancellationPoints";
 
 /** Structural type satisfied by both PrismaClient and the Prisma transaction client. */
 type CancelTxClient = Pick<
@@ -27,30 +31,6 @@ interface RestoreOptions {
 }
 
 /**
- * Safely decrements a user's points_balance, flooring at 0 to prevent negative balances.
- * Returns the actual amount decremented (may be less than requested if balance < delta).
- */
-async function safeDecrementPoints(
-  tx: CancelTxClient,
-  userId: string,
-  delta: number
-): Promise<number> {
-  const user = await tx.user.findUnique({
-    where: { id: userId },
-    select: { points_balance: true },
-  });
-  const current = user?.points_balance ?? 0;
-  const actualDecrement = Math.min(delta, current); // floor at 0
-  if (actualDecrement > 0) {
-    await tx.user.update({
-      where: { id: userId },
-      data: { points_balance: { decrement: actualDecrement } },
-    });
-  }
-  return actualDecrement;
-}
-
-/**
  * Restores ALL vouchers tied to an order back to ACTIVE, reverses
  * any `voucher_surplus` points_log rows, and optionally reverses
  * `order_complete` points when cancelling a COMPLETED order.
@@ -63,7 +43,8 @@ export async function restoreVouchersOnCancel(
   tx: CancelTxClient,
   orderId: string,
   options?: RestoreOptions
-): Promise<void> {
+): Promise<CancellationAdjustment> {
+  const restoredVoucherIds = new Set<string>();
   // 1. Restore all DISCOUNT vouchers tied to this order
   const discountLinks = await tx.orderDiscountVoucher.findMany({
     where: { order_id: orderId },
@@ -73,6 +54,7 @@ export async function restoreVouchersOnCancel(
   const uniqueDiscountIds = [...new Set(discountLinks.map((l) => l.voucher_id))];
 
   for (const dvId of uniqueDiscountIds) {
+    restoredVoucherIds.add(dvId);
     const dv = await tx.voucher.findUnique({
       where: { id: dvId },
       select: { status: true, expires_at: true },
@@ -116,6 +98,7 @@ export async function restoreVouchersOnCancel(
   ];
 
   for (const pvId of uniqueItemVoucherIds) {
+    restoredVoucherIds.add(pvId);
     const pv = await tx.voucher.findUnique({
       where: { id: pvId },
       select: { status: true, expires_at: true },
@@ -141,6 +124,7 @@ export async function restoreVouchersOnCancel(
   });
 
   if (orderWithFreeship?.freeship_voucher_id) {
+    restoredVoucherIds.add(orderWithFreeship.freeship_voucher_id);
     const fv = await tx.voucher.findUnique({
       where: { id: orderWithFreeship.freeship_voucher_id },
       select: { status: true, expires_at: true },
@@ -167,6 +151,7 @@ export async function restoreVouchersOnCancel(
     });
     if (bundleApplications.length > 0) {
       for (const bundleApplication of bundleApplications) {
+      restoredVoucherIds.add(bundleApplication.voucher_id);
       const bundleVoucher = await tx.voucher.findUnique({
         where: { id: bundleApplication.voucher_id },
         select: { status: true, expires_at: true },
@@ -194,55 +179,12 @@ export async function restoreVouchersOnCancel(
     }
   }
 
-  // 3. Reverse any voucher_surplus points_log rows created for this order.
-  //    Uses safe decrement to floor balance at 0 (prevents negative balance).
-  const surplusLogs = await tx.pointsLog.findMany({
-    where: { order_id: orderId, reason: "voucher_surplus" },
-    select: { id: true, user_id: true, delta: true, voucher_id: true },
-  });
-
-  for (const log of surplusLogs) {
-    if (log.delta <= 0) continue; // already a reversal row, skip
-
-    const actualDecrement = await safeDecrementPoints(tx, log.user_id, log.delta);
-
-    await tx.pointsLog.create({
-      data: {
-        user_id: log.user_id,
-        delta: -actualDecrement,
-        reason: "voucher_surplus_reversed",
-        voucher_id: log.voucher_id,
-        order_id: orderId,
-        performed_by: options?.performedBy ?? null,
-        reversed_log_id: log.id,
-      },
-    });
-  }
-
-  // 4. Reverse order_complete points — only when cancelling a COMPLETED order.
-  //    Uses safe decrement to floor balance at 0 (prevents negative balance).
   if (options?.reverseCompletionPoints) {
-    const completionLogs = await tx.pointsLog.findMany({
-      where: { order_id: orderId, reason: "order_complete" },
-      select: { id: true, user_id: true, delta: true },
+    return reverseCancellationPoints(tx, {
+      orderId,
+      performedBy: options?.performedBy ?? null,
+      excludedVoucherIds: [...restoredVoucherIds],
     });
-
-    for (const log of completionLogs) {
-      if (log.delta <= 0) continue; // skip if already a reversal
-
-      const actualDecrement = await safeDecrementPoints(tx, log.user_id, log.delta);
-
-      await tx.pointsLog.create({
-        data: {
-          user_id: log.user_id,
-          delta: -actualDecrement,
-          reason: "order_complete_reversed",
-          voucher_id: null,
-          order_id: orderId,
-          performed_by: options?.performedBy ?? null,
-          reversed_log_id: log.id,
-        },
-      });
-    }
   }
+  return { revoked_voucher_count: 0, refunded_points: 0, reversed_points: 0 };
 }

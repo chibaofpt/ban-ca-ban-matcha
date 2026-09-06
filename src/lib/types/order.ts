@@ -12,6 +12,13 @@ export type OrderType = "COUNTER" | "PICKUP" | "DELIVERY";
 /** How an order is paid. */
 export type PaymentMethod = "CASH" | "BANK_TRANSFER";
 
+/** Point and voucher adjustments committed atomically with an admin cancellation. */
+export interface CancellationAdjustment {
+  revoked_voucher_count: number;
+  refunded_points: number;
+  reversed_points: number;
+}
+
 /** Public order snapshot returned by staff create/detail/status APIs. */
 export interface StaffOrderResult {
   id: string;
@@ -29,6 +36,7 @@ export interface StaffOrderResult {
   grand_total_vnd: number;
   points_earned: number | null;
   skipped_vouchers: string[];
+  cancellation_adjustment?: CancellationAdjustment;
 }
 
 /** A single addon on an order item as returned by the tracking API. */

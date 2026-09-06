@@ -6,6 +6,7 @@ const mockOrderFindUnique = vi.fn();
 const mockOrderUpdateMany = vi.fn();
 const mockOrderUpdate = vi.fn();
 const mockVoucherUpdateMany = vi.fn();
+const mockBundleApplicationUpdateMany = vi.fn();
 const mockUserUpdate = vi.fn();
 const mockPointsLogCreate = vi.fn();
 const mockRestoreVouchersOnCancel = vi.fn();
@@ -81,6 +82,7 @@ function setupTransaction(): void {
           update: mockOrderUpdate,
         },
         voucher: { updateMany: mockVoucherUpdateMany },
+        orderBundleApplication: { updateMany: mockBundleApplicationUpdateMany },
         user: { update: mockUserUpdate },
         pointsLog: { create: mockPointsLogCreate },
       }),
@@ -96,6 +98,7 @@ describe("PATCH /api/staff/orders/[id] — chuyển khoản tại quầy", () =>
     mockVoucherUpdateMany.mockResolvedValue({ count: 3 });
     mockUserUpdate.mockResolvedValue({});
     mockPointsLogCreate.mockResolvedValue({});
+    mockBundleApplicationUpdateMany.mockResolvedValue({ count: 1 });
     mockOrderUpdate.mockResolvedValue({
       id: ORDER_ID,
       status: "COMPLETED",
@@ -144,6 +147,27 @@ describe("PATCH /api/staff/orders/[id] — chuyển khoản tại quầy", () =>
         }),
       }),
     );
+  });
+
+  it("xác nhận chuyển khoản redeem BUNDLE và application trong cùng transaction", async () => {
+    mockGetSession.mockResolvedValue({ id: CREATOR_ID, role: "STAFF" });
+    mockOrderFindUnique.mockResolvedValue(pendingTransfer({
+      bundleApplications: [{ voucher_id: "bundle-v1", status: "RESERVED" }],
+    }));
+    mockVoucherUpdateMany.mockResolvedValue({ count: 4 });
+
+    const response = await PATCH(makeRequest("COMPLETED"), {
+      params: Promise.resolve({ id: ORDER_ID }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mockVoucherUpdateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: { in: expect.arrayContaining(["bundle-v1"]) } }),
+    }));
+    expect(mockBundleApplicationUpdateMany).toHaveBeenCalledWith({
+      where: { order_id: ORDER_ID, voucher_id: { in: ["bundle-v1"] }, status: "RESERVED" },
+      data: { status: "REDEEMED" },
+    });
   });
 
   it("Admin được xác nhận đơn của bất kỳ Staff nào", async () => {

@@ -32,6 +32,7 @@ export default function AdminPowderPage() {
   const {
     data: powders = [],
     isLoading: isPowdersLoading,
+    isFetching: isPowdersFetching,
     isError: isPowdersError,
     refetch: refetchPowders,
   } = useQuery({
@@ -42,6 +43,7 @@ export default function AdminPowderPage() {
   const {
     data: menuData,
     isLoading: isMenuLoading,
+    isFetching: isMenuFetching,
     isError: isMenuError,
     refetch: refetchMenu,
   } = useQuery({
@@ -51,14 +53,14 @@ export default function AdminPowderPage() {
 
   const latteItems = menuData?.latte || [];
   const isLoading = isPowdersLoading || isMenuLoading;
+  const isRefreshing = isPowdersFetching || isMenuFetching;
   const error =
     isPowdersError || isMenuError
       ? "Không thể tải danh sách bột. Vui lòng thử lại."
       : null;
 
   const loadData = () => {
-    refetchPowders();
-    refetchMenu();
+    void Promise.all([refetchPowders(), refetchMenu()]);
   };
 
   // ── Toast ────────────────────────────────────────────────────────────────────
@@ -125,7 +127,7 @@ export default function AdminPowderPage() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex items-center justify-between gap-4 flex-wrap p-2">
         <div>
           <h1 className="text-xl font-bold text-foreground">Bột Matcha</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -135,16 +137,17 @@ export default function AdminPowderPage() {
         <div className="flex gap-2">
           <button
             type="button"
-            aria-label="Làm mới"
+            aria-label={isRefreshing ? "Đang tải lại" : "Tải lại"}
             onClick={loadData}
-            className="rounded-xl p-2 hover:bg-secondary/60 transition text-muted-foreground border border-border/50 bg-background shadow-sm"
+            disabled={isRefreshing}
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-border/50 bg-background text-muted-foreground shadow-sm transition hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-wait disabled:opacity-60"
           >
-            <RefreshCw size={16} />
+            <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
           </button>
           <button
             type="button"
             onClick={() => setDrawerState({ open: true, mode: "create" })}
-            className="flex items-center gap-2 rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition shadow-sm shadow-primary/20"
+            className="flex min-h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm shadow-primary/20 transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
           >
             <Plus size={15} />
             Thêm bột
@@ -152,9 +155,9 @@ export default function AdminPowderPage() {
         </div>
       </div>
 
-      {/* Search + Filter */}
-      <div className="flex gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
+      {/* Filter */}
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 no-scrollbar md:mx-0 md:px-0">
+        <div className="relative hidden min-w-[200px] flex-1">
           <Search
             size={14}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
@@ -167,11 +170,11 @@ export default function AdminPowderPage() {
             className="pl-8 pr-3 py-2 rounded-xl border border-border bg-background text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40"
           />
         </div>
-        <div className="flex rounded-xl border border-border overflow-hidden text-sm">
+        <div className="contents">
           {(
-            [
-              { id: "active", label: "Đang bán" },
-              { id: "all", label: "Tất cả" },
+              [
+                { id: "all", label: "Tất cả" },
+                { id: "active", label: "Đang bán" },
               { id: "inactive", label: "Ngừng bán" },
             ] as const
           ).map((f) => (
@@ -179,11 +182,12 @@ export default function AdminPowderPage() {
               key={f.id}
               type="button"
               onClick={() => setStatusFilter(f.id)}
+              aria-pressed={statusFilter === f.id}
               className={cn(
-                "px-3 py-2 transition",
+                "shrink-0 rounded-full border px-4 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                 statusFilter === f.id
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-secondary/40 text-muted-foreground hover:text-foreground"
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-card text-foreground hover:bg-secondary/40"
               )}
             >
               {f.label}

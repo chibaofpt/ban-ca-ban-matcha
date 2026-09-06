@@ -16,8 +16,8 @@ export interface AddonGroupFormOption {
 export interface AddonGroupFormFields {
   name: string;
   description: string;
-  type: "SELECTOR" | "TOGGLE" | "QUANTITY";
-  max_quantity: string;
+  max_select: string;
+  is_dynamic_gram: boolean;
   is_active: boolean;
   options: AddonGroupFormOption[];
 }
@@ -25,8 +25,8 @@ export interface AddonGroupFormFields {
 export interface AddonGroupFormPayload {
   name: string;
   description: string | null;
-  type: AddonGroupFormFields["type"];
-  max_quantity: number | null;
+  max_select: number;
+  is_dynamic_gram: boolean;
   is_active: boolean;
   options: Array<{
     id?: string;
@@ -48,13 +48,44 @@ export interface AddonGroupFormSubmission {
   }>;
 }
 
+/** Convert editable form values into the canonical admin add-on mutation contract. */
+export function buildAddonGroupSubmission(values: AddonGroupFormFields): AddonGroupFormSubmission {
+  const isDynamicGram = values.is_dynamic_gram;
+
+  return {
+    payload: {
+      name: values.name.trim(),
+      description: values.description.trim() || null,
+      max_select: isDynamicGram ? 1 : Number(values.max_select) || 1,
+      is_dynamic_gram: isDynamicGram,
+      is_active: values.is_active,
+      options: values.options.map((option, index) => ({
+        id: option.id,
+        image_key: option.image_key,
+        label: option.label.trim(),
+        price_vnd: isDynamicGram ? 0 : Number(option.price_vnd),
+        is_active: option.is_active,
+        sort_order: option.sort_order !== "" ? Number(option.sort_order) : index,
+        gram_value: isDynamicGram && option.gram_value !== ""
+          ? Number(option.gram_value)
+          : null,
+      })),
+    },
+    optionImages: values.options.map((option) => ({
+      imageKey: option.image_key,
+      imageFile: option.image_file,
+      imageFilename: option.image_filename,
+    })),
+  };
+}
+
 /** Convert an admin addon group DTO into editable form values. */
 export function buildAddonGroupDefaultValues(item: AdminAddonGroup): Partial<AddonGroupFormFields> {
   return {
     name: item.name,
     description: item.description ?? "",
-    type: item.type,
-    max_quantity: item.max_quantity !== null ? String(item.max_quantity) : "",
+    max_select: String(item.max_select),
+    is_dynamic_gram: item.is_dynamic_gram,
     is_active: item.is_active,
     options: item.options.map((option) => ({
       id: option.id,

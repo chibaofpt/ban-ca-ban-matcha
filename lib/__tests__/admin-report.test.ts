@@ -8,6 +8,10 @@ import { NextRequest } from "next/server";
 // â”€â”€ Mocks declared before imports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const mockGetSession = vi.fn();
+const mockGetRedisClient = vi.fn();
+vi.hoisted(() => { process.env.JWT_SECRET = "report-policy-test-secret-at-least-32-bytes"; });
+vi.mock("@/lib/redis", () => ({ getRedisClient: () => mockGetRedisClient() }));
+vi.mock("@/lib/observability", () => ({ captureServerException: vi.fn() }));
 
 vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
@@ -22,6 +26,8 @@ vi.mock("@/lib/publicIdentifiers", () => ({
 }));
 
 const mockOrderFindMany = vi.fn();
+const mockOrderCount = vi.fn();
+const mockTransaction = vi.fn();
 const mockDefaultSizeConfigFindMany = vi.fn();
 const mockPowderSizeConfigFindMany = vi.fn();
 const mockMatchaPowderFindMany = vi.fn();
@@ -31,7 +37,9 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     order: {
       findMany: (...args: unknown[]) => mockOrderFindMany(...args),
+      count: (...args: unknown[]) => mockOrderCount(...args),
     },
+    $transaction: (...args: unknown[]) => mockTransaction(...args),
     defaultSizeConfig: {
       findMany: (...args: unknown[]) => mockDefaultSizeConfigFindMany(...args),
     },
@@ -50,6 +58,14 @@ vi.mock("@/lib/prisma", () => ({
 // â”€â”€ Import AFTER mocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import { GET } from "@/app/api/admin/report/route";
+import { prisma } from "@/lib/prisma";
+import { GET as getStaffReport } from "@/app/api/report/route";
+
+beforeEach(() => {
+  mockGetRedisClient.mockReturnValue(null);
+  mockOrderCount.mockResolvedValue(0);
+  mockTransaction.mockImplementation((callback: (db: typeof prisma) => Promise<unknown>) => callback(prisma));
+});
 
 // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -64,6 +80,101 @@ const staffSession = { id: "staff-id", role: "STAFF", name: "Staff" };
 
 // Common mock data
 const defaultParams = { startDate: "2026-06-01", endDate: "2026-06-20" };
+
+// RATE_LIMIT_POLICY: real shared limiter and routes, stateful Redis command boundary only.
+describe("Report — giới hạn chung 6 request mỗi phút mỗi tài khoản", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetSession.mockResolvedValue(adminSession);
+    mockOrderFindMany.mockResolvedValue([]);
+    mockDefaultSizeConfigFindMany.mockResolvedValue([]);
+    mockPowderSizeConfigFindMany.mockResolvedValue([]);
+    mockMatchaPowderFindMany.mockResolvedValue([]);
+    mockMilkTypeFindMany.mockResolvedValue([]);
+  });
+
+  it("đổi route không né được lần thứ 7, tài khoản khác vẫn được phép", async () => {
+    const counters = new Map<string, number>();
+    const expiries = new Map<string, number>();
+    const clock = 1_000;
+    mockGetRedisClient.mockReturnValue({
+      incr: async (key: string) => {
+        const count = (counters.get(key) ?? 0) + 1;
+        counters.set(key, count);
+        return count;
+      },
+      expire: async (key: string, seconds: number) => { expiries.set(key, clock + seconds); return 1; },
+      ttl: async (key: string) => (expiries.get(key) ?? clock) - clock,
+    });
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const handler = attempt % 2 === 0 ? GET : getStaffReport;
+      expect((await handler(makeReq(defaultParams))).status).toBe(200);
+    }
+    mockOrderFindMany.mockClear();
+    const rejected = await getStaffReport(makeReq(defaultParams));
+    expect(rejected.status).toBe(429);
+    expect(rejected.headers.get("Retry-After")).toBe("60");
+    expect(await rejected.json()).toEqual({ error: "Too many requests", code: "TOO_MANY_REQUESTS" });
+    expect(mockOrderFindMany).not.toHaveBeenCalled();
+    mockGetSession.mockResolvedValue({ ...adminSession, id: "another-admin" });
+    expect((await GET(makeReq(defaultParams))).status).toBe(200);
+    expect(counters.size).toBe(2);
+    expect([...expiries.values()]).toEqual([1060, 1060]);
+  });
+
+  it("Redis lỗi vẫn cho phép đọc report theo fail-open policy", async () => {
+    mockGetRedisClient.mockReturnValue({ incr: async () => { throw new Error("controlled Redis outage"); } });
+    expect((await GET(makeReq(defaultParams))).status).toBe(200);
+    expect((await getStaffReport(makeReq(defaultParams))).status).toBe(200);
+  });
+});
+
+it("đọc đủ hai trang trong snapshot và bao gồm mili giây cuối ngày Việt Nam", async () => {
+  mockGetSession.mockResolvedValue(adminSession);
+  mockOrderCount.mockResolvedValue(101);
+  mockDefaultSizeConfigFindMany.mockResolvedValue([]);
+  mockPowderSizeConfigFindMany.mockResolvedValue([]);
+  mockMatchaPowderFindMany.mockResolvedValue([]);
+  mockMilkTypeFindMany.mockResolvedValue([]);
+  mockOrderFindMany.mockImplementation(({ skip }: { skip: number }) => Promise.resolve(
+    Array.from({ length: skip === 0 ? 100 : 1 }, () => ({ total_vnd: 1000, order_type: "COUNTER", items: [] })),
+  ));
+  const res = await GET(makeReq(defaultParams));
+  expect(res.status).toBe(200);
+  expect((await res.json()).data.summary).toMatchObject({ total_orders: 101, total_revenue_vnd: 101000 });
+  expect(mockOrderFindMany).toHaveBeenCalledWith(expect.objectContaining({ skip: 100, take: 100, orderBy: { id: "asc" }, where: expect.objectContaining({
+    created_at: { gte: new Date("2026-05-31T17:00:00Z"), lt: new Date("2026-06-20T17:00:00Z") },
+  }) }));
+  expect(mockTransaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "RepeatableRead", timeout: 10000 });
+});
+
+it("staff vẫn chỉ nhận tổng đơn và doanh thu trong snapshot", async () => {
+  mockGetSession.mockResolvedValue(staffSession);
+  mockOrderCount.mockResolvedValue(1);
+  mockDefaultSizeConfigFindMany.mockResolvedValue([]);
+  mockPowderSizeConfigFindMany.mockResolvedValue([]);
+  mockMatchaPowderFindMany.mockResolvedValue([]);
+  mockMilkTypeFindMany.mockResolvedValue([]);
+  mockOrderFindMany.mockResolvedValue([{ total_vnd: 12000, items: [] }]);
+  const res = await getStaffReport(makeReq(defaultParams));
+  expect(await res.json()).toEqual({ data: { summary: { total_orders: 1, total_revenue_vnd: 12000 } } });
+  expect(mockOrderCount).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ handled_by: "staff-id" }) }));
+});
+
+it("từ chối hơn 10000 đơn trước khi tải chi tiết, không trả tổng thiếu", async () => {
+  mockGetSession.mockResolvedValue(adminSession);
+  mockOrderCount.mockResolvedValue(10001);
+  mockOrderFindMany.mockResolvedValue([]);
+  mockDefaultSizeConfigFindMany.mockResolvedValue([]);
+  mockPowderSizeConfigFindMany.mockResolvedValue([]);
+  mockMatchaPowderFindMany.mockResolvedValue([]);
+  mockMilkTypeFindMany.mockResolvedValue([]);
+  mockOrderFindMany.mockClear();
+  const res = await GET(makeReq(defaultParams));
+  expect(res.status).toBe(422);
+  expect(await res.json()).toMatchObject({ code: "BUSINESS_RULE_VIOLATION", details: { reason: "REPORT_RANGE_TOO_LARGE" } });
+  expect(mockOrderFindMany).not.toHaveBeenCalled();
+});
 
 // â”€â”€ Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -117,6 +228,15 @@ describe("GET /api/admin/report â€” quyá»n truy cáº­p", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("từ chối ngày Gregorian không tồn tại và range quá 366 ngày", async () => {
+    mockGetSession.mockResolvedValue(adminSession);
+    const invalidDate = await GET(makeReq({ startDate: "2026-02-30", endDate: "2026-03-01" }));
+    const tooLong = await GET(makeReq({ startDate: "2025-01-01", endDate: "2026-01-02" }));
+    expect(invalidDate.status).toBe(400);
+    expect(tooLong.status).toBe(400);
+    expect(mockOrderFindMany).not.toHaveBeenCalled();
   });
 });
 

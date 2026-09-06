@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { AnimatePresence } from "framer-motion";
@@ -29,7 +29,7 @@ import { VoucherHistorySection, VoucherModalFrame } from "./VoucherModalSections
 import { VoucherPackageCatalog } from "./VoucherPackageCatalog";
 import { VoucherDetailSheet } from "./VoucherDetailSheet";
 import { BundleVoucherSetupSheet } from "./BundleVoucherSetupSheet";
-import { buildVoucherActionModel, resolveWalletUseNowIntent, selectOrderVoucherToken, type ProductDiscountTarget } from "@/src/utils/customerVoucherSelection";
+import { buildVoucherActionModel, resolveWalletUseNowIntent, selectOrderVoucherToken } from "@/src/utils/customerVoucherSelection";
 import { useAddVoucherToCart } from "@/src/hooks/useAddVoucherToCart";
 import { canApplyDiscount } from "@/src/lib/utils/voucherUseNowHelpers";
 import { usePowderStore } from "@/src/lib/store/powderStore";
@@ -49,7 +49,7 @@ import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 /** Unified customer wallet and voucher acquisition modal. */
 export default function VoucherModal() {
   const queryClient = useQueryClient();
-  const { open, openModal, close } = useVoucherModalStore();
+  const { open, close } = useVoucherModalStore();
   const isLoggedIn = useIsLoggedIn();
   const currentUser = useCurrentUser();
   const pendingIntent = useAuthModalStore((state) => state.pendingIntent);
@@ -66,7 +66,7 @@ export default function VoucherModal() {
   const [exchangingId, setExchangingId] = useState<string | null>(null);
   const [highlightToken, setHighlightToken] = useState<string | null>(null);
   const [qrVoucher, setQrVoucher] = useState<MyVoucher | null>(null);
-  const [pendingAuthRequest, setPendingAuthRequest] = useState<{ packageId?: string } | null>(null);
+  const [detailPackageId, setDetailPackageId] = useState<string | null>(null);
   const [detailVoucher, setDetailVoucher] = useState<MyVoucher | null>(null);
   const [bundleSetupVoucher, setBundleSetupVoucher] = useState<MyVoucher | null>(null);
   const [refundCandidate, setRefundCandidate] = useState<MyVoucher | null>(null);
@@ -79,6 +79,11 @@ export default function VoucherModal() {
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGram = usePowderStore((s) => s.defaultPowderGram);
   const { addToCart, loading: isUsingVoucher } = useAddVoucherToCart();
+  const consumedIntentRef = useRef<object | null>(null);
+  const resolvedDetailPackageRef = useRef<string | null>(null);
+  const detailPackage = detailPackageId
+    ? packages.find((pkg) => pkg.id === detailPackageId) ?? null
+    : null;
 
   const activeVouchers = filterModalVouchers(vouchers);
   const selectedDiscountVouchers = activeVouchers.filter(v => selectedVoucherIds.includes(v.qr_token) && v.voucher_type === "DISCOUNT");
@@ -99,27 +104,13 @@ export default function VoucherModal() {
   }, [close, setCartOpen]);
 
   const handleWalletUseNow = useCallback(async (voucher: MyVoucher) => {
-    let targets: ProductDiscountTarget[] = [];
-    if (voucher.voucher_type === "PRODUCT_DISCOUNT") {
+    // Pre-fetch menu for voucher types that need it in VoucherDetailSheet
+    if (voucher.voucher_type === "PRODUCT_DISCOUNT" || voucher.voucher_type === "BUNDLE") {
       const resolvedMenu = menuData ?? await fetchMenu();
       if (!menuData) setMenuData(resolvedMenu);
-      const eligibleIds = new Set(
-        voucher.eligible_menu_items?.length
-          ? voucher.eligible_menu_items.map((item) => item.menu_item_id)
-          : voucher.menu_item_id ? [voucher.menu_item_id] : [],
-      );
-      targets = [...resolvedMenu.latte, ...resolvedMenu.fusion].flatMap((item) =>
-        eligibleIds.has(item.id)
-          ? (voucher.eligible_sizes ?? []).flatMap((size) =>
-              item.sizes.some((row) => row.size === size && row.base_price_vnd !== null)
-                ? [{ cartId: `${item.id}:${size}`, menuItemId: item.id, size, estimatedBenefitVnd: 1 }]
-                : [])
-          : [],
-      );
     }
     const intent = resolveWalletUseNowIntent({
       voucherType: voucher.voucher_type,
-      productDiscountTargets: targets,
       canApplyOrder: (voucher.voucher_type === "DISCOUNT" || voucher.voucher_type === "FREESHIP") &&
         canApplyDiscount(voucher, subtotalVnd).canApply,
     });
@@ -130,9 +121,7 @@ export default function VoucherModal() {
       handleUseNowSuccess();
       return;
     }
-    const result = intent.selection
-      ? await addToCart(voucher, intent.selection)
-      : await addToCart(voucher);
+    const result = await addToCart(voucher);
     if (result.ok) handleUseNowSuccess();
     else setDetailVoucher(voucher);
   }, [activeVouchers, addToCart, handleUseNowSuccess, menuData, setSelectedVoucherIds, subtotalVnd]);
@@ -196,6 +185,7 @@ export default function VoucherModal() {
       const result = await acquire(pkg);
       setHighlightToken(result.qr_token);
       setActiveTab("my_vouchers");
+      setDetailPackageId(null);
       toast.success(pkg.acquisition_mode === "FREE_CLAIM" ? `Đã nhận: ${pkg.name}` : `Đổi thành công: ${pkg.name}`);
     } catch (error: unknown) {
       const code = axios.isAxiosError<{ code?: string }>(error)
@@ -210,31 +200,17 @@ export default function VoucherModal() {
 
   const handleAcquire = useCallback((pkg: VoucherPackage) => {
     if (!isLoggedIn) {
-      setPendingAuthRequest({ packageId: pkg.id });
-      close();
+      useAuthModalStore.getState().openLoginWithIntent({ type: "voucher_acquire", packageId: pkg.id });
       return;
     }
     if (pkg.acquisition_mode === "POINTS_EXCHANGE") setPendingPackage(pkg);
     else void acquirePackage(pkg);
-  }, [acquirePackage, close, isLoggedIn]);
-
-  const openPendingAuth = useCallback(() => {
-    if (!pendingAuthRequest) return;
-    const request = pendingAuthRequest;
-    setPendingAuthRequest(null);
-    if (request.packageId) {
-      useAuthModalStore.getState().openLoginWithIntent({ type: "voucher_acquire", packageId: request.packageId });
-    } else {
-      useAuthModalStore.getState().openLogin();
-    }
-  }, [pendingAuthRequest]);
+  }, [acquirePackage, isLoggedIn]);
 
   useEffect(() => {
-    if (isLoggedIn && pendingIntent && !open) openModal();
-  }, [isLoggedIn, open, openModal, pendingIntent]);
-
-  useEffect(() => {
-    if (!open || !isLoggedIn || !pendingIntent || packagesLoading) return;
+    if (!open || !isLoggedIn || pendingIntent?.type !== "voucher_acquire" || packagesLoading) return;
+    if (consumedIntentRef.current === pendingIntent) return;
+    consumedIntentRef.current = pendingIntent;
     const pkg = packages.find((item) => item.id === pendingIntent.packageId);
     clearIntent();
     setActiveTab("packages");
@@ -242,6 +218,22 @@ export default function VoucherModal() {
     if (pkg.acquisition_mode === "POINTS_EXCHANGE") setPendingPackage(pkg);
     else void acquirePackage(pkg);
   }, [acquirePackage, clearIntent, isLoggedIn, open, packages, packagesLoading, pendingIntent]);
+
+  useEffect(() => {
+    if (!pendingIntent) consumedIntentRef.current = null;
+  }, [pendingIntent]);
+
+  useEffect(() => {
+    if (detailPackage) resolvedDetailPackageRef.current = detailPackage.id;
+  }, [detailPackage]);
+
+  useEffect(() => {
+    if (!detailPackageId || packagesLoading || detailPackage) return;
+    if (resolvedDetailPackageRef.current !== detailPackageId) return;
+    resolvedDetailPackageRef.current = null;
+    setDetailPackageId(null);
+    toast.error("Gói ưu đãi không còn khả dụng.");
+  }, [detailPackage, detailPackageId, packagesLoading]);
 
 
   const loading = packagesLoading || (isLoggedIn && vouchersLoading);
@@ -253,13 +245,25 @@ export default function VoucherModal() {
       pointsBalance={points}
       onChange={setActiveTab}
       onClose={close}
-      detailOpen={detailVoucher !== null}
+      detailOpen={detailVoucher !== null || detailPackage !== null}
       overlayContent={(
         <>
           <AnimatePresence>{qrVoucher && <QrModal voucher={qrVoucher} onClose={() => setQrVoucher(null)} />}</AnimatePresence>
           <VoucherAcquisitionConfirm pkg={pendingPackage} pointsBalance={points} isLoading={isPending} onCancel={() => setPendingPackage(null)} onConfirm={() => { if (pendingPackage) void acquirePackage(pendingPackage); }} />
 
           <AnimatePresence>
+            {detailPackage && (
+              <VoucherDetailSheet
+                key="package-detail-sheet"
+                packageData={detailPackage}
+                pointsBalance={points}
+                isLoggedIn={isLoggedIn}
+                isExchanging={isPending && exchangingId === detailPackage.id}
+                onBack={() => setDetailPackageId(null)}
+                onExchange={handleAcquire}
+                onLogin={handleAcquire}
+              />
+            )}
             {detailVoucher && (
               <VoucherDetailSheet
                 key="voucher-detail-sheet"
@@ -336,8 +340,8 @@ export default function VoucherModal() {
           <VoucherHistorySection vouchers={filterHistoryVouchers(vouchers)} onVoucherClick={setDetailVoucher} />
         ) : (
           <div>
-            {!isLoggedIn && <div className="mb-4 flex items-center gap-3 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3"><LogIn className="size-5 shrink-0 text-primary" /><p className="flex-1 text-sm font-bold text-primary">Đăng nhập để nhận hoặc đổi ưu đãi</p><button onClick={() => { setPendingAuthRequest({}); close(); }} className="min-h-11 rounded-lg bg-primary px-3 text-xs font-bold text-white">Đăng nhập</button></div>}
-            <VoucherPackageCatalog packages={packages} pointsBalance={points} pendingPackageId={isPending ? exchangingId : null} onAcquire={handleAcquire} />
+            {!isLoggedIn && <div className="mb-4 flex items-center gap-3 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3"><LogIn className="size-5 shrink-0 text-primary" /><p className="flex-1 text-sm font-bold text-primary">Đăng nhập để nhận hoặc đổi ưu đãi</p><button type="button" onClick={() => useAuthModalStore.getState().openLogin()} className="min-h-11 rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground focus-visible:ring-2 focus-visible:ring-ring">Đăng nhập</button></div>}
+            <VoucherPackageCatalog packages={packages} pointsBalance={points} pendingPackageId={isPending ? exchangingId : null} onAcquire={handleAcquire} onPackageClick={(pkg) => setDetailPackageId(pkg.id)} />
           </div>
         )}
     </VoucherModalFrame>
@@ -350,7 +354,6 @@ export default function VoucherModal() {
       presentation="bare"
       className="w-full md:max-w-2xl"
       onOpenChange={(nextOpen) => { if (!nextOpen) close(); }}
-      onAfterClose={openPendingAuth}
     >
       {content}
     </ResponsiveOverlay>

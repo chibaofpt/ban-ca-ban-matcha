@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
+import { runSerializableTransaction } from "@/lib/serializableTransaction";
 import { getSession, normalizePhone } from "@/lib/auth";
 import { staffOrderSchema } from "@/lib/validations/order";
 import { processOrderItems, OrderValidationError, PriceChangedError } from "@/lib/orders";
@@ -43,6 +44,7 @@ export const dynamic = "force-dynamic";
 
 /** POST /api/staff/orders — create a counter order (status = COMPLETED immediately) */
 export async function POST(req: NextRequest) {
+  const acceptanceDate = new Date();
   // 1. Parse body
   const body = await req.json().catch(() => null);
 
@@ -109,14 +111,26 @@ export async function POST(req: NextRequest) {
 
 
 
-    // ── Phase 1: READS (outside transaction — avoids P2028 pgBouncer timeout) ──
+    // Acquisition is a separate preflight; checkout re-fetches its consumed snapshots.
+    if (!isAnonymous) {
+      const grantUser = await prisma.user.findUnique({
+        where: { phone_number: normalizePhone(data.phone_number!) },
+        select: { id: true },
+      });
+      if (grantUser) await ensureAutoGrantedVouchers(
+        prisma as unknown as VoucherIssuanceDatabase, grantUser.id,
+      );
+    }
+    const originalData = data;
+    return await runSerializableTransaction(prisma, async (tx) => {
+    const data = structuredClone(originalData);
 
     // Step 1: Resolve user (read-only) — skip entirely for anonymous
     let existingUser: { id: string } | null = null;
 
     if (!isAnonymous) {
       const normalizedPhone = normalizePhone(data.phone_number!);
-      existingUser = await prisma.user.findUnique({
+      existingUser = await tx.user.findUnique({
         where: { phone_number: normalizedPhone },
         select: { id: true },
       });
@@ -147,12 +161,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (existingUser) {
-      await ensureAutoGrantedVouchers(
-        prisma as unknown as VoucherIssuanceDatabase,
-        existingUser.id,
-      );
       // Expire every active voucher before validating any voucher type.
-      await lazyExpireVouchers(existingUser.id);
+      await lazyExpireVouchers(existingUser.id, acceptanceDate, tx);
     }
     const voucherQrTokens = new Map<string, string>();
 
@@ -164,7 +174,7 @@ export async function POST(req: NextRequest) {
             { status: 400 }
           );
         }
-        const qrUser = await resolveCustomerIdentifier(data.customer_qr_token);
+        const qrUser = await resolveCustomerIdentifier(data.customer_qr_token, tx);
         if (!qrUser || qrUser.id !== existingUser.id) {
           return NextResponse.json(
             { error: "QR không khớp với khách hàng", code: "VALIDATION_ERROR" },
@@ -189,6 +199,7 @@ export async function POST(req: NextRequest) {
           const pv = await resolveOwnedVoucherIdentifier(
             submittedItemVoucherId,
             existingUserForVoucher.id,
+            tx,
           );
           if (pv && productVoucherMap.has(pv.id)) {
             return NextResponse.json(
@@ -198,7 +209,7 @@ export async function POST(req: NextRequest) {
           }
           try {
             const expectedType = item.item_voucher_id ? "ITEM" : "PRODUCT";
-            assertVoucherUsable(pv, existingUserForVoucher.id, expectedType);
+            assertVoucherUsable(pv, existingUserForVoucher.id, expectedType, acceptanceDate);
           } catch (e) {
             if (e instanceof VoucherError) {
               const statusMap: Record<string, number> = {
@@ -245,7 +256,7 @@ export async function POST(req: NextRequest) {
         if (item.addon_voucher_ids && item.addon_voucher_ids.length > 0) {
           const itemAddonOptionIds = new Set<string>();
           for (const av of item.addon_voucher_ids) {
-            const dbAv = await resolveOwnedVoucherIdentifier(av.voucher_id, existingUser.id);
+            const dbAv = await resolveOwnedVoucherIdentifier(av.voucher_id, existingUser.id, tx);
             if (dbAv && addonVoucherIds.has(dbAv.id)) {
               return NextResponse.json(
                 { error: "The same addon voucher cannot be applied to multiple items", code: "VALIDATION_ERROR" },
@@ -261,7 +272,7 @@ export async function POST(req: NextRequest) {
             itemAddonOptionIds.add(av.addon_option_id);
 
             const matchingAddonInput = item.addon_option_ids.find(
-              (addon) => addon.option_id === av.addon_option_id
+              (addon) => addon === av.addon_option_id
             );
             if (!matchingAddonInput) {
               return NextResponse.json(
@@ -271,7 +282,7 @@ export async function POST(req: NextRequest) {
             }
 
             try {
-              assertVoucherUsable(dbAv, existingUser.id, "ADDON");
+              assertVoucherUsable(dbAv, existingUser.id, "ADDON", acceptanceDate);
             } catch (e) {
               if (e instanceof VoucherError) {
                 const status = e.code === "NOT_FOUND" ? 404 : e.code === "VALIDATION_ERROR" ? 400 : 422;
@@ -295,10 +306,11 @@ export async function POST(req: NextRequest) {
     }
 
     // Step 3: Validate + price-check all items (reads from DB, no writes)
-    const resolvedItems = await processOrderItems(data.items, prisma, productVoucherMap, addonVoucherMap);
+    const resolvedItems = await processOrderItems(data.items, tx, productVoucherMap, addonVoucherMap);
     const bundles = data.bundle_applications.length > 0 && existingUser
-      ? await resolveOrderBundles(prisma as unknown as OrderBundleDatabase, {
+      ? await resolveOrderBundles(tx as unknown as OrderBundleDatabase, {
           voucher_owner_id: existingUser.id,
+          now: acceptanceDate,
           items: data.items,
           resolved_items: resolvedItems,
           bundle_applications: data.bundle_applications,
@@ -349,9 +361,9 @@ export async function POST(req: NextRequest) {
     if (existingUser && data.discount_voucher_ids.length > 0) {
       const uniqueDiscountIds = Array.from(new Set(data.discount_voucher_ids));
       for (const dvId of uniqueDiscountIds) {
-        const dv = await resolveOwnedVoucherIdentifier(dvId, existingUser.id);
+        const dv = await resolveOwnedVoucherIdentifier(dvId, existingUser.id, tx);
         try {
-          assertVoucherUsable(dv, existingUser.id, "DISCOUNT");
+          assertVoucherUsable(dv, existingUser.id, "DISCOUNT", acceptanceDate);
         } catch (e) {
           if (e instanceof VoucherError) {
             const status = e.code === "NOT_FOUND" ? 404 : e.code === "VALIDATION_ERROR" ? 400 : 422;
@@ -383,6 +395,7 @@ export async function POST(req: NextRequest) {
           discount_type: dv!.discount_type as "FIXED" | "PERCENT",
           discount_value: dv!.discount_value ?? 0,
           min_order_vnd: dv!.min_order_vnd,
+          max_discount_vnd: dv!.max_discount_vnd,
         });
         voucherQrTokens.set(dv!.id, dv!.qr_token);
       }
@@ -411,11 +424,7 @@ export async function POST(req: NextRequest) {
     );
     // Anonymous orders never earn points
     const points_earned = isAnonymous ? 0 : Math.floor(total_vnd / 10000);
-    const payment = await prepareCounterPayment(data.payment_method, calculation.grand_total_vnd);
-
-    // ── Phase 2: WRITES only (short transaction — pgBouncer compatible) ──────
-    const order = await prisma.$transaction(
-      async (tx) => {
+    const payment = await prepareCounterPayment(data.payment_method, calculation.grand_total_vnd, tx);
         // Resolve or create user only for non-anonymous orders
         let userId: string | null = existingUser?.id ?? null;
 
@@ -573,10 +582,6 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        return createdOrder;
-      },
-      { isolationLevel: "Serializable", maxWait: 5000, timeout: 10000 }
-    );
     const skipped_vouchers = Array.from(new Set(calculation.skippedVoucherIds)).flatMap(
       (voucherId) => {
         const qrToken = voucherQrTokens.get(voucherId);
@@ -587,11 +592,15 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       {
-        data: toStaffOrderPaymentResult(order, payment, skipped_vouchers),
+        data: toStaffOrderPaymentResult(createdOrder, payment, skipped_vouchers),
       },
       { status: 201 }
     );
+    });
   } catch (err) {
+    if (err instanceof Error && "code" in err && err.code === "P2034") {
+      return NextResponse.json({ error: "Order changed concurrently", code: "CONFLICT" }, { status: 409 });
+    }
     if (err instanceof BundlePromotionError) {
       const voucherMissing = err.reason === "BUNDLE_VOUCHER_NOT_FOUND";
       return NextResponse.json(

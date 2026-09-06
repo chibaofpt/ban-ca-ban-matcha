@@ -8,8 +8,9 @@ export type PublicStaffIdentity = Pick<User, "id" | "qr_token" | "role">;
 /** Resolve a STAFF/ADMIN filter token, then one-release legacy UUID fallback. */
 export async function resolveStaffIdentifier(
   identifier: string,
+  db: Pick<typeof prisma, "user"> = prisma,
 ): Promise<PublicStaffIdentity | null> {
-  const publicUser = await prisma.user.findUnique({
+  const publicUser = await db.user.findUnique({
     where: { qr_token: identifier },
     select: { id: true, qr_token: true, role: true },
   });
@@ -17,7 +18,7 @@ export async function resolveStaffIdentifier(
     return publicUser.role === "STAFF" || publicUser.role === "ADMIN" ? publicUser : null;
   }
 
-  const legacyUser = await prisma.user.findUnique({
+  const legacyUser = await db.user.findUnique({
     where: { id: identifier },
     select: { id: true, qr_token: true, role: true },
   });
@@ -29,8 +30,9 @@ export async function resolveStaffIdentifier(
 /** Resolve a customer path identifier by public token, then one-release legacy UUID fallback. */
 export async function resolveCustomerIdentifier(
   identifier: string,
+  db: Pick<typeof prisma, "user"> = prisma,
 ): Promise<PublicUserIdentity | null> {
-  const publicUser = await prisma.user.findUnique({
+  const publicUser = await db.user.findUnique({
     where: { qr_token: identifier },
     select: { id: true, qr_token: true, role: true },
   });
@@ -38,7 +40,7 @@ export async function resolveCustomerIdentifier(
     return publicUser.role === "CUSTOMER" ? publicUser : null;
   }
 
-  const legacyUser = await prisma.user.findUnique({
+  const legacyUser = await db.user.findUnique({
     where: { id: identifier },
     select: { id: true, qr_token: true, role: true },
   });
@@ -51,8 +53,9 @@ export async function resolveCustomerIdentifier(
 export async function resolveOwnedVoucherIdentifier(
   identifier: string,
   ownerId: string,
+  db: Pick<typeof prisma, "voucher"> = prisma,
 ): Promise<(Voucher & { menuItemScopes: Array<{ menu_item_id: string }> }) | null> {
-  const publicVoucher = await prisma.voucher.findUnique({
+  const publicVoucher = await db.voucher.findUnique({
     where: { qr_token: identifier },
     include: { menuItemScopes: { select: { menu_item_id: true } } },
   });
@@ -60,7 +63,7 @@ export async function resolveOwnedVoucherIdentifier(
     return publicVoucher.user_id === ownerId ? publicVoucher : null;
   }
 
-  const legacyVoucher = await prisma.voucher.findUnique({
+  const legacyVoucher = await db.voucher.findUnique({
     where: { id: identifier },
     include: { menuItemScopes: { select: { menu_item_id: true } } },
   });

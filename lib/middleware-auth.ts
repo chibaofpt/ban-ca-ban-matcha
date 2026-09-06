@@ -10,18 +10,26 @@
  */
 
 import { cacheDelete } from './redis';
+import { RefreshTokenSchema } from "./validations/auth";
 
 /** Session row joined with user data — returned by findSessionWithUser. */
 export interface SessionWithUser {
   id: string;
   user_id: string;
   refresh_token: string;
+  previous_refresh_token: string | null;
+  rotating_at: string | null;
   expires_at: string;
   user: {
     id: string;
     role: string;
     phone_number: string;
   };
+}
+
+/** Result of an in-place refresh-token rotation. */
+export interface RotatedSession extends SessionWithUser {
+  refresh_token: string;
 }
 
 /** New session data returned by createSession. */
@@ -70,11 +78,12 @@ function getSupabaseConfig(): { baseUrl: string; headers: Record<string, string>
  * Returns null if not found, expired, or on network error.
  */
 export async function findSessionWithUser(refreshToken: string): Promise<SessionWithUser | null> {
+  if (!RefreshTokenSchema.safeParse(refreshToken).success) return null;
   try {
     const { baseUrl, headers } = getSupabaseConfig();
     const url = new URL(`${baseUrl}/sessions`);
-    url.searchParams.set("refresh_token", `eq.${refreshToken}`);
-    url.searchParams.set("select", "id,user_id,refresh_token,expires_at,user:users(id,role,phone_number)");
+    url.searchParams.set("or", `(refresh_token.eq.${refreshToken},previous_refresh_token.eq.${refreshToken})`);
+    url.searchParams.set("select", "id,user_id,refresh_token,previous_refresh_token,rotating_at,expires_at,user:users(id,role,phone_number)");
     url.searchParams.set("limit", "1");
 
     const res = await fetch(url.toString(), { headers });
@@ -83,6 +92,74 @@ export async function findSessionWithUser(refreshToken: string): Promise<Session
 
     const rows = (await res.json()) as SessionWithUser[];
     return rows.length > 0 ? rows[0] : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Finds a live session by stable id and user id for access-token validation. */
+export async function findLiveSessionById(sessionId: string, userId: string): Promise<SessionWithUser | null> {
+  try {
+    const { baseUrl, headers } = getSupabaseConfig();
+    const url = new URL(`${baseUrl}/sessions`);
+    url.searchParams.set("id", `eq.${sessionId}`);
+    url.searchParams.set("user_id", `eq.${userId}`);
+    url.searchParams.set("expires_at", `gt.${new Date().toISOString()}`);
+    url.searchParams.set("select", "id,user_id,refresh_token,previous_refresh_token,rotating_at,expires_at,user:users(id,role,phone_number)");
+    url.searchParams.set("limit", "1");
+    const response = await fetch(url.toString(), { headers });
+    if (!response.ok) return null;
+    const rows = (await response.json()) as SessionWithUser[];
+    return rows[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Atomically rotates a current refresh token in place, or returns the recent winning token. */
+export async function rotateSessionInPlace(
+  session: SessionWithUser,
+  presentedToken: string,
+): Promise<RotatedSession | null> {
+  if (!RefreshTokenSchema.safeParse(presentedToken).success) return null;
+  const now = new Date();
+  const rotatingAt = session.rotating_at ? new Date(session.rotating_at) : null;
+  if (!(new Date(session.expires_at) > now)) return null;
+  const inGrace = rotatingAt !== null && rotatingAt.getTime() <= now.getTime() && now.getTime() - rotatingAt.getTime() <= 30_000;
+  if (session.rotating_at && session.previous_refresh_token === null) return null;
+  if (session.refresh_token !== presentedToken && !(inGrace && session.previous_refresh_token === presentedToken)) return null;
+
+  try {
+    if (!inGrace) {
+    const { baseUrl, headers } = getSupabaseConfig();
+    const url = new URL(`${baseUrl}/sessions`);
+    url.searchParams.set("id", `eq.${session.id}`);
+    url.searchParams.set("refresh_token", `eq.${presentedToken}`);
+    url.searchParams.set("user_id", `eq.${session.user_id}`);
+    url.searchParams.set("expires_at", `gt.${now.toISOString()}`);
+    url.searchParams.set("or", `(rotating_at.is.null,and(previous_refresh_token.not.is.null,rotating_at.lt.${new Date(now.getTime() - 30_000).toISOString()}))`);
+    const nextToken = crypto.randomUUID();
+    const response = await fetch(url.toString(), {
+      method: "PATCH",
+      headers: { ...headers, Prefer: "return=representation" },
+      body: JSON.stringify({
+        refresh_token: nextToken,
+        previous_refresh_token: presentedToken,
+        rotating_at: now.toISOString(),
+        expires_at: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      }),
+    });
+    if (!response.ok) return null;
+    await response.json();
+    }
+
+    const winner = await findSessionWithUser(presentedToken);
+    const checkedAt = Date.now();
+    if (!winner || winner.id !== session.id || winner.user_id !== session.user_id || winner.user.id !== session.user_id ||
+        !(new Date(winner.expires_at).getTime() > checkedAt) || !winner.rotating_at ||
+        new Date(winner.rotating_at).getTime() > checkedAt || checkedAt - new Date(winner.rotating_at).getTime() > 30_000 ||
+        (winner.refresh_token !== presentedToken && winner.previous_refresh_token !== presentedToken)) return null;
+    return winner;
   } catch {
     return null;
   }

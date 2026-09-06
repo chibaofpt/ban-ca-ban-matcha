@@ -18,6 +18,7 @@ interface CartFooterProps {
   itemsLength: number;
   isLoggedIn: boolean;
   openLogin: () => void;
+  openVoucherLogin: () => void;
   isStoreClosed: boolean;
   closure_note: string | null;
   orderType: "PICKUP" | "DELIVERY";
@@ -60,6 +61,7 @@ export const CartFooter = memo(function CartFooter({
   itemsLength,
   isLoggedIn,
   openLogin,
+  openVoucherLogin,
   isStoreClosed,
   closure_note,
   orderType,
@@ -190,7 +192,7 @@ export const CartFooter = memo(function CartFooter({
               if (isLoggedIn) {
                 setIsDiscountPickerOpen(true);
               } else {
-                openLogin();
+                openVoucherLogin();
               }
             }}
             className="flex items-center justify-between bg-orange-50 border border-orange-100 hover:bg-orange-100/80 transition-colors rounded-xl px-2 py-2 text-left shrink-0"

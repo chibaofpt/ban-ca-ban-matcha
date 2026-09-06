@@ -18,12 +18,9 @@ export interface ReorderItemResult {
 /** Return selected addon IDs that may legally receive an ADDON voucher. */
 export function getReorderVoucherEligibleAddonIds(
   menuData: MenuData,
-  item: Pick<CartItem, "selectedOptionIds" | "quantityAddonOptions">,
+  item: Pick<CartItem, "selectedOptionIds">,
 ): string[] {
-  const selectedIds = new Set([
-    ...item.selectedOptionIds,
-    ...item.quantityAddonOptions.map((addon) => addon.option_id),
-  ]);
+  const selectedIds = new Set(item.selectedOptionIds);
   return menuData.addon_groups.flatMap((group) =>
     group.options
       .filter(
@@ -89,10 +86,8 @@ export function buildReorderItem(
         coldwhisk: false,
         note: item.note || "",
         selectedOptionIds: [],
-        quantityMap: {},
         addonsPrice: 0,
         addonPrices: {},
-        quantityAddonOptions: [],
         unitPrice: fixedPrice,
         clientPriceVnd: fixedPrice,
         originalClientPriceVnd: fixedPrice,
@@ -241,8 +236,6 @@ export function buildReorderItem(
 
   // 4. Resolve Addons
   const selectedOptionIds: string[] = [];
-  const quantityMap: Record<string, number> = {};
-  const quantityAddonOptions: { option_id: string; quantity: number }[] = [];
   const addonPrices: Record<string, number> = {};
   let totalAddonsPrice = 0;
   const addonNames: string[] = [];
@@ -263,19 +256,10 @@ export function buildReorderItem(
           label = `+${option.gram_value}g ${pData?.name || "Matcha"}`;
         }
 
-        if (group.type === "QUANTITY") {
-          quantityMap[group.id] = oldAddon.quantity;
-          quantityAddonOptions.push({ option_id: option.id, quantity: oldAddon.quantity });
-          const cost = price * oldAddon.quantity;
-          addonPrices[option.id] = price;
-          totalAddonsPrice += cost;
-          addonNames.push(`${oldAddon.quantity}x ${group.name}`);
-        } else {
-          selectedOptionIds.push(option.id);
-          addonPrices[option.id] = price;
-          totalAddonsPrice += price;
-          addonNames.push(label);
-        }
+        selectedOptionIds.push(option.id);
+        addonPrices[option.id] = price;
+        totalAddonsPrice += price;
+        addonNames.push(label);
         break;
       }
     }
@@ -363,10 +347,8 @@ export function buildReorderItem(
     coldwhisk: item.coldwhisk,
     note: item.note || "",
     selectedOptionIds,
-    quantityMap,
     addonsPrice: totalAddonsPrice,
     addonPrices,
-    quantityAddonOptions,
     selectedPowderId: finalPowderId,
     selectedMilkTypeId: finalMilkTypeId,
     selectedBaseLiquidId: finalMilkTypeId,

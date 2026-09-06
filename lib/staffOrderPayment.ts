@@ -46,6 +46,7 @@ export interface CounterPaymentPreparation {
 export async function prepareCounterPayment(
   paymentMethod: StaffPaymentMethod,
   grandTotalVnd: number,
+  db: Parameters<typeof generateOrderCode>[0] = prisma,
 ): Promise<CounterPaymentPreparation> {
   if (paymentMethod === "CASH") {
     return {
@@ -65,7 +66,7 @@ export async function prepareCounterPayment(
     );
   }
 
-  const orderCode = await generateOrderCode(prisma);
+  const orderCode = await generateOrderCode(db);
   const paymentQrUrl = buildVietQRUrl({ amount: grandTotalVnd, orderCode });
   return {
     paymentMethod,
@@ -150,15 +151,20 @@ interface CounterTransferDescriptor {
 }
 
 interface CounterTransferVoucherOrder {
+  id: string;
   discountVouchers: Array<{ voucher_id: string }>;
   items: Array<{
     product_voucher_id: string | null;
     item_voucher_id: string | null;
     addonVouchers: Array<{ voucher_id: string }>;
   }>;
+  bundleApplications: Array<{ voucher_id: string; status: string }>;
 }
 
-type CounterTransferRedeemTx = Pick<Prisma.TransactionClient, "voucher">;
+type CounterTransferRedeemTx = Pick<
+  Prisma.TransactionClient,
+  "voucher" | "orderBundleApplication"
+>;
 
 /** Return whether an order is the direct-confirmation counter transfer variant. */
 export function isPendingCounterTransfer(
@@ -201,7 +207,23 @@ export async function redeemCounterTransferVouchers(
     if (item.item_voucher_id) voucherIds.add(item.item_voucher_id);
     for (const voucher of item.addonVouchers) voucherIds.add(voucher.voucher_id);
   }
+  for (const application of order.bundleApplications) {
+    voucherIds.add(application.voucher_id);
+  }
   await redeemOrderVouchers(tx, Array.from(voucherIds), "OFFLINE", performedBy);
+  if (order.bundleApplications.length > 0) {
+    const promoted = await tx.orderBundleApplication.updateMany({
+      where: {
+        order_id: order.id,
+        voucher_id: { in: order.bundleApplications.map(({ voucher_id }) => voucher_id) },
+        status: "RESERVED",
+      },
+      data: { status: "REDEEMED" },
+    });
+    if (promoted.count !== order.bundleApplications.length) {
+      throw new OrderValidationError("CONFLICT", "BUNDLE application changed concurrently");
+    }
+  }
 }
 
 interface PaymentQrOrder {

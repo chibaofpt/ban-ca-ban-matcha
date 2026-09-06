@@ -28,6 +28,9 @@ export const createMilkTypeSchema = milkTypeFields.superRefine(defaultMustBeActi
 export const updateMilkTypeSchema = milkTypeFields.partial().extend({
   /** Set to true to explicitly remove the current image. */
   remove_image: z.boolean().optional(),
+  available_menu_item_ids: z.array(z.string().uuid())
+    .refine((ids) => new Set(ids).size === ids.length, "Danh sách món không được trùng")
+    .optional(),
 }).superRefine(defaultMustBeActive);
 
 export type CreateMilkTypeInput = z.infer<typeof createMilkTypeSchema>;

@@ -39,12 +39,13 @@ model User {
 model Session {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id       String    @db.Uuid
-  refresh_token String    @unique @default(dbgenerated("(gen_random_uuid())::text"))
-  expires_at    DateTime  @db.Timestamptz(6)
+  refresh_token          String    @unique @default(dbgenerated("(gen_random_uuid())::text"))
+  previous_refresh_token String?   @unique
+  expires_at             DateTime  @db.Timestamptz(6)
   created_at    DateTime  @default(now()) @db.Timestamptz(6)
-  /// Rotation lock — set when a request is rotating this session.
-  /// Another request seeing a non-null value < 30s old must skip rotation.
-  /// Stale locks (>30s) are automatically overridden.
+  /// Last successful in-place refresh rotation; starts the 30-second grace/cooldown.
+  /// During grace, the current and single previous token resolve to the same session.
+  /// Legacy lock-only rows without a previous token fail closed until re-authentication.
   rotating_at   DateTime? @db.Timestamptz(6)
   user          User      @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -96,6 +97,8 @@ model VoucherPackage {
   points_cost               Int
   discount_type             DiscountType?
   discount_value            Int?
+  /// Maximum VND reduction for DISCOUNT PERCENT vouchers. NULL = no cap. Ignored for FIXED.
+  max_discount_vnd          Int?
   product_discount_mode     ProductDiscountMode?
   menu_item_id              String?                @db.Uuid
   eligible_sizes            Size[]                 @default([])
@@ -140,6 +143,8 @@ model Voucher {
   issued_via                VoucherAcquisitionMode     @default(POINTS_EXCHANGE)
   discount_type             DiscountType?
   discount_value            Int?
+  /// Maximum VND reduction — snapshot from package. NULL = no cap.
+  max_discount_vnd          Int?
   product_discount_mode     ProductDiscountMode?
   menu_item_id              String?                    @db.Uuid
   eligible_sizes            Size[]                     @default([])
@@ -349,7 +354,8 @@ model AddonGroup {
   name         String
   description  String?
   image_url    String?
-  type         AddonType
+  max_select      Int     @default(1)
+  is_dynamic_gram Boolean @default(false)
   /// Deprecated during the opt-in rollout. Always false; dropped in phase 2.
   is_required  Boolean
   /// Deprecated during the opt-in rollout. Always null; dropped in phase 2.
@@ -357,8 +363,10 @@ model AddonGroup {
   max_quantity Int?
   created_at   DateTime      @default(now()) @db.Timestamptz(6)
   is_active    Boolean       @default(true)
+  sort_order   Int           @default(0)
   options      AddonOption[]
 
+  @@index([sort_order, id], map: "idx_addon_groups_sort_order_id")
   @@map("addon_groups")
 }
 
@@ -381,6 +389,7 @@ model AddonOption {
   addonVoucherLinks OrderItemAddonVoucher[]
   bundleRewards     VoucherBundleAddonReward[]
 
+  @@index([addon_group_id, sort_order, id], map: "idx_addon_options_group_sort_order_id")
   @@map("addon_options")
 }
 
@@ -779,12 +788,6 @@ enum OrderType {
 enum PaymentMethod {
   CASH
   BANK_TRANSFER
-}
-
-enum AddonType {
-  SELECTOR
-  TOGGLE
-  QUANTITY
 }
 
 enum SweetnessLevel {

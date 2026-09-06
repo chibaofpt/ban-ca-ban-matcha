@@ -52,6 +52,14 @@ function redisClient(): RateLimitRedis | null {
   return getRedisClient() as unknown as RateLimitRedis | null;
 }
 
+function reportRateLimitFailure(operation: string, rule: RateLimitRuleName): void {
+  captureServerException(new Error("RATE_LIMIT_UPSTREAM_FAILURE"), {
+    operation,
+    rule,
+    code: "REDIS_OPERATION_FAILED",
+  });
+}
+
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
 }
@@ -115,7 +123,7 @@ export async function checkRateLimit(
       retryAfterSeconds,
     };
   } catch (error) {
-    captureServerException(error, { operation: "rate_limit", rule: ruleName });
+    reportRateLimitFailure("rate_limit", ruleName);
     return { allowed: true, remaining: -1, retryAfterSeconds: 0 };
   }
 }
@@ -186,7 +194,7 @@ export async function checkLoginFailLimit(
       remaining: count < limit ? limit - count : 0,
     };
   } catch (error) {
-    captureServerException(error, { operation: "login_rate_limit", rule: "loginFailedIp" });
+    reportRateLimitFailure("login_rate_limit", "loginFailedIp");
     return { allowed: true, remaining: -1 };
   }
 }
@@ -196,7 +204,7 @@ export async function recordLoginFail(ip: string): Promise<void> {
   try {
     await recordLoginCounter("loginFailedIp", ip);
   } catch (error) {
-    captureServerException(error, { operation: "login_rate_limit", rule: "loginFailedIp" });
+    reportRateLimitFailure("login_rate_limit", "loginFailedIp");
   }
 }
 
@@ -205,7 +213,7 @@ export async function resetLoginFail(ip: string): Promise<void> {
   try {
     await resetLoginCounter("loginFailedIp", ip);
   } catch (error) {
-    captureServerException(error, { operation: "login_rate_limit", rule: "loginFailedIp" });
+    reportRateLimitFailure("login_rate_limit", "loginFailedIp");
   }
 }
 
@@ -219,7 +227,7 @@ export async function checkIdentifierFloodGuard(
     if (count === null) return { allowed: true };
     return { allowed: count < RATE_LIMIT_RULES.loginIdentifier.limit };
   } catch (error) {
-    captureServerException(error, { operation: "login_rate_limit", rule: "loginIdentifier" });
+    reportRateLimitFailure("login_rate_limit", "loginIdentifier");
     return { allowed: true };
   }
 }
@@ -232,7 +240,7 @@ export async function recordIdentifierFloodAttempt(
   try {
     await recordLoginCounter("loginIdentifier", `${kind}:${identifier}`);
   } catch (error) {
-    captureServerException(error, { operation: "login_rate_limit", rule: "loginIdentifier" });
+    reportRateLimitFailure("login_rate_limit", "loginIdentifier");
   }
 }
 
@@ -244,7 +252,7 @@ export async function resetIdentifierFlood(
   try {
     await resetLoginCounter("loginIdentifier", `${kind}:${identifier}`);
   } catch (error) {
-    captureServerException(error, { operation: "login_rate_limit", rule: "loginIdentifier" });
+    reportRateLimitFailure("login_rate_limit", "loginIdentifier");
   }
 }
 

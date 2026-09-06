@@ -78,13 +78,9 @@ export function removeBundleEffects(items: CartItem[], application: CartBundleAp
     if (addonEffects.length === 0) return item;
     const effectByOption = new Map<string, number>();
     for (const effect of addonEffects) effectByOption.set(effect.addon_option_id, (effectByOption.get(effect.addon_option_id) ?? 0) + effect.quantity);
-    const quantityAddonOptions = item.quantityAddonOptions.flatMap((addon) => {
-      const quantity = addon.quantity - (effectByOption.get(addon.option_id) ?? 0);
-      return quantity > 0 ? [{ ...addon, quantity }] : [];
-    });
     const selectedOptionIds = item.selectedOptionIds.filter((id) => (effectByOption.get(id) ?? 0) < 1);
     const removedPrice = [...effectByOption.entries()].reduce((sum, [id, quantity]) => sum + (item.addonPrices[id] ?? 0) * quantity, 0);
-    const next = { ...item, quantityAddonOptions, selectedOptionIds, addonsPrice: Math.max(0, item.addonsPrice - removedPrice) };
+    const next = { ...item, selectedOptionIds, addonsPrice: Math.max(0, item.addonsPrice - removedPrice) };
     return { ...next, clientPriceVnd: computeFinalClientPrice(next) };
   });
 }
@@ -222,10 +218,7 @@ export function migrateCartState(
     const retainedOptionIds = itemVoucherSafeItem.selectedOptionIds.filter(
       (optionId) => (itemVoucherSafeItem.addonPrices[optionId] ?? 0) > 0,
     );
-    const retainedOptionIdSet = new Set([
-      ...retainedOptionIds,
-      ...itemVoucherSafeItem.quantityAddonOptions.map((option) => option.option_id),
-    ]);
+    const retainedOptionIdSet = new Set(retainedOptionIds);
     const retainedPrices = Object.fromEntries(
       Object.entries(itemVoucherSafeItem.addonPrices).filter(
         ([optionId, price]) => price > 0 || retainedOptionIdSet.has(optionId),

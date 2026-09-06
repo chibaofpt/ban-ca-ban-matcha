@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const migrationPath = join(process.cwd(), "prisma/migrations/20260825000000_add_product_discount_scopes/migration.sql");
 
-describe("Migration scope PRODUCT_DISCOUNT nhiều món", () => {
+describe("static SQL contract — scope PRODUCT_DISCOUNT (không thực thi migration)", () => {
   it("tạo hai bảng scope, index và foreign key đúng chính sách", () => {
     const sql = readFileSync(migrationPath, "utf8");
     expect(sql).toContain('CREATE TABLE "voucher_package_menu_item_scopes"');

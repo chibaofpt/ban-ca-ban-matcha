@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { addressSchema } from "@/lib/validations/address";
 import { getStoreLocation, goongDistanceMatrix } from "@/lib/goong";
+import { checkRateLimits, getClientIp } from "@/lib/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json(
         { error: "Invalid data", code: "VALIDATION_ERROR", details: parsed.error.format() },
         { status: 400 }
+      );
+    }
+
+    const limit = await checkRateLimits([
+      { ruleName: "deliveryAccount", identifier: session.id },
+      { ruleName: "deliveryIp", identifier: getClientIp(req) },
+    ]);
+    if (!limit.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests", code: "TOO_MANY_REQUESTS" },
+        { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
       );
     }
 

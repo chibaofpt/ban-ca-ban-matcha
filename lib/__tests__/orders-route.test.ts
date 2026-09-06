@@ -172,7 +172,7 @@ function setupTx(overrides: {
         is_active: true,
         group: {
           id: "550e8400-e29b-41d4-a716-446655440099",
-          type: "SELECTOR",
+          max_select: 1, is_dynamic_gram: false,
           is_active: true,
           max_quantity: null,
           options: [],
@@ -240,7 +240,7 @@ function setupTx(overrides: {
       },
       user: { update: mockUserUpdate },
       pointsLog: { create: mockPointsLogCreate },
-      order: { create: mockOrderCreate },
+      order: { create: mockOrderCreate, findUnique: vi.fn().mockResolvedValue(null) },
       orderDiscountVoucher: { create: vi.fn() },
       orderItemAddonVoucher: { createMany: vi.fn() },
     };
@@ -327,7 +327,6 @@ describe("POST /api/orders", () => {
       code: "BUSINESS_RULE_VIOLATION",
       details: { reason: "ORDER_VALUE_EXCEEDED" },
     });
-    expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(mockOrderCreate).not.toHaveBeenCalled();
   });
 
@@ -739,7 +738,7 @@ describe("POST /api/orders", () => {
           quantity: 1,
           size: "MEDIUM",
           sweetness: "QUARTER",
-          addon_option_ids: [{ option_id: ADDON_OPTION_ID, quantity: 1 }],
+          addon_option_ids: [ADDON_OPTION_ID],
           client_price_vnd: 77000,
         },
       ],
@@ -764,7 +763,7 @@ describe("POST /api/orders", () => {
       .mockResolvedValueOnce(addonVoucher2)
       .mockResolvedValue(null);
 
-    await POST(makeReq({ ...validPayload, items: [{ ...validPayload.items[0], addon_option_ids: [{ option_id: ADDON_OPTION_ID, quantity: 1 }], addon_voucher_ids: [{ voucher_id: ADDON_VOUCHER_ID, addon_option_id: ADDON_OPTION_ID }] }] }));
+    await POST(makeReq({ ...validPayload, items: [{ ...validPayload.items[0], addon_option_ids: [ADDON_OPTION_ID], addon_voucher_ids: [{ voucher_id: ADDON_VOUCHER_ID, addon_option_id: ADDON_OPTION_ID }] }] }));
 
     expect(mockVoucherUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -785,7 +784,7 @@ describe("POST /api/orders", () => {
       expires_at: null,
     });
 
-    const res = await POST(makeReq({ ...validPayload, items: [{ ...validPayload.items[0], addon_option_ids: [{ option_id: ADDON_OPTION_ID, quantity: 1 }], addon_voucher_ids: [{ voucher_id: ADDON_VOUCHER_ID, addon_option_id: ADDON_OPTION_ID }] }] }));
+    const res = await POST(makeReq({ ...validPayload, items: [{ ...validPayload.items[0], addon_option_ids: [ADDON_OPTION_ID], addon_voucher_ids: [{ voucher_id: ADDON_VOUCHER_ID, addon_option_id: ADDON_OPTION_ID }] }] }));
     expect(res.status).toBe(422);
     expect((await res.json()).code).toBe("VOUCHER_REDEEMED");
   });
@@ -819,7 +818,7 @@ describe("POST /api/orders", () => {
     const res = await POST(
       makeReq({
         ...validPayload,
-        items: [{ ...validPayload.items[0], addon_option_ids: [{ option_id: ADDON_OPTION_ID, quantity: 1 }], addon_voucher_ids: [{ voucher_id: ADDON_VOUCHER_ID, addon_option_id: ADDON_OPTION_ID }] }],
+        items: [{ ...validPayload.items[0], addon_option_ids: [ADDON_OPTION_ID], addon_voucher_ids: [{ voucher_id: ADDON_VOUCHER_ID, addon_option_id: ADDON_OPTION_ID }] }],
         discount_voucher_ids: [V_PCT],
       })
     );

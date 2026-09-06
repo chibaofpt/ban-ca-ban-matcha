@@ -3,12 +3,10 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import {
-  createSession,
-  deleteSession,
   evictSessionCache,
+  findLiveSessionById,
   findSessionWithUser,
-  markSessionRotating,
-  updateSessionGracePeriod,
+  rotateSessionInPlace,
 } from "@/lib/middleware-auth";
 import type { buildPageSecurityHeaders } from "@/lib/securityHeaders";
 
@@ -86,8 +84,11 @@ export async function verifyAccessToken(request: NextRequest): Promise<Middlewar
   if (!accessToken) return null;
 
   try {
-    const { payload } = await jwtVerify(accessToken, JWT_SECRET);
-    return payloadToUser(payload);
+    const { payload } = await jwtVerify(accessToken, JWT_SECRET, { algorithms: ["HS256"] });
+    const claims = payloadToClaims(payload);
+    if (!claims) return null;
+    const session = await findLiveSessionById(claims.sid, claims.id);
+    return session ? sessionToUser(session) : null;
   } catch {
     return null;
   }
@@ -102,8 +103,12 @@ export async function resolveSessionFull(
 
   if (accessToken) {
     try {
-      const { payload } = await jwtVerify(accessToken, JWT_SECRET);
-      return { user: payloadToUser(payload), cookieUpdates: null };
+      const { payload } = await jwtVerify(accessToken, JWT_SECRET, { algorithms: ["HS256"] });
+      const claims = payloadToClaims(payload);
+      if (claims) {
+        const live = await findLiveSessionById(claims.sid, claims.id);
+        if (live) return { user: sessionToUser(live), cookieUpdates: null };
+      }
     } catch {
       // Expired access tokens fall through to refresh-token rotation.
     }
@@ -112,29 +117,18 @@ export async function resolveSessionFull(
 
   const session = await findSessionWithUser(refreshToken);
   if (!session || new Date(session.expires_at) < new Date()) {
-    if (session) void deleteSession(session.id, refreshToken);
     return { user: null, cookieUpdates: null };
   }
 
-  const sessionUser: MiddlewareUser = {
-    id: session.user_id,
-    role: session.user.role,
-    phone_number: session.user.phone_number,
-  };
-  const rotationClaim = await markSessionRotating(session.id);
-  if (rotationClaim !== "acquired") return { user: null, cookieUpdates: null };
-
   try {
     await evictSessionCache(refreshToken);
-    if (!(await updateSessionGracePeriod(session.id))) {
-      return { user: null, cookieUpdates: null };
-    }
-    const newSession = await createSession(session.user_id);
+    const rotated = await rotateSessionInPlace(session, refreshToken);
+    if (!rotated) return { user: null, cookieUpdates: null };
     return {
-      user: sessionUser,
+      user: sessionToUser(rotated),
       cookieUpdates: {
-        accessToken: await signAccessToken(sessionUser),
-        refreshToken: newSession.refresh_token,
+        accessToken: await signAccessToken(sessionToUser(rotated), rotated.id),
+        refreshToken: rotated.refresh_token,
       },
     };
   } catch {
@@ -161,19 +155,22 @@ export function buildAuthenticatedResponse(
   return securityHeaders ? applyPageResponseHeaders(response, securityHeaders) : response;
 }
 
-function payloadToUser(payload: Awaited<ReturnType<typeof jwtVerify>>["payload"]): MiddlewareUser {
-  return {
-    id: payload.id as string,
-    role: payload.role as string,
-    phone_number: payload.phone_number as string,
-  };
+function payloadToClaims(payload: Awaited<ReturnType<typeof jwtVerify>>["payload"]): (MiddlewareUser & { sid: string }) | null {
+  if (typeof payload.id !== "string" || typeof payload.role !== "string" ||
+      typeof payload.phone_number !== "string" || typeof payload.sid !== "string") return null;
+  return { id: payload.id, role: payload.role, phone_number: payload.phone_number, sid: payload.sid };
 }
 
-async function signAccessToken(payload: MiddlewareUser): Promise<string> {
+function sessionToUser(session: { user_id: string; user: { role: string; phone_number: string } }): MiddlewareUser {
+  return { id: session.user_id, role: session.user.role, phone_number: session.user.phone_number };
+}
+
+async function signAccessToken(payload: MiddlewareUser, sid: string): Promise<string> {
   return new SignJWT({
     id: payload.id,
     role: payload.role,
     phone_number: payload.phone_number,
+    sid,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()

@@ -47,7 +47,7 @@ export function normalizePhone(phone: string): string {
 /**
  * Signs a JWT token with HS256. 15 minutes for all roles.
  */
-export async function signJwt(payload: { id: string; role: string; phone_number: string }): Promise<string> {
+export async function signJwt(payload: { id: string; role: string; phone_number: string; sid: string }): Promise<string> {
   const expiresIn = "15m";
   return await new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
@@ -61,8 +61,11 @@ export async function signJwt(payload: { id: string; role: string; phone_number:
  */
 export async function verifyJwt(token: string) {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
-    return payload as { id: string; role: string; phone_number: string };
+    const { payload, protectedHeader } = await jwtVerify(token, JWT_SECRET, { algorithms: ["HS256"] });
+    if (protectedHeader.alg !== "HS256" || typeof payload.id !== "string" ||
+        typeof payload.role !== "string" || typeof payload.phone_number !== "string" ||
+        typeof payload.sid !== "string") return null;
+    return payload as { id: string; role: string; phone_number: string; sid: string };
   } catch {
     return null;
   }
@@ -78,7 +81,7 @@ function refreshTtlSeconds(role: string): number {
  * Creates a new refresh session in the database.
  * TTL: 7 days for all roles.
  */
-export async function createSession(userId: string, role: string): Promise<string> {
+export async function createSession(userId: string, role: string): Promise<{ id: string; refreshToken: string }> {
   const ttlMs = refreshTtlSeconds(role) * 1000;
   const expiresAt = new Date(Date.now() + ttlMs);
   const session = await prisma.session.create({
@@ -87,7 +90,7 @@ export async function createSession(userId: string, role: string): Promise<strin
       expires_at: expiresAt,
     },
   });
-  return session.refresh_token;
+  return { id: session.id, refreshToken: session.refresh_token };
 }
 
 /**
@@ -135,7 +138,7 @@ export async function clearAuthCookies() {
   const cookieStore = await cookies();
   const refreshToken = cookieStore.get("refresh_token")?.value;
 
-  // Evict Redis session cache immediately so the session is truly invalid
+  // Evict legacy cache keys; authorization trusts the database, not this cache.
   if (refreshToken) {
     await cacheDelete(`session:${refreshToken}`);
   }
@@ -155,14 +158,25 @@ export async function getRefreshTokenCookie(): Promise<string | null> {
 }
 
 /**
- * Reads user session from the access_token cookie (JWT verify only — no DB hit).
- * Returns null if token is missing or expired/invalid.
+ * Verifies the access JWT and its live database session, returning the user's current role.
+ * Returns null for missing/invalid tokens, revoked/expired sessions or database failures.
  */
 export async function getSession() {
   const cookieStore = await cookies();
   const token = cookieStore.get("access_token")?.value;
   if (!token) return null;
-  return verifyJwt(token);
+  const claims = await verifyJwt(token);
+  if (!claims) return null;
+  try {
+    const session = await prisma.session.findFirst({
+      where: { id: claims.sid, user_id: claims.id, expires_at: { gt: new Date() } },
+      include: { user: { select: { id: true, role: true, phone_number: true } } },
+    });
+    if (!session || session.user.id !== claims.id) return null;
+    return { id: session.user.id, role: session.user.role, phone_number: session.user.phone_number };
+  } catch {
+    return null;
+  }
 }
 
 /**

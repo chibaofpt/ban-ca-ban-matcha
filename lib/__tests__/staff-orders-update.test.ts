@@ -17,15 +17,11 @@ const mockPointsLogCreate = vi.fn();
 const mockVoucherFindUnique = vi.fn();
 const mockVoucherUpdate = vi.fn();
 const mockVoucherUpdateMany = vi.fn();
-const mockRestoreVouchersOnCancel = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
-vi.mock("@/lib/cancelOrder", () => ({
-  restoreVouchersOnCancel: (...args: unknown[]) => mockRestoreVouchersOnCancel(...args),
-}));
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
@@ -80,6 +76,24 @@ describe("PATCH /api/staff/orders/[id] — cập nhật trạng thái", () => {
     vi.clearAllMocks();
     mockOrderUpdateMany.mockResolvedValue({ count: 1 });
     setupTx();
+  });
+
+  it("Staff không được hoàn tất đơn online do Staff khác xử lý", async () => {
+    mockGetSession.mockResolvedValue(STAFF_SESSION);
+    mockOrderFindUnique.mockResolvedValue({
+      id: ORDER_ID, status: "STAFF_DONE", order_type: "PICKUP",
+      payment_method: "BANK_TRANSFER", handled_by: "other-staff",
+      points_earned: null, user_id: USER_ID, total_vnd: 50000,
+      items: [], discountVouchers: [], bundleApplications: [],
+    });
+    mockOrderUpdate.mockResolvedValue({ id: ORDER_ID, status: "COMPLETED" });
+    const response = await PATCH(makeReq({ status: "COMPLETED" }), {
+      params: Promise.resolve({ id: ORDER_ID }),
+    });
+    expect(response.status).toBe(403);
+    expect((await response.json()).code).toBe("FORBIDDEN");
+    expect(mockOrderUpdateMany).not.toHaveBeenCalled();
+    expect(mockPointsLogCreate).not.toHaveBeenCalled();
   });
 
   it("Khi update status thành COMPLETED, KHÔNG redeem voucher lại (đã redeem ở ADMIN_CONFIRMED)", async () => {

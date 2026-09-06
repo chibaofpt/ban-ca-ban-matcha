@@ -2,15 +2,21 @@ import { describe, expect, it } from "vitest";
 import { toPublicVoucherDto } from "@/lib/voucherPublicDto";
 
 describe("Voucher public DTO", () => {
-  it("chỉ xuất qr_token và bỏ toàn bộ internal identity", () => {
+  it.each([
+    { packageId: "catalog-package-id", expectedPackageId: "catalog-package-id" },
+    { packageId: undefined, expectedPackageId: undefined },
+    { packageId: 42, expectedPackageId: undefined },
+    { packageId: null, expectedPackageId: undefined },
+  ])("giữ package_id chuỗi tùy chọn nhưng không lộ identity người dùng/voucher ($packageId)", ({ packageId, expectedPackageId }) => {
     const dto = toPublicVoucherDto({
       id: "internal-voucher-id",
       user_id: "internal-user-id",
-      package_id: "internal-package-id",
+      ...(packageId === undefined ? {} : { package_id: packageId }),
       qr_token: "public-voucher-token",
       voucher_type: "DISCOUNT",
       discount_type: "FIXED",
       discount_value: 10_000,
+      max_discount_vnd: null,
       menu_item_id: null,
       size: null,
       matcha_powder_id: null,
@@ -35,7 +41,8 @@ describe("Voucher public DTO", () => {
     expect(dto.qr_token).toBe("public-voucher-token");
     expect(dto).not.toHaveProperty("id");
     expect(dto).not.toHaveProperty("user_id");
-    expect(dto).not.toHaveProperty("package_id");
+    if (expectedPackageId === undefined) expect(dto).not.toHaveProperty("package_id");
+    else expect(dto.package_id).toBe(expectedPackageId);
     expect(dto).not.toHaveProperty("redeemed_by");
   });
 

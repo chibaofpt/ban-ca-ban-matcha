@@ -77,19 +77,14 @@ export function buildProductVoucherMap(
 
 /**
  * Returns usable ADDON vouchers whose addon_option_id appears in any cart item's
- * selectedOptionIds or quantityAddonOptions. Excludes already-used vouchers.
+ * selectedOptionIds. Excludes already-used vouchers.
  */
 export function matchAddonVouchers(
   vouchers: MyVoucher[],
   cartItems: CartItem[],
   usedVoucherIds: Set<string> = new Set()
 ): MyVoucher[] {
-  const allOptionIds = new Set(
-    cartItems.flatMap((c) => [
-      ...c.selectedOptionIds,
-      ...c.quantityAddonOptions.map((q) => q.option_id),
-    ])
-  );
+  const allOptionIds = new Set(cartItems.flatMap((c) => c.selectedOptionIds));
   return filterUsableVouchers(vouchers, "ADDON").filter(
     (v) => v.addon_option_id !== null && allOptionIds.has(v.addon_option_id) && !usedVoucherIds.has(v.qr_token)
   );
@@ -105,10 +100,7 @@ export function buildAddonVoucherMap(
   const usable = filterUsableVouchers(vouchers, "ADDON");
   const result = new Map<string, MyVoucher[]>();
   for (const item of cartItems) {
-    const itemOptionIds = new Set([
-      ...item.selectedOptionIds,
-      ...item.quantityAddonOptions.map((q) => q.option_id),
-    ]);
+    const itemOptionIds = new Set(item.selectedOptionIds);
     const appliedOptionIds = new Set(item.addonVouchers?.map(av => av.addonOptionId) || []);
     
     const matches = usable.filter(
@@ -172,7 +164,10 @@ export function estimateMultiDiscountSavings(
   const percentVoucher = vouchers.find((v) => v.discount_type === "PERCENT");
   if (percentVoucher && (percentVoucher.discount_value ?? 0) > 0) {
     const pct = Math.min(percentVoucher.discount_value ?? 0, 100);
-    const discount = Math.floor(((remaining * pct) / 100) / 1000) * 1000;
+    let discount = Math.floor(((remaining * pct) / 100) / 1000) * 1000;
+    if ("max_discount_vnd" in percentVoucher && percentVoucher.max_discount_vnd != null) {
+      discount = Math.min(discount, percentVoucher.max_discount_vnd as number);
+    }
     remaining = Math.max(0, remaining - discount);
   }
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import {
   calcOrderTotals,
   type CalcDiscountVoucher,
@@ -32,6 +33,8 @@ export async function calculateCustomerOrderDiscounts(
   items: CalcOrderItem[],
   shippingFeeVnd: number,
   voucherQrTokens: Map<string, string>,
+  db: Pick<typeof prisma, "voucher"> = prisma,
+  acceptanceDate = new Date(),
 ): Promise<CustomerDiscountResult> {
   const baseCalculation = calcOrderTotals({
     items,
@@ -46,7 +49,7 @@ export async function calculateCustomerOrderDiscounts(
   let freeshipFromDiscount: Awaited<ReturnType<typeof resolveOwnedVoucherIdentifier>> = null;
 
   for (const identifier of Array.from(new Set(data.discount_voucher_ids))) {
-    const voucher = await resolveOwnedVoucherIdentifier(identifier, userId);
+    const voucher = await resolveOwnedVoucherIdentifier(identifier, userId, db);
     if (voucher?.voucher_type === "FREESHIP") {
       if (data.order_type !== "DELIVERY") continue;
       if (finalFreeshipIdentifier && finalFreeshipIdentifier !== identifier) {
@@ -64,7 +67,7 @@ export async function calculateCustomerOrderDiscounts(
     }
 
     try {
-      assertVoucherUsable(voucher, userId, "DISCOUNT");
+      assertVoucherUsable(voucher, userId, "DISCOUNT", acceptanceDate);
     } catch (error) {
       if (error instanceof VoucherError) {
         return { ok: false, response: voucherErrorResponse(error) };
@@ -104,6 +107,7 @@ export async function calculateCustomerOrderDiscounts(
       discount_type: voucher.discount_type as "FIXED" | "PERCENT",
       discount_value: voucher.discount_value ?? 0,
       min_order_vnd: voucher.min_order_vnd,
+      max_discount_vnd: voucher.max_discount_vnd,
     });
     voucherQrTokens.set(voucher.id, voucher.qr_token);
   }
@@ -127,9 +131,9 @@ export async function calculateCustomerOrderDiscounts(
     }
     const voucher =
       freeshipFromDiscount ??
-      (await resolveOwnedVoucherIdentifier(finalFreeshipIdentifier, userId));
+      (await resolveOwnedVoucherIdentifier(finalFreeshipIdentifier, userId, db));
     try {
-      assertVoucherUsable(voucher, userId, "FREESHIP");
+      assertVoucherUsable(voucher, userId, "FREESHIP", acceptanceDate);
     } catch (error) {
       if (error instanceof VoucherError) {
         return { ok: false, response: voucherErrorResponse(error) };

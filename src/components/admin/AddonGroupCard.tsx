@@ -1,205 +1,154 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, ImageIcon, Pencil, Trash2 } from "lucide-react";
 import Image from "next/image";
-import { cn } from "@/src/utils/cn";
+import { Eye, EyeOff, ImageIcon, Pencil, Plus } from "lucide-react";
+import AddonOptionRow from "@/src/components/admin/AddonOptionRow";
+import ReorderButtons from "@/src/components/admin/ReorderButtons";
 import type { AdminAddonGroup } from "@/src/lib/types/addonGroup";
-import { formatMoney } from "@/src/utils/pricing";
+import { cn } from "@/src/utils/cn";
 
 interface AddonGroupCardProps {
   item: AdminAddonGroup;
-  onEdit: (item: AdminAddonGroup) => void;
-  onToggleActive: (id: string, next: boolean) => void;
-  onDelete: (item: AdminAddonGroup) => void;
+  isFirst: boolean;
+  isLast: boolean;
+  busyKey: string | null;
+  isHighlighted: boolean;
+  highlightedOptionId: string | null;
+  reorderBusy: boolean;
+  pendingGroupDirection: "up" | "down" | null;
+  pendingOption: { optionId: string; direction: "up" | "down" } | null;
+  onEditGroup: () => void;
+  onToggleGroup: (next: boolean) => void;
+  onReorderGroup: (direction: "up" | "down") => void;
+  onCreateOption: () => void;
+  onEditOption: (optionId: string) => void;
+  onToggleOption: (optionId: string, next: boolean) => void;
+  onReorderOption: (optionId: string, direction: "up" | "down") => void;
 }
 
-const TYPE_COLORS = {
-  SELECTOR: "bg-blue-100 text-blue-700 border-blue-200",
-  TOGGLE: "bg-amber-100 text-amber-700 border-amber-200",
-  QUANTITY: "bg-purple-100 text-purple-700 border-purple-200",
-};
-
+/** Display a complete add-on group with its always-visible option list. */
 export default function AddonGroupCard({
   item,
-  onEdit,
-  onToggleActive,
-  onDelete,
+  isFirst,
+  isLast,
+  busyKey,
+  isHighlighted,
+  highlightedOptionId,
+  reorderBusy,
+  pendingGroupDirection,
+  pendingOption,
+  onEditGroup,
+  onToggleGroup,
+  onReorderGroup,
+  onCreateOption,
+  onEditOption,
+  onToggleOption,
+  onReorderOption,
 }: AddonGroupCardProps) {
-  const [expanded, setExpanded] = useState(false);
+  const activeOptionCount = item.options.filter((option) => option.is_active).length;
+  const isGroupBusy = busyKey === `group:${item.id}` || busyKey === `group-toggle:${item.id}` || pendingGroupDirection !== null;
 
   return (
-    <div
+    <article
+      id={`addon-group-${item.id}`}
       className={cn(
-        "rounded-2xl border border-border bg-card overflow-hidden shadow-sm transition",
-        !item.is_active && "opacity-60"
+        "scroll-mt-40 overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-[background-color,box-shadow,border-color] duration-300",
+        !item.is_active && "border-dashed bg-muted/40",
+        isHighlighted && "border-primary/60 bg-primary/5 ring-2 ring-primary/30",
       )}
     >
-      {/* Header / Collapsed State */}
-      <div
-        onClick={() => setExpanded(!expanded)}
-        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 cursor-pointer hover:bg-secondary/20 transition"
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/50 bg-secondary/30">
-            {item.image_url ? (
-              <Image
-                src={item.image_url}
-                alt={`Ảnh ${item.name}`}
-                width={48}
-                height={48}
-                sizes="48px"
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <ImageIcon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-            )}
-          </div>
-          <div className="min-w-0 flex-1 flex flex-col gap-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-semibold text-foreground text-base">{item.name}</h3>
-            
-            <span
-              className={cn(
-                "px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase border",
-                TYPE_COLORS[item.type]
-              )}
-            >
-              {item.type}
+      <header className="flex flex-wrap items-start gap-3 bg-primary p-3 text-primary-foreground sm:p-4">
+        <div className={cn("flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-primary-foreground/30 bg-primary-foreground/10 sm:h-16 sm:w-16", !item.is_active && "opacity-60")}>
+          {item.image_url ? (
+            <Image src={item.image_url} alt={`Ảnh ${item.name}`} width={64} height={64} sizes="64px" quality={65} className="h-full w-full object-cover" />
+          ) : (
+            <ImageIcon className="h-5 w-5 text-primary-foreground/75" aria-hidden="true" />
+          )}
+        </div>
+
+        <div className="min-w-[8rem] flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <h2 className="max-w-full truncate text-base font-semibold text-primary-foreground">{item.name}</h2>
+            <span className="flex h-6 shrink-0 items-center rounded-sm border border-primary-foreground/25 bg-primary-foreground/15 px-2 text-[11px] font-medium text-primary-foreground">
+              {item.is_dynamic_gram ? "Theo gram bột" : "Giá cố định"}
             </span>
-
-          </div>
-          
-          <div className="text-sm text-muted-foreground flex items-center gap-3">
-            <span>{item.options.length} options</span>
-            {item.description && (
-              <>
-                <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
-                <span className="line-clamp-1">{item.description}</span>
-              </>
-            )}
-          </div>
+            <span className="flex h-6 shrink-0 items-center rounded-sm border border-primary-foreground/25 bg-primary-foreground/15 px-2 text-[11px] font-medium text-primary-foreground">Tối đa {item.max_select}</span>
+            {!item.is_active ? <span className="flex h-6 shrink-0 items-center rounded-sm border border-dashed border-primary-foreground/50 bg-primary-foreground/10 px-2 text-[11px] font-medium text-primary-foreground">Đã ẩn</span> : null}
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-3 sm:gap-4 ml-auto">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={item.is_active}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleActive(item.id, !item.is_active);
-            }}
-            className={cn(
-              "relative inline-flex h-5 w-9 rounded-full transition shrink-0",
-              item.is_active ? "bg-primary" : "bg-border"
-            )}
-          >
-            <span
-              className={cn(
-                "block h-4 w-4 rounded-full bg-white shadow transition-transform m-0.5",
-                item.is_active ? "translate-x-4" : "translate-x-0"
-              )}
+        <div className="flex w-full min-w-0 items-center justify-between gap-2 sm:pl-[4.75rem]">
+          <div className="flex min-w-0 flex-1 items-center gap-1 text-xs text-primary-foreground/80">
+            <span className="shrink-0">{activeOptionCount}/{item.options.length} option hiển thị</span>
+            {item.description ? <><span aria-hidden="true">·</span><p className="truncate">{item.description}</p></> : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              id={`edit-group-${item.id}`}
+              type="button"
+              onClick={onEditGroup}
+              disabled={isGroupBusy}
+              className="flex h-10 w-10 items-center justify-center rounded-md text-primary-foreground transition active:scale-95 hover:bg-primary-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground disabled:opacity-40"
+              aria-label={`Sửa nhóm ${item.name}`}
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              aria-label={item.is_active ? `Ẩn nhóm ${item.name}` : `Hiện nhóm ${item.name}`}
+              onClick={() => onToggleGroup(!item.is_active)}
+              disabled={isGroupBusy}
+              className="flex h-10 w-10 items-center justify-center rounded-md text-primary-foreground transition active:scale-95 hover:bg-primary-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground disabled:opacity-40"
+            >
+              {item.is_active ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+            </button>
+            <ReorderButtons
+              isFirst={isFirst}
+              isLast={isLast}
+              busy={reorderBusy}
+              pendingDirection={pendingGroupDirection}
+              label={`nhóm ${item.name}`}
+              onUp={() => onReorderGroup("up")}
+              onDown={() => onReorderGroup("down")}
+              tone="on-primary"
+              dense
             />
-          </button>
-          
-          <div className="w-px h-5 bg-border shrink-0" />
-
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(item);
-            }}
-            className="p-2 text-muted-foreground hover:text-primary transition bg-secondary/30 rounded-lg hover:bg-primary/10"
-            title="Sửa nhóm"
-          >
-            <Pencil size={16} />
-          </button>
-          
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(item);
-            }}
-            className="p-2 text-muted-foreground hover:text-destructive transition bg-secondary/30 rounded-lg hover:bg-destructive/10"
-            title="Xóa nhóm"
-          >
-            <Trash2 size={16} />
-          </button>
-
-          <ChevronDown
-            size={20}
-            className={cn(
-              "text-muted-foreground transition-transform duration-200 shrink-0",
-              expanded && "rotate-180"
-            )}
-          />
-        </div>
-      </div>
-
-      {/* Expanded State (Options list) */}
-      <div
-        className={cn(
-          "grid transition-all duration-300 ease-in-out",
-          expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-        )}
-      >
-        <div className="overflow-hidden">
-          <div className="p-4 pt-0 border-t border-border/50 bg-secondary/10">
-            {item.options.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">Nhóm này chưa có option nào.</p>
-            ) : (
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                {item.options.map((opt) => (
-                  <div key={opt.id} className={cn("bg-card border border-border rounded-xl p-3 flex gap-3 shadow-sm", !opt.is_active && "opacity-50")}>
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-secondary/30">
-                      {(opt.image_url ?? item.image_url) ? (
-                        <Image
-                          src={(opt.image_url ?? item.image_url) as string}
-                          alt={`Ảnh ${opt.label}`}
-                          width={48}
-                          height={48}
-                          sizes="48px"
-                          quality={60}
-                          loading="lazy"
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <ImageIcon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-                      )}
-                    </div>
-                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                    <div className="flex justify-between items-start gap-2">
-                      <span className="text-sm font-medium text-foreground leading-tight">
-                        {opt.label}
-                      </span>
-                      {!opt.is_active && (
-                        <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold bg-primary/10 text-primary uppercase">
-                          Đã ẩn
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-end justify-between mt-auto pt-1">
-                      <span className="text-sm font-semibold text-primary">
-                        {opt.price_vnd > 0 ? `+${formatMoney(opt.price_vnd)}` : "Miễn phí"}
-                      </span>
-                      {opt.gram_value !== null && (
-                        <span className="text-xs font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
-                          {opt.gram_value > 0 ? `+${opt.gram_value}g` : `${opt.gram_value}g`}
-                        </span>
-                      )}
-                    </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
-      </div>
-    </div>
+      </header>
+
+      <section className="border-t border-border/60 bg-secondary/10 p-3 sm:p-4" aria-label={`Options của ${item.name}`}>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h3 className="text-sm font-bold text-foreground">Add-on options</h3>
+          <button type="button" onClick={onCreateOption} className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium transition active:scale-95 hover:bg-secondary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <Plus className="h-4 w-4" />
+            Thêm option
+          </button>
+        </div>
+
+        {item.options.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-border bg-background px-4 py-6 text-center text-sm text-muted-foreground">Nhóm này chưa có option.</p>
+        ) : (
+          <div className="space-y-2">
+            {item.options.map((option, index) => (
+              <AddonOptionRow
+                key={option.id}
+                group={item}
+                option={option}
+                isFirst={index === 0}
+                isLast={index === item.options.length - 1}
+                isBusy={busyKey === `option:${option.id}` || busyKey === `option-toggle:${option.id}` || pendingOption?.optionId === option.id}
+                isHighlighted={highlightedOptionId === option.id}
+                reorderBusy={reorderBusy}
+                pendingDirection={pendingOption?.optionId === option.id ? pendingOption.direction : null}
+                onEdit={() => onEditOption(option.id)}
+                onToggle={(next) => onToggleOption(option.id, next)}
+                onReorder={(direction) => onReorderOption(option.id, direction)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+    </article>
   );
 }

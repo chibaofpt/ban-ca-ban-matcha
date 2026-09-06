@@ -63,7 +63,9 @@ description: >
 
 - [ ] **A3: Session Revocation (Thu hồi quyền)**
   - **Risk**: Tài khoản bị khóa hoặc đổi mật khẩu nhưng thiết bị cũ vẫn dùng được.
-  - **Check**: Khi user đổi mật khẩu/logout, bắt buộc phải xóa bản ghi `refresh_token` tương ứng trong bảng `sessions` và evict Redis cache (`cacheDelete("session:{token}")`).
+  - **Check**: Access JWT phải chứa `sid`; mỗi request xác thực `sid + user_id + expires_at` trên DB
+    và lấy role hiện tại. Logout xóa session trước khi clear cookie. Redis session key cũ chỉ được
+    evict, không được dùng làm bằng chứng đăng nhập. Request đã qua check trước logout có thể hoàn tất.
 
 - [ ] **A4: Supabase RLS Bypass**
   - **Risk**: Attacker chọc thẳng vào Supabase REST API không qua Next.js.
@@ -83,7 +85,10 @@ description: >
 
 - [ ] **A8: Refresh Token Rotation**
   - **Risk**: Refresh token bị đánh cắp → attacker dùng vô thời hạn.
-  - **Check**: Mỗi lần refresh phải tạo token mới và xóa token cũ (rotate). Middleware thực hiện `evictSessionCache` → `updateSessionGracePeriod` → `createSession` theo đúng thứ tự này.
+  - **Check**: Rotate refresh token ngay trên session row hiện có; không tạo session thay thế. Giữ
+    đúng một `previous_refresh_token` trong grace/cooldown 30 giây để request đồng thời hội tụ về token
+    thắng. Missing/deleted/expired row, binding sai hoặc conditional update không được xác nhận phải
+    fail closed và tuyệt đối không làm session sống lại.
 
 ---
 
@@ -127,7 +132,9 @@ description: >
 
 - [ ] **R3: Unbounded Queries (Denial of Service)**
   - **Risk**: Trả về hàng triệu record gây Out Of Memory (OOM) cho Vercel.
-  - **Check**: Tất cả các truy vấn list qua Prisma `findMany` đều phải có giới hạn `take`. Ngoại lệ được chấp nhận: Admin report (`/api/admin/report`) và staff report (`/api/report`) do phạm vi filter date range và chỉ Admin access — không cần `take`.
+  - **Check**: Mọi `findMany` phải có `take`. Hai report giới hạn khoảng Gregorian tối đa 366 ngày,
+    đọc từng trang 100 row trong RepeatableRead timeout 10 giây và từ chối trên 10.000 row bằng
+    `422 REPORT_RANGE_TOO_LARGE`; không tính tổng trên dữ liệu bị cắt.
 
 - [ ] **R4: Voucher Exchange Spam**
   - **Risk**: Spam đổi voucher liên tục gây race condition hoặc phình `points_log`.
@@ -141,13 +148,21 @@ description: >
   - **Risk**: Mỗi request proxy đến Goong tốn quota. Attacker spam autocomplete gây cạn quota/tiền.
   - **Check**: Rate limit `/api/delivery/*` endpoints. Ít nhất debounce ở frontend (đã có), tốt hơn là rate limit ở backend theo IP.
 
+- [ ] **R7: Report Rate Limit**
+  - **Risk**: Cùng một tài khoản spam hai route report để nhân đôi tải database.
+  - **Check**: `/api/admin/report` và `/api/report` dùng chung bucket 6 request/phút/account, trả 429
+    kèm `Retry-After`. Redis lỗi giữ fail-open theo quyết định sản phẩm; đây không phải bảo đảm chống
+    DDoS tuyệt đối.
+
 ---
 
 ## CATEGORY 5 — Race Conditions & Points
 
 - [ ] **RC1: Double-spend Voucher**
   - **Risk**: Bắn 2 request dùng voucher cùng 1 mili-giây, cả 2 đều thành công.
-  - **Check**: Logic đánh dấu đã dùng voucher phải dùng `SELECT ... FOR UPDATE` bên trong `prisma.$transaction()` để lock row.
+  - **Check**: Re-fetch eligibility và conditional claim expected state trong cùng Serializable
+    transaction với order write; retry `P2034` có giới hạn. Không dựa vào preflight hoặc mock race như
+    bằng chứng database thật đã khóa/rollback đúng.
 
 - [ ] **RC2: Points Race Condition & Hoàn tiền**
   - **Risk**: Khách spam đổi voucher gây âm điểm, hoặc hủy đơn không bị trừ lại điểm đã nhận.
@@ -155,7 +170,9 @@ description: >
 
 - [ ] **RC3: Multi-step writes ngoài Transaction**
   - **Risk**: Tạo đơn hàng thành công nhưng cập nhật voucher thất bại → DB lỗi logic nửa vời.
-  - **Check**: Toàn bộ chu trình tạo đơn (Create Order + Add Items + Mark Voucher + Earn Points) phải nằm trong duy nhất 1 `prisma.$transaction()`.
+  - **Check**: Customer và Staff phải đọc menu/pricing/user/voucher được tiêu thụ và ghi order, claim
+    voucher, điểm trong cùng retryable Serializable transaction. External fulfillment và auto-grant
+    issuance được phép là preflight riêng; voucher được cấp có thể tồn tại nếu checkout sau đó lỗi.
 
 ---
 

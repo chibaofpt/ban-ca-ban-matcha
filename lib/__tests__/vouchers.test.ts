@@ -32,6 +32,7 @@ function makeVoucher(overrides: Partial<Voucher> = {}): Voucher {
     issued_via: "POINTS_EXCHANGE",
     discount_type: "PERCENT",
     discount_value: 20,
+    max_discount_vnd: null,
     product_discount_mode: null,
     menu_item_id: null,
     eligible_sizes: [],
@@ -161,8 +162,16 @@ describe("calcDiscountVoucher", () => {
   });
 
   it("PERCENT: 100% off = entire subtotal", () => {
-    const v = makeVoucher({ discount_type: "PERCENT", discount_value: 100 });
+    const v = makeVoucher({ discount_type: "PERCENT", discount_value: 100, max_discount_vnd: null });
     expect(calcDiscountVoucher(v, 69000)).toBe(69000);
+  });
+
+  it("PERCENT: caps at max_discount_vnd", () => {
+    const v = makeVoucher({ discount_type: "PERCENT", discount_value: 10, max_discount_vnd: 25000 });
+    // 10% of 300,000 = 30,000 -> capped at 25,000
+    expect(calcDiscountVoucher(v, 300_000)).toBe(25_000);
+    // 10% of 200,000 = 20,000 -> not capped
+    expect(calcDiscountVoucher(v, 200_000)).toBe(20_000);
   });
 
   it("FIXED: deducts exact value when less than subtotal", () => {

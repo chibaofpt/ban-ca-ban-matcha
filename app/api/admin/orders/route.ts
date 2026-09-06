@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
   const staffName = searchParams.get("staffName");
   const status = searchParams.get("status");
   const orderType = searchParams.get("order_type");
+  const excludeCancelled = searchParams.get("exclude_cancelled") === "true";
   
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
   const limit = Math.max(1, Math.min(100, parseInt(searchParams.get("limit") || "10", 10)));
@@ -79,8 +80,8 @@ export async function GET(req: NextRequest) {
     // 4. Status filter
     if (status) {
       where.status = status as Prisma.EnumOrderStatusFilter["equals"];
-    } else if (orderType) {
-      // Tab "Tại quầy" / "Khách đặt": exclude CANCELLED — it belongs only in the "Đã huỷ" tab
+    } else if (orderType || excludeCancelled) {
+      // Non-cancelled tabs exclude CANCELLED — it belongs only in the "Đã huỷ" tab.
       where.status = { notIn: ["CANCELLED"] } as Prisma.EnumOrderStatusFilter;
     }
 
@@ -107,7 +108,7 @@ export async function GET(req: NextRequest) {
             }
           },
           user: { select: { name: true, phone_number: true } },
-          handler: { select: { name: true } }, // Get the name of the staff who handled it
+          handler: { select: { name: true, role: true } },
           items: {
             include: {
               productVoucher: {

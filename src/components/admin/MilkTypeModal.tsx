@@ -1,19 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "lucide-react";
 import MilkTypeForm, {
   buildMilkTypeDefaultValues,
   type MilkTypeFormPayload,
 } from "@/src/components/admin/MilkTypeForm";
 import { createMilkType, updateMilkType } from "@/src/services/adminMilkTypeService";
 import type { AdminMilkType } from "@/src/lib/types/milkType";
-import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
 import CatalogImageFields from "@/src/components/admin/CatalogImageFields";
+import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
+import MilkTypeAvailabilityFields from "@/src/components/admin/MilkTypeAvailabilityFields";
+import type { AdminMenuItem } from "@/src/lib/types/menu";
 
 interface MilkTypeModalProps {
   mode: "create" | "edit";
   item?: AdminMilkType;
+  menuItems: AdminMenuItem[];
   onClose: () => void;
   onSuccess: (item: AdminMilkType) => void;
 }
@@ -21,15 +23,25 @@ interface MilkTypeModalProps {
 export default function MilkTypeModal({
   mode,
   item,
+  menuItems,
   onClose,
   onSuccess,
 }: MilkTypeModalProps) {
-  useBodyScrollLock(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageFilename, setImageFilename] = useState("");
+  const [isGlobalDefault, setIsGlobalDefault] = useState(item?.is_default ?? false);
+  const [availableMenuItemIds, setAvailableMenuItemIds] = useState(() => item
+    ? menuItems
+      .filter((menuItem) => (
+        menuItem.allowed_base_liquid_ids?.includes(item.id)
+        || menuItem.default_base_liquid_id === item.id
+        || (item.is_default && menuItem.category === "latte")
+      ))
+      .map((menuItem) => menuItem.id)
+    : []);
 
   const handleSubmit = async (payload: MilkTypeFormPayload) => {
     setIsSubmitting(true);
@@ -42,7 +54,16 @@ export default function MilkTypeModal({
       const finalFilename = (requestedFilename && !imageFile && !item?.image_url) ? null : requestedFilename;
 
       if (mode === "edit" && item) {
-        saved = await updateMilkType(item.id, payload, imageFile, finalFilename);
+        const implicitMenuItemIds = menuItems
+          .filter((menuItem) => (
+            menuItem.default_base_liquid_id === item.id
+            || (isGlobalDefault && menuItem.category === "latte")
+          ))
+          .map((menuItem) => menuItem.id);
+        saved = await updateMilkType(item.id, {
+          ...payload,
+          available_menu_item_ids: [...new Set([...availableMenuItemIds, ...implicitMenuItemIds])],
+        }, imageFile, finalFilename);
       } else {
         saved = await createMilkType(payload, imageFile, finalFilename);
       }
@@ -60,51 +81,49 @@ export default function MilkTypeModal({
   const defaultValues = mode === "edit" && item ? buildMilkTypeDefaultValues(item) : undefined;
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <ResponsiveOverlay
+      open
+      title={mode === "create" ? "Thêm Base Liquid" : "Sửa Base Liquid"}
+      description={mode === "create" ? "Thêm nền mới cho Latte hoặc Fusion." : `Cập nhật thông tin của ${item?.name}.`}
+      size="lg"
+      busy={isSubmitting}
+      dismissPolicy="locked-while-busy"
+      onOpenChange={(open) => { if (!open) onClose(); }}
     >
-      <div className="relative w-full max-w-sm bg-card rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
-          <h2 className="text-base font-semibold text-foreground">
-            {mode === "create" ? "Thêm loại sữa mới" : "Sửa thông tin sữa"}
-          </h2>
-          <button
-            type="button"
-            aria-label="Đóng"
-            onClick={onClose}
-            className="rounded-full p-2 hover:bg-secondary transition-colors"
-          >
-            <X className="h-5 w-5 text-muted-foreground" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-6">
-          <CatalogImageFields
-            currentImageUrl={item?.image_url}
-            label="Ảnh loại sữa"
-            cropPreset="compact"
-            imageFilename={imageFilename}
-            disabled={isSubmitting}
-            onFileChange={setImageFile}
-            onFilenameChange={setImageFilename}
-            onError={setErrorMsg}
-          />
-          <MilkTypeForm
-            mode={mode}
-            defaultValues={defaultValues}
-            onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
-          />
-          {errorMsg && (
-            <div className="mt-4 text-sm text-destructive font-medium bg-destructive/10 p-3 rounded-lg text-center">
-              {errorMsg}
-            </div>
-          )}
-        </div>
+      <div className="space-y-5">
+        {errorMsg && (
+          <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-sm font-medium text-destructive">
+            {errorMsg}
+          </div>
+        )}
+        <CatalogImageFields
+          currentImageUrl={item?.image_url}
+          label="Ảnh Base Liquid"
+          cropPreset="compact"
+          imageFilename={imageFilename}
+          disabled={isSubmitting}
+          onFileChange={setImageFile}
+          onFilenameChange={setImageFilename}
+          onError={setErrorMsg}
+        />
+        <MilkTypeForm
+          mode={mode}
+          defaultValues={defaultValues}
+          onSubmit={handleSubmit}
+          isSubmitting={isSubmitting}
+          onDefaultChange={setIsGlobalDefault}
+          availabilityFields={mode === "edit" && item ? (
+            <MilkTypeAvailabilityFields
+              menuItems={menuItems}
+              baseLiquidId={item.id}
+              isGlobalDefault={isGlobalDefault}
+              value={availableMenuItemIds}
+              disabled={isSubmitting}
+              onChange={setAvailableMenuItemIds}
+            />
+          ) : undefined}
+        />
       </div>
-    </div>
+    </ResponsiveOverlay>
   );
 }

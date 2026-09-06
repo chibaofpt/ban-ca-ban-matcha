@@ -14,8 +14,9 @@ export interface AdminAddonGroup {
   name: string;
   description: string | null;
   image_url: string | null;
-  type: "SELECTOR" | "TOGGLE" | "QUANTITY";
-  max_quantity: number | null;
+  sort_order: number;
+  max_select: number;
+  is_dynamic_gram: boolean;
   is_active: boolean;
   created_at: string;
   options: AdminAddonOption[];
@@ -25,8 +26,8 @@ export interface AdminAddonGroup {
 export interface AddonGroupMutationPayload {
   name: string;
   description?: string | null;
-  type: AdminAddonGroup["type"];
-  max_quantity?: number | null;
+  max_select: number;
+  is_dynamic_gram: boolean;
   is_active: boolean;
   options: Array<{
     id?: string;
@@ -44,4 +45,25 @@ export interface AddonOptionImageUpload {
   imageKey: string;
   imageFile: File | null;
   imageFilename: string;
+}
+
+export interface AddonGroupDetailsMutationPayload {
+  name: string;
+  description?: string | null;
+  max_select: number;
+}
+
+export interface AddonOptionDetailsMutationPayload {
+  label: string;
+  price_vnd: number;
+  gram_value?: number | null;
+}
+
+export interface AddonOptionCreatePayload extends AddonOptionDetailsMutationPayload {
+  is_active: boolean;
+}
+
+export interface AddonGroupReorderEntry {
+  id: string;
+  option_ids: string[];
 }

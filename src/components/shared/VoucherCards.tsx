@@ -173,11 +173,13 @@ export function PackageCard({
   pkg,
   userBalance,
   onExchange,
+  onClick,
   isExchanging,
 }: {
   pkg: VoucherPackage;
   userBalance: number;
   onExchange: (pkg: VoucherPackage) => void;
+  onClick?: (pkg: VoucherPackage) => void;
   isExchanging: boolean;
 }) {
   const { ok, reason } = canExchange(pkg, userBalance, pkg.user_redeemed_count ?? 0);
@@ -194,8 +196,17 @@ export function PackageCard({
       layout
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
+      whileTap={onClick ? { scale: 0.96 } : undefined}
       className="rounded-xl bg-card shadow-sm border overflow-hidden flex relative"
     >
+      {onClick ? (
+        <button
+          type="button"
+          aria-label={`Xem chi tiết ${pkg.name}`}
+          onClick={() => onClick(pkg)}
+          className="absolute inset-0 z-20 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        />
+      ) : null}
       {/* Progress background if insufficient points */}
       {!ok && reason === "insufficient_points" && (
         <div 
@@ -205,13 +216,13 @@ export function PackageCard({
       )}
 
       {/* Left side: Highlight Ticket */}
-      <div className="w-[32%] flex flex-col items-center justify-center p-3 border-r-2 border-dashed border-border/60 bg-primary/5 text-primary z-10">
+      <div className="relative w-[32%] flex flex-col items-center justify-center p-3 border-r-2 border-dashed border-border/60 bg-primary/5 text-primary">
         <span className="font-black text-xl lg:text-2xl tracking-tighter leading-none text-center">{highlight.text}</span>
         <span className="text-[10px] font-bold uppercase tracking-wider opacity-80 mt-1">{highlight.subtext}</span>
       </div>
 
       {/* Right side: Info */}
-      <div className="flex-1 min-w-0 p-3 flex flex-col justify-center z-10 bg-card/80 backdrop-blur-sm">
+      <div className="relative flex-1 min-w-0 p-3 flex flex-col justify-center bg-card/80 backdrop-blur-sm">
         <div className="flex items-center gap-1.5 flex-wrap mb-1">
           <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold", typeConfig.badgeCls)}>
             {typeConfig.label}
@@ -262,8 +273,9 @@ export function PackageCard({
               }
               return (
                 <button
-                  onClick={() => onExchange(pkg)}
-                  className="min-h-11 bg-primary text-primary-foreground text-xs font-bold px-3 py-2 rounded-md hover:bg-primary/90 transition shadow-sm whitespace-nowrap"
+                  type="button"
+                  onClick={(event) => { event.stopPropagation(); onExchange(pkg); }}
+                  className="relative z-30 min-h-11 bg-primary text-primary-foreground text-xs font-bold px-3 py-2 rounded-md hover:bg-primary/90 transition shadow-sm whitespace-nowrap focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {pkg.acquisition_mode === "FREE_CLAIM" ? "Nhận miễn phí" : `Đổi ${pkg.points_cost} 🐟`}
                 </button>

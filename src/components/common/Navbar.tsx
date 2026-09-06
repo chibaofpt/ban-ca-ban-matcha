@@ -11,6 +11,7 @@ import { useAuthStore } from "@/src/lib/store/authStore";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { logout as serverLogout } from "@/src/services/authService";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 /**
  * Navbar — fixed top bar with desktop links and mobile drawer.
@@ -56,7 +57,8 @@ const Navbar = () => {
     try {
       await serverLogout();
     } catch {
-      /* best-effort */
+      toast.error("Không thể đăng xuất lúc này. Vui lòng thử lại.");
+      return;
     }
     logout();
     queryClient.removeQueries({ queryKey: ["customer"] });

@@ -14,7 +14,7 @@ const groupedMigrationPath = join(
   "20260817213000_group_bundle_products_and_multi_applications", "migration.sql",
 );
 
-describe("migration chương trình mua X tặng Y", () => {
+describe("static SQL contract — chương trình mua X tặng Y (không thực thi migration)", () => {
   it("tạo đủ bảng nguồn-sự-thật và khóa chống cấp voucher trùng", () => {
     const migration = readFileSync(migrationPath, "utf8");
 
@@ -64,7 +64,7 @@ describe("migration chương trình mua X tặng Y", () => {
   });
 });
 
-describe("migration BUNDLE grouped scope và nhiều voucher mỗi order", () => {
+describe("static SQL contract — BUNDLE grouped scope (không thực thi migration)", () => {
   it("gộp product, tách allowed sizes và loại reference price", () => {
     const migration = readFileSync(groupedMigrationPath, "utf8");
     expect(migration).toContain('"default_powder_id" UUID');

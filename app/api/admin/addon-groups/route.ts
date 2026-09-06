@@ -9,6 +9,12 @@ import {
   prepareCatalogImage,
 } from "@/lib/catalogImage";
 import { removeMenuImages } from "@/lib/storage";
+import {
+  ADMIN_ADDON_GROUP_ORDER_BY,
+  ADMIN_ADDON_OPTION_ORDER_BY,
+  mapAdminAddonGroup,
+} from "@/lib/adminAddonGroup";
+import { runSerializableTransaction } from "@/lib/serializableTransaction";
 
 export const dynamic = "force-dynamic";
 
@@ -22,32 +28,13 @@ export async function GET() {
     const groups = await prisma.addonGroup.findMany({
       include: {
         options: {
-          orderBy: { sort_order: 'asc' }
+          orderBy: ADMIN_ADDON_OPTION_ORDER_BY,
         }
       },
-      orderBy: { created_at: 'desc' }
+      orderBy: ADMIN_ADDON_GROUP_ORDER_BY,
     });
 
-    const mapped = groups.map(g => ({
-      id: g.id,
-      name: g.name,
-      description: g.description,
-      image_url: g.image_url,
-      type: g.type,
-      max_quantity: g.max_quantity,
-      is_active: g.is_active,
-      created_at: g.created_at,
-      options: g.options.map(o => ({
-        id: o.id,
-        addon_group_id: o.addon_group_id,
-        label: o.label,
-        image_url: o.image_url,
-        price_vnd: o.price_vnd,
-        is_active: o.is_active,
-        sort_order: o.sort_order,
-        gram_value: o.gram_value ? Number(o.gram_value) : null
-      }))
-    }));
+    const mapped = groups.map(mapAdminAddonGroup);
 
     return NextResponse.json({ data: mapped });
   } catch (error: unknown) {
@@ -77,6 +64,12 @@ export async function POST(req: Request) {
     }
 
     const validData = validation.data;
+    const rankedOptions = validData.options
+      .map((option, sourceIndex) => ({ option, sourceIndex }))
+      .sort((left, right) =>
+        left.option.sort_order - right.option.sort_order || left.sourceIndex - right.sourceIndex,
+      )
+      .map(({ option }, sortOrder) => ({ option, sortOrder }));
     const optionImageKeys = new Set(
       validData.options.flatMap((option) => option.image_key ? [option.image_key] : []),
     );
@@ -117,29 +110,34 @@ export async function POST(req: Request) {
       }
     }
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await runSerializableTransaction(prisma, async (tx) => {
+      const currentOrder = await tx.addonGroup.aggregate({
+        _max: { sort_order: true },
+      });
       const group = await tx.addonGroup.create({
         data: {
           name: validData.name,
           description: validData.description,
           image_url: preparedImage.imageUrl ?? null,
-          type: validData.type,
+          sort_order: (currentOrder._max.sort_order ?? -1) + 1,
+          max_select: validData.max_select,
+          is_dynamic_gram: validData.is_dynamic_gram,
           is_required: false,
           min_quantity: null,
-          max_quantity: validData.max_quantity,
+          max_quantity: null,
           is_active: validData.is_active,
         }
       });
 
       await tx.addonOption.createMany({
-        data: validData.options.map((opt, idx) => ({
+        data: rankedOptions.map(({ option: opt, sortOrder }) => ({
           addon_group_id: group.id,
           label: opt.label,
           image_url: opt.image_key ? optionImageUrls.get(opt.image_key) ?? null : null,
           price_vnd: opt.price_vnd,
           is_default: false,
           is_active: opt.is_active,
-          sort_order: opt.sort_order ?? idx,
+          sort_order: sortOrder,
           gram_value: opt.gram_value,
         }))
       });
@@ -147,32 +145,13 @@ export async function POST(req: Request) {
       return tx.addonGroup.findUniqueOrThrow({
         where: { id: group.id },
         include: {
-          options: { orderBy: { sort_order: 'asc' } }
+          options: { orderBy: ADMIN_ADDON_OPTION_ORDER_BY }
         }
       });
     });
     databaseCommitted = true;
 
-    const mappedResult = {
-      id: result.id,
-      name: result.name,
-      description: result.description,
-      image_url: result.image_url,
-      type: result.type,
-      max_quantity: result.max_quantity,
-      is_active: result.is_active,
-      created_at: result.created_at,
-      options: result.options.map(o => ({
-        id: o.id,
-        addon_group_id: o.addon_group_id,
-        label: o.label,
-        image_url: o.image_url,
-        price_vnd: o.price_vnd,
-        is_active: o.is_active,
-        sort_order: o.sort_order,
-        gram_value: o.gram_value ? Number(o.gram_value) : null
-      }))
-    };
+    const mappedResult = mapAdminAddonGroup(result);
 
     await invalidateMenuCaches();
     return NextResponse.json({ data: mappedResult }, { status: 201 });

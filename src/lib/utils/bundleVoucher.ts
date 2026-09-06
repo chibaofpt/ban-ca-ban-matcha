@@ -78,7 +78,6 @@ export type BundleSelectionState = {
 export function summarizeBundleCart(items: readonly CartItem[]): BundleCartSummaryItem[] {
   return items.map((item) => {
     const quantities = new Map(item.selectedOptionIds.map((id) => [id, 1]));
-    item.quantityAddonOptions.forEach((addon) => quantities.set(addon.option_id, addon.quantity));
     return {
       client_line_id: item.cartId,
       menu_item_id: item.menuItemId,

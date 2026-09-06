@@ -3,8 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockGetSession = vi.fn();
 const mockTransaction = vi.fn();
 const mockAddonGroupFindUnique = vi.fn();
+const mockAddonGroupFindMany = vi.fn();
+const mockAddonGroupUpdate = vi.fn();
 const mockGroupCreate = vi.fn();
 const mockGroupUpdate = vi.fn();
+const mockGroupAggregate = vi.fn();
 const mockOptionCreateMany = vi.fn();
 const mockOptionCreate = vi.fn();
 const mockOptionUpdate = vi.fn();
@@ -16,6 +19,8 @@ interface TransactionClientMock {
   addonGroup: {
     create: typeof mockGroupCreate;
     update: typeof mockGroupUpdate;
+    aggregate: typeof mockGroupAggregate;
+    findUnique: typeof mockAddonGroupFindUnique;
     findUniqueOrThrow: typeof mockFindUniqueOrThrow;
   };
   addonOption: {
@@ -33,6 +38,8 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     addonGroup: {
       findUnique: (...args: unknown[]) => mockAddonGroupFindUnique(...args),
+      findMany: (...args: unknown[]) => mockAddonGroupFindMany(...args),
+      update: (...args: unknown[]) => mockAddonGroupUpdate(...args),
     },
     $transaction: (...args: unknown[]) => mockTransaction(...args),
   },
@@ -51,21 +58,26 @@ vi.mock("@/lib/cacheInvalidation", () => ({
   invalidateMenuCaches: vi.fn(),
 }));
 
-import { POST } from "@/app/api/admin/addon-groups/route";
+import { GET, POST } from "@/app/api/admin/addon-groups/route";
 import { PUT } from "@/app/api/admin/addon-groups/[id]/route";
 
 const groupId = "11111111-1111-4111-8111-111111111111";
 const optionId = "22222222-2222-4222-8222-222222222222";
 
-function makeRequest(options: Array<Record<string, unknown>>, images: Array<{ key: string; name: string }> = []): Request {
+function makeRequest(
+  options: Array<Record<string, unknown>>,
+  images: Array<{ key: string; name: string }> = [],
+  payloadOverrides: Record<string, unknown> = {},
+): Request {
   const formData = new FormData();
   formData.set("payload", JSON.stringify({
     name: "Kem",
     description: null,
-    type: "SELECTOR",
+    max_select: 1, is_dynamic_gram: false,
     max_quantity: null,
     is_active: true,
     options,
+    ...payloadOverrides,
   }));
   for (const image of images) {
     formData.set(
@@ -81,6 +93,8 @@ describe("Admin addon groups — ảnh riêng theo option", () => {
     addonGroup: {
       create: mockGroupCreate,
       update: mockGroupUpdate,
+      aggregate: mockGroupAggregate,
+      findUnique: mockAddonGroupFindUnique,
       findUniqueOrThrow: mockFindUniqueOrThrow,
     },
     addonOption: {
@@ -92,10 +106,13 @@ describe("Admin addon groups — ảnh riêng theo option", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAddonGroupFindUnique.mockReset();
     mockGetSession.mockResolvedValue({ role: "ADMIN" });
     mockRemoveMenuImages.mockResolvedValue(undefined);
     mockGroupCreate.mockResolvedValue({ id: groupId });
+    mockGroupAggregate.mockResolvedValue({ _max: { sort_order: 4 } });
     mockGroupUpdate.mockResolvedValue({ id: groupId });
+    mockAddonGroupUpdate.mockResolvedValue({ id: groupId });
     mockOptionCreateMany.mockResolvedValue({ count: 2 });
     mockOptionCreate.mockResolvedValue({ id: optionId });
     mockOptionUpdate.mockResolvedValue({ id: optionId });
@@ -113,6 +130,40 @@ describe("Admin addon groups — ảnh riêng theo option", () => {
     });
   });
 
+  it("GET returns the full catalogue in stable group and option order", async () => {
+    mockAddonGroupFindMany.mockResolvedValue([{
+      id: groupId,
+      name: "Kem",
+      description: null,
+      image_url: null,
+      sort_order: 3,
+      max_select: 1,
+      is_dynamic_gram: false,
+      is_active: true,
+      created_at: new Date("2026-09-05T00:00:00.000Z"),
+      options: [{
+        id: optionId,
+        addon_group_id: groupId,
+        label: "Kem sua",
+        image_url: null,
+        price_vnd: 10_000,
+        is_active: true,
+        sort_order: 2,
+        gram_value: null,
+      }],
+    }]);
+
+    const response = await GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data[0]).toMatchObject({ sort_order: 3 });
+    expect(mockAddonGroupFindMany).toHaveBeenCalledWith({
+      include: { options: { orderBy: [{ sort_order: "asc" }, { id: "asc" }] } },
+      orderBy: [{ sort_order: "asc" }, { id: "asc" }],
+    });
+  });
+
   it("POST lưu đúng URL cho từng option trong một transaction", async () => {
     const options = [
       { image_key: "cream", label: "Kem sữa", price_vnd: 10_000, is_active: true, sort_order: 0, gram_value: null },
@@ -123,7 +174,7 @@ describe("Admin addon groups — ảnh riêng theo option", () => {
       name: "Kem",
       description: null,
       image_url: null,
-      type: "SELECTOR",
+      max_select: 1, is_dynamic_gram: false,
       max_quantity: null,
       is_active: true,
       created_at: new Date(),
@@ -144,6 +195,106 @@ describe("Admin addon groups — ảnh riêng theo option", () => {
         expect.objectContaining({ image_url: "https://cdn/menu-images/products/addons/kem-matcha.webp" }),
       ]),
     });
+    expect(mockGroupCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ sort_order: 5 }),
+    }));
+  });
+
+  it("PUT compatibility payload cannot change the pricing type", async () => {
+    mockAddonGroupFindUnique.mockResolvedValue({
+      id: groupId,
+      name: "Kem",
+      image_url: null,
+      is_dynamic_gram: false,
+      options: [],
+    });
+
+    const response = await PUT(makeRequest([
+      { label: "1g", price_vnd: 0, is_active: true, sort_order: 0, gram_value: 1 },
+    ], [], { is_dynamic_gram: true }), { params: Promise.resolve({ id: groupId }) });
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({
+      code: "BUSINESS_RULE_VIOLATION",
+      details: { reason: "ADDON_PRICING_TYPE_IMMUTABLE" },
+    });
+    expect(mockPrepareCatalogImage).not.toHaveBeenCalled();
+  });
+
+  it("PUT accepts a narrow group details payload without replacing options", async () => {
+    const existing = {
+      id: groupId,
+      name: "Kem",
+      description: null,
+      image_url: null,
+      sort_order: 2,
+      max_select: 1,
+      is_dynamic_gram: false,
+      is_active: true,
+      created_at: new Date("2026-09-05T00:00:00.000Z"),
+      options: [{
+        id: optionId,
+        addon_group_id: groupId,
+        label: "Kem sua",
+        image_url: null,
+        price_vnd: 10_000,
+        is_active: true,
+        sort_order: 0,
+        gram_value: null,
+      }],
+    };
+    mockAddonGroupFindUnique.mockResolvedValue(existing);
+    mockAddonGroupUpdate.mockResolvedValue({ ...existing, name: "Kem sua" });
+    const formData = new FormData();
+    formData.set("payload", JSON.stringify({
+      name: "Kem sua",
+      description: "Danh cho latte",
+      max_select: 2,
+    }));
+
+    const response = await PUT(new Request("http://localhost/api/admin/addon-groups", {
+      method: "PUT",
+      body: formData,
+    }), { params: Promise.resolve({ id: groupId }) });
+
+    expect(response.status).toBe(200);
+    expect(mockAddonGroupUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ name: "Kem sua", max_select: 2 }),
+    }));
+    expect(mockOptionUpdate).not.toHaveBeenCalled();
+  });
+
+  it("đọc lại option trong transaction trước khi bật group", async () => {
+    mockAddonGroupFindUnique.mockResolvedValue({
+      id: groupId,
+      is_active: false,
+      options: [{ id: optionId, is_active: true }],
+    });
+    mockAddonGroupFindUnique
+      .mockResolvedValueOnce({
+        id: groupId,
+        is_active: false,
+        options: [{ id: optionId, is_active: true }],
+      })
+      .mockResolvedValueOnce({
+        id: groupId,
+        is_active: false,
+        options: [{ id: optionId, is_active: false }],
+      });
+    const response = await PUT(new Request("http://localhost/api/admin/addon-groups", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ is_active: true }),
+    }), { params: Promise.resolve({ id: groupId }) });
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({
+      error: "Nhóm đang hiển thị phải có ít nhất một option đang bật",
+      code: "BUSINESS_RULE_VIOLATION",
+      details: { reason: "ACTIVE_GROUP_REQUIRES_ACTIVE_OPTION" },
+    });
+    expect(mockAddonGroupUpdate).not.toHaveBeenCalled();
+    expect(mockGroupUpdate).not.toHaveBeenCalled();
   });
 
   it("POST xóa mọi object mới nếu transaction thất bại", async () => {
@@ -172,6 +323,7 @@ describe("Admin addon groups — ảnh riêng theo option", () => {
       id: groupId,
       name: "Kem",
       image_url: null,
+      is_dynamic_gram: false,
       options: [{ id: optionId, image_url: "https://cdn/menu-images/products/addons/old.webp" }],
     });
     mockPrepareCatalogImage.mockImplementation(async ({ imageFile, currentImageUrl }: { imageFile: File | null; currentImageUrl: string | null }) => {
@@ -187,7 +339,7 @@ describe("Admin addon groups — ảnh riêng theo option", () => {
       name: "Kem",
       description: null,
       image_url: null,
-      type: "SELECTOR",
+      max_select: 1, is_dynamic_gram: false,
       max_quantity: null,
       is_active: true,
       created_at: new Date(),

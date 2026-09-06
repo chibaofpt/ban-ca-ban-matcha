@@ -83,13 +83,11 @@ export function getVoucherRefundConfirmation(points: number): string {
 // ── Section 2: Exchange Packages ─────────────────────────────────────────────
 
 /**
- * Filter packages to hide those that the user has already maxed out.
+ * Hide automatic grants and exhausted acquisition packages without changing the owned wallet.
  */
 export function filterModalPackages(packages: VoucherPackage[]): VoucherPackage[] {
   return packages.filter(
-    (pkg) =>
-      pkg.acquisition_mode !== "AUTO_GRANT" &&
-      (pkg.user_redeemed_count === undefined || pkg.user_redeemed_count < pkg.max_per_user)
+    (pkg) => pkg.acquisition_mode !== "AUTO_GRANT" && (pkg.user_redeemed_count ?? 0) < pkg.max_per_user
   );
 }
 
@@ -241,7 +239,7 @@ export function getTicketHighlightText(
  */
 export function getVoucherBenefitText(v: MyVoucher): string {
   if (v.voucher_type === "DISCOUNT") {
-    if (v.discount_type === "PERCENT") return `Giảm ${v.discount_value}% toàn đơn`;
+    if (v.discount_type === "PERCENT") return `Giảm ${v.discount_value}% toàn đơn${v.max_discount_vnd ? ` (tối đa ${(v.max_discount_vnd).toLocaleString("vi-VN")}đ)` : ""}`;
     if (v.discount_type === "FIXED")
       return `Giảm ${(v.discount_value ?? 0).toLocaleString("vi-VN")}đ toàn đơn`;
   }
@@ -288,7 +286,7 @@ export function getPackageBenefitText(pkg: VoucherPackage): string {
   }
 
   if (pkg.voucher_type === "DISCOUNT") {
-    if (pkg.discount_type === "PERCENT") return `Giảm ${pkg.discount_value}% toàn đơn`;
+    if (pkg.discount_type === "PERCENT") return `Giảm ${pkg.discount_value}% toàn đơn${"max_discount_vnd" in pkg && pkg.max_discount_vnd ? ` (tối đa ${(pkg.max_discount_vnd as number).toLocaleString("vi-VN")}đ)` : ""}`;
     if (pkg.discount_type === "FIXED")
       return `Giảm ${(pkg.discount_value ?? 0).toLocaleString("vi-VN")}đ toàn đơn`;
   }

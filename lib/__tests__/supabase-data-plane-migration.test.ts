@@ -68,7 +68,7 @@ function prismaTableNames(): string[] {
     .sort();
 }
 
-describe("migration hardening Supabase Data API", () => {
+describe("static SQL contract — Supabase Data API (không thực thi migration)", () => {
   it("bật RLS, không FORCE, cho mọi bảng Prisma quản lý", () => {
     const hardenedMigrations = `${migration}\n${bundleMigration}\n${unifiedVoucherMigration}\n${baseLiquidMigration}\n${groupedBundleMigration}\n${productDiscountScopeMigration}`;
     const currentTables = new Set(prismaTableNames());

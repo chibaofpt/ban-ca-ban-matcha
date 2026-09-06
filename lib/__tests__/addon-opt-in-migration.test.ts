@@ -13,7 +13,7 @@ const migration = readFileSync(
   "utf8",
 ).replace(/\r\n/g, "\n");
 
-describe("migration addon opt-in phase 1", () => {
+describe("static SQL contract — addon opt-in phase 1 (không thực thi migration)", () => {
   it("thêm lifecycle cho option và vô hiệu hóa hai sentinel cũ", () => {
     expect(migration).toContain(
       'ADD COLUMN "is_active" BOOLEAN NOT NULL DEFAULT true',

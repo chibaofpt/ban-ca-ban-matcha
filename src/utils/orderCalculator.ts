@@ -16,7 +16,7 @@ export interface CalcOrderItem {
   addon_vouchers: Array<{ voucher_id: string; addon_option_id: string; covered_price_vnd: number; unit_price_vnd?: number; gram_value?: number | null }>;
 }
 
-export interface CalcDiscountVoucher { id: string; discount_type: "FIXED" | "PERCENT"; discount_value: number; min_order_vnd: number | null; }
+export interface CalcDiscountVoucher { id: string; discount_type: "FIXED" | "PERCENT"; discount_value: number; min_order_vnd: number | null; max_discount_vnd: number | null; }
 export interface CalcFreeshipVoucher { id: string; covered_delivery_fee_vnd: number; min_order_vnd: number | null; }
 export interface CalcOrderInput { items: CalcOrderItem[]; discountVouchers: CalcDiscountVoucher[]; freeshipVoucher: CalcFreeshipVoucher | null; shipping_fee_vnd: number; }
 export interface CalcItemVoucherResult {
@@ -86,7 +86,10 @@ function orderDiscounts(vouchers: CalcDiscountVoucher[], subtotal: number, appli
   const [percent, ...duplicates] = vouchers.filter((voucher) => voucher.discount_type === "PERCENT");
   skipped.push(...duplicates.map((voucher) => voucher.id));
   if (percent) {
-    const amount = percent.min_order_vnd !== null && subtotal < percent.min_order_vnd ? 0 : Math.floor((remaining * percent.discount_value) / 100 / 1000) * 1000;
+    let amount = percent.min_order_vnd !== null && subtotal < percent.min_order_vnd ? 0 : Math.floor((remaining * percent.discount_value) / 100 / 1000) * 1000;
+    if (amount > 0 && percent.max_discount_vnd != null) {
+      amount = Math.min(amount, percent.max_discount_vnd);
+    }
     if (amount > 0) { total += amount; applied.push(percent.id); } else skipped.push(percent.id);
   }
   return total;

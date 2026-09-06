@@ -1,5 +1,6 @@
 import { apiClient } from "@/src/lib/api/client";
 import type { CartItem } from "@/src/lib/types/cart";
+import type { ApiError, ApiResponse } from "@/src/lib/types/api";
 import type {
   CustomerHistoryOrdersResponse,
   CustomerOrderDetail,
@@ -22,7 +23,7 @@ export interface CreateOrderPayload {
     ice_option: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
     coldwhisk: boolean;
     note?: string;
-    addon_option_ids: { option_id: string; quantity: number }[];
+    addon_option_ids: string[];
     product_voucher_id?: string;
     item_voucher_id?: string;
     addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
@@ -55,18 +56,65 @@ export interface PriceConflict {
   server_price_vnd: number;
 }
 
-export class PriceChangedError extends Error {
-  constructor(public readonly conflicts: PriceConflict[]) {
-    super("One or more item prices have changed");
+export class ApiServiceError<TDetails = unknown> extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code: string,
+    public readonly details?: TDetails,
+  ) {
+    super(message);
+    this.name = "ApiServiceError";
+  }
+}
+
+export class PriceChangedError extends ApiServiceError {
+  constructor(
+    public readonly conflicts: PriceConflict[],
+    message = "One or more item prices have changed",
+    status = 409,
+    code = "PRICE_CHANGED",
+    details?: unknown,
+  ) {
+    super(message, status, code, details);
     this.name = "PriceChangedError";
   }
 }
 
-export class BundleNotEligibleError extends Error {
-  constructor(public readonly reason: string) {
-    super(`Voucher bundle không hợp lệ: ${reason}`);
+export class BundleNotEligibleError extends ApiServiceError {
+  constructor(
+    public readonly reason: string,
+    message = `Voucher bundle không hợp lệ: ${reason}`,
+    status = 422,
+    code = "BUSINESS_RULE_VIOLATION",
+    details?: unknown,
+  ) {
+    super(message, status, code, details);
     this.name = "BundleNotEligibleError";
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getPriceConflicts(details: unknown): PriceConflict[] {
+  if (!isRecord(details) || !Array.isArray(details.conflicts)) return [];
+  return details.conflicts.filter((conflict): conflict is PriceConflict => (
+    isRecord(conflict)
+    && typeof conflict.menu_item_id === "string"
+    && typeof conflict.name === "string"
+    && typeof conflict.size === "string"
+    && typeof conflict.client_price_vnd === "number"
+    && typeof conflict.server_price_vnd === "number"
+  ));
+}
+
+function getServerError(err: unknown): { status: number; data: Record<string, unknown> } | null {
+  if (!isRecord(err) || !isRecord(err.response)) return null;
+  const { status, data } = err.response;
+  if (typeof status !== "number" || !isRecord(data)) return null;
+  return { status, data };
 }
 
 /** Maps CartItem[] from Zustand store into the POST /api/orders payload items. */
@@ -79,10 +127,7 @@ function buildPayloadItems(cart: CartItem[]): CreateOrderPayload["items"] {
     ice_option: c.iceOption,
     coldwhisk: c.coldwhisk,
     ...(c.note ? { note: c.note } : {}),
-    addon_option_ids: [
-      ...c.selectedOptionIds.map((id) => ({ option_id: id, quantity: 1 })),
-      ...c.quantityAddonOptions,
-    ],
+    addon_option_ids: c.selectedOptionIds,
     ...(c.productVoucherId ? { product_voucher_id: c.productVoucherId } : {}),
     ...(c.itemVoucherId ? { item_voucher_id: c.itemVoucherId } : {}),
     ...(c.addonVouchers && c.addonVouchers.length > 0
@@ -152,29 +197,30 @@ export async function createOrder(
   };
 
   try {
-    const res = await apiClient.post<{ data: CreateOrderResult }>("/api/orders", payload);
+    const res = await apiClient.post<ApiResponse<CreateOrderResult>>("/api/orders", payload);
     return res.data.data;
   } catch (err: unknown) {
-    if (
-      err &&
-      typeof err === "object" &&
-      "response" in err &&
-      err.response &&
-      typeof err.response === "object" &&
-      "data" in err.response
-    ) {
-      const response = err.response as {
-        status: number;
-        data: { code?: string; details?: { conflicts?: PriceConflict[], reason?: string }; error?: string };
-      };
-      if (response.status === 409 && response.data.code === "PRICE_CHANGED") {
-        throw new PriceChangedError(response.data.details?.conflicts ?? []);
+    const serverError = getServerError(err);
+    if (serverError) {
+      const { status, data } = serverError;
+      const message = typeof data.error === "string" ? data.error : "Đặt hàng thất bại";
+      const code = typeof data.code === "string" ? data.code : null;
+      if (status === 409 && code === "PRICE_CHANGED") {
+        throw new PriceChangedError(
+          getPriceConflicts(data.details), message, status, code, data.details,
+        );
       }
       const bundleAvailabilityReason = getBundleCheckoutAvailabilityReason(err);
       if (bundleAvailabilityReason) {
-        throw new BundleNotEligibleError(bundleAvailabilityReason);
+        throw new BundleNotEligibleError(
+          bundleAvailabilityReason, message, status, code ?? "BUSINESS_RULE_VIOLATION", data.details,
+        );
       }
-      throw new Error(response.data.error ?? "Đặt hàng thất bại");
+      if (code && typeof data.error === "string") {
+        const apiError: ApiError = { error: data.error, code, ...("details" in data ? { details: data.details } : {}) };
+        throw new ApiServiceError(apiError.error, status, apiError.code, apiError.details);
+      }
+      throw new Error(message);
     }
     throw new Error("Không thể kết nối đến máy chủ. Vui lòng thử lại.");
   }

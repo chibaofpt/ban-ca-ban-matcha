@@ -21,14 +21,15 @@ import { calcMultiDiscountVouchers } from "@/lib/vouchers";
 type DiscountVoucher = {
   discount_type: "PERCENT" | "FIXED" | null;
   discount_value: number | null;
+  max_discount_vnd: number | null;
 };
 
 function fixed(value: number): DiscountVoucher {
-  return { discount_type: "FIXED", discount_value: value };
+  return { discount_type: "FIXED", discount_value: value, max_discount_vnd: null };
 }
 
-function percent(value: number): DiscountVoucher {
-  return { discount_type: "PERCENT", discount_value: value };
+function percent(value: number, maxCap: number | null = null): DiscountVoucher {
+  return { discount_type: "PERCENT", discount_value: value, max_discount_vnd: maxCap };
 }
 
 // ── Empty / no vouchers ───────────────────────────────────────────────────────
@@ -101,6 +102,10 @@ describe("calcMultiDiscountVouchers — single PERCENT", () => {
   it("1 PERCENT 15% trên 70K → floor(70000 * 0.15 / 1000) * 1000 = 10000", () => {
     expect(calcMultiDiscountVouchers([percent(15)], 70_000)).toBe(10_000);
   });
+
+  it("1 PERCENT 10% trên 500K capped at 25K", () => {
+    expect(calcMultiDiscountVouchers([percent(10, 25_000)], 500_000)).toBe(25_000);
+  });
 });
 
 // ── Mixed FIXED + PERCENT ─────────────────────────────────────────────────────
@@ -143,12 +148,12 @@ describe("calcMultiDiscountVouchers — FIXED trước, PERCENT sau", () => {
 
 describe("calcMultiDiscountVouchers — edge cases", () => {
   it("voucher với discount_value = null → bỏ qua", () => {
-    const nullVoucher: DiscountVoucher = { discount_type: "FIXED", discount_value: null };
+    const nullVoucher: DiscountVoucher = { discount_type: "FIXED", discount_value: null, max_discount_vnd: null };
     expect(calcMultiDiscountVouchers([nullVoucher], 100_000)).toBe(0);
   });
 
   it("voucher với discount_type = null → bỏ qua", () => {
-    const nullType: DiscountVoucher = { discount_type: null, discount_value: 10 };
+    const nullType: DiscountVoucher = { discount_type: null, discount_value: 10, max_discount_vnd: null };
     expect(calcMultiDiscountVouchers([nullType], 100_000)).toBe(0);
   });
 

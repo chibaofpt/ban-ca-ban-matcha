@@ -38,6 +38,7 @@ interface VoucherPackageSnapshot {
   covered_price_vnd: number | null;
   covered_delivery_fee_vnd: number | null;
   min_order_vnd: number | null;
+  max_discount_vnd: number | null;
   ends_at: Date | null;
   bundleRule?: VoucherBundleRuleSource | null;
   menuItemScopes?: Array<{ menu_item_id: string }>;
@@ -242,6 +243,7 @@ export async function issueVoucherInTransaction(
       covered_price_vnd: pkg.covered_price_vnd,
       covered_delivery_fee_vnd: pkg.covered_delivery_fee_vnd,
       min_order_vnd: pkg.min_order_vnd,
+      max_discount_vnd: pkg.max_discount_vnd,
       status: "ACTIVE",
       expires_at: calculateExpiry(now, pkg.expires_after_days, pkg.ends_at),
       ...(pkg.voucher_type === "PRODUCT_DISCOUNT" && pkg.menuItemScopes?.length

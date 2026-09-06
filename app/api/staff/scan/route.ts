@@ -53,15 +53,10 @@ export async function GET(request: NextRequest) {
     });
 
     if (voucher) {
-      // Lazy-sync: if ACTIVE but past expires_at, mark as EXPIRED
+      // GET is read-only: project expiry without mutating persisted lifecycle state.
       let effectiveStatus = voucher.status;
       if (voucher.status === "ACTIVE" && voucher.expires_at && voucher.expires_at <= new Date()) {
         effectiveStatus = "EXPIRED";
-        // Fire-and-forget: update DB status
-        await prisma.voucher.updateMany({
-          where: { id: voucher.id, status: "ACTIVE" },
-          data: { status: "EXPIRED" },
-        });
       }
 
       return NextResponse.json({

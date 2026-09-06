@@ -68,7 +68,6 @@ function getOptions(
     .filter((item) => matchesScope(item, summary.eligible_products))
     .flatMap((item) => {
       const quantities = new Map(item.selectedOptionIds.map((id) => [id, 1]));
-      item.quantityAddonOptions.forEach((addon) => quantities.set(addon.option_id, addon.quantity));
       return [...quantities.entries()]
         .filter(([addonOptionId]) => allowedAddonIds.has(addonOptionId))
         .map(([addonOptionId, quantity]) => ({

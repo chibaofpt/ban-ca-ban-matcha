@@ -19,6 +19,7 @@ export interface VoucherDraft extends BundleVoucherFormState {
   milkTypeId: string;
   addonOptionId: string;
   coveredDeliveryFeeVnd: number;
+  maxDiscountVnd: number | null;
 }
 
 /** Creates a predictable initial state for the admin voucher wizard. */
@@ -28,7 +29,7 @@ export function createEmptyVoucherDraft(): VoucherDraft {
     acquisitionMode: "POINTS_EXCHANGE", pointsCost: 10, expiresAfterDays: 30,
     quantity: null, maxPerUser: 1, minOrderVnd: null,
     discountType: "PERCENT", discountValue: 10, productDiscountMode: "FIXED_AMOUNT", eligibleSizes: ["MEDIUM"], referenceSize: "SMALL", menuItemId: "", eligibleMenuItemIds: [], size: "SMALL",
-    matchaPowderId: "", milkTypeId: "", addonOptionId: "", coveredDeliveryFeeVnd: 30_000,
+    matchaPowderId: "", milkTypeId: "", addonOptionId: "", coveredDeliveryFeeVnd: 30_000, maxDiscountVnd: null,
     buyQuantity: 2, rewardQuantity: 1, rewardKind: "PRODUCT", rewardMode: "SAME_CONFIG",
     benefitScaling: "PER_BUNDLE", maxApplications: 1,
     qualifierScopes: [], rewardProductScopes: [], rewardAddonOptionIds: [],
@@ -72,6 +73,7 @@ export function buildVoucherInput(draft: VoucherDraft): CreateVoucherPackageInpu
   return {
     ...base, voucher_type: "DISCOUNT", discount_type: draft.discountType,
     discount_value: draft.discountValue, min_order_vnd: draft.minOrderVnd,
+    ...(draft.discountType === "PERCENT" && draft.maxDiscountVnd ? { max_discount_vnd: draft.maxDiscountVnd } : {}),
   };
 }
 
@@ -79,6 +81,7 @@ export function buildVoucherInput(draft: VoucherDraft): CreateVoucherPackageInpu
 export function validateVoucherDraft(draft: VoucherDraft): string | null {
   if (!draft.name.trim()) return "Vui lòng nhập tên voucher";
   if (draft.acquisitionMode === "POINTS_EXCHANGE" && draft.pointsCost < 1) return "Điểm đổi phải lớn hơn 0";
+  if (draft.voucherType === "DISCOUNT" && draft.discountType === "PERCENT" && draft.maxDiscountVnd !== null && draft.maxDiscountVnd % 1_000 !== 0) return "Mức giảm tối đa phải chia hết cho 1.000đ";
   if (draft.voucherType === "PRODUCT" && !draft.menuItemId) return "Vui lòng chọn sản phẩm";
   if (draft.voucherType === "PRODUCT_DISCOUNT" && (draft.eligibleMenuItemIds?.length ?? 0) === 0 && !draft.menuItemId) return "Vui lòng chọn ít nhất một sản phẩm";
   if (draft.voucherType === "PRODUCT_DISCOUNT" && (draft.eligibleMenuItemIds?.length ?? 0) > 100) return "Chỉ được chọn tối đa 100 sản phẩm";
@@ -158,7 +161,9 @@ export function suggestVoucherCopy(draft: VoucherDraft, labels: VoucherCopyLabel
   if (draft.voucherType === "DISCOUNT") {
     const value = draft.discountType === "PERCENT" ? `${draft.discountValue}%` : compactVnd(draft.discountValue);
     const detail = draft.discountType === "PERCENT" ? value : fullVnd(draft.discountValue);
-    return { name: `Giảm ${value}${minimumName}`, description: `Giảm ${detail}${minimumDescription}.` };
+    const maxName = draft.discountType === "PERCENT" && draft.maxDiscountVnd ? ` tối đa ${compactVnd(draft.maxDiscountVnd)}` : "";
+    const maxDesc = draft.discountType === "PERCENT" && draft.maxDiscountVnd ? `, tối đa ${fullVnd(draft.maxDiscountVnd)}` : "";
+    return { name: `Giảm ${value}${maxName}${minimumName}`, description: `Giảm ${detail}${minimumDescription}${maxDesc}.` };
   }
   if (draft.voucherType === "FREESHIP") {
     return { name: `Freeship đến ${compactVnd(draft.coveredDeliveryFeeVnd)}${minimumName}`, description: `Hỗ trợ phí giao hàng tối đa ${fullVnd(draft.coveredDeliveryFeeVnd)}${minimumDescription}.` };
@@ -250,7 +255,9 @@ export function estimateVoucherLiabilityVnd(
 ): number | null {
   if (draft.quantity === null) return null;
   if (draft.voucherType === "DISCOUNT") {
-    return draft.discountType === "FIXED" ? draft.quantity * draft.discountValue : null;
+    if (draft.discountType === "FIXED") return draft.quantity * draft.discountValue;
+    if (draft.discountType === "PERCENT" && draft.maxDiscountVnd) return draft.quantity * draft.maxDiscountVnd;
+    return null;
   }
   if (draft.voucherType === "FREESHIP") return draft.quantity * draft.coveredDeliveryFeeVnd;
   if (draft.voucherType === "PRODUCT") {

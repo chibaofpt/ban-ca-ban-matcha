@@ -77,8 +77,9 @@ describe("GET /api/menu — contract dữ liệu chuẩn hóa", () => {
       {
         id: "addon-group-1",
         name: "Kem",
+        sort_order: 4,
         image_url: "https://cdn/menu-images/products/addons/kem.webp",
-        type: "QUANTITY",
+        max_select: 3, is_dynamic_gram: false,
         max_quantity: 3,
         options: [
           {
@@ -132,6 +133,7 @@ describe("GET /api/menu — contract dữ liệu chuẩn hóa", () => {
     expect(body.data.addon_groups).toEqual([
       expect.objectContaining({
         image_url: "https://cdn/menu-images/products/addons/kem.webp",
+        sort_order: 4,
         options: [expect.objectContaining({
           image_url: "https://cdn/menu-images/products/addons/kem-sua.webp",
         })],
@@ -142,8 +144,12 @@ describe("GET /api/menu — contract dữ liệu chuẩn hóa", () => {
     ]);
     expect(mockAddonGroupFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
+        orderBy: [{ sort_order: "asc" }, { id: "asc" }],
         include: {
-          options: expect.objectContaining({ where: { is_active: true } }),
+          options: expect.objectContaining({
+            where: { is_active: true },
+            orderBy: [{ sort_order: "asc" }, { id: "asc" }],
+          }),
         },
       }),
     );

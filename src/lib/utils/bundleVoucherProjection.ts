@@ -12,7 +12,6 @@ import {
 
 function cartItemToBundleItem(item: CartItem): BundleCartItem {
   const addonQuantities = new Map(item.selectedOptionIds.map((id) => [id, 1]));
-  item.quantityAddonOptions.forEach((addon) => addonQuantities.set(addon.option_id, addon.quantity));
   return {
     client_line_id: item.cartId,
     menu_item_id: item.menuItemId,
@@ -42,6 +41,7 @@ export type VoucherProjectionSource = Pick<
   | "voucher_type"
   | "discount_type"
   | "discount_value"
+  | "max_discount_vnd"
   | "covered_price_vnd"
   | "covered_delivery_fee_vnd"
   | "min_order_vnd"
@@ -146,6 +146,7 @@ export function projectCartTotals(input: {
         discount_type: voucher.discount_type,
         discount_value: voucher.discount_value,
         min_order_vnd: voucher.min_order_vnd,
+        max_discount_vnd: voucher.max_discount_vnd ?? null,
       }] : [];
     }),
     freeshipVoucher: input.selectedVoucherIds.flatMap((token) => {

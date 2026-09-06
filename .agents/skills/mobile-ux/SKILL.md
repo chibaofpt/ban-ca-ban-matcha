@@ -14,7 +14,6 @@ Use this skill whenever building or reviewing UI components, pages, or optimizin
 - *Icons*: Use `lucide-react` (SVG icons). **Never use emojis as structural icons.**
 
 ## 1. Touch & Interaction
-- **Touch Target Size (CRITICAL)**: Minimum **40x40px** interactive area. If the visual icon is smaller, wrap it in a padded container (e.g., `w-10 h-10 flex items-center justify-center`).
 - **Touch Spacing**: Maintain at least an 8px gap between touch targets.
 - **Hover vs Tap**: Never rely on hover alone (mobile lacks hover). Always ensure click/tap works.
 - **Micro-Interactions**: Apply a `whileTap` animation to clickable cards or buttons to simulate physical pressing.

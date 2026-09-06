@@ -41,9 +41,15 @@ export function summarizeVoucherDeadline(pkg: Pick<VoucherPackage, "ends_at">): 
 }
 
 /** Produces a concise Vietnamese benefit summary for every voucher type. */
-export function summarizeVoucherBenefit(pkg: BenefitSource): string {
+export type ExtendedBenefitSource = BenefitSource & { max_discount_vnd?: number | null };
+export function summarizeVoucherBenefit(pkg: ExtendedBenefitSource): string {
   if (pkg.voucher_type === "BUNDLE" && pkg.bundleRule) return `Mua ${pkg.bundleRule.buy_quantity} tặng ${pkg.bundleRule.reward_quantity}`;
-  if (pkg.voucher_type === "DISCOUNT") return pkg.discount_type === "PERCENT" ? `Giảm ${pkg.discount_value ?? 0}%` : `Giảm ${money(pkg.discount_value)}`;
+  if (pkg.voucher_type === "DISCOUNT") {
+    if (pkg.discount_type === "PERCENT") {
+      return pkg.max_discount_vnd ? `Giảm ${pkg.discount_value ?? 0}% (tối đa ${money(pkg.max_discount_vnd)})` : `Giảm ${pkg.discount_value ?? 0}%`;
+    }
+    return `Giảm ${money(pkg.discount_value)}`;
+  }
   if (pkg.voucher_type === "PRODUCT_DISCOUNT") return pkg.product_discount_mode === "PAY_AS_SIZE" ? `Chỉ trả giá size ${pkg.reference_size ?? "tham chiếu"}` : `Giảm ${money(pkg.discount_value)}`;
   if (pkg.voucher_type === "ITEM" || pkg.voucher_type === "PRODUCT") return `Tặng ${pkg.menuItem?.name ?? "một sản phẩm"}`;
   if (pkg.voucher_type === "ADDON") return `Tặng ${pkg.addonOption?.label ?? "addon"}`;

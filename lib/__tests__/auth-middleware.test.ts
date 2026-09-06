@@ -32,6 +32,7 @@ import {
   createSession,
   markSessionRotating,
   updateSessionGracePeriod,
+  rotateSessionInPlace,
 } from "@/lib/middleware-auth";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -41,7 +42,9 @@ const FUTURE_DATE = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
 const MOCK_SESSION = {
   id: "session-uuid-123",
   user_id: "user-uuid-456",
-  refresh_token: "refresh-token-abc",
+  refresh_token: "550e8400-e29b-41d4-a716-446655440000",
+  previous_refresh_token: null,
+  rotating_at: null,
   expires_at: FUTURE_DATE,
   user: {
     id: "user-uuid-456",
@@ -76,7 +79,7 @@ describe("middleware-auth — findSessionWithUser", () => {
       makeSupabaseResponse([MOCK_SESSION])
     );
 
-    const result = await findSessionWithUser("refresh-token-abc");
+    const result = await findSessionWithUser("550e8400-e29b-41d4-a716-446655440000");
 
     expect(result).not.toBeNull();
     expect(result?.id).toBe("session-uuid-123");
@@ -87,11 +90,12 @@ describe("middleware-auth — findSessionWithUser", () => {
   it("gọi đúng endpoint PostgREST với apikey và Authorization headers", async () => {
     mockFetch.mockResolvedValueOnce(makeSupabaseResponse([MOCK_SESSION]));
 
-    await findSessionWithUser("refresh-token-abc");
+    await findSessionWithUser("550e8400-e29b-41d4-a716-446655440000");
 
     const [url, options] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect(url).toContain("https://test.supabase.co/rest/v1/sessions");
-    expect(url).toContain("refresh_token=eq.refresh-token-abc");
+    expect(decodeURIComponent(url)).toContain("refresh_token.eq.550e8400-e29b-41d4-a716-446655440000");
+    expect(decodeURIComponent(url)).toContain("previous_refresh_token.eq.550e8400-e29b-41d4-a716-446655440000");
     expect(url).toContain("select=");
     const headers = options.headers as Record<string, string>;
     expect(headers["apikey"]).toBe("test-service-role-key");
@@ -102,7 +106,7 @@ describe("middleware-auth — findSessionWithUser", () => {
     vi.stubEnv("SUPABASE_SECRET_KEY", "test-secret-key");
     mockFetch.mockResolvedValueOnce(makeSupabaseResponse([MOCK_SESSION]));
 
-    await findSessionWithUser("refresh-token-secret-key");
+    await findSessionWithUser("550e8400-e29b-41d4-a716-446655440001");
 
     const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
     const headers = options.headers as Record<string, string>;
@@ -113,15 +117,16 @@ describe("middleware-auth — findSessionWithUser", () => {
   it("trả về null khi không tìm thấy session", async () => {
     mockFetch.mockResolvedValueOnce(makeSupabaseResponse([]));
 
-    const result = await findSessionWithUser("invalid-token");
+    const result = await findSessionWithUser("550e8400-e29b-41d4-a716-446655440000");
 
     expect(result).toBeNull();
+    expect(mockFetch).toHaveBeenCalledOnce();
   });
 
   it("trả về null khi fetch thất bại (network error)", async () => {
     mockFetch.mockRejectedValueOnce(new Error("Network error"));
 
-    const result = await findSessionWithUser("refresh-token-abc");
+    const result = await findSessionWithUser("550e8400-e29b-41d4-a716-446655440000");
 
     expect(result).toBeNull();
   });
@@ -129,7 +134,7 @@ describe("middleware-auth — findSessionWithUser", () => {
   it("trả về null khi Supabase trả về non-200 status", async () => {
     mockFetch.mockResolvedValueOnce(makeSupabaseResponse({ message: "Error" }, 500));
 
-    const result = await findSessionWithUser("refresh-token-abc");
+    const result = await findSessionWithUser("550e8400-e29b-41d4-a716-446655440000");
 
     expect(result).toBeNull();
   });
@@ -138,7 +143,7 @@ describe("middleware-auth — findSessionWithUser", () => {
     redisMocks.cacheGet.mockResolvedValueOnce(MOCK_SESSION);
     mockFetch.mockResolvedValueOnce(makeSupabaseResponse([]));
 
-    const result = await findSessionWithUser("refresh-token-abc");
+    const result = await findSessionWithUser("550e8400-e29b-41d4-a716-446655440000");
 
     expect(result).toBeNull();
     expect(mockFetch).toHaveBeenCalledOnce();
@@ -252,4 +257,19 @@ describe("middleware-auth — createSession", () => {
 
     await expect(createSession("user-uuid-456")).rejects.toThrow();
   });
+});
+  it("từ chối refresh token không phải UUID trước khi gọi PostgREST", async () => {
+    mockFetch.mockReset();
+    await expect(findSessionWithUser("x),user_id.not.is.null")).resolves.toBeNull();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+it("current token trong grace giữ nguyên winner và đọc lại role hiện hành", async () => {
+  mockFetch.mockReset();
+  const row = { ...MOCK_SESSION, previous_refresh_token: "550e8400-e29b-41d4-a716-446655440001", rotating_at: new Date().toISOString() };
+  mockFetch.mockResolvedValue(makeSupabaseResponse([{ ...row, user: { ...row.user, role: "STAFF" } }]));
+  const result = await rotateSessionInPlace(row, row.refresh_token);
+  expect(result?.refresh_token).toBe("550e8400-e29b-41d4-a716-446655440000");
+  expect(result?.user.role).toBe("STAFF");
+  expect(mockFetch.mock.calls.every(([, options]) => options.method !== "PATCH")).toBe(true);
 });

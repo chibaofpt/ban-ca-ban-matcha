@@ -44,6 +44,7 @@ const rawVoucherPackageSchema = z.discriminatedUnion("voucher_type", [
     discount_type: z.enum(["PERCENT", "FIXED"]),
     discount_value: z.number().int().min(1),
     min_order_vnd: minimumOrder,
+    max_discount_vnd: z.number().int().min(1_000).nullable().optional(),
   }),
   z.object({
     ...commonFields,
@@ -114,6 +115,13 @@ export const createVoucherPackageSchema = rawVoucherPackageSchema.superRefine((d
     data.discount_value > 100
   ) {
     ctx.addIssue({ code: "custom", path: ["discount_value"], message: "PERCENT value cannot exceed 100" });
+  }
+  if (data.voucher_type === "DISCOUNT" && data.max_discount_vnd !== undefined && data.max_discount_vnd !== null) {
+    if (data.discount_type === "FIXED") {
+      ctx.addIssue({ code: "custom", path: ["max_discount_vnd"], message: "FIXED discount cannot have max_discount_vnd" });
+    } else if (data.max_discount_vnd % 1_000 !== 0) {
+      ctx.addIssue({ code: "custom", path: ["max_discount_vnd"], message: "max_discount_vnd must be divisible by 1000" });
+    }
   }
   if (data.voucher_type === "PRODUCT_DISCOUNT") {
     if (data.eligible_menu_item_ids) {

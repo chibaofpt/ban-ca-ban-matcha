@@ -5,7 +5,7 @@
  *
  * Strategy: mock lib/prisma, lib/auth, and the centralized limiter.
  * Tests verify auth guards, validation, and DB upsert/update behavior.
- * All tests FAIL until API routes are implemented (TDD).
+ * APPLICATION_LOGIC: route authorization and real push schema; no live push claim.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -53,8 +53,8 @@ const customerSession = { id: "cust-1", role: "CUSTOMER" };
 const validSubscribeBody = {
   endpoint: "https://fcm.googleapis.com/fcm/send/test-endpoint",
   keys: {
-    p256dh: "BNSAr9GqsZKxLnO8Aopf2hSZCyHjiqhNqNHKr9hN1234567890abcdef",
-    auth: "auth-secret-string",
+    p256dh: Buffer.from(Uint8Array.from([4, ...new Array(64).fill(1)])).toString("base64url"),
+    auth: Buffer.from(new Uint8Array(16).fill(2)).toString("base64url"),
   },
 };
 
@@ -173,6 +173,40 @@ describe("POST /api/push/subscribe", () => {
 });
 // ── POST /api/push/unsubscribe ────────────────────────────────────────────────
 
+describe("Bảo mật push subscription", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetSession.mockResolvedValue(adminSession);
+    mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 19, retryAfterSeconds: 0 });
+  });
+
+  it("từ chối endpoint giả hostname dù cả hai khóa hợp lệ", async () => {
+    const res = await subscribePost(makeReq("/api/push/subscribe", {
+      ...validSubscribeBody,
+      endpoint: "https://fcm.googleapis.com.evil.example/push",
+    }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(mockPushSubUpsert).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { auth: "c2hvcnQ" },
+    { auth: "a".repeat(23) },
+    { auth: "!".repeat(22) },
+    { p256dh: "BA" },
+    { p256dh: "a".repeat(88) },
+    { p256dh: Buffer.from(new Uint8Array(65).fill(2)).toString("base64url") },
+  ])("từ chối khóa sai trên hostname hợp lệ: %j", async (keys) => {
+    const res = await subscribePost(makeReq("/api/push/subscribe", {
+      ...validSubscribeBody, keys: { ...validSubscribeBody.keys, ...keys },
+    }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(mockPushSubUpsert).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /api/push/unsubscribe", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -211,7 +245,7 @@ describe("POST /api/push/unsubscribe", () => {
     mockPushSubUpdateMany.mockResolvedValue({ count: 0 });
 
     const res = await unsubscribePost(
-      makeReq("/api/push/unsubscribe", { endpoint: "https://non-existent-endpoint.com" })
+      makeReq("/api/push/unsubscribe", { endpoint: "https://fcm.googleapis.com/non-existent" })
     );
 
     expect(res.status).toBe(200);

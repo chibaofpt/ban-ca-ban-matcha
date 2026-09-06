@@ -11,7 +11,7 @@ function migrationSql(): string {
   return readFileSync(migrationPath, "utf8");
 }
 
-describe("migration extras + ITEM voucher", () => {
+describe("static SQL contract — extras + ITEM voucher (không thực thi migration)", () => {
   it("giữ fixed unit price là số nguyên VND dương, bội số 1.000 và bắt buộc cho extras", () => {
     const sql = migrationSql();
 

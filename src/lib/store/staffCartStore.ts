@@ -54,10 +54,7 @@ export function migrateStaffCartState(persistedState: unknown, fromVersion = 0):
       const selectedOptionIds = item.selectedOptionIds.filter(
         (optionId) => (item.addonPrices[optionId] ?? 0) > 0,
       );
-      const selectedOptionIdSet = new Set([
-        ...selectedOptionIds,
-        ...item.quantityAddonOptions.map((option) => option.option_id),
-      ]);
+      const selectedOptionIdSet = new Set(selectedOptionIds);
       return {
         ...item,
         selectedBaseLiquidId: item.selectedBaseLiquidId ?? item.selectedMilkTypeId,

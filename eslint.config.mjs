@@ -11,6 +11,7 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    "coverage/**",
     "next-env.d.ts",
     // Generated third-party runtime assets are verified during sync, not linted.
     "public/vendor/maplibre/**",

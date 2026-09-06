@@ -106,6 +106,8 @@ export interface VoucherAvailability {
 }
 
 export interface MyVoucher {
+  /** Optional catalog package reference; older wallet responses may omit it. */
+  package_id?: string;
   qr_token: string;
   voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE";
   discount_type: "PERCENT" | "FIXED" | null;
@@ -128,6 +130,8 @@ export interface MyVoucher {
   covered_delivery_fee_vnd: number | null;
   /** Minimum order total required. FREESHIP vouchers only. NULL = no minimum. */
   min_order_vnd: number | null;
+  /** Maximum discount amount. PERCENT vouchers only. NULL = no limit. */
+  max_discount_vnd: number | null;
   status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED";
   used_channel: "ONLINE" | "OFFLINE" | null;
   expires_at: string | null;

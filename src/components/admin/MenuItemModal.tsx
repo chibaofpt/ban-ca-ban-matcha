@@ -10,7 +10,7 @@ import type { AdminMenuItem, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
 import MenuImageSeoField from "@/src/components/admin/MenuImageSeoField";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
-import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
+import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 
 interface MenuItemModalProps {
   mode: "create" | "edit";
@@ -43,7 +43,6 @@ export default function MenuItemModal({
   onClose,
   onSuccess,
 }: MenuItemModalProps) {
-  useBodyScrollLock(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pendingPriceChange, setPendingPriceChange] = useState<PendingPriceChange | null>(null);
@@ -111,57 +110,69 @@ export default function MenuItemModal({
     }
   };
 
+  const title = mode === "create" ? "Thêm món mới" : "Chỉnh sửa món";
+  const description = mode === "create"
+    ? "Điền thông tin để tạo món mới trên menu."
+    : "Cập nhật thông tin chi tiết của món.";
+
   return (
-    <div className="fixed inset-0 z-[100] flex justify-end bg-black/40 backdrop-blur-sm p-0 transition-opacity">
-      <div 
-        className="w-full max-w-2xl h-full bg-background flex flex-col shadow-2xl animate-in slide-in-from-right duration-300"
+    <>
+      <ResponsiveOverlay
+        open
+        title={title}
+        description={description}
+        presentation="bare"
+        busy={isSubmitting}
+        dismissPolicy="locked-while-busy"
+        className="md:max-w-2xl"
+        onOpenChange={(open) => { if (!open) onClose(); }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border/50 px-6 py-4 bg-card/50 backdrop-blur-md sticky top-0 z-10">
-          <div>
-            <h2 className="font-serif text-xl font-bold text-foreground">
-              {mode === "create" ? "Thêm món mới" : "Chỉnh sửa món"}
-            </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {mode === "create" ? "Điền thông tin để tạo món mới trên menu" : "Cập nhật thông tin chi tiết của món"}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full p-2 text-muted-foreground hover:bg-secondary/80 hover:text-foreground transition-colors"
-          >
-            <X size={20} />
-          </button>
-        </div>
+        <div className="flex h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-background shadow-2xl md:h-[calc(100dvh-2rem)] md:rounded-3xl md:border">
+          <div className="mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-border md:hidden" aria-hidden="true" />
 
-        {/* Body */}
-        <div className="flex-1 overflow-hidden flex flex-col relative">
-          {errorMsg && (
-            <div className="mx-6 mt-6 mb-0 rounded-xl bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive font-medium shrink-0">
-              {errorMsg}
+          <header className="flex shrink-0 items-start justify-between gap-4 border-b border-border/50 bg-card/50 px-5 py-4 backdrop-blur-md md:px-6">
+            <div>
+              <h2 className="font-serif text-xl font-bold text-foreground">{title}</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
             </div>
-          )}
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+              aria-label="Đóng"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-50"
+            >
+              <X size={20} />
+            </button>
+          </header>
 
-          <MenuImageSeoField
-            currentImageUrl={item?.image_url}
-            value={imageFilename}
-            onChange={setImageFilename}
-            disabled={isSubmitting}
-          />
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+            {errorMsg && (
+              <div className="mx-5 mt-5 shrink-0 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive md:mx-6 md:mt-6">
+                {errorMsg}
+              </div>
+            )}
 
-          <MenuItemForm
-            mode={mode}
-            defaultValues={item ? buildDefaultValues(item) : undefined}
-            powders={powders}
-            baseLiquids={baseLiquids}
-            defaultSizeConfig={defaultSizeConfig}
-            onSubmit={handleSubmit}
-            isSubmitting={isSubmitting}
-            onCancel={onClose}
-          />
+            <MenuImageSeoField
+              currentImageUrl={item?.image_url}
+              value={imageFilename}
+              onChange={setImageFilename}
+              disabled={isSubmitting}
+            />
+
+            <MenuItemForm
+              mode={mode}
+              defaultValues={item ? buildDefaultValues(item) : undefined}
+              powders={powders}
+              baseLiquids={baseLiquids}
+              defaultSizeConfig={defaultSizeConfig}
+              onSubmit={handleSubmit}
+              isSubmitting={isSubmitting}
+              onCancel={onClose}
+            />
+          </div>
         </div>
-      </div>
+      </ResponsiveOverlay>
       <ConfirmModal
         isOpen={pendingPriceChange !== null}
         title="Xác nhận đổi giá Add-on?"
@@ -179,6 +190,6 @@ export default function MenuItemModal({
           }
         }}
       />
-    </div>
+    </>
   );
 }

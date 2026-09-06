@@ -1,32 +1,9 @@
-/**
- * Unit tests for normalizePhone — pure function with no side effects.
- * Tests the logic inline (no import from lib/auth) to avoid JWT_SECRET module-level throw.
- * The logic is extracted and tested here; lib/auth.ts has the same implementation.
- */
+import { afterAll, describe, expect, it, vi } from "vitest";
 
-import { describe, it, expect } from "vitest";
+vi.stubEnv("JWT_SECRET", "normalize-phone-test-secret-at-least-32-bytes");
+const { normalizePhone } = await import("@/lib/auth");
 
-// ── Inline implementation mirror (same logic as lib/auth.ts normalizePhone) ──
-// We test the logic directly without importing lib/auth to avoid the module-level
-// JWT_SECRET check that throws before any test setup can run.
-
-function normalizePhone(phone: string): string {
-  const cleaned = phone.replace(/[\s\-\.\(\)]/g, "");
-
-  if (/^84\d{9}$/.test(cleaned)) {
-    return `+${cleaned}`;
-  }
-
-  if (/^\+840\d{9}$/.test(cleaned)) {
-    return `+84${cleaned.slice(4)}`;
-  }
-
-  if (/^0\d{9}$/.test(cleaned)) {
-    return `+84${cleaned.slice(1)}`;
-  }
-
-  return cleaned;
-}
+afterAll(() => vi.unstubAllEnvs());
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
