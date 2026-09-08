@@ -15,6 +15,7 @@ const mockGetSession = vi.fn();
 const mockMatchaPowderCreate = vi.fn();
 const mockMatchaPowderUpdate = vi.fn();
 const mockMenuItemCreate = vi.fn();
+const mockMenuItemUpdateMany = vi.fn();
 const mockMenuItemSizeCreateMany = vi.fn();
 const mockMenuItemFindUniqueOrThrow = vi.fn();
 const mockPowderSizeConfigCreateMany = vi.fn();
@@ -149,6 +150,7 @@ function setupTx(overrides: {
 } = {}) {
   mockMatchaPowderCreate.mockResolvedValue(overrides.powderCreate ?? mockPowder);
   mockMenuItemCreate.mockResolvedValue(overrides.menuItemCreate ?? mockMenuItem);
+  mockMenuItemUpdateMany.mockResolvedValue({ count: 2 });
   mockMenuItemFindUniqueOrThrow.mockResolvedValue(overrides.menuItemFetch ?? mockMenuItem);
   mockMenuItemSizeCreateMany.mockResolvedValue({ count: 3 });
   mockPowderSizeConfigCreateMany.mockResolvedValue({ count: 0 });
@@ -163,6 +165,7 @@ function setupTx(overrides: {
       },
       menuItem: {
         create: (...args: unknown[]) => mockMenuItemCreate(...args),
+        updateMany: (...args: unknown[]) => mockMenuItemUpdateMany(...args),
         findUniqueOrThrow: (...args: unknown[]) => mockMenuItemFindUniqueOrThrow(...args),
       },
       menuItemSize: {
@@ -466,5 +469,22 @@ describe("POST /api/admin/menu/create-latte-with-powder", () => {
       category: "latte",
       sizes: expect.any(Array),
     });
+  });
+
+  it("đưa Latte mới lên đầu khi client không gửi sort_order", async () => {
+    setupTx();
+    const fields = validFormData();
+    Reflect.deleteProperty(fields, "sort_order");
+
+    const response = await POST(makeFormDataReq(fields));
+
+    expect(response.status).toBe(201);
+    expect(mockMenuItemUpdateMany).toHaveBeenCalledWith({
+      where: { category: "latte" },
+      data: { sort_order: { increment: 1 } },
+    });
+    expect(mockMenuItemCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ sort_order: 0 }),
+    }));
   });
 });

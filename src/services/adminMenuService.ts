@@ -1,7 +1,15 @@
 import { apiClient } from "@/src/lib/api/client";
 import axios from "axios";
 import type { ApiResponse } from "@/src/lib/types/api";
-import type { AdminMenuItem, MilkTypeOption, Size } from "@/src/lib/types/menu";
+import type {
+  AdminMenuItem,
+  MenuReorderPayload,
+  MenuReorderResult,
+  MilkTypeOption,
+  Size,
+} from "@/src/lib/types/menu";
+import type { ApiError } from "@/src/lib/types/api";
+import { ApiServiceError } from "@/src/services/orderService";
 
 // ── URL map ──────────────────────────────────────────────────────────────────
 
@@ -9,6 +17,7 @@ const URL = {
   list: "/api/admin/menu",
   byId: (id: string) => `/api/admin/menu/${id}`,
   createLatteWithPowder: "/api/admin/menu/create-latte-with-powder",
+  reorder: "/api/admin/menu/reorder",
 } as const;
 
 // ── Response shapes ───────────────────────────────────────────────────────────
@@ -89,4 +98,23 @@ export async function toggleMenuItemAvailability(
 ): Promise<AdminMenuItem> {
   const res = await apiClient.put<ApiResponse<AdminMenuItem>>(URL.byId(id), { is_available });
   return res.data.data;
+}
+
+/** Persist a complete menu ordering snapshot and return the canonical ranks. */
+export async function reorderAdminMenu(payload: MenuReorderPayload): Promise<MenuReorderResult> {
+  try {
+    const response = await apiClient.put<ApiResponse<MenuReorderResult>>(URL.reorder, payload);
+    return response.data.data;
+  } catch (error: unknown) {
+    if (axios.isAxiosError<ApiError>(error) && error.response?.data?.error) {
+      const apiError = error.response.data;
+      throw new ApiServiceError(
+        apiError.error,
+        error.response.status,
+        apiError.code,
+        apiError.details,
+      );
+    }
+    throw error;
+  }
 }

@@ -110,3 +110,31 @@ export const updateMenuSchema = z.object({
 
 export type CreateMenuInput = z.infer<typeof createMenuSchema>;
 export type UpdateMenuInput = z.infer<typeof updateMenuSchema>;
+
+const menuCategorySchema = z.enum(["latte", "fusion", "extras"]);
+
+/** Validates a complete menu catalogue snapshot used for drag-and-drop reordering. */
+export const reorderMenuSchema = z.object({
+  groups: z.object({
+    latte: z.array(z.string().uuid()),
+    fusion: z.array(z.string().uuid()),
+    extras: z.array(z.string().uuid()),
+  }),
+  baseline: z.array(z.object({
+    id: z.string().uuid(),
+    category: menuCategorySchema,
+    sort_order: z.number().int().min(0),
+    is_available: z.boolean(),
+  })),
+}).superRefine((value, context) => {
+  const orderedIds = [...value.groups.latte, ...value.groups.fusion, ...value.groups.extras];
+  if (new Set(orderedIds).size !== orderedIds.length) {
+    context.addIssue({ code: "custom", message: "Danh sách menu có ID trùng lặp", path: ["groups"] });
+  }
+  const baselineIds = value.baseline.map((item) => item.id);
+  if (new Set(baselineIds).size !== baselineIds.length) {
+    context.addIssue({ code: "custom", message: "Snapshot menu có ID trùng lặp", path: ["baseline"] });
+  }
+});
+
+export type ReorderMenuInput = z.infer<typeof reorderMenuSchema>;

@@ -17,6 +17,6 @@ describe("static source contract — admin menu không cung cấp hành động 
 
   it("trang admin không hiển thị thao tác hoặc hộp thoại xoá món", () => {
     expect(pageSource).not.toMatch(/deleteMenuItem|deleteTarget|handleDeleteClick/);
-    expect(pageSource).not.toMatch(/Trash2|Xoá món|ConfirmModal/);
+    expect(pageSource).not.toMatch(/Trash2|Xoá món/);
   });
 });

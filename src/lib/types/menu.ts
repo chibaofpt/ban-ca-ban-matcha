@@ -158,3 +158,26 @@ export interface AdminMenuItem {
     uses_system_base_liquid_ml?: boolean;
   }[];
 }
+
+export interface MenuOrderSnapshotItem {
+  id: string;
+  category: Category;
+  sort_order: number;
+  is_available: boolean;
+}
+
+export interface MenuOrderGroups {
+  latte: string[];
+  fusion: string[];
+  extras: string[];
+}
+
+export interface MenuReorderPayload {
+  groups: MenuOrderGroups;
+  baseline: MenuOrderSnapshotItem[];
+}
+
+export interface MenuReorderResult {
+  groups: MenuOrderGroups;
+  updated_at: string;
+}

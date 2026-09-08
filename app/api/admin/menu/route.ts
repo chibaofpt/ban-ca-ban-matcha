@@ -31,7 +31,7 @@ export async function GET(): Promise<NextResponse> {
   try {
     const [items, defaultSizeConfigs, baseLiquids] = await Promise.all([
       prisma.menuItem.findMany({
-        orderBy: [{ category: "asc" }, { sort_order: "asc" }],
+        orderBy: [{ category: "asc" }, { sort_order: "asc" }, { id: "asc" }],
         include: ADMIN_MENU_INCLUDE,
       }),
       prisma.defaultSizeConfig.findMany(),
@@ -90,6 +90,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   let databaseCommitted = false;
   try {
     const formData = await req.formData();
+    const hasExplicitSortOrder = formData.has("sort_order");
 
     // ── Parse form fields ───────────────────────────────────────────────────
     const raw: Record<string, unknown> = {
@@ -192,8 +193,14 @@ export async function POST(req: Request): Promise<NextResponse> {
         image_url = await uploadMenuImage(imagePath, Buffer.from(await imageFile.arrayBuffer()), imageFile.type);
         uploadedImagePath = imagePath;
       }
-      const createdExtra = await prisma.$transaction(async (tx) => tx.menuItem.create({
-        data: {
+      const createdExtra = await prisma.$transaction(async (tx) => {
+        if (!hasExplicitSortOrder) {
+          await tx.menuItem.updateMany({
+            where: { category: validData.category },
+            data: { sort_order: { increment: 1 } },
+          });
+        }
+        return tx.menuItem.create({ data: {
           name: validData.name,
           description: validData.description ?? null,
           category: validData.category,
@@ -209,7 +216,8 @@ export async function POST(req: Request): Promise<NextResponse> {
           default_base_liquid_id: null,
         },
         include: ADMIN_MENU_INCLUDE,
-      }));
+      });
+      });
       const milkMlMap: Record<string, number> = {};
       const defaultSizeConfigs = await prisma.defaultSizeConfig.findMany();
       for (const c of defaultSizeConfigs) milkMlMap[c.size] = c.milk_ml;
@@ -276,6 +284,12 @@ export async function POST(req: Request): Promise<NextResponse> {
     // ── DB write — 1 menu_item + 3 menu_item_sizes in one transaction ───────
     const defaultSizeConfigs = await prisma.defaultSizeConfig.findMany();
     const createdItem = await prisma.$transaction(async (tx) => {
+        if (!hasExplicitSortOrder) {
+          await tx.menuItem.updateMany({
+            where: { category: validData.category },
+            data: { sort_order: { increment: 1 } },
+          });
+        }
         const item = await tx.menuItem.create({
           data: {
             name: validData.name,

@@ -72,6 +72,13 @@ Không thực hiện repo-wide layer refactor khi sửa feature. Direct API call
 - Upload ảnh catalog dùng chung khung bố cục 1:1 cho ảnh có nền và ảnh trong suốt. Mặc định vừa toàn bộ ảnh; admin kéo, thu/phóng nhỏ hơn khung, chọn Vừa khung/Lấp đầy/Đặt lại. Phần ngoài khung bị cắt, vùng trống trong khung giữ alpha; không kéo giãn vật thể hay tự đổ nền. Xem trước chính Blob WebP trên nền thẻ, có Chỉnh lại và Dùng ảnh này trước khi gắn vào form; kích thước/quality theo preset catalog hiện có. Nền caro chỉ dùng trong editor, không ghi vào file.
 - Bốn tab con của Menu admin luôn chia đều một hàng, dùng chiều cao compact 32px và chuyển bằng nhấn; không dùng swipe hoặc thanh cuộn ngang.
 - Search top-level của danh sách Sản phẩm, Bột và Base Liquid tạm thời bị ẩn theo quyết định UI; giữ nguyên state và filter wiring để mở lại trong task follow-up. Filter category/trạng thái vẫn hiển thị. Quy tắc này không áp dụng cho search/multi-select bên trong editor Base Liquid.
+- Trang Sản phẩm giữ hai chế độ lưới và bảng khi quản lý thông thường. Bấm `Sắp xếp` chuyển nội dung
+  sang một cột với ba section cố định Latte, Fusion và Add-on; món chỉ kéo trong section của mình.
+  Chế độ sắp xếp có filter `Đang bán`/`Toàn bộ menu`, mặc định `Đang bán`. Khi chỉ hiện món đang bán,
+  reorder thay các slot đang nhìn thấy và giữ nguyên slot của món tạm ẩn. Admin kéo nhiều lần rồi dùng
+  footer `Hủy`/`Lưu thứ tự`; hủy bản nháp bẩn dùng `ConfirmModal`, lỗi lưu giữ bản nháp để thử lại.
+  Kết thúc trả về đúng chế độ lưới/bảng trước đó. Món mới không truyền `sort_order` được thêm vào đầu
+  danh mục; chỉnh sửa hoặc đổi trạng thái không làm thay đổi vị trí.
 - Editor Base Liquid cho phép tìm kiếm, lọc Latte/Fusion và chọn hàng loạt món, kể cả món tạm ngưng
   bán. Các món dùng liquid đó làm default hiển thị đã chọn nhưng khóa; lưu xong phải invalidate dữ
   liệu Menu để editor món phản ánh cùng allow-list.

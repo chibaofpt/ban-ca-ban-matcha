@@ -22,7 +22,6 @@ interface FormFields {
   unit_price_vnd: string;
   is_seasonal: boolean;
   is_available: boolean;
-  sort_order: string;
   // Sizes — entered as "cá" units (integer), nullable (empty = not sold)
   size_m: string;
   size_l: string;
@@ -83,7 +82,6 @@ export function buildDefaultValues(item: AdminMenuItem): MenuItemFormValues {
     unit_price_vnd: item.unit_price_vnd != null ? String(item.unit_price_vnd / 1000) : "",
     is_seasonal: item.is_seasonal,
     is_available: item.is_available,
-    sort_order: String(item.sort_order),
     size_m: sizeMap["SMALL"] != null ? String(sizeMap["SMALL"]! / 1000) : "",
     size_l: sizeMap["MEDIUM"] != null ? String(sizeMap["MEDIUM"]! / 1000) : "",
     size_xl: sizeMap["LARGE"] != null ? String(sizeMap["LARGE"]! / 1000) : "",
@@ -137,7 +135,6 @@ export default function MenuItemForm({
       unit_price_vnd: "",
       is_seasonal: false,
       is_available: true,
-      sort_order: "0",
       size_m: "",
       size_l: "",
       size_xl: "",
@@ -280,7 +277,6 @@ export default function MenuItemForm({
     fd.append("category", values.category);
     fd.append("is_seasonal", String(values.is_seasonal));
     fd.append("is_available", String(values.is_available));
-    fd.append("sort_order", String(Math.max(0, Number(values.sort_order) || 0)));
     if (values.category === "extras") {
       fd.append("unit_price_vnd", String(Math.round(Number(values.unit_price_vnd) * 1000)));
     }
@@ -782,24 +778,6 @@ export default function MenuItemForm({
                 </div>
               )}
 
-              {/* Sort order */}
-              <div className="pt-4 border-t border-border/50">
-                <label className="text-xs font-medium text-foreground block mb-1">Thứ tự hiển thị (Sort Order)</label>
-                <p className="text-[10px] text-muted-foreground mt-0.5 mb-2">Số càng nhỏ ưu tiên hiển thị trước.</p>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    {...register("sort_order")}
-                    placeholder="0"
-                    className={cn(inputClass, "pl-10")}
-                  />
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-muted-foreground">
-                    <span className="text-sm">#</span>
-                  </div>
-                </div>
-              </div>
             </div>
           )}
         </div>

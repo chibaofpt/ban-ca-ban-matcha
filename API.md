@@ -173,6 +173,7 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/admin/logs` | GET |
 | `/api/admin/menu` | GET, POST |
 | `/api/admin/menu/[id]` | PUT |
+| `/api/admin/menu/reorder` | PUT |
 | `/api/admin/menu/create-latte-with-powder` | POST |
 | `/api/admin/milk-types` | GET, POST |
 | `/api/admin/milk-types/[id]` | PUT, DELETE |
@@ -671,7 +672,7 @@ Uses the same `updated_at`, `latte`, `fusion`, and `extras` grouping as `GET /ap
   unit_price_vnd?: number             // extras only; integer >= 1,000 and divisible by 1,000
   is_seasonal?: boolean
   image?: File
-  sort_order?: number
+  sort_order?: number                   // compatibility; omitted = prepend within category
   matcha_powder_id?: string           // Latte only
   default_powder_id?: string          // Fusion only
   base_liquid_note?: string           // Fusion only
@@ -687,6 +688,37 @@ Uses the same `updated_at`, `latte`, `fusion`, and `extras` grouping as `GET /ap
 // Server: INSERT menu_items + 3 menu_item_sizes + allowed Base Liquids in prisma.$transaction()
 // Addons apply globally — no junction rows needed
 ```
+
+When `sort_order` is omitted, the server increments existing ranks in the selected category and
+creates the item at rank `0` inside the same transaction. Explicit `sort_order` remains supported
+for compatibility. The same omission rule applies to `POST /api/admin/menu/create-latte-with-powder`.
+
+### `PUT /api/admin/menu/reorder`
+
+Replaces the complete Latte, Fusion and Extras ordering in one request. The payload always includes
+active and unavailable items, even when the admin UI is filtering to active items:
+
+```ts
+{
+  groups: {
+    latte: string[]
+    fusion: string[]
+    extras: string[]
+  }
+  baseline: Array<{
+    id: string
+    category: "latte" | "fusion" | "extras"
+    sort_order: number
+    is_available: boolean
+  }>
+}
+```
+
+The route validates exact membership and category ownership, compares the baseline against current
+state, then derives dense zero-based ranks inside a Serializable transaction. Success returns
+`{ data: { groups, updated_at } }`. A stale baseline or changed membership returns `409 CONFLICT`
+with `details.reason = "MENU_CATALOG_CHANGED"`; exhausted Serializable retries return `409 CONFLICT`
+with `details.reason = "MENU_REORDER_CONFLICT"`.
 
 ### `POST /api/admin/voucher-packages` for BUNDLE
 

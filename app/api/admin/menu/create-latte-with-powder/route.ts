@@ -54,6 +54,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   try {
     // ── Parse multipart/form-data ────────────────────────────────────────────
     const formData = await req.formData();
+    const hasExplicitSortOrder = formData.has("sort_order");
 
     const rawSizesStr = formData.get("sizes") as string | null;
     if (!rawSizesStr) {
@@ -202,6 +203,12 @@ export async function POST(req: Request): Promise<NextResponse> {
     // ── Single transaction: powder → latte → sizes → update powder ────────────
     const [createdItem, powderName] = await prisma.$transaction(
       async (tx) => {
+        if (!hasExplicitSortOrder) {
+          await tx.menuItem.updateMany({
+            where: { category: "latte" },
+            data: { sort_order: { increment: 1 } },
+          });
+        }
         // Step 1: Create MatchaPowder (no reference yet)
         const powder = await tx.matchaPowder.create({
           data: {

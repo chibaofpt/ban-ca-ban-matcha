@@ -28,7 +28,7 @@ async function fetchMenuData(): Promise<MenuData> {
       await Promise.all([
         prisma.menuItem.findMany({
           where: { is_available: true },
-          orderBy: { sort_order: "asc" },
+          orderBy: [{ sort_order: "asc" }, { id: "asc" }],
           include: {
             sizes: true,
             fusionAllowedPowders: {

@@ -1,18 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Search, RefreshCw, LayoutGrid, List } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Plus, Search, RefreshCw, LayoutGrid, List, ArrowUpDown, Loader2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import MenuItemCard from "@/src/components/admin/MenuItemCard";
 import MenuItemModal from "@/src/components/admin/MenuItemModal";
+import MenuReorderPanel from "@/src/components/admin/MenuReorderPanel";
+import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import {
   listAdminMenuItems,
+  reorderAdminMenu,
   toggleMenuItemAvailability,
   type AdminMenuData,
 } from "@/src/services/adminMenuService";
 import { listAdminPowders } from "@/src/services/adminPowderService";
-import type { AdminMenuItem } from "@/src/lib/types/menu";
+import type { AdminMenuItem, Category, MenuOrderGroups } from "@/src/lib/types/menu";
 import { cn } from "@/src/utils/cn";
+import { mergeVisibleMenuOrder, moveVisibleMenuItem } from "@/src/utils/menuReorder";
 import Image from "next/image";
 
 // ── Modal state ───────────────────────────────────────────────────────────────
@@ -21,6 +25,28 @@ type ModalState =
   | { open: false }
   | { open: true; mode: "create" }
   | { open: true; mode: "edit"; item: AdminMenuItem };
+
+type MenuGroups = Record<Category, AdminMenuItem[]>;
+
+function orderItems(items: AdminMenuItem[]): AdminMenuItem[] {
+  return [...items].sort((left, right) => left.sort_order - right.sort_order || left.id.localeCompare(right.id));
+}
+
+function toGroups(data: AdminMenuData): MenuGroups {
+  return {
+    latte: orderItems(data.latte),
+    fusion: orderItems(data.fusion),
+    extras: orderItems(data.extras ?? []),
+  };
+}
+
+function groupIds(groups: MenuGroups): MenuOrderGroups {
+  return {
+    latte: groups.latte.map((item) => item.id),
+    fusion: groups.fusion.map((item) => item.id),
+    extras: groups.extras.map((item) => item.id),
+  };
+}
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -33,6 +59,12 @@ export default function AdminMenuPage() {
   const [modalState, setModalState] = useState<ModalState>({ open: false });
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [isReordering, setIsReordering] = useState(false);
+  const [reorderFilter, setReorderFilter] = useState<"active" | "all">("active");
+  const [reorderOriginal, setReorderOriginal] = useState<MenuGroups | null>(null);
+  const [reorderDraft, setReorderDraft] = useState<MenuGroups | null>(null);
+  const [discardReorderOpen, setDiscardReorderOpen] = useState(false);
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
 
   // ── Data fetching ───────────────────────────────────────────────────────────
 
@@ -105,7 +137,7 @@ export default function AdminMenuPage() {
           return item.is_available;
       }
     })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id));
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -115,7 +147,10 @@ export default function AdminMenuPage() {
       const list = newItem.category === "latte" ? old.latte : newItem.category === "fusion" ? old.fusion : (old.extras ?? []);
       return {
         ...old,
-        [newItem.category]: [...list, newItem],
+        [newItem.category]: [
+          { ...newItem, sort_order: 0 },
+          ...list.map((item) => ({ ...item, sort_order: item.sort_order + 1 })),
+        ],
       };
     });
     if (powderName) {
@@ -180,6 +215,125 @@ export default function AdminMenuPage() {
     toggleMutation.mutate({ id, next });
   };
 
+  const hasReorderChanges = Boolean(
+    reorderDraft
+    && reorderOriginal
+    && JSON.stringify(groupIds(reorderDraft)) !== JSON.stringify(groupIds(reorderOriginal)),
+  );
+
+  useEffect(() => {
+    if (!isReordering || !hasReorderChanges) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => event.preventDefault();
+    const interceptNavigation = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest<HTMLAnchorElement>("a[href]");
+      if (!anchor || anchor.target === "_blank" || anchor.href === window.location.href) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setPendingHref(anchor.href);
+      setDiscardReorderOpen(true);
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    document.addEventListener("click", interceptNavigation, true);
+    return () => {
+      window.removeEventListener("beforeunload", warnBeforeUnload);
+      document.removeEventListener("click", interceptNavigation, true);
+    };
+  }, [hasReorderChanges, isReordering]);
+
+  const beginReorder = async () => {
+    const result = await refetchMenu();
+    if (!result.data) {
+      showToast("Không thể tải menu mới nhất để sắp xếp.", "error");
+      return;
+    }
+    const groups = toGroups(result.data);
+    setReorderOriginal(groups);
+    setReorderDraft(groups);
+    setReorderFilter("active");
+    setIsReordering(true);
+  };
+
+  const closeReorder = () => {
+    setIsReordering(false);
+    setReorderOriginal(null);
+    setReorderDraft(null);
+    setDiscardReorderOpen(false);
+    setPendingHref(null);
+  };
+
+  const confirmDiscardReorder = () => {
+    const destination = pendingHref;
+    closeReorder();
+    if (destination) window.location.assign(destination);
+  };
+
+  const requestCancelReorder = () => {
+    if (hasReorderChanges) setDiscardReorderOpen(true);
+    else closeReorder();
+  };
+
+  const reorderMutation = useMutation({
+    mutationFn: reorderAdminMenu,
+    onSuccess: (result) => {
+      if (reorderDraft) {
+        queryClient.setQueryData<AdminMenuData>(["admin", "menu"], (old) => old ? {
+          ...old,
+          updated_at: result.updated_at,
+          latte: reorderDraft.latte.map((item, index) => ({ ...item, sort_order: index })),
+          fusion: reorderDraft.fusion.map((item, index) => ({ ...item, sort_order: index })),
+          extras: reorderDraft.extras.map((item, index) => ({ ...item, sort_order: index })),
+        } : old);
+      }
+      void queryClient.invalidateQueries({ queryKey: ["menu"] });
+      void queryClient.invalidateQueries({ queryKey: ["staff", "menu"] });
+      closeReorder();
+      showToast("Đã lưu thứ tự menu");
+    },
+    onError: (error: Error) => {
+      showToast(error.message || "Không thể lưu thứ tự. Vui lòng thử lại.", "error");
+    },
+  });
+
+  const saveReorder = () => {
+    if (!reorderDraft || !reorderOriginal || !hasReorderChanges) return;
+    reorderMutation.mutate({
+      groups: groupIds(reorderDraft),
+      baseline: (["latte", "fusion", "extras"] as const).flatMap((category) =>
+        reorderOriginal[category].map((item) => ({
+          id: item.id,
+          category,
+          sort_order: item.sort_order,
+          is_available: item.is_available,
+        })),
+      ),
+    });
+  };
+
+  const handleReorder = (category: Category, visibleItems: AdminMenuItem[]) => {
+    setReorderDraft((current) => current ? {
+      ...current,
+      [category]: mergeVisibleMenuOrder(
+        current[category],
+        visibleItems,
+        (item) => reorderFilter === "all" || item.is_available,
+      ),
+    } : current);
+  };
+
+  const handleMove = (category: Category, itemId: string, beforeId: string | null) => {
+    setReorderDraft((current) => current ? {
+      ...current,
+      [category]: moveVisibleMenuItem(
+        current[category],
+        itemId,
+        beforeId,
+        (item) => reorderFilter === "all" || item.is_available,
+      ),
+    } : current);
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -187,13 +341,17 @@ export default function AdminMenuPage() {
       {/* Header */}
       <div className="flex items-center justify-between gap-2 p-2">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold text-foreground truncate">Sản phẩm</h1>
+          <h1 className="text-xl font-bold text-foreground truncate">
+            {isReordering ? "Sắp xếp sản phẩm" : "Sản phẩm"}
+          </h1>
           <p className="mt-0.5 truncate text-sm text-muted-foreground">
-            {allItems.length} món · {allItems.filter((i) => i.is_available).length} đang bán
+            {isReordering
+              ? "Kéo món trong từng danh mục rồi lưu thứ tự"
+              : `${allItems.length} món · ${allItems.filter((i) => i.is_available).length} đang bán`}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <div className="flex rounded-xl border border-border/50 bg-secondary/30 p-1">
+          {!isReordering && <div className="flex rounded-xl border border-border/50 bg-secondary/30 p-1">
             <button
               type="button"
               aria-label="Hiển thị dạng lưới"
@@ -216,8 +374,8 @@ export default function AdminMenuPage() {
             >
               <List className="h-4 w-4" />
             </button>
-          </div>
-          <button
+          </div>}
+          {!isReordering && <button
             type="button"
             aria-label={isRefreshing ? "Đang tải lại" : "Tải lại"}
             onClick={loadData}
@@ -225,20 +383,29 @@ export default function AdminMenuPage() {
             className="flex h-10 w-10 items-center justify-center rounded-xl border border-border/50 bg-background text-muted-foreground shadow-sm transition hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-wait disabled:opacity-60"
           >
             <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
-          </button>
-          <button
+          </button>}
+          {!isReordering && <button
+            type="button"
+            onClick={() => void beginReorder()}
+            disabled={isRefreshing || isLoading || allItems.length === 0}
+            className="flex h-10 items-center justify-center gap-2 rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground shadow-sm transition hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+          >
+            <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
+            <span className="hidden sm:inline">Sắp xếp</span>
+          </button>}
+          {!isReordering && <button
             type="button"
             onClick={() => setModalState({ open: true, mode: "create" })}
             className="flex h-10 w-10 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-medium text-primary-foreground shadow-sm shadow-primary/20 transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 sm:w-auto sm:px-4"
           >
             <Plus className="w-4 h-4 sm:w-[15px] sm:h-[15px]" />
             <span className="hidden sm:inline">Thêm món</span>
-          </button>
+          </button>}
         </div>
       </div>
 
       {/* Filters */}
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 no-scrollbar md:mx-0 md:px-0">
+      {!isReordering && <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 no-scrollbar md:mx-0 md:px-0">
         <div className="relative hidden min-w-[200px] flex-1">
           <Search
             size={14}
@@ -270,10 +437,42 @@ export default function AdminMenuPage() {
             </button>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* Content */}
-      {isLoading ? (
+      {isReordering && reorderDraft ? (
+        <>
+          <MenuReorderPanel
+            groups={reorderDraft}
+            filter={reorderFilter}
+            disabled={reorderMutation.isPending}
+            onFilterChange={setReorderFilter}
+            onReorder={handleReorder}
+            onMove={handleMove}
+          />
+          <div className="fixed inset-x-0 bottom-[calc(3.25rem+env(safe-area-inset-bottom))] z-30 border-t border-border bg-background/95 px-4 py-3 shadow-[0_-8px_24px_rgb(0_0_0/0.08)] backdrop-blur md:left-auto md:right-6 md:bottom-6 md:rounded-2xl md:border md:p-3">
+            <div className="mx-auto flex max-w-3xl justify-end gap-3">
+              <button
+                type="button"
+                onClick={requestCancelReorder}
+                disabled={reorderMutation.isPending}
+                className="min-h-11 rounded-xl border border-border bg-background px-5 text-sm font-medium text-foreground transition hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={saveReorder}
+                disabled={!hasReorderChanges || reorderMutation.isPending}
+                className="flex min-h-11 min-w-36 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:opacity-50"
+              >
+                {reorderMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                {reorderMutation.isPending ? "Đang lưu…" : "Lưu thứ tự"}
+              </button>
+            </div>
+          </div>
+        </>
+      ) : isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="h-56 rounded-2xl bg-secondary/30 animate-pulse" />
@@ -416,6 +615,20 @@ export default function AdminMenuPage() {
           onSuccess={handleModalSuccess}
         />
       )}
+
+      <ConfirmModal
+        isOpen={discardReorderOpen}
+        title="Bỏ thay đổi thứ tự?"
+        message="Các thay đổi chưa lưu sẽ bị bỏ."
+        confirmLabel="Bỏ thay đổi"
+        cancelLabel="Tiếp tục sắp xếp"
+        isDestructive
+        onConfirm={confirmDiscardReorder}
+        onCancel={() => {
+          setDiscardReorderOpen(false);
+          setPendingHref(null);
+        }}
+      />
 
       {/* Toast */}
       {toast && (
