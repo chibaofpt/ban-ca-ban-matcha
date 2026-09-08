@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback } from "react";
 import { User, UserX, Ticket, ArrowLeft, CheckCircle2, ChevronRight, X } from "lucide-react";
-import type { BundleCreatedRewardEffect, CartBundleApplication, CartItem } from "@/src/lib/types/cart";
+import type { BundleCreatedRewardEffect, BundleCartDraftCommit, CartBundleApplication, CartItem } from "@/src/lib/types/cart";
 import type { MenuData, Size, SweetnessLevel } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { CustomerInfo } from "./CustomerSelectModal";
@@ -19,6 +19,7 @@ import { Drawer } from "vaul";
 import StaffCartItemCard from "./cart/StaffCartItemCard";
 import { VoucherCard, PackageCard } from "@/src/components/shared/VoucherCards";
 import type { VoucherPackage } from "@/src/services/customerVoucherService";
+import type { BundleCartDraftResult, BundleCartDraftValidation } from "@/src/lib/utils/bundleCartDraft";
 import type { DiscountVoucher } from "@/src/lib/store/staffCartStore";
 import Image from "next/image";
 import type { PaymentMethod } from "@/src/lib/types/order";
@@ -27,6 +28,9 @@ import { CartBundleVoucherPanel, getBundleVoucherSummary } from "@/src/component
 import { deriveBundleAllocationConstraints, summarizeBundleCart, type BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { projectCartTotals, type VoucherProjectionSource } from "@/src/lib/utils/bundleVoucherProjection";
+import { BundleVoucherSetupSheet } from "@/src/components/shared/BundleVoucherSetupSheet";
+import type { VoucherAcquisitionReceipt } from "@/src/lib/utils/voucherAcquisitionState";
+import { getBundleAllocatedQuantities, getBundleOutsideAddonQuantity, getBundleOutsideQuantity } from "@/src/lib/utils/bundleCartSummary";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -62,7 +66,14 @@ interface StaffCartDrawerProps {
   bundleApplications: CartBundleApplication[];
   onBundleApplicationChange: (voucher: MyVoucher, allocations: BundleSelectionAllocation[], effect?: BundleCreatedRewardEffect) => void;
   onRequestRemoveBundle: (voucherToken: string) => void;
-  onAddExtrasReward?: (menuItemId: string, voucherToken: string) => { clientLineId: string; effect: BundleCreatedRewardEffect } | string | null;
+  onOpenBundleSetup?: (voucher: MyVoucher) => void;
+  onRepairBundle?: (voucher: MyVoucher) => void;
+  bundleSetupVoucher?: MyVoucher | null;
+  bundleSetupApplication?: CartBundleApplication;
+  onCloseBundleSetup?: () => void;
+  onValidateBundleDraft?: (candidate: BundleCartDraftResult) => BundleCartDraftValidation;
+  onCommitBundleDraft?: (draft: BundleCartDraftCommit) => void;
+  onBundleSetupSuccess?: () => void;
 
   customerVouchers?: MyVoucher[];
   selectedDiscountIds?: string[];
@@ -76,6 +87,8 @@ interface StaffCartDrawerProps {
   availableVoucherPackages?: VoucherPackage[];
   onExchangeVoucher?: (packageId: string) => void;
   isExchanging?: boolean;
+  acquisitionReceipt?: VoucherAcquisitionReceipt | null;
+  onRetryVoucherRefresh?: () => void;
   preventCloseOutside?: boolean;
 }
 
@@ -101,7 +114,14 @@ export function StaffCartDrawer({
   bundleApplications,
   onBundleApplicationChange,
   onRequestRemoveBundle,
-  onAddExtrasReward,
+  onOpenBundleSetup,
+  onRepairBundle,
+  bundleSetupVoucher,
+  bundleSetupApplication,
+  onCloseBundleSetup,
+  onValidateBundleDraft,
+  onCommitBundleDraft,
+  onBundleSetupSuccess,
   customerVouchers = [],
   selectedDiscountIds = [],
   onToggleDiscount,
@@ -114,6 +134,8 @@ export function StaffCartDrawer({
   availableVoucherPackages = [],
   onExchangeVoucher,
   isExchanging = false,
+  acquisitionReceipt,
+  onRetryVoucherRefresh,
   preventCloseOutside = false,
 }: StaffCartDrawerProps) {
   const menuItems = menuData ? [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])] : [];
@@ -134,6 +156,21 @@ export function StaffCartDrawer({
     () => customerVouchers.filter((voucher) => voucher.voucher_type === "BUNDLE"),
     [customerVouchers],
   );
+  const bundleAllocatedQuantitiesByCartId = useMemo(
+    () => getBundleAllocatedQuantities(bundleApplications),
+    [bundleApplications],
+  );
+  const bundleAllocatedAddonQuantities = useMemo(() => {
+    const quantities = new Map<string, number>();
+    for (const application of bundleApplications) {
+      for (const allocation of [...application.qualifier_allocations, ...application.reward_allocations]) {
+        if (!allocation.addon_option_id) continue;
+        const key = `${allocation.client_line_id}:${allocation.addon_option_id}`;
+        quantities.set(key, (quantities.get(key) ?? 0) + allocation.quantity);
+      }
+    }
+    return quantities;
+  }, [bundleApplications]);
   const addonLabels = useMemo(
     () =>
       new Map(
@@ -210,6 +247,20 @@ export function StaffCartDrawer({
   const totalVnd = cartProjection.totals.total_vnd;
 
   const activeItem = cart.find(i => i.cartId === activeItemForVoucher);
+  const activeProductVouchers = activeItem &&
+    getBundleOutsideQuantity(activeItem, bundleAllocatedQuantitiesByCartId) > 0
+    ? applicableProductVouchers.get(activeItem.menuItemId) ?? []
+    : [];
+  const activeAddonVouchers = activeItem
+    ? (applicableAddonVouchersMap.get(activeItem.cartId) ?? []).filter((voucher) => {
+        if (!voucher.addon_option_id) return true;
+        return getBundleOutsideAddonQuantity(
+          `${activeItem.cartId}:${voucher.addon_option_id}`,
+          activeItem.selectedOptionIds.filter((id) => id === voucher.addon_option_id).length,
+          bundleAllocatedAddonQuantities,
+        ) > 0;
+      })
+    : [];
 
   const handleClose = useCallback(() => {
     onClose();
@@ -318,8 +369,17 @@ export function StaffCartDrawer({
              </div>
           ) : (
             [...cart].reverse().map((c) => {
-              const productVouchersForItem = applicableProductVouchers.get(c.menuItemId) || [];
-              const addonVouchersForItem = applicableAddonVouchersMap.get(c.cartId) || [];
+              const productVouchersForItem = getBundleOutsideQuantity(c, bundleAllocatedQuantitiesByCartId) > 0
+                ? applicableProductVouchers.get(c.menuItemId) || []
+                : [];
+              const addonVouchersForItem = (applicableAddonVouchersMap.get(c.cartId) || []).filter((voucher) => {
+                if (!voucher.addon_option_id) return true;
+                return getBundleOutsideAddonQuantity(
+                  `${c.cartId}:${voucher.addon_option_id}`,
+                  c.selectedOptionIds.filter((id) => id === voucher.addon_option_id).length,
+                  bundleAllocatedAddonQuantities,
+                ) > 0;
+              });
               const menuItem = menuItems.find(m => m.id === c.menuItemId);
 
               return (
@@ -358,7 +418,8 @@ export function StaffCartDrawer({
               bundleApplications={bundleApplications}
               onBundleApplicationChange={onBundleApplicationChange}
               onRequestRemoveBundle={setBundleTokenToRemove}
-              onAddExtrasReward={onAddExtrasReward}
+              onOpenBundleSetup={onOpenBundleSetup}
+              onRepairBundle={onRepairBundle}
             />
           ) : null}
         </div>
@@ -500,11 +561,11 @@ export function StaffCartDrawer({
                 </div>
 
                 {/* PRODUCT Vouchers */}
-                {(applicableProductVouchers.get(activeItem.menuItemId)?.length ?? 0) > 0 && (
+                {activeProductVouchers.length > 0 && (
                   <div className="space-y-3">
                     <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Miễn phí món</p>
                     <div className="space-y-2">
-                      {applicableProductVouchers.get(activeItem.menuItemId)?.map(v => {
+                      {activeProductVouchers.map(v => {
                         const isSelected = (activeItem.productVoucherId ?? activeItem.itemVoucherId) === v.qr_token;
                         const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && (c.productVoucherId === v.qr_token || c.itemVoucherId === v.qr_token));
                         
@@ -535,11 +596,11 @@ export function StaffCartDrawer({
                 )}
 
                 {/* ADDON Vouchers */}
-                {(applicableAddonVouchersMap.get(activeItem.cartId)?.length ?? 0) > 0 && (
+                {activeAddonVouchers.length > 0 && (
                   <div className="space-y-3">
                     <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Topping miễn phí</p>
                     <div className="space-y-2">
-                      {applicableAddonVouchersMap.get(activeItem.cartId)?.map(v => {
+                      {activeAddonVouchers.map(v => {
                         const isSelected = (activeItem.addonVouchers ?? []).some(av => av.voucherId === v.qr_token);
                         const isAlreadyUsed = cart.some(c => c.cartId !== activeItem.cartId && c.addonVouchers?.some(av => av.voucherId === v.qr_token));
                         
@@ -625,6 +686,25 @@ export function StaffCartDrawer({
                 })}
 
                 {/* Section 2: Đổi điểm lấy ưu đãi (only for Admin) */}
+                {acquisitionReceipt ? (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900" role="status">
+                    <p className="font-bold">Đã nhận voucher</p>
+                    <p className="mt-1 break-all">Mã: {acquisitionReceipt.acquired.qr_token}</p>
+                    {acquisitionReceipt.refreshError ? (
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <span>Chưa làm mới được ví.</span>
+                        <button
+                          type="button"
+                          className="min-h-11 rounded-lg bg-emerald-700 px-3 font-bold text-white"
+                          onClick={onRetryVoucherRefresh}
+                        >
+                          Làm mới ví
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {availableVoucherPackages.length > 0 && customerInfo?.type === "existing" && (
                   <div className="mt-6">
                     <div className="flex items-center gap-2 mb-3">
@@ -661,6 +741,24 @@ export function StaffCartDrawer({
         
         {/* Product Modal Node for Staff */}
         {productModalNode}
+        {bundleSetupVoucher && menuData && onCloseBundleSetup && onValidateBundleDraft && onCommitBundleDraft && onBundleSetupSuccess ? (
+          <BundleVoucherSetupSheet
+            key={bundleSetupVoucher.qr_token}
+            open
+            layer="critical"
+            voucher={bundleSetupVoucher}
+            cartItems={cart}
+            initialApplication={bundleSetupApplication}
+            menuData={menuData}
+            milkTypes={menuData.milk_types}
+            powders={powderData?.data ?? []}
+            defaultPowderGram={powderData?.default_powder_gram ?? []}
+            onClose={onCloseBundleSetup}
+            onValidateDraft={onValidateBundleDraft}
+            onCommitDraft={onCommitBundleDraft}
+            onSuccess={onBundleSetupSuccess}
+          />
+        ) : null}
         <ConfirmModal
           isOpen={bundleTokenToRemove !== null}
           onCancel={() => setBundleTokenToRemove(null)}

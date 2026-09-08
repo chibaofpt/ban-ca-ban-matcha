@@ -98,6 +98,7 @@ const latteMenuItem = {
   default_powder_id: null,
   custom_powder_grams: null,
   fusionAllowedPowders: [],
+  allowedBaseLiquids: [],
   sizes: [{ size: "MEDIUM", base_price_vnd: 55000, base_liquid_ml: 200 }],
 };
 
@@ -205,7 +206,12 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
     mockPointsLogCreate.mockResolvedValue({});
     mockVoucherFindUnique.mockResolvedValue(null);
     mockVoucherFindMany.mockResolvedValue([]);
-    mockMenuItemFindMany.mockResolvedValue([]);
+    mockMenuItemFindMany.mockImplementation(async (args: unknown) => {
+      const include = typeof args === "object" && args !== null
+        ? (args as { include?: Record<string, unknown> }).include
+        : undefined;
+      return include && "fusionAllowedPowders" in include ? [latteMenuItem] : [];
+    });
     mockMatchaPowderFindMany.mockResolvedValue([{ id: POWDER_ID, name: "Bột test", is_available: true, price_per_gram: 1200, reference_latte_item_id: null }]);
     mockMilkTypeFindMany.mockResolvedValue([{ id: "550e8400-e29b-41d4-a716-446655440099", is_default: true, is_active: true, price_per_ml: 40, display_order: 0 }]);
     mockAddonOptionFindMany.mockResolvedValue([]);
@@ -258,10 +264,12 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
     const addonId = "550e8400-e29b-41d4-a716-446655440050";
     mockGetSession.mockResolvedValue(ADMIN_SESSION);
     mockVoucherFindUnique.mockResolvedValue({ ...discountVoucher, voucher_type: "ADDON", addon_option_id: addonId });
-    tx.addonOption.mockResolvedValue({
+    const addonOption = {
       id: addonId, is_active: true, price_vnd: 5000, gram_value: null,
       group: { id: "addon-group", is_active: true, max_select: 1 },
-    });
+    };
+    tx.addonOption.mockResolvedValue(addonOption);
+    mockAddonOptionFindMany.mockResolvedValue([addonOption]);
     const response = await POST(makeReq(makePayload({ items: [{
       ...baseItem, addon_option_ids: [addonId],
       addon_voucher_ids: [{ voucher_id: VOUCHER_ID, addon_option_id: addonId }],

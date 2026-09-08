@@ -139,4 +139,10 @@ describe("Validation gói BUNDLE grouped products", () => {
     expect(createVoucherPackageSchema.safeParse({ ...makeBundle(), acquisition_mode: "FREE_CLAIM", points_cost: 0 }).success).toBe(true);
     expect(createVoucherPackageSchema.safeParse({ ...makeBundle(), ends_at: "2026-01-01T00:00:00.000Z" }).success).toBe(false);
   });
+
+  it("giới hạn mỗi khách là một voucher khi phát miễn phí hoặc tự cấp", () => {
+    expect(createVoucherPackageSchema.safeParse({ ...makeBundle(), acquisition_mode: "FREE_CLAIM", points_cost: 0, max_per_user: 2 }).success).toBe(false);
+    expect(createVoucherPackageSchema.safeParse({ ...makeBundle(), acquisition_mode: "AUTO_GRANT", points_cost: 0, max_per_user: 2 }).success).toBe(false);
+    expect(createVoucherPackageSchema.safeParse({ ...makeBundle(), max_per_user: 2 }).success).toBe(true);
+  });
 });

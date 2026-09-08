@@ -1,5 +1,5 @@
 import type { BundleVoucherRule } from "@/src/services/customerVoucherService";
-import type { MenuItem, MilkTypeOption, SweetnessLevel, Size } from "@/src/lib/types/menu";
+import type { AddonGroup, MenuItem, MilkTypeOption, SweetnessLevel, Size } from "@/src/lib/types/menu";
 import type { IceOption, CartItem } from "@/src/lib/types/cart";
 
 export type BundleProductScope = BundleVoucherRule["qualifier_products"][number];
@@ -7,6 +7,7 @@ export type BundleProductScope = BundleVoucherRule["qualifier_products"][number]
 export interface BundleItemConfig {
   menuItemId: string;
   name: string;
+  category?: CartItem["category"];
   imageUrl: string | null;
   size: Size | null;
   powderId: string | null;
@@ -19,6 +20,7 @@ export interface BundleItemConfig {
   unitPriceVnd: number;
   addonsCost: number;
   addonPrices: Record<string, number>;
+  addonMetadata?: CartItem["addonMetadata"];
 }
 
 export interface CanApplyDiscountResult {
@@ -118,6 +120,7 @@ export function buildBundleItemConfig(
   return {
     menuItemId: scope.menu_item_id,
     name: menuItem.name || "",
+    category: menuItem.category,
     imageUrl: menuItem.image_url || null,
     size: menuItem.category === "extras" ? null : scope.allowed_sizes[0] ?? null,
     powderId: scope.default_powder_id,
@@ -130,6 +133,7 @@ export function buildBundleItemConfig(
     unitPriceVnd,
     addonsCost: 0,
     addonPrices: {},
+    addonMetadata: {},
   };
 }
 
@@ -180,6 +184,7 @@ export function cartItemToBundleConfig(
   return {
     menuItemId: cartItem.menuItemId,
     name: cartItem.name,
+    category: cartItem.category,
     imageUrl: cartItem.imageUrl,
     size: cartItem.size,
     powderId: cartItem.selectedPowderId ?? scope.default_powder_id ?? null,
@@ -189,8 +194,29 @@ export function cartItemToBundleConfig(
     iceOption: cartItem.iceOption,
     coldwhisk: cartItem.coldwhisk,
     selectedOptionIds: cartItem.selectedOptionIds,
-    unitPriceVnd: cartItem.clientPriceVnd,
+    unitPriceVnd: Math.max(0, cartItem.originalClientPriceVnd - cartItem.addonsPrice),
     addonsCost: cartItem.addonsPrice,
     addonPrices: cartItem.addonPrices,
+    addonMetadata: cartItem.addonMetadata,
   };
+}
+
+/** Snapshot selected addon group metadata for stable BUNDLE revalidation. */
+export function snapshotCartAddonMetadata(
+  selectedOptionIds: readonly string[],
+  addonGroups: readonly AddonGroup[],
+): NonNullable<CartItem["addonMetadata"]> {
+  const selected = new Set(selectedOptionIds);
+  return Object.fromEntries(
+    addonGroups.flatMap((group) => group.options
+      .filter((option) => selected.has(option.id))
+      .map((option) => [option.id, {
+        addon_group_id: group.id,
+        max_select: group.max_select,
+        gram_value: option.gram_value,
+        is_active: true,
+        is_deleted: false,
+        is_dynamic_gram: group.is_dynamic_gram,
+      }]))
+  );
 }

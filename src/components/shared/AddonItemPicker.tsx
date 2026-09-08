@@ -13,6 +13,7 @@ import { ceilTo1000 } from "@/src/utils/pricing";
 interface AddonItemPickerProps {
   voucher: MyVoucher;
   cartItems: CartItem[];
+  bundleAllocatedQuantitiesByCartId?: ReadonlyMap<string, number>;
   menuData: MenuData;
   onBack: () => void;
   onSuccess: () => void;
@@ -21,6 +22,7 @@ interface AddonItemPickerProps {
 export const AddonItemPicker = ({
   voucher,
   cartItems,
+  bundleAllocatedQuantitiesByCartId,
   menuData,
   onBack,
   onSuccess,
@@ -82,7 +84,7 @@ export const AddonItemPicker = ({
         <h3 className="font-bold text-primary">Chọn món áp dụng</h3>
       </div>
       <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none p-5 space-y-3 overscroll-contain">
-        {cartItems.map(item => (
+        {cartItems.filter((item) => (bundleAllocatedQuantitiesByCartId?.get(item.cartId) ?? 0) < item.quantity).map(item => (
           <button
             key={item.cartId}
             onClick={() => handleSelectItem(item)}

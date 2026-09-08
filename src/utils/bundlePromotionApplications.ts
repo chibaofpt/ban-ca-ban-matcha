@@ -1,6 +1,9 @@
 import {
   BundlePromotionError,
+  bundleProductUnitUsage,
   evaluateBundlePromotion,
+  bundleAvailableProductQuantity,
+  bundlePersonalVoucherQuantity,
   type BundleCartItem,
   type BundleEvaluationResult,
   type BundlePromotionRule,
@@ -22,14 +25,14 @@ export interface BundleApplicationsEvaluationResult {
 }
 
 function availableProducts(item: BundleCartItem | undefined): number {
-  return item ? Math.max(0, item.quantity - item.product_voucher_quantity - (item.item_voucher_quantity ?? 0)) : 0;
+  return item ? bundleAvailableProductQuantity(item) : 0;
 }
 
-function rewardAvailableProducts(item: BundleCartItem | undefined): number {
-  return item ? Math.max(0, availableProducts(item) - (item.product_discount_voucher_quantity ?? 0)) : 0;
-}
+type BundleApplicationCapacityInput = Pick<BundleApplicationEvaluationInput, "voucher_qr_token" | "qualifier_allocations" | "reward_allocations"> & {
+  rule?: Pick<BundlePromotionRule, "reward_kind">;
+};
 
-function assertGlobalCapacity(applications: BundleApplicationEvaluationInput[], items: BundleCartItem[]): void {
+function assertGlobalCapacity(applications: BundleApplicationCapacityInput[], items: BundleCartItem[]): void {
   const itemByLine = new Map(items.map((item) => [item.client_line_id, item]));
   const tokens = new Set<string>();
   const productUsage = new Map<string, number>();
@@ -37,24 +40,49 @@ function assertGlobalCapacity(applications: BundleApplicationEvaluationInput[], 
   for (const application of applications) {
     if (tokens.has(application.voucher_qr_token)) throw new BundlePromotionError("BUNDLE_DUPLICATE_VOUCHER", "Bundle token can appear only once");
     tokens.add(application.voucher_qr_token);
-    for (const allocation of application.qualifier_allocations) productUsage.set(allocation.client_line_id, (productUsage.get(allocation.client_line_id) ?? 0) + allocation.quantity);
+    const rewardKind = application.rule?.reward_kind ?? (application.reward_allocations.some((allocation) => allocation.addon_option_id) ? "ADDON" : "PRODUCT");
+    const ownProductUsage = bundleProductUnitUsage({ reward_kind: rewardKind }, application.qualifier_allocations, application.reward_allocations);
+    for (const [lineId, quantity] of ownProductUsage) {
+      const item = itemByLine.get(lineId);
+      if (!item) throw new BundlePromotionError("BUNDLE_SCOPE_MISMATCH", "Allocation line is missing");
+      if (quantity > availableProducts(item)) {
+        const personal = bundlePersonalVoucherQuantity(item);
+        throw new BundlePromotionError(personal > 0 ? "BUNDLE_CONFLICT" : "BUNDLE_ALLOCATION_OVERLAP", personal > 0 ? "Bundle allocation overlaps a personal voucher" : "Product unit is allocated more than once");
+      }
+      productUsage.set(lineId, (productUsage.get(lineId) ?? 0) + quantity);
+    }
+    const ownAddonUsage = new Map<string, number>();
     for (const allocation of application.reward_allocations) {
       if (allocation.addon_option_id) {
         const key = `${allocation.client_line_id}:${allocation.addon_option_id}`;
+        ownAddonUsage.set(key, (ownAddonUsage.get(key) ?? 0) + allocation.quantity);
         addonUsage.set(key, (addonUsage.get(key) ?? 0) + allocation.quantity);
-      } else {
-        if (allocation.quantity > rewardAvailableProducts(itemByLine.get(allocation.client_line_id))) throw new BundlePromotionError("BUNDLE_CONFLICT", "Bundle reward overlaps PRODUCT_DISCOUNT");
-        productUsage.set(allocation.client_line_id, (productUsage.get(allocation.client_line_id) ?? 0) + allocation.quantity);
       }
     }
+    for (const [key, quantity] of ownAddonUsage) {
+      const splitAt = key.lastIndexOf(":");
+      const addon = itemByLine.get(key.slice(0, splitAt))?.addons.find((candidate) => candidate.addon_option_id === key.slice(splitAt + 1));
+      const personalQuantity = addon ? Math.max(0, addon.personal_voucher_quantity ?? addon.voucher_discounted_quantity ?? 0) : 0;
+      if (!addon) throw new BundlePromotionError("BUNDLE_SCOPE_MISMATCH", "Addon allocation is outside the cart scope");
+      if (quantity + personalQuantity > addon.quantity) throw new BundlePromotionError(personalQuantity > 0 ? "BUNDLE_CONFLICT" : "BUNDLE_ALLOCATION_OVERLAP", personalQuantity > 0 ? "Addon allocation overlaps a personal voucher" : "Addon unit is allocated more than once");
+    }
   }
-  for (const [lineId, quantity] of productUsage) if (quantity > availableProducts(itemByLine.get(lineId))) {
+  for (const [lineId, quantity] of productUsage) {
+    const item = itemByLine.get(lineId);
+    if (!item) throw new BundlePromotionError("BUNDLE_SCOPE_MISMATCH", "Allocation line is missing");
+    if (quantity <= availableProducts(item)) continue;
     throw new BundlePromotionError("BUNDLE_ALLOCATION_OVERLAP", "Product unit is allocated more than once");
   }
   for (const [key, quantity] of addonUsage) {
     const splitAt = key.lastIndexOf(":");
     const addon = itemByLine.get(key.slice(0, splitAt))?.addons.find((candidate) => candidate.addon_option_id === key.slice(splitAt + 1));
-    if (!addon || quantity + (addon.voucher_discounted_quantity ?? 0) > addon.quantity) throw new BundlePromotionError("BUNDLE_ALLOCATION_OVERLAP", "Addon unit is allocated more than once");
+    const personalQuantity = addon ? Math.max(0, addon.personal_voucher_quantity ?? addon.voucher_discounted_quantity ?? 0) : 0;
+    if (!addon || quantity + personalQuantity > addon.quantity) {
+      throw new BundlePromotionError(
+        !addon ? "BUNDLE_SCOPE_MISMATCH" : "BUNDLE_ALLOCATION_OVERLAP",
+        !addon ? "Addon allocation is outside the cart scope" : "Addon unit is allocated more than once",
+      );
+    }
   }
 }
 
@@ -63,7 +91,7 @@ export function assertBundleApplicationCapacity(input: {
   items: BundleCartItem[];
   applications: Array<Pick<BundleApplicationEvaluationInput, "voucher_qr_token" | "qualifier_allocations" | "reward_allocations">>;
 }): void {
-  assertGlobalCapacity(input.applications as BundleApplicationEvaluationInput[], input.items);
+  assertGlobalCapacity(input.applications, input.items);
 }
 
 function globalPaidSubtotal(applications: BundleApplicationEvaluationInput[], items: BundleCartItem[]): number {
@@ -74,7 +102,15 @@ function globalPaidSubtotal(applications: BundleApplicationEvaluationInput[], it
     const target = reward.addon_option_id ? addonRewards : productRewards;
     target.set(key, (target.get(key) ?? 0) + reward.quantity);
   }
-  return items.reduce((total, item) => total + Math.max(0, Math.max(0, availableProducts(item) - (productRewards.get(`${item.client_line_id}:PRODUCT`) ?? 0)) * item.unit_price_vnd - (item.product_discount_vnd ?? 0)) + item.addons.reduce((sum, addon) => sum + Math.max(0, addon.quantity - (addon.voucher_discounted_quantity ?? 0) - (addonRewards.get(`${item.client_line_id}:${addon.addon_option_id}`) ?? 0)) * addon.unit_price_vnd, 0), 0);
+  return items.reduce((total, item) => {
+    const paidProducts = Math.max(0, item.quantity - item.product_voucher_quantity - (item.item_voucher_quantity ?? 0));
+    const products = Math.max(0, paidProducts - (productRewards.get(`${item.client_line_id}:PRODUCT`) ?? 0));
+    const addons = item.addons.reduce((sum, addon) => {
+      const personalQuantity = Math.max(0, addon.personal_voucher_quantity ?? addon.voucher_discounted_quantity ?? 0);
+      return sum + Math.max(0, addon.quantity - personalQuantity - (addonRewards.get(`${item.client_line_id}:${addon.addon_option_id}`) ?? 0)) * addon.unit_price_vnd;
+    }, 0);
+    return total + Math.max(0, products * item.unit_price_vnd - (item.product_discount_vnd ?? 0)) + addons;
+  }, 0);
 }
 
 /** Evaluate distinct BUNDLE instances using one global non-overlapping allocation pool. */

@@ -596,7 +596,7 @@ export async function POST(req: NextRequest) {
       },
       { status: 201 }
     );
-    });
+    }, { timeoutMs: 30_000 });
   } catch (err) {
     if (err instanceof Error && "code" in err && err.code === "P2034") {
       return NextResponse.json({ error: "Order changed concurrently", code: "CONFLICT" }, { status: 409 });
@@ -649,7 +649,11 @@ export async function POST(req: NextRequest) {
     const errName = err instanceof Error ? err.name : typeof err;
     
     // Fallback to console + save to SystemLog
-    console.error("[POST /api/staff/orders] UNHANDLED ERROR:", { name: errName });
+    console.error("[POST /api/staff/orders] UNHANDLED ERROR:", {
+      name: errName,
+      code: err instanceof Error && "code" in err && typeof err.code === "string" ? err.code : undefined,
+      message: err instanceof Error ? err.message : undefined,
+    });
     await logSystemEvent({
       level: "error",
       source: "POST /api/staff/orders",

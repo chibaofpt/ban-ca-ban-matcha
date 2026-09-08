@@ -112,6 +112,35 @@ Wallet và cart dùng chung voucher frame edge-to-edge với một lớp padding
 trong cùng frame thay vì mở sheet lồng. Cart voucher sheet dùng layer `nested`; target/setup mở
 từ sheet này dùng layer `critical`.
 
+BUNDLE dùng một planner thuần và shared evaluator cho ví, customer cart và staff cart. Setup giữ
+draft cục bộ gồm món mua, quà, cấu hình và số lượng; chỉ commit items và application cùng một lần
+sau khi toàn bộ phân bổ qua evaluator. Không suy lại món mua từ thứ tự giỏ sau khi khách chọn.
+Chỉ hiển thị “Đã áp dụng” khi kết quả hợp lệ và có lợi ích dương; trước đó hiển thị tiến độ và lý do
+còn thiếu. Client và server phân biệt giá đồ uống, topping và gross unit price, giữ giảm BUNDLE
+riêng. Reload không tin trạng thái READY đã lưu mà revalidate bằng wallet/menu hiện tại.
+Ngay sau khi setup commit, Cart dựng nhóm từ các allocation đã lưu để không chớp thành danh sách món
+lẻ trong lúc tải ví. Trạng thái đang tải/lỗi tải chỉ khóa checkout và chỉnh cấu hình; không tự đổi
+application thành xung đột hoặc không khả dụng trước khi có dữ liệu ví hiện hành.
+
+Cart BUNDLE hiển thị tên voucher, quyền lợi, các phần món có nhãn Mua/Quà, giá gốc, mức giảm và
+phụ thu; lỗi nằm tại nhóm liên quan với hành động Chọn lại món/Bỏ ưu đãi. Sửa một phần của dòng
+nhiều món phải giữ tổng số lượng và phần còn lại. Gỡ bundle giữ món mua và phần vốn có, chỉ loại
+quà/topping được ghi nhận là tự thêm. Footer của picker bao gồm bundle; Bỏ tất cả xử lý mọi lựa
+chọn thuộc picker và xác nhận nếu phải loại quà tự thêm. Nhận bundle từ cart chuyển tới voucher
+mới và setup, không điều hướng bằng DOM id của panel cũ.
+
+Admin BUNDLE giữ wizard ba bước. Bước quyền lợi đặt Mua X/Tặng Y cùng hàng, rồi loại quà và mode
+Tặng cùng món/Tặng món chỉ định/Chọn quà trong danh sách, sau đó món điều kiện. Mỗi nhóm mua/quà
+có size và Base Liquid mặc định chung lấy từ giao cấu hình hợp lệ; Fusion chọn bột riêng, Latte
+giữ bột cố định, extras không có cấu hình đồ uống. Không âm thầm đổi lựa chọn khi giao không còn
+hợp lệ. Đơn tối thiểu/Lượt mỗi voucher trong đơn cùng hàng. Bước phát hành dùng ba nút cách nhận,
+Điểm đổi/Tối đa mỗi khách/Tổng phát hành cùng hàng và ngày kết thúc/số ngày hiệu lực theo tỷ lệ
+70/30. Free/auto khóa điểm ở 0 và tối đa mỗi khách ở 1 theo issuance hiện hành. Validation on-blur
+và từng bước dùng RHF/Zod với lỗi dưới field. Tạo thành công reset phiên wizard; lỗi giữ draft.
+Đóng overlay do backdrop, swipe hoặc Escape giữ nguyên draft, bước hiện tại và phần copy admin đã sửa
+trong suốt vòng đời trang; chỉ lần tạo thành công mới reset phiên wizard.
+Quy tắc sữa/bột/size và chống chồng voucher thuộc voucher-flow, không được suy từ bố cục form.
+
 Catalog nhận/đổi của customer wallet và cart ẩn `AUTO_GRANT` và gói có
 `(user_redeemed_count ?? 0) >= max_per_user`. Việc ẩn gói không xóa, ẩn hoặc thay đổi voucher đã
 sở hữu, quota hay lịch sử đổi. Detail đang mở phải khóa CTA nếu dữ liệu mới cho biết hết lượt.

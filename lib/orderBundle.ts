@@ -87,6 +87,28 @@ export interface ResolvedOrderBundles {
   skipped_qr_tokens: string[];
 }
 
+function normalizeBundleApplication(application: BundleApplicationInput): BundleApplicationInput {
+  const qualifierQuantities = new Map<string, number>();
+  for (const allocation of application.qualifier_allocations) {
+    if (allocation.quantity < 1) throw new BundlePromotionError("BUNDLE_DUPLICATE_ALLOCATION", "Invalid qualifier allocation");
+    qualifierQuantities.set(allocation.client_line_id, (qualifierQuantities.get(allocation.client_line_id) ?? 0) + allocation.quantity);
+  }
+  const rewardAllocations = new Map<string, BundleRewardAllocation>();
+  for (const allocation of application.reward_allocations) {
+    if (allocation.quantity < 1) throw new BundlePromotionError("BUNDLE_DUPLICATE_ALLOCATION", "Invalid reward allocation");
+    const key = `${allocation.client_line_id}\u0000${allocation.addon_option_id ?? "PRODUCT"}`;
+    const previous = rewardAllocations.get(key);
+    rewardAllocations.set(key, previous
+      ? { ...previous, quantity: previous.quantity + allocation.quantity }
+      : { client_line_id: allocation.client_line_id, quantity: allocation.quantity, ...(allocation.addon_option_id ? { addon_option_id: allocation.addon_option_id } : {}) });
+  }
+  return {
+    ...application,
+    qualifier_allocations: [...qualifierQuantities].map(([client_line_id, quantity]) => ({ client_line_id, quantity })),
+    reward_allocations: [...rewardAllocations.values()],
+  };
+}
+
 function assertVoucherUsable(voucher: BundleVoucherRecord | undefined, userId: string, now: Date): asserts voucher is BundleVoucherRecord & {
   package: BundleVoucherRecord["package"] & { bundleRule: BundleRuleRecord };
 } {
@@ -113,12 +135,21 @@ function cartItems(
       selected_powder_id: item.selected_powder_id, selected_milk_type_id: item.selected_milk_type_id,
       unit_price_vnd: item.unit_price_vnd, quantity: item.quantity,
       product_voucher_quantity: input.product_voucher_id && item.product_voucher_type !== "PRODUCT_DISCOUNT" ? item.quantity : 0,
-      product_discount_voucher_quantity: item.product_voucher_type === "PRODUCT_DISCOUNT" && (item.product_voucher_discount_vnd ?? 0) > 0 ? 1 : 0,
+      product_discount_voucher_quantity: input.product_voucher_id && item.product_voucher_type === "PRODUCT_DISCOUNT" ? 1 : 0,
       product_discount_vnd: item.product_voucher_type === "PRODUCT_DISCOUNT" ? item.product_voucher_discount_vnd ?? 0 : 0,
       item_voucher_quantity: input.item_voucher_id ? item.quantity : 0,
       addons: item.resolvedAddons.map((addon) => ({ ...addon,
         voucher_discounted_quantity: input.addon_voucher_ids.filter((link) =>
-          link.addon_option_id === addon.addon_option_id).length })),
+          link.addon_option_id === addon.addon_option_id).length,
+        personal_voucher_quantity: input.addon_voucher_ids.filter((link) =>
+          link.addon_option_id === addon.addon_option_id).length,
+      })),
+      personal_voucher_quantity: Math.min(item.quantity, Math.max(
+        input.product_voucher_id ? item.quantity : 0,
+        input.item_voucher_id ? item.quantity : 0,
+        input.product_voucher_id && item.product_voucher_type === "PRODUCT_DISCOUNT" ? 1 : 0,
+        input.addon_voucher_ids.length > 0 ? 1 : 0,
+      )),
     };
   });
 }
@@ -142,12 +173,13 @@ export async function resolveOrderBundles(
   input: { voucher_owner_id: string; now?: Date; items: BundleOrderItemInput[];
     resolved_items: BundleResolvedItem[]; bundle_applications: BundleApplicationInput[] },
 ): Promise<ResolvedOrderBundles> {
-  if (input.bundle_applications.length === 0) {
+  const applications = input.bundle_applications.map(normalizeBundleApplication);
+  if (applications.length === 0) {
     return { bundles: [], line_discounts_vnd: input.items.map(() => 0), skipped_qr_tokens: [] };
   }
   const items = cartItems(input.items, input.resolved_items);
-  assertBundleApplicationCapacity({ items, applications: input.bundle_applications });
-  const tokens = input.bundle_applications.map((application) => application.voucher_qr_token);
+  assertBundleApplicationCapacity({ items, applications });
+  const tokens = applications.map((application) => application.voucher_qr_token);
   const vouchers = await db.voucher.findMany({ where: { qr_token: { in: tokens } }, include: { package: {
     include: { bundleRule: { include: { productScopes: { include: { sizes: true } }, addonRewards: true } } },
   } } });
@@ -160,7 +192,7 @@ export async function resolveOrderBundles(
     rule: BundlePromotionRule;
   }> = [];
   const skipped_qr_tokens: string[] = [];
-  for (const application of input.bundle_applications) {
+  for (const application of applications) {
     const voucher = voucherMap.get(application.voucher_qr_token);
     assertVoucherUsable(voucher, input.voucher_owner_id, now);
     const live = resolveBundleRuleAvailability(voucher.package.bundleRule, catalog);

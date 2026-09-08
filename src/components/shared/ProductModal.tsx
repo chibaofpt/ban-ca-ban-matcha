@@ -25,6 +25,7 @@ import { useModalHistory } from "./product-modal/useModalHistory";
 import { SectionLabel } from "./product-modal/SectionLabel";
 import OptionCard from "./product-modal/OptionCard";
 import { getBaseLiquidOptionsForItem } from "@/src/utils/baseLiquid";
+import { snapshotCartAddonMetadata } from "@/src/lib/utils/voucherUseNowHelpers";
 
 interface ProductModalProps {
   item: MenuItem;
@@ -245,6 +246,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
       menuItemId: item.id, name: item.name, category: item.category, imageUrl: item.image_url,
       size: selectedSize, unitPrice: currentPriceContext.unitPrice, quantity, sweetness, iceOption, coldwhisk,
       note, selectedOptionIds, addonsPrice: currentPriceContext.addonsCost, addonPrices: currentPriceContext.addonPricesMap,
+      addonMetadata: snapshotCartAddonMetadata(selectedOptionIds, addonGroups),
       selectedPowderId: isLatte ? undefined : selectedPowderId,
       selectedBaseLiquidId: selectedMilkId || undefined,
       selectedMilkTypeId: isLatte ? selectedMilkId : undefined,
@@ -293,7 +295,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
     selectedSize, finalUnitPrice, quantity, sweetness, iceOption, coldwhisk, note,
     selectedOptionIds, isLatte, selectedPowderId, selectedMilkId, effectiveFreeVoucherId,
     effectiveFreeCoveredPrice, effectiveProductVoucherType, onConfirm, editingItem, updateItem, addItem, handleClose,
-    disableVoucherApplication,
+    disableVoucherApplication, addonGroups,
   ]);
 
   const sweetnessIdx = useMemo(() => SWEETNESS_OPTIONS.findIndex((o) => o.value === sweetness), [sweetness]);

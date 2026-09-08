@@ -10,8 +10,8 @@ import { VoucherPackageCatalog } from "@/src/components/shared/VoucherPackageCat
 import { VoucherAcquisitionConfirm } from "@/src/components/shared/VoucherAcquisitionConfirm";
 import { CartDiscountPickerFooter } from "@/src/components/menu/cart/CartDiscountPickerFooter";
 import { toast } from "sonner";
-import type { CartItem } from "@/src/lib/types/cart";
-import type { BundleCreatedRewardEffect, CartBundleApplication } from "@/src/lib/types/cart";
+import type { CartItem, BundleCartDraftCommit, CartBundleApplication } from "@/src/lib/types/cart";
+import type { BundleCartDraftResult, BundleCartDraftValidation } from "@/src/lib/utils/bundleCartDraft";
 import type { MenuData } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
@@ -21,7 +21,8 @@ import { buildVoucherActionModel, getProductDiscountSelection } from "@/src/util
 import { getVoucherAvailabilityMessage, type VoucherModalTab } from "@/src/lib/utils/voucherModalHelpers";
 import { BundleVoucherSetupSheet } from "@/src/components/shared/BundleVoucherSetupSheet";
 import { getBundleVoucherSummary } from "@/src/components/menu/cart/CartBundleVoucherPanel";
-import { buildBundleApplication, deriveBundleSelectionState, summarizeBundleCart } from "@/src/lib/utils/bundleVoucher";
+import { validateBundleCartDraft } from "@/src/lib/utils/bundleCartDraft";
+import { resolveBundleSelectionSiblings } from "@/src/lib/utils/bundleVoucher";
 
 interface CartDiscountPickerProps {
   discountVouchers: MyVoucher[];
@@ -39,7 +40,7 @@ interface CartDiscountPickerProps {
   shippingFee: number | null;
   onClose: () => void;
   onUpdateSelectedVouchers: React.Dispatch<React.SetStateAction<string[]>>;
-  onRefreshVouchers: () => Promise<void>;
+  onRefreshVouchers: () => Promise<MyVoucher[]>;
   bundleVouchers: MyVoucher[];
   cart: CartItem[];
   menuData: MenuData;
@@ -48,12 +49,11 @@ interface CartDiscountPickerProps {
   getProductVoucherBenefit: (item: CartItem, voucher: MyVoucher) => number;
   onApplyProductVoucher: (cartId: string, voucher: MyVoucher) => void;
   onRemoveProductVoucher: (cartId: string) => void;
-  bundleAllocatedCartIds: ReadonlySet<string>;
-  addonLabels: ReadonlyMap<string, string>;
+  bundleAllocatedQuantitiesByCartId: ReadonlyMap<string, number>;
   bundleApplications: CartBundleApplication[];
-  onBundleApplicationChange: (voucher: MyVoucher, allocations: import("@/src/lib/utils/bundleVoucher").BundleSelectionAllocation[], effects?: BundleCreatedRewardEffect[]) => { ok: true } | { ok: false; error: string };
+  bundleOwnerKey: string;
+  onCommitBundleCartDraft: (draft: BundleCartDraftCommit) => void;
   onRequestRemoveBundle: (voucherToken: string) => void;
-  onAddExtrasReward: (menuItemId: string, voucherToken: string) => { clientLineId: string; effect: BundleCreatedRewardEffect } | null;
   /** PRODUCT + ITEM vouchers eligible for "Dùng ngay". */
   productVouchers: MyVoucher[];
   /** ADDON vouchers eligible for "Dùng ngay". */
@@ -96,19 +96,19 @@ export const CartDiscountPicker = ({
   getProductVoucherBenefit,
   onApplyProductVoucher,
   onRemoveProductVoucher,
-  bundleAllocatedCartIds,
-  addonLabels,
+  bundleAllocatedQuantitiesByCartId,
   bundleApplications,
-  onBundleApplicationChange,
+  bundleOwnerKey,
+  onCommitBundleCartDraft,
   onRequestRemoveBundle,
-  onAddExtrasReward,
   productVouchers,
   addonVouchers,
   onUseProductVoucher,
   onUseAddonVoucher,
 }: CartDiscountPickerProps) => {
-  const { acquire, isPending } = useVoucherAcquisition();
+  const { acquire, retryRefresh, receipt, isPending } = useVoucherAcquisition({ refreshWallet: onRefreshVouchers });
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
+  const [isRetryingWallet, setIsRetryingWallet] = useState(false);
   const [confirmPackage, setConfirmPackage] = useState<VoucherPackage | null>(null);
   const [activeView, setActiveView] = useState<VoucherPickerView>({ kind: "list" });
   const [activeTab, setActiveTab] = useState<VoucherModalTab>("my_vouchers");
@@ -128,7 +128,7 @@ export const CartDiscountPicker = ({
       : voucher.menu_item_id === item.menuItemId;
     const benefit = getProductVoucherBenefit(item, voucher);
     return matchesProduct && item.size !== null && (voucher.eligible_sizes ?? []).includes(item.size) &&
-      !bundleAllocatedCartIds.has(item.cartId) && benefit > 0
+      (bundleAllocatedQuantitiesByCartId.get(item.cartId) ?? 0) < item.quantity && benefit > 0
       ? [{ cartId: item.cartId, menuItemId: item.menuItemId, size: item.size, estimatedBenefitVnd: benefit }]
       : [];
   });
@@ -136,23 +136,43 @@ export const CartDiscountPicker = ({
   const acquirePackage = async (pkg: VoucherPackage) => {
     try {
       setRedeemingId(pkg.id);
-      const newVoucher = await acquire(pkg);
-      await onRefreshVouchers();
-      if (newVoucher.voucher_type === "BUNDLE") {
-        requestAnimationFrame(() => {
-          const panel = document.getElementById("cart-bundle-voucher-panel");
-          panel?.scrollIntoView({ behavior: "smooth", block: "start" });
-          panel?.focus();
-        });
-      } else {
+      const result = await acquire(pkg);
+      setConfirmPackage(null);
+      const newVoucher = result.acquired;
+      const refreshedVoucher = result.wallet?.find((voucher) => voucher.qr_token === newVoucher.qr_token);
+      if (!result.refreshError && newVoucher.voucher_type === "BUNDLE") {
+        if (refreshedVoucher) setActiveView({ kind: "bundle-setup", voucher: refreshedVoucher });
+      } else if (!result.refreshError) {
         onUpdateSelectedVouchers((previous) => [...previous, newVoucher.qr_token]);
       }
+      if (result.refreshError) toast.warning("Đã nhận voucher. Hãy làm mới ví để xem chi tiết.");
       toast.success(pkg.acquisition_mode === "FREE_CLAIM" ? "Đã nhận voucher" : "Đổi voucher thành công");
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Đã có lỗi xảy ra.";
       toast.error(`Không thể nhận ưu đãi: ${message}`);
     } finally {
       setRedeemingId(null);
+    }
+  };
+
+  const handleRetryWalletRefresh = async () => {
+    if (!receipt || isRetryingWallet) return;
+    setIsRetryingWallet(true);
+    try {
+      const result = await retryRefresh();
+      if (result) {
+        const refreshedVoucher = result.wallet?.find((voucher) => voucher.qr_token === result.acquired.qr_token);
+        if (refreshedVoucher?.voucher_type === "BUNDLE") {
+          setActiveView({ kind: "bundle-setup", voucher: refreshedVoucher });
+        } else if (refreshedVoucher) {
+          onUpdateSelectedVouchers((previous) => previous.includes(refreshedVoucher.qr_token) ? previous : [...previous, refreshedVoucher.qr_token]);
+        }
+        toast.success("Đã cập nhật ví voucher.");
+      }
+    } catch {
+      toast.error("Chưa thể cập nhật ví. Bạn có thể thử lại.");
+    } finally {
+      setIsRetryingWallet(false);
     }
   };
 
@@ -177,6 +197,27 @@ export const CartDiscountPicker = ({
           selectedFreeshipVoucher.covered_delivery_fee_vnd ?? 0
         )
       : 0;
+
+  const acquisitionReceiptView = receipt ? (
+    <div className="mb-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5" role="status" aria-live="polite">
+      <p className="text-sm font-bold text-emerald-900">Đã nhận voucher</p>
+      <p className="mt-1 break-all text-xs text-emerald-800">Mã: {receipt.acquired.qr_token}</p>
+      {receipt.refreshError ? (
+        <div className="mt-2 flex items-center gap-2">
+          <p className="flex-1 text-xs text-amber-800">Ví chưa cập nhật, voucher vẫn đã được ghi nhận.</p>
+          <button
+            type="button"
+            onClick={() => void handleRetryWalletRefresh()}
+            disabled={isRetryingWallet}
+            className="min-h-11 shrink-0 rounded-xl border border-amber-300 bg-white px-3 text-xs font-bold text-amber-900 disabled:opacity-60"
+          >
+            {isRetryingWallet ? <Loader2 className="mr-1 inline size-3 animate-spin" /> : null}
+            Làm mới ví
+          </button>
+        </div>
+      ) : null}
+    </div>
+  ) : null;
 
   const closePicker = () => {
     setActiveView({ kind: "list" });
@@ -281,6 +322,7 @@ export const CartDiscountPicker = ({
         )}
       >
         {activeTab === "my_vouchers" && <section>
+          {acquisitionReceiptView}
           {isLoading ? (
             <div
               role="status"
@@ -496,9 +538,10 @@ export const CartDiscountPicker = ({
       >
         {addonTargetVoucher ? (
           <AddonItemPicker
-            voucher={addonTargetVoucher}
-            cartItems={cart}
-            menuData={menuData}
+                  voucher={addonTargetVoucher}
+                  cartItems={cart}
+                  bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}
+                  menuData={menuData}
             onBack={() => setActiveView({ kind: "list" })}
             onSuccess={() => setActiveView({ kind: "list" })}
           />
@@ -509,26 +552,29 @@ export const CartDiscountPicker = ({
           open
           layer="critical"
           voucher={bundleSetupVoucher}
+          cartItems={cart}
+          initialApplication={bundleApplications.find((application) => application.voucher_qr_token === bundleSetupVoucher.qr_token)}
           menuData={menuData}
           milkTypes={menuData.milk_types}
           powders={powders}
           defaultPowderGram={defaultPowderGram}
           onClose={() => setActiveView({ kind: "list" })}
-          onValidateDraft={({ cartItems, rewardAllocations }) => {
+          onValidateDraft={(candidate: BundleCartDraftResult): BundleCartDraftValidation => {
             const summary = getBundleVoucherSummary(bundleSetupVoucher);
             if (!summary) return { ok: false, error: "Voucher BUNDLE không còn khả dụng" };
-            const draftCart = summarizeBundleCart(cartItems);
-            const selection = deriveBundleSelectionState({ voucher: summary, cart: draftCart, allocations: rewardAllocations });
-            const payload = buildBundleApplication({ voucher: summary, cart: draftCart, rewardAllocations });
-            return selection.status === "READY" && payload
-              ? { ok: true }
-              : { ok: false, error: selection.message };
+            const siblingResolution = resolveBundleSelectionSiblings({
+              current_qr_token: bundleSetupVoucher.qr_token,
+              applications: bundleApplications,
+              summaries: bundleVouchers.flatMap((voucher) => {
+                const resolved = getBundleVoucherSummary(voucher);
+                return resolved ? [resolved] : [];
+              }),
+            });
+            if (!siblingResolution.ok) return siblingResolution;
+            return validateBundleCartDraft({ voucher: summary, candidate, ownerKey: bundleOwnerKey, siblingApplications: siblingResolution.siblings });
           }}
-          onSuccess={(_token, allocations, createdRewardEffects) => {
-            const result = onBundleApplicationChange(bundleSetupVoucher, allocations, createdRewardEffects);
-            if (result.ok) setActiveView({ kind: "list" });
-            return result;
-          }}
+          onCommitDraft={onCommitBundleCartDraft}
+          onSuccess={() => setActiveView({ kind: "list" })}
         />
       ) : null}
     </ResponsiveOverlay>

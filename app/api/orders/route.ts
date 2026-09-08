@@ -94,6 +94,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     console.error("[POST /api/orders] UNHANDLED ERROR:", {
       name: error instanceof Error ? error.name : typeof error,
+      code: error instanceof Error && "code" in error && typeof error.code === "string"
+        ? error.code
+        : undefined,
     });
     await logSystemEvent({
       level: "error",

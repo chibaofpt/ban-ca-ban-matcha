@@ -726,8 +726,16 @@ type ProductScope = {
 
 Rules are immutable after creation; `PUT /api/admin/voucher-packages/[id]` only accepts name,
 description, and `is_active`. Qualifier/reward arrays support multiple products, including seasonal
-items. Each BUNDLE has one reward kind. Package `min_order_vnd` excludes product-vouchered drink
-units and addon-vouchered addon units from the eligible subtotal.
+items. Each BUNDLE has one reward kind. Package `min_order_vnd` uses paid merchandise: exclude
+ITEM/PRODUCT/BUNDLE-covered product units and voucher-covered addon units, exclude shipping,
+and retain the remaining paid value of other partially discounted items. Bundle allocation
+eligibility and paid merchandise are separate calculations.
+
+Admin shared size/Base Liquid controls serialize into the existing per-product `ProductScope`
+entries; there are no shared configuration fields in the API. Drink sizes are explicit and
+non-empty. Extras keep empty sizes and null powder/Base Liquid. Existing heterogeneous package
+rules remain immutable and readable. `max_applications_per_order` limits each voucher instance
+within the order; multiple instances may use distinct units.
 
 `GET /api/admin/voucher-packages` keeps `_count.vouchers` and additionally returns `stats` with
 `issued_count`, current `active_count`, `reserved_count`, `redeemed_count`, effective
@@ -1010,6 +1018,13 @@ For both customer and Staff order creation, a BUNDLE token that is truly missing
 the caller returns `404 NOT_FOUND`. A present BUNDLE that fails live eligibility returns
 `422 BUSINESS_RULE_VIOLATION` with `details.reason` set to the server reason; the HTTP boundary
 does not expose a separate `BUNDLE_NOT_ELIGIBLE` error code.
+
+A BUNDLE qualifier or reward unit cannot carry any personal PRODUCT, PRODUCT_DISCOUNT, ITEM,
+or ADDON voucher, even if that personal voucher has zero monetary benefit. This applies to
+drink, extras, and addon-reward recipient units. Return `BUNDLE_CONFLICT` in `details.reason`
+before reservation/persistence. Paid addons remain allowed. Separate units outside BUNDLE may
+use personal vouchers; a voucher-bearing order line remains quantity one. Cross-BUNDLE unit
+reuse remains `BUNDLE_ALLOCATION_OVERLAP`. Order-level DISCOUNT and FREESHIP rules are unchanged.
 
 ### `POST /api/profile/vouchers/exchange`
 CUSTOMER-only. Authenticated STAFF/ADMIN receive `403 FORBIDDEN` from this customer endpoint.

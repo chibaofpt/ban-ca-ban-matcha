@@ -14,13 +14,30 @@ export interface BundleProductDefinition {
 
 export interface BundleCartAddon {
   addon_option_id: string;
+  /** Group metadata needed to explain selection capacity during revalidation. */
+  addon_group_id?: string;
+  max_select?: number;
   quantity: number;
   unit_price_vnd: number;
   gram_value: number | null;
   voucher_discounted_quantity?: number;
+  /** Number of physical addon units carrying any personal voucher link. */
+  personal_voucher_quantity?: number;
+  is_active?: boolean;
+  is_deleted?: boolean;
+  is_dynamic_gram?: boolean;
 }
 
-export interface BundleCartItem {
+export interface BundlePersonalVoucherItem {
+  quantity: number;
+  product_voucher_quantity: number;
+  product_discount_voucher_quantity?: number;
+  item_voucher_quantity?: number;
+  personal_voucher_quantity?: number;
+  addons: Array<Pick<BundleCartAddon, "quantity" | "voucher_discounted_quantity" | "personal_voucher_quantity">>;
+}
+
+export interface BundleCartItem extends BundlePersonalVoucherItem {
   client_line_id: string;
   menu_item_id: string;
   size: BundleSize | null;
@@ -28,10 +45,7 @@ export interface BundleCartItem {
   selected_milk_type_id: string | null;
   unit_price_vnd: number;
   quantity: number;
-  product_voucher_quantity: number;
-  product_discount_voucher_quantity?: number;
   product_discount_vnd?: number;
-  item_voucher_quantity?: number;
   addons: BundleCartAddon[];
 }
 

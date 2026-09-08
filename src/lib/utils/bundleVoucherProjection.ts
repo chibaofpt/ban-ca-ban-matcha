@@ -21,15 +21,30 @@ function cartItemToBundleItem(item: CartItem): BundleCartItem {
     unit_price_vnd: Math.max(0, item.originalClientPriceVnd - item.addonsPrice),
     quantity: item.quantity,
     product_voucher_quantity: item.productVoucherId && item.productVoucherType !== "PRODUCT_DISCOUNT" ? 1 : 0,
-    product_discount_voucher_quantity: item.productVoucherId && item.productVoucherType === "PRODUCT_DISCOUNT" && (item.productVoucherDiscountVnd ?? 0) > 0 ? 1 : 0,
+    product_discount_voucher_quantity: item.productVoucherId && item.productVoucherType === "PRODUCT_DISCOUNT" ? 1 : 0,
     product_discount_vnd: item.productVoucherType === "PRODUCT_DISCOUNT" ? item.productVoucherDiscountVnd ?? 0 : 0,
     item_voucher_quantity: item.itemVoucherId ? 1 : 0,
+    personal_voucher_quantity: Math.min(item.quantity, Math.max(
+      item.productVoucherId ? 1 : 0,
+      item.itemVoucherId ? 1 : 0,
+      item.addonVouchers && item.addonVouchers.length > 0 ? 1 : 0,
+    )),
     addons: [...addonQuantities.entries()].map(([addon_option_id, quantity]) => ({
       addon_option_id,
-      quantity,
+      ...(item.addonMetadata?.[addon_option_id]?.addon_group_id
+        ? { addon_group_id: item.addonMetadata[addon_option_id].addon_group_id }
+        : {}),
+      ...(item.addonMetadata?.[addon_option_id]?.max_select === undefined
+        ? {}
+        : { max_select: item.addonMetadata[addon_option_id].max_select }),
+      quantity: quantity * item.quantity,
       unit_price_vnd: item.addonPrices[addon_option_id] ?? 0,
-      gram_value: null,
+      gram_value: item.addonMetadata?.[addon_option_id]?.gram_value ?? null,
       voucher_discounted_quantity: item.addonVouchers?.filter((voucher) => voucher.addonOptionId === addon_option_id).length ?? 0,
+      personal_voucher_quantity: item.addonVouchers?.filter((voucher) => voucher.addonOptionId === addon_option_id).length ?? 0,
+      is_active: item.addonMetadata?.[addon_option_id]?.is_active ?? true,
+      is_deleted: item.addonMetadata?.[addon_option_id]?.is_deleted ?? false,
+      is_dynamic_gram: item.addonMetadata?.[addon_option_id]?.is_dynamic_gram ?? false,
     })),
   };
 }
@@ -99,12 +114,33 @@ export function projectBundleApplications(
     return [{ ...application, rule }];
   });
   if (evaluationInputs.length !== applications.length) return { bundle_discount_vnd: 0, line_discounts_vnd: new Map(), error_by_token };
+  const individualErrors = evaluationInputs.flatMap((application) => {
+    try {
+      evaluateBundleApplications({ items: bundleItems, applications: [application] });
+      return [];
+    } catch (error) {
+      return [{ token: application.voucher_qr_token, message: error instanceof Error ? error.message : "Không thể kiểm tra ưu đãi BUNDLE" }];
+    }
+  });
+  for (const entry of individualErrors) error_by_token.set(entry.token, entry.message);
+  if (individualErrors.length > 0) return { bundle_discount_vnd: 0, line_discounts_vnd: new Map(), error_by_token };
   try {
     const result = evaluateBundleApplications({ items: bundleItems, applications: evaluationInputs });
     return { bundle_discount_vnd: result.total_discount_vnd, line_discounts_vnd: result.line_discounts_vnd, error_by_token };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Không thể kiểm tra ưu đãi BUNDLE";
-    applications.forEach((application) => error_by_token.set(application.voucher_qr_token, message));
+    const implicated = evaluationInputs.filter((application, index) => {
+      const without = evaluationInputs.filter((_, candidateIndex) => candidateIndex !== index);
+      try {
+        evaluateBundleApplications({ items: bundleItems, applications: without });
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    for (const application of (implicated.length > 0 ? implicated : evaluationInputs)) {
+      error_by_token.set(application.voucher_qr_token, message);
+    }
     return { bundle_discount_vnd: 0, line_discounts_vnd: new Map(), error_by_token };
   }
 }
@@ -130,7 +166,10 @@ export function projectCartTotals(input: {
       bundle_discount_vnd: bundles.line_discounts_vnd.get(item.cartId) ?? 0,
       product_voucher_id: item.productVoucherId ?? null,
       item_voucher_id: item.itemVoucherId ?? null,
-      product_voucher_covered_vnd: item.productVoucherId ? voucherByToken.get(item.productVoucherId)?.covered_price_vnd ?? 0 : 0,
+      product_voucher_covered_vnd: item.productVoucherType !== "PRODUCT_DISCOUNT" && item.productVoucherId
+        ? voucherByToken.get(item.productVoucherId)?.covered_price_vnd ?? 0
+        : 0,
+      product_voucher_discount_vnd: item.productVoucherType === "PRODUCT_DISCOUNT" ? item.productVoucherDiscountVnd ?? 0 : undefined,
       item_voucher_covered_vnd: item.itemVoucherId ? voucherByToken.get(item.itemVoucherId)?.covered_price_vnd ?? 0 : 0,
       addon_vouchers: (item.addonVouchers ?? []).map((link) => ({
         voucher_id: link.voucherId,

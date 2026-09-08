@@ -13,7 +13,7 @@ import {
 } from "@/lib/pricing";
 import type { Size, SweetnessLevel } from "@/src/lib/types/menu";
 import type { IceOption } from "@/src/lib/types/cart";
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import {
   resolveDefaultBaseLiquidId,
   resolveFusionDefaultPowderId,
@@ -30,6 +30,23 @@ type DbClient = Pick<
   | "milkType"
   | "menuItemSize"
 >;
+
+type OrderMenuItem = Prisma.MenuItemGetPayload<{
+  include: {
+    sizes: true;
+    fusionAllowedPowders: { include: { matchaPowder: { select: { is_available: true } } } };
+    allowedBaseLiquids: { include: { baseLiquid: { select: { is_active: true } } } };
+  };
+}>;
+
+type OrderAddonOption = Prisma.AddonOptionGetPayload<{
+  include: { group: { select: { id: true; is_active: true; max_select: true; is_dynamic_gram: true } } };
+}>;
+
+interface OrderCatalog {
+  menuItems: ReadonlyMap<string, OrderMenuItem>;
+  addonOptions: ReadonlyMap<string, OrderAddonOption>;
+}
 
 /** Validated PRODUCT voucher data for a single order item — pre-fetched outside the transaction. */
 export interface ProductVoucherInfo {
@@ -163,14 +180,42 @@ export async function processOrderItems(
   productVoucherMap?: Map<string, ProductVoucherInfo>,
   addonVoucherMap?: Map<string, string>
 ): Promise<ProcessedOrderItem[]> {
-  // Build pricing context once — avoids N+1 across the item loop
-  const pricingCtx = await buildPricingContext(client as Parameters<typeof buildPricingContext>[0]);
+  const supportsBatchCatalog =
+    typeof (client.menuItem as { findMany?: unknown }).findMany === "function" &&
+    typeof (client.addonOption as { findMany?: unknown }).findMany === "function";
+  const menuIds = [...new Set(items.map((item) => item.menu_item_id))];
+  const addonIds = [...new Set(items.flatMap((item) => item.addon_option_ids))];
+  const [pricingCtx, menuItems, addonOptions] = await Promise.all([
+    buildPricingContext(client as Parameters<typeof buildPricingContext>[0]),
+    supportsBatchCatalog
+      ? client.menuItem.findMany({
+          where: { id: { in: menuIds } },
+          include: {
+            sizes: true,
+            fusionAllowedPowders: { include: { matchaPowder: { select: { is_available: true } } } },
+            allowedBaseLiquids: { include: { baseLiquid: { select: { is_active: true } } } },
+          },
+        })
+      : Promise.resolve([]),
+    supportsBatchCatalog && addonIds.length > 0
+      ? client.addonOption.findMany({
+          where: { id: { in: addonIds } },
+          include: { group: { select: { id: true, is_active: true, max_select: true, is_dynamic_gram: true } } },
+        })
+      : Promise.resolve([]),
+  ]);
+  const catalog: OrderCatalog | undefined = supportsBatchCatalog
+    ? {
+        menuItems: new Map(menuItems.map((item) => [item.id, item])),
+        addonOptions: new Map(addonOptions.map((option) => [option.id, option])),
+      }
+    : undefined;
 
   const priceConflicts: PriceConflict[] = [];
 
   const resolved: ProcessedOrderItem[] = [];
   for (const item of items) {
-    const res = await resolveOneItem(item, client, pricingCtx, priceConflicts, productVoucherMap, addonVoucherMap);
+    const res = await resolveOneItem(item, client, pricingCtx, priceConflicts, productVoucherMap, addonVoucherMap, catalog);
     resolved.push(res);
   }
 
@@ -190,7 +235,8 @@ async function resolveOneItem(
   pricingCtx: PricingContext,
   priceConflicts: PriceConflict[],
   productVoucherMap?: Map<string, ProductVoucherInfo>,
-  addonVoucherMap?: Map<string, string>
+  addonVoucherMap?: Map<string, string>,
+  catalog?: OrderCatalog,
 ): Promise<ProcessedOrderItem> {
   // 1. Fetch menu item — must be available
   if ((item.product_voucher_id || item.item_voucher_id || (item.addon_voucher_ids && item.addon_voucher_ids.length > 0)) && item.quantity > 1) {
@@ -200,18 +246,16 @@ async function resolveOneItem(
     );
   }
 
-  const menuItem = await (client as PrismaClient).menuItem.findUnique({
-    where: { id: item.menu_item_id },
-    include: { 
-      sizes: true, 
-      fusionAllowedPowders: {
-        include: { matchaPowder: { select: { is_available: true } } }
-      },
-      allowedBaseLiquids: {
-        include: { baseLiquid: { select: { is_active: true } } },
-      },
-    },
-  });
+  const menuItem = catalog
+    ? catalog.menuItems.get(item.menu_item_id)
+    : await (client as PrismaClient).menuItem.findUnique({
+        where: { id: item.menu_item_id },
+        include: {
+          sizes: true,
+          fusionAllowedPowders: { include: { matchaPowder: { select: { is_available: true } } } },
+          allowedBaseLiquids: { include: { baseLiquid: { select: { is_active: true } } } },
+        },
+      });
 
   if (!menuItem || !menuItem.is_available) {
     throw new OrderValidationError(
@@ -428,19 +472,14 @@ async function resolveOneItem(
     }
     selectedAddonOptionIds.add(optionId);
 
-    const option = await (client as PrismaClient).addonOption.findUnique({
-      where: { id: optionId },
-      include: {
-        group: {
-          select: {
-            id: true,
-            is_active: true,
-            max_select: true,
-            is_dynamic_gram: true,
+    const option = catalog
+      ? catalog.addonOptions.get(optionId)
+      : await (client as PrismaClient).addonOption.findUnique({
+          where: { id: optionId },
+          include: {
+            group: { select: { id: true, is_active: true, max_select: true, is_dynamic_gram: true } },
           },
-        },
-      },
-    });
+        });
     if (!option || !option.is_active || !option.group.is_active) {
       throw new OrderValidationError(
         "NOT_FOUND",

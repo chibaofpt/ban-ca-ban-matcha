@@ -25,6 +25,7 @@ import { getBaseLiquidOptionsForItem } from "@/src/utils/baseLiquid";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { AddonGroup, MenuItem, MilkTypeOption, Size } from "@/src/lib/types/menu";
+import { snapshotCartAddonMetadata } from "@/src/lib/utils/voucherUseNowHelpers";
 
 /** Result of attempting to add a PRODUCT voucher item to the cart. */
 export type AddVoucherResult =
@@ -286,6 +287,7 @@ export function useAddVoucherToCart() {
           selectedOptionIds,
           addonsPrice: addonsCost,
           addonPrices,
+          addonMetadata: snapshotCartAddonMetadata(selectedOptionIds, menuData.addon_groups),
           selectedPowderId: menuItem.category === "fusion" ? (voucher.matcha_powder_id ?? undefined) : undefined,
           selectedMilkTypeId: menuItem.category === "latte" ? (resolvedBaseLiquidId ?? undefined) : undefined,
           selectedBaseLiquidId: resolvedBaseLiquidId ?? undefined,

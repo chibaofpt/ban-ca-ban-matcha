@@ -158,7 +158,7 @@ export async function createCustomerOrder(
     },
     { status: 201 },
   );
-  });
+  }, { timeoutMs: 30_000 });
   if (response.status === 201) {
     const payload = await response.clone().json() as {
       data: { order_code: string; grand_total_vnd: number };

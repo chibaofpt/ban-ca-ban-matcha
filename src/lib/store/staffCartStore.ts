@@ -1,7 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { BundleApplicationStatus, CartBundleApplication, CartItem } from "@/src/lib/types/cart";
+import type { BundleApplicationStatus, BundleCartDraftCommit, CartBundleApplication, CartItem } from "@/src/lib/types/cart";
 import { computeFinalClientPrice, markBundleApplicationsUnavailableState, releaseVoucherFromOtherCartLines, removeBundleEffects } from "./cartStore";
+import { revalidateBundleApplications } from "@/src/lib/utils/bundleCartDraft";
+import { isCartLineBundleAllocated } from "@/src/lib/utils/bundleCartEffects";
 import type { CustomerInfo } from "@/src/components/staff/CustomerSelectModal";
 
 export interface DiscountVoucher {
@@ -33,6 +35,7 @@ interface StaffCartState {
   applyAddonVoucher: (cartId: string, voucherId: string, addonOptionId: string) => void;
   removeAddonVoucher: (cartId: string, voucherId: string) => void;
   bundleApplications: CartBundleApplication[];
+  commitBundleCartDraft: (draft: BundleCartDraftCommit) => void;
   commitBundleApplication: (application: CartBundleApplication) => void;
   removeBundleApplication: (voucherToken: string) => void;
   clearBundleApplications: () => void;
@@ -94,6 +97,8 @@ export function migrateStaffCartState(persistedState: unknown, fromVersion = 0):
       bundleRewardVoucherToken: undefined,
     }));
     migrated.bundleApplications = [];
+  } else {
+    migrated.bundleApplications = revalidateBundleApplications(migrated.bundleApplications);
   }
   return migrated;
 }
@@ -106,6 +111,13 @@ export const useStaffCartStore = create<StaffCartState>()(
       discountVoucher: null,
       selectedDiscountIds: [],
       bundleApplications: [],
+      commitBundleCartDraft: (draft) => set((state) => ({
+        items: draft.items,
+        bundleApplications: [
+          ...state.bundleApplications.filter((entry) => entry.voucher_qr_token !== draft.application.voucher_qr_token),
+          draft.application,
+        ],
+      })),
 
       setCustomerInfo: (info) => {
         const currentInfo = get().customerInfo;
@@ -259,6 +271,8 @@ export const useStaffCartStore = create<StaffCartState>()(
       }),
 
       applyProductVoucher: (cartId, voucherId, coveredPriceVnd, voucherType = "PRODUCT") => {
+        const targetBeforeMutation = get().items.find((item) => item.cartId === cartId);
+        if (targetBeforeMutation && isCartLineBundleAllocated(get().bundleApplications, cartId)) return;
         const currentItems = get().items.map((i) => {
           if (i.productVoucherId === voucherId || i.itemVoucherId === voucherId) {
             const nextI = { ...i, productVoucherId: undefined, productVoucherDiscountVnd: undefined, productVoucherType: undefined, itemVoucherId: undefined };
@@ -312,6 +326,8 @@ export const useStaffCartStore = create<StaffCartState>()(
       },
 
       applyAddonVoucher: (cartId, voucherId, addonOptionId) => {
+        const targetBeforeMutation = get().items.find((item) => item.cartId === cartId);
+        if (targetBeforeMutation && isCartLineBundleAllocated(get().bundleApplications, cartId)) return;
         const currentItems = get().items.map((i) => {
           if (i.addonVouchers?.some(v => v.voucherId === voucherId)) {
             const nextI = { ...i, addonVouchers: i.addonVouchers.filter(v => v.voucherId !== voucherId) };
@@ -366,7 +382,7 @@ export const useStaffCartStore = create<StaffCartState>()(
     }),
     {
       name: "bcbm-staff-cart",
-      version: 4,
+      version: 5,
       migrate: migrateStaffCartState,
       partialize: (state) => ({
         ...state,

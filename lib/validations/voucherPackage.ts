@@ -99,6 +99,9 @@ export const createVoucherPackageSchema = rawVoucherPackageSchema.superRefine((d
       message: usesPoints ? "POINTS_EXCHANGE requires positive points" : "Free acquisition requires zero points",
     });
   }
+  if (!usesPoints && data.max_per_user !== 1) {
+    ctx.addIssue({ code: "custom", path: ["max_per_user"], message: "Free acquisition allows one voucher per customer" });
+  }
   if (data.ends_at && new Date(data.ends_at) <= new Date()) {
     ctx.addIssue({ code: "custom", path: ["ends_at"], message: "ends_at must be in the future" });
   }

@@ -3,6 +3,17 @@ import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
 
 export type IceOption = "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
 
+/** Client snapshot used to classify addon rewards and Extra Matcha safely. */
+export interface CartAddonSnapshot {
+  /** Addon group identity and selection capacity at add time. */
+  addon_group_id?: string;
+  max_select?: number;
+  gram_value: number | null;
+  is_active?: boolean;
+  is_deleted?: boolean;
+  is_dynamic_gram?: boolean;
+}
+
 /** A single row in the staff/customer cart. */
 export interface CartItem {
   /** Unique cart row id — crypto.randomUUID() at add time. */
@@ -26,6 +37,8 @@ export interface CartItem {
   addonsPrice: number;
   /** Exact price for each selected addon option. Used for precise Addon Voucher discounts. */
   addonPrices: Record<string, number>;
+  /** Menu metadata for selected addons; absent only for legacy cart rows. */
+  addonMetadata?: Record<string, CartAddonSnapshot>;
   /** Fusion only — selected powder id. */
   selectedPowderId?: string;
   /** Latte only — selected milk type id. */
@@ -55,6 +68,9 @@ export interface CartItem {
   bundleQualifierVoucherToken?: string;
   /** Applied ADDON vouchers. Unlimited, each targeting a different addon_option_id. */
   addonVouchers?: { voucherId: string; addonOptionId: string; discountVnd: number }[];
+  /** Provenance for a unit split from an existing cart row during BUNDLE setup. */
+  sourceCartId?: string;
+  sourceUnitIndex?: number;
 }
 
 export type BundleApplicationStatus = "REVALIDATING" | "READY" | "NEEDS_CONFIGURATION" | "CONFLICT" | "UNAVAILABLE" | "VERIFY_FAILED" | "NO_BENEFIT";
@@ -72,4 +88,9 @@ export interface CartBundleApplication {
   created_reward_effects: BundleCreatedRewardEffect[];
   status?: BundleApplicationStatus;
   message?: string;
+}
+
+export interface BundleCartDraftCommit {
+  items: CartItem[];
+  application: CartBundleApplication;
 }

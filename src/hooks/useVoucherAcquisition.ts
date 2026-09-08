@@ -1,53 +1,77 @@
-import { useState } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
 import {
   claimFreeVoucher,
   exchangeVoucher,
+  listMyVouchers,
   type AcquiredVoucher,
+  type MyVoucher,
   type VoucherPackage,
 } from "@/src/services/customerVoucherService";
+import {
+  createVoucherAcquisitionCoordinator,
+  type VoucherAcquisitionReceipt,
+} from "@/src/lib/utils/voucherAcquisitionState";
 
-export type VoucherAcquisitionStatus = "IDLE" | "PENDING" | "SUCCESS" | "ERROR";
+export type { VoucherAcquisitionStatus } from "@/src/lib/utils/voucherAcquisitionState";
 
-/** Acquire customer voucher packages through one typed free-or-points workflow. */
-export function useVoucherAcquisition() {
-  const [status, setStatus] = useState<VoucherAcquisitionStatus>("IDLE");
-  const [error, setError] = useState<Error | null>(null);
+export interface VoucherAcquisitionOptions {
+  /** Refreshes the caller's wallet state after a successful claim or exchange. */
+  refreshWallet?: () => Promise<MyVoucher[]>;
+  /** Optional caller-owned acquisition adapters, used by staff customer wallets. */
+  claimFreeVoucher?: (packageId: string) => Promise<AcquiredVoucher>;
+  exchangeVoucher?: (packageId: string) => Promise<AcquiredVoucher>;
+  refreshCatalog?: () => Promise<void>;
+}
+
+/** Acquire once, then refresh the wallet without repeating the exchange on retry. */
+export function useVoucherAcquisition(options: VoucherAcquisitionOptions = {}) {
   const queryClient = useQueryClient();
-
-  /** Acquire a free or points package and refresh all customer voucher data. */
-  const acquire = async (
-    pkg: Pick<VoucherPackage, "id" | "acquisition_mode">,
-  ): Promise<AcquiredVoucher> => {
-    setStatus("PENDING");
-    setError(null);
-
-    try {
-      let result: AcquiredVoucher;
-      if (pkg.acquisition_mode === "FREE_CLAIM") {
-        result = await claimFreeVoucher(pkg.id);
-      } else if (pkg.acquisition_mode === "POINTS_EXCHANGE") {
-        result = { ...(await exchangeVoucher(pkg.id)), already_granted: false };
-      } else {
-        throw new Error(`Unsupported acquisition mode: ${pkg.acquisition_mode}`);
-      }
-
+  const defaultRefreshWallet = useCallback(() => queryClient.fetchQuery({
+    queryKey: VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS,
+    queryFn: listMyVouchers,
+  }), [queryClient]);
+  const coordinator = useMemo(() => createVoucherAcquisitionCoordinator({
+    claimFreeVoucher: options.claimFreeVoucher ?? claimFreeVoucher,
+    exchangeVoucher: options.exchangeVoucher ?? (async (packageId: string) => ({
+      ...(await exchangeVoucher(packageId)),
+      already_granted: false,
+    })),
+    refreshWallet: options.refreshWallet ?? defaultRefreshWallet,
+    refreshCatalog: options.refreshCatalog ?? (async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS }),
         queryClient.invalidateQueries({ queryKey: VOUCHER_QUERY_KEYS.VOUCHER_PACKAGES }),
         queryClient.invalidateQueries({ queryKey: VOUCHER_QUERY_KEYS.CUSTOMER_POINTS }),
       ]);
+    }),
+  }), [defaultRefreshWallet, options.claimFreeVoucher, options.exchangeVoucher, options.refreshCatalog, options.refreshWallet, queryClient]);
 
-      setStatus("SUCCESS");
-      
-      return result;
-    } catch (err) {
-      setStatus("ERROR");
-      setError(err instanceof Error ? err : new Error("Unknown error"));
-      throw err;
-    }
+  const receipt = useSyncExternalStore(coordinator.subscribe, coordinator.getReceipt, coordinator.getReceipt);
+  const { status, error } = useSyncExternalStore(
+    coordinator.subscribeState,
+    coordinator.getSnapshot,
+    coordinator.getSnapshot,
+  );
+  const acquire = useCallback(
+    (pkg: Pick<VoucherPackage, "id" | "acquisition_mode">) => coordinator.acquire(pkg),
+    [coordinator],
+  );
+
+  const retryRefresh = useCallback(
+    (): Promise<VoucherAcquisitionReceipt | null> => coordinator.retryRefresh(),
+    [coordinator],
+  );
+
+  return {
+    acquire,
+    retryRefresh,
+    receipt,
+    acquiredVoucher: receipt?.acquired ?? null,
+    refreshError: receipt?.refreshError ?? null,
+    refreshFailed: receipt?.refreshError !== null && receipt?.refreshError !== undefined,
+    status,
+    error,
+    isPending: status === "PENDING",
   };
-
-  return { acquire, status, error, isPending: status === "PENDING" };
 }

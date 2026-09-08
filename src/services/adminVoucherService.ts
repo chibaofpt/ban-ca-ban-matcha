@@ -1,5 +1,22 @@
 import { apiClient } from "@/src/lib/api/client";
-import type { ApiResponse } from "@/src/lib/types/api";
+import { isAxiosError } from "axios";
+import type { ApiError, ApiResponse } from "@/src/lib/types/api";
+import { ApiServiceError } from "@/src/services/orderService";
+
+async function preserveApiError<T>(request: () => Promise<T>): Promise<T> {
+  try {
+    return await request();
+  } catch (error) {
+    if (!isAxiosError<ApiError>(error) || !error.response?.data?.error) throw error;
+    const payload = error.response?.data;
+    throw new ApiServiceError(
+      payload?.error ?? error.message,
+      error.response?.status ?? 0,
+      payload?.code ?? "INTERNAL_ERROR",
+      payload?.details,
+    );
+  }
+}
 
 export interface VoucherPackage {
   id: string;
@@ -163,20 +180,26 @@ const URL = {
 
 /** List all voucher packages (active and inactive) — ADMIN only. */
 export async function listVoucherPackages(): Promise<VoucherPackage[]> {
-  const res = await apiClient.get<ApiResponse<VoucherPackage[]>>(URL.list);
-  return res.data.data;
+  return preserveApiError(async () => {
+    const res = await apiClient.get<ApiResponse<VoucherPackage[]>>(URL.list);
+    return res.data.data;
+  });
 }
 
 /** Searches owners of one package with effective status filtering. */
 export async function searchVoucherPackageOwners(id: string, params: { q: string; status: VoucherOwnerStatus; cursor?: string }): Promise<VoucherOwnerPage> {
-  const res = await apiClient.get<ApiResponse<VoucherOwnerPage>>(URL.owners(id), { params });
-  return res.data.data;
+  return preserveApiError(async () => {
+    const res = await apiClient.get<ApiResponse<VoucherOwnerPage>>(URL.owners(id), { params });
+    return res.data.data;
+  });
 }
 
 /** Create a new voucher package — ADMIN only. */
 export async function createVoucherPackage(data: CreateVoucherPackageInput): Promise<VoucherPackage> {
-  const res = await apiClient.post<ApiResponse<VoucherPackage>>(URL.list, data);
-  return res.data.data;
+  return preserveApiError(async () => {
+    const res = await apiClient.post<ApiResponse<VoucherPackage>>(URL.list, data);
+    return res.data.data;
+  });
 }
 
 /** Update editable fields of a voucher package — ADMIN only. */
@@ -184,12 +207,16 @@ export async function updateVoucherPackage(
   id: string,
   data: UpdateVoucherPackageInput
 ): Promise<VoucherPackage> {
-  const res = await apiClient.put<ApiResponse<VoucherPackage>>(URL.byId(id), data);
-  return res.data.data;
+  return preserveApiError(async () => {
+    const res = await apiClient.put<ApiResponse<VoucherPackage>>(URL.byId(id), data);
+    return res.data.data;
+  });
 }
 
 /** Deactivate (soft delete) a voucher package — ADMIN only. */
 export async function deleteVoucherPackage(id: string): Promise<VoucherPackage> {
-  const res = await apiClient.delete<ApiResponse<VoucherPackage>>(URL.byId(id));
-  return res.data.data;
+  return preserveApiError(async () => {
+    const res = await apiClient.delete<ApiResponse<VoucherPackage>>(URL.byId(id));
+    return res.data.data;
+  });
 }

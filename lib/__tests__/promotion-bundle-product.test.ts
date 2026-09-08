@@ -155,6 +155,26 @@ describe("BUNDLE sản phẩm — nhiều voucher trong một giỏ", () => {
     }), "BUNDLE_ALLOCATION_OVERLAP");
   });
 
+  it("báo overlap aggregate sau khi từng voucher đã vượt capacity cá nhân", () => {
+    expectReason(() => evaluateBundleApplications({
+      items: [makeItem({ client_line_id: PAID_M, quantity: 3, product_voucher_quantity: 1 })],
+      applications: [
+        {
+          voucher_qr_token: "bundle-personal-a",
+          rule: makeRule(),
+          qualifier_allocations: [qualifier(PAID_M)],
+          reward_allocations: [reward(PAID_M)],
+        },
+        {
+          voucher_qr_token: "bundle-personal-b",
+          rule: makeRule(),
+          qualifier_allocations: [qualifier(PAID_M)],
+          reward_allocations: [reward(PAID_M)],
+        },
+      ],
+    }), "BUNDLE_ALLOCATION_OVERLAP");
+  });
+
   it("cộng discount theo client line khi các voucher dùng unit khác nhau", () => {
     const result = evaluateBundleApplications({
       items: [

@@ -4,13 +4,14 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 export async function runSerializableTransaction<T>(
   client: Pick<PrismaClient, "$transaction">,
   operation: (tx: Prisma.TransactionClient) => Promise<T>,
+  options: { timeoutMs?: number } = {},
 ): Promise<T> {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
       return await client.$transaction(operation, {
         isolationLevel: "Serializable",
         maxWait: 5000,
-        timeout: 10000,
+        timeout: options.timeoutMs ?? 10000,
       });
     } catch (error) {
       if (

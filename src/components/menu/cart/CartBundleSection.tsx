@@ -10,6 +10,8 @@ import type { CartItem } from "@/src/lib/types/cart";
 import type { BundleVoucherRule, BundleVoucherProduct } from "@/src/services/customerVoucherService";
 import type { MenuData, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
+import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
+import { getBundleCartDisplayTotals } from "@/src/lib/utils/bundleCartSummary";
 
 export interface BundleAllocationBadge {
   token: string;
@@ -20,7 +22,12 @@ export interface BundleAllocationBadge {
 interface CartBundleSectionProps {
   qualifierItems: CartItem[];
   rewardItems: CartItem[];
-  bundleRule: BundleVoucherRule;
+  bundleRule?: BundleVoucherRule;
+  bundleName: string;
+  bundleDiscountVnd: number;
+  qualifierAllocations: BundleSelectionAllocation[];
+  rewardAllocations: BundleSelectionAllocation[];
+  errorMessage?: string | null;
   menuData: MenuData;
   powders: Powder[];
   milkTypes: MilkTypeOption[];
@@ -31,14 +38,16 @@ interface CartBundleSectionProps {
   onSwapItem: (oldCartId: string, newData: Partial<CartItem>) => void;
   /** Called when user removes the entire bundle section. */
   onRemoveBundle: () => void;
+  onRepairBundle?: () => void;
   /** Cross-voucher size intersection and allocation quantities for one rendered line. */
   allowedSizesByCartId?: ReadonlyMap<string, Size[]>;
   nonEditableCartIds?: ReadonlySet<string>;
   allocationBadgesByCartId?: ReadonlyMap<string, BundleAllocationBadge[]>;
+  isVerifying?: boolean;
 }
 
 /** Formats a CartItem configuration as a compact display string. */
-function formatItemConfig(item: CartItem): string {
+function formatItemConfig(item: CartItem, milkTypes: MilkTypeOption[], powders: Powder[]): string {
   const parts: string[] = [];
   if (item.size) parts.push(`Size ${item.size === "SMALL" ? "S" : item.size === "MEDIUM" ? "M" : "L"}`);
   const sweetnessLabel: Record<string, string> = {
@@ -50,6 +59,11 @@ function formatItemConfig(item: CartItem): string {
     NORMAL: "Đá bình thường", LESS_ICE: "Ít đá", NO_ICE: "Không đá", SEPARATE_ICE: "Đá riêng",
   };
   if (item.iceOption) parts.push(iceLabel[item.iceOption] ?? item.iceOption);
+  const milkId = item.selectedBaseLiquidId ?? item.selectedMilkTypeId;
+  const milk = milkId ? milkTypes.find((candidate) => candidate.id === milkId) : undefined;
+  const powder = item.selectedPowderId ? powders.find((candidate) => candidate.id === item.selectedPowderId) : undefined;
+  if (milk) parts.push(milk.name);
+  if (powder) parts.push(powder.name);
   return parts.join(" · ");
 }
 
@@ -58,6 +72,11 @@ export function CartBundleSection({
   qualifierItems,
   rewardItems,
   bundleRule,
+  bundleName,
+  bundleDiscountVnd,
+  qualifierAllocations,
+  rewardAllocations,
+  errorMessage,
   menuData,
   powders,
   milkTypes,
@@ -65,16 +84,31 @@ export function CartBundleSection({
   onEditItem,
   onSwapItem,
   onRemoveBundle,
+  onRepairBundle,
   allowedSizesByCartId,
   nonEditableCartIds,
   allocationBadgesByCartId,
+  isVerifying = false,
 }: CartBundleSectionProps) {
   const [swapRole, setSwapRole] = useState<"QUALIFIER" | "REWARD" | null>(null);
   const [swapTargetCartId, setSwapTargetCartId] = useState<string | null>(null);
 
   const allMenuItems = [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])];
+  const bundleItems = [...qualifierItems, ...rewardItems];
+  const bundleTotals = getBundleCartDisplayTotals(
+    bundleItems,
+    [...qualifierAllocations, ...rewardAllocations],
+    bundleDiscountVnd,
+  );
+  const selectedAddonOptionId = rewardAllocations.find((allocation) => allocation.addon_option_id)?.addon_option_id;
+  const effectiveRewardKind = bundleRule?.reward_kind
+    ?? (selectedAddonOptionId ? "ADDON" : "PRODUCT");
+  const selectedAddonLabel = selectedAddonOptionId
+    ? menuData.addon_groups.flatMap((group) => group.options).find((option) => option.id === selectedAddonOptionId)?.label
+    : undefined;
 
   const getScopes = (role: "QUALIFIER" | "REWARD"): BundleVoucherProduct[] => {
+    if (!bundleRule) return [];
     if (role === "QUALIFIER") return bundleRule.qualifier_products.filter((p) => p.menu_item.is_available);
     if (bundleRule.reward_mode === "SAME_CONFIG") return bundleRule.qualifier_products.filter((p) => p.menu_item.is_available);
     return bundleRule.reward_products.filter((p) => p.menu_item.is_available);
@@ -124,9 +158,13 @@ export function CartBundleSection({
   };
 
   const renderItemGroup = (items: CartItem[], role: "QUALIFIER" | "REWARD") => {
+    const allocatedQuantity = (role === "QUALIFIER" ? qualifierAllocations : rewardAllocations)
+      .reduce((sum, allocation) => sum + allocation.quantity, 0);
     const label = role === "QUALIFIER"
-      ? `Món mua (${bundleRule.buy_quantity})`
-      : `Món tặng (${bundleRule.reward_quantity})`;
+      ? `Món mua (${bundleRule?.buy_quantity ?? allocatedQuantity})`
+      : effectiveRewardKind === "ADDON"
+        ? `Ly nhận topping (${allocatedQuantity})`
+        : `Món tặng (${bundleRule?.reward_quantity ?? allocatedQuantity})`;
     const scopes = getScopes(role);
     const canSwap = scopes.length > 1 && !items.some((item) => (allocationBadgesByCartId?.get(item.cartId)?.length ?? 0) > 1);
 
@@ -147,7 +185,7 @@ export function CartBundleSection({
           <button
             key={item.cartId}
             onClick={() => onEditItem(item, allowedSizesForItem(item, role))}
-            disabled={nonEditableCartIds?.has(item.cartId)}
+            disabled={isVerifying || nonEditableCartIds?.has(item.cartId)}
             className="w-full flex items-center gap-3 p-3 rounded-xl bg-white/80 border border-amber-100 text-left disabled:cursor-not-allowed disabled:opacity-60"
           >
             <div className="w-12 h-12 bg-amber-50 rounded-lg relative overflow-hidden shrink-0">
@@ -155,9 +193,11 @@ export function CartBundleSection({
             </div>
             <div className="flex-1 min-w-0">
               <p className="font-bold text-sm text-primary truncate">{item.name}</p>
-              <p className="text-xs text-primary/50 truncate">{formatItemConfig(item)}</p>
+              <p className="text-xs text-primary/50 truncate">{formatItemConfig(item, milkTypes, powders)}</p>
               <p className="text-xs font-bold text-amber-700 mt-0.5">
-                {role === "REWARD" ? "Ưu đãi áp dụng khi chốt đơn" : `${(item.clientPriceVnd / 1000).toLocaleString("vi-VN")}K`}
+                {role === "REWARD" && effectiveRewardKind !== "ADDON"
+                  ? "Ưu đãi áp dụng khi chốt đơn"
+                  : `${(item.clientPriceVnd / 1000).toLocaleString("vi-VN")}K${role === "REWARD" ? " · nhận topping" : ""}`}
               </p>
               {(allocationBadgesByCartId?.get(item.cartId) ?? []).length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1" aria-label="Phân bổ ưu đãi BUNDLE">
@@ -179,10 +219,15 @@ export function CartBundleSection({
     <>
       <div className="rounded-2xl border border-amber-200 bg-amber-50/30 p-4 space-y-3 mx-1">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Gift className="w-4 h-4 text-amber-600" />
-            <span className="text-sm font-bold text-amber-800">Ưu đãi Bundle</span>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-2">
+            <Gift className="mt-0.5 w-4 h-4 shrink-0 text-amber-600" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold text-amber-800">{bundleName}</p>
+              <p className="mt-0.5 text-[11px] font-semibold text-amber-700/80">
+                {bundleRule ? `Mua ${bundleRule.buy_quantity} · Tặng ${bundleRule.reward_quantity}` : "Đang tải thông tin quyền lợi…"}
+              </p>
+            </div>
           </div>
           <button
             onClick={onRemoveBundle}
@@ -192,6 +237,23 @@ export function CartBundleSection({
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        <div className="grid grid-cols-3 gap-2 rounded-xl border border-amber-100 bg-white/70 px-3 py-2 text-[11px]">
+          <div><p className="text-amber-700/70">Tạm tính</p><p className="font-bold text-amber-900">{(bundleTotals.grossVnd / 1000).toLocaleString("vi-VN")}K</p></div>
+          <div><p className="text-amber-700/70">Giảm</p><p className="font-bold text-emerald-700">-{(bundleTotals.discountVnd / 1000).toLocaleString("vi-VN")}K</p></div>
+          <div><p className="text-amber-700/70">Còn lại</p><p className="font-bold text-amber-900">{(bundleTotals.netVnd / 1000).toLocaleString("vi-VN")}K</p></div>
+        </div>
+        {bundleTotals.paidToppingsVnd > 0 ? (
+          <p className="text-[11px] font-semibold text-amber-800/80">Topping trả thêm: {(bundleTotals.paidToppingsVnd / 1000).toLocaleString("vi-VN")}K</p>
+        ) : null}
+        {errorMessage ? (
+          <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 ${isVerifying ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50"}`}>
+            <p className={`flex-1 text-xs font-semibold ${isVerifying ? "text-amber-800" : "text-red-800"}`}>{errorMessage}</p>
+            {!isVerifying && onRepairBundle ? (
+              <button type="button" onClick={onRepairBundle} className="min-h-11 shrink-0 rounded-lg border border-red-300 bg-white px-3 text-xs font-bold text-red-800">Sửa</button>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* Qualifier */}
         {renderItemGroup(qualifierItems, "QUALIFIER")}
@@ -209,10 +271,10 @@ export function CartBundleSection({
         {/* Reward */}
         {rewardItems.length > 0
           ? renderItemGroup(rewardItems, "REWARD")
-          : bundleRule.reward_kind === "ADDON" && (
+          : effectiveRewardKind === "ADDON" && (
             <div className="p-3 rounded-xl bg-white/80 border border-amber-100 text-center">
               <span className="text-xs font-bold text-amber-700">
-                Topping {menuData.addon_groups.flatMap((g) => g.options).find((o) => o.id === bundleRule.reward_addon_option_ids[0])?.label ?? "miễn phí"}
+                Topping {selectedAddonLabel ?? "chưa chọn"}
               </span>
             </div>
           )}
@@ -227,7 +289,7 @@ export function CartBundleSection({
       >
         <div className="flex flex-col max-h-[60vh]">
           <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none p-4 space-y-3">
-            {swapRole && getScopes(swapRole).map((s, idx) => (
+            {swapRole && bundleRule && getScopes(swapRole).map((s, idx) => (
               <button
                 key={idx}
                 onClick={() => handleSwapSelect(s)}
