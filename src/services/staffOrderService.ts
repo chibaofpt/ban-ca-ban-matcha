@@ -59,6 +59,18 @@ export interface CustomerSearchResult {
   points_balance: number;
 }
 
+export interface ScannedVoucherMenuTarget {
+  menu_item_id: string;
+  name: string;
+  category: string;
+  is_available: boolean;
+  is_seasonal: boolean;
+  size: "SMALL" | "MEDIUM" | "LARGE" | null;
+  matcha_powder_id: string | null;
+  milk_type_id: string | null;
+  covered_price_vnd: number | null;
+}
+
 export type QrScanResult =
   | {
       type: "user";
@@ -73,12 +85,17 @@ export type QrScanResult =
       type: "voucher";
       data: {
         qr_token: string;
-        voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE";
+        voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE";
         discount_type: "PERCENT" | "FIXED" | null;
         discount_value: number | null;
         menu_item_id: string | null;
+        size: "SMALL" | "MEDIUM" | "LARGE" | null;
+        matcha_powder_id: string | null;
+        milk_type_id: string | null;
         covered_price_vnd: number | null;
-        status: "ACTIVE" | "REDEEMED" | "EXPIRED";
+        has_normalized_targets: boolean;
+        eligible_menu_items: ScannedVoucherMenuTarget[];
+        status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED";
         expires_at: string | null;
       };
     };

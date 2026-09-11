@@ -76,7 +76,15 @@ export async function resolveCustomerItemVouchers(
       }
       throw error;
     }
-    if (!voucher?.menu_item_id || (voucher.voucher_type === "PRODUCT" && !voucher.covered_price_vnd)) {
+    const menuScope = voucher?.menuItemScopes?.find((scope) => scope.menu_item_id === item.menu_item_id);
+    const hasNormalizedTargets = (voucher?.menuItemScopes?.length ?? 0) > 0;
+    const matchesMenuTarget = Boolean(
+      voucher && (hasNormalizedTargets ? menuScope : voucher.menu_item_id === item.menu_item_id),
+    );
+    const matchingCoverage = hasNormalizedTargets
+      ? menuScope?.covered_price_vnd ?? 0
+      : voucher?.covered_price_vnd ?? 0;
+    if (!voucher || !matchesMenuTarget || (voucher.voucher_type === "PRODUCT" && matchingCoverage <= 0)) {
       return {
         ok: false,
         response: NextResponse.json(
@@ -86,9 +94,9 @@ export async function resolveCustomerItemVouchers(
       };
     }
     productVoucherMap.set(voucher.id, {
-      menu_item_id: voucher.menu_item_id,
+      menu_item_id: item.menu_item_id,
       eligible_menu_item_ids: voucher.menuItemScopes?.map((scope) => scope.menu_item_id) ?? [],
-      covered_price_vnd: voucher.covered_price_vnd ?? 0,
+      covered_price_vnd: matchingCoverage,
       voucher_type: voucher.voucher_type === "ITEM" ? "ITEM" : voucher.voucher_type === "PRODUCT_DISCOUNT" ? "PRODUCT_DISCOUNT" : "PRODUCT",
       product_discount_mode: voucher.product_discount_mode,
       eligible_sizes: voucher.eligible_sizes,
@@ -151,7 +159,10 @@ export async function resolveCustomerItemVouchers(
         }
         throw error;
       }
-      if (!voucher?.addon_option_id || voucher.addon_option_id !== inputVoucher.addon_option_id) {
+      const addonTargets = voucher?.addonOptionScopes?.length
+        ? voucher.addonOptionScopes.map((scope) => scope.addon_option_id)
+        : voucher?.addon_option_id ? [voucher.addon_option_id] : [];
+      if (!voucher || !addonTargets.includes(inputVoucher.addon_option_id)) {
         return {
           ok: false,
           response: NextResponse.json(
@@ -160,7 +171,7 @@ export async function resolveCustomerItemVouchers(
           ),
         };
       }
-      addonVoucherMap.set(voucher.id, voucher.addon_option_id);
+      addonVoucherMap.set(voucher.id, inputVoucher.addon_option_id);
       addonVoucherIds.add(voucher.id);
       inputVoucher.voucher_id = voucher.id;
       voucherQrTokens.set(voucher.id, voucher.qr_token);

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { AddonGroup } from "@/src/lib/types/menu";
-import type { BundleCartDraftCommit, CartItem } from "@/src/lib/types/cart";
+import type { BundleCartDraftCommit } from "@/src/lib/types/cart";
+import { projectedCartLine } from "@/src/__tests__/fixtures/cart";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import { useStaffCartStore } from "@/src/lib/store/staffCartStore";
 import { buildBundleCartDraft, validateBundleCartDraft, type BundleCartDraftResult, type BundleDraftSlot } from "@/src/lib/utils/bundleCartDraft";
@@ -59,8 +60,8 @@ function config(): BundleItemConfig {
   };
 }
 
-function item(cartId: string, quantity: number): CartItem {
-  return {
+function item(cartId: string, quantity: number) {
+  return projectedCartLine({
     cartId,
     menuItemId: "drink-1",
     name: "Matcha",
@@ -78,7 +79,7 @@ function item(cartId: string, quantity: number): CartItem {
     addonPrices: {},
     clientPriceVnd: 45_000,
     originalClientPriceVnd: 45_000,
-  };
+  });
 }
 
 function summary(testCase: ScalingCase): BundleVoucherSummary {
@@ -140,8 +141,23 @@ function buildCandidate(testCase: ScalingCase): BundleCartDraftResult {
 
 function commitBoth(testCase: ScalingCase, candidate: BundleCartDraftResult): { customer: BundleCartDraftCommit; staff: BundleCartDraftCommit } {
   const voucher = summary(testCase);
-  const customerValidation = validateBundleCartDraft({ voucher, candidate, ownerKey: "customer:qr-1" });
-  const staffValidation = validateBundleCartDraft({ voucher, candidate, ownerKey: "staff:qr-1" });
+  const projectedItems = candidate.items.map((line) => {
+    const addonOptionIds = line.configuration.size === null ? [] : line.configuration.addonOptionIds;
+    const addonsPrice = addonOptionIds.includes(ADDON) ? 10_000 : 0;
+    return projectedCartLine({
+      ...line,
+      size: line.configuration.size,
+      selectedOptionIds: addonOptionIds,
+      addonsPrice,
+      addonPrices: addonsPrice ? { [ADDON]: addonsPrice } : {},
+      unitPrice: 45_000 + addonsPrice,
+      originalClientPriceVnd: 45_000 + addonsPrice,
+      clientPriceVnd: 45_000 + addonsPrice,
+    });
+  });
+  const verifiedCandidate = { ...candidate, projectedItems };
+  const customerValidation = validateBundleCartDraft({ voucher, candidate: verifiedCandidate, ownerKey: "customer:qr-1" });
+  const staffValidation = validateBundleCartDraft({ voucher, candidate: verifiedCandidate, ownerKey: "staff:qr-1" });
   if (!customerValidation.ok) throw new Error(customerValidation.error);
   if (!staffValidation.ok) throw new Error(staffValidation.error);
   useCartStore.getState().commitBundleCartDraft(customerValidation.draft);
@@ -150,20 +166,20 @@ function commitBoth(testCase: ScalingCase, candidate: BundleCartDraftResult): { 
 }
 
 function expectCommittedDraft(draft: BundleCartDraftCommit, expectedRewardQuantity: number): void {
-  expect(draft.application.status).toBe("READY");
+  expect(draft.application).not.toHaveProperty("status");
   expect(draft.application.reward_allocations.reduce((sum, allocation) => sum + allocation.quantity, 0)).toBe(expectedRewardQuantity);
   expect(draft.application.created_reward_effects.reduce((sum, effect) => sum + (effect.kind === "ADDON" ? effect.quantity : 0), 0)).toBe(expectedRewardQuantity);
   expect(new Set(draft.application.reward_allocations.map((allocation) => allocation.client_line_id)).size).toBe(expectedRewardQuantity);
   expect(draft.application.reward_allocations.every((allocation) => allocation.quantity === 1 && allocation.addon_option_id === ADDON)).toBe(true);
-  const rewardedItems = draft.items.filter((entry) => entry.selectedOptionIds.includes(ADDON));
+  const rewardedItems = draft.items.filter((entry) => entry.configuration.size !== null && entry.configuration.addonOptionIds.includes(ADDON));
   expect(rewardedItems).toHaveLength(expectedRewardQuantity);
   for (const rewardedItem of rewardedItems) {
-    expect(rewardedItem.addonsPrice).toBe(10_000);
-    expect(rewardedItem.unitPrice).toBe(55_000);
-    expect(rewardedItem.clientPriceVnd).toBe(55_000);
-    expect(rewardedItem.originalClientPriceVnd).toBe(55_000);
-    expect(rewardedItem.addonPrices[ADDON]).toBe(10_000);
-    expect(rewardedItem.addonMetadata?.[ADDON]?.gram_value).toBeNull();
+    expect(rewardedItem).not.toHaveProperty("addonsPrice");
+    expect(rewardedItem).not.toHaveProperty("unitPrice");
+    expect(rewardedItem).not.toHaveProperty("clientPriceVnd");
+    expect(rewardedItem).not.toHaveProperty("originalClientPriceVnd");
+    expect(rewardedItem).not.toHaveProperty("addonPrices");
+    expect(rewardedItem).not.toHaveProperty("addonMetadata");
   }
 }
 

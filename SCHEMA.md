@@ -29,10 +29,17 @@
 Apply vouchers in this strict order: `BUNDLE → ITEM/PRODUCT/PRODUCT_DISCOUNT → ADDON → DISCOUNT → FREESHIP`.
 
 `voucher_package_menu_item_scopes` and `voucher_menu_item_scopes` normalize the explicit 1–100
-drink targets of PRODUCT_DISCOUNT. Both use `(parent_id, menu_item_id)` composite primary keys;
+targets of PRODUCT, ITEM, and PRODUCT_DISCOUNT. PRODUCT rows also snapshot size, powder,
+Base Liquid, and immutable drink-only `covered_price_vnd`; ITEM and PRODUCT_DISCOUNT keep those
+snapshot columns null. Both use `(parent_id, menu_item_id)` composite primary keys;
 package/voucher deletion cascades while menu-item deletion is `NO ACTION`. The legacy
 `menu_item_id` remains the deterministic compatibility anchor. Issuance copies package scope rows
 to immutable voucher scope rows.
+
+`voucher_package_addon_option_scopes` and `voucher_addon_option_scopes` hold the explicit 1–100
+fixed-price ADDON targets with the same parent cascade and target `NO ACTION` policy. Legacy
+`addon_option_id` remains the compatibility anchor; the current selected option price is resolved
+server-side when the voucher is attached to an order.
 
 ```text
 subtotal_vnd = gross drinks + gross addons

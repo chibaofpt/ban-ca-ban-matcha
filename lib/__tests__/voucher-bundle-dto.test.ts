@@ -6,7 +6,7 @@ const { resolveBundleBaselineProducts } = vi.hoisted(() => ({
 
 vi.mock("@/lib/pricing", () => ({ resolveBundleBaselineProducts }));
 
-import { attachBundleRewardBaselines } from "@/lib/voucherBundleDto";
+import { attachBundleRewardBaselines, toVoucherPackageBundleDto } from "@/lib/voucherBundleDto";
 import type { BundleRuleDtoSource } from "@/lib/voucherBundleDto";
 
 function voucher(token: string, status: "ACTIVE" | "EXPIRED") {
@@ -33,6 +33,28 @@ function voucher(token: string, status: "ACTIVE" | "EXPIRED") {
 }
 
 describe("BUNDLE DTO baseline cho wallet routes", () => {
+  it("maps normalized target relations without exposing raw Prisma relation names", () => {
+    const dto = toVoucherPackageBundleDto({
+      id: "package",
+      bundleRule: null,
+      menuItemScopes: [{
+        menu_item_id: "extra",
+        menuItem: { name: "Bánh", category: "extras", is_available: true, is_seasonal: false },
+      }],
+      addonOptionScopes: [{
+        addon_option_id: "addon",
+        addonOption: { label: "Trân châu", price_vnd: 8_000, is_active: true, gram_value: null },
+      }],
+    });
+
+    expect(dto).not.toHaveProperty("menuItemScopes");
+    expect(dto).not.toHaveProperty("addonOptionScopes");
+    expect(dto).toMatchObject({
+      eligible_menu_items: [{ menu_item_id: "extra", name: "Bánh" }],
+      eligible_addon_options: [{ addon_option_id: "addon", label: "Trân châu" }],
+    });
+  });
+
   it("batch resolve reward của voucher active lẫn inactive và giữ snapshot trên DTO", async () => {
     resolveBundleBaselineProducts.mockResolvedValueOnce([
       { menu_item_id: "reward-active", allowed_sizes: ["MEDIUM"], default_powder_id: "powder", default_base_liquid_id: "liquid", baseline_prices_vnd: { MEDIUM: 55_000 } },

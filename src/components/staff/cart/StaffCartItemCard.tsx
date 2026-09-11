@@ -4,7 +4,7 @@ import React, { memo } from "react";
 import { motion } from "framer-motion";
 import { Trash2, Ticket, X } from "lucide-react";
 import { cn } from "@/src/utils/cn";
-import type { CartItem } from "@/src/lib/types/cart";
+import type { ProjectedCartLine } from "@/src/lib/types/cart";
 import type { AddonGroup, MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { MyVoucher } from "@/src/services/staffVoucherService";
@@ -12,7 +12,7 @@ import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/c
 import Image from "next/image";
 
 interface StaffCartItemCardProps {
-  item: CartItem;
+  item: ProjectedCartLine;
   menuItem?: MenuItem;
   powderData?: PowderApiResponse;
   milkTypes: MilkTypeOption[];
@@ -20,7 +20,7 @@ interface StaffCartItemCardProps {
   customerVouchers: MyVoucher[];
   applicableProductVouchers: MyVoucher[];
   applicableAddonVouchers: MyVoucher[];
-  onEdit: (item: CartItem) => void;
+  onEdit: (item: ProjectedCartLine) => void;
   onRemove: (cartId: string) => void;
   onChangeQuantity: (cartId: string, quantity: number) => void;
   onRemoveProduct?: (cartId: string) => void;
@@ -46,18 +46,20 @@ const StaffCartItemCard = ({
   onOpenVoucherPicker,
   bundleAllocationBadges = [],
 }: StaffCartItemCardProps) => {
-  const hasMoreProductVouchers = !c.productVoucherId && !c.itemVoucherId && applicableProductVouchers.length > 0;
+  const powderId = c.configuration.size === null ? undefined : c.configuration.powderId;
+  const powderName = powderData?.data.find((powder) => powder.id === powderId)?.name;
+  const hasMoreProductVouchers = !c.lineVoucher && applicableProductVouchers.length > 0;
   const hasMoreAddonVouchers = applicableAddonVouchers.length > 0;
   const hasAvailableVouchers = hasMoreProductVouchers || hasMoreAddonVouchers;
   
-  const appliedProductVoucherId = c.productVoucherId ?? c.itemVoucherId;
-  const appliedAddonVouchers = c.addonVouchers ?? [];
+  const appliedProductVoucherId = c.lineVoucher?.token;
+  const appliedAddonVouchers = c.addonVouchers;
 
   const line1Chips = line1ItemDetails(c, menuItem, milkTypes, powderData?.data);
   const line2Chips = line2ItemDetails(c);
-  const addonChips = addonsDetails(c, menuItem, addonGroups, powderData?.data);
+  const addonChips = addonsDetails(c);
   
-  const noteText = c.note || null;
+  const noteText = c.configuration.note || null;
 
   return (
     <div 
@@ -105,7 +107,7 @@ const StaffCartItemCard = ({
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="flex items-start justify-between gap-2">
           <h4 className="font-bold text-sm leading-tight text-primary truncate w-4/5 pr-2">
-            {c.name} {c.category === "fusion" && powderData?.data?.find((p) => p.id === c.selectedPowderId)?.name && `- ${powderData?.data?.find((p) => p.id === c.selectedPowderId)?.name}`}
+            {c.name} {c.category === "fusion" && powderName ? `- ${powderName}` : ""}
           </h4>
           <button 
             onClick={(e) => { e.stopPropagation(); onRemove(c.cartId); }} 
@@ -171,14 +173,14 @@ const StaffCartItemCard = ({
                 )
               })()}
               {appliedAddonVouchers.map((av, idx) => {
-                const voucherInfo = customerVouchers.find(v => v.qr_token === av.voucherId);
+                const voucherInfo = customerVouchers.find(v => v.qr_token === av.token);
                 return (
-                  <div key={`${av.voucherId}-${idx}`} className="text-[11px] font-medium bg-green-50 border border-green-200 text-green-700 dark:bg-green-900/20 dark:border-green-500/30 dark:text-green-400 px-2.5 py-1.5 rounded-lg flex items-center justify-between w-full shadow-sm">
+                  <div key={`${av.token}-${idx}`} className="text-[11px] font-medium bg-green-50 border border-green-200 text-green-700 dark:bg-green-900/20 dark:border-green-500/30 dark:text-green-400 px-2.5 py-1.5 rounded-lg flex items-center justify-between w-full shadow-sm">
                     <span className="flex items-center gap-1.5 truncate pr-2">
                       <Ticket size={14} className="text-green-600 shrink-0" />
                       <span className="truncate">Free {voucherInfo?.addonOption?.label || "Topping"}</span>
                     </span>
-                    <button onClick={(e) => { e.stopPropagation(); onRemoveAddon?.(c.cartId, av.voucherId); }} className="shrink-0 p-1 bg-white/50 hover:bg-green-200 rounded-md text-green-700 transition-colors">
+                    <button onClick={(e) => { e.stopPropagation(); onRemoveAddon?.(c.cartId, av.token); }} className="shrink-0 p-1 bg-white/50 hover:bg-green-200 rounded-md text-green-700 transition-colors">
                       <X size={12} strokeWidth={2.5} />
                     </button>
                   </div>
@@ -200,13 +202,13 @@ const StaffCartItemCard = ({
 
             {/* Price */}
             <div className="flex flex-col items-end shrink-0">
-              {appliedProductVoucherId && c.originalClientPriceVnd !== c.clientPriceVnd && (
+              {appliedProductVoucherId && c.grossUnitPriceVnd !== c.payableUnitVnd && (
                 <span className="text-[10px] text-muted-foreground line-through">
-                  {(c.originalClientPriceVnd * c.quantity) / 1000}k
+                  {(c.grossUnitPriceVnd * c.quantity) / 1000}k
                 </span>
               )}
               <span className="font-bold text-sm text-primary">
-                {(c.clientPriceVnd * c.quantity) / 1000}k
+                {c.lineTotalVnd / 1000}k
               </span>
             </div>
           </div>

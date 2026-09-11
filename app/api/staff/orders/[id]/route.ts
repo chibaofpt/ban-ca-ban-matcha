@@ -74,10 +74,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         include: {
           items: {
             select: { 
+              menu_item_id: true,
               product_voucher_id: true,
               item_voucher_id: true,
               unit_price_vnd: true,
-              productVoucher: { select: { covered_price_vnd: true } },
+              productVoucher: {
+                select: {
+                  covered_price_vnd: true,
+                  menuItemScopes: { select: { menu_item_id: true, covered_price_vnd: true } },
+                },
+              },
               itemVoucher: { select: { covered_price_vnd: true } },
               addonVouchers: { select: { voucher_id: true } }
             }
@@ -230,11 +236,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
           // Aggregate surplus: sum VND surplus first, then floor to points once
           const itemsWithProduct = order.items.filter(
-            (item) => item.product_voucher_id && item.productVoucher?.covered_price_vnd != null
+            (item) => item.product_voucher_id && item.productVoucher != null
           );
           if (itemsWithProduct.length > 0) {
             const totalSurplusVnd = itemsWithProduct.reduce((sum, item) => {
-              const coveredPrice = item.productVoucher?.covered_price_vnd ?? 0;
+              const coveredPrice = item.productVoucher?.menuItemScopes?.find(
+                (scope) => scope.menu_item_id === item.menu_item_id,
+              )?.covered_price_vnd ?? item.productVoucher?.covered_price_vnd ?? 0;
               const surplus = Math.max(coveredPrice - item.unit_price_vnd, 0);
               return sum + surplus;
             }, 0);

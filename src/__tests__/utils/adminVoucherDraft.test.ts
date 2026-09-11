@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { adminVoucherDraftSchema, getAdminVoucherStep2FieldPaths } from "@/src/lib/validations/adminVoucher";
-import { createEmptyVoucherDraft } from "@/src/lib/utils/adminVoucherForm";
+import { buildVoucherInput, createEmptyVoucherDraft, estimateVoucherLiabilityVnd } from "@/src/lib/utils/adminVoucherForm";
 
 describe("Kiểm tra bản nháp voucher quản trị", () => {
   const issuePaths = (draft: Parameters<typeof adminVoucherDraftSchema.parse>[0]): Array<Array<string | number>> => {
@@ -30,7 +30,54 @@ describe("Kiểm tra bản nháp voucher quản trị", () => {
   it("giữ yêu cầu sản phẩm cho voucher PRODUCT trước khi sang bước phát hành", () => {
     const draft = { ...createEmptyVoucherDraft(), name: "Tặng ly", voucherType: "PRODUCT" as const };
     expect(adminVoucherDraftSchema.safeParse(draft).success).toBe(false);
-    expect(adminVoucherDraftSchema.safeParse({ ...draft, menuItemId: "menu-1" }).success).toBe(true);
+    expect(adminVoucherDraftSchema.safeParse({
+      ...draft,
+      menuItemId: "menu-1",
+      productTargets: [{ menuItemId: "menu-1", category: "fusion", sizes: ["MEDIUM"], powderIds: ["powder-1"], milkTypeIds: ["milk-1"], fixedPowderId: null }],
+    }).success).toBe(true);
+  });
+
+  it("serialize cấu hình và credit đầu vào PRODUCT độc lập theo từng món", () => {
+    const input = buildVoucherInput({
+      ...createEmptyVoucherDraft(),
+      name: "Chọn một ly",
+      voucherType: "PRODUCT",
+      menuItemId: "menu-a",
+      productTargets: [
+        { menuItemId: "menu-a", category: "latte", sizes: ["SMALL"], powderIds: [], milkTypeIds: ["milk-a"], fixedPowderId: "powder-a" },
+        { menuItemId: "menu-b", category: "fusion", sizes: ["LARGE"], powderIds: ["powder-b"], milkTypeIds: ["milk-b"], fixedPowderId: null },
+      ],
+    });
+    expect(input).toMatchObject({
+      voucher_type: "PRODUCT",
+      menu_item_id: "menu-a",
+      size: "SMALL",
+      product_targets: [
+        { menu_item_id: "menu-a", size: "SMALL", matcha_powder_id: null, milk_type_id: "milk-a" },
+        { menu_item_id: "menu-b", size: "LARGE", matcha_powder_id: "powder-b", milk_type_id: "milk-b" },
+      ],
+    });
+  });
+
+  it("serialize cùng multi-select contract cho PRODUCT_DISCOUNT, ITEM và ADDON", () => {
+    const base = { ...createEmptyVoucherDraft(), name: "Multi" };
+    expect(buildVoucherInput({ ...base, voucherType: "PRODUCT_DISCOUNT", menuItemId: "menu-a", eligibleMenuItemIds: ["menu-a", "menu-b"] })).toMatchObject({ eligible_menu_item_ids: ["menu-a", "menu-b"] });
+    expect(buildVoucherInput({ ...base, voucherType: "ITEM", menuItemId: "extra-a", eligibleMenuItemIds: ["extra-a", "extra-b"] })).toMatchObject({ eligible_menu_item_ids: ["extra-a", "extra-b"] });
+    expect(buildVoucherInput({ ...base, voucherType: "ADDON", addonOptionId: "addon-a", eligibleAddonOptionIds: ["addon-a", "addon-b"] })).toMatchObject({ eligible_addon_option_ids: ["addon-a", "addon-b"] });
+  });
+
+  it("ước tính liability ITEM và ADDON theo target đắt nhất trong multi-select", () => {
+    const base = { ...createEmptyVoucherDraft(), name: "Liability", quantity: 2 };
+    expect(estimateVoucherLiabilityVnd(
+      { ...base, voucherType: "ITEM", menuItemId: "extra-a", eligibleMenuItemIds: ["extra-a", "extra-b"] },
+      new Map([["extra-a", 5_000], ["extra-b", 12_000]]),
+      new Map(),
+    )).toBe(24_000);
+    expect(estimateVoucherLiabilityVnd(
+      { ...base, voucherType: "ADDON", addonOptionId: "addon-a", eligibleAddonOptionIds: ["addon-a", "addon-b"] },
+      new Map(),
+      new Map([["addon-a", 7_000], ["addon-b", 10_000]]),
+    )).toBe(20_000);
   });
 
   it("gắn lỗi cấu hình BUNDLE vào đúng nhóm và trường con", () => {

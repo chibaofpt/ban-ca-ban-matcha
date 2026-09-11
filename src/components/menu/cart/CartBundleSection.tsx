@@ -5,8 +5,7 @@ import Image from "next/image";
 import { X, Gift } from "lucide-react";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 import { buildBundleItemConfig } from "@/src/lib/utils/voucherUseNowHelpers";
-import { computeVoucherItemPrice } from "@/src/hooks/useAddVoucherToCart";
-import type { CartItem } from "@/src/lib/types/cart";
+import type { CartItem, ProjectedCartLine } from "@/src/lib/types/cart";
 import type { BundleVoucherRule, BundleVoucherProduct } from "@/src/services/customerVoucherService";
 import type { MenuData, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
@@ -20,8 +19,8 @@ export interface BundleAllocationBadge {
 }
 
 interface CartBundleSectionProps {
-  qualifierItems: CartItem[];
-  rewardItems: CartItem[];
+  qualifierItems: ProjectedCartLine[];
+  rewardItems: ProjectedCartLine[];
   bundleRule?: BundleVoucherRule;
   bundleName: string;
   bundleDiscountVnd: number;
@@ -33,7 +32,7 @@ interface CartBundleSectionProps {
   milkTypes: MilkTypeOption[];
   defaultPowderGram: Array<{ size: "SMALL" | "MEDIUM" | "LARGE"; grams: number }>;
   /** Called when user taps item to edit config — parent opens ProductModal. */
-  onEditItem: (item: CartItem, allowedSizes: Size[]) => void;
+  onEditItem: (item: ProjectedCartLine, allowedSizes: Size[]) => void;
   /** Called when user swaps an item — parent calls updateItem(oldCartId, newData). */
   onSwapItem: (oldCartId: string, newData: Partial<CartItem>) => void;
   /** Called when user removes the entire bundle section. */
@@ -47,21 +46,23 @@ interface CartBundleSectionProps {
 }
 
 /** Formats a CartItem configuration as a compact display string. */
-function formatItemConfig(item: CartItem, milkTypes: MilkTypeOption[], powders: Powder[]): string {
+function formatItemConfig(item: ProjectedCartLine, milkTypes: MilkTypeOption[], powders: Powder[]): string {
   const parts: string[] = [];
-  if (item.size) parts.push(`Size ${item.size === "SMALL" ? "S" : item.size === "MEDIUM" ? "M" : "L"}`);
+  const config = item.configuration;
+  if (config.size) parts.push(`Size ${config.size === "SMALL" ? "S" : config.size === "MEDIUM" ? "M" : "L"}`);
   const sweetnessLabel: Record<string, string> = {
     NONE: "Không đường", QUARTER: "Ít đường", HALF: "Nửa đường",
     THREE_QUARTER: "Vừa đường", FULL: "Nguyên đường", EXTRA: "Thêm đường",
   };
-  if (item.sweetness) parts.push(sweetnessLabel[item.sweetness] ?? item.sweetness);
+  if (config.size !== null) parts.push(sweetnessLabel[config.sweetness] ?? config.sweetness);
   const iceLabel: Record<string, string> = {
     NORMAL: "Đá bình thường", LESS_ICE: "Ít đá", NO_ICE: "Không đá", SEPARATE_ICE: "Đá riêng",
   };
-  if (item.iceOption) parts.push(iceLabel[item.iceOption] ?? item.iceOption);
-  const milkId = item.selectedBaseLiquidId ?? item.selectedMilkTypeId;
+  if (config.size !== null) parts.push(iceLabel[config.iceOption] ?? config.iceOption);
+  const milkId = config.size === null ? undefined : config.baseLiquidId;
   const milk = milkId ? milkTypes.find((candidate) => candidate.id === milkId) : undefined;
-  const powder = item.selectedPowderId ? powders.find((candidate) => candidate.id === item.selectedPowderId) : undefined;
+  const powderId = config.size === null ? undefined : config.powderId;
+  const powder = powderId ? powders.find((candidate) => candidate.id === powderId) : undefined;
   if (milk) parts.push(milk.name);
   if (powder) parts.push(powder.name);
   return parts.join(" · ");
@@ -113,7 +114,7 @@ export function CartBundleSection({
     if (bundleRule.reward_mode === "SAME_CONFIG") return bundleRule.qualifier_products.filter((p) => p.menu_item.is_available);
     return bundleRule.reward_products.filter((p) => p.menu_item.is_available);
   };
-  const allowedSizesForItem = (item: CartItem, role: "QUALIFIER" | "REWARD"): Size[] =>
+  const allowedSizesForItem = (item: ProjectedCartLine, role: "QUALIFIER" | "REWARD"): Size[] =>
     allowedSizesByCartId?.get(item.cartId) ?? getScopes(role).find((scope) => scope.menu_item_id === item.menuItemId)?.allowed_sizes ?? [];
 
   const handleSwapSelect = (scope: BundleVoucherProduct) => {
@@ -121,43 +122,28 @@ export function CartBundleSection({
     const fullItem = allMenuItems.find((i) => i.id === scope.menu_item_id);
     if (!fullItem) return;
     const initial = buildBundleItemConfig(scope, fullItem, milkTypes);
-    const unitPriceVnd = fullItem.category === "extras"
-      ? fullItem.unit_price_vnd ?? 0
-      : initial.size
-        ? computeVoucherItemPrice(
-            fullItem, initial.size, initial.powderId, initial.baseLiquidId ?? null,
-            [], powders, defaultPowderGram, menuData.latte, milkTypes, menuData.addon_groups,
-          ).drinkPrice
-        : 0;
     onSwapItem(swapTargetCartId, {
       menuItemId: fullItem.id,
-      name: fullItem.name,
-      category: fullItem.category,
-      imageUrl: fullItem.image_url,
-      size: initial.size,
-      unitPrice: unitPriceVnd,
-      clientPriceVnd: unitPriceVnd,
-      originalClientPriceVnd: unitPriceVnd,
-      sweetness: initial.sweetness,
-      iceOption: initial.iceOption,
-      coldwhisk: initial.coldwhisk,
-      selectedOptionIds: initial.selectedOptionIds,
-      addonsPrice: initial.addonsCost,
-      addonPrices: initial.addonPrices,
-      selectedPowderId: fullItem.category === "fusion" ? initial.powderId ?? undefined : undefined,
-      selectedBaseLiquidId: fullItem.category === "latte" ? initial.baseLiquidId ?? undefined : undefined,
-      selectedMilkTypeId: fullItem.category === "latte" ? initial.milkTypeId ?? undefined : undefined,
-      productVoucherId: undefined,
-      productVoucherDiscountVnd: undefined,
-      itemVoucherId: undefined,
+      configuration: initial.size === null
+        ? { size: null, note: "" }
+        : {
+            size: initial.size,
+            sweetness: initial.sweetness,
+            iceOption: initial.iceOption,
+            coldwhisk: initial.coldwhisk,
+            note: "",
+            ...(initial.powderId ? { powderId: initial.powderId } : {}),
+            ...(initial.baseLiquidId ?? initial.milkTypeId ? { baseLiquidId: initial.baseLiquidId ?? initial.milkTypeId ?? undefined } : {}),
+            addonOptionIds: initial.selectedOptionIds,
+          },
+      lineVoucher: undefined,
       addonVouchers: [],
-      note: "",
     });
     setSwapRole(null);
     setSwapTargetCartId(null);
   };
 
-  const renderItemGroup = (items: CartItem[], role: "QUALIFIER" | "REWARD") => {
+  const renderItemGroup = (items: ProjectedCartLine[], role: "QUALIFIER" | "REWARD") => {
     const allocatedQuantity = (role === "QUALIFIER" ? qualifierAllocations : rewardAllocations)
       .reduce((sum, allocation) => sum + allocation.quantity, 0);
     const label = role === "QUALIFIER"
@@ -197,7 +183,7 @@ export function CartBundleSection({
               <p className="text-xs font-bold text-amber-700 mt-0.5">
                 {role === "REWARD" && effectiveRewardKind !== "ADDON"
                   ? "Ưu đãi áp dụng khi chốt đơn"
-                  : `${(item.clientPriceVnd / 1000).toLocaleString("vi-VN")}K${role === "REWARD" ? " · nhận topping" : ""}`}
+                  : `${(item.grossUnitPriceVnd / 1000).toLocaleString("vi-VN")}K${role === "REWARD" ? " · nhận topping" : ""}`}
               </p>
               {(allocationBadgesByCartId?.get(item.cartId) ?? []).length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1" aria-label="Phân bổ ưu đãi BUNDLE">

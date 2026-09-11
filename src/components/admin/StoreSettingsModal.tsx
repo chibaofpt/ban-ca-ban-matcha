@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   getStoreSchedule,
   updateStoreSchedule,
@@ -9,6 +10,8 @@ import {
 } from "@/src/services/adminStoreService";
 import type { DaySchedule } from "@/src/services/adminStoreService";
 import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
+import { STORE_STATUS_QUERY_KEY, useStoreStatus } from "@/src/hooks/useStoreStatus";
+import { getStoreStatus } from "@/src/services/storeStatusService";
 
 const DAY_NAMES = ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
 
@@ -27,19 +30,15 @@ interface DayDraft {
   slots: SlotDraft[];
 }
 
-/** Fetch the actual current store status */
-async function fetchStoreStatus(): Promise<{ is_open: boolean; reason: string; note: string | null }> {
-  const res = await fetch("/api/store-status");
-  const json = await res.json();
-  return {
-    is_open: json.data?.is_open ?? false,
-    reason: json.data?.reason ?? "UNKNOWN",
-    note: json.data?.closure_note ?? null,
-  };
-}
-
 /** StoreSettingsModal — Admin-only modal for managing store hours and temporary closure. */
 export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsModalProps) {
+  const queryClient = useQueryClient();
+  const {
+    data: storeStatus,
+    isLoading: statusLoading,
+    isError: statusError,
+    refetch: refetchStatus,
+  } = useStoreStatus({ enabled: isOpen });
   const [schedule, setSchedule] = useState<DayDraft[]>(
     Array.from({ length: 7 }, (_, i) => ({ day_of_week: i, slots: [] })),
   );
@@ -47,9 +46,9 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Temporary closure state
-  const [actualStatus, setActualStatus] = useState<{ is_open: boolean; reason: string; note: string | null } | null>(null);
   const [closureInput, setClosureInput] = useState("");
   const [closureLoading, setClosureLoading] = useState(false);
   const [closureError, setClosureError] = useState<string | null>(null);
@@ -57,10 +56,7 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [scheduleData, statusData] = await Promise.all([
-        getStoreSchedule(),
-        fetchStoreStatus(),
-      ]);
+      const scheduleData = await getStoreSchedule();
 
       // Merge loaded schedule into draft (preserve all 7 days)
       const draft: DayDraft[] = Array.from({ length: 7 }, (_, i) => {
@@ -73,9 +69,8 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
         };
       });
       setSchedule(draft);
-      setActualStatus(statusData);
-    } catch {
-      // silently ignore — UI shows empty state
+    } catch (error: unknown) {
+      setLoadError(error instanceof Error ? error.message : "Không thể tải cài đặt cửa hàng");
     } finally {
       setLoading(false);
     }
@@ -88,6 +83,7 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
       setSaveSuccess(false);
       setClosureError(null);
       setClosureInput("");
+      setLoadError(null);
     }
   }, [isOpen, loadData]);
 
@@ -138,12 +134,24 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
     );
   };
 
+  const refreshCanonicalStatus = useCallback(async () => {
+    try {
+      const refreshedStatus = await getStoreStatus();
+      queryClient.setQueryData(STORE_STATUS_QUERY_KEY, refreshedStatus);
+      await queryClient.invalidateQueries({ queryKey: STORE_STATUS_QUERY_KEY });
+    } catch (error: unknown) {
+      await queryClient.invalidateQueries({ queryKey: STORE_STATUS_QUERY_KEY });
+      throw error;
+    }
+  }, [queryClient]);
+
   const handleSaveSchedule = async () => {
     setSaving(true);
     setSaveError(null);
     setSaveSuccess(false);
     try {
       await updateStoreSchedule(schedule);
+      await refreshCanonicalStatus();
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e: unknown) {
@@ -159,7 +167,7 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
     setClosureError(null);
     try {
       await closeStore(closureInput || undefined);
-      setActualStatus({ is_open: false, reason: "TEMPORARY_CLOSURE", note: closureInput || null });
+      await refreshCanonicalStatus();
       setClosureInput("");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Lỗi khi đóng cửa";
@@ -174,8 +182,7 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
     setClosureError(null);
     try {
       await openStore();
-      const newStatus = await fetchStoreStatus();
-      setActualStatus(newStatus);
+      await refreshCanonicalStatus();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Lỗi khi mở cửa lại";
       setClosureError(msg);
@@ -212,29 +219,42 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
             <h3 className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide opacity-70">
               Trạng thái tạm thời
             </h3>
-            {actualStatus ? (
+            {statusLoading ? (
+              <div className="text-sm text-muted-foreground text-center py-4">Đang tải trạng thái...</div>
+            ) : statusError ? (
+              <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                <p>Không thể xác minh trạng thái cửa hàng.</p>
+                <button
+                  type="button"
+                  onClick={() => void refetchStatus()}
+                  className="mt-3 min-h-11 rounded-lg border border-red-200 bg-white px-3 font-semibold text-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
+                >
+                  Thử lại
+                </button>
+              </div>
+            ) : storeStatus ? (
               <div className={`rounded-xl border p-4 ${
-                actualStatus.reason === "TEMPORARY_CLOSURE" ? "border-red-400/40 bg-red-500/5" : 
-                !actualStatus.is_open ? "border-amber-400/40 bg-amber-500/5" :
+                storeStatus.reason === "TEMPORARY_CLOSURE" ? "border-red-400/40 bg-red-500/5" :
+                !storeStatus.is_open ? "border-amber-400/40 bg-amber-500/5" :
                 "border-green-400/40 bg-green-500/5"
               }`}>
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-xl">
-                    {actualStatus.reason === "TEMPORARY_CLOSURE" ? "🔴" : !actualStatus.is_open ? "🌙" : "🟢"}
+                    {storeStatus.reason === "TEMPORARY_CLOSURE" ? "🔴" : !storeStatus.is_open ? "🌙" : "🟢"}
                   </span>
                   <span className="font-medium text-sm">
-                    {actualStatus.reason === "TEMPORARY_CLOSURE" ? "Đang tạm đóng cửa" : 
-                     !actualStatus.is_open ? "Đang đóng cửa theo lịch" : "Đang mở cửa bình thường"}
+                    {storeStatus.reason === "TEMPORARY_CLOSURE" ? "Đang tạm đóng cửa" :
+                     !storeStatus.is_open ? "Đang đóng cửa theo lịch" : "Đang mở cửa bình thường"}
                   </span>
                 </div>
                 
-                {actualStatus.reason === "TEMPORARY_CLOSURE" && actualStatus.note && (
+                {storeStatus.reason === "TEMPORARY_CLOSURE" && storeStatus.closure_note && (
                   <p className="text-xs text-muted-foreground mb-3 italic">
-                    Ghi chú: &ldquo;{actualStatus.note}&rdquo;
+                    Ghi chú: &ldquo;{storeStatus.closure_note}&rdquo;
                   </p>
                 )}
 
-                {actualStatus.is_open && (
+                {storeStatus.is_open && (
                   <div className="space-y-2">
                     <textarea
                       id="closure-note-input"
@@ -256,7 +276,7 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
                   </div>
                 )}
 
-                {actualStatus.reason === "TEMPORARY_CLOSURE" && (
+                {storeStatus.reason === "TEMPORARY_CLOSURE" && (
                   <button
                     id="btn-open-store"
                     onClick={handleOpenStore}
@@ -267,7 +287,7 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
                   </button>
                 )}
 
-                {!actualStatus.is_open && actualStatus.reason !== "TEMPORARY_CLOSURE" && (
+                {!storeStatus.is_open && storeStatus.reason !== "TEMPORARY_CLOSURE" && (
                   <p className="text-xs text-muted-foreground">
                     Không thể thao tác đóng cửa khi cửa hàng đang nghỉ. Nếu bạn muốn mở cửa ngay bây giờ, vui lòng điều chỉnh lịch ở bên dưới.
                   </p>
@@ -278,7 +298,7 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
                 )}
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground text-center py-4">Đang tải trạng thái...</div>
+              <div className="text-sm text-muted-foreground text-center py-4">Chưa có dữ liệu trạng thái.</div>
             )}
           </section>
 
@@ -287,7 +307,18 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
             <h3 className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide opacity-70">
               Lịch mở cửa hàng tuần
             </h3>
-            {loading ? (
+            {loadError ? (
+              <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                <p>{loadError}</p>
+                <button
+                  type="button"
+                  onClick={() => void loadData()}
+                  className="mt-3 min-h-11 rounded-lg border border-red-200 bg-white px-3 font-semibold text-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
+                >
+                  Thử lại
+                </button>
+              </div>
+            ) : loading ? (
               <div className="text-sm text-muted-foreground text-center py-8">Đang tải...</div>
             ) : (
               <div className="space-y-3">

@@ -9,6 +9,7 @@ const staticContractTests = [
   "lib/__tests__/bundle-promotion-migration.test.ts",
   "lib/__tests__/extras-migration-contract.test.ts",
   "lib/__tests__/product-discount-scope-migration.test.ts",
+  "lib/__tests__/multi-choice-voucher-scope-migration.test.ts",
   "lib/__tests__/security-logging.test.ts",
   "lib/__tests__/supabase-data-plane-migration.test.ts",
   "lib/__tests__/voucher-architecture-migration.test.ts",

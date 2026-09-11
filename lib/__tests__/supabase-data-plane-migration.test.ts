@@ -57,6 +57,10 @@ const productDiscountScopeMigration = readFileSync(
   join(process.cwd(), "prisma", "migrations", "20260825000000_add_product_discount_scopes", "migration.sql"),
   "utf8",
 );
+const multiChoiceVoucherScopeMigration = readFileSync(
+  join(process.cwd(), "prisma", "migrations", "20260908120000_add_multi_choice_voucher_scopes", "migration.sql"),
+  "utf8",
+);
 const securityPaginationMigration = readFileSync(
   join(process.cwd(), "prisma", "migrations", "20260827094000_harden_function_and_pagination_indexes", "migration.sql"),
   "utf8",
@@ -70,7 +74,7 @@ function prismaTableNames(): string[] {
 
 describe("static SQL contract — Supabase Data API (không thực thi migration)", () => {
   it("bật RLS, không FORCE, cho mọi bảng Prisma quản lý", () => {
-    const hardenedMigrations = `${migration}\n${bundleMigration}\n${unifiedVoucherMigration}\n${baseLiquidMigration}\n${groupedBundleMigration}\n${productDiscountScopeMigration}`;
+    const hardenedMigrations = `${migration}\n${bundleMigration}\n${unifiedVoucherMigration}\n${baseLiquidMigration}\n${groupedBundleMigration}\n${productDiscountScopeMigration}\n${multiChoiceVoucherScopeMigration}`;
     const currentTables = new Set(prismaTableNames());
     const enabledTables = [...new Set([...hardenedMigrations.matchAll(
       /ALTER TABLE (?:IF EXISTS )?public\."([^"]+)" ENABLE ROW LEVEL SECURITY;/g,

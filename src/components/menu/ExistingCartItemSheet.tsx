@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Drawer } from "vaul";
 import { Check, Minus, Plus, Settings2, Trash2, X } from "lucide-react";
-import type { CartItem } from "@/src/lib/types/cart";
+import type { ProjectedCartLine } from "@/src/lib/types/cart";
 import type { AddonGroup, MilkTypeOption } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
 import { formatKa, formatOrderSize } from "@/src/utils/display";
@@ -11,12 +11,12 @@ import { cn } from "@/src/utils/cn";
 
 interface ExistingCartItemSheetProps {
   itemName: string;
-  items: CartItem[];
+  items: ProjectedCartLine[];
   addonGroups: AddonGroup[];
   milkTypes: MilkTypeOption[];
   powders: Powder[];
   onClose: () => void;
-  onEdit: (item: CartItem) => void;
+  onEdit: (item: ProjectedCartLine) => void;
   onAddNew: () => void;
   onUpdateQuantity: (cartId: string, quantity: number) => void;
   onRemoveItem: (cartId: string) => void;
@@ -43,39 +43,42 @@ const ICE_LABEL: Record<string, string> = {
  * Used to show the full configuration in ExistingCartItemSheet.
  */
 function buildDetailTags(
-  item: CartItem,
+  item: ProjectedCartLine,
   addonGroups: AddonGroup[],
   milkTypes: MilkTypeOption[],
   powders: Powder[],
 ): string[] {
   const tags: string[] = [];
 
+  const config = item.configuration;
+  if (config.size === null) return tags;
+
   // Sweetness
-  tags.push(SWEETNESS_LABEL[item.sweetness] ?? item.sweetness);
+  tags.push(SWEETNESS_LABEL[config.sweetness] ?? config.sweetness);
 
   // Ice
-  tags.push(ICE_LABEL[item.iceOption] ?? item.iceOption);
+  tags.push(ICE_LABEL[config.iceOption] ?? config.iceOption);
 
   // Coldwhisk (latte only typically, but show if true)
-  if (item.coldwhisk) tags.push("Cold whisk");
+  if (config.coldwhisk) tags.push("Cold whisk");
 
   // Base Liquid (Latte or Fusion)
-  const selectedBaseLiquidId = item.selectedBaseLiquidId ?? item.selectedMilkTypeId;
+  const selectedBaseLiquidId = config.baseLiquidId;
   if (selectedBaseLiquidId) {
     const liquid = milkTypes.find((m) => m.id === selectedBaseLiquidId);
     if (liquid) tags.push(liquid.name);
   }
 
   // Powder (fusion only)
-  if (item.selectedPowderId) {
-    const powder = powders.find((p) => p.id === item.selectedPowderId);
+  if (config.powderId) {
+    const powder = powders.find((p) => p.id === config.powderId);
     if (powder) tags.push(`Bột ${powder.name}`);
   }
 
   // Addon options (SELECTOR / TOGGLE)
-  if (item.selectedOptionIds.length > 0) {
+  if (config.addonOptionIds.length > 0) {
     const allOptions = addonGroups.flatMap((g) => g.options);
-    for (const optId of item.selectedOptionIds) {
+    for (const optId of config.addonOptionIds) {
       const opt = allOptions.find((o) => o.id === optId);
       if (opt) tags.push(opt.label);
     }
@@ -131,7 +134,7 @@ export function ExistingCartItemSheet({
             {items.map((item) => {
               const isSelected = item.cartId === selectedItem?.cartId;
               const tags = buildDetailTags(item, addonGroups, milkTypes, powders);
-              const hasItemVoucher = !!(item.productVoucherId || (item.addonVouchers && item.addonVouchers.length > 0));
+              const hasItemVoucher = !!(item.lineVoucher || item.addonVouchers.length > 0);
 
               return (
                 <button
@@ -156,7 +159,7 @@ export function ExistingCartItemSheet({
                       {isSelected && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
                     </div>
                     <p className="text-sm font-bold text-primary shrink-0">
-                      {item.size ? formatOrderSize(item.size) : "Add-on"}
+                      {item.configuration.size ? formatOrderSize(item.configuration.size) : "Add-on"}
                     </p>
                     {/* Stepper */}
                     <div className="flex items-center gap-1 bg-primary/5 rounded-full px-1 py-0.5">
@@ -195,7 +198,7 @@ export function ExistingCartItemSheet({
                       </button>
                     </div>
                     <span className="shrink-0 text-sm font-bold text-primary ml-auto">
-                      {formatKa(item.clientPriceVnd * item.quantity, "ceil")}
+                      {formatKa(item.lineTotalVnd, "ceil")}
                     </span>
                   </div>
 
@@ -209,9 +212,9 @@ export function ExistingCartItemSheet({
                         {tag}
                       </span>
                     ))}
-                    {item.note && (
+                    {item.configuration.note && (
                       <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 border border-amber-200/60">
-                        📝 {item.note}
+                        📝 {item.configuration.note}
                       </span>
                     )}
                   </div>

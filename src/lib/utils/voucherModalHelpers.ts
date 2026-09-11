@@ -244,21 +244,29 @@ export function getVoucherBenefitText(v: MyVoucher): string {
       return `Giảm ${(v.discount_value ?? 0).toLocaleString("vi-VN")}đ toàn đơn`;
   }
   if (v.voucher_type === "PRODUCT") {
-    const itemName = v.menuItem?.name ?? "Sản phẩm";
-    return `${itemName}${v.size ? ` Size ${v.size}` : ""} miễn phí`;
+    const targets = v.eligible_menu_items ?? [];
+    if (targets.length > 1) return `Chọn 1 trong ${targets.length} ly miễn phí`;
+    const target = targets[0];
+    const itemName = target?.name ?? v.menuItem?.name ?? "Sản phẩm";
+    return `${itemName}${target?.size || v.size ? ` Size ${target?.size ?? v.size}` : ""} miễn phí`;
   }
   if (v.voucher_type === "PRODUCT_DISCOUNT") {
     const referenceLabel = v.reference_size === "SMALL" ? "nhỏ" : v.reference_size === "LARGE" ? "lớn" : "vừa";
-    return v.product_discount_mode === "PAY_AS_SIZE" ? `Trả giá size ${referenceLabel}` : `Giảm ${(v.discount_value ?? 0).toLocaleString("vi-VN")}đ`;
+    const scopeLabel = (v.eligible_menu_items?.length ?? 0) > 1 ? ` · ${v.eligible_menu_items!.length} món lựa chọn` : "";
+    return `${v.product_discount_mode === "PAY_AS_SIZE" ? `Trả giá size ${referenceLabel}` : `Giảm ${(v.discount_value ?? 0).toLocaleString("vi-VN")}đ`}${scopeLabel}`;
   }
   if (v.voucher_type === "ADDON") {
-    return `Topping ${v.addonOption?.label ?? "Addon"} miễn phí`;
+    const targets = v.eligible_addon_options ?? [];
+    if (targets.length > 1) return `Chọn 1 trong ${targets.length} topping miễn phí`;
+    return `Topping ${targets[0]?.label ?? v.addonOption?.label ?? "Addon"} miễn phí`;
   }
   if (v.voucher_type === "FREESHIP") {
     return `Freeship tối đa ${(v.covered_delivery_fee_vnd ?? 0).toLocaleString("vi-VN")}đ`;
   }
   if (v.voucher_type === "ITEM") {
-    return `${v.menuItem?.name ?? "Add-on"} miễn phí`;
+    const targets = v.eligible_menu_items ?? [];
+    if (targets.length > 1) return `Chọn 1 trong ${targets.length} món miễn phí`;
+    return `${targets[0]?.name ?? v.menuItem?.name ?? "Add-on"} miễn phí`;
   }
   if (v.voucher_type === "BUNDLE") return v.package.description ?? "Ưu đãi mua X tặng Y";
   return v.package.name;
@@ -290,18 +298,26 @@ export function getPackageBenefitText(pkg: VoucherPackage): string {
     if (pkg.discount_type === "FIXED")
       return `Giảm ${(pkg.discount_value ?? 0).toLocaleString("vi-VN")}đ toàn đơn`;
   }
-  if (pkg.voucher_type === "ITEM" && pkg.menuItem) {
-    return `${pkg.menuItem.name} miễn phí`;
+  if (pkg.voucher_type === "ITEM") {
+    const targets = pkg.eligible_menu_items ?? [];
+    if (targets.length > 1) return `Chọn 1 trong ${targets.length} món miễn phí`;
+    if (targets[0] || pkg.menuItem) return `${targets[0]?.name ?? pkg.menuItem?.name} miễn phí`;
   }
-  if (pkg.voucher_type === "PRODUCT" && pkg.menuItem) {
-    return `${pkg.menuItem.name} Size ${pkg.size} miễn phí`;
+  if (pkg.voucher_type === "PRODUCT") {
+    const targets = pkg.eligible_menu_items ?? [];
+    if (targets.length > 1) return `Chọn 1 trong ${targets.length} ly miễn phí`;
+    const target = targets[0];
+    if (target || pkg.menuItem) return `${target?.name ?? pkg.menuItem?.name}${target?.size || pkg.size ? ` Size ${target?.size ?? pkg.size}` : ""} miễn phí`;
   }
   if (pkg.voucher_type === "PRODUCT_DISCOUNT") {
     const referenceLabel = pkg.reference_size === "SMALL" ? "nhỏ" : pkg.reference_size === "LARGE" ? "lớn" : "vừa";
-    return pkg.product_discount_mode === "PAY_AS_SIZE" ? `Trả giá size ${referenceLabel}` : `Giảm ${(pkg.discount_value ?? 0).toLocaleString("vi-VN")}đ`;
+    const scopeLabel = (pkg.eligible_menu_items?.length ?? 0) > 1 ? ` · ${pkg.eligible_menu_items!.length} món lựa chọn` : "";
+    return `${pkg.product_discount_mode === "PAY_AS_SIZE" ? `Trả giá size ${referenceLabel}` : `Giảm ${(pkg.discount_value ?? 0).toLocaleString("vi-VN")}đ`}${scopeLabel}`;
   }
-  if (pkg.voucher_type === "ADDON" && pkg.addonOption) {
-    return `Topping ${pkg.addonOption.label} miễn phí`;
+  if (pkg.voucher_type === "ADDON") {
+    const targets = pkg.eligible_addon_options ?? [];
+    if (targets.length > 1) return `Chọn 1 trong ${targets.length} topping miễn phí`;
+    if (targets[0] || pkg.addonOption) return `Topping ${targets[0]?.label ?? pkg.addonOption?.label} miễn phí`;
   }
   return pkg.description ?? "Ưu đãi đặc biệt";
 }

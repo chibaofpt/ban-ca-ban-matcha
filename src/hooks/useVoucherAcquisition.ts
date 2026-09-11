@@ -28,10 +28,12 @@ export interface VoucherAcquisitionOptions {
 /** Acquire once, then refresh the wallet without repeating the exchange on retry. */
 export function useVoucherAcquisition(options: VoucherAcquisitionOptions = {}) {
   const queryClient = useQueryClient();
-  const defaultRefreshWallet = useCallback(() => queryClient.fetchQuery({
-    queryKey: VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS,
-    queryFn: listMyVouchers,
-  }), [queryClient]);
+  const defaultRefreshWallet = useCallback(async (): Promise<MyVoucher[]> => {
+    const wallet = await listMyVouchers();
+    if (!Array.isArray(wallet)) throw new Error("Ví voucher không hợp lệ");
+    queryClient.setQueryData(VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS, wallet);
+    return wallet;
+  }, [queryClient]);
   const coordinator = useMemo(() => createVoucherAcquisitionCoordinator({
     claimFreeVoucher: options.claimFreeVoucher ?? claimFreeVoucher,
     exchangeVoucher: options.exchangeVoucher ?? (async (packageId: string) => ({

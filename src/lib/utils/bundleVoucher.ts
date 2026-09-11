@@ -1,4 +1,4 @@
-import type { CartBundleApplication, CartItem } from "@/src/lib/types/cart";
+import type { CartBundleApplication, ProjectedCartLine } from "@/src/lib/types/cart";
 import type { Size } from "@/src/lib/types/menu";
 import {
   bundleAvailableProductQuantity,
@@ -91,44 +91,36 @@ export type BundleSelectionState = {
 };
 
 /** Build the client BUNDLE projection with the same personal-voucher masks as the server. */
-export function summarizeBundleCart(items: readonly CartItem[]): BundleCartSummaryItem[] {
+export function summarizeBundleCart(items: readonly ProjectedCartLine[]): BundleCartSummaryItem[] {
   return items.map((item) => {
-    const quantities = new Map(item.selectedOptionIds.map((id) => [id, 1]));
+    const config = item.configuration;
     return {
       client_line_id: item.cartId,
       menu_item_id: item.menuItemId,
-      size: item.size,
+      size: config.size,
       label: item.name,
       quantity: item.quantity,
-      unit_price_vnd: Math.max(0, item.originalClientPriceVnd - item.addonsPrice),
-      product_voucher_quantity: item.itemVoucherId || (item.productVoucherId && item.productVoucherType !== "PRODUCT_DISCOUNT") ? 1 : 0,
-      product_discount_voucher_quantity: item.productVoucherId && item.productVoucherType === "PRODUCT_DISCOUNT" ? 1 : 0,
-      product_discount_vnd: item.productVoucherType === "PRODUCT_DISCOUNT" ? item.productVoucherDiscountVnd ?? 0 : 0,
-      personal_voucher_quantity: Math.min(item.quantity, Math.max(
-        item.productVoucherId ? 1 : 0,
-        item.itemVoucherId ? 1 : 0,
-        item.addonVouchers && item.addonVouchers.length > 0 ? 1 : 0,
-      )),
-      addons: [...quantities.entries()].map(([addonOptionId, quantity]) => ({
-        addon_option_id: addonOptionId,
-        ...(item.addonMetadata?.[addonOptionId]?.addon_group_id
-          ? { addon_group_id: item.addonMetadata[addonOptionId].addon_group_id }
-          : {}),
-        ...(item.addonMetadata?.[addonOptionId]?.max_select === undefined
-          ? {}
-          : { max_select: item.addonMetadata[addonOptionId].max_select }),
-        quantity: quantity * item.quantity,
-        unit_price_vnd: item.addonPrices[addonOptionId] ?? 0,
-        gram_value: item.addonMetadata?.[addonOptionId]?.gram_value ?? null,
-        is_active: item.addonMetadata?.[addonOptionId]?.is_active ?? true,
-        is_deleted: item.addonMetadata?.[addonOptionId]?.is_deleted ?? false,
-        is_dynamic_gram: item.addonMetadata?.[addonOptionId]?.is_dynamic_gram ?? false,
-        voucher_discounted_quantity: item.addonVouchers?.filter(
-          (voucher) => voucher.addonOptionId === addonOptionId,
-        ).length ?? 0,
-        personal_voucher_quantity: item.addonVouchers?.filter(
-          (voucher) => voucher.addonOptionId === addonOptionId,
-        ).length ?? 0,
+      unit_price_vnd: item.drinkPriceVnd,
+      product_voucher_quantity: item.lineVoucher?.kind === "ITEM" || item.lineVoucher?.kind === "PRODUCT" ? 1 : 0,
+      product_discount_voucher_quantity: item.lineVoucher?.kind === "PRODUCT_DISCOUNT" ? 1 : 0,
+      product_discount_vnd: item.lineVoucher?.kind === "PRODUCT_DISCOUNT" ? item.personalVoucherDiscountVnd : 0,
+      personal_voucher_quantity: item.lineVoucher || item.addonVouchers.length > 0 ? 1 : 0,
+      addons: item.resolvedAddons.map((addon) => ({
+        addon_option_id: addon.id,
+        addon_group_id: addon.groupId,
+        max_select: addon.maxSelect,
+        quantity: item.quantity,
+        unit_price_vnd: addon.priceVnd,
+        gram_value: addon.isExtraMatcha ? 1 : null,
+        is_active: true,
+        is_deleted: false,
+        is_dynamic_gram: addon.isExtraMatcha,
+        voucher_discounted_quantity: item.addonVouchers.filter(
+          (voucher) => voucher.addonOptionId === addon.id,
+        ).length,
+        personal_voucher_quantity: item.addonVouchers.filter(
+          (voucher) => voucher.addonOptionId === addon.id,
+        ).length,
       })),
     };
   });

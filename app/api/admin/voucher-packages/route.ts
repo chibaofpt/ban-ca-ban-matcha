@@ -54,6 +54,7 @@ export async function GET() {
         menuItem: { select: { name: true, is_available: true } },
         menuItemScopes: { include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } } },
         addonOption: { select: { label: true } },
+        addonOptionScopes: { include: { addonOption: { select: { label: true, price_vnd: true, is_active: true, gram_value: true } } } },
         bundleRule: { include: {
           productScopes: { include: {
             sizes: true,
@@ -126,14 +127,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (data.voucher_type === "ITEM") {
-      const menuItem = await prisma.menuItem.findUnique({
-        where: { id: data.menu_item_id },
+      const targetIds = data.eligible_menu_item_ids ?? [data.menu_item_id];
+      const menuItems = await prisma.menuItem.findMany({
+        where: { id: { in: targetIds } },
         select: { id: true, category: true, is_available: true, unit_price_vnd: true },
       });
-      if (!menuItem || !menuItem.is_available) {
+      if (menuItems.length !== targetIds.length || menuItems.some((item) => !item.is_available)) {
         return NextResponse.json({ error: "Menu item not found or unavailable", code: "NOT_FOUND" }, { status: 404 });
       }
-      if (menuItem.category !== "extras") {
+      if (menuItems.some((item) => item.category !== "extras")) {
         return NextResponse.json({ error: "ITEM voucher chỉ áp dụng cho món Add-on", code: "VALIDATION_ERROR" }, { status: 400 });
       }
       const pkg = await prisma.voucherPackage.create({
@@ -149,6 +151,7 @@ export async function POST(req: NextRequest) {
           quantity: data.quantity ?? null,
           max_per_user: data.max_per_user ?? 1,
           menu_item_id: data.menu_item_id,
+          menuItemScopes: { create: targetIds.map((menu_item_id) => ({ menu_item_id })) },
         },
       });
       await invalidateVoucherCaches();
@@ -175,8 +178,24 @@ export async function POST(req: NextRequest) {
 
     // For PRODUCT packages — auto-calculate covered_price_vnd via pricing engine
     if (data.voucher_type === "PRODUCT") {
+      const productTargets = data.product_targets ?? [{
+        menu_item_id: data.menu_item_id,
+        size: data.size,
+        matcha_powder_id: data.matcha_powder_id,
+        milk_type_id: data.milk_type_id,
+      }];
+      const pricingCtx = await buildPricingContext();
+      const targetSnapshots: Array<{
+        menu_item_id: string;
+        size: typeof data.size;
+        matcha_powder_id: string | null;
+        milk_type_id: string | null;
+        covered_price_vnd: number;
+      }> = [];
+
+      for (const target of productTargets) {
       const menuItem = await prisma.menuItem.findUnique({
-        where: { id: data.menu_item_id },
+        where: { id: target.menu_item_id },
         include: {
           sizes: true,
           fusionAllowedPowders: true,
@@ -193,15 +212,14 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const sizeRow = menuItem.sizes.find((s) => s.size === data.size);
+      const sizeRow = menuItem.sizes.find((s) => s.size === target.size);
       if (!sizeRow || sizeRow.base_price_vnd === null) {
         return NextResponse.json(
-          { error: `Size ${data.size} is not available for this menu item`, code: "VALIDATION_ERROR" },
+          { error: `Size ${target.size} is not available for this menu item`, code: "VALIDATION_ERROR" },
           { status: 400 }
         );
       }
 
-      const pricingCtx = await buildPricingContext();
       const activePowders = pricingCtx.availablePowders.map((powder) => ({
         ...powder,
         is_available: true,
@@ -228,7 +246,7 @@ export async function POST(req: NextRequest) {
           menuItem.default_powder_id,
           activePowders,
         );
-        const selected_powder_id = data.matcha_powder_id ?? effectiveDefaultPowderId;
+        const selected_powder_id = target.matcha_powder_id ?? effectiveDefaultPowderId;
 
         if (!selected_powder_id) {
           return NextResponse.json(
@@ -238,12 +256,12 @@ export async function POST(req: NextRequest) {
         }
 
         // Validate the selected powder is allowed for this item
-        if (data.matcha_powder_id && data.matcha_powder_id !== effectiveDefaultPowderId) {
+        if (target.matcha_powder_id && target.matcha_powder_id !== effectiveDefaultPowderId) {
           const activePowderIds = new Set(activePowders.map((powder) => powder.id));
           const allowedIds = menuItem.fusionAllowedPowders
             .map((entry) => entry.powder_id)
             .filter((id) => activePowderIds.has(id));
-          if (!allowedIds.includes(data.matcha_powder_id)) {
+          if (!allowedIds.includes(target.matcha_powder_id)) {
             return NextResponse.json(
               { error: "Selected powder is not allowed or active for this fusion item", code: "BUSINESS_RULE_VIOLATION" },
               { status: 422 }
@@ -252,11 +270,11 @@ export async function POST(req: NextRequest) {
         }
 
         powder_id = selected_powder_id;
-        resolved_matcha_powder_id = data.matcha_powder_id ?? null;
+        resolved_matcha_powder_id = target.matcha_powder_id ?? null;
 
         // Compute Premium_Latte for non-default powder
         if (effectiveDefaultPowderId && powder_id !== effectiveDefaultPowderId) {
-          premium_latte = await resolveOrderItemPremiumLatte(powder_id, effectiveDefaultPowderId, data.size);
+          premium_latte = await resolveOrderItemPremiumLatte(powder_id, effectiveDefaultPowderId, target.size);
         }
       }
 
@@ -278,7 +296,7 @@ export async function POST(req: NextRequest) {
           { status: 422 },
         );
       }
-      resolved_milk_type_id = data.milk_type_id ?? defaultBaseLiquidId;
+      resolved_milk_type_id = target.milk_type_id ?? defaultBaseLiquidId;
       if (
         !pricingCtx.availableBaseLiquids?.some((liquid) => liquid.id === resolved_milk_type_id) ||
         (resolved_milk_type_id !== defaultBaseLiquidId && !allowedBaseLiquidIds.includes(resolved_milk_type_id))
@@ -291,7 +309,7 @@ export async function POST(req: NextRequest) {
       const drink_price = resolveOrderItemPrice(
         {
           category: menuItem.category as "latte" | "fusion",
-          size: data.size,
+          size: target.size,
           base_price_vnd: sizeRow.base_price_vnd,
           custom_powder_grams: menuItem.custom_powder_grams as Record<string, number> | null,
           powder_id,
@@ -329,7 +347,16 @@ export async function POST(req: NextRequest) {
       }
 
       // covered_price_vnd = drink price only (PRODUCT covers drink, not addons)
-      const covered_price_vnd = drink_price;
+      targetSnapshots.push({
+        menu_item_id: target.menu_item_id,
+        size: target.size,
+        matcha_powder_id: resolved_matcha_powder_id,
+        milk_type_id: resolved_milk_type_id,
+        covered_price_vnd: drink_price,
+      });
+      }
+
+      const anchor = targetSnapshots.find((target) => target.menu_item_id === data.menu_item_id)!;
 
       const pkg = await prisma.voucherPackage.create({
         data: {
@@ -344,11 +371,14 @@ export async function POST(req: NextRequest) {
           quantity: data.quantity ?? null,
           max_per_user: data.max_per_user ?? 1,
           menu_item_id: data.menu_item_id,
-          size: data.size,
-          matcha_powder_id: resolved_matcha_powder_id,
-          milk_type_id: resolved_milk_type_id,
+          size: anchor.size,
+          matcha_powder_id: anchor.matcha_powder_id,
+          milk_type_id: anchor.milk_type_id,
           included_addon_option_ids: data.included_addon_option_ids,
-          covered_price_vnd,
+          covered_price_vnd: anchor.covered_price_vnd,
+          menuItemScopes: {
+            create: targetSnapshots,
+          },
         },
       });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CartItem } from "@/src/lib/types/cart";
+import { projectedCartLine } from "@/src/__tests__/fixtures/cart";
 import { projectBundleApplications, projectCartTotals, type VoucherProjectionSource } from "@/src/lib/utils/bundleVoucherProjection";
 import { buildBundleApplication, deriveBundleSelectionState, summarizeBundleCart, type BundleVoucherSummary } from "@/src/lib/utils/bundleVoucher";
 
@@ -10,8 +10,8 @@ const PRODUCT_DISCOUNT_TOKEN = "product-discount-token";
 const MENU_A = "menu-a";
 const MENU_B = "menu-b";
 
-function cartItem(overrides: Partial<CartItem> = {}): CartItem {
-  return {
+function cartItem(overrides: Parameters<typeof projectedCartLine>[0] = {}) {
+  return projectedCartLine({
     cartId: BUNDLE_LINE,
     menuItemId: "menu-a",
     name: "Matcha",
@@ -30,7 +30,7 @@ function cartItem(overrides: Partial<CartItem> = {}): CartItem {
     clientPriceVnd: 45_000,
     originalClientPriceVnd: 45_000,
     ...overrides,
-  };
+  });
 }
 
 function bundleVoucher(token = BUNDLE_TOKEN): VoucherProjectionSource {
@@ -119,13 +119,6 @@ describe("Projection BUNDLE và PRODUCT_DISCOUNT", () => {
     );
     expect(extraResult.error_by_token.get(BUNDLE_TOKEN)).toContain("Extra Matcha");
 
-    const inactiveItem = { ...extraMatchaItem, addonMetadata: { "extra-matcha": { gram_value: null, is_dynamic_gram: false, is_active: false, is_deleted: false } } };
-    const inactiveResult = projectBundleApplications(
-      [inactiveItem],
-      [{ voucher_qr_token: BUNDLE_TOKEN, owner_key: "owner", qualifier_allocations: [{ client_line_id: BUNDLE_LINE, quantity: 1 }], reward_allocations: [{ client_line_id: BUNDLE_LINE, addon_option_id: "extra-matcha", quantity: 1 }], created_reward_effects: [] }],
-      [addonVoucher],
-    );
-    expect(inactiveResult.error_by_token.get(BUNDLE_TOKEN)).toContain("no longer available");
   });
 
   it("giữ phần tiền còn trả của PRODUCT_DISCOUNT ngoài BUNDLE", () => {
@@ -160,6 +153,92 @@ describe("Projection BUNDLE và PRODUCT_DISCOUNT", () => {
     expect(result.bundles.bundle_discount_vnd).toBe(45_000);
     expect(result.totals.items_discount_vnd).toBe(55_000);
     expect(result.totals.total_vnd).toBe(80_000);
+  });
+
+  it("áp dụng literal VND theo thứ tự BUNDLE → item/addon → DISCOUNT → FREESHIP", () => {
+    const discount = {
+      ...bundleVoucher("discount"), voucher_type: "DISCOUNT" as const,
+      discount_type: "FIXED" as const, discount_value: 10_000,
+      package: { ...bundleVoucher("discount").package, bundleRule: null },
+    };
+    const percent = {
+      ...discount, qr_token: "percent", discount_type: "PERCENT" as const, discount_value: 10,
+    };
+    const freeship = {
+      ...discount, qr_token: "freeship", voucher_type: "FREESHIP" as const,
+      discount_type: null, discount_value: null, covered_delivery_fee_vnd: 12_000,
+    };
+    const result = projectCartTotals({
+      items: [
+        cartItem(),
+        cartItem({
+          cartId: DISCOUNT_LINE, menuItemId: "menu-b", quantity: 1,
+          unitPrice: 35_000, clientPriceVnd: 35_000, originalClientPriceVnd: 45_000,
+          productVoucherId: PRODUCT_DISCOUNT_TOKEN, productVoucherType: "PRODUCT_DISCOUNT",
+          productVoucherDiscountVnd: 10_000,
+        }),
+        cartItem({
+          cartId: "addon-line", menuItemId: "menu-c", quantity: 1,
+          unitPrice: 20_000, addonsPrice: 10_000, clientPriceVnd: 20_000, originalClientPriceVnd: 30_000,
+          selectedOptionIds: ["pearls"], addonPrices: { pearls: 10_000 },
+          addonMetadata: { pearls: { addon_group_id: "toppings", max_select: 2, gram_value: null } },
+          addonVouchers: [{ voucherId: "addon-voucher", addonOptionId: "pearls", discountVnd: 10_000 }],
+        }),
+      ],
+      applications: [{
+        voucher_qr_token: BUNDLE_TOKEN, owner_key: "owner",
+        qualifier_allocations: [{ client_line_id: BUNDLE_LINE, quantity: 1 }],
+        reward_allocations: [{ client_line_id: BUNDLE_LINE, quantity: 1 }], created_reward_effects: [],
+      }],
+      vouchers: [bundleVoucher(), discount, percent, freeship],
+      selectedVoucherIds: ["discount", "percent", "freeship"],
+      shipping_fee_vnd: 15_000,
+    });
+    expect(result.totals).toMatchObject({
+      subtotal_vnd: 165_000,
+      items_discount_vnd: 65_000,
+      discountable_subtotal_vnd: 100_000,
+      total_voucher_discount_vnd: 19_000,
+      total_vnd: 81_000,
+      freeship_discount_vnd: 12_000,
+      grand_total_vnd: 84_000,
+    });
+  });
+
+  it("chiếu đúng credit PRODUCT và ADDON của target không phải anchor", () => {
+    const productToken = "multi-product-token";
+    const addonToken = "multi-addon-token";
+    const result = projectCartTotals({
+      items: [cartItem({
+        quantity: 1,
+        unitPrice: 75_000,
+        originalClientPriceVnd: 75_000,
+        clientPriceVnd: 7_000,
+        selectedOptionIds: ["addon-b"],
+        addonsPrice: 10_000,
+        addonPrices: { "addon-b": 10_000 },
+        productVoucherId: productToken,
+        productVoucherType: "PRODUCT",
+        productVoucherDiscountVnd: 58_000,
+        addonVouchers: [{ voucherId: addonToken, addonOptionId: "addon-b", discountVnd: 10_000 }],
+      })],
+      applications: [],
+      vouchers: [
+        {
+          ...bundleVoucher(productToken),
+          voucher_type: "PRODUCT",
+          covered_price_vnd: 45_000,
+          eligible_menu_items: [{ menu_item_id: "menu-a", name: "Matcha", category: "latte", is_available: true, is_seasonal: false, covered_price_vnd: 58_000 }],
+          package: { ...bundleVoucher(productToken).package, bundleRule: null },
+        },
+        { ...bundleVoucher(addonToken), voucher_type: "ADDON", covered_price_vnd: 8_000, package: { ...bundleVoucher(addonToken).package, bundleRule: null } },
+      ],
+      selectedVoucherIds: [],
+      shipping_fee_vnd: 0,
+    });
+
+    expect(result.totals.items_discount_vnd).toBe(68_000);
+    expect(result.totals.total_vnd).toBe(7_000);
   });
 
   it("chỉ gắn lỗi projection cho application BUNDLE liên quan", () => {

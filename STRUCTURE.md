@@ -7,9 +7,16 @@
 
 Không duy trì cây thư mục thủ công trong tài liệu này. Dùng `rg --files` để xem cấu trúc thật.
 
-Selector phạm vi PRODUCT_DISCOUNT của admin đặt trong `src/components/admin`; lựa chọn dùng ngay
-của khách nằm trong shared voucher sheet/hook hiện có. Chuẩn hóa và fallback scope thuộc `lib/`,
+Selector phạm vi voucher của admin dùng chung `AdaptiveSelect` multiple trong `src/components/admin`;
+không tạo selector riêng theo voucher type. Lựa chọn dùng ngay của khách nằm trong shared voucher
+sheet/hook hiện có. Chuẩn hóa và fallback scope thuộc `lib/`,
 API URL/types tiếp tục thuộc các voucher service hiện có, còn persistence thuộc Prisma schema/migration.
+`ScopedMenuVoucherPicker` phụ trách bước chọn PRODUCT/ITEM target và tái sử dụng `ProductModal` cho
+customization. `AddonItemPicker` phụ trách chọn ADDON target, cart line và pending intent.
+Cart source model nằm tại `src/lib/types/cart.ts`; shared mutation/projection/serializer và BUNDLE
+candidate resolver nằm trong các module nhỏ tại `src/lib/utils/`. Customer/staff Zustand adapters chỉ
+điều phối runtime state; versioned localStorage migration và safe read/write nằm tại
+`src/lib/store/cartStorage.ts`.
 
 ## Placement
 

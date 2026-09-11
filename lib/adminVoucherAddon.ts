@@ -10,7 +10,10 @@ interface AddonRecord {
 }
 
 export interface AdminVoucherAddonDatabase {
-  addonOption: { findUnique: (args: unknown) => Promise<AddonRecord | null> };
+  addonOption: {
+    findUnique: (args: unknown) => Promise<AddonRecord | null>;
+    findMany?: (args: unknown) => Promise<Array<AddonRecord & { id: string }>>;
+  };
   voucherPackage: { create: (args: unknown) => Promise<unknown> };
 }
 
@@ -27,19 +30,32 @@ export async function createAddonVoucherPackage(
   db: AdminVoucherAddonDatabase,
   data: AddonInput,
 ): Promise<unknown> {
-  const addon = await db.addonOption.findUnique({
-    where: { id: data.addon_option_id },
-    select: {
-      gram_value: true,
-      price_vnd: true,
-      is_active: true,
-      group: { select: { is_active: true } },
-    },
-  });
-  if (!addon || !addon.is_active || !addon.group.is_active) {
+  const targetIds = data.eligible_addon_option_ids ?? [data.addon_option_id];
+  const addons = db.addonOption.findMany
+    ? await db.addonOption.findMany({
+        where: { id: { in: targetIds } },
+        select: {
+          id: true,
+          gram_value: true,
+          price_vnd: true,
+          is_active: true,
+          group: { select: { is_active: true } },
+        },
+      })
+    : [await db.addonOption.findUnique({
+        where: { id: data.addon_option_id },
+        select: {
+          gram_value: true,
+          price_vnd: true,
+          is_active: true,
+          group: { select: { is_active: true } },
+        },
+      })].filter((addon): addon is AddonRecord => addon !== null)
+      .map((addon) => ({ ...addon, id: data.addon_option_id }));
+  if (addons.length !== targetIds.length || addons.some((addon) => !addon.is_active || !addon.group.is_active)) {
     throw new VoucherAddonReferenceError("NOT_FOUND", "Addon option not found");
   }
-  if (addon.gram_value !== null) {
+  if (addons.some((addon) => addon.gram_value !== null)) {
     throw new VoucherAddonReferenceError(
       "VALIDATION_ERROR",
       "ADDON vouchers cannot target Extra Matcha options",
@@ -58,8 +74,11 @@ export async function createAddonVoucherPackage(
       quantity: data.quantity ?? null,
       max_per_user: data.max_per_user,
       addon_option_id: data.addon_option_id,
-      covered_price_vnd: addon.price_vnd,
+      covered_price_vnd: addons.find((addon) => addon.id === data.addon_option_id)?.price_vnd ?? null,
       included_addon_option_ids: [],
+      addonOptionScopes: {
+        create: targetIds.map((addon_option_id) => ({ addon_option_id })),
+      },
     },
   });
 }

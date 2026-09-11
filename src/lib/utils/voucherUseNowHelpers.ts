@@ -1,13 +1,13 @@
 import type { BundleVoucherRule } from "@/src/services/customerVoucherService";
-import type { AddonGroup, MenuItem, MilkTypeOption, SweetnessLevel, Size } from "@/src/lib/types/menu";
-import type { IceOption, CartItem } from "@/src/lib/types/cart";
+import type { AddonGroup, Category, MenuItem, MilkTypeOption, SweetnessLevel, Size } from "@/src/lib/types/menu";
+import type { IceOption, ProjectedCartLine } from "@/src/lib/types/cart";
 
 export type BundleProductScope = BundleVoucherRule["qualifier_products"][number];
 
 export interface BundleItemConfig {
   menuItemId: string;
   name: string;
-  category?: CartItem["category"];
+  category?: Category;
   imageUrl: string | null;
   size: Size | null;
   powderId: string | null;
@@ -20,7 +20,7 @@ export interface BundleItemConfig {
   unitPriceVnd: number;
   addonsCost: number;
   addonPrices: Record<string, number>;
-  addonMetadata?: CartItem["addonMetadata"];
+  addonMetadata?: Record<string, { addon_group_id?: string; max_select?: number; gram_value: number | null; is_active?: boolean; is_deleted?: boolean; is_dynamic_gram?: boolean }>;
 }
 
 export interface CanApplyDiscountResult {
@@ -178,7 +178,7 @@ export function formatBundleSlotConfig(config: BundleItemConfig): string {
  * for the pending slot state of BundleVoucherSetupSheet.
  */
 export function cartItemToBundleConfig(
-  cartItem: CartItem,
+  cartItem: ProjectedCartLine,
   scope: BundleProductScope,
 ): BundleItemConfig {
   return {
@@ -186,18 +186,18 @@ export function cartItemToBundleConfig(
     name: cartItem.name,
     category: cartItem.category,
     imageUrl: cartItem.imageUrl,
-    size: cartItem.size,
-    powderId: cartItem.selectedPowderId ?? scope.default_powder_id ?? null,
-    milkTypeId: cartItem.selectedBaseLiquidId ?? cartItem.selectedMilkTypeId ?? null,
-    baseLiquidId: cartItem.selectedBaseLiquidId ?? cartItem.selectedMilkTypeId ?? null,
-    sweetness: cartItem.sweetness,
-    iceOption: cartItem.iceOption,
-    coldwhisk: cartItem.coldwhisk,
-    selectedOptionIds: cartItem.selectedOptionIds,
-    unitPriceVnd: Math.max(0, cartItem.originalClientPriceVnd - cartItem.addonsPrice),
-    addonsCost: cartItem.addonsPrice,
-    addonPrices: cartItem.addonPrices,
-    addonMetadata: cartItem.addonMetadata,
+    size: cartItem.configuration.size,
+    powderId: cartItem.configuration.size === null ? scope.default_powder_id ?? null : cartItem.configuration.powderId ?? scope.default_powder_id ?? null,
+    milkTypeId: cartItem.configuration.size === null ? null : cartItem.configuration.baseLiquidId ?? null,
+    baseLiquidId: cartItem.configuration.size === null ? null : cartItem.configuration.baseLiquidId ?? null,
+    sweetness: cartItem.configuration.size === null ? "FULL" : cartItem.configuration.sweetness,
+    iceOption: cartItem.configuration.size === null ? "NORMAL" : cartItem.configuration.iceOption,
+    coldwhisk: cartItem.configuration.size === null ? false : cartItem.configuration.coldwhisk,
+    selectedOptionIds: cartItem.configuration.size === null ? [] : cartItem.configuration.addonOptionIds,
+    unitPriceVnd: cartItem.drinkPriceVnd,
+    addonsCost: cartItem.addonsPriceVnd,
+    addonPrices: Object.fromEntries(cartItem.resolvedAddons.map((addon) => [addon.id, addon.priceVnd])),
+    addonMetadata: Object.fromEntries(cartItem.resolvedAddons.map((addon) => [addon.id, { addon_group_id: addon.groupId, max_select: addon.maxSelect, gram_value: addon.isExtraMatcha ? 1 : null, is_active: true, is_deleted: false, is_dynamic_gram: addon.isExtraMatcha }])),
   };
 }
 
@@ -205,7 +205,7 @@ export function cartItemToBundleConfig(
 export function snapshotCartAddonMetadata(
   selectedOptionIds: readonly string[],
   addonGroups: readonly AddonGroup[],
-): NonNullable<CartItem["addonMetadata"]> {
+): NonNullable<BundleItemConfig["addonMetadata"]> {
   const selected = new Set(selectedOptionIds);
   return Object.fromEntries(
     addonGroups.flatMap((group) => group.options

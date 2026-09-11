@@ -8,7 +8,7 @@ interface NavbarOverlaysProps {
   logoutConfirmOpen: boolean;
   onCloseDrawer: () => void;
   onCancelLogout: () => void;
-  onConfirmLogout: () => Promise<void>;
+  onConfirmLogout: () => void | Promise<void>;
 }
 
 /** Render the mobile navigation backdrop and logout confirmation layer. */

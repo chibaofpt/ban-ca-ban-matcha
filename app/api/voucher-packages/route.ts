@@ -14,6 +14,7 @@ import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
 import { toVoucherPackageBundleDto } from "@/lib/voucherBundleDto";
 import {
   loadVoucherAvailabilityCatalog,
+  retainUsableVoucherTargetScopes,
   resolveVoucherTargetAvailability,
   type VoucherAvailabilityDatabase,
   type VoucherBundleRuleSource,
@@ -105,7 +106,8 @@ async function fetchVoucherPackages() {
     include: {
       menuItem: { select: { name: true, is_available: true } },
       menuItemScopes: { include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } } },
-      addonOption: { select: { label: true } },
+        addonOption: { select: { label: true } },
+        addonOptionScopes: { include: { addonOption: { select: { label: true, price_vnd: true, is_active: true, gram_value: true } } } },
       bundleRule: { include: {
         productScopes: { include: {
           sizes: true,
@@ -132,6 +134,7 @@ async function fetchScheduledVoucherPackages(now: Date) {
       menuItem: { select: { name: true, is_available: true } },
       menuItemScopes: { include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } } },
       addonOption: { select: { label: true } },
+      addonOptionScopes: { include: { addonOption: { select: { label: true, price_vnd: true, is_active: true, gram_value: true } } } },
       bundleRule: { include: {
         productScopes: { include: {
           sizes: true,
@@ -160,10 +163,14 @@ async function fetchScheduledVoucherPackages(now: Date) {
       matcha_powder_id: pkg.matcha_powder_id,
       milk_type_id: pkg.milk_type_id,
       addon_option_id: pkg.addon_option_id,
+      addonOptionScopes: pkg.addonOptionScopes,
       package: { bundleRule: pkg.bundleRule as unknown as VoucherBundleRuleSource | null },
     }, catalog);
     return resolved.availability.can_apply
-      ? [toVoucherPackageBundleDto({ ...pkg, bundleRule: resolved.package.bundleRule ?? null } as typeof pkg)]
+      ? [toVoucherPackageBundleDto({
+          ...retainUsableVoucherTargetScopes(pkg, resolved),
+          bundleRule: resolved.package.bundleRule ?? null,
+        } as typeof pkg)]
       : [];
   });
 }

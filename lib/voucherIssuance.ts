@@ -41,7 +41,14 @@ interface VoucherPackageSnapshot {
   max_discount_vnd: number | null;
   ends_at: Date | null;
   bundleRule?: VoucherBundleRuleSource | null;
-  menuItemScopes?: Array<{ menu_item_id: string }>;
+  menuItemScopes?: Array<{
+    menu_item_id: string;
+    size?: Size | null;
+    matcha_powder_id?: string | null;
+    milk_type_id?: string | null;
+    covered_price_vnd?: number | null;
+  }>;
+  addonOptionScopes?: Array<{ addon_option_id: string }>;
 }
 
 interface CreatedVoucher {
@@ -130,6 +137,7 @@ function assertPackageAvailable(
   }
   if (
     pkg.voucher_type === "ADDON" &&
+    (pkg.addonOptionScopes?.length ?? 0) === 0 &&
     (!pkg.addonOption || !pkg.addonOption.is_active || !pkg.addonOption.group.is_active || pkg.addonOption.gram_value !== null)
   ) {
     throw new VoucherIssuanceError("NOT_FOUND", "Voucher package targets an unavailable addon");
@@ -178,7 +186,14 @@ export async function issueVoucherInTransaction(
       bundleRule: {
         include: { productScopes: { include: { sizes: true } }, addonRewards: true },
       },
-      menuItemScopes: { select: { menu_item_id: true }, orderBy: { menu_item_id: "asc" } },
+      menuItemScopes: {
+        select: {
+          menu_item_id: true, size: true, matcha_powder_id: true,
+          milk_type_id: true, covered_price_vnd: true,
+        },
+        orderBy: { menu_item_id: "asc" },
+      },
+      addonOptionScopes: { select: { addon_option_id: true }, orderBy: { addon_option_id: "asc" } },
     },
   });
   assertPackageAvailable(pkg, input.source, now);
@@ -195,6 +210,7 @@ export async function issueVoucherInTransaction(
       matcha_powder_id: pkg.matcha_powder_id,
       milk_type_id: pkg.milk_type_id,
       addon_option_id: pkg.addon_option_id,
+      addonOptionScopes: pkg.addonOptionScopes,
       package: { bundleRule: pkg.bundleRule },
     }, catalog);
     if (!resolved.availability.can_apply) {
@@ -246,8 +262,17 @@ export async function issueVoucherInTransaction(
       max_discount_vnd: pkg.max_discount_vnd,
       status: "ACTIVE",
       expires_at: calculateExpiry(now, pkg.expires_after_days, pkg.ends_at),
-      ...(pkg.voucher_type === "PRODUCT_DISCOUNT" && pkg.menuItemScopes?.length
-        ? { menuItemScopes: { create: pkg.menuItemScopes.map(({ menu_item_id }) => ({ menu_item_id })) } }
+      ...(["ITEM", "PRODUCT", "PRODUCT_DISCOUNT"].includes(pkg.voucher_type) && pkg.menuItemScopes?.length
+        ? { menuItemScopes: { create: pkg.menuItemScopes.map((scope) => ({
+            menu_item_id: scope.menu_item_id,
+            size: scope.size ?? null,
+            matcha_powder_id: scope.matcha_powder_id ?? null,
+            milk_type_id: scope.milk_type_id ?? null,
+            covered_price_vnd: scope.covered_price_vnd ?? null,
+          })) } }
+        : {}),
+      ...(pkg.voucher_type === "ADDON" && pkg.addonOptionScopes?.length
+        ? { addonOptionScopes: { create: pkg.addonOptionScopes.map(({ addon_option_id }) => ({ addon_option_id })) } }
         : {}),
     },
   });

@@ -6,8 +6,7 @@ import {
   BundleRewardSelector,
   type BundleRewardOption,
 } from "@/src/components/shared/BundleRewardSelector";
-import type { CartItem } from "@/src/lib/types/cart";
-import type { CartBundleApplication, BundleCreatedRewardEffect } from "@/src/lib/types/cart";
+import type { BundleRuntimeStatus, CartBundleApplication, BundleCreatedRewardEffect, ProjectedCartLine } from "@/src/lib/types/cart";
 import { summarizeBundleCart, type BundleSelectionAllocation, type BundleVoucherSummary } from "@/src/lib/utils/bundleVoucher";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { cn } from "@/src/utils/cn";
@@ -44,31 +43,31 @@ export function getBundleVoucherSummary(voucher: MyVoucher): BundleVoucherSummar
 
 function getOptions(
   voucher: MyVoucher,
-  cart: CartItem[],
+  cart: ProjectedCartLine[],
   addonLabels: ReadonlyMap<string, string>,
 ): BundleRewardOption[] {
   const summary = getBundleVoucherSummary(voucher);
   const rule = voucher.package.bundleRule;
   if (!summary || !rule) return [];
-  const matchesScope = (item: CartItem, scopes: typeof summary.eligible_products) =>
-    scopes.some((scope) => scope.menu_item_id === item.menuItemId && (item.size === null ? scope.allowed_sizes.length === 0 : scope.allowed_sizes.includes(item.size)));
+  const matchesScope = (item: ProjectedCartLine, scopes: typeof summary.eligible_products) =>
+    scopes.some((scope) => scope.menu_item_id === item.menuItemId && (item.configuration.size === null ? scope.allowed_sizes.length === 0 : scope.allowed_sizes.includes(item.configuration.size)));
   if (summary.reward_kind === "PRODUCT") {
     const rewardScopes = summary.reward_mode === "SAME_CONFIG"
       ? summary.eligible_products
       : summary.reward_products;
     return cart
-      .filter((item) => matchesScope(item, rewardScopes) && item.quantity > (item.productVoucherId ? 1 : 0))
+      .filter((item) => matchesScope(item, rewardScopes) && item.quantity > (item.lineVoucher ? 1 : 0))
       .map((item) => ({
         client_line_id: item.cartId,
-        quantity: item.quantity - (item.productVoucherId ? 1 : 0),
-        label: `${item.name} · ${item.size}`,
+        quantity: item.quantity - (item.lineVoucher ? 1 : 0),
+        label: `${item.name} · ${item.configuration.size ?? "Add-on"}`,
       }));
   }
   const allowedAddonIds = new Set(rule.reward_addon_option_ids);
   return cart
     .filter((item) => matchesScope(item, summary.eligible_products))
     .flatMap((item) => {
-      const quantities = new Map(item.selectedOptionIds.map((id) => [id, 1]));
+      const quantities = new Map((item.configuration.size === null ? [] : item.configuration.addonOptionIds).map((id) => [id, item.quantity]));
       return [...quantities.entries()]
         .filter(([addonOptionId]) => allowedAddonIds.has(addonOptionId))
         .map(([addonOptionId, quantity]) => ({
@@ -89,15 +88,17 @@ export function CartBundleVoucherPanel({
   cart,
   addonLabels,
   bundleApplications,
+  bundleRuntime = {},
   onBundleApplicationChange,
   onRequestRemoveBundle,
   onOpenBundleSetup,
   onRepairBundle,
 }: {
   vouchers: MyVoucher[];
-  cart: CartItem[];
+  cart: ProjectedCartLine[];
   addonLabels: ReadonlyMap<string, string>;
   bundleApplications: CartBundleApplication[];
+  bundleRuntime?: Readonly<Record<string, { status: BundleRuntimeStatus; message?: string }>>;
   onBundleApplicationChange: (voucher: MyVoucher, allocations: BundleSelectionAllocation[], effect?: BundleCreatedRewardEffect) => void;
   onRequestRemoveBundle: (voucherToken: string) => void;
   onOpenBundleSetup?: (voucher: MyVoucher) => void;
@@ -136,6 +137,7 @@ export function CartBundleVoucherPanel({
   const selectedVoucher = vouchers.find((voucher) => voucher.qr_token === activeVoucherToken);
   const summary = selectedVoucher ? getBundleVoucherSummary(selectedVoucher) : null;
   const application = selectedVoucher ? bundleApplications.find((item) => item.voucher_qr_token === selectedVoucher.qr_token) : undefined;
+  const runtime = selectedVoucher ? bundleRuntime[selectedVoucher.qr_token] : undefined;
   const allocations = application?.reward_allocations ?? [];
   const options = selectedVoucher ? getOptions(selectedVoucher, cart, addonLabels) : [];
   const cartSummary = summarizeBundleCart(cart);
@@ -189,9 +191,9 @@ export function CartBundleVoucherPanel({
       ) : null}
       {selectedVoucher && summary ? (
         <>
-          {application && application.status && application.status !== "READY" && onRepairBundle ? (
+          {application && runtime && runtime.status !== "READY" && onRepairBundle ? (
             <div className="flex items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
-              <p className="text-xs font-semibold text-red-800">{application.message ?? "Cần kiểm tra lại ưu đãi"}</p>
+              <p className="text-xs font-semibold text-red-800">{runtime.message ?? "Cần kiểm tra lại ưu đãi"}</p>
               <button
                 type="button"
                 className="min-h-11 shrink-0 rounded-lg bg-red-700 px-3 text-xs font-bold text-white"

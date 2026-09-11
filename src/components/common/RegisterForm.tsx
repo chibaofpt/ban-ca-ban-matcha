@@ -17,6 +17,7 @@ import RegisterStepOne, {
 import RegisterStepTwo, {
   type RegisterStepTwoValues,
 } from "@/src/components/common/register/RegisterStepTwo";
+import { clearPrivateQueryCaches } from "@/src/lib/queryClient";
 
 /** Two-step customer registration wizard with optional Instagram alias. */
 const RegisterForm = () => {
@@ -52,7 +53,7 @@ const RegisterForm = () => {
       ...(values.insta_name ? { insta_name: values.insta_name } : {}),
     };
     const user = await registerRequest(payload);
-    queryClient.removeQueries({ queryKey: ["customer"] });
+    clearPrivateQueryCaches(queryClient);
 
     const from = new URLSearchParams(window.location.search).get("from");
     router.push(from || "/menu");

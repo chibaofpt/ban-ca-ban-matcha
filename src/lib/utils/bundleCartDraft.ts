@@ -1,4 +1,4 @@
-import type { BundleCartDraftCommit, CartBundleApplication, CartItem } from "@/src/lib/types/cart";
+import type { BundleCartDraftCommit, CartBundleApplication, CartItem, ProjectedCartLine } from "@/src/lib/types/cart";
 import { removeBundleEffects, stripBundleAddonSelections } from "@/src/lib/utils/bundleCartEffects";
 import type { BundleItemConfig } from "@/src/lib/utils/voucherUseNowHelpers";
 import { materializeBundleAddonReward, type BundleAddonRewardInput } from "@/src/lib/utils/bundleAddonReward";
@@ -43,6 +43,7 @@ export interface BundleCartDraftResult {
   qualifier_allocations: CartBundleApplication["qualifier_allocations"];
   reward_allocations: CartBundleApplication["reward_allocations"];
   created_reward_effects: CartBundleApplication["created_reward_effects"];
+  projectedItems?: ProjectedCartLine[];
 }
 
 export type BundleCartDraftValidation =
@@ -56,7 +57,10 @@ export function validateBundleCartDraft(input: {
   ownerKey: string;
   siblingApplications?: readonly BundleSelectionSiblingApplication[];
 }): BundleCartDraftValidation {
-  const cart = summarizeBundleCart(input.candidate.items);
+  if (!input.candidate.projectedItems) {
+    return { ok: false, error: "Chưa thể xác minh cấu hình BUNDLE từ catalog hiện hành" };
+  }
+  const cart = summarizeBundleCart(input.candidate.projectedItems);
   const selection = deriveBundleSelectionState({
     voucher: input.voucher,
     cart,
@@ -77,8 +81,6 @@ export function validateBundleCartDraft(input: {
         qualifier_allocations: selection.application.qualifier_allocations,
         reward_allocations: selection.application.reward_allocations,
         created_reward_effects: input.candidate.created_reward_effects,
-        status: "READY",
-        message: selection.message,
       },
     },
   };
@@ -88,10 +90,7 @@ export function validateBundleCartDraft(input: {
 export function revalidateBundleApplications(
   applications: readonly CartBundleApplication[] | undefined,
 ): CartBundleApplication[] | undefined {
-  return applications?.map((application) => ({
-    ...application,
-    status: "REVALIDATING" as const,
-  }));
+  return applications?.map((application) => ({ ...application }));
 }
 
 interface AssignedSlot {
@@ -106,44 +105,27 @@ function createCartItem(
   slot: BundleDraftSlot,
   cartId: string,
   source: CartItem | undefined,
-  voucher_qr_token: string,
+  _voucher_qr_token: string,
 ): CartItem {
   const config = slot.config;
-  const category = config.category ?? source?.category ?? (config.size === null ? "extras" : "latte");
-  const total = config.unitPriceVnd + config.addonsCost;
   return {
     cartId,
     menuItemId: config.menuItemId,
-    name: config.name,
-    category,
-    imageUrl: config.imageUrl,
-    size: config.size,
-    unitPrice: total,
     quantity: 1,
-    sweetness: config.sweetness,
-    iceOption: config.iceOption,
-    coldwhisk: config.coldwhisk,
-    note: source?.note ?? "",
-    selectedOptionIds: [...config.selectedOptionIds],
-    addonsPrice: config.addonsCost,
-    addonPrices: { ...config.addonPrices },
-    addonMetadata: config.addonMetadata ? { ...config.addonMetadata } : undefined,
-    ...(category === "fusion" && config.powderId ? { selectedPowderId: config.powderId } : {}),
-    ...(category !== "extras" && config.baseLiquidId ? { selectedBaseLiquidId: config.baseLiquidId } : {}),
-    clientPriceVnd: total,
-    originalClientPriceVnd: total,
-    ...(source?.productVoucherId === undefined ? {} : { productVoucherId: source.productVoucherId, productVoucherDiscountVnd: source.productVoucherDiscountVnd, productVoucherType: source.productVoucherType }),
-    ...(source?.itemVoucherId === undefined ? {} : { itemVoucherId: source.itemVoucherId }),
-    ...(source?.addonVouchers === undefined ? {} : { addonVouchers: [...source.addonVouchers] }),
-    ...(source?.bundleQualifierVoucherToken && source.bundleQualifierVoucherToken !== voucher_qr_token ? { bundleQualifierVoucherToken: source.bundleQualifierVoucherToken } : {}),
-    ...(source?.bundleRewardVoucherToken && source.bundleRewardVoucherToken !== voucher_qr_token ? { bundleRewardVoucherToken: source.bundleRewardVoucherToken } : {}),
-    ...(slot.role === "qualifier"
-      ? { bundleQualifierVoucherToken: voucher_qr_token }
-      : slot.role === "reward"
-        ? { bundleRewardVoucherToken: voucher_qr_token }
-        : {}),
-    ...(slot.sourceCartId === undefined ? {} : { sourceCartId: slot.sourceCartId }),
-    ...(slot.sourceUnitIndex === undefined ? {} : { sourceUnitIndex: slot.sourceUnitIndex }),
+    configuration: config.size === null
+      ? { size: null, note: source?.configuration.note ?? "" }
+      : {
+          size: config.size,
+          sweetness: config.sweetness,
+          iceOption: config.iceOption,
+          coldwhisk: config.coldwhisk,
+          note: source?.configuration.note ?? "",
+          ...(config.powderId ? { powderId: config.powderId } : {}),
+          ...(config.baseLiquidId ? { baseLiquidId: config.baseLiquidId } : {}),
+          addonOptionIds: [...config.selectedOptionIds],
+        },
+    ...(source?.lineVoucher ? { lineVoucher: source.lineVoucher } : {}),
+    addonVouchers: source?.addonVouchers.filter((voucher) => config.selectedOptionIds.includes(voucher.addonOptionId)) ?? [],
   };
 }
 
@@ -166,7 +148,15 @@ export function buildBundleCartDraft(input: BundleCartDraftInput): BundleCartDra
   const staleLineIds = new Set(
     input.existingApplication?.created_reward_effects.flatMap((effect) => effect.kind === "LINE" ? [effect.client_line_id] : []) ?? [],
   );
-  const baseItems = input.existingApplication ? removeBundleEffects([...input.items], input.existingApplication) : [...input.items];
+  const rawItems = input.items.map((item): CartItem => ({
+    cartId: item.cartId,
+    menuItemId: item.menuItemId,
+    quantity: item.quantity,
+    configuration: item.configuration,
+    ...(item.lineVoucher ? { lineVoucher: item.lineVoucher } : {}),
+    addonVouchers: item.addonVouchers,
+  }));
+  const baseItems = input.existingApplication ? removeBundleEffects(rawItems, input.existingApplication) : rawItems;
   const ownedAddonIdsByLine = new Map<string, Set<string>>();
   for (const effect of input.existingApplication?.created_reward_effects ?? []) if (effect.kind === "ADDON") {
     const ids = ownedAddonIdsByLine.get(effect.client_line_id) ?? new Set<string>();
@@ -284,7 +274,7 @@ export function buildBundleCartDraft(input: BundleCartDraftInput): BundleCartDra
     created_reward_effects = rewardSlots.flatMap((slot, index) => {
       if (!slot) return [];
       const source = slot.sourceCartId ? baseItems.find((item) => item.cartId === slot.sourceCartId) : undefined;
-      return slot.sourceCartId === undefined || source?.bundleRewardVoucherToken === input.voucher_qr_token
+      return slot.sourceCartId === undefined || (source !== undefined && staleLineIds.has(source.cartId))
         ? [{ kind: "LINE" as const, client_line_id: targetIds.get(slotKey("reward", index)) ?? "" }]
         : [];
     });

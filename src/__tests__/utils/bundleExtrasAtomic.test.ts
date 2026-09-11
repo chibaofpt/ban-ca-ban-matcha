@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import type { BundleCartDraftCommit, CartItem } from "@/src/lib/types/cart";
+import type { BundleCartDraftCommit } from "@/src/lib/types/cart";
+import { projectedCartLine } from "@/src/__tests__/fixtures/cart";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import { useStaffCartStore } from "@/src/lib/store/staffCartStore";
 import { buildBundleCartDraft, validateBundleCartDraft, type BundleDraftSlot } from "@/src/lib/utils/bundleCartDraft";
 import type { BundleVoucherSummary } from "@/src/lib/utils/bundleVoucher";
 
-const baseItem = (cartId: string, menuItemId = "drink-1"): CartItem => ({
+const baseItem = (cartId: string, menuItemId = "drink-1") => projectedCartLine({
   cartId,
   menuItemId,
   name: menuItemId === "drink-1" ? "Matcha" : "Quà",
@@ -86,7 +87,7 @@ const summary: BundleVoucherSummary = {
 };
 
 function buildCandidate(rewardMenuItemId = "extra-1") {
-  return buildBundleCartDraft({
+  const candidate = buildBundleCartDraft({
     items: [baseItem("drink-line")],
     voucher_qr_token: summary.qr_token,
     qualifierSlots: [qualifierSlot("drink-line")],
@@ -95,6 +96,18 @@ function buildCandidate(rewardMenuItemId = "extra-1") {
     rewardQuantity: 1,
     createCartId: () => "reward-line",
   });
+  return {
+    ...candidate,
+    projectedItems: candidate.items.map((line) => projectedCartLine({
+      ...line,
+      name: line.menuItemId === "drink-1" ? "Matcha" : "Quà",
+      category: line.configuration.size === null ? "extras" : "latte",
+      size: line.configuration.size,
+      unitPrice: line.configuration.size === null ? 12_000 : 45_000,
+      originalClientPriceVnd: line.configuration.size === null ? 12_000 : 45_000,
+      clientPriceVnd: line.configuration.size === null ? 12_000 : 45_000,
+    })),
+  };
 }
 
 describe("BUNDLE extras setup atomic seam", () => {
@@ -130,10 +143,11 @@ describe("BUNDLE extras setup atomic seam", () => {
     useStaffCartStore.getState().commitBundleCartDraft(staffCommit);
     expect(useCartStore.getState().bundleApplications).toHaveLength(1);
     expect(useStaffCartStore.getState().bundleApplications).toHaveLength(1);
-    expect(useCartStore.getState().bundleApplications[0]?.status).toBe("READY");
-    expect(useStaffCartStore.getState().bundleApplications[0]?.status).toBe("READY");
-    expect(useCartStore.getState().items.find((item) => item.bundleRewardVoucherToken === summary.qr_token)?.category).toBe("extras");
-    expect(useStaffCartStore.getState().items.find((item) => item.bundleRewardVoucherToken === summary.qr_token)?.category).toBe("extras");
+    expect(useCartStore.getState().bundleRuntime[summary.qr_token]?.status).toBe("READY");
+    expect(useStaffCartStore.getState().bundleRuntime[summary.qr_token]?.status).toBe("READY");
+    expect(useCartStore.getState().items.find((item) => item.cartId === "reward-line")?.menuItemId).toBe("extra-1");
+    expect(useStaffCartStore.getState().items.find((item) => item.cartId === "reward-line")?.menuItemId).toBe("extra-1");
+    expect(useCartStore.getState().items.find((item) => item.cartId === "reward-line")).not.toHaveProperty("bundleRewardVoucherToken");
   });
 
   it("keeps extras quick-add on the shared setup route", () => {

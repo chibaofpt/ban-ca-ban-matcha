@@ -1,4 +1,4 @@
-import type { CartBundleApplication, CartItem } from "@/src/lib/types/cart";
+import type { CartBundleApplication, CartItem, ProjectedCartLine } from "@/src/lib/types/cart";
 import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
 import { bundleProductUnitUsage } from "@/src/utils/bundlePromotion";
 
@@ -50,7 +50,7 @@ export function getBundleOutsideAddonQuantity(
 
 /** Calculate one BUNDLE block from allocated units while keeping paid addons separate. */
 export function getBundleCartDisplayTotals(
-  items: CartItem[],
+  items: ProjectedCartLine[],
   allocations: BundleSelectionAllocation[],
   discountVnd: number,
 ): BundleCartDisplayTotals {
@@ -65,7 +65,7 @@ export function getBundleCartDisplayTotals(
   for (const allocation of allocations) {
     if (allocation.addon_option_id) {
       const item = items.find((candidate) => candidate.cartId === allocation.client_line_id);
-      const addonPrice = item?.addonPrices[allocation.addon_option_id] ?? 0;
+      const addonPrice = item?.resolvedAddons.find((addon) => addon.id === allocation.addon_option_id)?.priceVnd ?? 0;
       freeAddonPriceByLine.set(
         allocation.client_line_id,
         (freeAddonPriceByLine.get(allocation.client_line_id) ?? 0) + addonPrice * allocation.quantity,
@@ -77,8 +77,8 @@ export function getBundleCartDisplayTotals(
   let paidToppingsVnd = 0;
   for (const item of items) {
     const quantity = Math.min(item.quantity, quantityByLine.get(item.cartId) ?? 0);
-    grossVnd += item.originalClientPriceVnd * quantity;
-    paidToppingsVnd += Math.max(0, item.addonsPrice * quantity - (freeAddonPriceByLine.get(item.cartId) ?? 0));
+    grossVnd += item.grossUnitPriceVnd * quantity;
+    paidToppingsVnd += Math.max(0, item.addonsPriceVnd * quantity - (freeAddonPriceByLine.get(item.cartId) ?? 0));
   }
   const appliedDiscountVnd = Math.min(grossVnd, Math.max(0, discountVnd));
   return {

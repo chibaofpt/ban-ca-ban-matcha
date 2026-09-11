@@ -4,23 +4,24 @@ import React, { memo } from "react";
 import Image from "next/image";
 import { AlertTriangle, Minus, Plus, Trash2, X, Ticket } from "lucide-react";
 import { cn } from "@/src/utils/cn";
-import type { CartItem } from "@/src/lib/types/cart";
-import type { AddonGroup, MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
+import type { ProjectedCartLine } from "@/src/lib/types/cart";
+import type { MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
 import { formatKa } from "@/src/utils/display";
 
 interface CartItemCardProps {
-  item: CartItem;
+  item: ProjectedCartLine;
   menuItem?: MenuItem;
   powderData?: PowderApiResponse;
   milkTypes: MilkTypeOption[];
-  addonGroups: AddonGroup[];
   allVouchers: MyVoucher[];
   applicableProductVouchers: MyVoucher[];
   applicableAddonVouchers: MyVoucher[];
-  onEdit: (item: CartItem) => void;
+  walletVerified: boolean;
+  voucherReadOnlyReason: string;
+  onEdit: (item: ProjectedCartLine) => void;
   onRemove: (cartId: string) => void;
   onUpdateQuantity: (cartId: string, quantity: number) => void;
   onRemoveProductVoucher: (cartId: string) => void;
@@ -33,7 +34,6 @@ const CartItemCard = ({
   menuItem,
   powderData,
   milkTypes,
-  addonGroups,
   allVouchers,
   applicableProductVouchers,
   applicableAddonVouchers,
@@ -42,19 +42,24 @@ const CartItemCard = ({
   onUpdateQuantity,
   onRemoveProductVoucher,
   onRemoveAddonVoucher,
-  onOpenVoucherPicker
+  onOpenVoucherPicker,
+  walletVerified,
+  voucherReadOnlyReason,
 }: CartItemCardProps) => {
-  const appliedProductVoucherId = item.productVoucherId ?? item.itemVoucherId;
+  const powderId = item.configuration.size === null ? undefined : item.configuration.powderId;
+  const powderName = powderData?.data.find((powder) => powder.id === powderId)?.name;
+  const appliedProductVoucherId = item.lineVoucher?.token;
   const hasMoreProductVouchers = !appliedProductVoucherId && applicableProductVouchers.length > 0;
   const hasMoreAddonVouchers = applicableAddonVouchers.length > 0;
   const hasAvailableVouchers = hasMoreProductVouchers || hasMoreAddonVouchers;
-  const hasAnyVoucher = !!appliedProductVoucherId || (item.addonVouchers && item.addonVouchers.length > 0);
+  const hasAnyVoucher = Boolean(appliedProductVoucherId || (item.addonVouchers && item.addonVouchers.length > 0));
+  const editBlocked = !walletVerified && hasAnyVoucher;
 
   const line1Chips = line1ItemDetails(item, menuItem, milkTypes, powderData?.data);
   const line2Chips = line2ItemDetails(item);
-  const addonChips = addonsDetails(item, menuItem, addonGroups, powderData?.data);
+  const addonChips = addonsDetails(item);
   
-  const noteText = item.note || null;
+  const noteText = item.configuration.note || null;
   const isUnavailable = !menuItem;
 
   if (isUnavailable) {
@@ -97,11 +102,14 @@ const CartItemCard = ({
 
   return (
     <div
-      onClick={() => onEdit(item)}
+      onClick={() => {
+        if (!editBlocked) onEdit(item);
+      }}
       className={cn(
-        "p-3.5 rounded-[1.25rem] bg-white border border-transparent shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] transition-colors flex gap-3.5 cursor-pointer",
-        "hover:border-border/60"
+        "p-3.5 rounded-[1.25rem] bg-white border border-transparent shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] transition-colors flex gap-3.5",
+        editBlocked ? "cursor-not-allowed" : "cursor-pointer hover:border-border/60",
       )}
+      aria-disabled={editBlocked}
     >
       {/* Thumbnail & Stepper */}
       <div className="flex flex-col items-center gap-2 shrink-0">
@@ -144,7 +152,7 @@ const CartItemCard = ({
         {/* Title + Delete */}
         <div className="flex items-start justify-between w-full">
           <h4 className="font-bold text-sm text-primary leading-tight truncate w-4/5 pr-2">
-            {item.name} {item.category === "fusion" && powderData?.data?.find((p) => p.id === item.selectedPowderId)?.name && `- ${powderData?.data?.find((p) => p.id === item.selectedPowderId)?.name}`}
+            {item.name} {item.category === "fusion" && powderName ? `- ${powderName}` : ""}
           </h4>
           <div className="w-1/5 flex justify-end">
             <button
@@ -199,9 +207,12 @@ const CartItemCard = ({
                 <div className="text-[10px] font-bold bg-orange-50 border border-orange-200 text-orange-700 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
                   <Ticket className="w-3 h-3 text-orange-500" /> {pv?.package?.name || "Free món"}
                   <button
+                    type="button"
+                    disabled={!walletVerified}
                     onClick={(e) => { e.stopPropagation(); onRemoveProductVoucher(item.cartId); }}
                     aria-label="Bỏ voucher sản phẩm"
-                    className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-orange-200 text-orange-500 hover:text-orange-700 transition-colors ml-0.5"
+                    title={!walletVerified ? voucherReadOnlyReason : undefined}
+                    className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-orange-200 text-orange-500 hover:text-orange-700 transition-colors ml-0.5 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <X size={12} strokeWidth={2.5} />
                   </button>
@@ -210,14 +221,17 @@ const CartItemCard = ({
             })()}
             {/* Applied: addon vouchers */}
             {item.addonVouchers && item.addonVouchers.map(av => {
-              const voucherInfo = allVouchers.find(v => v.qr_token === av.voucherId);
+              const voucherInfo = allVouchers.find(v => v.qr_token === av.token);
               return (
-                <div key={av.voucherId} className="text-[10px] font-bold bg-green-50 border border-green-200 text-green-700 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                <div key={av.token} className="text-[10px] font-bold bg-green-50 border border-green-200 text-green-700 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
                   <Ticket className="w-3 h-3 text-green-600" /> Free {voucherInfo?.addonOption?.label || "Topping"}
                   <button
-                    onClick={(e) => { e.stopPropagation(); onRemoveAddonVoucher(item.cartId, av.voucherId); }}
+                    type="button"
+                    disabled={!walletVerified}
+                    onClick={(e) => { e.stopPropagation(); onRemoveAddonVoucher(item.cartId, av.token); }}
                     aria-label="Bỏ voucher topping"
-                    className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-green-200 text-green-600 hover:text-green-800 transition-colors ml-0.5"
+                    title={!walletVerified ? voucherReadOnlyReason : undefined}
+                    className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-green-200 text-green-600 hover:text-green-800 transition-colors ml-0.5 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <X size={12} strokeWidth={2.5} />
                   </button>
@@ -227,24 +241,32 @@ const CartItemCard = ({
             {/* Available vouchers CTA */}
             {hasAvailableVouchers && (
               <button
+                type="button"
+                disabled={!walletVerified}
                 onClick={(e) => { e.stopPropagation(); onOpenVoucherPicker(item.cartId); }}
-                className="text-[10px] font-bold bg-white border border-dashed border-orange-300 text-orange-600 px-3 py-1.5 rounded-full flex items-center gap-1 hover:bg-orange-50 hover:border-solid transition-all shadow-sm"
+                title={!walletVerified ? voucherReadOnlyReason : undefined}
+                className="text-[10px] font-bold bg-white border border-dashed border-orange-300 text-orange-600 px-3 py-1.5 rounded-full flex items-center gap-1 hover:bg-orange-50 hover:border-solid transition-all shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Ticket className="w-3 h-3" />
                 Chọn ưu đãi ({applicableProductVouchers.length + applicableAddonVouchers.length})
               </button>
             )}
+            {editBlocked && (
+              <span role="alert" className="basis-full text-[10px] font-medium text-amber-700">
+                {voucherReadOnlyReason} Chỉnh sửa món này đang tạm khóa để bảo toàn voucher.
+              </span>
+            )}
           </div>
 
           {/* Price (Right side) */}
           <div className="flex items-center gap-1.5 shrink-0 justify-end">
-            {item.originalClientPriceVnd > item.clientPriceVnd && (
+            {item.grossUnitPriceVnd > item.payableUnitVnd && (
               <span className="text-[12px] line-through text-primary/30 font-medium">
-                {formatKa(item.originalClientPriceVnd * item.quantity, "ceil")}
+                {formatKa(item.grossUnitPriceVnd * item.quantity, "ceil")}
               </span>
             )}
             <span className="font-bold text-[15px] text-primary">
-              {formatKa(item.clientPriceVnd * item.quantity, "ceil")}
+              {formatKa(item.lineTotalVnd, "ceil")}
             </span>
           </div>
         </div>
@@ -257,5 +279,7 @@ export default memo(CartItemCard, (prev, next) => {
   if (prev.item !== next.item) return false;
   if (prev.applicableProductVouchers.length !== next.applicableProductVouchers.length) return false;
   if (prev.applicableAddonVouchers.length !== next.applicableAddonVouchers.length) return false;
+  if (prev.walletVerified !== next.walletVerified) return false;
+  if (prev.voucherReadOnlyReason !== next.voucherReadOnlyReason) return false;
   return true;
 });

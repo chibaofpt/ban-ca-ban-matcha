@@ -1,4 +1,4 @@
-import type { CartItem } from "@/src/lib/types/cart";
+import type { CartItem, ProjectedCartLine } from "@/src/lib/types/cart";
 
 /** Sums all cart units that refer to one menu item. */
 export function getMenuItemCartQuantity(items: CartItem[], menuItemId: string): number {
@@ -24,7 +24,7 @@ export function getMenuItemCartInfo(items: CartItem[], menuItemId: string): Menu
     if (item.menuItemId !== menuItemId) continue;
     quantity += item.quantity;
     variantCount++;
-    if (item.productVoucherId || item.itemVoucherId || (item.addonVouchers && item.addonVouchers.length > 0)) {
+    if (item.lineVoucher || item.addonVouchers.length > 0) {
       hasVoucher = true;
     }
   }
@@ -34,7 +34,7 @@ export function getMenuItemCartInfo(items: CartItem[], menuItemId: string): Menu
 
 /** Derives checkout points without including shipping in the order-points base. */
 export function deriveCheckoutRewards(
-  items: CartItem[],
+  items: ProjectedCartLine[],
   merchandiseAfterDiscountVnd: number,
   productVoucherCoveredPrices: Readonly<Record<string, number>>,
 ): {
@@ -44,9 +44,9 @@ export function deriveCheckoutRewards(
   totalPoints: number;
 } {
   const surplusVnd = items.reduce((total, item) => {
-    if (!item.productVoucherId) return total;
-    const coveredPriceVnd = productVoucherCoveredPrices[item.productVoucherId] ?? 0;
-    const drinkPriceVnd = Math.max(0, item.originalClientPriceVnd - item.addonsPrice);
+    if (item.lineVoucher?.kind !== "PRODUCT") return total;
+    const coveredPriceVnd = productVoucherCoveredPrices[item.lineVoucher.token] ?? 0;
+    const drinkPriceVnd = item.drinkPriceVnd;
     return total + Math.max(0, coveredPriceVnd - drinkPriceVnd);
   }, 0);
 

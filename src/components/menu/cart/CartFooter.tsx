@@ -48,6 +48,8 @@ interface CartFooterProps {
   grandTotalVnd: number;
   totalAfterDiscountVnd: number;
   hasUnavailableItems: boolean;
+  checkoutBlocked: boolean;
+  checkoutBlockMessage: string | null;
   orderPoints: number;
   surplusPoints: number;
   totalPoints: number;
@@ -84,6 +86,8 @@ export const CartFooter = memo(function CartFooter({
   grandTotalVnd,
   totalAfterDiscountVnd,
   hasUnavailableItems,
+  checkoutBlocked,
+  checkoutBlockMessage,
   orderPoints,
   surplusPoints,
   totalPoints,
@@ -107,6 +111,13 @@ export const CartFooter = memo(function CartFooter({
               ? `Cửa hàng tạm đóng: ${closure_note}`
               : "Cửa hàng hiện đang đóng cửa, chưa thể đặt hàng"}
           </span>
+        </div>
+      )}
+
+      {checkoutBlocked && checkoutBlockMessage && (
+        <div role="alert" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+          <span className="text-xs font-medium leading-snug text-amber-800">{checkoutBlockMessage}</span>
         </div>
       )}
 
@@ -331,12 +342,13 @@ export const CartFooter = memo(function CartFooter({
             itemsLength === 0 || 
             (!!pickupTime && pickupTime < minTimeStr) ||
             hasUnavailableItems ||
+            checkoutBlocked ||
             isStoreClosed ||
             (orderType === "DELIVERY" && (!deliveryAddress || shippingFee === null || !!deliveryError))
           }
           className={cn(
             "flex-[3] py-3.5 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center justify-center gap-1.5",
-            checkout.status === "loading" || (!!pickupTime && pickupTime < minTimeStr) || hasUnavailableItems || isStoreClosed || (orderType === "DELIVERY" && (!deliveryAddress || shippingFee === null || !!deliveryError))
+            checkout.status === "loading" || (!!pickupTime && pickupTime < minTimeStr) || hasUnavailableItems || checkoutBlocked || isStoreClosed || (orderType === "DELIVERY" && (!deliveryAddress || shippingFee === null || !!deliveryError))
               ? "bg-primary/60 text-white cursor-not-allowed"
               : "bg-primary text-white hover:scale-[1.01] active:scale-[0.99]"
           )}

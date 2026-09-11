@@ -5,8 +5,8 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { FormProvider } from "react-hook-form";
 import { AdaptiveSelect } from "@/src/components/shared/AdaptiveSelect";
 import { BundleBenefitFields } from "@/src/components/admin/BundleBenefitFields";
+import { BundleScopeEditor } from "@/src/components/admin/BundleScopeEditor";
 import { VoucherInlineFieldErrors, VoucherIssuanceFields } from "@/src/components/admin/VoucherIssuanceFields";
-import { ProductDiscountTargetSelector } from "@/src/components/admin/ProductDiscountTargetSelector";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 import { buildVoucherInput, describeVoucherDraft, estimateVoucherLiabilityVnd, suggestVoucherCopy, type VoucherCopyLabels, type VoucherDraft, type VoucherType } from "@/src/lib/utils/adminVoucherForm";
@@ -63,10 +63,7 @@ function BenefitFields({ draft, update, menuOptions, bundleMenuItems, addonOptio
 }) {
   if (draft.voucherType === "BUNDLE") return <BundleBenefitFields draft={draft} update={update} menuItems={bundleMenuItems} addonOptions={addonOptions} powderOptions={powderOptions} milkOptions={milkOptions} />;
   if (draft.voucherType === "PRODUCT") {
-    const selectedMenu = bundleMenuItems.find((menu) => menu.id === draft.menuItemId);
-    const allowedBaseLiquidIds = new Set(selectedMenu?.availableBaseLiquidIds ?? []);
-    const itemBaseLiquids = milkOptions.filter((option) => allowedBaseLiquidIds.has(option.value));
-    return <div className="space-y-4"><AdaptiveSelect label="Sản phẩm" options={menuOptions} value={draft.menuItemId} onChange={(value) => { const menu = bundleMenuItems.find((candidate) => candidate.id === value); update("menuItemId", value as string); update("milkTypeId", menu?.availableBaseLiquidIds[0] ?? ""); }} /><AdaptiveSelect label="Size" options={[{ value: "SMALL", label: "Small" }, { value: "MEDIUM", label: "Medium" }, { value: "LARGE", label: "Large" }]} value={draft.size} onChange={(value) => update("size", value as VoucherDraft["size"])} /><AdaptiveSelect label="Bột (nếu áp dụng)" options={[{ value: "", label: "Mặc định" }, ...powderOptions]} value={draft.matchaPowderId} onChange={(value) => update("matchaPowderId", value as string)} />{itemBaseLiquids.length > 0 ? <AdaptiveSelect label="Base Liquid" options={itemBaseLiquids} value={draft.milkTypeId} onChange={(value) => update("milkTypeId", value as string)} /> : null}<VoucherInlineFieldErrors fields={["menuItemId", "size"]} /></div>;
+    return <div className="space-y-4"><BundleScopeEditor label="Sản phẩm được tặng" purpose="PRODUCT" scopes={draft.productTargets} menuItems={bundleMenuItems.filter((menu) => menu.category !== "extras")} powderOptions={powderOptions} milkOptions={milkOptions} onChange={(productTargets) => { update("productTargets", productTargets.slice(0, 100)); update("menuItemId", productTargets[0]?.menuItemId ?? ""); }} /><VoucherInlineFieldErrors fields={["productTargets"]} /></div>;
   }
   if (draft.voucherType === "PRODUCT_DISCOUNT") {
     const sizes = ["SMALL", "MEDIUM", "LARGE"] as const;
@@ -74,7 +71,7 @@ function BenefitFields({ draft, update, menuOptions, bundleMenuItems, addonOptio
     const selectedMenus = bundleMenuItems.filter((menu) => selectedIds.includes(menu.id));
     const sharedSizes = sizes.filter((size) => selectedMenus.length > 0 && selectedMenus.every((menu) => menu.availableSizes.includes(size)));
     return <div className="space-y-4">
-      <ProductDiscountTargetSelector items={bundleMenuItems} selectedIds={selectedIds} onChange={(ids) => { const nextMenus = bundleMenuItems.filter((menu) => ids.includes(menu.id)); const nextShared = sizes.filter((size) => nextMenus.length > 0 && nextMenus.every((menu) => menu.availableSizes.includes(size))); update("eligibleMenuItemIds", ids); update("menuItemId", ids[0] ?? ""); update("eligibleSizes", draft.eligibleSizes.filter((size) => nextShared.includes(size))); if (!nextShared.includes(draft.referenceSize)) update("referenceSize", nextShared[0] ?? "SMALL"); }} />
+      <AdaptiveSelect multiple label="Sản phẩm" options={menuOptions.filter((option) => bundleMenuItems.some((menu) => menu.id === option.value && menu.category !== "extras"))} value={selectedIds} onChange={(value) => { const ids = value as string[]; const nextMenus = bundleMenuItems.filter((menu) => ids.includes(menu.id)); const nextShared = sizes.filter((size) => nextMenus.length > 0 && nextMenus.every((menu) => menu.availableSizes.includes(size))); update("eligibleMenuItemIds", ids.slice(0, 100)); update("menuItemId", ids[0] ?? ""); update("eligibleSizes", draft.eligibleSizes.filter((size) => nextShared.includes(size))); if (!nextShared.includes(draft.referenceSize)) update("referenceSize", nextShared[0] ?? "SMALL"); }} />
       <AdaptiveSelect label="Kiểu giảm" options={[{ value: "FIXED_AMOUNT", label: "Giảm số tiền" }, { value: "PAY_AS_SIZE", label: "Trả giá size vừa" }]} value={draft.productDiscountMode} onChange={(value) => update("productDiscountMode", value as VoucherDraft["productDiscountMode"])} />
       <fieldset className="space-y-2"><legend className="text-sm font-semibold">Size được áp dụng</legend><div className="flex gap-2">{sizes.map((size) => <button key={size} type="button" disabled={!sharedSizes.includes(size)} onClick={() => update("eligibleSizes", draft.eligibleSizes.includes(size) ? draft.eligibleSizes.filter((value) => value !== size) : [...draft.eligibleSizes, size])} className={`min-h-11 min-w-11 rounded-xl border px-3 text-sm disabled:opacity-40 ${draft.eligibleSizes.includes(size) ? "border-primary bg-primary/5" : "border-input"}`}>{size}</button>)}</div></fieldset>
       {draft.productDiscountMode === "FIXED_AMOUNT"
@@ -87,9 +84,10 @@ function BenefitFields({ draft, update, menuOptions, bundleMenuItems, addonOptio
     const extras = bundleMenuItems
       .filter((menu) => menu.category === "extras")
       .map((menu) => ({ value: menu.id, label: menu.name, description: "Add-on" }));
-    return <div className="space-y-2"><AdaptiveSelect label="Add-on" options={extras} value={draft.menuItemId} onChange={(value) => update("menuItemId", value as string)} /><VoucherInlineFieldErrors fields={["menuItemId"]} /></div>;
+    const selectedIds = draft.eligibleMenuItemIds?.length ? draft.eligibleMenuItemIds : draft.menuItemId ? [draft.menuItemId] : [];
+    return <div className="space-y-2"><AdaptiveSelect multiple label="Add-on" options={extras} value={selectedIds} onChange={(value) => { const ids = (value as string[]).slice(0, 100); update("eligibleMenuItemIds", ids); update("menuItemId", ids[0] ?? ""); }} /><VoucherInlineFieldErrors fields={["menuItemId"]} /></div>;
   }
-  if (draft.voucherType === "ADDON") return <div className="space-y-2"><AdaptiveSelect label="Addon được tặng" options={addonOptions} value={draft.addonOptionId} onChange={(value) => update("addonOptionId", value as string)} /><VoucherInlineFieldErrors fields={["addonOptionId"]} /></div>;
+  if (draft.voucherType === "ADDON") return <div className="space-y-2"><AdaptiveSelect multiple label="Addon được tặng" options={addonOptions} value={draft.eligibleAddonOptionIds.length ? draft.eligibleAddonOptionIds : draft.addonOptionId ? [draft.addonOptionId] : []} onChange={(value) => { const ids = (value as string[]).slice(0, 100); update("eligibleAddonOptionIds", ids); update("addonOptionId", ids[0] ?? ""); }} /><VoucherInlineFieldErrors fields={["addonOptionId"]} /></div>;
   if (draft.voucherType === "FREESHIP") return <div className="space-y-4"><NumberField label="Phí giao tối đa được hỗ trợ" value={draft.coveredDeliveryFeeVnd} min={1_000} step={1_000} onChange={(value) => update("coveredDeliveryFeeVnd", value ?? 0)} /><NumberField label="Giá trị đơn tối thiểu" value={draft.minOrderVnd} min={1_000} step={1_000} onChange={(value) => update("minOrderVnd", value)} /><VoucherInlineFieldErrors fields={["coveredDeliveryFeeVnd", "minOrderVnd"]} /></div>;
   return <div className="space-y-4">
     <AdaptiveSelect label="Kiểu giảm" options={[{ value: "PERCENT", label: "Phần trăm" }, { value: "FIXED", label: "Số tiền" }]} value={draft.discountType} onChange={(value) => update("discountType", value as VoucherDraft["discountType"])} />
@@ -146,7 +144,8 @@ export function VoucherWizard(props: VoucherWizardProps) {
     setConfirmOpen(false);
     setStep(1);
     manualCopy.current = { name: false, description: false };
-    close(false);
+    // Stagger close: let ConfirmModal unmount and release scroll lock before closing the overlay
+    setTimeout(() => close(false), 150);
   };
   const next = () => { void validate("step2").then((valid) => { if (valid) setStep(3); }); };
   const submit = () => { void validate().then((valid) => { if (valid) setConfirmOpen(true); }); };

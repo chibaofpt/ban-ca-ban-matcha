@@ -65,7 +65,10 @@ describe("Public identifier resolver", () => {
     expect(mockVoucherFindUnique).toHaveBeenCalledTimes(1);
     expect(mockVoucherFindUnique).toHaveBeenCalledWith({
       where: { qr_token: PUBLIC_TOKEN },
-      include: { menuItemScopes: { select: { menu_item_id: true } } },
+      include: {
+        menuItemScopes: { select: { menu_item_id: true, size: true, matcha_powder_id: true, milk_type_id: true, covered_price_vnd: true } },
+        addonOptionScopes: { select: { addon_option_id: true } },
+      },
     });
     expect(mockRecordFallback).not.toHaveBeenCalled();
   });
@@ -80,7 +83,10 @@ describe("Public identifier resolver", () => {
     expect(voucher?.id).toBe(LEGACY_ID);
     expect(mockVoucherFindUnique).toHaveBeenNthCalledWith(2, {
       where: { id: LEGACY_ID },
-      include: { menuItemScopes: { select: { menu_item_id: true } } },
+      include: {
+        menuItemScopes: { select: { menu_item_id: true, size: true, matcha_powder_id: true, milk_type_id: true, covered_price_vnd: true } },
+        addonOptionScopes: { select: { addon_option_id: true } },
+      },
     });
     expect(mockRecordFallback).toHaveBeenCalledWith("voucher", "owner");
     expect(JSON.stringify(mockRecordFallback.mock.calls)).not.toContain(LEGACY_ID);
@@ -107,9 +113,17 @@ describe("Public identifier resolver", () => {
 
     expect(mockVoucherFindUnique).toHaveBeenNthCalledWith(1, {
       where: { qr_token: LEGACY_ID },
+      include: {
+        menuItemScopes: { select: { menu_item_id: true } },
+        addonOptionScopes: { select: { addon_option_id: true } },
+      },
     });
     expect(mockVoucherFindUnique).toHaveBeenNthCalledWith(2, {
       where: { id: LEGACY_ID },
+      include: {
+        menuItemScopes: { select: { menu_item_id: true } },
+        addonOptionScopes: { select: { addon_option_id: true } },
+      },
     });
     expect(mockRecordFallback).not.toHaveBeenCalled();
   });

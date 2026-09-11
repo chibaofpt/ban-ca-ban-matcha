@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { CartBundleApplication, CartItem } from "@/src/lib/types/cart";
+import type { CartBundleApplication } from "@/src/lib/types/cart";
+import { projectedCartLine } from "@/src/__tests__/fixtures/cart";
 import { useStaffCartStore, migrateStaffCartState } from "@/src/lib/store/staffCartStore";
 import { getBundleOutsideAddonQuantity, getBundleOutsideQuantity } from "@/src/lib/utils/bundleCartSummary";
 import { normalizeStaffBundleApplications } from "@/src/lib/utils/staffBundlePayload";
 
-const item = (cartId: string, quantity = 1, marker?: string): CartItem => ({
+const item = (cartId: string, quantity = 1, marker?: string) => projectedCartLine({
   cartId,
   menuItemId: "latte-1",
   name: "Latte",
@@ -25,13 +26,12 @@ const item = (cartId: string, quantity = 1, marker?: string): CartItem => ({
   ...(marker ? { bundleRewardVoucherToken: marker } : {}),
 });
 
-const application = (token: string, ownerKey: string, effectLine: string, status: "READY" | "CONFLICT" = "READY"): CartBundleApplication => ({
+const application = (token: string, ownerKey: string, effectLine: string, _status: "READY" | "CONFLICT" = "READY"): CartBundleApplication => ({
   voucher_qr_token: token,
   owner_key: ownerKey,
   qualifier_allocations: [{ client_line_id: "buy", quantity: 1 }],
   reward_allocations: [{ client_line_id: effectLine, quantity: 1 }],
   created_reward_effects: [{ kind: "LINE", client_line_id: effectLine }],
-  status,
 });
 
 describe("staff BUNDLE parity contracts", () => {
@@ -54,13 +54,14 @@ describe("staff BUNDLE parity contracts", () => {
     expect(useStaffCartStore.getState().items.map((entry) => entry.cartId)).toEqual(["buy", "mine-effect", "preexisting"]);
   });
 
-  it("rehydrates every persisted READY application as REVALIDATING", () => {
+  it("migration never trusts or persists a READY runtime status", () => {
     const migrated = migrateStaffCartState({
       items: [item("buy")],
       bundleApplications: [application("bundle", "staff:customer", "buy")],
     }, 4);
 
-    expect(migrated.bundleApplications?.[0]?.status).toBe("REVALIDATING");
+    expect(migrated.bundleApplications).toHaveLength(1);
+    expect(migrated.bundleApplications?.[0]).not.toHaveProperty("status");
   });
 
   it("retains an invalid application for the same customer so the UI can repair it", () => {
@@ -72,14 +73,14 @@ describe("staff BUNDLE parity contracts", () => {
     useStaffCartStore.getState().reconcileBundleApplications("staff:customer");
 
     expect(useStaffCartStore.getState().bundleApplications).toHaveLength(1);
-    expect(useStaffCartStore.getState().bundleApplications[0]?.status).toBe("REVALIDATING");
+    expect(useStaffCartStore.getState().bundleApplications[0]).not.toHaveProperty("status");
   });
 
   it("normalizes one READY app with allocations once and excludes invalid apps", () => {
     const normalized = normalizeStaffBundleApplications([
       application("ready", "staff:customer", "reward"),
       application("invalid", "staff:customer", "other", "CONFLICT"),
-    ]);
+    ], new Set(["ready"]));
 
     expect(normalized).toEqual([{
       voucher_qr_token: "ready",

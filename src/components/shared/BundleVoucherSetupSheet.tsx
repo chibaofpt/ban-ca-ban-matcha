@@ -12,17 +12,26 @@ import type { BundleItemConfig, BundleProductScope } from "@/src/lib/utils/vouch
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import type { MenuData, MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
-import type { CartBundleApplication, BundleCartDraftCommit, CartItem } from "@/src/lib/types/cart";
+import type { CartBundleApplication, BundleCartDraftCommit, CartItem, ProjectedCartLine } from "@/src/lib/types/cart";
 import { buildBundleCartDraft, type BundleAddonRecipientSlot, type BundleCartDraftResult, type BundleDraftSlot, type BundleCartDraftValidation } from "@/src/lib/utils/bundleCartDraft";
+import { projectCart } from "@/src/lib/utils/cartProjection";
+import {
+  resolveBundleAutofill,
+  resolveBundleUnitCandidates,
+  type BundleCandidateRole,
+  type BundleUnitCandidate,
+} from "@/src/lib/utils/bundleCandidateResolver";
 import { getBundleRequiredQuantities } from "@/src/utils/bundleSelection";
 import { cn } from "@/src/utils/cn";
 import ProductModal from "@/src/components/shared/ProductModal";
+import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 
 interface BundleVoucherSetupSheetProps {
   open: boolean;
   layer?: OverlayLayer;
   voucher: MyVoucher;
-  cartItems: CartItem[];
+  cartItems: Array<CartItem | ProjectedCartLine>;
+  bundleApplications?: CartBundleApplication[];
   initialApplication?: CartBundleApplication;
   menuData: MenuData;
   milkTypes: MilkTypeOption[];
@@ -30,7 +39,7 @@ interface BundleVoucherSetupSheetProps {
   defaultPowderGram: Array<{ size: "SMALL" | "MEDIUM" | "LARGE"; grams: number }>;
   onClose: () => void;
   onValidateDraft: (draft: BundleCartDraftResult) => BundleCartDraftValidation;
-  onCommitDraft: (draft: BundleCartDraftCommit) => void;
+  onCommitDraft: (draft: BundleCartDraftCommit) => CartMutationResult;
   onSuccess: () => void;
 }
 
@@ -55,19 +64,29 @@ export const BundleVoucherSetupSheet = ({
   layer = "nested",
   voucher,
   cartItems,
+  bundleApplications = [],
   initialApplication,
   menuData,
   milkTypes,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   powders: _powders,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   defaultPowderGram: _defaultPowderGram,
   onClose,
   onValidateDraft,
   onCommitDraft,
   onSuccess,
 }: BundleVoucherSetupSheetProps) => {
-  const items = cartItems;
+  const items = useMemo(() => cartItems.every((item): item is ProjectedCartLine => "grossUnitPriceVnd" in item)
+    ? cartItems
+    : projectCart({
+        items: cartItems,
+        menuData,
+        powderData: { data: _powders, default_powder_gram: _defaultPowderGram },
+        vouchers: [voucher],
+        selectedOrderVoucherTokens: [],
+        bundleApplications: initialApplication ? [initialApplication] : [],
+        shippingFeeVnd: 0,
+      }).lines,
+  [cartItems, menuData, _powders, _defaultPowderGram, voucher, initialApplication]);
   const bundleRule = voucher.package.bundleRule;
 
   const qualifierScopes = useMemo(
@@ -82,41 +101,6 @@ export const BundleVoucherSetupSheet = ({
   }, [bundleRule, qualifierScopes]);
 
   const initialSlots = useMemo(() => {
-    const used = new Set<string>();
-    const allocationQuantities = new Map<string, number>();
-    for (const allocation of [
-      ...(initialApplication?.qualifier_allocations ?? []),
-      ...(initialApplication?.reward_allocations ?? []),
-    ]) {
-      if (!allocation.addon_option_id) {
-        allocationQuantities.set(
-          allocation.client_line_id,
-          (allocationQuantities.get(allocation.client_line_id) ?? 0) + allocation.quantity,
-        );
-      }
-    }
-    const take = (scopes: BundleProductScope[], count: number, role: SlotRole): (BundleSlotConfig | null)[] => {
-      const slots: BundleSlotConfig[] = [];
-      const orderedItems = [...items].sort((left, right) =>
-        Number(allocationQuantities.has(right.cartId)) - Number(allocationQuantities.has(left.cartId)),
-      );
-      for (const item of orderedItems) {
-        const scope = scopes.find((candidate) => candidate.menu_item_id === item.menuItemId);
-        if (role === "qualifier" && item.bundleRewardVoucherToken === voucher.qr_token) continue;
-        if (role === "reward" && item.bundleQualifierVoucherToken === voucher.qr_token) continue;
-        if (!scope || item.productVoucherId || item.itemVoucherId || item.addonVouchers?.length || item.size === null || !scope.allowed_sizes.includes(item.size)) continue;
-        const preferredQuantity = allocationQuantities.get(item.cartId);
-        const availableQuantity = preferredQuantity ?? item.quantity;
-        for (let unitIndex = 0; unitIndex < availableQuantity && slots.length < count; unitIndex += 1) {
-          const unitKey = `${item.cartId}:${unitIndex}`;
-          if (used.has(unitKey)) continue;
-          used.add(unitKey);
-          slots.push({ ...cartItemToBundleConfig(item, scope), sourceCartId: item.cartId, sourceUnitIndex: unitIndex });
-        }
-        if (slots.length === count) break;
-      }
-      return [...slots, ...Array<null>(Math.max(0, count - slots.length)).fill(null)];
-    };
     const qualifierCount = bundleRule?.reward_kind === "ADDON" && bundleRule.benefit_scaling !== "ONCE_PER_ORDER"
       ? (bundleRule.buy_quantity * bundleRule.max_applications_per_order)
       : (bundleRule?.buy_quantity ?? 0);
@@ -124,12 +108,35 @@ export const BundleVoucherSetupSheet = ({
     const qualifierFillCount = bundleRule?.reward_kind === "ADDON" && bundleRule.benefit_scaling !== "ONCE_PER_ORDER"
       ? Math.min(qualifierCount, Math.max(bundleRule.buy_quantity, existingQualifierCount))
       : qualifierCount;
-    const qualifiers = take(qualifierScopes, qualifierFillCount, "qualifier");
+    const resolution = resolveBundleAutofill({
+      items,
+      requirements: [
+        { role: "QUALIFIER", count: qualifierFillCount, scopes: qualifierScopes },
+        ...(bundleRule?.reward_kind === "PRODUCT"
+          ? [{ role: "PRODUCT_REWARD" as const, count: bundleRule.reward_quantity, scopes: rewardScopes }]
+          : []),
+      ],
+      applications: bundleApplications,
+      currentVoucherToken: voucher.qr_token,
+      initialApplication,
+      ...(bundleRule?.reward_mode === "SAME_CONFIG" ? {
+        sameProductRatio: { buyQuantity: bundleRule.buy_quantity, rewardQuantity: bundleRule.reward_quantity },
+      } : {}),
+    });
+    const toSlots = (candidates: readonly BundleUnitCandidate[] | undefined, count: number): (BundleSlotConfig | null)[] => {
+      const slots = (candidates ?? []).map((candidate) => ({
+        ...candidate.configuration,
+        sourceCartId: candidate.cartId,
+        sourceUnitIndex: candidate.unitIndex,
+      }));
+      return [...slots, ...Array<null>(Math.max(0, count - slots.length)).fill(null)];
+    };
+    const qualifiers = toSlots(resolution.selections.QUALIFIER, qualifierFillCount);
     return {
       qualifiers: [...qualifiers, ...Array<null>(Math.max(0, qualifierCount - qualifiers.length)).fill(null)],
-      rewards: take(rewardScopes, bundleRule?.reward_quantity ?? 0, "reward"),
+      rewards: toSlots(resolution.selections.PRODUCT_REWARD, bundleRule?.reward_quantity ?? 0),
     };
-  }, [bundleRule, initialApplication, items, qualifierScopes, rewardScopes, voucher.qr_token]);
+  }, [bundleApplications, bundleRule, initialApplication, items, qualifierScopes, rewardScopes, voucher.qr_token]);
 
   // N qualifier slots — array of null (empty) or filled BundleItemConfig
   const [qualifierSlots, setQualifierSlots] = useState<(BundleSlotConfig | null)[]>(() => initialSlots.qualifiers);
@@ -148,34 +155,68 @@ export const BundleVoucherSetupSheet = ({
       .filter((option) => allowed.has(option.id))
       .map((option) => ({ group, option, valid: !group.is_dynamic_gram && option.gram_value === null })));
   }, [bundleRule, menuData.addon_groups]);
+
+  const initialAddonRequired = bundleRule?.reward_kind === "ADDON"
+    ? getBundleRequiredQuantities(bundleRule, initialSlots.qualifiers.filter(Boolean).length)
+    : null;
+  const persistedAddonOptionId = bundleRule?.reward_kind === "ADDON"
+    ? initialApplication?.reward_allocations.find((allocation) => allocation.addon_option_id)?.addon_option_id ?? null
+    : null;
+  const initialAddonPlan = useMemo(() => {
+    if (!bundleRule || bundleRule.reward_kind !== "ADDON" || !initialAddonRequired?.valid) return null;
+    const candidates = addonChoices.filter((choice) => choice.valid).map((choice) => ({
+      optionId: choice.option.id,
+      resolution: resolveBundleAutofill({
+        items,
+        requirements: [{
+          role: "ADDON_RECIPIENT",
+          count: initialAddonRequired.rewards,
+          scopes: qualifierScopes,
+          addon: { group: choice.group, optionId: choice.option.id },
+        }],
+        applications: bundleApplications,
+        currentVoucherToken: voucher.qr_token,
+        initialApplication: persistedAddonOptionId === choice.option.id ? initialApplication : undefined,
+      }),
+    }));
+    if (persistedAddonOptionId) return candidates.find((candidate) =>
+      candidate.optionId === persistedAddonOptionId && candidate.resolution.status === "PERSISTED") ?? null;
+    const unique = candidates.filter((candidate) => candidate.resolution.status === "UNIQUE");
+    return unique.length === 1 && !candidates.some((candidate) => candidate.resolution.status === "AMBIGUOUS")
+      ? unique[0]
+      : null;
+  }, [addonChoices, bundleApplications, bundleRule, initialAddonRequired, initialApplication, items, persistedAddonOptionId, qualifierScopes, voucher.qr_token]);
+  const [addonOptionId, setAddonOptionId] = useState<string | null>(() => initialAddonPlan?.optionId ?? persistedAddonOptionId);
+
   const addonRecipientSlots = useMemo<readonly (BundleAddonRecipientSlot | null)[]>(() => {
-    if (!bundleRule || bundleRule.reward_kind !== "ADDON") return [];
-    return items.flatMap((item) => {
-      const scope = qualifierScopes.find((candidate) => candidate.menu_item_id === item.menuItemId);
-      if (!scope || item.bundleRewardVoucherToken || item.productVoucherId || item.itemVoucherId || item.addonVouchers?.length || item.size === null || !scope.allowed_sizes.includes(item.size)) return [];
-      const config = cartItemToBundleConfig(item, scope);
-      return Array.from({ length: item.quantity }, (_, sourceUnitIndex) => ({ config, sourceCartId: item.cartId, sourceUnitIndex }));
+    if (!bundleRule || bundleRule.reward_kind !== "ADDON" || !addonOptionId) return [];
+    const choice = addonChoices.find((candidate) => candidate.option.id === addonOptionId);
+    if (!choice) return [];
+    return resolveBundleUnitCandidates({
+      items,
+      requirement: {
+        role: "ADDON_RECIPIENT",
+        count: 1,
+        scopes: qualifierScopes,
+        addon: { group: choice.group, optionId: choice.option.id },
+      },
+      applications: bundleApplications,
+      currentVoucherToken: voucher.qr_token,
+    }).filter((candidate) => candidate.conflicts.length === 0).map((candidate) => ({
+      config: candidate.configuration,
+      sourceCartId: candidate.cartId,
+      sourceUnitIndex: candidate.unitIndex,
+    }));
+  }, [addonChoices, addonOptionId, bundleApplications, bundleRule, items, qualifierScopes, voucher.qr_token]);
+  const initialAddonRecipientIndexes = useMemo(() => {
+    const selected = initialAddonPlan?.resolution.selections.ADDON_RECIPIENT ?? [];
+    return selected.flatMap((candidate) => {
+      const index = addonRecipientSlots.findIndex((slot) =>
+        slot?.sourceCartId === candidate.cartId && slot.sourceUnitIndex === candidate.unitIndex);
+      return index < 0 ? [] : [index];
     });
-  }, [bundleRule, items, qualifierScopes]);
-  const initialAddonState = useMemo<{ optionId: string | null; recipientSlotIndexes: number[] }>(() => {
-    if (!bundleRule || bundleRule.reward_kind !== "ADDON") return { optionId: null, recipientSlotIndexes: [] };
-    const allowed = new Set(bundleRule.reward_addon_option_ids);
-    const optionId = initialApplication?.reward_allocations.find((allocation) => allocation.addon_option_id && allowed.has(allocation.addon_option_id))?.addon_option_id ?? null;
-    const used = new Set<number>();
-    const recipientSlotIndexes: number[] = [];
-    for (const allocation of initialApplication?.reward_allocations ?? []) {
-      if (!allocation.addon_option_id || allocation.addon_option_id !== optionId) continue;
-      for (let count = 0; count < allocation.quantity; count += 1) {
-        const index = addonRecipientSlots.findIndex((slot, slotIndex) => slot?.sourceCartId === allocation.client_line_id && !used.has(slotIndex));
-        if (index < 0) break;
-        used.add(index);
-        recipientSlotIndexes.push(index);
-      }
-    }
-    return { optionId, recipientSlotIndexes };
-  }, [addonRecipientSlots, bundleRule, initialApplication]);
-  const [addonOptionId, setAddonOptionId] = useState<string | null>(() => initialAddonState.optionId);
-  const [addonRecipientSlotIndexes, setAddonRecipientSlotIndexes] = useState<number[]>(() => initialAddonState.recipientSlotIndexes);
+  }, [addonRecipientSlots, initialAddonPlan]);
+  const [addonRecipientSlotIndexes, setAddonRecipientSlotIndexes] = useState<number[]>(() => initialAddonRecipientIndexes);
 
   const [subView, setSubView] = useState<SubView>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
@@ -200,23 +241,69 @@ export const BundleVoucherSetupSheet = ({
     setSubView(null);
     setQualifierSlots(initialSlots.qualifiers);
     setRewardSlots(needsRewardSlots ? initialSlots.rewards : []);
-    setAddonOptionId(initialAddonState.optionId);
-    setAddonRecipientSlotIndexes(initialAddonState.recipientSlotIndexes);
+    setAddonOptionId(initialAddonPlan?.optionId ?? persistedAddonOptionId);
+    setAddonRecipientSlotIndexes(initialAddonRecipientIndexes);
     onClose();
-  }, [initialAddonState, initialSlots, needsRewardSlots, onClose]);
+  }, [initialAddonPlan, initialAddonRecipientIndexes, initialSlots, needsRewardSlots, onClose, persistedAddonOptionId]);
 
   // ── Scope lists ───────────────────────────────────────────────────────────
-  const currentScopes = subView?.kind === "pick"
+  const currentScopes = useMemo(() => subView?.kind === "pick"
     ? subView.role === "qualifier" ? qualifierScopes : rewardScopes
-    : [];
+    : [], [qualifierScopes, rewardScopes, subView]);
+
+  const existingCandidateGroups = useMemo(() => {
+    if (subView?.kind !== "pick") return [];
+    const role: BundleCandidateRole = subView.role === "qualifier" ? "QUALIFIER" : "PRODUCT_REWARD";
+    const selectedSlots = [...qualifierSlots, ...rewardSlots].filter(
+      (slot): slot is BundleSlotConfig => Boolean(slot?.sourceCartId && slot.sourceUnitIndex !== undefined),
+    );
+    const editedSlot = subView.role === "qualifier"
+      ? qualifierSlots[subView.slotIndex]
+      : rewardSlots[subView.slotIndex];
+    const occupied = new Set(selectedSlots
+      .filter((slot) => slot !== editedSlot)
+      .map((slot) => `${slot.sourceCartId}:${slot.sourceUnitIndex}`));
+    const qualifierKeys = new Set(qualifierSlots.flatMap((slot) =>
+      slot?.sourceCartId && slot.sourceUnitIndex !== undefined
+        ? [`${slot.sourceCartId}:${slot.sourceUnitIndex}`]
+        : []));
+    const candidates = resolveBundleUnitCandidates({
+      items,
+      requirement: { role, count: 1, scopes: currentScopes },
+      applications: bundleApplications,
+      currentVoucherToken: voucher.qr_token,
+      qualifierUnitKeys: qualifierKeys,
+    }).filter((candidate) => candidate.conflicts.length === 0
+      && !occupied.has(`${candidate.cartId}:${candidate.unitIndex}`));
+    const groups = new Map<string, BundleUnitCandidate[]>();
+    for (const candidate of candidates) groups.set(candidate.cartId, [...(groups.get(candidate.cartId) ?? []), candidate]);
+    return [...groups.values()];
+  }, [bundleApplications, currentScopes, items, qualifierSlots, rewardSlots, subView, voucher.qr_token]);
+
+  const selectExistingCandidate = useCallback((candidate: BundleUnitCandidate) => {
+    if (subView?.kind !== "pick") return;
+    const config: BundleSlotConfig = {
+      ...candidate.configuration,
+      sourceCartId: candidate.cartId,
+      sourceUnitIndex: candidate.unitIndex,
+    };
+    const update = (previous: (BundleSlotConfig | null)[]) => {
+      const next = [...previous];
+      next[subView.slotIndex] = config;
+      return next;
+    };
+    if (subView.role === "qualifier") setQualifierSlots(update);
+    else setRewardSlots(update);
+    setSubView(null);
+  }, [subView]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
   const handleProductModalConfirm = useCallback(
-    (cartItem: CartItem) => {
-      if (subView?.kind !== "customize") return;
+    (_cartItem: CartItem, projection?: ProjectedCartLine) => {
+      if (subView?.kind !== "customize" || !projection) return;
       const { role, slotIndex, scope } = subView;
-      const config = cartItemToBundleConfig(cartItem, scope);
+      const config = cartItemToBundleConfig(projection, scope);
       if (role === "qualifier") {
         setQualifierSlots((prev) => {
           const next = [...prev];
@@ -302,17 +389,30 @@ export const BundleVoucherSetupSheet = ({
         } : {}),
         existingApplication: initialApplication,
       });
-      const validation = onValidateDraft(candidate);
+      const projectedItems = projectCart({
+        items: candidate.items,
+        menuData,
+        powderData: { data: _powders, default_powder_gram: _defaultPowderGram },
+        vouchers: [voucher],
+        selectedOrderVoucherTokens: [],
+        bundleApplications: [],
+        shippingFeeVnd: 0,
+      }).lines;
+      const validation = onValidateDraft({ ...candidate, projectedItems });
       if (!validation.ok) {
         setSetupError(validation.error);
         return;
       }
-      onCommitDraft(validation.draft);
+      const commit = onCommitDraft(validation.draft);
+      if (!commit.ok) {
+        setSetupError(commit.message);
+        return;
+      }
       onSuccess();
     } catch (error: unknown) {
       setSetupError(error instanceof Error ? error.message : "Không thể chuẩn bị ưu đãi BUNDLE");
     }
-  }, [addonOptionId, addonRecipientSlots, bundleRule, canConfirm, initialApplication, items, menuData.addon_groups, onCommitDraft, onSuccess, onValidateDraft, qualifierSlots, rewardSlots, validAddonRecipientIndexes, voucher.qr_token]);
+  }, [_defaultPowderGram, _powders, addonOptionId, addonRecipientSlots, bundleRule, canConfirm, initialApplication, items, menuData, onCommitDraft, onSuccess, onValidateDraft, qualifierSlots, rewardSlots, validAddonRecipientIndexes, voucher]);
 
   if (!bundleRule) return null;
 
@@ -390,6 +490,33 @@ export const BundleVoucherSetupSheet = ({
   /** List of scope items for the pick sub-view. */
   const renderScopeList = () => (
     <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none">
+      {existingCandidateGroups.length > 0 ? (
+        <div className="border-b border-border/60 p-3">
+          <p className="mb-2 text-xs font-bold uppercase text-primary/55">Món có sẵn trong giỏ</p>
+          <div className="space-y-2">
+            {existingCandidateGroups.map((candidates) => {
+              const candidate = candidates[0];
+              return (
+                <button
+                  key={candidate.cartId}
+                  type="button"
+                  onClick={() => selectExistingCandidate(candidate)}
+                  className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-primary/15 bg-primary/[0.03] px-3 py-2 text-left active:scale-[0.99]"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-primary">{candidate.configuration.name}</p>
+                    <p className="text-xs text-primary/55">{formatBundleSlotConfig(candidate.configuration)}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-primary/10 px-2 py-1 text-xs font-bold text-primary">
+                    {candidates.length} ly
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      <p className="px-4 pb-1 pt-3 text-xs font-bold uppercase text-primary/55">Thêm món mới</p>
       {currentScopes.map((scope, idx) => {
         const menuItem = findMenuItem(menuData, scope.menu_item_id);
         return (
@@ -437,27 +564,46 @@ export const BundleVoucherSetupSheet = ({
         : rewardSlots[subView.slotIndex];
 
     // Build a CartItem stub for edit mode pre-population
-    const editingItem: CartItem | undefined = existingConfig
+    const editingItem: ProjectedCartLine | undefined = existingConfig
       ? {
           cartId: `pending-${subView.role}-${subView.slotIndex}`,
           menuItemId: existingConfig.menuItemId,
+          quantity: 1,
+          configuration: existingConfig.size === null
+            ? { size: null, note: "" }
+            : {
+                size: existingConfig.size,
+                sweetness: existingConfig.sweetness,
+                iceOption: existingConfig.iceOption,
+                coldwhisk: existingConfig.coldwhisk,
+                note: "",
+                ...(existingConfig.baseLiquidId ? { baseLiquidId: existingConfig.baseLiquidId } : {}),
+                ...(existingConfig.powderId ? { powderId: existingConfig.powderId } : {}),
+                addonOptionIds: existingConfig.selectedOptionIds,
+              },
+          addonVouchers: [],
           name: existingConfig.name,
           category: menuItem.category,
           imageUrl: existingConfig.imageUrl,
-          size: existingConfig.size,
-          unitPrice: existingConfig.unitPriceVnd,
-          quantity: 1,
-          sweetness: existingConfig.sweetness,
-          iceOption: existingConfig.iceOption,
-          coldwhisk: existingConfig.coldwhisk,
-          note: "",
-          selectedOptionIds: existingConfig.selectedOptionIds,
-          addonsPrice: existingConfig.addonsCost,
-          addonPrices: existingConfig.addonPrices,
-          clientPriceVnd: existingConfig.unitPriceVnd,
-          originalClientPriceVnd: existingConfig.unitPriceVnd,
-          selectedBaseLiquidId: existingConfig.baseLiquidId ?? undefined,
-          selectedPowderId: existingConfig.powderId ?? undefined,
+          menuItem,
+          resolvedAddons: existingConfig.selectedOptionIds.map((id) => ({
+            id,
+            label: menuData.addon_groups.flatMap((group) => group.options).find((option) => option.id === id)?.label ?? id,
+            priceVnd: existingConfig.addonPrices[id] ?? 0,
+            groupId: existingConfig.addonMetadata?.[id]?.addon_group_id ?? "",
+            groupName: "",
+            maxSelect: existingConfig.addonMetadata?.[id]?.max_select ?? 1,
+            isExtraMatcha: existingConfig.addonMetadata?.[id]?.gram_value !== null,
+          })),
+          drinkPriceVnd: existingConfig.unitPriceVnd,
+          addonsPriceVnd: existingConfig.addonsCost,
+          grossUnitPriceVnd: existingConfig.unitPriceVnd + existingConfig.addonsCost,
+          personalVoucherDiscountVnd: 0,
+          bundleDiscountVnd: 0,
+          payableUnitVnd: existingConfig.unitPriceVnd + existingConfig.addonsCost,
+          lineTotalVnd: existingConfig.unitPriceVnd + existingConfig.addonsCost,
+          errors: [],
+          revalidating: false,
         }
       : undefined;
 
@@ -568,7 +714,10 @@ export const BundleVoucherSetupSheet = ({
                       type="button"
                       disabled={!valid}
                       aria-pressed={addonOptionId === option.id}
-                      onClick={() => setAddonOptionId(option.id)}
+                      onClick={() => {
+                        setAddonOptionId(option.id);
+                        setAddonRecipientSlotIndexes([]);
+                      }}
                       className={cn(
                         "min-h-11 rounded-xl border px-3 py-2 text-left text-sm font-semibold",
                         addonOptionId === option.id ? "border-orange-600 bg-orange-50 text-orange-900" : "border-orange-200 bg-white",

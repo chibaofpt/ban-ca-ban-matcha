@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AddonGroup } from "@/src/lib/types/menu";
-import type { CartBundleApplication, CartItem } from "@/src/lib/types/cart";
+import type { CartBundleApplication } from "@/src/lib/types/cart";
+import { projectedCartLine } from "@/src/__tests__/fixtures/cart";
 import type { BundleItemConfig } from "@/src/lib/utils/voucherUseNowHelpers";
 import { buildBundleCartDraft, validateBundleCartDraft, type BundleCartDraftResult } from "@/src/lib/utils/bundleCartDraft";
 import { resolveBundleSelectionSiblings, type BundleVoucherSummary } from "@/src/lib/utils/bundleVoucher";
@@ -39,8 +40,8 @@ const summary = (token: string, addonId: string): BundleVoucherSummary => ({
   min_order_vnd: null,
 });
 
-function item(cartId: string, selectedOptionIds: string[] = [], addonPrices: Record<string, number> = {}): CartItem {
-  return {
+function item(cartId: string, selectedOptionIds: string[] = [], addonPrices: Record<string, number> = {}) {
+  return projectedCartLine({
     cartId,
     menuItemId: "drink",
     name: "Matcha",
@@ -59,7 +60,7 @@ function item(cartId: string, selectedOptionIds: string[] = [], addonPrices: Rec
     addonMetadata: Object.fromEntries(selectedOptionIds.map((id) => [id, { addon_group_id: addonGroup.id, max_select: 2, gram_value: null, is_active: true, is_deleted: false, is_dynamic_gram: false }])),
     clientPriceVnd: 45_000 + Object.values(addonPrices).reduce((sum, price) => sum + price, 0),
     originalClientPriceVnd: 45_000 + Object.values(addonPrices).reduce((sum, price) => sum + price, 0),
-  };
+  });
 }
 
 function config(selectedOptionIds: string[] = [], addonPrices: Record<string, number> = {}): BundleItemConfig {
@@ -102,13 +103,12 @@ function previousApplication(token: string, optionId: string, qualifierLine: str
     qualifier_allocations: [{ client_line_id: qualifierLine, quantity: 1 }],
     reward_allocations: [{ client_line_id: "recipient", addon_option_id: optionId, quantity: 1 }],
     created_reward_effects: [],
-    status: "READY",
   };
 }
 
 function candidate(): BundleCartDraftResult {
   let generatedId = 0;
-  return buildBundleCartDraft({
+  const result = buildBundleCartDraft({
     items: [item("current-qualifier"), item("sibling-qualifier"), item("recipient", [ADDON_B], { [ADDON_B]: 12_000 })],
     voucher_qr_token: CURRENT,
     qualifierSlots: [{ role: "qualifier", config: config(), sourceCartId: "current-qualifier", sourceUnitIndex: 0 }],
@@ -119,6 +119,15 @@ function candidate(): BundleCartDraftResult {
     addonRecipientSlots: [{ config: config([ADDON_B], { [ADDON_B]: 12_000 }), sourceCartId: "recipient", sourceUnitIndex: 0 }],
     createCartId: () => `generated-${generatedId++}`,
   });
+  return {
+    ...result,
+    projectedItems: result.items.map((line) => {
+      const selected = line.configuration.size === null ? [] : line.configuration.addonOptionIds;
+      const addonPrices = Object.fromEntries(selected.map((id) => [id, id === ADDON_B ? 12_000 : 10_000]));
+      const addonsPrice = Object.values(addonPrices).reduce((sum, price) => sum + price, 0);
+      return projectedCartLine({ ...line, size: line.configuration.size, selectedOptionIds: selected, addonPrices, addonsPrice, unitPrice: 45_000 + addonsPrice, originalClientPriceVnd: 45_000 + addonsPrice, clientPriceVnd: 45_000 + addonsPrice });
+    }),
+  };
 }
 
 describe("BUNDLE sibling validation", () => {
@@ -156,7 +165,7 @@ describe("BUNDLE sibling validation", () => {
     const currentCandidate = candidate();
     const customer = validateBundleCartDraft({ voucher: summary(CURRENT, ADDON_A), candidate: currentCandidate, ownerKey: "customer:qr-1", siblingApplications: resolved.siblings });
     const staff = validateBundleCartDraft({ voucher: summary(CURRENT, ADDON_A), candidate: currentCandidate, ownerKey: "staff:qr-1", siblingApplications: resolved.siblings });
-    expect(customer).toMatchObject({ ok: false, error: expect.stringContaining("trùng") });
-    expect(staff).toMatchObject({ ok: false, error: expect.stringContaining("trùng") });
+    expect(customer).toMatchObject({ ok: false, error: expect.stringContaining("exceeds its selection limit") });
+    expect(staff).toMatchObject({ ok: false, error: expect.stringContaining("exceeds its selection limit") });
   });
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useCustomerAddresses, useCreateAddress } from "@/src/hooks/useCustomerAddresses";
 import { deliveryService } from "@/src/services/deliveryService";
 import type { Address, AddressPayload } from "@/src/lib/types/address";
@@ -8,7 +9,6 @@ import { AddressCard } from "@/src/components/address/AddressCard";
 import { AddressForm } from "@/src/components/address/AddressForm";
 import { MapPin, Plus, Loader2 } from "lucide-react";
 import { DELIVERY_CONFIG } from "@/src/constants/delivery";
-
 
 interface Props {
   selectedAddressId: string | null;
@@ -20,7 +20,13 @@ export function DeliverySection({ selectedAddressId, onAddressSelect, onError }:
   const { data: addresses = [], isLoading: loading } = useCustomerAddresses();
   const createAddressMutation = useCreateAddress();
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [estimating, setEstimating] = useState(false);
+
+  const estimateMutation = useMutation({
+    mutationFn: ({ lat, lng }: { lat: number; lng: number }) =>
+      deliveryService.estimateFee(lat, lng),
+  });
+
+  const estimating = estimateMutation.isPending || createAddressMutation.isPending;
 
   useEffect(() => {
     if (!loading && !selectedAddressId && addresses.length > 0) {
@@ -32,46 +38,37 @@ export function DeliverySection({ selectedAddressId, onAddressSelect, onError }:
 
   const handleSelectAddress = async (address: Address) => {
     try {
-      setEstimating(true);
       onError(null);
-      
+
       if (address.distance_km !== null) {
         // Distance is already available from DB
         const distance = address.distance_km;
         if (distance > DELIVERY_CONFIG.MAX_RADIUS_KM) {
           throw new Error(`Ngoài vùng giao hàng (${distance.toFixed(1)}km / tối đa ${DELIVERY_CONFIG.MAX_RADIUS_KM}km)`);
         }
-        import("@/src/utils/pricing").then(({ calcShippingFee }) => {
-          const fee = calcShippingFee(distance);
-          onAddressSelect(address, distance, fee);
-          setEstimating(false);
-        });
+        const { calcShippingFee } = await import("@/src/utils/pricing");
+        onAddressSelect(address, distance, calcShippingFee(distance));
       } else {
         // Fallback for older addresses missing distance_km
         onAddressSelect(address, null, null);
-        const estimate = await deliveryService.estimateFee(address.lat, address.lng);
+        const estimate = await estimateMutation.mutateAsync({ lat: address.lat, lng: address.lng });
         onAddressSelect(address, estimate.distance_km, estimate.shipping_fee_vnd);
-        setEstimating(false);
       }
     } catch (unknownError: unknown) {
       const err = unknownError instanceof Error ? unknownError : new Error();
       onAddressSelect(address, null, null);
       onError(err.message || "Không thể tính phí giao hàng");
-      setEstimating(false);
     }
   };
 
   const handleSaveNew = async (payload: AddressPayload) => {
     try {
-      setEstimating(true); // Treat as estimating state to show spinner
       const newAddr = await createAddressMutation.mutateAsync(payload);
       setIsFormOpen(false);
-      handleSelectAddress(newAddr);
+      await handleSelectAddress(newAddr);
     } catch (unknownError: unknown) {
       const err = unknownError instanceof Error ? unknownError : new Error();
       onError(err.message || "Có lỗi xảy ra khi thêm địa chỉ");
-    } finally {
-      setEstimating(false);
     }
   };
 

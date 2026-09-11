@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Search, User, Phone } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as staffOrderService from "@/src/services/staffOrderService";
 import type { CustomerSearchResult } from "@/src/services/staffOrderService";
 import { formatVietnamPhone, normalizeCustomerSearch } from "@/src/utils/display";
+import { useDebounce } from "@/src/hooks/useDebounce";
 
 export type CustomerInfo =
   | { type: "existing"; data: CustomerSearchResult }
@@ -32,47 +34,25 @@ export function CustomerSelectModal({
   const [query, setQuery] = useState(
     initialQuery ? formatVietnamPhone(initialQuery) : "",
   );
-  const [searchResults, setSearchResults] = useState<CustomerSearchResult[]>([]);
-  const [searching, setSearching] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedQuery = useDebounce(query.trim(), 300);
+
+  const {
+    data: searchResults = [],
+    isFetching: queryFetching,
+    isError: searchError,
+    refetch,
+  } = useQuery({
+    queryKey: ["staff", "customer-search", debouncedQuery],
+    queryFn: () => staffOrderService.searchCustomers(debouncedQuery),
+    enabled: debouncedQuery.length >= 2,
+    staleTime: 30_000,
+    retry: false,
+  });
 
   // New customer state
   const [newPhone, setNewPhone] = useState("");
   const [newName, setNewName] = useState("");
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (query.length < 2) {
-      setSearchResults([]);
-      return;
-    }
-
-    setSearching(true);
-    let isActive = true;
-
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const results = await staffOrderService.searchCustomers(query);
-        if (isActive) {
-          setSearchResults(results);
-        }
-      } catch {
-        if (isActive) {
-          setSearchResults([]);
-        }
-      } finally {
-        if (isActive) {
-          setSearching(false);
-        }
-      }
-    }, 300);
-
-    return () => {
-      isActive = false;
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [query]);
 
   useEffect(() => {
     const originalStyle = window.getComputedStyle(document.body).overflow;
@@ -94,7 +74,6 @@ export function CustomerSelectModal({
     } else {
       setNewName("");
     }
-    setSearchResults([]);
     setError(null);
   };
 
@@ -109,6 +88,11 @@ export function CustomerSelectModal({
     }
     onSelect({ type: "new", phone_number: newPhone.trim(), name: newName.trim() });
   };
+
+  const rawQuery = query.trim();
+  const isDebouncing = rawQuery !== debouncedQuery;
+  const searching = isDebouncing || queryFetching;
+  const hasCurrentResults = rawQuery.length >= 2 && rawQuery === debouncedQuery;
 
   return (
     <Dialog.Root open={true} onOpenChange={(open) => !open && onClose()}>
@@ -141,14 +125,14 @@ export function CustomerSelectModal({
             </div>
 
             {/* Search results */}
-            {searchResults.length > 0 && (
+            {hasCurrentResults && !searchError && searchResults.length > 0 && (
               <div className="rounded-xl border border-border bg-background shadow-sm divide-y divide-border overflow-hidden max-h-60 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain">
                 {searchResults.map((c) => (
                   <button
                     key={c.qr_token}
                     type="button"
                     onClick={() => handleSelectCustomer(c)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-secondary/40 transition text-sm"
+                    className="min-h-11 w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-secondary/40 transition text-sm"
                   >
                     <User size={14} className="text-muted-foreground shrink-0" />
                     <div className="flex-1 min-w-0">
@@ -166,7 +150,7 @@ export function CustomerSelectModal({
                 <button
                   type="button"
                   onClick={handleNewCustomer}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-secondary/40 transition text-sm text-primary font-medium"
+                  className="min-h-11 w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-secondary/40 transition text-sm text-primary font-medium"
                 >
                   <span className="text-lg leading-none">＋</span>
                   Tạo khách mới
@@ -174,12 +158,27 @@ export function CustomerSelectModal({
               </div>
             )}
 
-            {query.length >= 2 && !searching && searchResults.length === 0 && (
+            {hasCurrentResults && searchError && !searching && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <div className="flex items-center justify-between gap-2">
+                  <span>Không thể tìm khách hàng lúc này.</span>
+                  <button
+                    type="button"
+                    onClick={() => void refetch()}
+                    className="min-h-9 rounded-lg border border-red-200 bg-white px-2.5 font-semibold focus:outline-none focus:ring-2 focus:ring-red-600"
+                  >
+                    Thử lại
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {hasCurrentResults && !searchError && !searching && searchResults.length === 0 && (
               <div className="rounded-xl border border-border bg-background">
                 <button
                   type="button"
                   onClick={handleNewCustomer}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-secondary/40 transition text-sm text-primary font-medium"
+                  className="min-h-11 w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-secondary/40 transition text-sm text-primary font-medium"
                 >
                   <span className="text-lg leading-none">＋</span>
                   Không tìm thấy — Tạo khách mới

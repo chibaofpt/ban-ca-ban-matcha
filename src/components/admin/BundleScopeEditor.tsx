@@ -18,7 +18,7 @@ const SIZE_OPTIONS: AdaptiveSelectOption[] = [
 
 interface BundleScopeEditorProps {
   label: string;
-  purpose: "QUALIFIER" | "FIXED_CONFIG" | "ALLOWED_SCOPE";
+  purpose: "QUALIFIER" | "FIXED_CONFIG" | "ALLOWED_SCOPE" | "PRODUCT";
   scopes: BundleProductScopeDraft[];
   menuItems: BundleMenuConfig[];
   powderOptions: AdaptiveSelectOption[];
@@ -39,7 +39,10 @@ export function BundleScopeEditor({
     onChange(ids.flatMap((id) => {
       const existing = scopes.find((scope) => scope.menuItemId === id);
       const menu = menus.get(id);
-      return existing ? [existing] : menu ? [createBundleScopeDraft(menu)] : [];
+      if (existing) return [purpose === "PRODUCT" ? { ...existing, sizes: existing.sizes.slice(0, 1) } : existing];
+      if (!menu) return [];
+      const created = createBundleScopeDraft(menu);
+      return [purpose === "PRODUCT" ? { ...created, sizes: [created.sizes.includes("MEDIUM") ? "MEDIUM" : created.sizes[0]].filter(Boolean) as BundleScopeSize[] } : created];
     }));
   };
 
@@ -69,9 +72,9 @@ export function BundleScopeEditor({
           <article key={scope.menuItemId} className="space-y-3 rounded-xl border bg-background p-3 shadow-sm">
             <p className="flex items-center gap-2 text-sm font-bold"><Layers3 className="size-4 text-primary" />{menu.name}</p>
             <AdaptiveSelect
-              label={purpose === "FIXED_CONFIG" ? "Size quà (bắt buộc)" : "Size áp dụng (trống = mọi size)"}
-              multiple options={sizeOptions} value={scope.sizes}
-              onChange={(value) => updateScope(scope.menuItemId, { sizes: value as BundleScopeSize[] })}
+              label={purpose === "PRODUCT" ? "Size được tặng" : purpose === "FIXED_CONFIG" ? "Size quà (bắt buộc)" : "Size áp dụng (trống = mọi size)"}
+              multiple={purpose !== "PRODUCT"} options={sizeOptions} value={purpose === "PRODUCT" ? scope.sizes[0] ?? "" : scope.sizes}
+              onChange={(value) => updateScope(scope.menuItemId, { sizes: purpose === "PRODUCT" ? (value ? [value as BundleScopeSize] : []) : value as BundleScopeSize[] })}
             />
             {scope.category === "fusion" ? (
               <AdaptiveSelect

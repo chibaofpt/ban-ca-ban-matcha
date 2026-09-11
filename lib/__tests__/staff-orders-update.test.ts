@@ -384,6 +384,46 @@ describe("PATCH /api/staff/orders/[id] — COMPLETED points và surplus", () => 
     expect(surplusLog![0].data.delta).toBe(1);
   });
 
+  it("dùng covered price của đúng PRODUCT target đã đặt khi cộng điểm dư", async () => {
+    mockGetSession.mockResolvedValue(STAFF_SESSION);
+    mockOrderFindUnique.mockResolvedValue({
+      id: ORDER_ID,
+      status: "STAFF_DONE",
+      order_type: "PICKUP",
+      points_earned: null,
+      user_id: USER_ID,
+      total_vnd: 50_000,
+      grand_total_vnd: 50_000,
+      handled_by: null,
+      freeship_voucher_id: null,
+      items: [{
+        menu_item_id: "drink-b",
+        product_voucher_id: "pv-multi",
+        unit_price_vnd: 50_000,
+        productVoucher: {
+          covered_price_vnd: 45_000,
+          menuItemScopes: [
+            { menu_item_id: "legacy-anchor", covered_price_vnd: 45_000 },
+            { menu_item_id: "drink-b", covered_price_vnd: 65_000 },
+          ],
+        },
+        addonVouchers: [],
+      }],
+      discountVouchers: [],
+      bundleApplications: [],
+    });
+    mockOrderUpdate.mockResolvedValue({ id: ORDER_ID, status: "COMPLETED" });
+
+    const response = await PATCH(makeReq({ status: "COMPLETED" }), {
+      params: Promise.resolve({ id: ORDER_ID }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mockPointsLogCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ reason: "voucher_surplus", delta: 1 }),
+    }));
+  });
+
   it("Surplus tạo đúng 1 log voucher_surplus với voucher_id = null", async () => {
     mockGetSession.mockResolvedValue(STAFF_SESSION);
 

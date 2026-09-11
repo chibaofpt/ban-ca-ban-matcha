@@ -1,96 +1,124 @@
-import type { SweetnessLevel, Size } from "./menu";
+import type { Category, MenuItem, Size, SweetnessLevel } from "./menu";
 import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
 
 export type IceOption = "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
 
-/** Client snapshot used to classify addon rewards and Extra Matcha safely. */
-export interface CartAddonSnapshot {
-  /** Addon group identity and selection capacity at add time. */
-  addon_group_id?: string;
-  max_select?: number;
-  gram_value: number | null;
-  is_active?: boolean;
-  is_deleted?: boolean;
-  is_dynamic_gram?: boolean;
+export type CartLineConfiguration =
+  | { size: null; note: string }
+  | {
+      size: Size;
+      sweetness: SweetnessLevel;
+      iceOption: IceOption;
+      coldwhisk: boolean;
+      note: string;
+      powderId?: string;
+      baseLiquidId?: string;
+      addonOptionIds: string[];
+    };
+
+export interface CartLineVoucher {
+  token: string;
+  kind: "ITEM" | "PRODUCT" | "PRODUCT_DISCOUNT";
 }
 
-/** A single row in the staff/customer cart. */
+export interface CartAddonVoucher {
+  token: string;
+  addonOptionId: string;
+}
+
+/** Minimal source data persisted for one customer or staff cart line. */
 export interface CartItem {
-  /** Unique cart row id — crypto.randomUUID() at add time. */
   cartId: string;
   menuItemId: string;
-  name: string;
-  category: "latte" | "fusion" | "extras";
-  imageUrl: string | null;
-  /** Required for drinks; null for fixed-price Add-on items. */
-  size: Size | null;
-  /** Snapshot of computed final price at add time (post-ceil, post-milk, post-powder). */
-  unitPrice: number;
   quantity: number;
-  sweetness: SweetnessLevel;
-  iceOption: IceOption;
-  coldwhisk: boolean;
-  note: string;
-  /** Selected option ids for SELECTOR and TOGGLE groups. */
-  selectedOptionIds: string[];
-  /** Total addon cost snapshot in VND. */
-  addonsPrice: number;
-  /** Exact price for each selected addon option. Used for precise Addon Voucher discounts. */
-  addonPrices: Record<string, number>;
-  /** Menu metadata for selected addons; absent only for legacy cart rows. */
-  addonMetadata?: Record<string, CartAddonSnapshot>;
-  /** Fusion only — selected powder id. */
-  selectedPowderId?: string;
-  /** Latte only — selected milk type id. */
-  selectedMilkTypeId?: string;
-  /** Current Base Liquid selection; selectedMilkTypeId remains as a legacy alias. */
-  selectedBaseLiquidId?: string;
-  /**
-   * Client-computed final price (= unitPrice). Required by API.
-   * Server recomputes and rejects entire order on mismatch (PRICE_CHANGED).
-   */
-  clientPriceVnd: number;
-  /**
-   * Original price before any PRODUCT voucher credit was applied.
-   * Stored so the cart can restore the correct price if the voucher is removed or swapped.
-   * Equals clientPriceVnd when no voucher is applied.
-   */
-  originalClientPriceVnd: number;
-  /** Set when this item was added via a PRODUCT voucher (unit price reduced by voucher credit). */
-  productVoucherId?: string;
-  productVoucherDiscountVnd?: number;
-  productVoucherType?: "PRODUCT" | "PRODUCT_DISCOUNT";
-  /** New ITEM voucher identifier; productVoucherId remains a compatibility alias. */
-  itemVoucherId?: string;
-  /** In-cart BUNDLE reward line; excluded from persisted cart state. */
-  bundleRewardVoucherToken?: string;
-  /** In-cart BUNDLE qualifier line; excluded from persisted cart state. */
-  bundleQualifierVoucherToken?: string;
-  /** Applied ADDON vouchers. Unlimited, each targeting a different addon_option_id. */
-  addonVouchers?: { voucherId: string; addonOptionId: string; discountVnd: number }[];
-  /** Provenance for a unit split from an existing cart row during BUNDLE setup. */
-  sourceCartId?: string;
-  sourceUnitIndex?: number;
+  configuration: CartLineConfiguration;
+  lineVoucher?: CartLineVoucher;
+  addonVouchers: CartAddonVoucher[];
 }
 
-export type BundleApplicationStatus = "REVALIDATING" | "READY" | "NEEDS_CONFIGURATION" | "CONFLICT" | "UNAVAILABLE" | "VERIFY_FAILED" | "NO_BENEFIT";
+export type BundleRuntimeStatus =
+  | "REVALIDATING"
+  | "READY"
+  | "NEEDS_CONFIGURATION"
+  | "CONFLICT"
+  | "UNAVAILABLE"
+  | "VERIFY_FAILED"
+  | "NO_BENEFIT";
+
+/** Compatibility name for callers while runtime status is kept outside persistence. */
+export type BundleApplicationStatus = BundleRuntimeStatus;
 
 export type BundleCreatedRewardEffect =
   | { kind: "LINE"; client_line_id: string }
   | { kind: "ADDON"; client_line_id: string; addon_option_id: string; quantity: number };
 
-/** Client-only bookkeeping for one persisted BUNDLE voucher application. */
+/** Persisted allocation identity for one BUNDLE voucher. */
 export interface CartBundleApplication {
   voucher_qr_token: string;
   owner_key: string;
   qualifier_allocations: BundleSelectionAllocation[];
   reward_allocations: BundleSelectionAllocation[];
   created_reward_effects: BundleCreatedRewardEffect[];
-  status?: BundleApplicationStatus;
-  message?: string;
 }
 
 export interface BundleCartDraftCommit {
   items: CartItem[];
   application: CartBundleApplication;
+}
+
+export interface CartTransitionState {
+  items: CartItem[];
+  selectedOrderVoucherTokens: string[];
+  bundleApplications: CartBundleApplication[];
+}
+
+export interface ResolvedCartAddon {
+  id: string;
+  label: string;
+  priceVnd: number;
+  groupId: string;
+  groupName: string;
+  maxSelect: number;
+  isExtraMatcha: boolean;
+}
+
+/** Current-catalog cart projection used for rendering and order serialization. */
+export interface ProjectedCartLine extends CartItem {
+  name: string;
+  imageUrl: string | null;
+  category: Category;
+  menuItem?: MenuItem;
+  resolvedAddons: ResolvedCartAddon[];
+  drinkPriceVnd: number;
+  addonsPriceVnd: number;
+  grossUnitPriceVnd: number;
+  personalVoucherDiscountVnd: number;
+  bundleDiscountVnd: number;
+  payableUnitVnd: number;
+  lineTotalVnd: number;
+  errors: string[];
+  revalidating: boolean;
+}
+
+export interface CartProjectionTotals {
+  subtotal_vnd: number;
+  item_discount_vnd: number;
+  discountable_subtotal_vnd: number;
+  total_voucher_discount_vnd: number;
+  total_vnd: number;
+  shipping_fee_vnd: number;
+  freeship_discount_vnd: number;
+  grand_total_vnd: number;
+  order_surplus_vnd: number;
+}
+
+export interface CartProjectionResult {
+  lines: ProjectedCartLine[];
+  totals: CartProjectionTotals;
+  checkoutBlocked: boolean;
+  revalidating: boolean;
+  errors: string[];
+  bundleRuntimeStatus: Record<string, BundleRuntimeStatus>;
+  bundleErrorsByToken: Record<string, string>;
+  appliedOrderVoucherTokens: string[];
 }

@@ -22,9 +22,21 @@ import type { ApiResponse } from "@/src/lib/types/api";
 export interface VoucherEligibleMenuItem {
   menu_item_id: string;
   name: string;
-  category: "latte" | "fusion";
+  category: "latte" | "fusion" | "extras";
   is_available: boolean;
   is_seasonal: boolean;
+  size?: "SMALL" | "MEDIUM" | "LARGE" | null;
+  matcha_powder_id?: string | null;
+  milk_type_id?: string | null;
+  covered_price_vnd?: number | null;
+}
+
+export interface VoucherEligibleAddonOption {
+  addon_option_id: string;
+  label: string;
+  price_vnd: number;
+  is_active: boolean;
+  is_dynamic_gram: boolean;
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -42,6 +54,7 @@ export interface VoucherPackage {
   product_discount_mode?: "FIXED_AMOUNT" | "PAY_AS_SIZE" | null;
   menu_item_id: string | null;
   eligible_menu_items?: VoucherEligibleMenuItem[];
+  eligible_addon_options?: VoucherEligibleAddonOption[];
   eligible_sizes?: Array<"SMALL" | "MEDIUM" | "LARGE">;
   reference_size?: "SMALL" | "MEDIUM" | "LARGE" | null;
   size: "SMALL" | "MEDIUM" | "LARGE" | null;
@@ -115,6 +128,7 @@ export interface MyVoucher {
   product_discount_mode?: "FIXED_AMOUNT" | "PAY_AS_SIZE" | null;
   menu_item_id: string | null;
   eligible_menu_items?: VoucherEligibleMenuItem[];
+  eligible_addon_options?: VoucherEligibleAddonOption[];
   eligible_sizes?: Array<"SMALL" | "MEDIUM" | "LARGE">;
   reference_size?: "SMALL" | "MEDIUM" | "LARGE" | null;
   size: "SMALL" | "MEDIUM" | "LARGE" | null;

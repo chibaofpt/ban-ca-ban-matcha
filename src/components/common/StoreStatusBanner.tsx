@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Info, X, AlertTriangle, CalendarDays } from "lucide-react";
-import { getStoreStatus } from "@/src/services/storeStatusService";
-import { useStoreStatusStore } from "@/src/lib/store/storeStore";
+import { useStoreStatus } from "@/src/hooks/useStoreStatus";
 
 function getBannerConfig(
   reason: string,
@@ -48,44 +47,29 @@ function getBannerConfig(
 
 export default function StoreStatusBanner() {
   const pathname = usePathname();
-  const is_open = useStoreStatusStore((s) => s.is_open);
-  const reason = useStoreStatusStore((s) => s.reason);
-  const closure_note = useStoreStatusStore((s) => s.closure_note);
-  const isLoaded = useStoreStatusStore((s) => s.isLoaded);
-  const setStoreStatus = useStoreStatusStore((s) => s.setStoreStatus);
+  const isCustomerRoute = !pathname.startsWith("/admin") && !pathname.startsWith("/staff");
   const [bannerDismissed, setBannerDismissed] = useState(false);
-  const [todayFirstOpen, setTodayFirstOpen] = useState<string | undefined>(undefined);
-  const [todayLastClose, setTodayLastClose] = useState<string | undefined>(undefined);
 
-  useEffect(() => {
-    // Only fetch if not already loaded and not on admin/staff paths
-    if (!isLoaded && !pathname.startsWith("/admin") && !pathname.startsWith("/staff")) {
-      getStoreStatus()
-        .then((data) => {
-          setStoreStatus({
-            is_open: data.is_open,
-            reason: data.reason,
-            closure_note: data.closure_note,
-          });
-          if (data.today_schedule.length > 0) {
-            setTodayFirstOpen(data.today_schedule[0].open_time);
-            setTodayLastClose(data.today_schedule[data.today_schedule.length - 1].close_time);
-          }
-        })
-        .catch(() => {
-          // Silently ignore — store status is non-critical
-        });
-    }
-  }, [isLoaded, setStoreStatus, pathname]);
+  // TanStack Query is the single source of truth for public store status.
+  const { data: storeData, isSuccess: isLoaded } = useStoreStatus({ enabled: isCustomerRoute });
+
+  const { todayFirstOpen, todayLastClose } = useMemo(() => {
+    const schedule = storeData?.today_schedule ?? [];
+    if (schedule.length === 0) return { todayFirstOpen: undefined, todayLastClose: undefined };
+    return {
+      todayFirstOpen: schedule[0].open_time,
+      todayLastClose: schedule[schedule.length - 1].close_time,
+    };
+  }, [storeData?.today_schedule]);
 
   // Hide banner on admin or staff routes
   if (pathname.startsWith("/admin") || pathname.startsWith("/staff")) {
     return null;
   }
 
-  const showBanner = isLoaded && !is_open && !bannerDismissed;
-  const config = reason
-    ? getBannerConfig(reason, closure_note, todayFirstOpen, todayLastClose)
+  const showBanner = isLoaded && storeData !== undefined && !storeData.is_open && !bannerDismissed;
+  const config = storeData?.reason
+    ? getBannerConfig(storeData.reason, storeData.closure_note, todayFirstOpen, todayLastClose)
     : null;
 
   return (

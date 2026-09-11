@@ -1,4 +1,4 @@
-import { Coffee, CupSoda, Sparkles } from "lucide-react";
+import { AlertTriangle, Coffee, CupSoda, RefreshCcw, Sparkles } from "lucide-react";
 import type { RefObject } from "react";
 
 import MenuCard from "@/src/components/menu/MenuCard";
@@ -8,6 +8,8 @@ import { getMenuItemCartInfo } from "@/src/utils/customerUx";
 
 interface MenuPanelsProps {
   loading: boolean;
+  error: boolean;
+  onRetry: () => void;
   latteItems: MenuItem[];
   fusionItems: MenuItem[];
   extrasItems: MenuItem[];
@@ -32,10 +34,26 @@ interface ItemSectionProps {
 
 /** Renders the customer menu as vertically scrollable category sections. */
 export function MenuPanels(props: MenuPanelsProps) {
-  const { loading, latteItems, fusionItems, extrasItems, seasonalItems } = props;
+  const { loading, error, latteItems, fusionItems, extrasItems, seasonalItems } = props;
   return (
     <div className="w-full space-y-8 pb-8 px-0.5">
-      {loading ? <MenuSkeleton count={6} /> : (
+      {loading ? <MenuSkeleton count={6} /> : error ? (
+        <div role="alert" className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-6 text-center">
+          <AlertTriangle className="h-8 w-8 text-amber-600" aria-hidden="true" />
+          <div>
+            <p className="font-semibold text-amber-900">Không thể tải thực đơn</p>
+            <p className="mt-1 text-sm text-amber-800">Thực đơn hoặc bột matcha chưa được xác minh. Giỏ hàng vẫn được giữ lại.</p>
+          </div>
+          <button
+            type="button"
+            onClick={props.onRetry}
+            className="flex min-h-11 items-center gap-2 rounded-xl bg-amber-700 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-amber-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2"
+          >
+            <RefreshCcw className="h-4 w-4" aria-hidden="true" />
+            Thử tải lại
+          </button>
+        </div>
+      ) : (
         <>
           <ItemSection title="Latte" items={latteItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.latteSectionRef} onItemClick={props.onItemClick} />
           <ItemSection title="Fusion" items={fusionItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.fusionSectionRef} onItemClick={props.onItemClick} />

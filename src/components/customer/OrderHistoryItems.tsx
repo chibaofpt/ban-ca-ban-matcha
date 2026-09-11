@@ -29,6 +29,36 @@ export function OrderHistoryItems({
     maxItems !== undefined ? groupedItems.slice(0, maxItems) : groupedItems;
   const showDiscount = maxItems === undefined || groupedItems.length <= maxItems;
 
+  const itemProductVoucherNames = new Set(
+    order.items
+      .map((item) => item.productVoucher?.package?.name)
+      .filter((name): name is string => Boolean(name)),
+  );
+
+  const orderDiscountVouchers = (order.discountVouchers ?? []).filter((entry) => {
+    const v = entry.voucher as {
+      voucher_type?: string;
+      package?: { name?: string; voucher_type?: string };
+    };
+    if (v.voucher_type === "PRODUCT_DISCOUNT" || v.package?.voucher_type === "PRODUCT_DISCOUNT") {
+      return false;
+    }
+    if (entry.voucher?.package?.name && itemProductVoucherNames.has(entry.voucher.package.name)) {
+      return false;
+    }
+    return true;
+  });
+
+  const hasOrderDiscount =
+    order.total_voucher_discount_vnd > 0 &&
+    (order.discountVouchers && order.discountVouchers.length > 0
+      ? orderDiscountVouchers.length > 0
+      : !order.items.some(
+          (item) =>
+            item.productVoucher &&
+            item.product_voucher_discount_vnd === order.total_voucher_discount_vnd,
+        ));
+
   return (
     <ul className="space-y-4 pb-2 text-sm text-foreground/90">
       {visibleItems.map((item, index) => {
@@ -110,13 +140,13 @@ export function OrderHistoryItems({
       })}
 
       {/* Order-level voucher discount (full list only) */}
-      {showDiscount && order.total_voucher_discount_vnd > 0 && (
+      {showDiscount && hasOrderDiscount && (
         <li className="flex flex-col border-t border-border/30 pt-2 text-[11px] text-green-700">
           <span>Giảm giá: -{formatKa(order.total_voucher_discount_vnd, "floor")}</span>
-          {order.discountVouchers && order.discountVouchers.length > 0 && (
+          {orderDiscountVouchers.length > 0 && (
             <span className="mt-0.5 block max-w-full truncate font-medium">
               (Voucher:{" "}
-              {order.discountVouchers
+              {orderDiscountVouchers
                 .map((entry) => entry.voucher.package.name)
                 .join(", ")}
               )

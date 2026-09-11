@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence } from "framer-motion";
 import { Gift } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 
 import CartButton from "@/src/components/menu/CartButton";
@@ -20,7 +20,8 @@ import { useIsLoggedIn, useIsLoggedInSynced } from "@/src/lib/store/authStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
 import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
-import type { CartItem } from "@/src/lib/types/cart";
+import type { ProjectedCartLine } from "@/src/lib/types/cart";
+import { projectCart, resolveCartProjectionVouchers } from "@/src/lib/utils/cartProjection";
 import type { MenuItem } from "@/src/lib/types/menu";
 import { listMyVouchers } from "@/src/services/customerVoucherService";
 import { fetchMenu } from "@/src/services/menuService";
@@ -30,7 +31,7 @@ import { fetchPowders } from "@/src/services/powderService";
 export default function MenuPage() {
   const [activeTab, setActiveTab] = useState<TabId>("latte");
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
-  const [editingItem, setEditingItem] = useState<CartItem | undefined>();
+  const [editingItem, setEditingItem] = useState<ProjectedCartLine | undefined>();
   const [existingItemTarget, setExistingItemTarget] = useState<MenuItem | null>(null);
   const latteSectionRef = useRef<HTMLDivElement | null>(null);
   const fusionSectionRef = useRef<HTMLDivElement | null>(null);
@@ -47,27 +48,48 @@ export default function MenuPage() {
   const isLoggedInSynced = useIsLoggedInSynced();
   const openVoucherModal = useVoucherModalStore((state) => state.openModal);
   const cartItems = useCartStore((state) => state.items);
+  const bundleApplications = useCartStore((state) => state.bundleApplications);
   const updateQuantity = useCartStore((state) => state.updateQuantity);
   const removeItem = useCartStore((state) => state.removeItem);
-  const { data: menuRes, isLoading: menuLoading, isError: menuError } = useQuery({
+  const { data: menuRes, isLoading: menuLoading, isError: menuError, refetch: refetchMenu } = useQuery({
     queryKey: ["menu"],
     queryFn: fetchMenu,
   });
-  const { data: powderRes, isLoading: powderLoading, isError: powderError } = useQuery({
+  const { data: powderRes, isLoading: powderLoading, isError: powderError, refetch: refetchPowder } = useQuery({
     queryKey: ["powders"],
     queryFn: fetchPowders,
   });
   const isMenuContentLoading = menuLoading || powderLoading;
-  const isMenuLoaded = Boolean(menuRes && powderRes);
+  const catalogUnavailable = menuError || powderError;
+  const isMenuLoaded = Boolean(menuRes && powderRes && !catalogUnavailable);
   const { data: packagesRes } = useVoucherPackages({ enabled: isMenuLoaded });
   const { data: points } = useCustomerPoints({
     enabled: Boolean(packagesRes) && isLoggedInSynced,
   });
-  const { data: vouchersData } = useQuery({
+  const { data: vouchersData, isSuccess: vouchersLoaded, isFetching: vouchersFetching } = useQuery({
     queryKey: VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS,
     queryFn: listMyVouchers,
     enabled: Boolean(packagesRes) && isLoggedInSynced,
   });
+  const visibleVouchers = isLoggedInSynced ? vouchersData ?? [] : [];
+  const projectedCartItems = useMemo(() => projectCart({
+    items: cartItems,
+    menuData: catalogUnavailable ? null : menuRes,
+    powderData: catalogUnavailable ? null : powderRes,
+    vouchers: resolveCartProjectionVouchers(
+      isLoggedIn ? "authenticated" : "anonymous",
+      isLoggedInSynced && vouchersLoaded && !vouchersFetching,
+      vouchersData,
+    ),
+    selectedOrderVoucherTokens: [],
+    bundleApplications,
+    shippingFeeVnd: 0,
+  }).lines, [bundleApplications, cartItems, catalogUnavailable, isLoggedIn, isLoggedInSynced, menuRes, powderRes, vouchersData, vouchersLoaded, vouchersFetching]);
+
+  const handleRetryCatalog = useCallback(() => {
+    if (menuError) void refetchMenu();
+    if (powderError) void refetchPowder();
+  }, [menuError, powderError, refetchMenu, refetchPowder]);
 
   useEffect(() => {
     if (powderRes) setPowderData(powderRes);
@@ -164,7 +186,7 @@ export default function MenuPage() {
 
   // Derived: only show the sheet when the target item still has cart entries
   const existingCartItemsForTarget = existingItemTarget
-    ? cartItems.filter((ci) => ci.menuItemId === existingItemTarget.id)
+    ? projectedCartItems.filter((ci) => ci.menuItemId === existingItemTarget.id)
     : [];
   const showExistingSheet = existingItemTarget !== null && existingCartItemsForTarget.length > 0;
 
@@ -194,6 +216,8 @@ export default function MenuPage() {
         <div className="relative w-full">
           <MenuPanels
             loading={isMenuContentLoading}
+            error={catalogUnavailable}
+            onRetry={handleRetryCatalog}
             latteItems={data?.latte ?? []}
             fusionItems={data?.fusion ?? []}
             extrasItems={data?.extras ?? []}
@@ -218,7 +242,7 @@ export default function MenuPage() {
           addonGroups={data?.addon_groups ?? []}
           onClose={() => setSelectedItem(null)}
           editingItem={editingItem}
-          availableVouchers={vouchersData ?? []}
+          availableVouchers={visibleVouchers}
         />}
       </AnimatePresence>
       {showExistingSheet && existingItemTarget && <ExistingCartItemSheet
@@ -243,7 +267,7 @@ export default function MenuPage() {
       />}
       <VoucherModal />
       <CartButton />
-      {data && powderRes && <CartDrawer menuData={data} powderData={powderRes} />}
+      {data && powderRes && <CartDrawer menuData={data} powderData={powderRes} catalogUnavailable={catalogUnavailable} />}
     </main>
   );
 }

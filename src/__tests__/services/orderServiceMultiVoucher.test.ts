@@ -29,12 +29,12 @@ vi.mock("@/src/lib/api/client", () => ({
 
 import { apiClient } from "@/src/lib/api/client";
 import { createOrder } from "@/src/services/orderService";
-import type { CartItem } from "@/src/lib/types/cart";
+import { projectedCartLine } from "@/src/__tests__/fixtures/cart";
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
 
-function makeCartItem(overrides: Partial<CartItem> = {}): CartItem {
-  return {
+function makeCartItem(overrides: Parameters<typeof projectedCartLine>[0] = {}) {
+  return projectedCartLine({
     cartId: "cart-1",
     menuItemId: "item-meyumi",
     name: "Meyumi Matcha Latte",
@@ -52,7 +52,7 @@ function makeCartItem(overrides: Partial<CartItem> = {}): CartItem {
     clientPriceVnd: 55_000,
     originalClientPriceVnd: 55_000,
     ...overrides,
-  };
+  });
 }
 
 const mockOrderResult = {
@@ -306,16 +306,15 @@ describe("createOrder — full mixed scenario", () => {
 
 // ── CartItem type test — addonVouchers field must exist ──────────────────────
 
-describe("CartItem type — addonVouchers field (mới thêm)", () => {
-  it("CartItem có thể có addonVouchers (optional)", () => {
-    // Test này verify TypeScript type đúng — nếu type không có field này sẽ bị lỗi
-    const item: CartItem = makeCartItem({ addonVouchers: [{ voucherId: "av-1", addonOptionId: "addon-kem-tuoi", discountVnd: 0 }] });
-    expect(item.addonVouchers).toEqual([{ voucherId: "av-1", addonOptionId: "addon-kem-tuoi", discountVnd: 0 }]);
+describe("CartItem type — minimal addon voucher links", () => {
+  it("normalizes one addon voucher to token + target only", () => {
+    const item = makeCartItem({ addonVouchers: [{ voucherId: "av-1", addonOptionId: "addon-kem-tuoi", discountVnd: 0 }] });
+    expect(item.addonVouchers).toEqual([{ token: "av-1", voucherId: "av-1", addonOptionId: "addon-kem-tuoi", discountAmount: 0 }]);
   });
 
-  it("CartItem không có addonVouchers → undefined", () => {
-    const item: CartItem = makeCartItem();
-    expect(item.addonVouchers).toBeUndefined();
+  it("CartItem không có addon voucher dùng mảng rỗng ổn định", () => {
+    const item = makeCartItem();
+    expect(item.addonVouchers).toEqual([]);
   });
 });
 

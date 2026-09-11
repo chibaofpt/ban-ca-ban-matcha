@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { CartItem } from "@/src/lib/types/cart";
+import { projectedCartLine } from "@/src/__tests__/fixtures/cart";
 import { buildBundleCartDraft, type BundleDraftSlot } from "@/src/lib/utils/bundleCartDraft";
 import type { BundleAddonRewardInput } from "@/src/lib/utils/bundleAddonReward";
 import type { AddonGroup } from "@/src/lib/types/menu";
 
-const baseItem = (cartId: string, quantity = 3): CartItem => ({
+const baseItem = (cartId: string, quantity = 3) => projectedCartLine({
   cartId,
   menuItemId: "latte-1",
   name: "Latte",
@@ -82,13 +82,15 @@ describe("buildBundleCartDraft — BUNDLE atomic draft", () => {
 
     expect(result.items).toHaveLength(2);
     expect(result.items.reduce((sum, item) => sum + item.quantity, 0)).toBe(3);
-    expect(result.items.find((item) => item.bundleQualifierVoucherToken === "bundle-1")?.quantity).toBe(1);
-    expect(result.items.find((item) => !item.bundleQualifierVoucherToken)?.quantity).toBe(2);
-    const qualified = result.items.find((item) => item.bundleQualifierVoucherToken === "bundle-1");
-    expect(qualified?.note).toBe("Không đá riêng");
-    expect(qualified?.sourceCartId).toBe("line-1");
-    expect(qualified?.sourceUnitIndex).toBe(1);
-    expect(qualified?.selectedOptionIds).toEqual(["topping-1"]);
+    const qualifiedId = result.qualifier_allocations[0]?.client_line_id;
+    const qualified = result.items.find((item) => item.cartId === qualifiedId);
+    expect(qualified?.quantity).toBe(1);
+    expect(result.items.find((item) => item.cartId !== qualifiedId)?.quantity).toBe(2);
+    expect(qualified?.configuration.note).toBe("Không đá riêng");
+    expect(qualified?.configuration.size === null ? [] : qualified?.configuration.addonOptionIds).toEqual(["topping-1"]);
+    expect(qualified).not.toHaveProperty("sourceCartId");
+    expect(qualified).not.toHaveProperty("sourceUnitIndex");
+    expect(qualified).not.toHaveProperty("bundleQualifierVoucherToken");
   });
 
   it("giữ effect của reward line đã sinh khi mở lại bundle để chỉnh sửa", () => {
@@ -101,19 +103,26 @@ describe("buildBundleCartDraft — BUNDLE atomic draft", () => {
       },
     };
     const result = buildBundleCartDraft({
-      items: [{ ...baseItem("reward-line", 1), bundleRewardVoucherToken: "bundle-1" }],
+      items: [baseItem("reward-line", 1)],
       voucher_qr_token: "bundle-1",
       qualifierSlots: [],
       rewardSlots: [rewardSlot],
       rewardKind: "PRODUCT",
       rewardQuantity: 1,
+      existingApplication: {
+        voucher_qr_token: "bundle-1",
+        owner_key: "customer:qr",
+        qualifier_allocations: [],
+        reward_allocations: [{ client_line_id: "reward-line", quantity: 1 }],
+        created_reward_effects: [{ kind: "LINE", client_line_id: "reward-line" }],
+      },
     });
 
     expect(result.created_reward_effects).toEqual([{ kind: "LINE", client_line_id: "reward-line" }]);
   });
 
   it("removes this application's stale generated line before rebuilding the candidate", () => {
-    const stale = { ...baseItem("stale-reward", 1), bundleRewardVoucherToken: "bundle-edit" };
+    const stale = baseItem("stale-reward", 1);
     const result = buildBundleCartDraft({
       items: [stale],
       voucher_qr_token: "bundle-edit",
@@ -127,7 +136,6 @@ describe("buildBundleCartDraft — BUNDLE atomic draft", () => {
         qualifier_allocations: [],
         reward_allocations: [{ client_line_id: "stale-reward", quantity: 1 }],
         created_reward_effects: [{ kind: "LINE", client_line_id: "stale-reward" }],
-        status: "READY",
       },
       createCartId: (() => {
         let index = 0;
@@ -140,12 +148,12 @@ describe("buildBundleCartDraft — BUNDLE atomic draft", () => {
   });
 
   it("supports an addon recipient on a separate eligible line and preserves paid selections", () => {
-    const recipientSource = { ...baseItem("line-2", 1), selectedOptionIds: [], addonsPrice: 0, addonPrices: {}, clientPriceVnd: 45_000, originalClientPriceVnd: 45_000 };
+    const recipientSource = projectedCartLine({ ...baseItem("line-2", 1), selectedOptionIds: [], addonsPrice: 0, addonPrices: {}, clientPriceVnd: 45_000, originalClientPriceVnd: 45_000 });
     const qualifierConfig = { ...slot(0).config, selectedOptionIds: [], addonsCost: 0, addonPrices: {}, addonMetadata: {} };
     const recipientConfig = { ...qualifierConfig };
     const result = buildBundleCartDraft({
       items: [
-        { ...baseItem("line-1", 2), selectedOptionIds: [], addonsPrice: 0, addonPrices: {}, clientPriceVnd: 45_000, originalClientPriceVnd: 45_000 },
+        projectedCartLine({ ...baseItem("line-1", 2), selectedOptionIds: [], addonsPrice: 0, addonPrices: {}, clientPriceVnd: 45_000, originalClientPriceVnd: 45_000 }),
         recipientSource,
       ],
       voucher_qr_token: "bundle-pool",
@@ -160,15 +168,16 @@ describe("buildBundleCartDraft — BUNDLE atomic draft", () => {
       addonReward: addonReward([0]),
     });
 
-    const recipientLine = result.items.find((entry) => entry.sourceCartId === "line-2");
-    expect(recipientLine?.bundleQualifierVoucherToken).toBeUndefined();
-    expect(recipientLine?.selectedOptionIds).toEqual(["reward-addon"]);
+    const recipientId = result.reward_allocations[0]?.client_line_id;
+    const recipientLine = result.items.find((entry) => entry.cartId === recipientId);
+    expect(recipientLine).not.toHaveProperty("bundleQualifierVoucherToken");
+    expect(recipientLine?.configuration.size === null ? [] : recipientLine?.configuration.addonOptionIds).toEqual(["reward-addon"]);
     expect(result.reward_allocations).toEqual([{ client_line_id: recipientLine?.cartId, addon_option_id: "reward-addon", quantity: 1 }]);
     expect(result.created_reward_effects).toEqual([{ kind: "ADDON", client_line_id: recipientLine?.cartId, addon_option_id: "reward-addon", quantity: 1 }]);
   });
 
   it("materialize addon vào đúng qualifier unit và chỉ ghi effect cho addon vừa thêm", () => {
-    const source = {
+    const source = projectedCartLine({
       ...baseItem("line-1", 3),
       unitPrice: 45_000,
       addonsPrice: 0,
@@ -176,7 +185,7 @@ describe("buildBundleCartDraft — BUNDLE atomic draft", () => {
       selectedOptionIds: [],
       clientPriceVnd: 45_000,
       originalClientPriceVnd: 45_000,
-    };
+    });
     const first = { ...slot(0), config: { ...slot(0).config, selectedOptionIds: [], addonsCost: 0, addonPrices: {}, addonMetadata: {} } };
     const second = { ...slot(1), config: { ...first.config } };
     const result = buildBundleCartDraft({
@@ -189,9 +198,10 @@ describe("buildBundleCartDraft — BUNDLE atomic draft", () => {
       addonReward: addonReward([1]),
     });
 
-    const rewarded = result.items.find((entry) => entry.sourceUnitIndex === 1);
-    expect(rewarded?.selectedOptionIds).toEqual(["reward-addon"]);
-    expect(rewarded?.addonsPrice).toBe(12_000);
+    const rewardedId = result.reward_allocations[0]?.client_line_id;
+    const rewarded = result.items.find((entry) => entry.cartId === rewardedId);
+    expect(rewarded?.configuration.size === null ? [] : rewarded?.configuration.addonOptionIds).toEqual(["reward-addon"]);
+    expect(rewarded).not.toHaveProperty("addonsPrice");
     expect(result.reward_allocations).toEqual([{ client_line_id: rewarded?.cartId, addon_option_id: "reward-addon", quantity: 1 }]);
     expect(result.created_reward_effects).toEqual([{ kind: "ADDON", client_line_id: rewarded?.cartId, addon_option_id: "reward-addon", quantity: 1 }]);
   });

@@ -11,6 +11,10 @@ import { motion } from "framer-motion";
 import StoreSettingsModal from "@/src/components/admin/StoreSettingsModal";
 import { useAuthStore } from "@/src/lib/store/authStore";
 import { toast } from "sonner";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { fetchAdminOrders } from "@/src/services/adminOrderService";
+import { useStaffCartStore } from "@/src/lib/store/staffCartStore";
+import { clearPrivateQueryCaches } from "@/src/lib/queryClient";
 
 interface Tab {
   to: string;
@@ -48,6 +52,19 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<{ to: string; from: string } | null>(null);
   const authStoreLogout = useAuthStore((s) => s.logout);
+  const detachCustomer = useStaffCartStore((s) => s.detachCustomer);
+  const queryClient = useQueryClient();
+
+  const { data: pendingRes } = useQuery({
+    queryKey: ["admin", "orders", "pending-count"],
+    queryFn: async () => {
+      const res = await fetchAdminOrders({ status: "PENDING", limit: 1 });
+      return res;
+    },
+    refetchInterval: 20_000,
+    enabled: userRole === "ADMIN",
+  });
+  const pendingCount = pendingRes?.meta?.total ?? 0;
 
   const tabs = TABS.filter((t) => t.roles.includes(userRole));
   const selectedPath = pendingNavigation?.from === pathname ? pendingNavigation.to : pathname;
@@ -71,15 +88,20 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
     setPendingNavigation({ to, from: pathname });
   };
 
-  const handleLogout = async () => {
-    try {
-      await authService.logout();
+  const logoutMutation = useMutation({
+    mutationFn: authService.logout,
+    onSuccess: () => {
+      detachCustomer();
+      clearPrivateQueryCaches(queryClient, ["staff", "admin"]);
       authStoreLogout();
       router.replace("/");
-    } catch {
+    },
+    onError: () => {
       toast.error("Không thể đăng xuất lúc này. Vui lòng thử lại.");
-    }
-  };
+    },
+  });
+
+  const handleLogout = () => logoutMutation.mutate();
 
   return (
     <>
@@ -117,6 +139,11 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
                   )}
                   <Icon size={16} className="relative z-10" />
                   <span className="relative z-10">{label}</span>
+                  {to === "/admin/orders" && pendingCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                      {pendingCount}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -203,7 +230,14 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
                   whileTap={{ scale: 0.85 }}
                   className="flex flex-col items-center gap-1 relative z-10"
                 >
-                  <Icon size={20} className={isActive ? "stroke-[2.5]" : undefined} />
+                  <div className="relative">
+                    <Icon size={20} className={isActive ? "stroke-[2.5]" : undefined} />
+                    {to === "/admin/orders" && pendingCount > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                        {pendingCount}
+                      </span>
+                    )}
+                  </div>
                   <span className="leading-none text-[11px]">{label}</span>
                 </motion.div>
               </Link>

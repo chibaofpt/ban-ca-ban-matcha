@@ -4,6 +4,13 @@ const acquisitionModeSchema = z.enum(["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRA
 const sizeSchema = z.enum(["SMALL", "MEDIUM", "LARGE"]);
 const nullableUuid = z.string().uuid().nullable().optional();
 
+const productTargetSchema = z.object({
+  menu_item_id: z.string().uuid(),
+  size: sizeSchema,
+  matcha_powder_id: nullableUuid,
+  milk_type_id: nullableUuid,
+}).strict();
+
 const bundleProductSchema = z.object({
   menu_item_id: z.string().uuid(),
   default_powder_id: nullableUuid,
@@ -50,6 +57,7 @@ const rawVoucherPackageSchema = z.discriminatedUnion("voucher_type", [
     ...commonFields,
     voucher_type: z.literal("ITEM"),
     menu_item_id: z.string().uuid(),
+    eligible_menu_item_ids: z.array(z.string().uuid()).min(1).max(100).optional(),
   }),
   z.object({
     ...commonFields,
@@ -59,6 +67,7 @@ const rawVoucherPackageSchema = z.discriminatedUnion("voucher_type", [
     matcha_powder_id: nullableUuid,
     milk_type_id: nullableUuid,
     included_addon_option_ids: z.array(z.string().uuid()).max(100).default([]),
+    product_targets: z.array(productTargetSchema).min(1).max(100).optional(),
   }),
   z.object({
     ...commonFields,
@@ -74,6 +83,7 @@ const rawVoucherPackageSchema = z.discriminatedUnion("voucher_type", [
     ...commonFields,
     voucher_type: z.literal("ADDON"),
     addon_option_id: z.string().uuid(),
+    eligible_addon_option_ids: z.array(z.string().uuid()).min(1).max(100).optional(),
   }),
   z.object({
     ...commonFields,
@@ -153,6 +163,32 @@ export const createVoucherPackageSchema = rawVoucherPackageSchema.superRefine((d
       if (data.discount_value !== undefined) {
         ctx.addIssue({ code: "custom", path: ["discount_value"], message: "PAY_AS_SIZE does not accept discount_value" });
       }
+    }
+  }
+  if (data.voucher_type === "ITEM" && data.eligible_menu_item_ids) {
+    if (new Set(data.eligible_menu_item_ids).size !== data.eligible_menu_item_ids.length) {
+      ctx.addIssue({ code: "custom", path: ["eligible_menu_item_ids"], message: "Duplicate eligible menu item" });
+    }
+    if (!data.eligible_menu_item_ids.includes(data.menu_item_id)) {
+      ctx.addIssue({ code: "custom", path: ["menu_item_id"], message: "Legacy anchor must belong to eligible scope" });
+    }
+  }
+  if (data.voucher_type === "PRODUCT" && data.product_targets) {
+    const ids = data.product_targets.map((target) => target.menu_item_id);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({ code: "custom", path: ["product_targets"], message: "Duplicate product target" });
+    }
+    const anchor = data.product_targets.find((target) => target.menu_item_id === data.menu_item_id);
+    if (!anchor || anchor.size !== data.size) {
+      ctx.addIssue({ code: "custom", path: ["menu_item_id"], message: "Legacy anchor must match one product target" });
+    }
+  }
+  if (data.voucher_type === "ADDON" && data.eligible_addon_option_ids) {
+    if (new Set(data.eligible_addon_option_ids).size !== data.eligible_addon_option_ids.length) {
+      ctx.addIssue({ code: "custom", path: ["eligible_addon_option_ids"], message: "Duplicate eligible addon option" });
+    }
+    if (!data.eligible_addon_option_ids.includes(data.addon_option_id)) {
+      ctx.addIssue({ code: "custom", path: ["addon_option_id"], message: "Legacy anchor must belong to eligible scope" });
     }
   }
   if (data.voucher_type !== "BUNDLE") return;

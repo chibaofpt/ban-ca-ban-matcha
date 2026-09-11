@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { BundleCartDraftCommit, CartBundleApplication, CartItem } from "@/src/lib/types/cart";
+import type { BundleCartDraftCommit, CartBundleApplication } from "@/src/lib/types/cart";
+import { projectedCartLine } from "@/src/__tests__/fixtures/cart";
 import { removeBundleEffects, useCartStore } from "@/src/lib/store/cartStore";
 import { useStaffCartStore } from "@/src/lib/store/staffCartStore";
 
-const item = (cartId: string): CartItem => ({
+const item = (cartId: string) => projectedCartLine({
   cartId,
   menuItemId: "latte-1",
   name: "Latte",
@@ -29,7 +30,6 @@ const application = (token: string, effectLine: string): CartBundleApplication =
   qualifier_allocations: [{ client_line_id: "buy-1", quantity: 1 }],
   reward_allocations: [{ client_line_id: effectLine, quantity: 1 }],
   created_reward_effects: [{ kind: "LINE", client_line_id: effectLine }],
-  status: "READY",
 });
 
 const commit = (token: string): BundleCartDraftCommit => ({
@@ -67,14 +67,19 @@ describe("commitBundleCartDraft — mutation nguyên tử", () => {
     expect(useStaffCartStore.getState().bundleApplications).toEqual([commit("bundle-1").application]);
   });
 
-  it("gỡ đúng effect addon của token, giữ addon sibling và marker khác token", () => {
-    const items = [{
+  it("gỡ đúng effect addon của token và không cần marker trên cart line", () => {
+    const fixture = projectedCartLine({
       ...item("buy-1"),
       selectedOptionIds: ["addon-a", "addon-b"],
       addonsPrice: 20_000,
       addonPrices: { "addon-a": 10_000, "addon-b": 10_000 },
-      bundleQualifierVoucherToken: "bundle-1",
-      bundleRewardVoucherToken: "bundle-2",
+    });
+    const items = [{
+      cartId: fixture.cartId,
+      menuItemId: fixture.menuItemId,
+      quantity: fixture.quantity,
+      configuration: fixture.configuration,
+      addonVouchers: [],
     }];
     const application: CartBundleApplication = {
       ...applicationForEffects("bundle-1"),
@@ -82,13 +87,12 @@ describe("commitBundleCartDraft — mutation nguyên tử", () => {
     };
 
     const remaining = removeBundleEffects(items, application);
-    expect(remaining[0]?.selectedOptionIds).toEqual(["addon-b"]);
-    expect(remaining[0]?.addonsPrice).toBe(10_000);
-    expect(remaining[0]?.unitPrice).toBe(35_000);
-    expect(remaining[0]?.originalClientPriceVnd).toBe(35_000);
-    expect(remaining[0]?.addonPrices).toEqual({ "addon-b": 10_000 });
-    expect(remaining[0]?.bundleQualifierVoucherToken).toBeUndefined();
-    expect(remaining[0]?.bundleRewardVoucherToken).toBe("bundle-2");
+    expect(remaining[0]?.configuration.size === null ? [] : remaining[0]?.configuration.addonOptionIds).toEqual(["addon-b"]);
+    expect(remaining[0]).not.toHaveProperty("addonsPrice");
+    expect(remaining[0]).not.toHaveProperty("unitPrice");
+    expect(remaining[0]).not.toHaveProperty("addonPrices");
+    expect(remaining[0]).not.toHaveProperty("bundleQualifierVoucherToken");
+    expect(remaining[0]).not.toHaveProperty("bundleRewardVoucherToken");
   });
 
   it("reconcile giữ application đúng owner và loại application của owner khác", () => {

@@ -82,6 +82,7 @@ export async function GET(
         menuItem: { select: { name: true, is_available: true } },
         menuItemScopes: { include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } } },
         addonOption: { select: { label: true } },
+        addonOptionScopes: { include: { addonOption: { select: { label: true, price_vnd: true, is_active: true, gram_value: true } } } },
         staff: { select: { name: true, role: true } },
         pointsLogs: {
           where: { reason: "voucher_purchase" },

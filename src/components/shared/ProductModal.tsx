@@ -7,9 +7,9 @@ import { Drawer } from "vaul";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X, Minus, Plus, Ticket, CheckCircle2, ArrowLeft } from "lucide-react";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
-import { filterUsableVouchers } from "@/src/utils/voucherMatchUtils";
+import { filterUsableVouchers, getAddonVoucherTargetChoices, getCartAddonVoucherTargets, isVoucherUsable, resolveAddonVoucherOptionId } from "@/src/utils/voucherMatchUtils";
 import type { AddonGroup, MenuItem, MilkTypeOption, SweetnessLevel, Size } from "@/src/lib/types/menu";
-import type { IceOption, CartItem } from "@/src/lib/types/cart";
+import type { IceOption, CartItem, ProjectedCartLine } from "@/src/lib/types/cart";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { cn } from "@/src/utils/cn";
@@ -25,7 +25,8 @@ import { useModalHistory } from "./product-modal/useModalHistory";
 import { SectionLabel } from "./product-modal/SectionLabel";
 import OptionCard from "./product-modal/OptionCard";
 import { getBaseLiquidOptionsForItem } from "@/src/utils/baseLiquid";
-import { snapshotCartAddonMetadata } from "@/src/lib/utils/voucherUseNowHelpers";
+import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
+import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 
 interface ProductModalProps {
   item: MenuItem;
@@ -34,12 +35,16 @@ interface ProductModalProps {
   addonGroups: AddonGroup[];
   onClose: () => void;
   // ── Edit mode ──
-  editingItem?: CartItem;
+  editingItem?: ProjectedCartLine;
   // ── Staff mode ──
-  onConfirm?: (item: CartItem) => void;
+  onConfirm?: (item: CartItem, projection?: ProjectedCartLine) => CartMutationResult<unknown> | void;
   freeVoucherId?: string;
   freeVoucherCoveredPriceVnd?: number;
   availableVouchers?: MyVoucher[];
+  /** Keep personal-voucher controls read-only while the customer wallet is unverified. */
+  walletVerified?: boolean;
+  /** Explain why personal-voucher controls or an edit save are temporarily locked. */
+  walletReadOnlyReason?: string;
   // ── Drawer UI ──
   nested?: boolean;
   currentCartItems?: CartItem[];
@@ -48,6 +53,9 @@ interface ProductModalProps {
   disableVoucherApplication?: boolean;
   /** Optional CTA button label override (e.g. "Chọn món này" in bundle context). */
   ctaLabel?: string;
+  initialSize?: Size | null;
+  initialPowderId?: string | null;
+  initialBaseLiquidId?: string | null;
 }
 
 const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
@@ -71,12 +79,16 @@ export function resolveAddonOptionImage(
 const BaseModal: React.FC<ProductModalProps> = ({ 
   item, latteItems, milkTypes, addonGroups, onClose, editingItem, onConfirm, freeVoucherId,
   freeVoucherCoveredPriceVnd, availableVouchers, nested = false, currentCartItems,
-  allowedSizes, disableVoucherApplication, ctaLabel
+  allowedSizes, disableVoucherApplication, ctaLabel, initialSize, initialPowderId, initialBaseLiquidId,
+  walletVerified = true, walletReadOnlyReason = "Ví voucher đang được xác minh. Vui lòng thử lại sau một chút.",
 }) => {
+  const editingConfig = editingItem?.configuration;
   const [isOpen, setIsOpen] = useState(true);
   // Global state
   const addItem = useCartStore(s => s.addItem);
   const updateItem = useCartStore(s => s.updateItem);
+  const pendingAddonVoucher = useCartStore(s => s.pendingAddonVoucher);
+  const setPendingAddonVoucher = useCartStore(s => s.setPendingAddonVoucher);
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
 
@@ -89,41 +101,52 @@ const BaseModal: React.FC<ProductModalProps> = ({
 
   // ── State ────────────────────────────────────────────────────────────────
   const [selectedSize, setSelectedSize] = useState<Size>(() => {
-    if (editingItem?.size) return editingItem.size;
+    if (editingConfig?.size) return editingConfig.size;
     const available = item.sizes ?? [];
     const displaySizes = allowedSizes ? available.filter(s => allowedSizes.includes(s.size)) : available;
+    if (initialSize && displaySizes.some((row) => row.size === initialSize)) return initialSize;
     return (displaySizes.find((s) => s.size === "MEDIUM") ?? displaySizes[0])?.size ?? "SMALL";
   });
-  const [sweetness, setSweetness] = useState<SweetnessLevel>(() => editingItem?.sweetness ?? "FULL");
-  const [iceOption, setIceOption] = useState<IceOption>(() => editingItem?.iceOption ?? "NORMAL");
-  const [coldwhisk, setColdwhisk] = useState(() => editingItem?.coldwhisk ?? false);
-  const [selectedPowderId, setSelectedPowderId] = useState<string>(() => editingItem?.selectedPowderId ?? item.resolved_default_powder_id ?? "");
+  const [sweetness, setSweetness] = useState<SweetnessLevel>(() => editingConfig?.size !== null && editingConfig ? editingConfig.sweetness : "FULL");
+  const [iceOption, setIceOption] = useState<IceOption>(() => editingConfig?.size !== null && editingConfig ? editingConfig.iceOption : "NORMAL");
+  const [coldwhisk, setColdwhisk] = useState(() => editingConfig?.size !== null && editingConfig ? editingConfig.coldwhisk : false);
+  const [selectedPowderId, setSelectedPowderId] = useState<string>(() => editingConfig?.size !== null ? editingConfig?.powderId ?? initialPowderId ?? item.resolved_default_powder_id ?? "" : initialPowderId ?? item.resolved_default_powder_id ?? "");
   const [selectedMilkId, setSelectedMilkId] = useState<string>(() => {
-    if (editingItem?.selectedBaseLiquidId) return editingItem.selectedBaseLiquidId;
-    if (editingItem?.selectedMilkTypeId) return editingItem.selectedMilkTypeId;
-    return item.default_base_liquid_id ?? "";
+    if (editingConfig?.size !== null && editingConfig?.baseLiquidId) return editingConfig.baseLiquidId;
+    return initialBaseLiquidId ?? item.default_base_liquid_id ?? "";
   });
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>(() => {
     const validOptionIds = new Set(
       addonGroups.flatMap((group) => group.options.map((option) => option.id))
     );
     if (editingItem) {
-      return editingItem.selectedOptionIds.filter((id) => validOptionIds.has(id));
+      return editingConfig?.size === null ? [] : (editingConfig?.addonOptionIds ?? []).filter((id) => validOptionIds.has(id));
     }
     return [];
   });
 
   const [quantity, setQuantity] = useState(() => {
     const startsWithVoucher =
-      editingItem?.productVoucherId !== undefined ||
+      editingItem?.lineVoucher !== undefined ||
       (editingItem?.addonVouchers?.length ?? 0) > 0 ||
-      freeVoucherId !== undefined;
+      freeVoucherId !== undefined ||
+      pendingAddonVoucher !== null;
     return startsWithVoucher ? 1 : editingItem?.quantity ?? 1;
   });
-  const [note, setNote] = useState(() => editingItem?.note ?? "");
+  const [note, setNote] = useState(() => editingConfig?.note ?? "");
 
-  const [selectedProductVoucherId, setSelectedProductVoucherId] = useState<string | null>(() => editingItem?.productVoucherId ?? null);
-  const [selectedAddonVoucherIds, setSelectedAddonVoucherIds] = useState<string[]>(() => editingItem?.addonVouchers?.map(v => v.voucherId) ?? []);
+  const [selectedProductVoucherId, setSelectedProductVoucherId] = useState<string | null>(() => editingItem?.lineVoucher?.token ?? null);
+  const [selectedAddonVoucherTargets, setSelectedAddonVoucherTargets] = useState<Record<string, string>>(
+    () => getCartAddonVoucherTargets(editingItem),
+  );
+  const [addonChoiceVoucherId, setAddonChoiceVoucherId] = useState<string | null>(null);
+  const selectedAddonVoucherIds = useMemo(
+    () => Object.entries(selectedAddonVoucherTargets)
+      .filter(([, addonOptionId]) => selectedOptionIds.includes(addonOptionId))
+      .map(([voucherId]) => voucherId),
+    [selectedAddonVoucherTargets, selectedOptionIds],
+  );
+  const [pendingAddonConflict, setPendingAddonConflict] = useState<{ item: Omit<CartItem, "cartId">; replaceOptionId: string } | null>(null);
 
   const storeCartItems = useCartStore(s => s.items);
   const cartItems = currentCartItems ?? storeCartItems;
@@ -132,28 +155,53 @@ const BaseModal: React.FC<ProductModalProps> = ({
     const used = new Set<string>();
     cartItems.forEach(cartItem => {
       if (cartItem.cartId === editingItem?.cartId) return; // Skip current item
-      if (cartItem.productVoucherId) used.add(cartItem.productVoucherId);
+      if (cartItem.lineVoucher) used.add(cartItem.lineVoucher.token);
       if (cartItem.addonVouchers) {
-        cartItem.addonVouchers.forEach(v => used.add(v.voucherId));
+        cartItem.addonVouchers.forEach(v => used.add(v.token));
       }
     });
     return used;
   }, [cartItems, editingItem?.cartId]);
 
   const applicableProductVouchers = useMemo(() => {
-    return filterUsableVouchers(availableVouchers ?? [], "PRODUCT").filter(v => v.menu_item_id === item.id && !usedVoucherIds.has(v.qr_token));
+    return filterUsableVouchers(availableVouchers ?? [], "PRODUCT").filter(v =>
+      ((v.eligible_menu_items?.length ?? 0) > 0
+        ? v.eligible_menu_items!.some((target) => target.menu_item_id === item.id && target.is_available)
+        : v.menu_item_id === item.id) &&
+      !usedVoucherIds.has(v.qr_token),
+    );
   }, [availableVouchers, item.id, usedVoucherIds]);
 
+  const addonOptionForVoucher = useCallback((voucher: MyVoucher): string | null => {
+    const assignedTarget = selectedAddonVoucherTargets[voucher.qr_token];
+    if (assignedTarget && selectedOptionIds.includes(assignedTarget)) return assignedTarget;
+    const activeAssignedTargets = Object.values(selectedAddonVoucherTargets)
+      .filter((addonOptionId) => selectedOptionIds.includes(addonOptionId));
+    return resolveAddonVoucherOptionId(
+      voucher,
+      selectedOptionIds,
+      activeAssignedTargets,
+    );
+  }, [selectedAddonVoucherTargets, selectedOptionIds]);
+
   const applicableAddonVouchers = useMemo(() => {
-    const currentAddonIds = new Set(selectedOptionIds);
-    return filterUsableVouchers(availableVouchers ?? [], "ADDON").filter(v => v.addon_option_id !== null && currentAddonIds.has(v.addon_option_id) && !usedVoucherIds.has(v.qr_token));
-  }, [availableVouchers, selectedOptionIds, usedVoucherIds]);
+    return filterUsableVouchers(availableVouchers ?? [], "ADDON").filter(v => addonOptionForVoucher(v) !== null && !usedVoucherIds.has(v.qr_token));
+  }, [addonOptionForVoucher, availableVouchers, usedVoucherIds]);
 
   const isProductVoucherApplied = selectedProductVoucherId !== null || freeVoucherId !== undefined;
-  const isVoucherApplied = !disableVoucherApplication && (isProductVoucherApplied || selectedAddonVoucherIds.length > 0);
+  const isVoucherApplied = isProductVoucherApplied || selectedAddonVoucherIds.length > 0;
+  const voucherControlsReadOnly = !walletVerified;
+  const saveBlockedByWallet = voucherControlsReadOnly && (
+    Boolean(editingItem?.lineVoucher) ||
+    (editingItem?.addonVouchers?.length ?? 0) > 0 ||
+    selectedProductVoucherId !== null ||
+    selectedAddonVoucherIds.length > 0 ||
+    freeVoucherId !== undefined ||
+    pendingAddonVoucher !== null
+  );
   
   // ── Edit Validation ──────────────────────────────────────────────────────
-  const lockQuantity = isVoucherApplied;
+  const lockQuantity = isVoucherApplied || pendingAddonVoucher !== null;
   
   // ── Derived ──────────────────────────────────────────────────────────────
   const isLatte = item.category === "latte";
@@ -188,11 +236,10 @@ const BaseModal: React.FC<ProductModalProps> = ({
     finalUnitPrice,
     totalCost,
     effectiveFreeVoucherId,
-    effectiveFreeCoveredPrice,
     effectiveProductVoucherType,
   } = usePriceMap({
     item, latteItems, milkTypes, addonGroups, powders, defaultPowderGrams, selectedSize, activePowderId,
-    selectedMilkId, selectedOptionIds, selectedAddonVoucherIds,
+    selectedMilkId, selectedOptionIds, selectedAddonVoucherTargets,
     availableVouchers, selectedProductVoucherId, freeVoucherId, freeVoucherCoveredPriceVnd, quantity
   });
 
@@ -233,70 +280,139 @@ const BaseModal: React.FC<ProductModalProps> = ({
   }, [closeWithHistory]);
 
   const handleAddToCart = useCallback(() => {
-    const finalAddonVouchers = selectedAddonVoucherIds.map(vid => {
-        const v = availableVouchers?.find(av => av.qr_token === vid);
-        return v ? { 
-            addonOptionId: v.addon_option_id!, 
-            voucherId: vid,
-            discountVnd: currentPriceContext.addonPricesMap[v.addon_option_id!] ?? 0
-        } : null;
+    if (saveBlockedByWallet) {
+      void import("sonner").then(({ toast }) => toast.error(walletReadOnlyReason));
+      return;
+    }
+    const finalAddonVouchers = Object.entries(selectedAddonVoucherTargets).map(([token, addonOptionId]) => {
+        const voucher = availableVouchers?.find(candidate => candidate.qr_token === token);
+        return voucher && selectedOptionIds.includes(addonOptionId) ? { addonOptionId, token } : null;
     }).filter((x): x is NonNullable<typeof x> => Boolean(x));
 
     const cartItemData: Omit<CartItem, "cartId"> = {
-      menuItemId: item.id, name: item.name, category: item.category, imageUrl: item.image_url,
-      size: selectedSize, unitPrice: currentPriceContext.unitPrice, quantity, sweetness, iceOption, coldwhisk,
-      note, selectedOptionIds, addonsPrice: currentPriceContext.addonsCost, addonPrices: currentPriceContext.addonPricesMap,
-      addonMetadata: snapshotCartAddonMetadata(selectedOptionIds, addonGroups),
-      selectedPowderId: isLatte ? undefined : selectedPowderId,
-      selectedBaseLiquidId: selectedMilkId || undefined,
-      selectedMilkTypeId: isLatte ? selectedMilkId : undefined,
-      clientPriceVnd: finalUnitPrice,
-      originalClientPriceVnd: currentPriceContext.unitPrice,
+      menuItemId: item.id,
+      quantity,
+      configuration: {
+        size: selectedSize, sweetness, iceOption, coldwhisk, note,
+        ...(!isLatte && selectedPowderId ? { powderId: selectedPowderId } : {}),
+        ...(selectedMilkId ? { baseLiquidId: selectedMilkId } : {}),
+        addonOptionIds: selectedOptionIds,
+      },
       addonVouchers: finalAddonVouchers,
-      productVoucherId: effectiveFreeVoucherId || undefined,
-      productVoucherDiscountVnd: effectiveFreeVoucherId ? effectiveFreeCoveredPrice : undefined,
-      productVoucherType: effectiveFreeVoucherId ? effectiveProductVoucherType : undefined,
+      ...(effectiveFreeVoucherId ? {
+        lineVoucher: {
+          token: effectiveFreeVoucherId,
+          kind: effectiveProductVoucherType === "PRODUCT_DISCOUNT" ? "PRODUCT_DISCOUNT" : "PRODUCT",
+        },
+      } : {}),
     };
 
     if (onConfirm) {
       // Staff mode
-      onConfirm({
+      const cartItem = {
         ...cartItemData,
         cartId: editingItem?.cartId || crypto.randomUUID(),
-      } as CartItem);
+      };
+      const resolvedAddons = selectedOptionIds.flatMap((optionId) => {
+        const group = addonGroups.find((candidate) => candidate.options.some((option) => option.id === optionId));
+        const option = group?.options.find((candidate) => candidate.id === optionId);
+        if (!group || !option) return [];
+        return [{
+          id: optionId,
+          label: option.label,
+          priceVnd: currentPriceContext.addonPricesMap[optionId] ?? 0,
+          groupId: group.id,
+          groupName: group.name,
+          maxSelect: group.max_select,
+          isExtraMatcha: option.gram_value !== null || group.is_dynamic_gram,
+        }];
+      });
+      const grossUnitPriceVnd = currentPriceContext.unitPrice;
+      const personalVoucherDiscountVnd = Math.max(0, grossUnitPriceVnd - finalUnitPrice);
+      const result = onConfirm(cartItem, {
+        ...cartItem,
+        name: item.name,
+        imageUrl: item.image_url,
+        category: item.category,
+        menuItem: item,
+        resolvedAddons,
+        drinkPriceVnd: Math.max(0, grossUnitPriceVnd - currentPriceContext.addonsCost),
+        addonsPriceVnd: currentPriceContext.addonsCost,
+        grossUnitPriceVnd,
+        personalVoucherDiscountVnd,
+        bundleDiscountVnd: 0,
+        payableUnitVnd: finalUnitPrice,
+        lineTotalVnd: finalUnitPrice * quantity,
+        errors: [],
+        revalidating: false,
+      });
+      if (result && !result.ok) {
+        void import("sonner").then(({ toast }) => toast.error(result.message));
+        return;
+      }
     } else if (editingItem) {
       // Customer Edit mode
-      const isVoucherApplied = !disableVoucherApplication && (effectiveFreeVoucherId !== undefined || finalAddonVouchers.length > 0);
-      if (editingItem.quantity > 1 && isVoucherApplied) {
-        // Split item: 1 item with voucher, remainder without voucher
-        updateItem(editingItem.cartId, { ...cartItemData, quantity: 1 });
-        const remainderData = {
-          ...cartItemData,
-          quantity: editingItem.quantity - 1,
-          unitPrice: currentPriceContext.unitPrice,
-          clientPriceVnd: currentPriceContext.unitPrice,
-          productVoucherId: undefined,
-          productVoucherDiscountVnd: undefined,
-          productVoucherType: undefined,
-          addonVouchers: [],
-        };
-        addItem(remainderData);
-      } else {
-        updateItem(editingItem.cartId, cartItemData);
+      const result = updateItem(editingItem.cartId, cartItemData);
+      if (!result.ok) { void import("sonner").then(({ toast }) => toast.error(result.message)); return; }
+    } else if (pendingAddonVoucher && item.category !== "extras") {
+      const pendingVoucher = availableVouchers?.find((voucher) => voucher.qr_token === pendingAddonVoucher.voucherId);
+      const targetValid = pendingVoucher
+        ? resolveAddonVoucherOptionId(pendingVoucher, [pendingAddonVoucher.addonOptionId]) !== null
+        : false;
+      if (!pendingVoucher || !isVoucherUsable(pendingVoucher) || !targetValid) {
+        setPendingAddonVoucher(null);
+        const result = addItem(cartItemData, { consumePendingAddon: false });
+        if (!result.ok) {
+          void import("sonner").then(({ toast }) => toast.error(result.message));
+          return;
+        }
+        void import("sonner").then(({ toast }) => toast.info("Voucher addon chờ áp dụng không còn khả dụng"));
+        handleClose();
+        return;
       }
+      const groupOptionIds = new Set(addonGroups.find((group) => group.id === pendingAddonVoucher.addonGroupId)?.options.map((option) => option.id) ?? []);
+      const selectedInGroup = cartItemData.configuration.size === null ? [] : cartItemData.configuration.addonOptionIds.filter((optionId) => groupOptionIds.has(optionId));
+      if (cartItemData.configuration.size !== null && !cartItemData.configuration.addonOptionIds.includes(pendingAddonVoucher.addonOptionId) && selectedInGroup.length >= pendingAddonVoucher.maxSelect) {
+        setPendingAddonConflict({ item: cartItemData, replaceOptionId: selectedInGroup[0] });
+        return;
+      }
+      const result = addItem(cartItemData);
+      if (!result.ok) { void import("sonner").then(({ toast }) => toast.error(result.message)); return; }
     } else {
       // Customer Add mode
-      addItem(cartItemData);
+      const result = addItem(cartItemData);
+      if (!result.ok) { void import("sonner").then(({ toast }) => toast.error(result.message)); return; }
     }
     
     handleClose();
   }, [
-    item, selectedAddonVoucherIds, availableVouchers, currentPriceContext,
+    item, selectedAddonVoucherTargets, availableVouchers, currentPriceContext,
     selectedSize, finalUnitPrice, quantity, sweetness, iceOption, coldwhisk, note,
     selectedOptionIds, isLatte, selectedPowderId, selectedMilkId, effectiveFreeVoucherId,
-    effectiveFreeCoveredPrice, effectiveProductVoucherType, onConfirm, editingItem, updateItem, addItem, handleClose,
-    disableVoucherApplication, addonGroups,
+    effectiveProductVoucherType, onConfirm, editingItem, updateItem, addItem, handleClose,
+    addonGroups, pendingAddonVoucher, setPendingAddonVoucher,
+    saveBlockedByWallet, walletReadOnlyReason,
   ]);
+
+  const finishPendingAddonConflict = useCallback((replace: boolean) => {
+    if (!pendingAddonConflict) return;
+    const source = pendingAddonConflict.item;
+    const replacement = replace && source.configuration.size !== null && pendingAddonVoucher
+      ? {
+          ...source,
+          configuration: {
+            ...source.configuration,
+            addonOptionIds: source.configuration.addonOptionIds
+              .filter((id) => id !== pendingAddonConflict.replaceOptionId && id !== pendingAddonVoucher.addonOptionId)
+              .concat(pendingAddonVoucher.addonOptionId),
+          },
+        }
+      : source;
+    const result = addItem(replacement, { consumePendingAddon: replace });
+    if (!result.ok) { void import("sonner").then(({ toast }) => toast.error(result.message)); return; }
+    setPendingAddonConflict(null);
+    handleClose();
+  }, [addItem, handleClose, pendingAddonConflict, pendingAddonVoucher]);
 
   const sweetnessIdx = useMemo(() => SWEETNESS_OPTIONS.findIndex((o) => o.value === sweetness), [sweetness]);
 
@@ -595,6 +711,11 @@ const BaseModal: React.FC<ProductModalProps> = ({
           </div>
 
           {/* 9. ƯU ĐÃI CỦA BẠN */}
+          {voucherControlsReadOnly && (
+            <div role="alert" className="mt-7 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-800">
+              {walletReadOnlyReason} Voucher cá nhân đang ở chế độ chỉ xem.
+            </div>
+          )}
           {!disableVoucherApplication && (applicableProductVouchers.length > 0 || applicableAddonVouchers.length > 0) && (
             <div className="mt-7">
               <SectionLabel text="🎟 Ưu đãi có thể áp dụng" />
@@ -603,6 +724,8 @@ const BaseModal: React.FC<ProductModalProps> = ({
                   const isSelected = selectedProductVoucherId === v.qr_token;
                   return (
                     <button
+                      type="button"
+                      disabled={voucherControlsReadOnly}
                       key={v.qr_token}
                       onClick={() => {
                         if (!isSelected) setQuantity(1);
@@ -610,7 +733,8 @@ const BaseModal: React.FC<ProductModalProps> = ({
                       }}
                       className={cn(
                         "w-full flex items-center justify-between p-3.5 rounded-xl border-2 text-left transition-colors",
-                        isSelected ? "bg-orange-50 border-orange-200" : "bg-card border-border hover:bg-orange-50/30"
+                        isSelected ? "bg-orange-50 border-orange-200" : "bg-card border-border hover:bg-orange-50/30",
+                        voucherControlsReadOnly && "cursor-not-allowed opacity-60"
                       )}
                     >
                       <div>
@@ -624,32 +748,70 @@ const BaseModal: React.FC<ProductModalProps> = ({
                 })}
                 {applicableAddonVouchers.map(v => {
                   const isSelected = selectedAddonVoucherIds.includes(v.qr_token);
+                  const choices = getAddonVoucherTargetChoices(
+                    v,
+                    selectedOptionIds,
+                    Object.values(selectedAddonVoucherTargets).filter((targetId) =>
+                      selectedOptionIds.includes(targetId) && selectedAddonVoucherTargets[v.qr_token] !== targetId,
+                    ),
+                    currentPriceContext.addonPricesMap,
+                  );
                   return (
+                    <div key={v.qr_token} className="space-y-2">
                     <button
-                      key={v.qr_token}
+                      type="button"
+                      disabled={voucherControlsReadOnly}
                       onClick={() => {
                         if (isSelected) {
-                          setSelectedAddonVoucherIds(prev => prev.filter(id => id !== v.qr_token));
-                        } else {
+                          setSelectedAddonVoucherTargets(prev => {
+                            const next = { ...prev };
+                            delete next[v.qr_token];
+                            return next;
+                          });
+                          setAddonChoiceVoucherId(null);
+                        } else if (choices.length === 1) {
                           setQuantity(1);
-                          const otherIdsToRemove = applicableAddonVouchers
-                            .filter(av => av.addon_option_id === v.addon_option_id && av.qr_token !== v.qr_token)
-                            .map(av => av.qr_token);
-                          setSelectedAddonVoucherIds(prev => [...prev.filter(id => !otherIdsToRemove.includes(id)), v.qr_token]);
+                          setSelectedAddonVoucherTargets(prev => ({ ...prev, [v.qr_token]: choices[0].addonOptionId }));
+                          setAddonChoiceVoucherId(null);
+                        } else {
+                          setAddonChoiceVoucherId(v.qr_token);
                         }
                       }}
                       className={cn(
                         "w-full flex items-center justify-between p-3.5 rounded-xl border-2 text-left transition-colors",
-                        isSelected ? "bg-green-50 border-green-200" : "bg-card border-border hover:bg-green-50/30"
+                        isSelected ? "bg-green-50 border-green-200" : "bg-card border-border hover:bg-green-50/30",
+                        voucherControlsReadOnly && "cursor-not-allowed opacity-60"
                       )}
                     >
                       <div>
                         <p className="font-bold text-sm flex items-center gap-2 text-primary">
                           <Ticket size={14} className="text-green-600" /> {v.package?.name || `Free ${v.addonOption?.label || "Topping"}`}
                         </p>
+                        {!isSelected && choices.length > 1 ? <p className="mt-1 text-xs text-green-700">Chọn topping được giảm</p> : null}
                       </div>
                       {isSelected && <CheckCircle2 size={18} className="text-green-600 shrink-0 ml-2" />}
                     </button>
+                    {!isSelected && addonChoiceVoucherId === v.qr_token ? (
+                      <div className="space-y-2 rounded-xl border border-green-200 bg-green-50/60 p-2" role="group" aria-label="Chọn topping được giảm">
+                        {choices.map((choice) => (
+                          <button
+                            type="button"
+                            disabled={voucherControlsReadOnly}
+                            key={choice.addonOptionId}
+                            onClick={() => {
+                              setQuantity(1);
+                              setSelectedAddonVoucherTargets((previous) => ({ ...previous, [v.qr_token]: choice.addonOptionId }));
+                              setAddonChoiceVoucherId(null);
+                            }}
+                            className={cn("flex min-h-11 w-full items-center justify-between rounded-lg bg-white px-3 text-left text-sm font-semibold", voucherControlsReadOnly && "cursor-not-allowed opacity-60")}
+                          >
+                            <span>{choice.label}</span>
+                            <span className="text-green-700">Giảm {choice.discountVnd.toLocaleString("vi-VN")}đ</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    </div>
                   );
                 })}
               </div>
@@ -666,12 +828,15 @@ const BaseModal: React.FC<ProductModalProps> = ({
           handleAddToCart={handleAddToCart}
           isEditing={!!editingItem}
           ctaLabel={ctaLabel}
+          disabled={saveBlockedByWallet}
+          disabledReason={saveBlockedByWallet ? walletReadOnlyReason : undefined}
         />
     </>
   );
 
   return (
     <Profiler id="ProductModal" onRender={onRenderCallback}>
+      <ConfirmModal isOpen={pendingAddonConflict !== null} title="Nhóm addon đã đủ" message="Thay addon đang chọn bằng addon của voucher? Nếu giữ nguyên, món vẫn được thêm và voucher sẽ chờ món mới tiếp theo." confirmLabel="Thay addon" cancelLabel="Giữ nguyên" onConfirm={() => finishPendingAddonConflict(true)} onCancel={() => finishPendingAddonConflict(false)} />
       {isDesktop ? (
         <Dialog.Root open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }}>
           <Dialog.Portal>
@@ -717,30 +882,40 @@ const ExtrasModal: React.FC<ProductModalProps> = ({
   currentCartItems,
   nested = false,
   ctaLabel,
+  walletVerified = true,
+  walletReadOnlyReason = "Ví voucher đang được xác minh. Vui lòng thử lại sau một chút.",
 }) => {
   const addItem = useCartStore((state) => state.addItem);
   const updateItem = useCartStore((state) => state.updateItem);
   const storedCartItems = useCartStore((state) => state.items);
   const [isOpen, setIsOpen] = useState(true);
   const [quantity, setQuantity] = useState(editingItem?.quantity ?? 1);
-  const [note, setNote] = useState(editingItem?.note ?? "");
+  const [note, setNote] = useState(editingItem?.configuration.note ?? "");
   const [voucherId, setVoucherId] = useState<string | null>(
-    editingItem?.itemVoucherId ?? freeVoucherId ?? null,
+    editingItem?.lineVoucher?.kind === "ITEM" ? editingItem.lineVoucher.token : freeVoucherId ?? null,
   );
   const unitPrice = item.unit_price_vnd ?? 0;
   const usedVoucherIds = new Set(
     (currentCartItems ?? storedCartItems)
       .filter((cartItem) => cartItem.cartId !== editingItem?.cartId)
-      .flatMap((cartItem) => [cartItem.productVoucherId, cartItem.itemVoucherId])
+      .flatMap((cartItem) => cartItem.lineVoucher ? [cartItem.lineVoucher.token] : [])
       .filter((voucherId): voucherId is string => Boolean(voucherId)),
   );
   const itemVouchers = filterUsableVouchers(availableVouchers ?? [], "ITEM").filter(
-    (voucher) => voucher.menu_item_id === item.id && !usedVoucherIds.has(voucher.qr_token),
+    (voucher) => (
+      (voucher.eligible_menu_items?.length ?? 0) > 0
+        ? voucher.eligible_menu_items!.some((target) => target.menu_item_id === item.id && target.is_available)
+        : voucher.menu_item_id === item.id
+    ) && !usedVoucherIds.has(voucher.qr_token),
   );
   const hasVoucher = voucherId !== null;
   const finalPrice = hasVoucher ? 0 : unitPrice;
   const effectiveQuantity = hasVoucher ? 1 : quantity;
   const totalPrice = finalPrice * effectiveQuantity;
+  const voucherControlsReadOnly = !walletVerified;
+  const saveBlockedByWallet = voucherControlsReadOnly && (
+    Boolean(editingItem?.lineVoucher) || voucherId !== null || freeVoucherId !== undefined
+  );
   const ctaText = ctaLabel ?? (editingItem ? "Cập nhật" : "Bỏ vào giỏ cá");
   const isDesktop = useSyncExternalStore(subscribeToDesktopViewport, getDesktopSnapshot, getDesktopServerSnapshot);
   const closeWithHistory = useModalHistory(onClose);
@@ -751,32 +926,43 @@ const ExtrasModal: React.FC<ProductModalProps> = ({
   };
 
   const save = () => {
+    if (saveBlockedByWallet) {
+      void import("sonner").then(({ toast }) => toast.error(walletReadOnlyReason));
+      return;
+    }
     const cartItemData: Omit<CartItem, "cartId"> = {
       menuItemId: item.id,
-      name: item.name,
-      category: "extras",
-      imageUrl: item.image_url,
-      size: null,
-      unitPrice,
       quantity: hasVoucher ? 1 : quantity,
-      sweetness: "FULL",
-      iceOption: "NORMAL",
-      coldwhisk: false,
-      note,
-      selectedOptionIds: [],
-      addonsPrice: 0,
-      addonPrices: {},
-      clientPriceVnd: finalPrice,
-      originalClientPriceVnd: unitPrice,
-      itemVoucherId: voucherId ?? undefined,
+      configuration: { size: null, note },
+      addonVouchers: [],
+      ...(voucherId ? { lineVoucher: { token: voucherId, kind: "ITEM" as const } } : {}),
     };
     const cartItem: CartItem = {
       ...cartItemData,
       cartId: editingItem?.cartId ?? crypto.randomUUID(),
     };
-    if (onConfirm) onConfirm(cartItem);
-    else if (editingItem) updateItem(editingItem.cartId, cartItemData);
-    else addItem(cartItemData);
+    const result = onConfirm
+      ? onConfirm(cartItem, {
+          ...cartItem,
+          name: item.name,
+          imageUrl: item.image_url,
+          category: "extras",
+          menuItem: item,
+          resolvedAddons: [],
+          drinkPriceVnd: unitPrice,
+          addonsPriceVnd: 0,
+          grossUnitPriceVnd: unitPrice,
+          personalVoucherDiscountVnd: hasVoucher ? unitPrice : 0,
+          bundleDiscountVnd: 0,
+          payableUnitVnd: finalPrice,
+          lineTotalVnd: totalPrice,
+          errors: [],
+          revalidating: false,
+        })
+      : editingItem
+        ? updateItem(editingItem.cartId, cartItemData)
+        : addItem(cartItemData);
+    if (result && !result.ok) { void import("sonner").then(({ toast }) => toast.error(result.message)); return; }
     close();
   };
 
@@ -789,10 +975,15 @@ const ExtrasModal: React.FC<ProductModalProps> = ({
       </div>
       <label className="mt-6 block text-sm font-bold text-primary" htmlFor="extras-note">Ghi chú</label>
       <textarea id="extras-note" value={note} onChange={(event) => setNote(event.target.value.slice(0, 500))} maxLength={500} rows={3} placeholder="Ví dụ: đóng gói riêng" className="mt-2 w-full resize-none rounded-2xl border-2 border-border bg-white p-3 text-sm outline-none focus:border-primary" />
+      {voucherControlsReadOnly && (
+        <div role="alert" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-800">
+          {walletReadOnlyReason} Voucher cá nhân đang ở chế độ chỉ xem.
+        </div>
+      )}
       {itemVouchers.length > 0 && (
         <div className="mt-5">
           <p className="text-sm font-bold text-primary">Voucher Add-on</p>
-          <button type="button" onClick={() => setVoucherId((current) => current ? null : itemVouchers[0]?.qr_token ?? null)} className={cn("mt-2 flex min-h-12 w-full items-center justify-between rounded-2xl border-2 px-4 text-left", hasVoucher ? "border-green-500 bg-green-50" : "border-border bg-white") }>
+          <button type="button" disabled={voucherControlsReadOnly} onClick={() => setVoucherId((current) => current ? null : itemVouchers[0]?.qr_token ?? null)} className={cn("mt-2 flex min-h-12 w-full items-center justify-between rounded-2xl border-2 px-4 text-left", hasVoucher ? "border-green-500 bg-green-50" : "border-border bg-white", voucherControlsReadOnly && "cursor-not-allowed opacity-60") }>
             <span className="text-sm font-medium">{hasVoucher ? "Miễn phí 1 Add-on" : "Áp dụng voucher"}</span>
             {hasVoucher && <CheckCircle2 className="h-5 w-5 text-green-600" />}
           </button>
@@ -806,7 +997,7 @@ const ExtrasModal: React.FC<ProductModalProps> = ({
           <button type="button" aria-label="Tăng số lượng" disabled={hasVoucher} onClick={() => setQuantity((value) => Math.min(10, value + 1))} className="flex h-11 w-11 items-center justify-center rounded-full bg-white disabled:opacity-40"><Plus className="h-4 w-4" /></button>
         </div>
       </div>
-      <button type="button" onClick={save} className="sticky bottom-0 mt-5 min-h-12 w-full rounded-2xl bg-primary px-4 font-bold text-white md:static">{ctaText} - {formatKa(totalPrice, "ceil")}</button>
+      <button type="button" onClick={save} disabled={saveBlockedByWallet} title={saveBlockedByWallet ? walletReadOnlyReason : undefined} className="sticky bottom-0 mt-5 min-h-12 w-full rounded-2xl bg-primary px-4 font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600 md:static">{ctaText} - {formatKa(totalPrice, "ceil")}</button>
     </>
   );
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { AnimatePresence } from "framer-motion";
 import { Loader2, LogIn, Ticket } from "lucide-react";
@@ -34,9 +34,9 @@ import { useAddVoucherToCart } from "@/src/hooks/useAddVoucherToCart";
 import { canApplyDiscount } from "@/src/lib/utils/voucherUseNowHelpers";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { fetchMenu } from "@/src/services/menuService";
+import { fetchPowders } from "@/src/services/powderService";
 import { useCartTotalPrice } from "@/src/lib/store/cartStore";
 import { estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
-import type { MenuData } from "@/src/lib/types/menu";
 import type { BundleCartDraftResult, BundleCartDraftValidation } from "@/src/lib/utils/bundleCartDraft";
 import { validateBundleCartDraft } from "@/src/lib/utils/bundleCartDraft";
 import { getBundleVoucherSummary } from "@/src/components/menu/cart/CartBundleVoucherPanel";
@@ -45,6 +45,7 @@ import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { getVoucherRefundConfirmation } from "@/src/lib/utils/voucherModalHelpers";
 import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
+import { getBundleAllocatedQuantities } from "@/src/lib/utils/bundleCartSummary";
 
 /** Unified customer wallet and voucher acquisition modal. */
 export default function VoucherModal() {
@@ -57,13 +58,22 @@ export default function VoucherModal() {
   const setCartOpen = useCartStore((state) => state.setCartOpen);
   const commitBundleCartDraft = useCartStore((state) => state.commitBundleCartDraft);
   const removeVoucherEffects = useCartStore((state) => state.removeVoucherEffects);
-  const { data: points = 0 } = useCustomerPoints();
-  const { data: vouchers = [], isLoading: vouchersLoading } = useCustomerVouchers({ enabled: open && isLoggedIn });
+  const { data: points = 0 } = useCustomerPoints({ enabled: open && isLoggedIn });
+  const {
+    data: vouchers = [],
+    isLoading: vouchersLoading,
+    isSuccess: vouchersLoaded,
+    isFetching: vouchersFetching,
+    isError: vouchersError,
+    refetch: refetchVouchers,
+  } = useCustomerVouchers({ enabled: open && isLoggedIn });
   const { data: packages = [], isLoading: packagesLoading } = useVoucherPackages({ enabled: open });
-  const refreshWallet = useCallback(() => queryClient.fetchQuery({
-    queryKey: VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS,
-    queryFn: listMyVouchers,
-  }), [queryClient]);
+  const refreshWallet = useCallback(async (): Promise<MyVoucher[]> => {
+    const refreshed = await listMyVouchers();
+    if (!Array.isArray(refreshed)) throw new Error("Ví voucher không hợp lệ");
+    queryClient.setQueryData(VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS, refreshed);
+    return refreshed;
+  }, [queryClient]);
   const { acquire, retryRefresh, receipt, isPending } = useVoucherAcquisition({ refreshWallet });
   const [activeTab, setActiveTab] = useState<VoucherModalTab>("my_vouchers");
   const [pendingPackage, setPendingPackage] = useState<VoucherPackage | null>(null);
@@ -74,15 +84,20 @@ export default function VoucherModal() {
   const [detailVoucher, setDetailVoucher] = useState<MyVoucher | null>(null);
   const [bundleSetupVoucher, setBundleSetupVoucher] = useState<MyVoucher | null>(null);
   const [refundCandidate, setRefundCandidate] = useState<MyVoucher | null>(null);
-  const [isRefunding, setIsRefunding] = useState(false);
   const [isRetryingWallet, setIsRetryingWallet] = useState(false);
-  const [menuData, setMenuData] = useState<MenuData | undefined>();
   const cartItems = useCartStore((s) => s.items);
   const bundleApplications = useCartStore((s) => s.bundleApplications);
+  const bundleAllocatedQuantitiesByCartId = useMemo(
+    () => getBundleAllocatedQuantities(bundleApplications),
+    [bundleApplications],
+  );
   const subtotalVnd = useCartTotalPrice();
   const selectedVoucherIds = useCartStore((s) => s.selectedVoucherIds);
   const setSelectedVoucherIds = useCartStore((s) => s.setSelectedVoucherIds);
   const powders = usePowderStore((s) => s.data);
+  const powderLabels = useMemo(() => new Map(powders.map((powder) => [powder.id, powder.name])), [powders]);
+  const powdersLoaded = usePowderStore((s) => s.isLoaded);
+  const setPowderData = usePowderStore((s) => s.setPowderData);
   const defaultPowderGram = usePowderStore((s) => s.defaultPowderGram);
   const { addToCart, loading: isUsingVoucher } = useAddVoucherToCart();
   const consumedIntentRef = useRef<object | null>(null);
@@ -90,6 +105,25 @@ export default function VoucherModal() {
   const detailPackage = detailPackageId
     ? packages.find((pkg) => pkg.id === detailPackageId) ?? null
     : null;
+  const walletVerified = vouchersLoaded && !vouchersFetching && !vouchersError;
+  const walletVerificationMessage = vouchersError
+    ? "Không thể xác minh ví voucher. Hãy thử lại."
+    : vouchersFetching
+      ? "Ví voucher đang được xác minh lại."
+      : "Ví voucher chưa được xác minh.";
+  const commitBundleDraftIfVerified = useCallback((draft: Parameters<typeof commitBundleCartDraft>[0]) => {
+    if (!walletVerified) {
+      return { ok: false as const, code: "BUNDLE_STALE" as const, message: "Ví voucher đang được xác minh lại." };
+    }
+    return commitBundleCartDraft(draft);
+  }, [commitBundleCartDraft, walletVerified]);
+  const requestRefundIfVerified = useCallback((voucher: MyVoucher) => {
+    if (walletVerified) {
+      setRefundCandidate(voucher);
+      return;
+    }
+    toast.error(walletVerificationMessage);
+  }, [walletVerificationMessage, walletVerified]);
 
   const openAcquiredBundle = useCallback((wallet: MyVoucher[] | null, token: string) => {
     const voucher = wallet?.find((candidate) => candidate.qr_token === token);
@@ -100,13 +134,40 @@ export default function VoucherModal() {
   const selectedDiscountVouchers = activeVouchers.filter(v => selectedVoucherIds.includes(v.qr_token) && v.voucher_type === "DISCOUNT");
   const totalAfterDiscountVnd = Math.max(0, subtotalVnd - estimateMultiDiscountSavings(selectedDiscountVouchers, subtotalVnd));
 
+  const needsMenuData = Boolean(detailVoucher || detailPackage || bundleSetupVoucher);
+
+  const { data: menuData } = useQuery({
+    queryKey: ["menu"],
+    queryFn: fetchMenu,
+    enabled: needsMenuData,
+    staleTime: Infinity,
+  });
+
   useEffect(() => {
-    if (detailVoucher || bundleSetupVoucher) {
-      if (!menuData) {
-        fetchMenu().then(setMenuData).catch(console.error);
-      }
+    if (needsMenuData && !powdersLoaded) {
+      void fetchPowders().then(setPowderData).catch(console.error);
     }
-  }, [detailVoucher, bundleSetupVoucher, menuData]);
+  }, [needsMenuData, powdersLoaded, setPowderData]);
+
+  const refundMutation = useMutation({
+    mutationFn: (token: string) => refundVoucher(token),
+    onSuccess: (refunded, token) => {
+      removeVoucherEffects(token);
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS }),
+        queryClient.invalidateQueries({ queryKey: VOUCHER_QUERY_KEYS.CUSTOMER_POINTS }),
+      ]);
+      toast.success(`Đã hoàn ${refunded.points_refunded.toLocaleString("vi-VN")} điểm`);
+      setRefundCandidate(null);
+      setDetailVoucher(null);
+    },
+    onError: (error: unknown) => {
+      const message = axios.isAxiosError<{ error?: string }>(error)
+        ? error.response?.data?.error
+        : null;
+      toast.error(message ?? "Không thể hoàn điểm lúc này. Voucher và giỏ hàng vẫn được giữ nguyên.");
+    },
+  });
 
   const handleUseNowSuccess = useCallback(() => {
     setDetailVoucher(null);
@@ -115,10 +176,13 @@ export default function VoucherModal() {
   }, [close, setCartOpen]);
 
   const handleWalletUseNow = useCallback(async (voucher: MyVoucher) => {
-    // Pre-fetch menu for voucher types that need it in VoucherDetailSheet
-    if (voucher.voucher_type === "PRODUCT_DISCOUNT" || voucher.voucher_type === "BUNDLE") {
-      const resolvedMenu = menuData ?? await fetchMenu();
-      if (!menuData) setMenuData(resolvedMenu);
+    if (!walletVerified) {
+      toast.error(walletVerificationMessage);
+      return;
+    }
+    if ((voucher.voucher_type === "PRODUCT" || voucher.voucher_type === "ITEM") && (voucher.eligible_menu_items?.length ?? 0) > 1) {
+      setDetailVoucher(voucher);
+      return;
     }
     const intent = resolveWalletUseNowIntent({
       voucherType: voucher.voucher_type,
@@ -135,7 +199,7 @@ export default function VoucherModal() {
     const result = await addToCart(voucher);
     if (result.ok) handleUseNowSuccess();
     else setDetailVoucher(voucher);
-  }, [activeVouchers, addToCart, handleUseNowSuccess, menuData, setSelectedVoucherIds, subtotalVnd]);
+  }, [activeVouchers, addToCart, handleUseNowSuccess, setSelectedVoucherIds, subtotalVnd, walletVerificationMessage, walletVerified]);
 
   const handleBundleSuccess = useCallback(() => {
     setBundleSetupVoucher(null);
@@ -144,33 +208,15 @@ export default function VoucherModal() {
     setCartOpen(true);
   }, [close, setCartOpen]);
 
-  const handleRefund = useCallback(async () => {
-    if (!refundCandidate || isRefunding) return;
-    setIsRefunding(true);
-    try {
-      const refunded = await refundVoucher(refundCandidate.qr_token);
-      removeVoucherEffects(refundCandidate.qr_token);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS }),
-        queryClient.invalidateQueries({ queryKey: VOUCHER_QUERY_KEYS.CUSTOMER_POINTS }),
-      ]);
-      toast.success(`Đã hoàn ${refunded.points_refunded.toLocaleString("vi-VN")} điểm`);
-      setRefundCandidate(null);
-      setDetailVoucher(null);
-    } catch (error: unknown) {
-      const message = axios.isAxiosError<{ error?: string }>(error)
-        ? error.response?.data?.error
-        : null;
-      toast.error(message ?? "Không thể hoàn điểm lúc này. Voucher và giỏ hàng vẫn được giữ nguyên.");
-    } finally {
-      setIsRefunding(false);
-    }
-  }, [isRefunding, queryClient, refundCandidate, removeVoucherEffects]);
+  const handleRefund = useCallback(() => {
+    if (!refundCandidate || refundMutation.isPending) return;
+    refundMutation.mutate(refundCandidate.qr_token);
+  }, [refundCandidate, refundMutation]);
 
   useEffect(() => {
     if (open) setActiveTab(isLoggedIn ? "my_vouchers" : "packages");
-    else if (!isRefunding) setRefundCandidate(null);
-  }, [isLoggedIn, isRefunding, open]);
+    else if (!refundMutation.isPending) setRefundCandidate(null);
+  }, [isLoggedIn, refundMutation.isPending, open]);
 
   const acquirePackage = useCallback(async (pkg: VoucherPackage) => {
     setExchangingId(pkg.id);
@@ -272,6 +318,31 @@ export default function VoucherModal() {
   ) : null;
 
   const loading = packagesLoading || (isLoggedIn && vouchersLoading);
+  const walletVerificationBanner = isLoggedIn && !vouchersLoading && !walletVerified ? (
+    <div role="status" className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+      <span>{walletVerificationMessage} Các thao tác voucher đang tạm khóa.</span>
+      <button
+        type="button"
+        onClick={() => void refetchVouchers()}
+        className="min-h-11 shrink-0 rounded-xl border border-amber-300 bg-white px-3 font-bold text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700"
+      >
+        Thử lại
+      </button>
+    </div>
+  ) : null;
+  const walletErrorView = isLoggedIn && vouchersError && vouchers.length === 0 ? (
+    <div role="alert" className="mt-4 flex flex-col items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-5 py-12 text-center">
+      <p className="text-sm font-bold text-red-900">Không thể tải ví voucher</p>
+      <p className="text-xs text-red-800">Không thể xác minh voucher nên chưa thể hiển thị danh sách.</p>
+      <button
+        type="button"
+        onClick={() => void refetchVouchers()}
+        className="min-h-11 rounded-xl bg-red-700 px-4 text-sm font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700 focus-visible:ring-offset-2"
+      >
+        Thử lại
+      </button>
+    </div>
+  ) : null;
   const content = (
     <VoucherModalFrame
       activeTab={activeTab}
@@ -291,6 +362,8 @@ export default function VoucherModal() {
               <VoucherDetailSheet
                 key="package-detail-sheet"
                 packageData={detailPackage}
+                menuData={menuData}
+                powderLabels={powderLabels}
                 pointsBalance={points}
                 isLoggedIn={isLoggedIn}
                 isExchanging={isPending && exchangingId === detailPackage.id}
@@ -310,11 +383,18 @@ export default function VoucherModal() {
                 orderType="PICKUP"
                 shippingFee={null}
                 menuData={menuData}
+                canEdit={walletVerified}
+                editDisabledReason={walletVerificationMessage}
+                bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}
                 onBack={() => setDetailVoucher(null)}
                 onUseNowSuccess={handleUseNowSuccess}
+                onPendingAddon={() => {
+                  setDetailVoucher(null);
+                  close();
+                }}
                 onOpenBundleSetup={(v) => { setDetailVoucher(null); setBundleSetupVoucher(v); }}
-                onRequestRefund={setRefundCandidate}
-                isRefunding={isRefunding}
+                onRequestRefund={requestRefundIfVerified}
+                isRefunding={refundMutation.isPending}
               />
             )}
           </AnimatePresence>
@@ -349,7 +429,7 @@ export default function VoucherModal() {
                   siblingApplications: siblingResolution.siblings,
                 });
               }}
-              onCommitDraft={commitBundleCartDraft}
+              onCommitDraft={commitBundleDraftIfVerified}
               onSuccess={handleBundleSuccess}
             />
           )}
@@ -359,16 +439,15 @@ export default function VoucherModal() {
             message={getVoucherRefundConfirmation(refundCandidate?.availability.refund_points ?? 0)}
             confirmLabel={`Hoàn ${refundCandidate?.availability.refund_points.toLocaleString("vi-VN") ?? 0} điểm`}
             isDestructive
-            isLoading={isRefunding}
+            isLoading={refundMutation.isPending}
             onCancel={() => setRefundCandidate(null)}
-            onConfirm={() => void handleRefund()}
+            onConfirm={handleRefund}
           />
         </>
       )}
     >
         {loading ? <div className="flex h-full items-center justify-center"><Loader2 className="animate-spin text-primary" /></div> : activeTab === "my_vouchers" && isLoggedIn ? (
-          activeVouchers.length === 0 ? <>{acquisitionReceiptView}<div className="mt-4 flex flex-col items-center gap-2 rounded-2xl border border-dashed py-16 text-center"><Ticket className="text-primary/30" /><p className="text-sm font-bold text-primary/60">Bạn chưa có voucher nào</p></div></> :
-          <>{acquisitionReceiptView}<div className="grid gap-3 pb-8 sm:grid-cols-2">{activeVouchers.map((voucher) => (
+          <>{walletVerificationBanner}{walletErrorView}{!walletErrorView && activeVouchers.length === 0 ? <>{acquisitionReceiptView}<div className="mt-4 flex flex-col items-center gap-2 rounded-2xl border border-dashed py-16 text-center"><Ticket className="text-primary/30" /><p className="text-sm font-bold text-primary/60">Bạn chưa có voucher nào</p></div></> : null}{!walletErrorView && activeVouchers.length > 0 ? <>{acquisitionReceiptView}<div className="grid gap-3 pb-8 sm:grid-cols-2">{activeVouchers.map((voucher) => (
             <VoucherCard
               key={voucher.qr_token}
               voucher={voucher}
@@ -378,13 +457,15 @@ export default function VoucherModal() {
               actionModel={buildVoucherActionModel({
                 context: "wallet",
                 busy: isUsingVoucher,
-                selectable: voucher.status === "ACTIVE" && voucher.availability.can_apply,
-                disabledReason: voucher.availability.can_apply ? null : "Voucher hiện chưa thể sử dụng",
+                selectable: walletVerified && voucher.status === "ACTIVE" && voucher.availability.can_apply,
+                disabledReason: !walletVerified
+                  ? walletVerificationMessage
+                  : voucher.availability.can_apply ? null : "Voucher hiện chưa thể sử dụng",
               })}
             />
-          ))}</div></>
+          ))}</div></> : null}</>
         ) : activeTab === "history" && isLoggedIn ? (
-          <VoucherHistorySection vouchers={filterHistoryVouchers(vouchers)} onVoucherClick={setDetailVoucher} />
+          <>{walletVerificationBanner}{walletErrorView ?? <VoucherHistorySection vouchers={filterHistoryVouchers(vouchers)} onVoucherClick={setDetailVoucher} />}</>
         ) : (
           <div>
             {!isLoggedIn && <div className="mb-4 flex items-center gap-3 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3"><LogIn className="size-5 shrink-0 text-primary" /><p className="flex-1 text-sm font-bold text-primary">Đăng nhập để nhận hoặc đổi ưu đãi</p><button type="button" onClick={() => useAuthModalStore.getState().openLogin()} className="min-h-11 rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground focus-visible:ring-2 focus-visible:ring-ring">Đăng nhập</button></div>}

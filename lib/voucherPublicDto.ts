@@ -47,7 +47,18 @@ interface VoucherDtoSource {
     bundleRule?: BundleRuleDtoSource | null;
   };
   menuItem: { name: string; is_available: boolean } | null;
-  menuItemScopes?: Array<{ menu_item_id: string; menuItem: { name: string; category: string; is_available: boolean; is_seasonal: boolean } }>;
+  menuItemScopes?: Array<{
+    menu_item_id: string;
+    size?: Size | null;
+    matcha_powder_id?: string | null;
+    milk_type_id?: string | null;
+    covered_price_vnd?: number | null;
+    menuItem: { name: string; category: string; is_available: boolean; is_seasonal: boolean };
+  }>;
+  addonOptionScopes?: Array<{
+    addon_option_id: string;
+    addonOption: { label: string; price_vnd: number; is_active: boolean; gram_value: unknown | null };
+  }>;
   addonOption: { label: string } | null;
   staff: { name: string; role: Role } | null;
   availability?: VoucherAvailability;
@@ -92,6 +103,17 @@ export function toPublicVoucherDto(voucher: VoucherDtoSource) {
       category: scope.menuItem.category,
       is_available: scope.menuItem.is_available,
       is_seasonal: scope.menuItem.is_seasonal,
+      size: scope.size ?? null,
+      matcha_powder_id: scope.matcha_powder_id ?? null,
+      milk_type_id: scope.milk_type_id ?? null,
+      covered_price_vnd: scope.covered_price_vnd ?? null,
+    })),
+    eligible_addon_options: (voucher.addonOptionScopes ?? []).map((scope) => ({
+      addon_option_id: scope.addon_option_id,
+      label: scope.addonOption.label,
+      price_vnd: scope.addonOption.price_vnd,
+      is_active: scope.addonOption.is_active,
+      is_dynamic_gram: scope.addonOption.gram_value !== null,
     })),
     addonOption: voucher.addonOption,
     staff: voucher.staff,

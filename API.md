@@ -1098,9 +1098,12 @@ Read-only: project effective `EXPIRED` status without updating expired voucher r
 // user
 { data: { type: "user", data: { qr_token: string, name: string, phone_number: string, points_balance: number } } }
 
-// voucher
-{ data: { type: "voucher", data: { qr_token: string, voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED", expires_at: string | null } } }
+// voucher; PRODUCT/ITEM scans include currently usable normalized choices for staff order entry
+{ data: { type: "voucher", data: { qr_token: string, voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, size: "SMALL" | "MEDIUM" | "LARGE" | null, matcha_powder_id: string | null, milk_type_id: string | null, covered_price_vnd: number | null, has_normalized_targets: boolean, eligible_menu_items: Array<{ menu_item_id: string, name: string, category: string, is_available: boolean, is_seasonal: boolean, size: "SMALL" | "MEDIUM" | "LARGE" | null, matcha_powder_id: string | null, milk_type_id: string | null, covered_price_vnd: number | null }>, status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED", expires_at: string | null } } }
 ```
+
+The scanner reports PRODUCT_DISCOUNT and ADDON as order-only vouchers and instructs Staff to select
+them from the customer's cart voucher picker, where the chosen menu-item/addon target is applied.
 
 ---
 
@@ -1193,22 +1196,40 @@ Read-only: project effective `EXPIRED` status without updating expired voucher r
   matches `menu_item_id` plus `eligible_sizes`; FIXED_AMOUNT uses `discount_value`, while
   PAY_AS_SIZE charges the canonical current reference-size price for the same powder/Base Liquid.
   It excludes addons, has null `covered_price_vnd`, and never creates surplus.
-- For PRODUCT_DISCOUNT package creation, new clients send `eligible_menu_item_ids` (1–100 unique
+- For PRODUCT_DISCOUNT and ITEM package creation, new clients send `eligible_menu_item_ids` (1–100 unique
   UUIDs) together with the legacy `menu_item_id` anchor. If both are present, the anchor must be in
   the array; legacy requests containing only `menu_item_id` remain valid. Package and owned-voucher
   responses add `eligible_menu_items` entries containing `menu_item_id`, `name`, `category`,
-  `is_available`, and `is_seasonal`.
-- ITEM: extras only, matches `menu_item_id`, makes one unit free at its current server price,
+  `is_available`, `is_seasonal`, `size`, `matcha_powder_id`, `milk_type_id`, and
+  `covered_price_vnd`. Owned-voucher and active-package responses omit normalized targets whose
+  live menu configuration is no longer usable, while the package remains available if any target works.
+- PRODUCT package creation accepts `product_targets` (1–100 unique menu IDs), where each target
+  owns `size`, `matcha_powder_id`, and `milk_type_id`. The server snapshots a separate immutable
+  drink-only `covered_price_vnd` per target. Legacy scalar PRODUCT fields remain the anchor.
+- ADDON package creation accepts `eligible_addon_option_ids` (1–100 unique fixed-price options)
+  including the legacy `addon_option_id` anchor. Issued vouchers copy the explicit scope. Responses
+  add `eligible_addon_options` entries with `addon_option_id`, `label`, `price_vnd`, `is_active`, and
+  `is_dynamic_gram`; customer-facing responses omit options whose option or owning group is inactive.
+- ITEM: extras only, matches one selected scoped `menu_item_id`, makes one unit free at its current server price,
   has no surplus, and cannot be redeemed outside an order. A target price change does not change
   eligibility or coverage; target soft-delete follows PRODUCT refund policy.
-- PRODUCT: match `menu_item_id` only. Apply one voucher to one drink unit. Limit
+- PRODUCT: match one selected scoped `menu_item_id`. Apply one voucher to one drink unit. Limit
   `covered_price_vnd` to base + powder + milk + Premium Latte; never spill credit into addons.
   Compute the package snapshot from those drink components only; included addon IDs are
   descriptive and never expand coverage.
-- The PRODUCT “Dùng ngay” cart flow resolves the voucher Base Liquid against the item's current
-  default/allow-list and includes the same Latte cost or Fusion swap delta as normal add-to-cart.
-- ADDON: apply to one unit of the exact `addon_option_id`. Allow multiple ADDON vouchers on one
-  item only when their addon IDs differ. Never apply to Extra Matcha.
+- The PRODUCT use-now cart flow resolves the voucher powder and Base Liquid against the item's
+  current default/allow-lists and includes the same Latte cost or Fusion swap delta as normal
+  add-to-cart. This live fallback does not change the issued target's `covered_price_vnd`.
+- ADDON: apply to one unit of one scoped `addon_option_id`. Allow multiple ADDON vouchers on one
+  item only when their addon IDs differ. If multiple scoped addons match one cart item, the client
+  requires an explicit target choice and sends that existing `addon_option_id`. Never apply to Extra Matcha.
+- Customer and staff order payloads remain unchanged: the selected PRODUCT/ITEM target is conveyed
+  by the existing item `menu_item_id`; the selected ADDON target is conveyed by the existing
+  `{ voucher_id, addon_option_id }` entry. The server re-resolves membership from owned-voucher
+  scopes and ignores all client prices.
+- Direct QR redemption remains compatible for singleton PRODUCT/ADDON vouchers. Multi-target
+  PRODUCT and ADDON vouchers return `VOUCHER_ORDER_REQUIRED`; ITEM, PRODUCT_DISCOUNT, and BUNDLE
+  always require an order.
 - DISCOUNT: check `min_order_vnd` after PRODUCT and ADDON. Apply multiple FIXED vouchers first
   in selection order, then at most one PERCENT. FIXED values must be multiples of 1,000 VND;
   round PERCENT reductions down to 1,000 VND.

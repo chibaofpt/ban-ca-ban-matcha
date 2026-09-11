@@ -22,10 +22,10 @@ Inspect current files, callers and tests with `rg`; do not maintain file paths o
 
 | Type | Level | What It Covers |
 |---|---|---|
-| `ITEM` | Item-level | One fixed-price `extras` unit at its current server price; no surplus. |
-| `PRODUCT` | Item-level | One drink unit matching `menu_item_id`; covers drink components only. |
+| `ITEM` | Item-level | One fixed-price `extras` unit selected from an explicit 1–100 target scope at its current server price; no surplus. |
+| `PRODUCT` | Item-level | One drink unit selected from an explicit 1–100 target scope; each target owns an immutable configured credit and covers drink components only. |
 | `PRODUCT_DISCOUNT` | Item-level, selected from main cart | Discounts one configured drink/size using `FIXED_AMOUNT` or `PAY_AS_SIZE`; excludes addons. |
-| `ADDON` | Addon-level | One unit of a specific `addon_option_id`; never Extra Matcha. |
+| `ADDON` | Addon-level | One unit selected from an explicit 1–100 fixed-price addon scope; never Extra Matcha. |
 | `DISCOUNT` | Order-level | Reduces `total_vnd`. `PERCENT` or `FIXED` via `discount_type`. |
 | `FREESHIP` | Order-level | Covers delivery fee up to `covered_delivery_fee_vnd`. |
 
@@ -100,15 +100,17 @@ ACTIVE → REFUNDED                                (auto: target item soft-delet
 
 ## PRODUCT Voucher Details
 
-- Match only `voucher.menu_item_id === order_item.menu_item_id`. Treat size, powder, Base Liquid,
-  and included-addon snapshots as descriptive data, not eligibility constraints.
+- New packages store 1–100 unique `menuItemScopes`; each row owns its size, powder, Base Liquid, and immutable drink-only `covered_price_vnd`. The legacy scalar columns remain a compatibility anchor. Issuance copies every scope row to the owned voucher.
+- Match the selected order item to one scope row. Treat the saved configuration as the starting customization and credit snapshot; after selection, customers may customize and pay any excess.
 - Apply one PRODUCT voucher to one drink unit. Split a voucher-bearing unit into its own
   cart line when the original line quantity is greater than one.
-- At package creation, compute `covered_price_vnd` from the selected drink configuration only.
+- At package creation, compute each target row's `covered_price_vnd` from that target's selected drink configuration only.
   Exclude every addon, including IDs retained in `included_addon_option_ids`.
 - Keep `covered_price_vnd` fixed from voucher issuance; never recompute an issued voucher.
-- “Dùng ngay” must resolve the voucher's saved Base Liquid against the item's current default and
-  allow-list, store the resolved selection in cart, and include the normal Latte cost/Fusion delta.
+- Use-now must resolve the voucher's saved powder and Base Liquid against the item's current
+  default and allow-lists, store the resolved selection in cart, and include the normal Latte
+  cost/Fusion delta. A fallback changes only the initial configuration; it never changes the issued
+  target's immutable `covered_price_vnd`.
 - Limit PRODUCT credit to `drink_price_vnd`. Never spill unused credit into addons.
 
 ```text
@@ -185,7 +187,7 @@ product_discount_vnd = max(
 
 ## ITEM Voucher Details
 
-- Target `extras` menu items only; match exact `menu_item_id`.
+- Target 1–100 explicit `extras` menu items; the customer chooses exactly one and the order must match that scope row. The scalar `menu_item_id` remains the compatibility anchor.
 - Apply to one standalone unit, cover its current server price completely, and create no surplus.
 - Split a voucher-bearing quantity into its own quantity-one cart/order line.
 - A voucher token may appear on only one cart line. Customer and staff cart stores must move the
@@ -267,13 +269,17 @@ product_discount_vnd = max(
 
 ## ADDON Voucher Details
 
-- Match the exact `addon_option_id` on the selected order item.
+- Store 1–100 explicit fixed-price addon options in package and owned-voucher scope tables; the customer chooses one option and the order must match that scope row. The scalar `addon_option_id` remains the compatibility anchor.
 - New issuance, exchange, and package reactivation require the target option and its group to be
   active. Dynamic-gram options are never eligible.
 - Cover the current price of one addon unit only. For quantity three, one voucher discounts
   one unit and the customer pays for two units.
 - Allow multiple ADDON vouchers on one menu item only when their `addon_option_id` values
   differ. Allow at most one voucher for the same `addon_option_id` on that item.
+- When more than one scoped addon already exists on the selected drink, require the customer or
+  staff member to choose the target and show each current discount amount. Auto-apply only a single
+  remaining target. Validate the outside-BUNDLE quantity before any topping mutation, then attach
+  the topping and voucher in the same cart snapshot.
 - Never apply an ADDON voucher to Extra Matcha. Extra Matcha keeps its dynamic price based on
   `gram_value × selected_powder.price_per_gram`.
 
@@ -314,7 +320,7 @@ Consume a partially applied voucher because it still creates a benefit. Treat a 
 
 - Copy all business fields from the package when issuing a voucher. Package edits never affect
   already-issued vouchers.
-- Copy voucher type, discount data including `max_discount_vnd`, product/addon snapshots, `covered_price_vnd`,
+- Copy voucher type, discount data including `max_discount_vnd`, all menu/addon scope rows and snapshots, `covered_price_vnd`,
   `covered_delivery_fee_vnd`, `min_order_vnd`, and expiry data.
 - Keep PRODUCT size, powder, milk, and included-addon fields for display/audit only. Do not use
   them as application constraints or let included addons expand PRODUCT monetary coverage.

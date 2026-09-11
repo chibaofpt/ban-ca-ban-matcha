@@ -20,7 +20,7 @@ export type AdminVoucherType = "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOU
 const STEP2_FIELDS: Record<AdminVoucherType, readonly string[]> = {
   ITEM: ["name", "menuItemId"],
   DISCOUNT: ["name", "discountType", "discountValue", "maxDiscountVnd", "minOrderVnd"],
-  PRODUCT: ["name", "menuItemId", "size", "matchaPowderId", "milkTypeId"],
+  PRODUCT: ["name", "productTargets"],
   PRODUCT_DISCOUNT: ["name", "menuItemId", "eligibleMenuItemIds", "productDiscountMode", "eligibleSizes", "discountValue", "referenceSize"],
   ADDON: ["name", "addonOptionId"],
   FREESHIP: ["name", "coveredDeliveryFeeVnd", "minOrderVnd"],
@@ -59,11 +59,13 @@ export const adminVoucherDraftSchema = z.object({
   eligibleSizes: z.array(sizeSchema).max(3),
   referenceSize: sizeSchema,
   menuItemId: z.string(),
+  productTargets: z.array(scopeSchema).max(100),
   eligibleMenuItemIds: z.array(z.string()).optional(),
   size: sizeSchema,
   matchaPowderId: z.string(),
   milkTypeId: z.string(),
   addonOptionId: z.string(),
+  eligibleAddonOptionIds: z.array(z.string()).max(100),
   coveredDeliveryFeeVnd: z.number().int().min(1_000),
   maxDiscountVnd: z.number().int().min(1_000).nullable(),
 }).superRefine((draft, ctx) => {
@@ -88,8 +90,15 @@ export const adminVoucherDraftSchema = z.object({
   if (draft.voucherType === "DISCOUNT" && draft.discountType === "PERCENT" && draft.maxDiscountVnd !== null && draft.maxDiscountVnd % 1_000 !== 0) {
     ctx.addIssue({ code: "custom", path: ["maxDiscountVnd"], message: "Mức giảm tối đa phải chia hết cho 1.000đ" });
   }
-  if (draft.voucherType === "PRODUCT" && !draft.menuItemId) {
-    ctx.addIssue({ code: "custom", path: ["menuItemId"], message: "Vui lòng chọn sản phẩm" });
+  if (draft.voucherType === "PRODUCT") {
+    if (draft.productTargets.length === 0) ctx.addIssue({ code: "custom", path: ["productTargets"], message: "Vui lòng chọn sản phẩm" });
+    draft.productTargets.forEach((target, index) => {
+      if (target.category === "extras") ctx.addIssue({ code: "custom", path: ["productTargets", index], message: "Voucher tặng ly chỉ áp dụng cho đồ uống" });
+      if (target.sizes.length !== 1) ctx.addIssue({ code: "custom", path: ["productTargets", index, "sizes"], message: "Hãy chọn đúng một size" });
+      if (target.category === "fusion" && target.powderIds.length !== 1) ctx.addIssue({ code: "custom", path: ["productTargets", index, "powderIds"], message: "Hãy chọn đúng một bột cho Fusion" });
+      if (target.category === "latte" && !target.fixedPowderId) ctx.addIssue({ code: "custom", path: ["productTargets", index, "fixedPowderId"], message: "Latte chưa có bột cố định hợp lệ" });
+      if (target.milkTypeIds.length !== 1) ctx.addIssue({ code: "custom", path: ["productTargets", index, "milkTypeIds"], message: "Hãy chọn đúng một Base Liquid" });
+    });
   }
   if (draft.voucherType === "PRODUCT_DISCOUNT") {
     const eligibleMenuItemIds = draft.eligibleMenuItemIds ?? [];

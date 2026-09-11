@@ -210,7 +210,10 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
       const include = typeof args === "object" && args !== null
         ? (args as { include?: Record<string, unknown> }).include
         : undefined;
-      return include && "fusionAllowedPowders" in include ? [latteMenuItem] : [];
+      const where = typeof args === "object" && args !== null
+        ? (args as { where?: Record<string, unknown> }).where
+        : undefined;
+      return include && "fusionAllowedPowders" in include && where ? [latteMenuItem] : [];
     });
     mockMatchaPowderFindMany.mockResolvedValue([{ id: POWDER_ID, name: "Bột test", is_available: true, price_per_gram: 1200, reference_latte_item_id: null }]);
     mockMilkTypeFindMany.mockResolvedValue([{ id: "550e8400-e29b-41d4-a716-446655440099", is_default: true, is_active: true, price_per_ml: 40, display_order: 0 }]);

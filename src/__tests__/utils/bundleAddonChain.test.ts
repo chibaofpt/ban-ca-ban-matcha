@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { AddonGroup } from "@/src/lib/types/menu";
 import type { BundleCartDraftCommit, CartBundleApplication, CartItem } from "@/src/lib/types/cart";
+import { projectedCartLine } from "@/src/__tests__/fixtures/cart";
 import type { BundleItemConfig } from "@/src/lib/utils/voucherUseNowHelpers";
 import { buildBundleCartDraft, validateBundleCartDraft } from "@/src/lib/utils/bundleCartDraft";
 import { useCartStore } from "@/src/lib/store/cartStore";
@@ -30,9 +31,9 @@ const paidAddonGroup: AddonGroup = {
   options: [{ id: "paid-addon", label: "Paid", image_url: null, price_vnd: 5_000, gram_value: null, sort_order: 1 }],
 };
 
-function item(cartId: string, quantity: number, selectedOptionIds: string[] = [], addonPrices: Record<string, number> = {}): CartItem {
+function item(cartId: string, quantity: number, selectedOptionIds: string[] = [], addonPrices: Record<string, number> = {}) {
   const addonsPrice = Object.values(addonPrices).reduce((sum, price) => sum + price, 0);
-  return {
+  return projectedCartLine({
     cartId,
     menuItemId: "latte-1",
     name: "Latte",
@@ -55,7 +56,7 @@ function item(cartId: string, quantity: number, selectedOptionIds: string[] = []
     }])),
     clientPriceVnd: 45_000 + addonsPrice,
     originalClientPriceVnd: 45_000 + addonsPrice,
-  };
+  });
 }
 
 const config = (selectedOptionIds: string[], addonPrices: Record<string, number>): BundleItemConfig => ({
@@ -102,16 +103,11 @@ function previousApplication(ownerKey: string): CartBundleApplication {
     qualifier_allocations: [{ client_line_id: "line-1", quantity: 1 }],
     reward_allocations: [{ client_line_id: "line-1", addon_option_id: "addon-a", quantity: 1 }],
     created_reward_effects: [{ kind: "ADDON", client_line_id: "line-1", addon_option_id: "addon-a", quantity: 1 }],
-    status: "READY",
   };
 }
 
 function buildEditDraft(ownerKey: string): BundleCartDraftCommit {
-  const stale = {
-    ...item("line-1", 1, ["addon-a", "paid-addon"], { "addon-a": 10_000, "paid-addon": 5_000 }),
-    bundleQualifierVoucherToken: "bundle-edit",
-    bundleRewardVoucherToken: "foreign-bundle",
-  };
+  const stale = item("line-1", 1, ["addon-a", "paid-addon"], { "addon-a": 10_000, "paid-addon": 5_000 });
   const recipient = item("line-2", 1);
   const secondQualifier = item("line-3", 1);
   const qualifierConfig = config(["paid-addon"], { "paid-addon": 5_000 });
@@ -141,6 +137,15 @@ function buildEditDraft(ownerKey: string): BundleCartDraftCommit {
   };
 }
 
+function projected(items: CartItem[]) {
+  return items.map((line) => {
+    const ids = line.configuration.size === null ? [] : line.configuration.addonOptionIds;
+    const addonPrices = Object.fromEntries(ids.map((id) => [id, id === "paid-addon" ? 5_000 : 12_000]));
+    const addonsPrice = Object.values(addonPrices).reduce((sum, value) => sum + value, 0);
+    return projectedCartLine({ ...line, size: line.configuration.size, selectedOptionIds: ids, addonPrices, addonsPrice, unitPrice: 45_000 + addonsPrice, originalClientPriceVnd: 45_000 + addonsPrice, clientPriceVnd: 45_000 + addonsPrice });
+  });
+}
+
 function voucher(min_order_vnd: number): BundleVoucherSummary {
   return {
     qr_token: "bundle-edit",
@@ -168,9 +173,9 @@ describe("BUNDLE addon edit chain", () => {
     const draft = buildEditDraft("customer:qr");
     const firstLine = draft.items.find((entry) => entry.cartId === "line-1");
     const secondLine = draft.items.find((entry) => entry.cartId === "line-2");
-    expect(firstLine?.selectedOptionIds).toEqual(["paid-addon"]);
-    expect(firstLine?.bundleRewardVoucherToken).toBe("foreign-bundle");
-    expect(secondLine?.selectedOptionIds).toEqual(["addon-b"]);
+    expect(firstLine?.configuration.size === null ? [] : firstLine?.configuration.addonOptionIds).toEqual(["paid-addon"]);
+    expect(firstLine).not.toHaveProperty("bundleRewardVoucherToken");
+    expect(secondLine?.configuration.size === null ? [] : secondLine?.configuration.addonOptionIds).toEqual(["addon-b"]);
     expect(draft.application.reward_allocations).toEqual([{ client_line_id: "line-2", addon_option_id: "addon-b", quantity: 1 }]);
     expect(draft.application.created_reward_effects).toEqual([{ kind: "ADDON", client_line_id: "line-2", addon_option_id: "addon-b", quantity: 1 }]);
 
@@ -179,6 +184,7 @@ describe("BUNDLE addon edit chain", () => {
       qualifier_allocations: draft.application.qualifier_allocations,
       reward_allocations: draft.application.reward_allocations,
       created_reward_effects: draft.application.created_reward_effects,
+      projectedItems: projected(draft.items),
     };
     const rejected = validateBundleCartDraft({ voucher: voucher(140_001), candidate, ownerKey: "customer:qr" });
     expect(rejected.ok).toBe(false);
@@ -195,10 +201,7 @@ describe("BUNDLE addon edit chain", () => {
   });
 
   it("rebuilds a changed addon on the same unit without restoring the stale generated choice", () => {
-    const stale = {
-      ...item("line-1", 1, ["addon-a", "paid-addon"], { "addon-a": 10_000, "paid-addon": 5_000 }),
-      bundleQualifierVoucherToken: "bundle-edit",
-    };
+    const stale = item("line-1", 1, ["addon-a", "paid-addon"], { "addon-a": 10_000, "paid-addon": 5_000 });
     const candidate = buildBundleCartDraft({
       items: [stale, item("line-2", 1)],
       voucher_qr_token: "bundle-edit",
@@ -214,7 +217,7 @@ describe("BUNDLE addon edit chain", () => {
       existingApplication: previousApplication("customer:qr"),
     });
     const line = candidate.items.find((entry) => entry.cartId === "line-1");
-    expect(line?.selectedOptionIds).toEqual(["paid-addon", "addon-b"]);
+    expect(line?.configuration.size === null ? [] : line?.configuration.addonOptionIds).toEqual(["paid-addon", "addon-b"]);
     expect(candidate.created_reward_effects).toEqual([{ kind: "ADDON", client_line_id: "line-1", addon_option_id: "addon-b", quantity: 1 }]);
   });
 

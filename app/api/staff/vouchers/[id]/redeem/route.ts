@@ -43,6 +43,19 @@ export async function PATCH(
       );
     }
 
+    const hasMultipleTargets = voucher.voucher_type === "PRODUCT"
+      ? voucher.menuItemScopes.length > 1
+      : voucher.voucher_type === "ADDON" && voucher.addonOptionScopes.length > 1;
+    if (hasMultipleTargets) {
+      return NextResponse.json(
+        {
+          error: "Voucher nhiều lựa chọn phải được gắn vào một món trong đơn hàng",
+          code: "VOUCHER_ORDER_REQUIRED",
+        },
+        { status: 422 },
+      );
+    }
+
     if (voucher.status === "REDEEMED") {
       return NextResponse.json(
         { error: "Voucher already redeemed", code: "VOUCHER_REDEEMED" },

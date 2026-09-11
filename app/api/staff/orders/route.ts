@@ -223,16 +223,22 @@ export async function POST(req: NextRequest) {
             }
             throw e;
           }
-          if (!pv!.menu_item_id || (pv!.voucher_type === "PRODUCT" && !pv!.covered_price_vnd)) {
+          const menuScope = pv!.menuItemScopes?.find((scope) => scope.menu_item_id === item.menu_item_id);
+          const hasNormalizedTargets = (pv!.menuItemScopes?.length ?? 0) > 0;
+          const matchesMenuTarget = Boolean(hasNormalizedTargets ? menuScope : pv!.menu_item_id === item.menu_item_id);
+          const matchingCoverage = hasNormalizedTargets
+            ? menuScope?.covered_price_vnd ?? 0
+            : pv!.covered_price_vnd ?? 0;
+          if (!matchesMenuTarget || (pv!.voucher_type === "PRODUCT" && matchingCoverage <= 0)) {
             return NextResponse.json(
               { error: "ITEM voucher is not properly configured", code: "VALIDATION_ERROR" },
               { status: 400 }
             );
           }
           productVoucherMap.set(pv!.id, {
-            menu_item_id: pv!.menu_item_id,
+            menu_item_id: item.menu_item_id,
             eligible_menu_item_ids: pv!.menuItemScopes?.map((scope) => scope.menu_item_id) ?? [],
-            covered_price_vnd: pv!.covered_price_vnd ?? 0,
+            covered_price_vnd: matchingCoverage,
             voucher_type: pv!.voucher_type === "ITEM" ? "ITEM" : pv!.voucher_type === "PRODUCT_DISCOUNT" ? "PRODUCT_DISCOUNT" : "PRODUCT",
             product_discount_mode: pv!.product_discount_mode,
             eligible_sizes: pv!.eligible_sizes,
@@ -290,13 +296,16 @@ export async function POST(req: NextRequest) {
               }
               throw e;
             }
-            if (!dbAv!.addon_option_id || dbAv!.addon_option_id !== av.addon_option_id) {
+            const addonTargets = dbAv!.addonOptionScopes?.length
+              ? dbAv!.addonOptionScopes.map((scope) => scope.addon_option_id)
+              : dbAv!.addon_option_id ? [dbAv!.addon_option_id] : [];
+            if (!addonTargets.includes(av.addon_option_id)) {
               return NextResponse.json(
                 { error: "Addon voucher option mismatch or missing", code: "VALIDATION_ERROR" },
                 { status: 400 }
               );
             }
-            addonVoucherMap.set(dbAv!.id, dbAv!.addon_option_id);
+            addonVoucherMap.set(dbAv!.id, av.addon_option_id);
             addonVoucherIds.add(dbAv!.id);
             av.voucher_id = dbAv!.id;
             voucherQrTokens.set(dbAv!.id, dbAv!.qr_token);

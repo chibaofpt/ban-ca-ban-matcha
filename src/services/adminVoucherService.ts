@@ -1,6 +1,7 @@
 import { apiClient } from "@/src/lib/api/client";
 import { isAxiosError } from "axios";
 import type { ApiError, ApiResponse } from "@/src/lib/types/api";
+import type { VoucherEligibleAddonOption } from "@/src/services/customerVoucherService";
 import { ApiServiceError } from "@/src/services/orderService";
 
 async function preserveApiError<T>(request: () => Promise<T>): Promise<T> {
@@ -31,6 +32,7 @@ export interface VoucherPackage {
   product_discount_mode?: "FIXED_AMOUNT" | "PAY_AS_SIZE" | null;
   menu_item_id: string | null;
   eligible_menu_items?: VoucherEligibleMenuItem[];
+  eligible_addon_options?: VoucherEligibleAddonOption[];
   eligible_sizes?: Array<"SMALL" | "MEDIUM" | "LARGE">;
   reference_size?: "SMALL" | "MEDIUM" | "LARGE" | null;
   size: "SMALL" | "MEDIUM" | "LARGE" | null;
@@ -81,9 +83,13 @@ export interface VoucherBundleProductScope {
 export interface VoucherEligibleMenuItem {
   menu_item_id: string;
   name: string;
-  category: "latte" | "fusion";
+  category: "latte" | "fusion" | "extras";
   is_available: boolean;
   is_seasonal: boolean;
+  size?: "SMALL" | "MEDIUM" | "LARGE" | null;
+  matcha_powder_id?: string | null;
+  milk_type_id?: string | null;
+  covered_price_vnd?: number | null;
 }
 
 export interface VoucherBundleRule {
@@ -120,6 +126,7 @@ export type CreateVoucherPackageInput = VoucherPackageCommonInput & (
   | {
       voucher_type: "ITEM";
       menu_item_id: string;
+      eligible_menu_item_ids?: string[];
     }
   | {
       voucher_type: "PRODUCT";
@@ -128,10 +135,17 @@ export type CreateVoucherPackageInput = VoucherPackageCommonInput & (
       matcha_powder_id?: string | null;
       milk_type_id?: string | null;
       included_addon_option_ids?: string[];
+      product_targets?: Array<{
+        menu_item_id: string;
+        size: "SMALL" | "MEDIUM" | "LARGE";
+        matcha_powder_id?: string | null;
+        milk_type_id?: string | null;
+      }>;
     }
   | {
       voucher_type: "ADDON";
       addon_option_id: string;
+      eligible_addon_option_ids?: string[];
     }
   | {
       voucher_type: "PRODUCT_DISCOUNT";

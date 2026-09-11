@@ -18,9 +18,9 @@ export interface ReorderItemResult {
 /** Return selected addon IDs that may legally receive an ADDON voucher. */
 export function getReorderVoucherEligibleAddonIds(
   menuData: MenuData,
-  item: Pick<CartItem, "selectedOptionIds">,
+  item: Pick<CartItem, "configuration">,
 ): string[] {
-  const selectedIds = new Set(item.selectedOptionIds);
+  const selectedIds = new Set(item.configuration.size === null ? [] : item.configuration.addonOptionIds);
   return menuData.addon_groups.flatMap((group) =>
     group.options
       .filter(
@@ -76,21 +76,9 @@ export function buildReorderItem(
     return {
       cartItem: {
         menuItemId: menuItem.id,
-        name: menuItem.name,
-        category: "extras",
-        imageUrl: menuItem.image_url,
-        size: null,
         quantity: item.quantity,
-        sweetness: item.sweetness,
-        iceOption: item.ice_option,
-        coldwhisk: false,
-        note: item.note || "",
-        selectedOptionIds: [],
-        addonsPrice: 0,
-        addonPrices: {},
-        unitPrice: fixedPrice,
-        clientPriceVnd: fixedPrice,
-        originalClientPriceVnd: fixedPrice,
+        configuration: { size: null, note: item.note || "" },
+        addonVouchers: [],
       },
       warnings,
       configSummary,
@@ -337,24 +325,18 @@ export function buildReorderItem(
   // 7. Build CartItem
   const cartItem: Omit<CartItem, "cartId"> = {
     menuItemId: menuItem.id,
-    name: menuItem.name,
-    category: menuItem.category,
-    imageUrl: menuItem.image_url,
-    size: item.size,
     quantity: item.quantity,
-    sweetness: item.sweetness,
-    iceOption: item.ice_option,
-    coldwhisk: item.coldwhisk,
-    note: item.note || "",
-    selectedOptionIds,
-    addonsPrice: totalAddonsPrice,
-    addonPrices,
-    selectedPowderId: finalPowderId,
-    selectedMilkTypeId: finalMilkTypeId,
-    selectedBaseLiquidId: finalMilkTypeId,
-    unitPrice: newTotalPrice,
-    clientPriceVnd: newTotalPrice,
-    originalClientPriceVnd: newTotalPrice,
+    configuration: {
+      size: item.size,
+      sweetness: item.sweetness,
+      iceOption: item.ice_option,
+      coldwhisk: item.coldwhisk,
+      note: item.note || "",
+      ...(finalPowderId ? { powderId: finalPowderId } : {}),
+      ...(finalMilkTypeId ? { baseLiquidId: finalMilkTypeId } : {}),
+      addonOptionIds: selectedOptionIds,
+    },
+    addonVouchers: [],
   };
 
   return { cartItem, warnings, configSummary };

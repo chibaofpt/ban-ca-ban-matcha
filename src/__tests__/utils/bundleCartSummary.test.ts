@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { CartBundleApplication, CartItem } from "@/src/lib/types/cart";
+import type { CartBundleApplication } from "@/src/lib/types/cart";
+import { projectedCartLine } from "@/src/__tests__/fixtures/cart";
 import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
 import { getBundleAllocatedQuantities, getBundleCartDisplayTotals } from "@/src/lib/utils/bundleCartSummary";
 
@@ -9,8 +10,8 @@ function item(
   originalClientPriceVnd: number,
   addonsPrice = 0,
   addonPrices: Record<string, number> = {},
-): CartItem {
-  return {
+) {
+  return projectedCartLine({
     cartId,
     menuItemId: `menu-${cartId}`,
     name: cartId,
@@ -28,7 +29,7 @@ function item(
     addonPrices,
     clientPriceVnd: originalClientPriceVnd,
     originalClientPriceVnd,
-  };
+  });
 }
 
 function productAllocation(client_line_id: string, quantity: number): BundleSelectionAllocation {
@@ -43,7 +44,6 @@ describe("bundle cart display totals", () => {
       qualifier_allocations: [productAllocation("shared", 1)],
       reward_allocations: [{ client_line_id: "shared", addon_option_id: "topping", quantity: 1 }],
       created_reward_effects: [],
-      status: "READY",
     };
     const allocated = getBundleAllocatedQuantities([application]).get("shared") ?? 0;
     expect(allocated).toBe(1);
@@ -114,7 +114,6 @@ describe("bundle cart display totals", () => {
         { client_line_id: "cup", addon_option_id: "topping-b", quantity: 1 },
       ],
       created_reward_effects: [],
-      status: "READY",
     }]);
     expect(allocated.get("cup")).toBe(1);
   });
@@ -127,7 +126,6 @@ describe("bundle cart display totals", () => {
         qualifier_allocations: [],
         reward_allocations: [{ client_line_id: "cup", addon_option_id: "topping-a", quantity: 1 }],
         created_reward_effects: [],
-        status: "READY",
       },
       {
         voucher_qr_token: "bundle-addon-2",
@@ -135,7 +133,6 @@ describe("bundle cart display totals", () => {
         qualifier_allocations: [],
         reward_allocations: [{ client_line_id: "cup", addon_option_id: "topping-b", quantity: 1 }],
         created_reward_effects: [],
-        status: "READY",
       },
     ]);
     expect(allocated.get("cup")).toBe(2);

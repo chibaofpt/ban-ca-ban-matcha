@@ -19,35 +19,13 @@ const group: AddonGroup = {
   ],
 };
 
-const item = (cartId: string, selectedOptionIds: string[] = [], snapshot = {}): CartItem => {
-  const addonPrices = Object.fromEntries(selectedOptionIds.map((id) => [id, id === "addon-b" ? 12_000 : 10_000]));
+const item = (cartId: string, selectedOptionIds: string[] = []): CartItem => {
   return {
     cartId,
     menuItemId: "latte-1",
-    name: "Latte",
-    category: "latte",
-    imageUrl: null,
-    size: "MEDIUM",
-    unitPrice: 45_000 + Object.values(addonPrices).reduce((sum, price) => sum + price, 0),
     quantity: 1,
-    sweetness: "QUARTER",
-    iceOption: "NORMAL",
-    coldwhisk: false,
-    note: "",
-    selectedOptionIds,
-    addonsPrice: Object.values(addonPrices).reduce((sum, price) => sum + price, 0),
-    addonPrices,
-    addonMetadata: Object.fromEntries(selectedOptionIds.map((id) => [id, {
-      addon_group_id: "group-1",
-      max_select: 2,
-      gram_value: null,
-      is_active: true,
-      is_deleted: false,
-      is_dynamic_gram: false,
-      ...snapshot,
-    }])),
-    clientPriceVnd: 45_000 + Object.values(addonPrices).reduce((sum, price) => sum + price, 0),
-    originalClientPriceVnd: 45_000 + Object.values(addonPrices).reduce((sum, price) => sum + price, 0),
+    configuration: { size: "MEDIUM", sweetness: "QUARTER", iceOption: "NORMAL", coldwhisk: false, note: "", addonOptionIds: selectedOptionIds },
+    addonVouchers: [],
   };
 };
 
@@ -96,24 +74,24 @@ describe("bundle addon reward planner", () => {
     expect(() => materializeBundleAddonReward({ items: [item("line-1")], reward: input, qualifyingQuantity: 2, recipients: recipient(item("line-1")) })).toThrow("đơn vị");
   });
 
-  it("inserts a missing fixed addon with snapshot and all cart prices", () => {
+  it("inserts a missing fixed addon without catalog or price snapshots", () => {
     const source = item("line-1");
     const result = materializeBundleAddonReward({ items: [source], reward: reward(), qualifyingQuantity: 2, recipients: recipient(source) });
     const next = result.items[0]!;
-    expect(next.selectedOptionIds).toEqual(["addon-b"]);
-    expect(next.addonPrices["addon-b"]).toBe(12_000);
-    expect(next.addonMetadata?.["addon-b"]).toEqual(expect.objectContaining({ addon_group_id: "group-1", max_select: 2, gram_value: null, is_dynamic_gram: false }));
-    expect(next.addonsPrice).toBe(12_000);
-    expect(next.unitPrice).toBe(57_000);
-    expect(next.clientPriceVnd).toBe(57_000);
-    expect(next.originalClientPriceVnd).toBe(57_000);
+    expect(next.configuration.size === null ? [] : next.configuration.addonOptionIds).toEqual(["addon-b"]);
+    expect(next).not.toHaveProperty("addonPrices");
+    expect(next).not.toHaveProperty("addonMetadata");
+    expect(next).not.toHaveProperty("addonsPrice");
+    expect(next).not.toHaveProperty("unitPrice");
+    expect(next).not.toHaveProperty("clientPriceVnd");
+    expect(next).not.toHaveProperty("originalClientPriceVnd");
   });
 
   it("does not create an effect for an already paid addon and rejects full or invalid choices", () => {
     const paid = item("line-1", ["addon-b"]);
     const paidResult = materializeBundleAddonReward({ items: [paid], reward: reward(), qualifyingQuantity: 2, recipients: recipient(paid) });
     expect(paidResult.createdEffects).toEqual([]);
-    expect(paidResult.items[0]?.addonsPrice).toBe(paid.addonsPrice);
+    expect(paidResult.items[0]?.configuration.size === null ? [] : paidResult.items[0]?.configuration.addonOptionIds).toEqual(["addon-b"]);
     const generatedResult = materializeBundleAddonReward({
       items: [paid],
       reward: reward(),
@@ -123,10 +101,8 @@ describe("bundle addon reward planner", () => {
     });
     expect(generatedResult.createdEffects).toEqual([{ kind: "ADDON", client_line_id: "line-1", addon_option_id: "addon-b", quantity: 1 }]);
     expect(() => materializeBundleAddonReward({ items: [item("line-1", ["addon-a", "addon-b"])], reward: reward({ optionId: "addon-c", allowedOptionIds: ["addon-c"] }), qualifyingQuantity: 2, recipients: recipient(item("line-1")) })).toThrow("đủ lựa chọn");
-    for (const snapshot of [{ is_active: false }, { is_deleted: true }, { is_dynamic_gram: true }, { gram_value: 10 }]) {
-      const stale = item("line-1", ["addon-b"], snapshot);
-      expect(() => materializeBundleAddonReward({ items: [stale], reward: reward(), qualifyingQuantity: 2, recipients: recipient(stale) })).toThrow("không còn hợp lệ");
-    }
+    const missingGroup = { ...group, options: group.options.filter((option) => option.id !== "addon-b") };
+    expect(() => materializeBundleAddonReward({ items: [item("line-1")], reward: reward({ addonGroups: [missingGroup] }), qualifyingQuantity: 2, recipients: recipient(item("line-1")) })).toThrow("không còn trong menu");
     expect(() => materializeBundleAddonReward({ items: [item("line-1")], reward: reward({ optionId: "extra-matcha", allowedOptionIds: ["extra-matcha"] }), qualifyingQuantity: 2, recipients: recipient(item("line-1")) })).toThrow("Extra Matcha");
     expect(() => materializeBundleAddonReward({ items: [item("line-1")], reward: reward({ optionId: null }), qualifyingQuantity: 2, recipients: recipient(item("line-1")) })).toThrow("Chọn addon");
   });

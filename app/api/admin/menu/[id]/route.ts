@@ -89,10 +89,17 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       const now = new Date();
       const activeItemVoucherCount = await prisma.voucher.count({
         where: {
-          menu_item_id: id,
           voucher_type: "ITEM",
           status: { in: ["ACTIVE", "RESERVED"] },
-          OR: [{ expires_at: null }, { expires_at: { gt: now } }],
+          AND: [
+            {
+              OR: [
+                { menu_item_id: id },
+                { menuItemScopes: { some: { menu_item_id: id } } },
+              ],
+            },
+            { OR: [{ expires_at: null }, { expires_at: { gt: now } }] },
+          ],
         },
       });
       if (activeItemVoucherCount > 0 && validData.confirm_price_change !== true) {

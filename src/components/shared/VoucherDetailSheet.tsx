@@ -24,10 +24,10 @@ import {
 import { cn } from "@/src/utils/cn";
 import { AddonItemPicker } from "./AddonItemPicker";
 import { ProductDiscountItemPicker } from "./ProductDiscountItemPicker";
+import { ScopedMenuVoucherPicker } from "./ScopedMenuVoucherPicker";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { MenuData } from "@/src/lib/types/menu";
 import type { MyVoucher, VoucherPackage } from "@/src/services/customerVoucherService";
-import { ceilTo1000 } from "@/src/utils/pricing";
 
 
 interface OwnedVoucherDetailSheetProps {
@@ -39,23 +39,30 @@ interface OwnedVoucherDetailSheetProps {
   orderType: "PICKUP" | "DELIVERY";
   shippingFee: number | null;
   menuData?: MenuData;
+  bundleAllocatedQuantitiesByCartId: ReadonlyMap<string, number>;
   onBack: () => void;
   onUseNowSuccess: () => void;
   onOpenBundleSetup: (voucher: MyVoucher) => void;
   onRequestRefund: (voucher: MyVoucher) => void;
   isRefunding: boolean;
+  /** Lock cart/wallet mutations while the voucher query is revalidating. */
+  canEdit?: boolean;
+  /** Explain why a cached voucher is read-only while its wallet is being verified. */
+  editDisabledReason?: string;
   onSelectProductDiscountTarget?: (voucher: MyVoucher) => void;
   onRemoveAppliedVoucher?: () => void;
   /** Cart context: delegate PRODUCT/ITEM "Dùng ngay" to parent. */
   onUseProductVoucher?: (voucher: MyVoucher) => void;
-  /** Cart context: delegate ADDON "Dùng ngay" to parent. */
-  onUseAddonVoucher?: (voucher: MyVoucher) => void;
+  /** Close the owning wallet overlay before routing to select a new drink. */
+  onPendingAddon?: () => void;
   packageData?: never;
 }
 
 interface PackageVoucherDetailSheetProps {
   packageData: VoucherPackage;
   voucher?: never;
+  menuData?: MenuData;
+  powderLabels?: ReadonlyMap<string, string>;
   pointsBalance: number;
   isLoggedIn: boolean;
   isExchanging: boolean;
@@ -107,6 +114,8 @@ function PackageActionFooter({ pkg, isLoggedIn, pointsBalance, isExchanging, onE
 
 function PackageVoucherDetailSheet({
   packageData,
+  menuData,
+  powderLabels,
   pointsBalance,
   isLoggedIn,
   isExchanging,
@@ -121,6 +130,12 @@ function PackageVoucherDetailSheet({
     packageData.discount_value,
     packageData.reference_size,
   );
+  const liveMenuTargets = (packageData.eligible_menu_items ?? []).filter((target) => target.is_available);
+  const liveAddonTargets = (packageData.eligible_addon_options ?? []).filter((target) => target.is_active && !target.is_dynamic_gram);
+  const liquidLabels = new Map(
+    [...(menuData?.milk_types ?? []), ...(menuData?.base_liquids ?? [])].map((liquid) => [liquid.id, liquid.name]),
+  );
+  const sizeLabel = { SMALL: "nhỏ", MEDIUM: "vừa", LARGE: "lớn" } as const;
 
   return (
     <motion.div
@@ -166,6 +181,47 @@ function PackageVoucherDetailSheet({
               {packageData.description || "Không có mô tả chi tiết."}
             </p>
           </div>
+          {liveMenuTargets.length > 0 && ["PRODUCT", "ITEM", "PRODUCT_DISCOUNT"].includes(packageData.voucher_type) ? (
+            <div className="space-y-2">
+              <h5 className="text-xs font-bold uppercase tracking-widest text-primary/50">Lựa chọn còn dùng được</h5>
+              <div className="space-y-2">
+                {liveMenuTargets.map((target) => (
+                  <div key={target.menu_item_id} className="rounded-xl border border-border/60 bg-card p-3 text-sm">
+                    <p className="font-bold text-primary">{target.name}</p>
+                    {packageData.voucher_type === "PRODUCT" ? (
+                      <>
+                        <p className="mt-1 text-xs text-primary/65">
+                          Size {target.size ? sizeLabel[target.size] : "hiện tại"}
+                          {target.matcha_powder_id ? ` · Bột ${powderLabels?.get(target.matcha_powder_id) ?? "mặc định hiện tại"}` : ""}
+                          {target.milk_type_id ? ` · Nền ${liquidLabels.get(target.milk_type_id) ?? "mặc định hiện tại"}` : ""}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-green-700">
+                          Giá trị được tặng: {(target.covered_price_vnd ?? 0).toLocaleString("vi-VN")}đ
+                        </p>
+                      </>
+                    ) : packageData.voucher_type === "PRODUCT_DISCOUNT" && (packageData.eligible_sizes?.length ?? 0) > 0 ? (
+                      <p className="mt-1 text-xs text-primary/65">
+                        Size áp dụng: {packageData.eligible_sizes?.map((size) => sizeLabel[size]).join(", ")}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {packageData.voucher_type === "ADDON" && liveAddonTargets.length > 0 ? (
+            <div className="space-y-2">
+              <h5 className="text-xs font-bold uppercase tracking-widest text-primary/50">Topping được chọn</h5>
+              <div className="space-y-2">
+                {liveAddonTargets.map((target) => (
+                  <div key={target.addon_option_id} className="flex items-center justify-between rounded-xl border border-border/60 bg-card p-3 text-sm">
+                    <span className="font-bold text-primary">{target.label}</span>
+                    <span className="font-semibold text-green-700">Tối đa {target.price_vnd.toLocaleString("vi-VN")}đ</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className="space-y-1">
             <h5 className="text-xs font-bold uppercase tracking-widest text-primary/50">Hạn sử dụng</h5>
             <p className="text-sm text-primary/80">
@@ -208,6 +264,7 @@ const OwnedVoucherDetailSheet = ({
   orderType,
   shippingFee,
   menuData,
+  bundleAllocatedQuantitiesByCartId,
   onBack,
   onUseNowSuccess,
   onOpenBundleSetup,
@@ -216,13 +273,16 @@ const OwnedVoucherDetailSheet = ({
   onSelectProductDiscountTarget,
   onRemoveAppliedVoucher,
   onUseProductVoucher,
-  onUseAddonVoucher,
+  onPendingAddon,
+  canEdit = true,
+  editDisabledReason,
 }: OwnedVoucherDetailSheetProps) => {
   const router = useRouter();
   const { addToCart, loading } = useAddVoucherToCart();
-  const { setCartOpen, setSelectedVoucherIds, updateItem, applyAddonVoucher, selectedVoucherIds } = useCartStore();
+  const { setCartOpen, setSelectedVoucherIds, setPendingAddonVoucher, selectedVoucherIds } = useCartStore();
   const [showAddonPicker, setShowAddonPicker] = useState(false);
   const [showProductDiscountPicker, setShowProductDiscountPicker] = useState(false);
+  const [showScopedMenuPicker, setShowScopedMenuPicker] = useState(false);
   const productDiscountReady = voucher.voucher_type !== "PRODUCT_DISCOUNT" || menuData !== undefined;
 
   // Checks based on voucher type
@@ -244,12 +304,17 @@ const OwnedVoucherDetailSheet = ({
       disabledReason = `Thiếu ${(deficit / 1000).toLocaleString("vi-VN")}K để sử dụng`;
     }
   }
+  if (!canEdit) {
+    canApply = false;
+    disabledReason = editDisabledReason ?? "Ví voucher đang được xác minh lại.";
+  }
 
   const vType = voucher.voucher_type;
   const config = VOUCHER_TYPE_CONFIG[vType] || { label: "Voucher", badgeCls: "bg-gray-100 text-gray-800" };
   const highlight = getTicketHighlightText(vType, voucher.discount_type, voucher.discount_value, voucher.reference_size);
 
   const handleUseNow = async () => {
+    if (!canEdit) return;
     // In-cart context: delegate to CartDiscountPicker's target selection flow
     if (voucher.voucher_type === "PRODUCT_DISCOUNT" && onSelectProductDiscountTarget) {
       onSelectProductDiscountTarget(voucher);
@@ -265,6 +330,10 @@ const OwnedVoucherDetailSheet = ({
     }
 
     if (vType === "PRODUCT" || vType === "ITEM") {
+      if ((voucher.eligible_menu_items?.length ?? 0) > 1) {
+        setShowScopedMenuPicker(true);
+        return;
+      }
       if (onUseProductVoucher) { onUseProductVoucher(voucher); return; }
       const res = await addToCart(voucher);
       if (res.ok) {
@@ -281,45 +350,7 @@ const OwnedVoucherDetailSheet = ({
     }
 
     if (vType === "ADDON") {
-      if (onUseAddonVoucher) { onUseAddonVoucher(voucher); return; }
-      if (cartItems.length === 0) {
-        onBack();
-        router.push("/menu");
-      } else if (cartItems.length === 1 && cartItems[0].quantity === 1) {
-        const item = cartItems[0];
-        const addonOptionId = voucher.addon_option_id!;
-        const alreadyHasAddon = item.selectedOptionIds.includes(addonOptionId);
-        if (!alreadyHasAddon) {
-          let addonPrice = 0;
-          let isExtraMatcha = false;
-          if (menuData) {
-            for (const group of menuData.addon_groups) {
-              const opt = group.options.find(o => o.id === addonOptionId);
-              if (opt) {
-                if (opt.gram_value != null && opt.gram_value > 0) {
-                  isExtraMatcha = true;
-                }
-                addonPrice = ceilTo1000(opt.price_vnd ?? 0);
-                break;
-              }
-            }
-          }
-          if (isExtraMatcha) {
-            import("sonner").then(m => m.toast.error("Voucher này không áp dụng cho Extra Matcha"));
-            return;
-          }
-          updateItem(item.cartId, {
-            selectedOptionIds: [...item.selectedOptionIds, addonOptionId],
-            addonPrices: { ...item.addonPrices, [addonOptionId]: addonPrice },
-            addonsPrice: item.addonsPrice + addonPrice,
-          });
-        }
-        applyAddonVoucher(item.cartId, voucher.qr_token, addonOptionId);
-        setCartOpen(true);
-        onUseNowSuccess();
-      } else {
-        setShowAddonPicker(true);
-      }
+      setShowAddonPicker(true);
       return;
     }
 
@@ -426,6 +457,7 @@ const OwnedVoucherDetailSheet = ({
                 <button
                   type="button"
                   onClick={onRemoveAppliedVoucher}
+                  disabled={!canEdit}
                   className="min-h-12 w-full rounded-xl border border-destructive bg-destructive/10 px-4 font-bold text-destructive transition-colors hover:bg-destructive/15 focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Hủy voucher
@@ -434,7 +466,7 @@ const OwnedVoucherDetailSheet = ({
                 <button
                   type="button"
                   onClick={handleUseNow}
-                  disabled={!canApply || !productDiscountReady || loading || isRefunding || voucher.status !== "ACTIVE"}
+                  disabled={!canEdit || !canApply || !productDiscountReady || loading || isRefunding || voucher.status !== "ACTIVE"}
                   className="w-full h-12 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {loading ? (
@@ -450,7 +482,7 @@ const OwnedVoucherDetailSheet = ({
                 <button
                   type="button"
                   onClick={() => onRequestRefund(voucher)}
-                  disabled={isRefunding}
+                  disabled={!canEdit || isRefunding}
                   className="min-h-11 w-full rounded-xl border border-destructive/40 bg-background px-4 font-bold text-destructive transition-colors hover:bg-destructive/5 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Hoàn {voucher.availability.refund_points.toLocaleString("vi-VN")} điểm
@@ -465,11 +497,20 @@ const OwnedVoucherDetailSheet = ({
           <AddonItemPicker
             voucher={voucher}
             cartItems={cartItems}
+            bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}
             menuData={menuData}
+            canEdit={canEdit}
             onBack={() => setShowAddonPicker(false)}
             onSuccess={() => {
               setShowAddonPicker(false);
               onUseNowSuccess();
+            }}
+            onPending={(intent) => {
+              setPendingAddonVoucher(intent);
+              setShowAddonPicker(false);
+              if (onPendingAddon) onPendingAddon();
+              else onBack();
+              router.push("/menu");
             }}
           />
         )}
@@ -477,12 +518,16 @@ const OwnedVoucherDetailSheet = ({
           <ProductDiscountItemPicker
             voucher={voucher}
             menuData={menuData}
+            canEdit={canEdit}
             onBack={() => setShowProductDiscountPicker(false)}
             onSuccess={() => {
               setShowProductDiscountPicker(false);
               onUseNowSuccess();
             }}
           />
+        )}
+        {showScopedMenuPicker && menuData && (
+          <ScopedMenuVoucherPicker voucher={voucher} menuData={menuData} canEdit={canEdit} onBack={() => setShowScopedMenuPicker(false)} onSuccess={() => { setShowScopedMenuPicker(false); onUseNowSuccess(); }} />
         )}
       </AnimatePresence>
     </motion.div>

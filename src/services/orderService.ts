@@ -1,5 +1,5 @@
 import { apiClient } from "@/src/lib/api/client";
-import type { CartItem } from "@/src/lib/types/cart";
+import type { ProjectedCartLine } from "@/src/lib/types/cart";
 import type { ApiError, ApiResponse } from "@/src/lib/types/api";
 import type {
   CustomerHistoryOrdersResponse,
@@ -8,6 +8,7 @@ import type {
 } from "@/src/lib/types/order";
 import type { BundleApplicationPayload } from "@/src/lib/utils/bundleVoucher";
 import { getBundleCheckoutAvailabilityReason } from "@/src/lib/utils/bundleCheckoutError";
+import { serializeCartOrderItems } from "@/src/lib/utils/cartOrderPayload";
 
 // Re-export for consumers
 export type { CreateOrderResult } from "@/src/lib/types/order";
@@ -118,33 +119,8 @@ function getServerError(err: unknown): { status: number; data: Record<string, un
 }
 
 /** Maps CartItem[] from Zustand store into the POST /api/orders payload items. */
-function buildPayloadItems(cart: CartItem[]): CreateOrderPayload["items"] {
-  return cart.map((c) => ({
-    menu_item_id: c.menuItemId,
-    quantity: c.quantity,
-    size: c.size,
-    sweetness: c.sweetness,
-    ice_option: c.iceOption,
-    coldwhisk: c.coldwhisk,
-    ...(c.note ? { note: c.note } : {}),
-    addon_option_ids: c.selectedOptionIds,
-    ...(c.productVoucherId ? { product_voucher_id: c.productVoucherId } : {}),
-    ...(c.itemVoucherId ? { item_voucher_id: c.itemVoucherId } : {}),
-    ...(c.addonVouchers && c.addonVouchers.length > 0
-      ? {
-          addon_voucher_ids: c.addonVouchers.map((av) => ({
-            voucher_id: av.voucherId,
-            addon_option_id: av.addonOptionId,
-          })),
-        }
-      : {}),
-    ...(c.selectedPowderId ? { selected_powder_id: c.selectedPowderId } : {}),
-    ...((c.selectedBaseLiquidId ?? c.selectedMilkTypeId)
-      ? { selected_base_liquid_id: c.selectedBaseLiquidId ?? c.selectedMilkTypeId }
-      : {}),
-    client_price_vnd: c.clientPriceVnd,
-  }));
-}
+export const buildPayloadItems = (cart: ProjectedCartLine[]): CreateOrderPayload["items"] =>
+  serializeCartOrderItems(cart);
 
 /**
  * Submits the customer's cart as a new PICKUP order to POST /api/orders.
@@ -152,7 +128,7 @@ function buildPayloadItems(cart: CartItem[]): CreateOrderPayload["items"] {
  * Throws Error with message on other failures.
  */
 export async function createOrder(
-  cart: CartItem[],
+  cart: ProjectedCartLine[],
   options?: {
     orderType?: "PICKUP" | "DELIVERY";
     discountVoucherIds?: string[];
@@ -188,10 +164,7 @@ export async function createOrder(
     ...(options?.bundleApplications?.length
       ? {
           bundle_applications: options.bundleApplications,
-          items: buildPayloadItems(cart).map((item, index) => ({
-            ...item,
-            client_line_id: cart[index]?.cartId,
-          })),
+          items: serializeCartOrderItems(cart, { includeClientLineId: true }),
         }
       : {}),
   };

@@ -70,9 +70,8 @@ addons_price_vnd = sum(addon unit price × quantity)
 
 - Apply PRODUCT `covered_price_vnd` to `drink_price_vnd` only. Never spill PRODUCT credit
   into `addons_price_vnd`.
-- When creating a PRODUCT voucher package, snapshot `covered_price_vnd` from the selected
-  drink configuration only; exclude all selected or included addons.
-- Apply an ADDON voucher to one unit of its matching addon only; never to Extra Matcha.
+- When creating a multi-target PRODUCT voucher package, snapshot a separate immutable `covered_price_vnd` on every target scope from that target's size, powder, and Base Liquid; exclude all selected or included addons. Customization later uses that selected target's credit.
+- Apply an ADDON voucher to one unit of the customer-selected option from its explicit scope only; resolve that option's current fixed price server-side and never apply it to Extra Matcha.
 - Price `extras` directly from `menu_items.unit_price_vnd`; do not run drink recipe pricing.
 - ITEM vouchers cover one matching extras unit at its current server price and create no surplus.
 - BUNDLE reference prices are never admin-entered. Resolve stored default powder/Base Liquid

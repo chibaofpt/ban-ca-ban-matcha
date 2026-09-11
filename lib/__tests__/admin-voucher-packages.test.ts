@@ -19,6 +19,9 @@ const mockPkgUpdate = vi.fn();
 const mockAddonFindUnique = vi.fn();
 const mockAddonFindMany = vi.fn();
 const mockMenuItemFindUnique = vi.fn();
+const mockMenuItemFindMany = vi.fn();
+const mockPowderFindMany = vi.fn();
+const mockMilkTypeFindMany = vi.fn();
 const mockVoucherGroupBy = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
@@ -35,7 +38,10 @@ vi.mock("@/lib/prisma", () => ({
     },
     menuItem: {
       findUnique: (...a: unknown[]) => mockMenuItemFindUnique(...a),
+      findMany: (...a: unknown[]) => mockMenuItemFindMany(...a),
     },
+    matchaPowder: { findMany: (...a: unknown[]) => mockPowderFindMany(...a) },
+    milkType: { findMany: (...a: unknown[]) => mockMilkTypeFindMany(...a) },
     voucher: { groupBy: (...a: unknown[]) => mockVoucherGroupBy(...a) },
   },
 }));
@@ -125,6 +131,14 @@ describe("GET /api/admin/voucher-packages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSession.mockResolvedValue(ADMIN_SESSION);
+    mockMenuItemFindMany.mockImplementation(async () => {
+      const item = await mockMenuItemFindUnique();
+      return item ? [item] : [];
+    });
+    mockAddonFindMany.mockImplementation(async () => {
+      const addon = await mockAddonFindUnique();
+      return addon ? [{ ...addon, id: ADDON_ID }] : [];
+    });
     mockVoucherGroupBy.mockResolvedValue([]);
   });
 
@@ -166,6 +180,14 @@ describe("POST /api/admin/voucher-packages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSession.mockResolvedValue(ADMIN_SESSION);
+    mockMenuItemFindMany.mockImplementation(async () => {
+      const item = await mockMenuItemFindUnique();
+      return item ? [item] : [];
+    });
+    mockAddonFindMany.mockImplementation(async () => {
+      const addon = await mockAddonFindUnique();
+      return addon ? [{ ...addon, id: ADDON_ID }] : [];
+    });
   });
 
   it("returns 403 for STAFF role", async () => {
@@ -328,9 +350,9 @@ describe("POST /api/admin/voucher-packages", () => {
     );
 
     expect(res.status).toBe(201);
-    expect(mockMenuItemFindUnique).toHaveBeenCalledWith(
+    expect(mockMenuItemFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: MENU_ITEM_ID },
+        where: { id: { in: [MENU_ITEM_ID] } },
         select: expect.objectContaining({ unit_price_vnd: true }),
       }),
     );
@@ -571,6 +593,41 @@ describe("POST /api/admin/voucher-packages — validation bổ sung", () => {
     expect(createCall.data.covered_price_vnd).toBe(45000);
   });
 
+  it("PRODUCT nhiều mục lưu snapshot cấu hình và giá riêng cho từng mục", async () => {
+    const secondMenuId = "550e8400-e29b-41d4-a716-446655440012";
+    mockMenuItemFindUnique.mockImplementation(async (args: { where: { id: string } }) =>
+      args.where.id === secondMenuId ? { ...latteMenuItem, id: secondMenuId } : latteMenuItem,
+    );
+    mockBuildPricingContext.mockResolvedValue(basePricingCtx);
+    mockResolveOrderItemPrice.mockReturnValueOnce(45_000).mockReturnValueOnce(58_000);
+    mockPkgCreate.mockResolvedValue({ id: PKG_ID });
+
+    const res = await POST(makeReq({
+      voucher_type: "PRODUCT",
+      name: "Chọn một trong hai món",
+      points_cost: 5,
+      menu_item_id: MENU_ITEM_ID,
+      size: "SMALL",
+      included_addon_option_ids: [],
+      product_targets: [
+        { menu_item_id: MENU_ITEM_ID, size: "SMALL", matcha_powder_id: null, milk_type_id: null },
+        { menu_item_id: secondMenuId, size: "MEDIUM", matcha_powder_id: null, milk_type_id: null },
+      ],
+    }));
+
+    expect(res.status).toBe(201);
+    expect(mockPkgCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        menu_item_id: MENU_ITEM_ID,
+        covered_price_vnd: 45_000,
+        menuItemScopes: { create: [
+          expect.objectContaining({ menu_item_id: MENU_ITEM_ID, size: "SMALL", covered_price_vnd: 45_000 }),
+          expect.objectContaining({ menu_item_id: secondMenuId, size: "MEDIUM", covered_price_vnd: 58_000 }),
+        ] },
+      }),
+    }));
+  });
+
   it("PRODUCT package từ chối included addon có giá gram động", async () => {
     mockMenuItemFindUnique.mockResolvedValue(latteMenuItem);
     mockBuildPricingContext.mockResolvedValue(basePricingCtx);
@@ -643,6 +700,71 @@ describe("PUT /api/admin/voucher-packages/[id]", () => {
         data: expect.objectContaining({ is_active: false }),
       })
     );
+  });
+
+  it("reactivates a scoped PRODUCT using its complete saved configuration", async () => {
+    mockPkgFindUnique
+      .mockResolvedValueOnce(existingPkg)
+      .mockResolvedValueOnce({
+        voucher_type: "PRODUCT",
+        menu_item_id: MENU_ITEM_ID,
+        size: "SMALL",
+        product_discount_mode: null,
+        eligible_sizes: [],
+        reference_size: null,
+        menuItemScopes: [{
+          menu_item_id: MENU_ITEM_ID,
+          size: "SMALL",
+          matcha_powder_id: null,
+          milk_type_id: BASE_LIQUID_ID,
+          covered_price_vnd: 40_000,
+        }],
+        matcha_powder_id: null,
+        milk_type_id: BASE_LIQUID_ID,
+        addon_option_id: null,
+        addonOptionScopes: [],
+        bundleRule: null,
+      });
+    mockMenuItemFindMany.mockResolvedValue([{ ...latteMenuItem, name: "Latte" }]);
+    mockPowderFindMany.mockResolvedValue([{ id: POWDER_ID, name: "Meyumi", price_per_gram: 400, is_available: true }]);
+    mockMilkTypeFindMany.mockResolvedValue([{ id: BASE_LIQUID_ID, is_active: true, is_default: true, display_order: 1 }]);
+    mockAddonFindMany.mockResolvedValue([]);
+    mockPkgUpdate.mockResolvedValue({ ...existingPkg, is_active: true });
+
+    const res = await PUT(makeReq({ is_active: true }), { params: idParams });
+
+    expect(res.status).toBe(200);
+    expect(mockPkgUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ is_active: true }),
+    }));
+  });
+
+  it("reactivates multi ADDON when a normalized target is usable despite an inactive anchor", async () => {
+    mockPkgFindUnique
+      .mockResolvedValueOnce(existingPkg)
+      .mockResolvedValueOnce({
+        voucher_type: "ADDON",
+        menu_item_id: null,
+        size: null,
+        product_discount_mode: null,
+        eligible_sizes: [],
+        reference_size: null,
+        menuItemScopes: [],
+        matcha_powder_id: null,
+        milk_type_id: null,
+        addon_option_id: "inactive-anchor",
+        addonOptionScopes: [{ addon_option_id: ADDON_ID }],
+        bundleRule: null,
+      });
+    mockMenuItemFindMany.mockResolvedValue([]);
+    mockPowderFindMany.mockResolvedValue([]);
+    mockMilkTypeFindMany.mockResolvedValue([]);
+    mockAddonFindMany.mockResolvedValue([{ id: ADDON_ID, is_active: true, gram_value: null, group: { is_active: true } }]);
+    mockPkgUpdate.mockResolvedValue({ ...existingPkg, voucher_type: "ADDON", is_active: true });
+
+    const res = await PUT(makeReq({ is_active: true }), { params: idParams });
+
+    expect(res.status).toBe(200);
   });
 });
 

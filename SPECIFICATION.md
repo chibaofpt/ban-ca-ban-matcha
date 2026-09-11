@@ -7,13 +7,38 @@
 
 Tài liệu này mô tả hệ thống đang được hỗ trợ, không phải kiến trúc lý tưởng trong tương lai. Legacy exception được phép tồn tại nhưng không được copy sang code mới.
 
-## PRODUCT_DISCOUNT nhiều sản phẩm
+## Voucher nhiều lựa chọn
 
-Admin cấu hình phạm vi explicit tối đa 100 món Latte/Fusion bằng multi-select có tìm kiếm,
-lọc category/không theo mùa, chọn tất cả kết quả lọc và giao của các size đang bán. Các filter
-chỉ hỗ trợ chọn; server lưu ID cụ thể. Khách “Dùng ngay” chỉ one-tap khi còn đúng một tổ hợp
-món/size hợp lệ, nếu không phải chọn rõ món và size. Staff chỉ áp dụng lên cart item đã chọn.
-Customer và staff đều gửi cùng `product_voucher_id` và dùng chung server calculator.
+Admin dùng `AdaptiveSelect` multiple để cấu hình tối đa 100 target cho PRODUCT,
+PRODUCT_DISCOUNT, ITEM, ADDON và BUNDLE; không duy trì selector riêng cho từng loại voucher.
+Server lưu ID cụ thể. PRODUCT lưu cấu hình và covered price riêng theo món; ITEM chỉ nhận extras;
+ADDON chỉ nhận option fixed-price. Customer chọn đúng một reward trước khi gắn voucher vào một
+unit; staff áp dụng cùng rule trên cart item đã chọn. Customer và staff giữ payload order hiện có
+và dùng chung server calculator.
+
+Với PRODUCT nhiều target, bottom sheet hiển thị danh sách món rồi mở `ProductModal` với size,
+bột và Base Liquid snapshot của target làm cấu hình ban đầu; người dùng vẫn customize và trả phần
+vượt credit của target đó. ITEM nhiều target mở danh sách extras rồi thêm đúng một unit miễn phí.
+ADDON nhiều target chọn addon trước, sau đó gắn vào một ly chưa bị BUNDLE chiếm; khi chưa có ly thì
+lưu pending intent trong memory và chuyển về menu. Món mới số lượng lớn được tách đúng một unit.
+Nếu group addon đã đầy, dùng `ConfirmModal` để hỏi trước khi thay; giữ nguyên món sẽ giữ pending
+intent cho ly mới tiếp theo. Pending intent không được persist qua reload và phải xóa khi voucher,
+cart hoặc customer owner không còn hợp lệ.
+
+Chi tiết package trước khi nhận hoặc đổi phải liệt kê toàn bộ target còn dùng được. PRODUCT hiển thị
+size, bột, Base Liquid và credit riêng của từng món; ITEM và ADDON hiển thị mọi lựa chọn còn active.
+Nếu một ly đã có nhiều topping cùng thuộc scope của một voucher ADDON, customer và staff phải chọn
+đích cụ thể kèm mức giảm; chỉ tự áp dụng khi còn đúng một lựa chọn. Mọi entry point ADDON phải dùng
+allocation BUNDLE hiện tại trước khi sửa giỏ và phải gắn topping cùng voucher trong một cart snapshot;
+UI chỉ báo thành công sau khi snapshot có voucher.
+
+Customer và Staff/Admin dùng chung cart transition engine, projection và order-item serializer.
+Zustand/localStorage chỉ giữ ID, cấu hình nguồn, số lượng, voucher token và BUNDLE allocation/effect;
+không giữ catalog DTO, tên/ảnh, giá dẫn xuất hoặc UI state. Customer persist owner bằng số điện thoại
+đã chuẩn hóa; staff chỉ persist QR token của customer hiện có rồi tải lại profile và wallet sau reload.
+Projection join cart với catalog/wallet hiện hành, khóa checkout trong lúc revalidate và giữ raw line
+nếu dữ liệu chưa sẵn sàng. Đổi owner/logout giữ paid line nhưng tháo personal/order voucher và chỉ
+xóa reward line/addon được ghi trong `created_reward_effects`.
 
 ## Runtime architecture
 
@@ -122,6 +147,8 @@ từ sheet này dùng layer `critical`.
 BUNDLE dùng một planner thuần và shared evaluator cho ví, customer cart và staff cart. Setup giữ
 draft cục bộ gồm món mua, quà, cấu hình và số lượng; chỉ commit items và application cùng một lần
 sau khi toàn bộ phân bổ qua evaluator. Không suy lại món mua từ thứ tự giỏ sau khi khách chọn.
+Planner xét candidate theo từng unit, chỉ autofill khi có đúng một complete plan; nhiều plan bắt
+khách chọn rõ unit/config. Mở lại application dùng allocation đã commit, không chạy autofill đè lên.
 Chỉ hiển thị “Đã áp dụng” khi kết quả hợp lệ và có lợi ích dương; trước đó hiển thị tiến độ và lý do
 còn thiếu. Client và server phân biệt giá đồ uống, topping và gross unit price, giữ giảm BUNDLE
 riêng. Reload không tin trạng thái READY đã lưu mà revalidate bằng wallet/menu hiện tại.

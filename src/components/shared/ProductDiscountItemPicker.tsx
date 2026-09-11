@@ -24,6 +24,8 @@ import {
 interface ProductDiscountItemPickerProps {
   voucher: MyVoucher;
   menuData: MenuData;
+  /** Lock voucher edits while the wallet query is loading or revalidating. */
+  canEdit?: boolean;
   onBack: () => void;
   onSuccess: () => void;
 }
@@ -38,10 +40,11 @@ interface ProductDiscountItemPickerProps {
 export const ProductDiscountItemPicker = ({
   voucher,
   menuData,
+  canEdit = true,
   onBack,
   onSuccess,
 }: ProductDiscountItemPickerProps) => {
-  const { addItem, applyProductVoucher, setCartOpen } = useCartStore();
+  const { addItem, setCartOpen } = useCartStore();
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGram = usePowderStore((s) => s.defaultPowderGram);
 
@@ -58,7 +61,9 @@ export const ProductDiscountItemPicker = ({
 
   /** Called when ProductModal's onConfirm fires with the fully configured CartItem. */
   const handleConfirm = (cartItem: CartItem) => {
-      if (!cartItem.size) {
+      if (!canEdit) return;
+      const configuration = cartItem.configuration;
+      if (configuration.size === null) {
         toast.error("Vui lòng chọn size hợp lệ.");
         return;
       }
@@ -66,7 +71,7 @@ export const ProductDiscountItemPicker = ({
       const target = eligibleItems.find(
         ({ item }) => item.id === cartItem.menuItemId,
       );
-      if (!target || !target.allowedSizes.includes(cartItem.size)) {
+      if (!target || !target.allowedSizes.includes(configuration.size)) {
         toast.error("Món hoặc size này không thuộc phạm vi voucher.");
         return;
       }
@@ -74,14 +79,14 @@ export const ProductDiscountItemPicker = ({
 
       const resolvedBaseLiquidId = resolveVoucherBaseLiquidId(
         menuItem,
-        cartItem.selectedBaseLiquidId ?? cartItem.selectedMilkTypeId ?? null,
+        configuration.baseLiquidId ?? null,
         menuData.base_liquids ?? menuData.milk_types,
       );
 
       const { drinkPrice } = computeVoucherItemPrice(
         menuItem,
-        cartItem.size,
-        cartItem.selectedPowderId ?? null,
+        configuration.size,
+        configuration.powderId ?? null,
         resolvedBaseLiquidId,
         [], // PRODUCT_DISCOUNT benefit excludes addons
         powders,
@@ -107,7 +112,7 @@ export const ProductDiscountItemPicker = ({
           ? computeVoucherItemPrice(
               menuItem,
               referenceSize,
-              cartItem.selectedPowderId ?? null,
+              configuration.powderId ?? null,
               resolvedBaseLiquidId,
               [],
               powders,
@@ -127,20 +132,16 @@ export const ProductDiscountItemPicker = ({
       // Destructure cartId (assigned by ProductModal) — addItem generates its own
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { cartId: _cartId, ...cartItemWithoutId } = cartItem;
-      const newCartId = addItem({
+      const result = addItem({
         ...cartItemWithoutId,
-        // Clear any voucher fields ProductModal may have set; we apply ours below
-        productVoucherId: undefined,
-        productVoucherDiscountVnd: undefined,
-        productVoucherType: undefined,
+        quantity: 1,
+        lineVoucher: { token: voucher.qr_token, kind: "PRODUCT_DISCOUNT" },
       });
 
-      if (!newCartId) {
-        toast.error("Không thể thêm món vào giỏ. Vui lòng thử lại.");
+      if (!result.ok) {
+        toast.error(result.message);
         return;
       }
-
-      applyProductVoucher(newCartId, voucher.qr_token, benefit, "PRODUCT_DISCOUNT");
 
       setCartOpen(true);
       onSuccess();
@@ -205,7 +206,8 @@ export const ProductDiscountItemPicker = ({
               type="button"
               whileTap={{ scale: 0.96 }}
               onClick={() => setPickedItem({ item, allowedSizes })}
-              className="w-full flex items-center gap-4 p-3.5 bg-card border border-border/40 rounded-2xl text-left hover:border-primary/30 hover:shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              disabled={!canEdit}
+              className="w-full flex items-center gap-4 p-3.5 bg-card border border-border/40 rounded-2xl text-left hover:border-primary/30 hover:shadow-sm transition-all disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <div className="w-14 h-14 shrink-0 rounded-xl overflow-hidden relative bg-primary/5">
                 {item.image_url ? (

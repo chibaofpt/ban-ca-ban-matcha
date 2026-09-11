@@ -63,27 +63,22 @@ export async function PUT(
           product_discount_mode: true,
           eligible_sizes: true,
           reference_size: true,
-          menuItemScopes: { select: { menu_item_id: true } },
+          menuItemScopes: { select: {
+            menu_item_id: true,
+            size: true,
+            matcha_powder_id: true,
+            milk_type_id: true,
+            covered_price_vnd: true,
+          } },
           matcha_powder_id: true,
           milk_type_id: true,
           addon_option_id: true,
-          addonOption: {
-            select: { is_active: true, gram_value: true, group: { select: { is_active: true } } },
-          },
+          addonOptionScopes: { select: { addon_option_id: true } },
           bundleRule: {
             include: { productScopes: { include: { sizes: true } }, addonRewards: true },
           },
         },
       });
-      if (
-        target?.voucher_type === "ADDON" &&
-        (!target.addonOption || !target.addonOption.is_active || !target.addonOption.group.is_active || target.addonOption.gram_value !== null)
-      ) {
-        return NextResponse.json(
-          { error: "Không thể kích hoạt package trỏ tới addon không hợp lệ", code: "VALIDATION_ERROR" },
-          { status: 400 },
-        );
-      }
       if (target && ["ITEM", "PRODUCT", "PRODUCT_DISCOUNT", "ADDON", "BUNDLE"].includes(target.voucher_type)) {
         const catalog = await loadVoucherAvailabilityCatalog(prisma as unknown as VoucherAvailabilityDatabase);
         const resolved = resolveVoucherTargetAvailability({
@@ -97,6 +92,7 @@ export async function PUT(
           matcha_powder_id: target.matcha_powder_id,
           milk_type_id: target.milk_type_id,
           addon_option_id: target.addon_option_id,
+          addonOptionScopes: target.addonOptionScopes,
           package: { bundleRule: target.bundleRule as unknown as VoucherBundleRuleSource | null },
         }, catalog);
         if (!resolved.availability.can_apply) {

@@ -240,6 +240,31 @@ describe("Phát hành voucher dùng chung", () => {
     }
   });
 
+  it("phát hành ADDON khi anchor cũ nghỉ nhưng normalized target khác còn active", async () => {
+    mockPackageFindUnique.mockResolvedValue(makePackage({
+      voucher_type: "ADDON",
+      addon_option_id: "inactive-anchor",
+      addonOption: { is_active: false, gram_value: null, group: { is_active: true } },
+      addonOptionScopes: [{ addon_option_id: "addon-ok" }],
+    }));
+    mockAddonOptionFindMany.mockResolvedValue([
+      { id: "addon-ok", is_active: true, gram_value: null, group: { is_active: true } },
+    ]);
+
+    await issueVoucherInTransaction(makeTx(), {
+      user_id: USER_ID,
+      package_id: PACKAGE_ID,
+      source: "POINTS_EXCHANGE",
+      now: NOW,
+    });
+
+    expect(mockVoucherCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        addonOptionScopes: { create: [{ addon_option_id: "addon-ok" }] },
+      }),
+    }));
+  });
+
   it("cắt expires_at theo thời điểm campaign kết thúc", async () => {
     mockPackageFindUnique.mockResolvedValue(
       makePackage({

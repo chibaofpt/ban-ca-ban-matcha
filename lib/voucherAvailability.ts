@@ -42,6 +42,7 @@ export interface VoucherAvailabilityCatalog {
     matcha_powder_id: string | null;
     default_powder_id: string | null;
     default_base_liquid_id: string | null;
+    allowed_powder_ids: string[];
     allowed_base_liquid_ids: string[];
     sizes: Array<{ size: Size; base_price_vnd: number | null }>;
   }>;
@@ -58,6 +59,7 @@ export interface VoucherAvailabilityDatabase {
     id: string; name: string; category: string; is_available: boolean; unit_price_vnd: number | null;
     matcha_powder_id: string | null; default_powder_id: string | null; default_base_liquid_id: string | null;
     sizes: Array<{ size: Size; base_price_vnd: number | null }>;
+    fusionAllowedPowders?: Array<{ powder_id: string }>;
     allowedBaseLiquids: Array<{ base_liquid_id: string }>;
   }>> };
   matchaPowder: { findMany: (args: unknown) => Promise<VoucherAvailabilityCatalog["powders"]> };
@@ -94,7 +96,16 @@ function filterProductScope(
       return { scope: null, configurationMissing: true };
     }
   } else if (item.category === "fusion") {
-    powderId = resolveFusionDefaultPowderId(scope.default_powder_id ?? item.default_powder_id, catalog.powders);
+    const currentDefaultPowderId = resolveFusionDefaultPowderId(item.default_powder_id, catalog.powders);
+    const compatiblePowderIds = new Set([
+      ...(currentDefaultPowderId ? [currentDefaultPowderId] : []),
+      ...item.allowed_powder_ids,
+    ]);
+    const compatiblePowders = catalog.powders.filter((powder) => compatiblePowderIds.has(powder.id));
+    const preferredPowderId = scope.default_powder_id && compatiblePowderIds.has(scope.default_powder_id)
+      ? scope.default_powder_id
+      : currentDefaultPowderId;
+    powderId = resolveFusionDefaultPowderId(preferredPowderId, compatiblePowders);
     if (!powderId) return { scope: null, configurationMissing: true };
   } else {
     return { scope: null, configurationMissing: false };
@@ -150,13 +161,21 @@ export async function loadVoucherAvailabilityCatalog(
   db: VoucherAvailabilityDatabase,
 ): Promise<VoucherAvailabilityCatalog> {
   const [menuItems, powders, baseLiquids, addonOptions] = await Promise.all([
-    db.menuItem.findMany({ include: { sizes: true, allowedBaseLiquids: { select: { base_liquid_id: true } } } }),
+    db.menuItem.findMany({ include: {
+      sizes: true,
+      fusionAllowedPowders: { select: { powder_id: true } },
+      allowedBaseLiquids: { select: { base_liquid_id: true } },
+    } }),
     db.matchaPowder.findMany({ select: { id: true, name: true, price_per_gram: true, is_available: true } }),
     db.milkType.findMany({ select: { id: true, is_active: true, is_default: true, display_order: true } }),
     db.addonOption.findMany({ include: { group: { select: { is_active: true } } } }),
   ]);
   return {
-    menuItems: menuItems.map((item) => ({ ...item, allowed_base_liquid_ids: item.allowedBaseLiquids.map((row) => row.base_liquid_id) })),
+    menuItems: menuItems.map((item) => ({
+      ...item,
+      allowed_powder_ids: (item.fusionAllowedPowders ?? []).map((row) => row.powder_id),
+      allowed_base_liquid_ids: item.allowedBaseLiquids.map((row) => row.base_liquid_id),
+    })),
     powders,
     baseLiquids,
     addonOptions: addonOptions.map((option) => ({ ...option, group_is_active: option.group.is_active })),
@@ -170,10 +189,17 @@ export interface VoucherTargetAvailabilitySource {
   eligible_sizes?: Size[];
   reference_size?: Size | null;
   product_discount_mode?: "FIXED_AMOUNT" | "PAY_AS_SIZE" | null;
-  menuItemScopes?: Array<{ menu_item_id: string }>;
+  menuItemScopes?: Array<{
+    menu_item_id: string;
+    size?: Size | null;
+    matcha_powder_id?: string | null;
+    milk_type_id?: string | null;
+    covered_price_vnd?: number | null;
+  }>;
   matcha_powder_id: string | null;
   milk_type_id: string | null;
   addon_option_id: string | null;
+  addonOptionScopes?: Array<{ addon_option_id: string }>;
   package: { bundleRule?: VoucherBundleRuleSource | null; [key: string]: unknown };
   [key: string]: unknown;
 }
@@ -186,11 +212,64 @@ export interface OwnedVoucherAvailabilitySource extends VoucherTargetAvailabilit
   pointsLogs?: Array<{ delta: number; reason: string }>;
 }
 
+export interface VoucherTargetAvailabilityResult {
+  availability: VoucherAvailability;
+  package: VoucherTargetAvailabilitySource["package"];
+  usable_menu_item_ids?: string[];
+  usable_addon_option_ids?: string[];
+  resolved_product_scopes?: Array<{
+    menu_item_id: string;
+    size: Size;
+    matcha_powder_id: string | null;
+    milk_type_id: string | null;
+  }>;
+}
+
+/** Remove currently unusable normalized targets before they cross an API boundary. */
+export function retainUsableVoucherTargetScopes<T extends {
+  menuItemScopes?: Array<{
+    menu_item_id: string;
+    size?: Size | null;
+    matcha_powder_id?: string | null;
+    milk_type_id?: string | null;
+  }>;
+  addonOptionScopes?: Array<{ addon_option_id: string }>;
+}>(voucher: T, result: VoucherTargetAvailabilityResult): T {
+  const usableMenuIds = result.usable_menu_item_ids
+    ? new Set(result.usable_menu_item_ids)
+    : null;
+  const usableAddonIds = result.usable_addon_option_ids
+    ? new Set(result.usable_addon_option_ids)
+    : null;
+  const resolvedProductScopes = new Map(
+    (result.resolved_product_scopes ?? []).map((scope) => [scope.menu_item_id, scope]),
+  );
+  return {
+    ...voucher,
+    ...(usableMenuIds
+      ? { menuItemScopes: (voucher.menuItemScopes ?? [])
+          .filter((scope) => usableMenuIds.has(scope.menu_item_id))
+          .map((scope) => {
+            const resolved = resolvedProductScopes.get(scope.menu_item_id);
+            return resolved ? {
+              ...scope,
+              size: resolved.size,
+              matcha_powder_id: resolved.matcha_powder_id,
+              milk_type_id: resolved.milk_type_id,
+            } : scope;
+          }) }
+      : {}),
+    ...(usableAddonIds
+      ? { addonOptionScopes: (voucher.addonOptionScopes ?? []).filter((scope) => usableAddonIds.has(scope.addon_option_id)) }
+      : {}),
+  } as T;
+}
+
 /** Resolve only the current target/configuration state, independent of voucher lifecycle. */
 export function resolveVoucherTargetAvailability(
   voucher: VoucherTargetAvailabilitySource,
   catalog: VoucherAvailabilityCatalog,
-): { availability: VoucherAvailability; package: VoucherTargetAvailabilitySource["package"] } {
+): VoucherTargetAvailabilityResult {
   if (voucher.voucher_type === "BUNDLE" && voucher.package.bundleRule) {
     const result = resolveBundleRuleAvailability(voucher.package.bundleRule, catalog);
     return { availability: result.availability, package: { ...voucher.package, bundleRule: result.rule } };
@@ -199,20 +278,78 @@ export function resolveVoucherTargetAvailability(
     return { availability: { status: "USABLE", can_apply: true, can_refund: false, refund_points: 0 }, package: voucher.package };
   }
   if (voucher.voucher_type === "ADDON") {
-    const option = catalog.addonOptions.find((candidate) => candidate.id === voucher.addon_option_id);
-    const usable = Boolean(option?.is_active && option.group_is_active && option.gram_value === null);
-    return { availability: usable ? { status: "USABLE", can_apply: true, can_refund: false, refund_points: 0 } : unavailable("TARGET_UNAVAILABLE"), package: voucher.package };
+    const targetIds = voucher.addonOptionScopes?.length
+      ? voucher.addonOptionScopes.map((scope) => scope.addon_option_id)
+      : voucher.addon_option_id ? [voucher.addon_option_id] : [];
+    const usableTargetIds = targetIds.filter((id) => {
+      const option = catalog.addonOptions.find((candidate) => candidate.id === id);
+      return Boolean(option?.is_active && option.group_is_active && option.gram_value === null);
+    });
+    return {
+      availability: usableTargetIds.length > 0
+        ? { status: "USABLE", can_apply: true, can_refund: false, refund_points: 0 }
+        : unavailable("TARGET_UNAVAILABLE"),
+      package: voucher.package,
+      usable_addon_option_ids: usableTargetIds,
+    };
   }
   if (!voucher.menu_item_id && !voucher.menuItemScopes?.length) return { availability: unavailable("TARGET_UNAVAILABLE"), package: voucher.package };
+  if ((voucher.voucher_type === "ITEM" || voucher.voucher_type === "PRODUCT") && voucher.menuItemScopes?.length) {
+    let configurationMissing = false;
+    const resolvedProductScopes: NonNullable<VoucherTargetAvailabilityResult["resolved_product_scopes"]> = [];
+    const usableTargetIds = voucher.menuItemScopes.flatMap((target) => {
+      const item = catalog.menuItems.find((candidate) => candidate.id === target.menu_item_id);
+      if (voucher.voucher_type === "ITEM") {
+        return item?.is_available && item.category === "extras" && item.unit_price_vnd !== null
+          ? [target.menu_item_id]
+          : [];
+      }
+      if (!target.size || target.covered_price_vnd === null || target.covered_price_vnd === undefined) {
+        configurationMissing = true;
+        return [];
+      }
+      const activeSizes = (item?.sizes ?? [])
+        .filter((entry) => entry.base_price_vnd !== null)
+        .map((entry) => entry.size);
+      const initialSizes = activeSizes.includes(target.size)
+        ? [target.size, ...activeSizes.filter((size) => size !== target.size)]
+        : activeSizes;
+      const resolved = filterProductScope({
+        role: "QUALIFIER",
+        menu_item_id: target.menu_item_id,
+        default_powder_id: target.matcha_powder_id ?? null,
+        default_base_liquid_id: target.milk_type_id ?? null,
+        sizes: initialSizes.map((size) => ({ size })),
+      }, catalog);
+      configurationMissing ||= resolved.configurationMissing;
+      if (resolved.scope) {
+        resolvedProductScopes.push({
+          menu_item_id: target.menu_item_id,
+          size: resolved.scope.sizes[0]!.size,
+          matcha_powder_id: resolved.scope.default_powder_id,
+          milk_type_id: resolved.scope.default_base_liquid_id,
+        });
+      }
+      return resolved.scope ? [target.menu_item_id] : [];
+    });
+    return {
+      availability: usableTargetIds.length > 0
+        ? { status: "USABLE", can_apply: true, can_refund: false, refund_points: 0 }
+        : unavailable(configurationMissing ? "NO_ACTIVE_CONFIGURATION" : "TARGET_UNAVAILABLE"),
+      package: voucher.package,
+      usable_menu_item_ids: usableTargetIds,
+      ...(voucher.voucher_type === "PRODUCT" ? { resolved_product_scopes: resolvedProductScopes } : {}),
+    };
+  }
   if (voucher.voucher_type === "PRODUCT_DISCOUNT" && voucher.menuItemScopes?.length) {
-    const usableTarget = voucher.menuItemScopes.some(({ menu_item_id }) => {
+    const usableTargetIds = voucher.menuItemScopes.flatMap(({ menu_item_id }) => {
       const item = catalog.menuItems.find((candidate) => candidate.id === menu_item_id);
       const activeSizes = new Set((item?.sizes ?? []).filter((row) => row.base_price_vnd !== null).map((row) => row.size));
       const hasEligibleSize = (voucher.eligible_sizes ?? []).some((size) => activeSizes.has(size));
       const hasReferenceSize = voucher.product_discount_mode !== "PAY_AS_SIZE" ||
         (!!voucher.reference_size && activeSizes.has(voucher.reference_size));
       if (!item?.is_available || (item.category !== "latte" && item.category !== "fusion") || !hasEligibleSize || !hasReferenceSize) {
-        return false;
+        return [];
       }
       const resolved = filterProductScope({
         role: "QUALIFIER",
@@ -222,13 +359,14 @@ export function resolveVoucherTargetAvailability(
         sizes: [...new Set([...(voucher.eligible_sizes ?? []), ...(voucher.reference_size ? [voucher.reference_size] : [])])]
           .map((size) => ({ size })),
       }, catalog);
-      return resolved.scope !== null;
+      return resolved.scope ? [menu_item_id] : [];
     });
     return {
-      availability: usableTarget
+      availability: usableTargetIds.length > 0
         ? { status: "USABLE", can_apply: true, can_refund: false, refund_points: 0 }
         : unavailable("TARGET_UNAVAILABLE"),
       package: voucher.package,
+      usable_menu_item_ids: usableTargetIds,
     };
   }
   if (!voucher.menu_item_id) return { availability: unavailable("TARGET_UNAVAILABLE"), package: voucher.package };
@@ -273,13 +411,14 @@ export function attachOwnedVoucherAvailability<T extends OwnedVoucherAvailabilit
 ): Array<T & { availability: VoucherAvailability }> {
   return vouchers.map((voucher) => {
     const target = resolveVoucherTargetAvailability(voucher, catalog);
+    const usableVoucher = retainUsableVoucherTargetScopes(voucher, target);
     const lifecycleUsable = voucher.status === "ACTIVE" && (!voucher.expires_at || voucher.expires_at > now);
     const purchaseDelta = voucher.pointsLogs?.find((log) => log.reason === "voucher_purchase")?.delta;
     const refundPoints = purchaseDelta !== undefined ? Math.abs(purchaseDelta) : 0;
     const canRefund = voucher.issued_via === "POINTS_EXCHANGE" && lifecycleUsable &&
       !target.availability.can_apply && refundPoints > 0;
     return {
-      ...voucher,
+      ...usableVoucher,
       package: target.package,
       availability: {
         ...target.availability,

@@ -6,7 +6,7 @@
  */
 
 import type { MyVoucher } from "@/src/services/customerVoucherService";
-import type { CartItem } from "@/src/lib/types/cart";
+import type { CartItem, ProjectedCartLine } from "@/src/lib/types/cart";
 
 // ── Eligibility filters ───────────────────────────────────────────────────────
 
@@ -27,6 +27,81 @@ export function filterUsableVouchers(
   return vouchers.filter((v) => v.voucher_type === type && isVoucherUsable(v, now));
 }
 
+export interface AddonVoucherTargetChoice {
+  addonOptionId: string;
+  label: string;
+  discountVnd: number;
+}
+
+/** Return every usable ADDON target, optionally constrained to options selected on a drink. */
+export function getAddonVoucherTargetChoices(
+  voucher: MyVoucher,
+  selectedOptionIds?: readonly string[],
+  excludedOptionIds: readonly string[] = [],
+  addonPrices: Readonly<Record<string, number>> = {},
+): AddonVoucherTargetChoice[] {
+  const excluded = new Set(excludedOptionIds);
+  const configuredTargets = voucher.eligible_addon_options;
+  if (configuredTargets && configuredTargets.length > 0) {
+    return configuredTargets
+      .filter((option) =>
+        option.is_active &&
+        !option.is_dynamic_gram &&
+        !excluded.has(option.addon_option_id) &&
+        (selectedOptionIds === undefined || selectedOptionIds.includes(option.addon_option_id)),
+      )
+      .map((option) => ({
+        addonOptionId: option.addon_option_id,
+        label: option.label,
+        discountVnd: addonPrices[option.addon_option_id] ?? option.price_vnd,
+      }));
+  }
+  if (!voucher.addon_option_id) return [];
+  return !excluded.has(voucher.addon_option_id) &&
+    (selectedOptionIds === undefined || selectedOptionIds.includes(voucher.addon_option_id))
+    ? [{
+        addonOptionId: voucher.addon_option_id,
+        label: voucher.addonOption?.label ?? "Topping",
+        discountVnd: addonPrices[voucher.addon_option_id] ?? 0,
+      }]
+    : [];
+}
+
+/** Resolve the first usable ADDON target for legacy single-target call sites. */
+export function resolveAddonVoucherOptionId(
+  voucher: MyVoucher,
+  selectedOptionIds?: readonly string[],
+  excludedOptionIds: readonly string[] = [],
+): string | null {
+  return getAddonVoucherTargetChoices(voucher, selectedOptionIds, excludedOptionIds)[0]?.addonOptionId ?? null;
+}
+
+/** Resolve the ADDON target already applied to a cart line or the next uncovered eligible target. */
+export function resolveAddonVoucherOptionForCartItem(voucher: MyVoucher, item: ProjectedCartLine): string | null {
+  const applied = item.addonVouchers.find((entry) => entry.token === voucher.qr_token);
+  return applied?.addonOptionId ?? getAddonVoucherTargetChoices(
+    voucher,
+    item.configuration.size === null ? [] : item.configuration.addonOptionIds,
+    item.addonVouchers.map((entry) => entry.addonOptionId),
+    Object.fromEntries(item.resolvedAddons.map((addon) => [addon.id, addon.priceVnd])),
+  )[0]?.addonOptionId ?? null;
+}
+
+/** Return the PRODUCT or ITEM voucher token currently attached to one cart line. */
+export function getAppliedMenuVoucherId(item: CartItem): string | null {
+  return item.lineVoucher?.token ?? null;
+}
+
+/** Snapshot the voucher-to-addon target allocation already stored on one cart line. */
+export function getCartAddonVoucherTargets(item?: CartItem): Record<string, string> {
+  return Object.fromEntries((item?.addonVouchers ?? []).map((entry) => [entry.token, entry.addonOptionId]));
+}
+
+/** Return whether an addon option on a cart line is already paid by another voucher. */
+export function hasAddonVoucherForOption(item: CartItem, addonOptionId: string): boolean {
+  return item.addonVouchers?.some((entry) => entry.addonOptionId === addonOptionId) ?? false;
+}
+
 // ── PRODUCT voucher matching ──────────────────────────────────────────────────
 
 /**
@@ -41,7 +116,11 @@ export function matchProductVouchers(
   usedVoucherIds: Set<string> = new Set()
 ): MyVoucher[] {
   return filterUsableVouchers(vouchers, "PRODUCT").filter(
-    (v) => v.menu_item_id === menuItemId && !usedVoucherIds.has(v.qr_token)
+    (v) => (
+      (v.eligible_menu_items?.length ?? 0) > 0
+        ? v.eligible_menu_items!.some((target) => target.menu_item_id === menuItemId && target.is_available)
+        : v.menu_item_id === menuItemId
+    ) && !usedVoucherIds.has(v.qr_token)
   );
 }
 
@@ -52,7 +131,7 @@ export function matchProductVouchers(
  */
 export function buildProductVoucherMap(
   vouchers: MyVoucher[],
-  cartItems: CartItem[]
+  cartItems: ProjectedCartLine[]
 ): Map<string, MyVoucher[]> {
   const usable = vouchers.filter(
     (voucher) =>
@@ -65,7 +144,7 @@ export function buildProductVoucherMap(
       ((v.eligible_menu_items?.length ?? 0) > 0
         ? v.eligible_menu_items!.some((target) => target.menu_item_id === item.menuItemId)
         : v.menu_item_id === item.menuItemId) &&
-      (v.voucher_type !== "PRODUCT_DISCOUNT" || (item.size !== null && (v.eligible_sizes ?? []).includes(item.size))));
+      (v.voucher_type !== "PRODUCT_DISCOUNT" || (item.configuration.size !== null && (v.eligible_sizes ?? []).includes(item.configuration.size))));
     if (matches.length > 0) {
       result.set(item.menuItemId, matches);
     }
@@ -81,12 +160,12 @@ export function buildProductVoucherMap(
  */
 export function matchAddonVouchers(
   vouchers: MyVoucher[],
-  cartItems: CartItem[],
+  cartItems: ProjectedCartLine[],
   usedVoucherIds: Set<string> = new Set()
 ): MyVoucher[] {
-  const allOptionIds = new Set(cartItems.flatMap((c) => c.selectedOptionIds));
+  const allOptionIds = new Set(cartItems.flatMap((item) => item.configuration.size === null ? [] : item.configuration.addonOptionIds));
   return filterUsableVouchers(vouchers, "ADDON").filter(
-    (v) => v.addon_option_id !== null && allOptionIds.has(v.addon_option_id) && !usedVoucherIds.has(v.qr_token)
+    (v) => resolveAddonVoucherOptionId(v, Array.from(allOptionIds)) !== null && !usedVoucherIds.has(v.qr_token)
   );
 }
 
@@ -95,17 +174,13 @@ export function matchAddonVouchers(
  */
 export function buildAddonVoucherMap(
   vouchers: MyVoucher[],
-  cartItems: CartItem[]
+  cartItems: ProjectedCartLine[]
 ): Map<string, MyVoucher[]> {
   const usable = filterUsableVouchers(vouchers, "ADDON");
   const result = new Map<string, MyVoucher[]>();
   for (const item of cartItems) {
-    const itemOptionIds = new Set(item.selectedOptionIds);
-    const appliedOptionIds = new Set(item.addonVouchers?.map(av => av.addonOptionId) || []);
-    
-    const matches = usable.filter(
-      (v) => v.addon_option_id !== null && itemOptionIds.has(v.addon_option_id) && !appliedOptionIds.has(v.addon_option_id)
-    );
+    if (item.category === "extras") continue;
+    const matches = usable.filter((voucher) => resolveAddonVoucherOptionForCartItem(voucher, item) !== null);
     if (matches.length > 0) {
       result.set(item.cartId, matches);
     }
@@ -122,9 +197,12 @@ export function buildAddonVoucherMap(
  */
 export function estimateProductSavings(
   voucher: MyVoucher,
-  cartItemClientPrice: number
+  cartItemClientPrice: number,
+  menuItemId?: string,
 ): number {
-  const covered = voucher.covered_price_vnd ?? 0;
+  const covered = voucher.eligible_menu_items?.find((target) => target.menu_item_id === menuItemId)?.covered_price_vnd
+    ?? voucher.covered_price_vnd
+    ?? 0;
   return Math.min(covered, cartItemClientPrice);
 }
 
@@ -181,15 +259,15 @@ export function estimateMultiDiscountSavings(
  */
 export function estimateAddonSavings(
   voucher: MyVoucher,
-  cartItems: CartItem[]
+  cartItems: ProjectedCartLine[]
 ): number {
-  if (!voucher.addon_option_id) return 0;
+  const targetIds = voucher.eligible_addon_options?.length
+    ? voucher.eligible_addon_options.filter((option) => option.is_active && !option.is_dynamic_gram).map((option) => option.addon_option_id)
+    : voucher.addon_option_id ? [voucher.addon_option_id] : [];
   for (const item of cartItems) {
-    if (item.selectedOptionIds.includes(voucher.addon_option_id)) {
-      // We don't have individual addon prices in CartItem — the server will compute.
-      // Return a non-zero signal (1) so the UI can show "Voucher topping áp dụng".
-      // Actual deduction is confirmed server-side.
-      return 1;
+    const configuration = item.configuration;
+    if (configuration.size !== null && targetIds.some((optionId) => configuration.addonOptionIds.includes(optionId))) {
+      return item.resolvedAddons.find((addon) => targetIds.includes(addon.id))?.priceVnd ?? 0;
     }
   }
   return 0;

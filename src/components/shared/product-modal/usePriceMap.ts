@@ -23,7 +23,7 @@ interface UsePriceMapProps {
   activePowderId: string;
   selectedMilkId: string;
   selectedOptionIds: string[];
-  selectedAddonVoucherIds: string[];
+  selectedAddonVoucherTargets: Record<string, string>;
   availableVouchers?: MyVoucher[];
   selectedProductVoucherId: string | null;
   freeVoucherId?: string;
@@ -42,7 +42,7 @@ export function usePriceMap({
   activePowderId,
   selectedMilkId,
   selectedOptionIds,
-  selectedAddonVoucherIds,
+  selectedAddonVoucherTargets,
   availableVouchers,
   selectedProductVoucherId,
   freeVoucherId,
@@ -119,10 +119,10 @@ export function usePriceMap({
     let finalAddonsCost = currentPriceContext.addonsCost;
 
     // 1. Apply Addon Vouchers deduction
-    for (const vid of selectedAddonVoucherIds) {
-      const v = availableVouchers?.find(av => av.qr_token === vid);
-      if (v && v.addon_option_id) {
-        const addonPrice = currentPriceContext.addonPricesMap[v.addon_option_id] ?? 0;
+    for (const [voucherId, addonOptionId] of Object.entries(selectedAddonVoucherTargets)) {
+      const voucherIsAvailable = availableVouchers?.some((voucher) => voucher.qr_token === voucherId);
+      if (voucherIsAvailable && selectedOptionIds.includes(addonOptionId)) {
+        const addonPrice = currentPriceContext.addonPricesMap[addonOptionId] ?? 0;
         finalAddonsCost = Math.max(0, finalAddonsCost - addonPrice);
         finalUnitPrice = Math.max(0, finalUnitPrice - addonPrice);
       }
@@ -142,6 +142,7 @@ export function usePriceMap({
       : undefined;
     const effectiveFreeCoveredPrice = freeVoucherCoveredPriceVnd
       ?? productDiscountBenefit
+      ?? activeProductVoucher?.eligible_menu_items?.find((target) => target.menu_item_id === item.id)?.covered_price_vnd
       ?? activeProductVoucher?.covered_price_vnd
       ?? undefined;
     const effectiveProductVoucherType = activeProductVoucher?.voucher_type === "PRODUCT_DISCOUNT"
@@ -173,7 +174,7 @@ export function usePriceMap({
     };
   }, [
     item, latteItems, milkTypes, addonGroups, powders, defaultPowderGrams, selectedSize, activePowderId,
-    selectedMilkId, selectedOptionIds, selectedAddonVoucherIds,
+    selectedMilkId, selectedOptionIds, selectedAddonVoucherTargets,
     availableVouchers, selectedProductVoucherId, freeVoucherId, freeVoucherCoveredPriceVnd, quantity, isLatte
   ]);
 }

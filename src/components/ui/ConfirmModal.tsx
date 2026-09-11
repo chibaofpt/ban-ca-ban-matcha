@@ -39,13 +39,13 @@ export function ConfirmModal({
   return (
     <AlertDialog.Root open={isOpen} onOpenChange={handleOpenChange}>
       <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-[100] bg-foreground/40 backdrop-blur-sm data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out data-[state=open]:fade-in" />
+        <AlertDialog.Overlay className="fixed inset-0 z-[250] bg-foreground/40 backdrop-blur-sm data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out data-[state=open]:fade-in" />
         <AlertDialog.Content
           data-confirm-modal="true"
           onEscapeKeyDown={(event) => {
             if (isLoading) event.preventDefault();
           }}
-          className="fixed left-1/2 top-1/2 z-[101] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-3xl bg-background shadow-2xl outline-none data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out data-[state=open]:fade-in data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
+          className="fixed left-1/2 top-1/2 z-[251] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-3xl bg-background shadow-2xl outline-none data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out data-[state=open]:fade-in data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
         >
           <header className="flex items-center justify-between border-b border-border/50 px-6 py-4">
             <AlertDialog.Title className="flex items-center gap-2 text-lg font-bold text-primary">
