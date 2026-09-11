@@ -5,6 +5,14 @@
 > **Update when:** a supported path/method/field/response behavior changes.
 > **Does not own:** domain formulas, physical database fields or frontend architecture.
 
+## Read by scope
+
+Read `Response Shape`, `Contract Stability`, `Error Codes` and the affected endpoint, not this entire
+catalog. Use the route inventory or search the exact path to locate it. Add `Auth Cookies` and
+`Middleware Behavior` for auth; `Image Upload Flow` for multipart; the relevant payload ceilings,
+rate limits or cron section for those contracts. Implementation belongs to
+[api-layer](.agents/skills/api-layer/SKILL.md); cross-endpoint business rules belong to domain skills.
+
 ---
 
 ## Response Shape
@@ -268,9 +276,9 @@ order or voucher write.
 
 The implementation uses fixed-window Upstash counters, HMAC-hashes every identifier before it
 becomes a Redis key, and returns `429 TOO_MANY_REQUESTS` with deterministic `Retry-After`. It fails
-open and reports the infrastructure error to Sentry if Redis is absent or unavailable. This is the
-only approved pre-Phase-5 Upstash use: a security control, not application caching or an OTP,
-promotion, or messaging feature.
+open and reports the infrastructure error to Sentry if Redis is absent or unavailable. Rate-limit
+keys are isolated from the cache-aside namespaces used by selected public GET endpoints. Redis is
+not an authorization authority; OTP, promotion and messaging remain Phase-5 work.
 
 ### Cron — `CRON_SECRET` required
 
@@ -685,7 +693,7 @@ Uses the same `updated_at`, `latte`, `fusion`, and `extras` grouping as `GET /ap
     base_liquid_ml?: number | null    // null/omitted = system fallback
   }[]
 }
-// Server: INSERT menu_items + 3 menu_item_sizes + allowed Base Liquids in prisma.$transaction()
+// Server: drinks INSERT menu_items + 3 menu_item_sizes + allowed Base Liquids in prisma.$transaction(); extras have no drink configuration
 // Addons apply globally — no junction rows needed
 ```
 
@@ -995,7 +1003,8 @@ without a configured default Base Liquid. Any full edit still requires a valid a
 
 - Returns only `COUNTER + BANK_TRANSFER + PENDING` orders created by the current Staff/Admin.
 - Used by the POS “Chờ CK” launcher; `limit=100` is sufficient because each order expires after 20 minutes.
-- Expired rows are lazily cancelled and excluded client-side when no longer recoverable.
+- GET is read-only. Expired orders are cancelled by the authenticated cron workflow; the POS
+  excludes rows from payment recovery when no longer recoverable. See order-flow `Auto-Cancel`.
 - Omitting `mine=true` preserves the existing management-list behavior.
 
 ### `GET /api/staff/orders/[id]` — Staff/Admin payment recovery
@@ -1144,16 +1153,16 @@ them from the customer's cart voucher picker, where the chosen menu-item/addon t
 - `updated_at` in response = `MAX(menu_items.updated_at)` across all items including unavailable ones.
 - Fusion missing/inactive default: resolve fallback (Meyumi → Hana → MH-3 → lowest active `price_per_gram` → lowest ID). Return `resolved_default_powder_id` when any powder is active.
 - `allowed_powder_ids`: join `fusion_allowed_powder` + filter `matcha_powder.is_available = true`.
-- `POST /api/admin/menu`: INSERT `menu_items` + 3 `menu_item_sizes` + `menu_item_allowed_base_liquid` rows in one `prisma.$transaction()`.
+- `POST /api/admin/menu`: persist the parent and category-appropriate configuration in one transaction; drink sizes and extras follow the endpoint contract above.
 - `DELETE /api/admin/addon-groups/[id]`: set `is_active = false`. Never hard delete.
 - Admin soft-deleting a Latte item: check `matcha_powder.reference_latte_item_id` and warn if any powder references it.
 
 ### Pricing (Server)
-- Pricing in `lib/pricing.ts` → delegates pure logic to `src/utils/pricing.ts`.
-- Preload all pricing data (sizes, powder configs, milk types, `default_size_config`) in a single fetch before looping items — avoid N+1.
-- Fusion Premium_Latte: preload all referenced Latte item sizes upfront.
-- Extra matcha `unit_price_vnd` = `addon_option.gram_value × selected_powder.price_per_gram`. Snapshot into `order_item_addons.unit_price_vnd`.
-- `PRICE_CHANGED`: compare `client_price_vnd` per item against server-computed price. Any mismatch → reject entire order, return `details.conflicts[]`.
+
+Formulas, component boundaries and preload strategy belong to
+[pricing-logic](.agents/skills/pricing-logic/SKILL.md). API consumers submit only the fields declared
+by their endpoint. `PRICE_CHANGED` compares `client_price_vnd` per item against the server result;
+any mismatch rejects the whole order with `details.conflicts[]` as defined above.
 
 ### Orders
 - Latte: server sets `selected_powder_id` from `menu_item.matcha_powder_id` — client must not send it.
@@ -1181,9 +1190,9 @@ them from the customer's cart voucher picker, where the chosen menu-item/addon t
   shipping fee. A mismatching `client_shipping_fee_vnd` returns `409 SHIPPING_FEE_CHANGED`.
 - The client map uses lazy MapLibre rendering with Goong style/tiles. Goong API-backed search and
   geocoding remain usable when rendering fails, providing the manual address-selection fallback.
-- Persisted customer cart schema is version `7`. Migrating an older cart keeps compatible items but
-  clears stale PRODUCT/ITEM/ADDON and order-level voucher identifiers and credits,
-  then recomputes client item prices so legacy database UUIDs cannot be resubmitted.
+- Cart persistence/versioning belongs to [Cart và POS](docs/specs/cart.md), not the HTTP contract.
+  Compatibility migrations must prevent stale voucher identifiers/credits and legacy internal IDs
+  from being resubmitted while preserving compatible items and recomputing client prices.
 - **Anonymous orders** (`phone_number` omitted):
   - `orders.user_id = NULL`
   - `points_earned = 0` — no points awarded, no `points_log` entry
@@ -1246,12 +1255,10 @@ them from the customer's cart voucher picker, where the chosen menu-item/addon t
   as `OFFLINE` only when payment is confirmed.
 
 ### Points
-- Earn order points: `floor(total_vnd / 10000)` on COMPLETED; exclude shipping.
-- PRODUCT surplus: sum surplus VND across the whole order, then award
-  `floor(order_surplus_vnd / 10000)` once on COMPLETED.
-- Spend: deduct + create voucher in `prisma.$transaction()`.
-- Manual add: ADMIN only, max 100/action.
-- Reversal: insert new negative-delta row, `reason = "reversed_by_admin"`.
+
+Earning/reversal behavior belongs to [order-flow — Points](.agents/skills/order-flow/SKILL.md#points).
+Voucher exchange, surplus and refund behavior belongs to
+[voucher-flow](.agents/skills/voucher-flow/SKILL.md). Endpoint response contracts remain above.
 
 ### QR Scan
 1. Check `users` by `qr_token` first.
@@ -1259,14 +1266,5 @@ them from the customer's cart voucher picker, where the chosen menu-item/addon t
 3. Never return internal `id` — always `qr_token`.
 
 ### `points_log.reason` Valid Values
-| Value | Trigger |
-|---|---|
-| `order_complete` | Order status → COMPLETED |
-| `manual_admin_adjustment` | Admin manually adds/deducts points |
-| `voucher_purchase` | Customer spends points to buy a voucher package |
-| `voucher_surplus` | Aggregate PRODUCT surplus awarded when order → COMPLETED |
-| `order_complete_reversed` | Reversal after a completed COUNTER order is cancelled |
-| `voucher_surplus_reversed` | Reversal of aggregate PRODUCT surplus after cancellation |
-| `voucher_refund` | Unusable points-exchange voucher → exact immutable purchase-points refund |
-| `reversed_by_admin` | Admin reverses a manual adjustment |
-| `registration_bonus` | New customer registration bonus |
+
+Persisted reason values belong to [SCHEMA — points_log](SCHEMA.md#points_log).

@@ -52,6 +52,7 @@ import {
 import { getBundleVoucherSummary } from "@/src/components/menu/cart/CartBundleVoucherPanel";
 import { projectCart } from "@/src/lib/utils/cartProjection";
 import { serializeCartOrderItems } from "@/src/lib/utils/cartOrderPayload";
+import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import { normalizeStaffBundleApplications } from "@/src/lib/utils/staffBundlePayload";
 import { getVoucherAvailabilityMessage } from "@/src/lib/utils/voucherModalHelpers";
 import { useVoucherAcquisition } from "@/src/hooks/useVoucherAcquisition";
@@ -258,6 +259,7 @@ export default function StaffOrdersPage({
   const markBundleApplicationsVerifyFailed = useStaffCartStore((s) => s.markBundleApplicationsVerifyFailed);
   const bundleRuntime = useStaffCartStore((s) => s.bundleRuntime);
   const setProjectedTotalVnd = useStaffCartStore((s) => s.setProjectedTotalVnd);
+  const persistenceWarning = useStaffCartStore((s) => s.persistenceWarning);
 
   // ── Voucher state (list-based) ────────────────────────────────────────
 
@@ -952,36 +954,34 @@ export default function StaffOrdersPage({
   const handleApplyProduct = (
     cartId: string,
     voucher: import("@/src/services/staffVoucherService").MyVoucher,
-  ) => {
+  ): CartMutationResult => {
     if (voucher.voucher_type === "ITEM" || voucher.voucher_type === "PRODUCT" || voucher.voucher_type === "PRODUCT_DISCOUNT") {
-      const result = applyProductVoucher(
+      return applyProductVoucher(
         cartId,
         voucher.qr_token,
         undefined,
         voucher.voucher_type,
       );
-      if (!result.ok) toast.error(result.message);
     }
+    return { ok: false, code: "VOUCHER_CONFLICT", message: "Voucher không áp dụng được cho món này." };
   };
 
   const handleApplyAddon = (
     cartId: string,
     voucher: import("@/src/services/staffVoucherService").MyVoucher,
     addonOptionId: string,
-  ) => {
+  ): CartMutationResult => {
     const line = projectedCart.find((item) => item.cartId === cartId);
     const addon = line?.resolvedAddons.find((candidate) => candidate.id === addonOptionId);
     const group = menuData?.addon_groups.find((candidate) => candidate.id === addon?.groupId);
     if (!line || !addon || !group) {
-      toast.error("Topping không còn hợp lệ.");
-      return;
+      return { ok: false, code: "ADDON_NOT_SELECTED", message: "Topping không còn hợp lệ." };
     }
-    const result = applyAddonVoucher(cartId, voucher.qr_token, addonOptionId, {
+    return applyAddonVoucher(cartId, voucher.qr_token, addonOptionId, {
       groupOptionIds: group.options.map((option) => option.id),
       maxSelect: group.max_select,
       isExtraMatcha: addon.isExtraMatcha,
     });
-    if (!result.ok) toast.error(result.message);
   };
 
   // ── QR verify success (STAFF role) ────────────────────────────────────
@@ -1142,6 +1142,8 @@ export default function StaffOrdersPage({
         acquisitionReceipt={scopedAcquisitionReceipt}
         onRetryVoucherRefresh={() => { void handleRetryVoucherRefresh(); }}
         checkoutBlocked={cartProjection.checkoutBlocked || walletRevalidating}
+        voucherRevalidating={cartProjection.revalidating}
+        persistenceWarning={persistenceWarning}
         preventCloseOutside={
           customerSelectOpen ||
           confirmCheckoutOpen ||

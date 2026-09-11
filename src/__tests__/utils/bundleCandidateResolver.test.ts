@@ -79,6 +79,19 @@ describe("BUNDLE unit candidate resolver", () => {
     ]);
   });
 
+  it("accumulates allocations from multiple sibling bundles on one aggregated line", () => {
+    const candidates = resolveBundleUnitCandidates({
+      items: [line("many", 3)],
+      requirement: requirement("QUALIFIER", 1),
+      applications: [application("sibling-a", "many"), application("sibling-b", "many")],
+      currentVoucherToken: "current",
+    });
+
+    expect(candidates.map((candidate) => candidate.conflicts)).toEqual([
+      ["SIBLING_BUNDLE"], ["SIBLING_BUNDLE"], [],
+    ]);
+  });
+
   it("excludes a personal-voucher unit and prevents a reward unit from also qualifying", () => {
     const personal = { ...line("personal"), lineVoucher: { token: "item", kind: "ITEM" as const } };
     expect(resolveBundleUnitCandidates({

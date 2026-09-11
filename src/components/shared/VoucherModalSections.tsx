@@ -1,6 +1,7 @@
 "use client";
 
 import { History, Star, X } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
 import { useRef, type ReactNode } from "react";
 import { VoucherCard } from "@/src/components/shared/VoucherCards";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
@@ -83,6 +84,11 @@ export function VoucherModalFrame({
       {overlayContent}
     </div>
   );
+}
+
+/** Animate one in-frame voucher detail without participating in the frame layout. */
+export function VoucherModalDetailTransition({ children }: { children: ReactNode }) {
+  return <AnimatePresence initial={false}>{children}</AnimatePresence>;
 }
 
 /** Render the responsive three-tab selector for the unified voucher modal. */

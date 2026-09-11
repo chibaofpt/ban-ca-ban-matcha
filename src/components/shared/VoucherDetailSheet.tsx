@@ -75,6 +75,20 @@ type VoucherDetailSheetProps =
   | OwnedVoucherDetailSheetProps
   | PackageVoucherDetailSheetProps;
 
+function VoucherDetailPanel({ children }: { children: React.ReactNode }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: "12%" }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: "12%" }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
+      className="absolute inset-0 z-20 flex h-full w-full flex-col overflow-hidden bg-background"
+    >
+      {children}
+    </motion.div>
+  );
+}
+
 function PackageActionFooter({ pkg, isLoggedIn, pointsBalance, isExchanging, onExchange, onLogin }: {
   pkg: VoucherPackage;
   isLoggedIn: boolean;
@@ -138,13 +152,7 @@ function PackageVoucherDetailSheet({
   const sizeLabel = { SMALL: "nhỏ", MEDIUM: "vừa", LARGE: "lớn" } as const;
 
   return (
-    <motion.div
-      initial={{ x: "100%" }}
-      animate={{ x: 0 }}
-      exit={{ x: "100%" }}
-      transition={{ type: "spring", damping: 25, stiffness: 300 }}
-      className="relative flex h-full w-full flex-col overflow-hidden bg-background"
-    >
+    <VoucherDetailPanel>
       <div className="flex shrink-0 items-center gap-3 border-b border-border/40 bg-card px-5 py-4">
         <button
           type="button"
@@ -251,7 +259,7 @@ function PackageVoucherDetailSheet({
           onLogin={onLogin}
         />
       </div>
-    </motion.div>
+    </VoucherDetailPanel>
   );
 }
 
@@ -378,13 +386,7 @@ const OwnedVoucherDetailSheet = ({
   };
 
   return (
-    <motion.div
-      initial={{ x: "100%" }}
-      animate={{ x: 0 }}
-      exit={{ x: "100%" }}
-      transition={{ type: "spring", damping: 25, stiffness: 300 }}
-      className="relative flex h-full w-full flex-col overflow-hidden bg-background"
-    >
+    <VoucherDetailPanel>
       <div className="flex items-center gap-3 px-5 py-4 border-b border-border/40 shrink-0 bg-card">
         <button
           type="button"
@@ -530,7 +532,7 @@ const OwnedVoucherDetailSheet = ({
           <ScopedMenuVoucherPicker voucher={voucher} menuData={menuData} canEdit={canEdit} onBack={() => setShowScopedMenuPicker(false)} onSuccess={() => { setShowScopedMenuPicker(false); onUseNowSuccess(); }} />
         )}
       </AnimatePresence>
-    </motion.div>
+    </VoucherDetailPanel>
   );
 };
 

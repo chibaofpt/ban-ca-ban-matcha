@@ -101,7 +101,7 @@ function BenefitFields({ draft, update, menuOptions, bundleMenuItems, addonOptio
 /** Three-step admin wizard for creating every voucher type in one place. */
 export function VoucherWizard(props: VoucherWizardProps) {
   const [step, setStep] = useState(1);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmState, setConfirmState] = useState<"closed" | "open" | "success">("closed");
   const manualCopy = useRef({ name: false, description: false });
   const { draft, form, updateDraft, validate, submit: submitDraft, errorFor } = useAdminVoucherWizardForm();
   const copyLabels = useMemo<VoucherCopyLabels>(() => ({
@@ -137,18 +137,21 @@ export function VoucherWizard(props: VoucherWizardProps) {
   const close = (open: boolean) => {
     props.onOpenChange(open);
     if (!open) {
-      setConfirmOpen(false);
+      setConfirmState("closed");
     }
   };
   const handleSubmitSuccess = () => {
-    setConfirmOpen(false);
+    setConfirmState("success");
+  };
+  const handleConfirmAfterClose = () => {
+    if (confirmState !== "success") return;
+    setConfirmState("closed");
     setStep(1);
     manualCopy.current = { name: false, description: false };
-    // Stagger close: let ConfirmModal unmount and release scroll lock before closing the overlay
-    setTimeout(() => close(false), 150);
+    close(false);
   };
   const next = () => { void validate("step2").then((valid) => { if (valid) setStep(3); }); };
-  const submit = () => { void validate().then((valid) => { if (valid) setConfirmOpen(true); }); };
+  const submit = () => { void validate().then((valid) => { if (valid) setConfirmState("open"); }); };
   const review = describeVoucherDraft(draft, copyLabels.menuLabels, copyLabels.addonLabels, copyLabels.powderLabels, copyLabels.milkLabels);
   const liability = estimateVoucherLiabilityVnd(draft, props.menuPriceById, props.addonPriceById);
   const suggestion = suggestVoucherCopy(draft, copyLabels);
@@ -223,6 +226,6 @@ export function VoucherWizard(props: VoucherWizardProps) {
       ) : null}
       </FormProvider>
     </ResponsiveOverlay>
-    <ConfirmModal isOpen={confirmOpen} isLoading={props.submitting} title="Xác nhận phát hành voucher?" message={`${review}. ${draft.quantity === null ? "Số lượng phát hành chưa giới hạn." : `Phát hành tối đa ${draft.quantity} voucher.`} Quy tắc sẽ không thể sửa sau khi tạo.`} confirmLabel={props.submitting ? "Đang tạo…" : "Phát hành"} onCancel={() => setConfirmOpen(false)} onConfirm={() => void submitDraft((current) => props.onSubmit(buildVoucherInput(current)), handleSubmitSuccess)} />
+    <ConfirmModal isOpen={confirmState === "open"} isLoading={props.submitting} title="Xác nhận phát hành voucher?" message={`${review}. ${draft.quantity === null ? "Số lượng phát hành chưa giới hạn." : `Phát hành tối đa ${draft.quantity} voucher.`} Quy tắc sẽ không thể sửa sau khi tạo.`} confirmLabel={props.submitting ? "Đang tạo…" : "Phát hành"} onCancel={() => setConfirmState("closed")} onAfterClose={handleConfirmAfterClose} onConfirm={() => void submitDraft((current) => props.onSubmit(buildVoucherInput(current)), handleSubmitSuccess)} />
   </>;
 }

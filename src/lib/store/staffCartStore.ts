@@ -11,7 +11,7 @@ import type {
   CartItem,
 } from "@/src/lib/types/cart";
 import { applyCartCommand, type CartMutationResult } from "@/src/lib/utils/cartTransitions";
-import { attachPendingAddonVoucher, removeBundleEffects, type PendingAddonVoucherIntent } from "./cartStore";
+import { removeBundleEffects, type PendingAddonVoucherIntent } from "./cartStore";
 import { createSafeCartStorage, migrateStaffCartState as migratePersistedStaffCart } from "./cartStorage";
 
 interface BundleRuntimeEntry { status: BundleRuntimeStatus; message?: string }
@@ -126,7 +126,8 @@ export const useStaffCartStore = create<StaffCartState>()(persist((set, get) => 
   updateItem: (cartId, updates) => {
     const current = get().items.find((item) => item.cartId === cartId);
     if (!current) return { ok: false, code: "ITEM_NOT_FOUND", message: "Không tìm thấy món trong giỏ" };
-    const { cartId: _cartId, ...line } = current;
+    const { cartId: currentCartId, ...line } = current;
+    void currentCartId;
     return mutation(set, get, { type: "UPDATE_LINE", cartId, line: { ...line, ...updates } }) as CartMutationResult;
   },
   updateQuantity: (cartId, quantity) => mutation(set, get, { type: "CHANGE_QUANTITY", cartId, quantity }) as CartMutationResult,

@@ -54,9 +54,7 @@ export function VoucherCard({
 
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
+      whileTap={isInteractable ? { scale: 0.96 } : undefined}
       onClick={onClick}
       className={cn(
         "rounded-xl shadow-sm border overflow-hidden flex relative transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -193,9 +191,6 @@ export function PackageCard({
 
   return (
     <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
       whileTap={onClick ? { scale: 0.96 } : undefined}
       className="rounded-xl bg-card shadow-sm border overflow-hidden flex relative"
     >

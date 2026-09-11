@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { Trash2, Ticket, X } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { ProjectedCartLine } from "@/src/lib/types/cart";
-import type { AddonGroup, MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
+import type { MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { MyVoucher } from "@/src/services/staffVoucherService";
 import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
@@ -16,7 +16,6 @@ interface StaffCartItemCardProps {
   menuItem?: MenuItem;
   powderData?: PowderApiResponse;
   milkTypes: MilkTypeOption[];
-  addonGroups: AddonGroup[];
   customerVouchers: MyVoucher[];
   applicableProductVouchers: MyVoucher[];
   applicableAddonVouchers: MyVoucher[];
@@ -34,7 +33,6 @@ const StaffCartItemCard = ({
   menuItem,
   powderData,
   milkTypes,
-  addonGroups,
   customerVouchers,
   applicableProductVouchers,
   applicableAddonVouchers,

@@ -8,6 +8,7 @@ import type { Powder } from "@/src/lib/types/powder";
 import type { Size } from "@/src/lib/types/menu";
 import { cn } from "@/src/utils/cn";
 import { formatKa } from "@/src/utils/display";
+import { ceilTo1000 } from "@/src/utils/pricing";
 
 interface PowderSelectorProps {
   powderList: string[];
@@ -19,8 +20,8 @@ interface PowderSelectorProps {
     targetSize: Size,
     targetPowderId: string,
     milkId?: string,
-  ) => { unitPrice: number };
-  defaultPowderPriceCtx: { unitPrice: number };
+  ) => { powderSwapDeltaVnd: number };
+  defaultPowderPriceCtx: { powderSwapDeltaVnd: number };
   selectedSize: Size;
 }
 
@@ -156,7 +157,9 @@ export function PowderSelector({
           const isDefault = powderId === defaultPowderId;
           const isActive = selectedPowderId === powderId;
           const priceContext = getPriceForContext(selectedSize, powderId);
-          const difference = priceContext.unitPrice - defaultPowderPriceCtx.unitPrice;
+          const difference = ceilTo1000(
+            priceContext.powderSwapDeltaVnd - defaultPowderPriceCtx.powderSwapDeltaVnd,
+          );
           const priceLabel = isDefault
             ? "Mặc định"
             : difference === 0

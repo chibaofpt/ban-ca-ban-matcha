@@ -59,6 +59,37 @@ describe("cartStorage v10/v6", () => {
     });
   });
 
+  it("migration keeps only the last attachment when one token appears in two roles", () => {
+    const migrated = migrateCustomerCartState({
+      items: [{
+        cartId: "line",
+        menuItemId: "drink",
+        quantity: 1,
+        size: "MEDIUM",
+        sweetness: "FULL",
+        iceOption: "NORMAL",
+        selectedOptionIds: ["addon-1"],
+        productVoucherId: "shared-token",
+        addonVouchers: [{ voucherId: "shared-token", addonOptionId: "addon-1" }],
+      }],
+    }, 9);
+
+    expect(migrated.items[0]?.lineVoucher).toBeUndefined();
+    expect(migrated.items[0]?.addonVouchers).toEqual([
+      { token: "shared-token", addonOptionId: "addon-1" },
+    ]);
+  });
+
+  it("normalizes the persisted customer owner without retaining the bundle namespace", () => {
+    const migrated = migrateCustomerCartState({
+      items: [],
+      voucherOwnerKey: "customer:090 123-4567",
+      bundleApplications: [],
+    }, 9);
+
+    expect(migrated.voucherOwnerKey).toBe("+84901234567");
+  });
+
   it("malformed persisted shape trả cart rỗng an toàn", () => {
     expect(migrateCustomerCartState("{bad", 9)).toEqual({
       items: [], selectedOrderVoucherTokens: [], voucherOwnerKey: null, bundleApplications: [],

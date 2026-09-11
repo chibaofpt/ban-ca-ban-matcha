@@ -11,6 +11,11 @@ import { getVoucherPackageStatus, summarizeVoucherBenefit } from "@/src/lib/util
 import { formatInclusiveEndDate } from "@/src/lib/utils/adminVoucherForm";
 
 type EditableField = "name" | "description";
+type ConfirmationState =
+  | { kind: "closed" }
+  | { kind: "discard" }
+  | { kind: "discard-confirmed" }
+  | { kind: "toggle" };
 const OWNER_STATUSES: VoucherOwnerStatus[] = ["ALL", "ACTIVE", "RESERVED", "REDEEMED", "EXPIRED", "REFUNDED"];
 const STATUS_LABEL: Record<VoucherOwnerStatus, string> = { ALL: "Tất cả", ACTIVE: "Đang dùng", RESERVED: "Đã giữ", REDEEMED: "Đã dùng", EXPIRED: "Hết hạn", REFUNDED: "Đã hoàn" };
 const REWARD_MODE = { SAME_CONFIG: "Cùng cấu hình món mua", FIXED_CONFIG: "Cấu hình cố định", ALLOWED_SCOPE: "Chọn trong phạm vi" } as const;
@@ -23,7 +28,7 @@ type LookupProps = { powderLabels?: ReadonlyMap<string, string>; baseLiquidLabel
 export function AdminVoucherPackageDetail({ pkg, open, saving, onClose, onSave, onToggle, powderLabels = new Map(), baseLiquidLabels = new Map(), addonLabels = new Map(), menuItemLookup = new Map() }: { pkg: VoucherPackage | null; open: boolean; saving: boolean; onClose: () => void; onSave: (input: UpdateVoucherPackageInput) => Promise<void>; onToggle: () => Promise<void> } & LookupProps) {
   const [editing, setEditing] = useState<EditableField | null>(null);
   const [name, setName] = useState(""); const [description, setDescription] = useState(""); const [error, setError] = useState("");
-  const [discardOpen, setDiscardOpen] = useState(false); const [toggleOpen, setToggleOpen] = useState(false); const [toggling, setToggling] = useState(false);
+  const [confirmation, setConfirmation] = useState<ConfirmationState>({ kind: "closed" }); const [toggling, setToggling] = useState(false);
   const sessionKey = useRef<string | null>(null);
   const requestGeneration = useRef(0);
   const packageRef = useRef(pkg); packageRef.current = pkg;
@@ -35,7 +40,12 @@ export function AdminVoucherPackageDetail({ pkg, open, saving, onClose, onSave, 
   const operationalStatus = getVoucherPackageStatus(pkg);
   const stats = pkg.stats ?? { issued_count: 0, active_count: 0, reserved_count: 0, redeemed_count: 0, expired_count: 0, refunded_count: 0, remaining_quantity: pkg.quantity };
   const canToggle = operationalStatus === "ACTIVE" || operationalStatus === "PAUSED";
-  const requestClose = () => dirty ? setDiscardOpen(true) : onClose();
+  const requestClose = () => dirty ? setConfirmation({ kind: "discard" }) : onClose();
+  const handleConfirmationAfterClose = () => {
+    if (confirmation.kind !== "discard-confirmed") return;
+    setConfirmation({ kind: "closed" });
+    onClose();
+  };
   const saveField = async (field: EditableField) => { setError(""); try { await onSave(field === "name" ? { name: name.trim() } : { description: description.trim() || null }); setEditing(null); } catch (caught) { setError(caught instanceof Error ? caught.message : "Không thể lưu thay đổi"); } };
   const runSearch = async (cursor?: string) => { const q = cursor ? submittedQuery : query.trim(); const status = cursor ? submittedStatus : ownerStatus; if (q.length < 2) { setSearchError("Nhập ít nhất 2 ký tự"); return; } const generation = ++requestGeneration.current; setSearching(true); setSearchError(""); try { const page = await searchVoucherPackageOwners(pkg.id, { q, status, ...(cursor ? { cursor } : {}) }); if (generation !== requestGeneration.current) return; if (!cursor) { setSubmittedQuery(q); setSubmittedStatus(status); } setOwners((current) => ({ users: cursor ? [...current.users, ...page.users] : page.users, next_cursor: page.next_cursor })); } catch { if (generation === requestGeneration.current) setSearchError("Không thể tìm chủ sở hữu"); } finally { if (generation === requestGeneration.current) setSearching(false); } };
   const editor = (field: EditableField, value: string, setValue: (value: string) => void) => <div className="space-y-2"><div className="flex items-start gap-2">{editing === field ? <>{field === "description" ? <textarea aria-label="Mô tả" value={value} onChange={(event) => setValue(event.target.value)} className="min-h-24 flex-1 rounded-xl border p-3" /> : <input aria-label="Tên package" value={value} onChange={(event) => setValue(event.target.value)} className="h-11 flex-1 rounded-xl border px-3" />}<button type="button" className="grid h-10 w-10 place-items-center" onClick={() => saveField(field)} aria-label="Lưu"><Check /></button><button type="button" className="grid h-10 w-10 place-items-center" onClick={() => { setValue(field === "name" ? pkg.name : pkg.description ?? ""); setEditing(null); setError(""); }} aria-label="Huỷ sửa"><X /></button></> : <><p className="min-w-0 flex-1 whitespace-pre-wrap">{value || "Chưa có mô tả"}</p><button type="button" className="grid h-10 w-10 place-items-center" onClick={() => setEditing(field)} aria-label={`Sửa ${field === "name" ? "tên" : "mô tả"}`}><Pencil className="h-4 w-4" /></button></>}</div>{editing === field && error ? <p className="text-sm text-destructive">{error}</p> : null}</div>;
@@ -48,7 +58,7 @@ export function AdminVoucherPackageDetail({ pkg, open, saving, onClose, onSave, 
     if (pkg.voucher_type === "DISCOUNT") return <p>{pkg.discount_type === "PERCENT" ? `Giảm ${pkg.discount_value}%` : `Giảm ${(pkg.discount_value ?? 0).toLocaleString("vi-VN")}đ`}</p>;
     return <p>Hỗ trợ tối đa {(pkg.covered_delivery_fee_vnd ?? 0).toLocaleString("vi-VN")}đ phí giao</p>;
   };
-  return <><ResponsiveOverlay open={open} onOpenChange={(next) => { if (!next) requestClose(); }} title="Chi tiết package" description="Theo dõi phát hành và người sở hữu" size="lg" dismissPolicy={saving ? "locked-while-busy" : "default"} busy={saving} footer={canToggle ? <button type="button" disabled={saving || toggling} onClick={() => setToggleOpen(true)} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary font-semibold text-primary-foreground disabled:opacity-60">{(saving || toggling) ? <Loader2 className="h-4 w-4 animate-spin" /> : pkg.is_active ? "Tạm dừng phát hành" : "Tiếp tục phát hành"}</button> : undefined}>
+  return <><ResponsiveOverlay open={open} onOpenChange={(next) => { if (!next) requestClose(); }} title="Chi tiết package" description="Theo dõi phát hành và người sở hữu" size="lg" dismissPolicy={saving ? "locked-while-busy" : "default"} busy={saving} footer={canToggle ? <button type="button" disabled={saving || toggling} onClick={() => setConfirmation({ kind: "toggle" })} className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary font-semibold text-primary-foreground disabled:opacity-60">{(saving || toggling) ? <Loader2 className="h-4 w-4 animate-spin" /> : pkg.is_active ? "Tạm dừng phát hành" : "Tiếp tục phát hành"}</button> : undefined}>
     <div className="space-y-6">
       <section className="space-y-3">{editor("name", name, setName)}{editor("description", description, setDescription)}<div className="space-y-2 rounded-xl bg-muted p-3 text-sm"><p>Cách nhận: {pkg.acquisition_mode === "POINTS_EXCHANGE" ? `Đổi ${pkg.points_cost} điểm` : pkg.acquisition_mode === "AUTO_GRANT" ? "Tự động cấp" : "Nhận miễn phí"}</p><p>{summarizeVoucherBenefit(pkg)}</p>{typeDetails()}</div></section>
       <section className="grid grid-cols-2 gap-3 text-sm"><div className="rounded-xl border p-3">Đã cấp {stats.issued_count}</div><div className="rounded-xl border p-3">Đã dùng {stats.redeemed_count}</div><div className="rounded-xl border p-3">Còn lại {stats.remaining_quantity === null ? "Không giới hạn" : stats.remaining_quantity}</div><div className="rounded-xl border p-3">Đang hiệu lực {stats.active_count}</div><div className="rounded-xl border p-3">Đã giữ {stats.reserved_count}</div><div className="rounded-xl border p-3">Hết hạn {stats.expired_count}</div><div className="rounded-xl border p-3">Đã hoàn {stats.refunded_count}</div><div className="rounded-xl border p-3">Mỗi khách tối đa {pkg.max_per_user}</div></section>
@@ -59,5 +69,5 @@ export function AdminVoucherPackageDetail({ pkg, open, saving, onClose, onSave, 
         {owners.next_cursor ? <button type="button" disabled={searching} onClick={() => void runSearch(owners.next_cursor ?? undefined)} className="h-11 w-full rounded-xl border">{searching ? <Loader2 className="mx-auto animate-spin" /> : "Tải thêm"}</button> : null}
       </section>
     </div>
-  </ResponsiveOverlay><ConfirmModal isOpen={discardOpen} title="Bỏ thay đổi chưa lưu?" message="Tên hoặc mô tả đang có thay đổi chưa lưu." isDestructive confirmLabel="Bỏ thay đổi" onCancel={() => setDiscardOpen(false)} onConfirm={() => { setDiscardOpen(false); onClose(); }} /><ConfirmModal isOpen={toggleOpen} title={pkg.is_active ? "Tạm dừng phát hành?" : "Tiếp tục phát hành?"} message={pkg.is_active ? "Voucher đã cấp vẫn dùng được; chỉ dừng cấp mới." : "Khách phù hợp có thể nhận voucher trở lại."} isDestructive={pkg.is_active} isLoading={toggling} onCancel={() => { if (!toggling) setToggleOpen(false); }} onConfirm={() => { setToggling(true); void onToggle().finally(() => { setToggling(false); setToggleOpen(false); }); }} /></>;
+  </ResponsiveOverlay><ConfirmModal isOpen={confirmation.kind === "discard"} title="Bỏ thay đổi chưa lưu?" message="Tên hoặc mô tả đang có thay đổi chưa lưu." isDestructive confirmLabel="Bỏ thay đổi" onCancel={() => setConfirmation({ kind: "closed" })} onAfterClose={handleConfirmationAfterClose} onConfirm={() => setConfirmation({ kind: "discard-confirmed" })} /><ConfirmModal isOpen={confirmation.kind === "toggle"} title={pkg.is_active ? "Tạm dừng phát hành?" : "Tiếp tục phát hành?"} message={pkg.is_active ? "Voucher đã cấp vẫn dùng được; chỉ dừng cấp mới." : "Khách phù hợp có thể nhận voucher trở lại."} isDestructive={pkg.is_active} isLoading={toggling} onCancel={() => { if (!toggling) setConfirmation({ kind: "closed" }); }} onAfterClose={handleConfirmationAfterClose} onConfirm={() => { setToggling(true); void onToggle().finally(() => { setToggling(false); setConfirmation({ kind: "closed" }); }); }} /></>;
 }

@@ -1,12 +1,6 @@
 ---
 name: pricing-logic
-description: >
-  Consolidates all pricing rules for Bạn Cá Bán Matcha.
-  Trigger on: tính giá, price calculation, compute price, price formula,
-  order total, price mismatch, PRICE_CHANGED, premium latte, powder price,
-  milk price, addon price, extra matcha price, base price, ceil 1000,
-  gram COALESCE, default_size_config, price_per_gram, price_per_ml,
-  pricing.ts, or any task involving how final drink prices are computed.
+description: Define canonical drink, powder, Base Liquid, addon, extras, rounding, and checkout price-validation rules.
 ---
 
 # Pricing Logic Skill
@@ -16,7 +10,7 @@ description: >
 
 ---
 
-Inspect current files, callers and tests with `rg`; do not maintain file paths or sizes in this skill.
+Follow the discovery and resource-routing rules in [AGENTS.md](../../../AGENTS.md).
 
 ## Price Formulas
 
@@ -45,6 +39,7 @@ Premium_Latte[size] = BaseLatte[selected_powder][size] − BaseLatte[default_pow
 ```
 - Looked up via `matcha_powder.reference_latte_item_id` → the Latte item that anchors this powder's price.
 - If `reference_latte_item_id IS NULL` → `Premium_Latte = 0` (safe fallback, favors customer).
+- Resolve all pricing data needed by the order before the item loop; do not fetch pricing inputs per item.
 - Preload all referenced Latte item sizes upfront to avoid N+1.
 
 ### Rounding
@@ -105,8 +100,8 @@ For each item + size, resolve grams in this order:
   must use the immutable snapshot; current recipe fallback is permitted only for pre-migration null rows.
 - Allowed swaps come from `menu_item_allowed_base_liquid`; the default is always implicitly allowed.
 - Frontend and server calculate swap delta as `(selected.price_per_ml - default.price_per_ml) × effective_ml`; Fusion may increase or decrease before the final single rounding step.
-- Active catalog rows are returned once as `MenuData.base_liquids`; `milk_types` remains a compatibility alias.
-- No pre-computed price field in API responses — frontend computes all prices client-side.
+- API naming, compatibility aliases and response fields belong to [API.md](../../../API.md).
+  The client computes display prices from canonical pricing inputs rather than a precomputed price.
 - Hide the selector when default + active allowed options contains at most one entry.
 
 ---
@@ -116,7 +111,8 @@ For each item + size, resolve grams in this order:
 - `addon_options.price_vnd` is global — changing it affects all items immediately.
 - Every addon group is opt-in. No selection is the canonical zero state; do not create zero-value
   sentinel/default options.
-- Active addon groups are returned once as `MenuData.addon_groups`, never duplicated inside each menu item.
+- Active addon groups are shared catalog data rather than repeated per menu item; see
+  [API.md](../../../API.md) for the response shape.
 - Only active options are public and orderable. Retire referenced options with `is_active = false`.
 - **Extra matcha** is special:
   - `price_vnd = 0` in DB (placeholder).
@@ -131,7 +127,7 @@ For each item + size, resolve grams in this order:
 
 - **Latte**: fixed powder via `menu_item.matcha_powder_id`. Server auto-resolves `selected_powder_id` — client never sends it.
 - **Fusion**: client sends `selected_powder_id`. Server validates: must be either `resolved_default_powder_id` OR exist in `fusion_allowed_powder` for that item. Default powder always accepted regardless of allowed list.
-- **Fusion `default_powder_id = NULL` fallback**: server resolves at `GET /api/menu` time — Meyumi → Hana → MH-3 → cheapest available `price_per_gram`. Returns `resolved_default_powder_id` — never NULL.
+- **Fusion `default_powder_id = NULL` fallback**: server resolves while producing menu data — Meyumi → Hana → MH-3 → cheapest available `price_per_gram`. The resolved default is never null; response naming belongs to [API.md](../../../API.md).
 - `allowed_powder_ids` in menu response only includes powders with `is_available = true`.
 - If `fusion_allowed_powder` list is empty → lock to default, frontend hides swap UI.
 
@@ -142,18 +138,7 @@ For each item + size, resolve grams in this order:
 - `client_price_vnd` is **required** per item. Missing → `VALIDATION_ERROR`.
 - Server recomputes every item price from DB inside `prisma.$transaction()`.
 - Any mismatch → **reject entire order** with `PRICE_CHANGED` error.
-- Response format:
-```json
-{
-  "error": "One or more item prices have changed. Please review and resubmit.",
-  "code": "PRICE_CHANGED",
-  "details": {
-    "conflicts": [
-      { "menu_item_id": "...", "name": "...", "size": "SMALL", "client_price_vnd": 45000, "server_price_vnd": 46000 }
-    ]
-  }
-}
-```
+- The error envelope and conflict DTO belong to [API.md](../../../API.md).
 
 ---
 

@@ -15,6 +15,8 @@ import { addBusinessBreadcrumb } from "@/src/lib/observability";
 import { applyCartCommand, type CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import { createSafeCartStorage, migrateCustomerCartState } from "./cartStorage";
 
+export { normalizeVoucherOwnerPhone } from "./cartStorage";
+
 export interface PendingAddonVoucherIntent {
   voucherId: string;
   addonOptionId: string;
@@ -23,16 +25,6 @@ export interface PendingAddonVoucherIntent {
   maxSelect: number;
   groupOptionIds?: string[];
   isExtraMatcha?: boolean;
-}
-
-/** Normalize a Vietnamese phone into the persisted voucher-owner identity. */
-export function normalizeVoucherOwnerPhone(phone: string | null | undefined): string | null {
-  if (!phone) return null;
-  const compact = phone.replace(/[\s.-]/g, "");
-  if (compact.startsWith("+84")) return `+84${compact.slice(3).replace(/^0+/, "")}`;
-  if (compact.startsWith("84")) return `+84${compact.slice(2).replace(/^0+/, "")}`;
-  if (compact.startsWith("0")) return `+84${compact.slice(1)}`;
-  return compact;
 }
 
 interface FixedAddonConfiguration {
@@ -113,7 +105,8 @@ export function attachPendingAddonVoucher(
   replaceOptionId?: string,
 ): Omit<CartItem, "cartId"> {
   const configured = configureFixedAddon({ ...item, cartId: "pending" }, { ...pending, replaceOptionId });
-  const { cartId: _cartId, ...line } = configured;
+  const { cartId, ...line } = configured;
+  void cartId;
   return {
     ...line,
     quantity: 1,
@@ -194,7 +187,8 @@ export const useCartStore = create<CartState>()(persist((set, get) => ({
   updateItem: (cartId, updates) => {
     const current = get().items.find((item) => item.cartId === cartId);
     if (!current) return { ok: false, code: "ITEM_NOT_FOUND", message: "Không tìm thấy món trong giỏ" };
-    const { cartId: _cartId, ...line } = current;
+    const { cartId: currentCartId, ...line } = current;
+    void currentCartId;
     return mutation(set, get, { type: "UPDATE_LINE", cartId, line: { ...line, ...updates } }) as CartMutationResult;
   },
   updateQuantity: (cartId, quantity) => mutation(set, get, { type: "CHANGE_QUANTITY", cartId, quantity }) as CartMutationResult,
@@ -229,7 +223,9 @@ export const useCartStore = create<CartState>()(persist((set, get) => ({
   commitBundleApplication: (application) => mutation(set, get, { type: "COMMIT_BUNDLE", draft: { items: get().items, application } }) as CartMutationResult,
   removeBundleApplication: (voucherToken) => mutation(set, get, { type: "REMOVE_BUNDLE", voucherToken }) as CartMutationResult,
   clearBundleApplications: () => { let items = get().items; for (const application of get().bundleApplications) items = removeBundleEffects(items, application); set({ items, bundleApplications: [], bundleRuntime: {} }); return persistedSuccess(get); },
-  reconcileBundleApplications: (ownerKey) => get().voucherOwnerKey !== ownerKey ? get().detachVoucherOwner(ownerKey) : persistedSuccess(get),
+  reconcileBundleApplications: (ownerKey) => get().voucherOwnerKey !== ownerKey
+    ? get().detachVoucherOwner(ownerKey)
+    : mutation(set, get, { type: "RECONCILE_BUNDLE_OWNER", ownerKey: ownerKey ? `customer:${ownerKey}` : null }) as CartMutationResult,
   detachVoucherOwner: (voucherOwnerKey) => { const result = mutation(set, get, { type: "DETACH_VOUCHER_OWNER" }); set({ voucherOwnerKey, pendingAddonVoucher: null, bundleRuntime: {}, selectedVoucherIds: [] }); return result as CartMutationResult; },
   setBundleApplicationStatus: (token, status, message) => set((state) => ({ bundleRuntime: { ...state.bundleRuntime, [token]: { status, ...(message ? { message } : {}) } } })),
   markBundleApplicationsVerifyFailed: (message) => set((state) => ({ bundleRuntime: Object.fromEntries(state.bundleApplications.map((app) => [app.voucher_qr_token, { status: "VERIFY_FAILED", message }])) })),

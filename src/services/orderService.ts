@@ -118,7 +118,7 @@ function getServerError(err: unknown): { status: number; data: Record<string, un
   return { status, data };
 }
 
-/** Maps CartItem[] from Zustand store into the POST /api/orders payload items. */
+/** Maps current-catalog cart projections into POST /api/orders payload items. */
 export const buildPayloadItems = (cart: ProjectedCartLine[]): CreateOrderPayload["items"] =>
   serializeCartOrderItems(cart);
 

@@ -1,13 +1,6 @@
 ---
 name: order-flow
-description: >
-  Order creation workflow and business rules for Bạn Cá Bán Matcha.
-  Trigger on: tạo order, create order, submit order, order validation,
-  order status, order workflow, counter order, pickup order, delivery order,
-  auto cancel, auto_cancel_at, store closed, STORE_CLOSED, anonymous order,
-  khách vãng lai, points earn, staff order, order_code, lib/orders.ts,
-  POST /api/orders, POST /api/staff/orders, order creation, order submit,
-  or any task involving the order lifecycle from creation to completion.
+description: Define order creation, validation, status transitions, cancellation, store-hours, and points rules for customer and counter orders.
 ---
 
 # Order Flow Skill
@@ -18,7 +11,7 @@ description: >
 
 ---
 
-Inspect current files, callers and tests with `rg`; do not maintain file paths or sizes in this skill.
+Follow the discovery and resource-routing rules in [AGENTS.md](../../../AGENTS.md).
 
 ## Order Types
 
@@ -70,7 +63,8 @@ remains valid through processing and retry; `expires_at <= acceptanceDate` is re
    - PICKUP/DELIVERY rejected with `STORE_CLOSED` (HTTP 503) when closed
 4. **Inside the retryable Serializable `prisma.$transaction()` for both customer and staff**:
    - a. Re-fetch all item prices from DB (never trust client)
-   - b. Validate each item: `size` required, `base_price_vnd IS NOT NULL` for that size
+   - b. Validate each item: drinks require `size` and a non-null `base_price_vnd` for that size;
+     `extras` have no size and use their current `unit_price_vnd`.
    - c. Resolve powder:
      - Latte → server sets `selected_powder_id` from `menu_item.matcha_powder_id`
      - Fusion → validate `selected_powder_id` is default OR in `fusion_allowed_powder`
@@ -89,7 +83,7 @@ remains valid through processing and retry; `expires_at <= acceptanceDate` is re
    - f. **Compute server prices** — see `pricing-logic` skill for formulas and COALESCE rules
    - g. Compare `client_price_vnd` vs server price per item. Mismatch → abort with `PRICE_CHANGED`
    - h. **Apply vouchers** using the shared calculator — see `voucher-flow`; strict order is
-     BUNDLE → ITEM/PRODUCT → ADDON → DISCOUNT → FREESHIP
+     BUNDLE → ITEM/PRODUCT/PRODUCT_DISCOUNT → ADDON → DISCOUNT → FREESHIP
    - i. Compute gross `subtotal_vnd`, merchandise-only `total_vnd`, shipping,
      `freeship_discount_vnd`, and payable `grand_total_vnd`
    - j. Create `order` + `order_items` + `order_item_addons`; snapshot effective Base Liquid ml in
@@ -109,15 +103,7 @@ for each retry and keep the original `acceptanceDate`.
 
 ## Counter Transfer POS Recovery
 
-- After creating a COUNTER BANK_TRANSFER order, clear and close the submitted cart before opening
-  its QR modal. The QR opens after the cart drawer releases its focus/pointer lock.
-- Do not bind a pending transfer to the cart store. The server-authoritative source is
-  `GET /api/staff/orders?status=PENDING&order_type=COUNTER&mine=true`.
-- This allows one Staff/Admin account to create multiple pending transfers. The POS launcher is
-  hidden for zero orders, opens the QR directly for one order, and opens a selection bottom sheet
-  for two or more orders.
-- Closing a QR does not change order status. Confirm moves that order to `COMPLETED`; cancel moves
-  it to `CANCELLED`. Both actions refresh the current-user pending list.
+For POS/cart recovery behavior, read [the cart feature specification](../../../docs/specs/cart.md).
 
 ---
 
@@ -168,7 +154,7 @@ for each retry and keep the original `acceptanceDate`.
 - PENDING customer and COUNTER BANK_TRANSFER orders have `auto_cancel_at` = `created_at + 20 minutes`.
 - Checked actively by the authenticated Supabase Cron route every 5 minutes. GET order detail/list
   handlers are read-only and never perform cancellation.
-- Cron endpoint: `GET /api/cron/cancel-expired-orders`; Vercel daily cron is backup only.
+- The authenticated cancellation cron contract belongs to [API.md](../../../API.md); Vercel daily cron is backup only.
 - Staging may omit the Supabase schedule when explicitly accepted for that staging cycle. Production
   must have the schedule installed and smoke-tested before release.
 - On cancel: revert voucher status from `RESERVED` → `ACTIVE` and mark any BUNDLE order
@@ -183,7 +169,7 @@ for each retry and keep the original `acceptanceDate`.
 - Vouchers rejected: if `product_voucher_id`, `addon_voucher_ids`, `discount_voucher_ids`,
   `freeship_voucher_id`, or non-empty `bundle_applications` are sent → `VALIDATION_ERROR`.
 - Display as **"Khách vãng lai"** in all order list views.
-- Staff search customers: `GET /api/staff/users?q=xxx`:
+- Staff customer-search behavior:
   - All-digits → phone suffix match
   - Has-letters → ILIKE on name
   - Min 2 chars, max 10 results, sorted by `created_at DESC`, CUSTOMER role only.
@@ -204,7 +190,7 @@ for each retry and keep the original `acceptanceDate`.
 - `store_schedule`: dynamic rows — no row for a day = that day is closed. Max 14 rows (7 days × 2 slots).
 - `open_time` / `close_time` stored as `"HH:mm"` strings, interpreted in Asia/Ho_Chi_Minh (UTC+7).
 - `store_temporary_closure`: at most 1 active row. **Takes precedence** over weekly schedule.
-- `GET /api/store-status` — public, no auth. Cached by frontend on app load.
-- `checkStoreOpen()` in `lib/storeSchedule.ts` — called in `POST /api/orders` and `POST /api/staff/orders`.
+- Store status is public and cached by the frontend; its endpoint contract belongs to [API.md](../../../API.md).
+- Customer and staff order creation share the same store-open check for PICKUP/DELIVERY.
 - COUNTER orders **bypass** the store-closed check.
-- Schedule edits: `PUT /api/admin/store-schedule` sends full week, server does `deleteMany + createMany` in one transaction.
+- Schedule edits replace the full week atomically in one transaction; the payload belongs to [API.md](../../../API.md).

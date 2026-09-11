@@ -47,6 +47,7 @@ function allocatedUnits(
   currentVoucherToken: string,
 ): Set<string> {
   const allocated = new Set<string>();
+  const occupiedByLine = new Map<string, number>();
   for (const application of applications) {
     if (application.voucher_qr_token === currentVoucherToken) continue;
     const productQuantities = new Map<string, number>();
@@ -61,8 +62,11 @@ function allocatedUnits(
     const lineIds = new Set([...productQuantities.keys(), ...addonQuantities.keys()]);
     for (const cartId of lineIds) {
       const quantity = Math.max(productQuantities.get(cartId) ?? 0, addonQuantities.get(cartId) ?? 0);
-      for (let index = 0; index < quantity; index += 1) allocated.add(unitKey(cartId, index));
+      occupiedByLine.set(cartId, (occupiedByLine.get(cartId) ?? 0) + quantity);
     }
+  }
+  for (const [cartId, quantity] of occupiedByLine) {
+    for (let index = 0; index < quantity; index += 1) allocated.add(unitKey(cartId, index));
   }
   return allocated;
 }

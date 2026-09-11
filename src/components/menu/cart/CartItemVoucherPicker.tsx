@@ -6,6 +6,8 @@ import { cn } from "@/src/utils/cn";
 import { estimateProductSavings, getAddonVoucherTargetChoices, getAppliedMenuVoucherId } from "@/src/utils/voucherMatchUtils";
 import type { ProjectedCartLine } from "@/src/lib/types/cart";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
+import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
+import { toast } from "sonner";
 
 interface CartItemVoucherPickerProps {
   activeItem: ProjectedCartLine;
@@ -15,11 +17,11 @@ interface CartItemVoucherPickerProps {
   bundleAllocatedQuantitiesByCartId: ReadonlyMap<string, number>;
   bundleAllocatedAddonQuantities: ReadonlyMap<string, number>;
   onClose: () => void;
-  onApplyProductVoucher: (cartId: string, voucher: MyVoucher) => void;
+  onApplyProductVoucher: (cartId: string, voucher: MyVoucher) => CartMutationResult;
   getProductVoucherSavings: (item: ProjectedCartLine, voucher: MyVoucher) => number;
-  onRemoveProductVoucher: (cartId: string) => void;
-  onApplyAddonVoucher: (cartId: string, voucherId: string, addonOptionId: string) => void;
-  onRemoveAddonVoucher: (cartId: string, voucherId: string) => void;
+  onRemoveProductVoucher: (cartId: string) => CartMutationResult;
+  onApplyAddonVoucher: (cartId: string, voucherId: string, addonOptionId: string) => CartMutationResult;
+  onRemoveAddonVoucher: (cartId: string, voucherId: string) => CartMutationResult;
 }
 
 export const CartItemVoucherPicker = ({
@@ -37,6 +39,10 @@ export const CartItemVoucherPicker = ({
   onRemoveAddonVoucher
 }: CartItemVoucherPickerProps) => {
   const [addonChoiceVoucherId, setAddonChoiceVoucherId] = useState<string | null>(null);
+  const closeAfterSuccess = (result: CartMutationResult) => {
+    if (!result.ok) { toast.error(result.message); return; }
+    onClose();
+  };
   const hasOutsideUnit = (bundleAllocatedQuantitiesByCartId.get(activeItem.cartId) ?? 0) < activeItem.quantity;
   const addonChoicesFor = (voucher: MyVoucher) => getAddonVoucherTargetChoices(
     voucher,
@@ -106,11 +112,10 @@ export const CartItemVoucherPicker = ({
                     onClick={() => {
                       if (isAlreadyUsed) return;
                       if (isSelected) {
-                        onRemoveProductVoucher(activeItem.cartId);
+                        closeAfterSuccess(onRemoveProductVoucher(activeItem.cartId));
                       } else {
-                        onApplyProductVoucher(activeItem.cartId, v);
+                        closeAfterSuccess(onApplyProductVoucher(activeItem.cartId, v));
                       }
-                      onClose();
                     }}
                     className={cn(
                       "w-full flex items-center justify-between p-3 rounded-xl border text-left transition-colors",
@@ -163,12 +168,10 @@ export const CartItemVoucherPicker = ({
                       onClick={() => {
                         if (isAlreadyUsed) return;
                         if (isSelected) {
-                          onRemoveAddonVoucher(activeItem.cartId, v.qr_token);
-                          onClose();
+                          closeAfterSuccess(onRemoveAddonVoucher(activeItem.cartId, v.qr_token));
                         } else {
                           if (choices.length === 1) {
-                            onApplyAddonVoucher(activeItem.cartId, v.qr_token, choices[0].addonOptionId);
-                            onClose();
+                            closeAfterSuccess(onApplyAddonVoucher(activeItem.cartId, v.qr_token, choices[0].addonOptionId));
                           } else if (choices.length > 1) {
                             setAddonChoiceVoucherId(v.qr_token);
                           }
@@ -203,8 +206,7 @@ export const CartItemVoucherPicker = ({
                           type="button"
                           key={choice.addonOptionId}
                           onClick={() => {
-                            onApplyAddonVoucher(activeItem.cartId, v.qr_token, choice.addonOptionId);
-                            onClose();
+                            closeAfterSuccess(onApplyAddonVoucher(activeItem.cartId, v.qr_token, choice.addonOptionId));
                           }}
                           className="flex min-h-11 w-full items-center justify-between rounded-lg bg-white px-3 text-left text-sm font-semibold"
                         >

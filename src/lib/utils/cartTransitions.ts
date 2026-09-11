@@ -56,7 +56,6 @@ const success = <T>(state: CartTransitionState, value: T): CartTransition<T> => 
   state,
   result: { ok: true, value },
 });
-
 const failure = (state: CartTransitionState, code: CartMutationCode, message: string): CartTransition => ({
   state,
   result: { ok: false, code, message },
@@ -68,12 +67,12 @@ const allocatedQuantityFor = (state: CartTransitionState, cartId: string): numbe
       .filter((allocation) => allocation.client_line_id === cartId && allocation.addon_option_id === undefined)
       .reduce((sum, allocation) => sum + allocation.quantity, 0), 0);
 
-function releaseToken(items: CartItem[], token: string, targetCartId: string): CartItem[] {
-  return items.map((item) => item.cartId === targetCartId ? item : {
+function releaseToken(items: CartItem[], token: string): CartItem[] {
+  return items.map((item) => ({
     ...item,
     ...(item.lineVoucher?.token === token ? { lineVoucher: undefined } : {}),
     addonVouchers: item.addonVouchers.filter((voucher) => voucher.token !== token),
-  });
+  }));
 }
 
 function removeBundleEffects(items: CartItem[], application: CartTransitionState["bundleApplications"][number]): CartItem[] {
@@ -122,7 +121,7 @@ export function applyCartCommand<T = undefined>(
       (!command.replaceOptionId || !selectedInGroup.includes(command.replaceOptionId))) {
       return failure(state, "ADDON_GROUP_FULL", "Nhóm topping đã đủ lựa chọn") as CartTransition<T>;
     }
-    const released = releaseToken(state.items, command.voucherToken, "");
+    const released = releaseToken(state.items, command.voucherToken);
     const configured: Omit<CartItem, "cartId"> = {
       ...line,
       quantity: 1,
@@ -152,7 +151,7 @@ export function applyCartCommand<T = undefined>(
     const released = [
       ...(command.line.lineVoucher ? [command.line.lineVoucher.token] : []),
       ...command.line.addonVouchers.map((voucher) => voucher.token),
-    ].reduce((items, token) => releaseToken(items, token, ""), state.items);
+    ].reduce((items, token) => releaseToken(items, token), state.items);
     const cartId = createCartId();
     return success({ ...state, items: [...released, { ...command.line, cartId }] }, { cartId } as T);
   }
@@ -239,7 +238,7 @@ export function applyCartCommand<T = undefined>(
       return failure(state, "VOUCHER_CONFLICT", "Món có voucher phải giữ số lượng một") as CartTransition<T>;
     }
     const voucherTokens = [...(command.line.lineVoucher ? [command.line.lineVoucher.token] : []), ...command.line.addonVouchers.map((voucher) => voucher.token)];
-    const released = voucherTokens.reduce((items, token) => releaseToken(items, token, command.cartId), state.items);
+    const released = voucherTokens.reduce((items, token) => releaseToken(items, token), state.items);
     const target = released[index]!;
     if (hasVoucher && item.quantity > 1 && command.line.quantity === 1) {
       const items = [...released];
@@ -263,7 +262,7 @@ export function applyCartCommand<T = undefined>(
   if (command.type === "REMOVE_LINE_VOUCHER") return replace({ ...item, lineVoucher: undefined });
   if (command.type === "REMOVE_ADDON_VOUCHER") return replace({ ...item, addonVouchers: item.addonVouchers.filter((voucher) => voucher.token !== command.voucherToken) });
   if (command.type === "APPLY_LINE_VOUCHER") {
-    const released = releaseToken(state.items, command.voucher.token, command.cartId);
+    const released = releaseToken(state.items, command.voucher.token);
     const target = released[index]!;
     if (target.quantity === 1) return replace({ ...target, lineVoucher: command.voucher }, released);
     const splitId = createCartId();
@@ -281,7 +280,7 @@ export function applyCartCommand<T = undefined>(
     (!replaceOptionId || !selectedInGroup.includes(replaceOptionId))) {
     return failure(state, "ADDON_GROUP_FULL", "Nhóm topping đã đủ lựa chọn") as CartTransition<T>;
   }
-  const released = releaseToken(state.items, command.voucherToken, command.cartId);
+  const released = releaseToken(state.items, command.voucherToken);
   const target = released[index]!;
   const voucher: CartAddonVoucher = { token: command.voucherToken, addonOptionId: command.addonOptionId };
   const configured = target.configuration.size === null ? target.configuration : {

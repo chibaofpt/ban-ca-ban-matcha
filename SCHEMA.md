@@ -5,9 +5,17 @@
 > **Update when:** an approved schema change alters those semantics.
 > **Does not own:** physical fields/indexes (see `prisma/schema.prisma` and migrations), API contract or domain workflow.
 
-> Read this file for any Prisma schema, migration, or DB-level task.
-> Read `AGENTS.md` for hard rules and the order/voucher/pricing skills for authoritative
-> business behavior. Do not infer business rules from legacy columns alone.
+## Read by scope
+
+Read `Currency & Units`, `Schema Change Gate` and affected entity/snapshot semantics. Search the
+table name under `Tables`; checkout also needs `Canonical Order Totals`, BUNDLE persistence needs
+`Current BUNDLE voucher architecture`. Historical migration notes are not a new migration plan.
+The field descriptions explain semantics; verify physical fields/indexes in Prisma/migrations
+when doing a code or schema task. Do not infer business rules from legacy columns alone.
+
+Domain behavior belongs to [order-flow](.agents/skills/order-flow/SKILL.md),
+[voucher-flow](.agents/skills/voucher-flow/SKILL.md) and
+[pricing-logic](.agents/skills/pricing-logic/SKILL.md). Platform operations use project `supabase`.
 
 ---
 
@@ -16,7 +24,7 @@
 | Unit | Value | Notes |
 |---|---|---|
 | 1 🐟 | 1,000 VND | Frontend display unit |
-| 1 point | 10,000 VND | Loyalty unit |
+| Order earning threshold | 10,000 VND per earned point | Earning rate; separate from the fish display value above |
 | Points formula | `floor(total_vnd / 10000)` | Earned on COMPLETED |
 | Manual add cap | 100 points/action | ADMIN only |
 | Gram quantities | Prisma `Decimal` | Never use Float for grams |
@@ -26,7 +34,9 @@
 
 ## Canonical Order Totals
 
-Apply vouchers in this strict order: `BUNDLE → ITEM/PRODUCT/PRODUCT_DISCOUNT → ADDON → DISCOUNT → FREESHIP`.
+Application order, money terms and threshold calculations belong to
+[voucher-flow — Canonical Application Order and Totals](.agents/skills/voucher-flow/SKILL.md#canonical-application-order-and-totals).
+This section owns the persisted scope/snapshot interpretation.
 
 `voucher_package_menu_item_scopes` and `voucher_menu_item_scopes` normalize the explicit 1–100
 targets of PRODUCT, ITEM, and PRODUCT_DISCOUNT. PRODUCT rows also snapshot size, powder,
@@ -41,19 +51,9 @@ fixed-price ADDON targets with the same parent cascade and target `NO ACTION` po
 `addon_option_id` remains the compatibility anchor; the current selected option price is resolved
 server-side when the voucher is attached to an order.
 
-```text
-subtotal_vnd = gross drinks + gross addons
-item_discount_vnd = BUNDLE reductions + ITEM/PRODUCT reductions + ADDON reductions
-discountable_subtotal_vnd = max(0, subtotal_vnd - item_discount_vnd)
-total_vnd = max(0, discountable_subtotal_vnd - total_voucher_discount_vnd)
-grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
-```
-
-- Check DISCOUNT `min_order_vnd` on `discountable_subtotal_vnd`.
-- Check FREESHIP `min_order_vnd` on `total_vnd`, before shipping.
-- Calculate order points from `total_vnd`, excluding shipping.
-- Sum PRODUCT surplus VND across the whole order before converting once with
-  `floor(order_surplus_vnd / 10000)`.
+Persisted totals retain the meanings defined by that domain owner; avoid adding derived aliases.
+Order points use merchandise totals excluding shipping; PRODUCT surplus is converted once per order.
+Detailed earning and reversal rules belong to [order-flow — Points](.agents/skills/order-flow/SKILL.md#points).
 
 ## Schema Change Gate
 
@@ -251,7 +251,8 @@ Global Base Liquid catalog for Latte and Fusion. The physical table name is reta
 ---
 
 ### menu_item_sizes
-Always 3 rows per item (SMALL, MEDIUM, LARGE), in same transaction as parent. NULL = size not sold.
+Drinks have 3 rows (SMALL, MEDIUM, LARGE), in the same transaction as the parent.
+NULL base price means size not sold. Extras have no drink size configuration, as defined in API.md.
 
 - `id` uuid PK
 - `menu_item_id` uuid FK → menu_items (cascade delete)
@@ -311,7 +312,8 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `id` uuid PK
 - `addon_group_id` uuid FK → addon_groups (cascade delete)
 - `label` string — e.g. "½ viên", "+2g"
-- `image_url` string nullable — Supabase Storage public URL for this option; customer UI falls back to `addon_groups.image_url` when null.
+- `image_url` string nullable — Supabase Storage public URL for this option. Display behavior belongs
+  to [Catalog UI](docs/specs/catalog-ui.md); this field does not imply a group-image fallback.
 - `price_vnd` int — 0 if no charge. Extra matcha: always 0 here — actual price computed from `gram_value × selected_powder.price_per_gram` at order time.
 - `gram_value` Decimal nullable — Extra matcha only: positive gram amount (1.0–4.0 in the current seed). Null for all fixed-price addon types.
 - `is_active` bool — default true. Referenced options are retired by setting false, never hard deleted.
@@ -537,6 +539,11 @@ is_active = true`. The shared trigger function `public.update_updated_at()` pins
 > Calculate the amount from existing `order_items.unit_price_vnd`, `product_voucher_id`, and
 > linked `vouchers.covered_price_vnd`; do not add another surplus snapshot by default.
 
+The aggregate log has `order_id` and null `voucher_id`, since it is not tied to a single voucher.
+Legacy `order_items.surplus_points` and `order_discount_vouchers.discount_applied_vnd` were dropped
+by migration `20260720201131`; do not reference or recreate them. This does not remove the distinct
+addon-unit `discount_applied_vnd` described in `order_item_addon_vouchers`.
+
 **`reason` valid values:**
 
 | Value | Trigger |
@@ -638,16 +645,5 @@ DISCOUNT, and FREESHIP. Issued vouchers follow their own `vouchers.expires_at` l
 
 ### Future group-order compatibility (design only)
 
-Do not add these tables until group ordering is implemented. The intended extension is:
-
-- `group_orders`: host user, share token, lifecycle, checkout order ID, timestamps.
-- `group_order_members`: group order, optional authenticated user, guest name, join token.
-- `group_order_items`: draft line ownership by member; finalized lines map to `order_items`.
-- Member PRODUCT/ADDON vouchers attach only to that member's lines.
-- Host BUNDLE/DISCOUNT/FREESHIP vouchers attach to the whole finalized order. BUNDLE qualifier
-  counts exclude line units already using a member PRODUCT voucher.
-- The resolver receives the selected voucher's explicit owner ID. Guest members cannot use a
-  personal voucher because they have no authenticated voucher owner.
-- The host pays and receives order points. Guests can join without an account and cannot own a
-  personal voucher. Preserve member ownership when copying draft lines into immutable order rows.
-
+Future design belongs to [NOTES — Group orders](NOTES.md#group-orders-design-only);
+it does not authorize adding schema in a current task.

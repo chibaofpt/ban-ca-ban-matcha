@@ -32,6 +32,16 @@ const strings = (value: unknown): string[] => Array.isArray(value)
   ? [...new Set(value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0))]
   : [];
 
+/** Normalize a Vietnamese phone into the persisted voucher-owner identity. */
+export function normalizeVoucherOwnerPhone(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  const compact = phone.replace(/^customer:/, "").replace(/[\s.-]/g, "");
+  if (compact.startsWith("+84")) return `+84${compact.slice(3).replace(/^0+/, "")}`;
+  if (compact.startsWith("84")) return `+84${compact.slice(2).replace(/^0+/, "")}`;
+  if (compact.startsWith("0")) return `+84${compact.slice(1)}`;
+  return compact;
+}
+
 function configuration(value: UnknownRecord): CartLineConfiguration | null {
   const existing = record(value.configuration);
   const source = existing ?? value;
@@ -94,18 +104,19 @@ function migrateItems(value: unknown): CartItem[] {
     }];
   });
 
-  const lastOwner = new Map<string, string>();
+  const lastAttachment = new Map<string, CartLineVoucher | CartAddonVoucher>();
   for (const item of migrated) {
-    if (item.lineVoucher) lastOwner.set(item.lineVoucher.token, item.cartId);
-    for (const voucher of item.addonVouchers) lastOwner.set(voucher.token, item.cartId);
+    if (item.lineVoucher) lastAttachment.set(item.lineVoucher.token, item.lineVoucher);
+    for (const voucher of item.addonVouchers) lastAttachment.set(voucher.token, voucher);
   }
   const deduped: CartItem[] = migrated.map((item): CartItem => {
     const next: CartItem = {
       ...item,
-      addonVouchers: item.addonVouchers.filter((voucher) => lastOwner.get(voucher.token) === item.cartId),
+      addonVouchers: item.addonVouchers.filter((voucher) => lastAttachment.get(voucher.token) === voucher),
     };
-    if (!next.lineVoucher || lastOwner.get(next.lineVoucher.token) === next.cartId) return next;
-    const { lineVoucher: _lineVoucher, ...withoutVoucher } = next;
+    if (!next.lineVoucher || lastAttachment.get(next.lineVoucher.token) === item.lineVoucher) return next;
+    const withoutVoucher = { ...next };
+    delete withoutVoucher.lineVoucher;
     return withoutVoucher;
   });
   const usedIds = new Set(deduped.map((item) => item.cartId));
@@ -115,7 +126,8 @@ function migrateItems(value: unknown): CartItem[] {
     let suffix = 1;
     while (usedIds.has(voucherCartId)) voucherCartId = `${item.cartId}:voucher-${suffix++}`;
     usedIds.add(voucherCartId);
-    const { lineVoucher: _lineVoucher, ...paid } = item;
+    const paid = { ...item };
+    delete paid.lineVoucher;
     return [
       { ...paid, quantity: item.quantity - 1, addonVouchers: [] },
       { ...item, cartId: voucherCartId, quantity: 1 },
@@ -176,18 +188,20 @@ function root(value: unknown): UnknownRecord | null {
 
 /** Migrate any customer cart version into the minimal v10 persistence contract. */
 export function migrateCustomerCartState(value: unknown, _fromVersion = 0): PersistedCustomerCart {
+  void _fromVersion;
   const old = root(value);
   if (!old) return { items: [], selectedOrderVoucherTokens: [], voucherOwnerKey: null, bundleApplications: [] };
   return {
     items: migrateItems(old.items),
     selectedOrderVoucherTokens: mergedTokens(old.selectedOrderVoucherTokens, old.selectedVoucherIds),
-    voucherOwnerKey: string(old.voucherOwnerKey) ?? null,
+    voucherOwnerKey: normalizeVoucherOwnerPhone(string(old.voucherOwnerKey)),
     bundleApplications: bundleApplications(old.bundleApplications),
   };
 }
 
 /** Migrate any staff cart version into the minimal v6 persistence contract. */
 export function migrateStaffCartState(value: unknown, _fromVersion = 0): PersistedStaffCart {
+  void _fromVersion;
   const old = root(value);
   if (!old) return { items: [], selectedOrderVoucherTokens: [], customerQrToken: null, bundleApplications: [] };
   const customer = record(old.customerInfo);

@@ -25,7 +25,7 @@ import { listMyVouchers, refundVoucher } from "@/src/services/customerVoucherSer
 import { QrModal } from "./QrModal";
 import { VoucherAcquisitionConfirm } from "./VoucherAcquisitionConfirm";
 import { VoucherCard } from "./VoucherCards";
-import { VoucherHistorySection, VoucherModalFrame } from "./VoucherModalSections";
+import { VoucherHistorySection, VoucherModalDetailTransition, VoucherModalFrame } from "./VoucherModalSections";
 import { VoucherPackageCatalog } from "./VoucherPackageCatalog";
 import { VoucherDetailSheet } from "./VoucherDetailSheet";
 import { BundleVoucherSetupSheet } from "./BundleVoucherSetupSheet";
@@ -85,6 +85,17 @@ export default function VoucherModal() {
   const [bundleSetupVoucher, setBundleSetupVoucher] = useState<MyVoucher | null>(null);
   const [refundCandidate, setRefundCandidate] = useState<MyVoucher | null>(null);
   const [isRetryingWallet, setIsRetryingWallet] = useState(false);
+  const resetVoucherSurface = useCallback(() => {
+    setPendingPackage(null);
+    setQrVoucher(null);
+    setDetailPackageId(null);
+    setDetailVoucher(null);
+    setBundleSetupVoucher(null);
+    setRefundCandidate(null);
+  }, []);
+  const closeVoucherSurface = useCallback(() => {
+    close();
+  }, [close]);
   const cartItems = useCartStore((s) => s.items);
   const bundleApplications = useCartStore((s) => s.bundleApplications);
   const bundleAllocatedQuantitiesByCartId = useMemo(
@@ -170,10 +181,9 @@ export default function VoucherModal() {
   });
 
   const handleUseNowSuccess = useCallback(() => {
-    setDetailVoucher(null);
-    close();
+    closeVoucherSurface();
     setCartOpen(true);
-  }, [close, setCartOpen]);
+  }, [closeVoucherSurface, setCartOpen]);
 
   const handleWalletUseNow = useCallback(async (voucher: MyVoucher) => {
     if (!walletVerified) {
@@ -202,11 +212,9 @@ export default function VoucherModal() {
   }, [activeVouchers, addToCart, handleUseNowSuccess, setSelectedVoucherIds, subtotalVnd, walletVerificationMessage, walletVerified]);
 
   const handleBundleSuccess = useCallback(() => {
-    setBundleSetupVoucher(null);
-    setDetailVoucher(null);
-    close();
+    closeVoucherSurface();
     setCartOpen(true);
-  }, [close, setCartOpen]);
+  }, [closeVoucherSurface, setCartOpen]);
 
   const handleRefund = useCallback(() => {
     if (!refundCandidate || refundMutation.isPending) return;
@@ -215,8 +223,7 @@ export default function VoucherModal() {
 
   useEffect(() => {
     if (open) setActiveTab(isLoggedIn ? "my_vouchers" : "packages");
-    else if (!refundMutation.isPending) setRefundCandidate(null);
-  }, [isLoggedIn, refundMutation.isPending, open]);
+  }, [isLoggedIn, open]);
 
   const acquirePackage = useCallback(async (pkg: VoucherPackage) => {
     setExchangingId(pkg.id);
@@ -350,14 +357,14 @@ export default function VoucherModal() {
       voucherCount={activeVouchers.length}
       pointsBalance={points}
       onChange={setActiveTab}
-      onClose={close}
+      onClose={closeVoucherSurface}
       detailOpen={detailVoucher !== null || detailPackage !== null}
       overlayContent={(
         <>
           <AnimatePresence>{qrVoucher && <QrModal voucher={qrVoucher} onClose={() => setQrVoucher(null)} />}</AnimatePresence>
           <VoucherAcquisitionConfirm pkg={pendingPackage} pointsBalance={points} isLoading={isPending} onCancel={() => setPendingPackage(null)} onConfirm={() => { if (pendingPackage) void acquirePackage(pendingPackage); }} />
 
-          <AnimatePresence>
+          <VoucherModalDetailTransition>
             {detailPackage && (
               <VoucherDetailSheet
                 key="package-detail-sheet"
@@ -388,16 +395,13 @@ export default function VoucherModal() {
                 bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}
                 onBack={() => setDetailVoucher(null)}
                 onUseNowSuccess={handleUseNowSuccess}
-                onPendingAddon={() => {
-                  setDetailVoucher(null);
-                  close();
-                }}
-                onOpenBundleSetup={(v) => { setDetailVoucher(null); setBundleSetupVoucher(v); }}
+                onPendingAddon={closeVoucherSurface}
+                onOpenBundleSetup={(voucher) => { setDetailVoucher(null); setBundleSetupVoucher(voucher); }}
                 onRequestRefund={requestRefundIfVerified}
                 isRefunding={refundMutation.isPending}
               />
             )}
-          </AnimatePresence>
+          </VoucherModalDetailTransition>
 
           {bundleSetupVoucher && menuData && (
             <BundleVoucherSetupSheet
@@ -481,7 +485,8 @@ export default function VoucherModal() {
       title="Ưu đãi"
       presentation="bare"
       className="w-full md:max-w-2xl"
-      onOpenChange={(nextOpen) => { if (!nextOpen) close(); }}
+      onOpenChange={(nextOpen) => { if (!nextOpen) closeVoucherSurface(); }}
+      onAfterClose={resetVoucherSurface}
     >
       {content}
     </ResponsiveOverlay>

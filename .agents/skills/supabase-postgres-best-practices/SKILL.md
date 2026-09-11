@@ -1,64 +1,38 @@
 ---
 name: supabase-postgres-best-practices
-description: Postgres performance optimization and best practices from Supabase. Use this skill when writing, reviewing, or optimizing Postgres queries, schema designs, or database configurations.
+description: Review or optimize PostgreSQL queries, indexes, schema choices, connections, or database performance in Bạn Cá Bán Matcha after loading the project Supabase and Prisma ownership boundaries.
 license: MIT
 metadata:
   author: supabase
   version: "1.1.1"
   organization: Supabase
   date: January 2026
-  abstract: Comprehensive Postgres performance optimization guide for developers using Supabase and Postgres. Contains performance rules across 8 categories, prioritized by impact from critical (query performance, connection management) to incremental (advanced features). Each rule includes detailed explanations, incorrect vs. correct SQL examples, query plan analysis, and specific performance metrics to guide automated optimization and code generation.
+  abstract: Supabase-maintained PostgreSQL performance reference library, routed through this project's Prisma and verification constraints.
 ---
 
 # Supabase Postgres Best Practices
 
-Comprehensive performance optimization guide for Postgres, maintained by Supabase. Contains rules across 8 categories, prioritized by impact to guide automated query optimization and schema design.
+Load the project `supabase` skill first. These references are advisory material for PostgreSQL performance; they do not override Prisma schema ownership, custom auth, approved migration workflow, or the mock/static verification boundary in `AGENTS.md`.
 
-## When to Apply
+## Use
 
-Reference these guidelines when:
-- Writing SQL queries or designing schemas
-- Implementing indexes or query optimization
-- Reviewing database performance issues
-- Configuring connection pooling or scaling
-- Optimizing for Postgres-specific features
-- Working with Row-Level Security (RLS)
+1. Identify the concrete query, index, connection, locking, or RLS performance concern.
+2. Read only the matching files in `references/`; use [references/_sections.md](references/_sections.md) as the category index.
+3. Compare provider guidance with `prisma/schema.prisma`, committed migrations, `SCHEMA.md`, the relevant service/query code, and project tests.
+4. Propose or implement only within the task's authorized scope. Schema/index changes use the project `supabase` and Prisma workflow; do not execute raw SQL, provider migrations, advisors, `EXPLAIN ANALYZE`, or live database probes unless explicitly authorized.
+5. Verify with the lane allowed by `AGENTS.md`. Static inspection can establish query shape or index presence; it cannot establish production cardinality, planner choice, latency, locks, or pool behavior.
 
-## Rule Categories by Priority
+## Reference categories
 
-| Priority | Category | Impact | Prefix |
-|----------|----------|--------|--------|
-| 1 | Query Performance | CRITICAL | `query-` |
-| 2 | Connection Management | CRITICAL | `conn-` |
-| 3 | Security & RLS | CRITICAL | `security-` |
-| 4 | Schema Design | HIGH | `schema-` |
-| 5 | Concurrency & Locking | MEDIUM-HIGH | `lock-` |
-| 6 | Data Access Patterns | MEDIUM | `data-` |
-| 7 | Monitoring & Diagnostics | LOW-MEDIUM | `monitor-` |
-| 8 | Advanced Features | LOW | `advanced-` |
+| Priority | Category | Prefix |
+|---|---|---|
+| Critical | Query performance | `query-` |
+| Critical | Connection management | `conn-` |
+| Critical | Security and RLS | `security-` |
+| High | Schema design | `schema-` |
+| Medium-high | Concurrency and locking | `lock-` |
+| Medium | Data access patterns | `data-` |
+| Low-medium | Monitoring and diagnostics | `monitor-` |
+| Low | Advanced features | `advanced-` |
 
-## How to Use
-
-Read individual rule files for detailed explanations and SQL examples:
-
-```
-references/query-missing-indexes.md
-references/query-partial-indexes.md
-references/_sections.md
-```
-
-Each rule file contains:
-- Brief explanation of why it matters
-- Incorrect SQL example with explanation
-- Correct SQL example with explanation
-- Optional EXPLAIN output or metrics
-- Additional context and references
-- Supabase-specific notes (when applicable)
-
-## References
-
-- https://www.postgresql.org/docs/current/
-- https://supabase.com/docs
-- https://wiki.postgresql.org/wiki/Performance_Optimization
-- https://supabase.com/docs/guides/database/overview
-- https://supabase.com/docs/guides/auth/row-level-security
+Provider examples may use SQL or Supabase Auth concepts to explain PostgreSQL. Translate them to Prisma and this project's custom auth model; do not copy them as application architecture.

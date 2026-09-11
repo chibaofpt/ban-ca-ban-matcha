@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import * as Popover from "@radix-ui/react-popover";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 import { Drawer } from "vaul";
 import { cn } from "@/src/utils/cn";
+import { useOverlayRegistration } from "@/src/components/ui/OverlayStackProvider";
 import {
   filterAdaptiveOptions,
   toggleAdaptiveValue,
@@ -12,6 +13,7 @@ import {
 } from "@/src/lib/utils/adaptiveSelect";
 
 const DESKTOP_QUERY = "(min-width: 768px)";
+const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 const subscribeDesktop = (onChange: () => void) => {
   const media = window.matchMedia(DESKTOP_QUERY);
   media.addEventListener("change", onChange);
@@ -99,14 +101,25 @@ export function AdaptiveSelect({
   const desktop = useSyncExternalStore(subscribeDesktop, getDesktop, getServerDesktop);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const registration = useOverlayRegistration("nested", open, { deferRelease: true });
+  const openRef = useRef(open);
+  useIsomorphicLayoutEffect(() => {
+    openRef.current = open;
+  }, [open]);
   const selected = Array.isArray(value) ? value : value ? [value] : [];
   const filtered = useMemo(() => filterAdaptiveOptions(options, query), [options, query]);
   const selectedLabels = options.filter((option) => selected.includes(option.value)).map((option) => option.label);
 
+  const requestOpenChange = (nextOpen: boolean) => {
+    if (nextOpen || registration.isTopmost) {
+      setOpen(nextOpen);
+      if (!nextOpen) setQuery("");
+    }
+  };
   const choose = (nextValue: string) => {
     const next = toggleAdaptiveValue(selected, nextValue, multiple);
     onChange(multiple ? next : next[0] ?? "");
-    if (!multiple) setOpen(false);
+    if (!multiple) requestOpenChange(false);
   };
   const trigger = (
     <button
@@ -146,32 +159,58 @@ export function AdaptiveSelect({
       <SelectionList options={filtered} selected={selected} multiple={multiple} onSelect={choose} mobile={!desktop} />
       {multiple ? (
         <div className="border-t p-3">
-          <button type="button" onClick={() => setOpen(false)} className="h-11 w-full rounded-xl bg-primary font-semibold text-primary-foreground">
-            Xong ({selected.length})
+          <button type="button" onClick={() => requestOpenChange(false)} className="h-11 w-full rounded-xl bg-primary font-semibold text-primary-foreground">
+            Đóng ({selected.length} đã chọn)
           </button>
         </div>
       ) : null}
     </div>
   );
+  const nestedMobile = registration.managed && registration.parent?.supportsNestedDrawer === true;
+  const popoverLayerClass = registration.managed && registration.parent ? "z-[100]" : "z-50";
+  const MobileDrawerRoot = nestedMobile ? Drawer.NestedRoot : Drawer.Root;
+  const visualZIndex = registration.visualZIndex;
+  const handleCloseAutoFocus = () => {
+    queueMicrotask(() => {
+      if (!openRef.current) registration.release();
+    });
+  };
 
   return (
     <div className="block space-y-1.5">
       <span className="text-sm font-semibold">{label}</span>
       {desktop ? (
-        <Popover.Root open={open} onOpenChange={setOpen}>
+        <Popover.Root open={open} onOpenChange={requestOpenChange}>
           <Popover.Trigger asChild>{trigger}</Popover.Trigger>
           <Popover.Portal>
-            <Popover.Content align="start" sideOffset={6} className="z-50 w-[min(420px,var(--radix-popover-trigger-width))] rounded-xl border bg-popover shadow-xl">
+            <Popover.Content
+              align="start"
+              sideOffset={6}
+              onEscapeKeyDown={(event) => {
+                if (!registration.isTopmost) event.preventDefault();
+              }}
+              onPointerDownOutside={(event) => {
+                if (!registration.isTopmost) event.preventDefault();
+              }}
+              onCloseAutoFocus={handleCloseAutoFocus}
+              style={visualZIndex === undefined ? undefined : { zIndex: visualZIndex + 1 }}
+              className={cn(popoverLayerClass, "w-[min(420px,var(--radix-popover-trigger-width))] rounded-xl border bg-popover shadow-xl")}
+            >
               {body}
             </Popover.Content>
           </Popover.Portal>
         </Popover.Root>
       ) : (
-        <Drawer.Root open={open} onOpenChange={setOpen} autoFocus={false} repositionInputs>
+        <MobileDrawerRoot open={open} onOpenChange={requestOpenChange} autoFocus={false} dismissible={registration.isTopmost} repositionInputs>
           <Drawer.Trigger asChild>{trigger}</Drawer.Trigger>
           <Drawer.Portal>
-            <Drawer.Overlay className="fixed inset-0 z-[90] bg-black/45" />
+            <Drawer.Overlay
+              style={visualZIndex === undefined ? undefined : { zIndex: visualZIndex }}
+              className="fixed inset-0 z-[90] bg-foreground/20"
+            />
             <Drawer.Content
+              onCloseAutoFocus={handleCloseAutoFocus}
+              style={visualZIndex === undefined ? undefined : { zIndex: visualZIndex + 1 }}
               className="fixed inset-x-0 bottom-0 z-[100] flex max-h-[92dvh] flex-col overflow-hidden rounded-t-3xl bg-background pb-[env(safe-area-inset-bottom)] shadow-2xl outline-none"
             >
               <div className="mx-auto mt-2 h-1.5 w-12 shrink-0 rounded-full bg-muted" />
@@ -180,7 +219,7 @@ export function AdaptiveSelect({
               {body}
             </Drawer.Content>
           </Drawer.Portal>
-        </Drawer.Root>
+        </MobileDrawerRoot>
       )}
       {error ? <span className="text-xs text-destructive">{error}</span> : null}
     </div>

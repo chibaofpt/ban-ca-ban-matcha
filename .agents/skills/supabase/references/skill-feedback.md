@@ -1,17 +1,15 @@
 # Skill Feedback
 
-Use this when the user reports that the skill gave incorrect guidance, is missing information, or could be improved. This is about the skill (agent instructions), not about Supabase the product.
+Use only when the user wants to send skill feedback to its upstream maintainers. A request to review
+or fix local instructions stays local. This reference concerns agent guidance, not Supabase product support.
 
 ## Steps
 
-1. **Ask permission** — Ask the user if they'd like to submit feedback to the skill maintainers. If they decline, move on.
-
-2. **Draft the issue** — Use the template at [assets/feedback-issue-template.md](../assets/feedback-issue-template.md) to structure the feedback. Fill in the fields based on the conversation. Always identify which specific reference file and section caused the problem.
-
-3. **Submit** — Create a GitHub Issue on the `supabase/agent-skills` repository using the draft as the issue body. The title must follow this format: `user-feedback: <summary of the problem>`.
-
-4. **Share the result** — Share the issue URL with the user after submission. If submission fails, give the user this link to create the issue manually:
-
-```
-https://github.com/supabase/agent-skills/issues/new
-```
+1. Draft a reviewable issue using [the template](../assets/feedback-issue-template.md). Identify the
+   exact reference/section and distinguish local customizations from upstream guidance. Include only
+   the minimum reproduction; omit project secrets, personal data and unrelated conversation.
+2. Submit only with explicit authorization to send this feedback. Existing authorization persists;
+   if missing, ask after the draft is ready, naming the destination and visible content.
+3. Create the authorized issue in `supabase/agent-skills` with title `user-feedback: <summary>`.
+   Share the resulting link. If submission fails, preserve the draft and provide
+   [the upstream issue form](https://github.com/supabase/agent-skills/issues/new).

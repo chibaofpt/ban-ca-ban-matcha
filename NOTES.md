@@ -1,13 +1,21 @@
 # Bạn Cá Bán Matcha — Deferred Decisions
 
-> **Authority:** unresolved decisions and approved work that is not implemented yet.
+> **Authority:** unresolved/deferred scope and dated operational exceptions awaiting follow-up.
 > **Read when:** a task may overlap deferred scope or needs a missing business decision.
 > **Update when:** a decision is added, resolved, implemented or cancelled.
-> **Does not own:** implemented behavior, current architecture, env inventory or release runbook.
+> **Does not own:** current behavior, env inventory or release runbook. Operational observations are dated evidence, not current-state guarantees.
 
 Không implement nội dung trong file này nếu task hiện tại chưa được user/architect duyệt. Khi một mục được implement, chuyển rule đã chạy sang canonical resource phù hợp và xóa mục khỏi đây.
 
 ## Unresolved
+
+- Cron documentation needs an operational check in an authorized infrastructure task: API `Cron`
+  requires `clean-sessions` at `15 20 * * *` UTC, while the 2026-08-27 observation below records
+  `15 18 * * *`. Preserve the distinction between desired schedule and historical deployment;
+  a docs-only audit cannot confirm today's scheduler or silently reschedule it.
+- QR scanner and direct redemption are separate contracts: API `GET /api/staff/scan` presents ADDON
+  as order-only, while API `Vouchers` preserves singleton ADDON direct redemption. Before changing
+  either flow, verify its intended compatibility boundary; do not infer endpoint permission from UI.
 
 - Fresh migration replay previously failed because `0_init` does not create `users.insta_name`.
   The current `20260628100500_remove_insta_name` artifact uses `DROP COLUMN IF EXISTS`, but replay
@@ -40,11 +48,18 @@ Không implement nội dung trong file này nếu task hiện tại chưa đư�
 - Sau khi client cũ đã hết và staging/production soak đủ, tạo migration riêng để bỏ `addon_groups.is_required`, `addon_groups.min_quantity`, `addon_options.is_default`. Đến lúc đó chúng chỉ là compatibility columns và không được quay lại API/business logic.
 - Public user/voucher identifiers đang có token-first legacy UUID lookup bridge. Chỉ xóa bridge sau release window được duyệt và telemetry không còn legacy lookup.
 - `SUPABASE_SERVICE_ROLE_KEY` là fallback tạm thời; ưu tiên `SUPABASE_SECRET_KEY`. Xóa fallback bằng release task riêng sau khi môi trường đã migrate.
+- Frontend transport còn ba legacy exception gọi `apiClient` ngoài service:
+  `app/(admin-shell)/admin/logs/page.tsx`, `src/views/admin/AdminOrdersPage.tsx` và
+  `src/views/staff/StaffOrdersListPage.tsx`. Chuyển transport vào domain service bằng cleanup task
+  tập trung; không nhân bản pattern này.
 
 ### Phase 5+
 
 - OTP và order-ready SMS/Zalo ZNS qua ESMS.
-- Application caching bằng Redis. Upstash hiện chỉ được dùng cho distributed security rate limits.
+- Mở rộng Redis cache-aside ngoài menu, powders, store status và voucher packages cần task kiến trúc
+  xác định freshness, invalidation và failure behavior.
+- Chưa có ADR ghi lý do hoặc thời điểm duyệt phạm vi Redis cache-aside hiện tại; SPECIFICATION phản
+  ánh implementation đang chạy trong code, không phải bằng chứng lịch sử phê duyệt.
 - Voucher gacha: dùng `VoucherPackage` + `Voucher`; nếu được duyệt sẽ thêm pool/play boundary mà không đổi order calculator.
 
 ### Product options
@@ -54,6 +69,21 @@ Không implement nội dung trong file này nếu task hiện tại chưa đư�
 - Ice option có giá: hiện ice miễn phí. Nếu thu phí phải đi qua addon system sau khi business duyệt.
 - Audit log cho `default_size_config`: chưa có yêu cầu lưu người sửa/thời điểm sửa.
 
+### Group orders (design only)
+
+Do not add these tables until group ordering is implemented. The intended extension is:
+
+- `group_orders`: host user, share token, lifecycle, checkout order ID, timestamps.
+- `group_order_members`: group order, optional authenticated user, guest name, join token.
+- `group_order_items`: draft line ownership by member; finalized lines map to `order_items`.
+- Member PRODUCT/ADDON vouchers attach only to that member's lines.
+- Host BUNDLE/DISCOUNT/FREESHIP vouchers attach to the whole finalized order. BUNDLE qualifier
+  counts exclude line units already using a member PRODUCT voucher.
+- The resolver receives the selected voucher's explicit owner ID. Guest members cannot use a
+  personal voucher because they have no authenticated voucher owner.
+- The host pays and receives order points. Guests can join without an account and cannot own a
+  personal voucher. Preserve member ownership when copying draft lines into immutable order rows.
+
 ### Product/SEO follow-ups
 
 - Mở lại search top-level cho danh sách Sản phẩm, Bột và Base Liquid trong một task UI riêng. Hiện các control này được chủ động ẩn để giữ giao diện compact; state và filter wiring vẫn được giữ. Search/multi-select bên trong editor Base Liquid không thuộc phần tạm ẩn này.
@@ -62,12 +92,13 @@ Không implement nội dung trong file này nếu task hiện tại chưa đư�
 
 ## Refactor policy for existing debt
 
-- Existing files trên 300 dòng, direct API calls ngoài service và manual overlays được grandfathered.
-- Không lập danh sách line count cố định tại đây vì nhanh lỗi thời; dùng repository scan khi mở task refactor.
-- Mỗi refactor phải là task riêng, có characterization tests, allowlist file và nghiệm thu UI thủ công khi liên quan.
-- Không tách backend khỏi fullstack Next.js cho đến khi architect duyệt một migration riêng.
+Theo [AGENTS](AGENTS.md#change-contract), [STRUCTURE](STRUCTURE.md#size-and-movement) và
+[SPECIFICATION](SPECIFICATION.md#legacy-ui-migration-policy). Không giữ line-count inventory ở đây.
 
 ## Environment and operations
+
+Các ghi nhận dưới đây cần được xác minh lại khi làm release/hạ tầng; không đọc như cấu hình hiện tại
+đã được kiểm tra. Desired contract thuộc API `Cron`, quyền release thuộc release skills.
 
 - Env key inventory duy nhất: `.env.local.example`.
 - Route `/api/cron/cleanup-menu-images` đã tồn tại nhưng staging và production chưa có `cron.job`; cấu hình lịch cleanup là task hạ tầng riêng sau khi backfill/visual QA hoàn tất.

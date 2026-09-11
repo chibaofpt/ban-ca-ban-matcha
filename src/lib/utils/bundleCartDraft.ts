@@ -105,7 +105,6 @@ function createCartItem(
   slot: BundleDraftSlot,
   cartId: string,
   source: CartItem | undefined,
-  _voucher_qr_token: string,
 ): CartItem {
   const config = slot.config;
   return {
@@ -234,7 +233,7 @@ export function buildBundleCartDraft(input: BundleCartDraftInput): BundleCartDra
         assignment.targetCartId = targetCartId;
         targetIds.set(assignment.key, targetCartId);
       }
-      items.push(createCartItem(primary.slot, targetCartId, item, input.voucher_qr_token));
+      items.push(createCartItem(primary.slot, targetCartId, item));
     });
     const remainder = item.quantity - byUnit.size;
     if (remainder > 0) items.push({ ...item, cartId: createCartId(), quantity: remainder });
@@ -245,7 +244,7 @@ export function buildBundleCartDraft(input: BundleCartDraftInput): BundleCartDra
     if (slot.sourceCartId !== undefined) continue;
     const cartId = slot.targetCartId ?? createCartId();
     targetIds.set(slotKey(slot.role, index), cartId);
-    items.push(createCartItem(slot, cartId, undefined, input.voucher_qr_token));
+    items.push(createCartItem(slot, cartId, undefined));
   }
 
   const qualifier_allocations = aggregateProductAllocations(qualifierSlots, targetIds);

@@ -1,12 +1,11 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
 import { type MyVoucher, type VoucherPackage } from "@/src/services/customerVoucherService";
 import { useVoucherAcquisition } from "@/src/hooks/useVoucherAcquisition";
 import { VoucherCard } from "@/src/components/shared/VoucherCards";
-import { VoucherHistorySection, VoucherModalFrame } from "@/src/components/shared/VoucherModalSections";
+import { VoucherHistorySection, VoucherModalDetailTransition, VoucherModalFrame } from "@/src/components/shared/VoucherModalSections";
 import { VoucherPackageCatalog } from "@/src/components/shared/VoucherPackageCatalog";
 import { VoucherAcquisitionConfirm } from "@/src/components/shared/VoucherAcquisitionConfirm";
 import { CartDiscountPickerFooter } from "@/src/components/menu/cart/CartDiscountPickerFooter";
@@ -200,7 +199,6 @@ export const CartDiscountPicker = ({
           selectedFreeshipVoucher.covered_delivery_fee_vnd ?? 0
         )
       : 0;
-
   const acquisitionReceiptView = receipt ? (
     <div className="mb-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5" role="status" aria-live="polite">
       <p className="text-sm font-bold text-emerald-900">Đã nhận voucher</p>
@@ -243,12 +241,12 @@ export const CartDiscountPicker = ({
         setActiveView({ kind: "list" });
       }
     : undefined;
-
   return (
     <ResponsiveOverlay
       open
       onOpenChange={(open) => { if (!open) closePicker(); }}
       layer="nested"
+      nested
       title="Mã ưu đãi"
       presentation="bare"
       className="w-full md:max-w-2xl"
@@ -282,7 +280,7 @@ export const CartDiscountPicker = ({
               onCancel={() => setConfirmPackage(null)}
               onConfirm={() => { if (confirmPackage) void acquirePackage(confirmPackage); }}
             />
-            <AnimatePresence>
+            <VoucherModalDetailTransition>
               {detailVoucher ? (
                 <VoucherDetailSheet
                   key="cart-voucher-detail"
@@ -318,7 +316,7 @@ export const CartDiscountPicker = ({
                   }}
                 />
               ) : null}
-            </AnimatePresence>
+            </VoucherModalDetailTransition>
           </>
         )}
       >

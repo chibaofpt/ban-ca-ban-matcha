@@ -26,7 +26,7 @@ const item = (cartId: string, quantity = 1, marker?: string) => projectedCartLin
   ...(marker ? { bundleRewardVoucherToken: marker } : {}),
 });
 
-const application = (token: string, ownerKey: string, effectLine: string, _status: "READY" | "CONFLICT" = "READY"): CartBundleApplication => ({
+const application = (token: string, ownerKey: string, effectLine: string): CartBundleApplication => ({
   voucher_qr_token: token,
   owner_key: ownerKey,
   qualifier_allocations: [{ client_line_id: "buy", quantity: 1 }],
@@ -67,7 +67,7 @@ describe("staff BUNDLE parity contracts", () => {
   it("retains an invalid application for the same customer so the UI can repair it", () => {
     useStaffCartStore.setState({
       items: [item("buy"), item("reward")],
-      bundleApplications: [application("bundle", "staff:customer", "reward", "CONFLICT")],
+      bundleApplications: [application("bundle", "staff:customer", "reward")],
     });
 
     useStaffCartStore.getState().reconcileBundleApplications("staff:customer");
@@ -79,7 +79,7 @@ describe("staff BUNDLE parity contracts", () => {
   it("normalizes one READY app with allocations once and excludes invalid apps", () => {
     const normalized = normalizeStaffBundleApplications([
       application("ready", "staff:customer", "reward"),
-      application("invalid", "staff:customer", "other", "CONFLICT"),
+      application("invalid", "staff:customer", "other"),
     ], new Set(["ready"]));
 
     expect(normalized).toEqual([{

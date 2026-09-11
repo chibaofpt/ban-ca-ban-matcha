@@ -63,6 +63,20 @@ describe("cart identity detach", () => {
     expect(useCartStore.getState().items[0]).not.toHaveProperty("lineVoucher", expect.objectContaining({ token: "product" }));
   });
 
+  it("customer reconcile removes a bundle whose owner does not match the normalized phone", () => {
+    useCartStore.setState({
+      items: [paidLine, rewardLine],
+      voucherOwnerKey: "+84900000000",
+      bundleApplications: [bundle],
+    });
+
+    const result = useCartStore.getState().reconcileBundleApplications("+84900000000");
+
+    expect(result.ok).toBe(true);
+    expect(useCartStore.getState().bundleApplications).toEqual([]);
+    expect(useCartStore.getState().items.map((item) => item.cartId)).toEqual(["paid"]);
+  });
+
   it("staff logout clears customer identity/vouchers without clearing paid lines", () => {
     useStaffCartStore.setState({
       items: [paidLine, rewardLine], selectedOrderVoucherTokens: ["discount"], selectedDiscountIds: ["discount"],

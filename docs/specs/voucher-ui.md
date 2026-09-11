@@ -1,0 +1,83 @@
+# Voucher UI
+
+> **Authority:** behavior UI/composition của feature; shared primitives thuộc [SPECIFICATION](../../SPECIFICATION.md#ui-system).
+> **Read when:** task chạm feature này; chỉ đọc heading liên quan.
+> **Update when:** behavior feature được chấp nhận thay đổi. Đây là current spec, không phải chứng nhận code đã được kiểm tra.
+
+Nghiệp vụ thuộc domain skills [order-flow](../../.agents/skills/order-flow/SKILL.md),
+[voucher-flow](../../.agents/skills/voucher-flow/SKILL.md), [pricing-logic](../../.agents/skills/pricing-logic/SKILL.md).
+API payload thuộc [API.md](../../API.md); không suy quy tắc tính tiền từ bố cục UI.
+
+## Voucher nhiều lựa chọn
+
+Admin dùng `AdaptiveSelect` multiple để cấu hình tối đa 100 target cho PRODUCT,
+PRODUCT_DISCOUNT, ITEM, ADDON và BUNDLE; không duy trì selector riêng cho từng loại voucher.
+Server lưu ID cụ thể. PRODUCT lưu cấu hình và covered price riêng theo món; ITEM chỉ nhận extras;
+ADDON chỉ nhận option fixed-price. Customer chọn đúng một reward trước khi gắn voucher vào một
+unit; staff áp dụng cùng rule trên cart item đã chọn. Customer và staff giữ payload order hiện có
+và dùng chung server calculator.
+
+Với PRODUCT nhiều target, bottom sheet hiển thị danh sách món rồi mở `ProductModal` với size,
+bột và Base Liquid snapshot của target làm cấu hình ban đầu; người dùng vẫn customize và trả phần
+vượt credit của target đó. ITEM nhiều target mở danh sách extras rồi thêm đúng một unit miễn phí.
+ADDON nhiều target chọn addon trước, sau đó gắn vào một ly chưa bị BUNDLE chiếm; khi chưa có ly thì
+lưu pending intent trong memory và chuyển về menu. Món mới số lượng lớn được tách đúng một unit.
+Nếu group addon đã đầy, dùng `ConfirmModal` để hỏi trước khi thay; giữ nguyên món sẽ giữ pending
+intent cho ly mới tiếp theo. Pending intent không được persist qua reload và phải xóa khi voucher,
+cart hoặc customer owner không còn hợp lệ.
+
+Chi tiết package trước khi nhận hoặc đổi phải liệt kê toàn bộ target còn dùng được. PRODUCT hiển thị
+size, bột, Base Liquid và credit riêng của từng món; ITEM và ADDON hiển thị mọi lựa chọn còn active.
+Nếu một ly đã có nhiều topping cùng thuộc scope của một voucher ADDON, customer và staff phải chọn
+đích cụ thể kèm mức giảm; chỉ tự áp dụng khi còn đúng một lựa chọn. Mọi entry point ADDON phải dùng
+allocation BUNDLE hiện tại trước khi sửa giỏ và phải gắn topping cùng voucher trong một cart snapshot;
+UI chỉ báo thành công sau khi snapshot có voucher.
+
+## Wallet và voucher surfaces
+
+Customer voucher list/detail/target/setup dùng chung `ResponsiveOverlay`: mobile là bottom sheet,
+desktop là centered dialog. Voucher card giữ content button mở detail độc lập với action; wallet dùng
+“Dùng ngay”, cart dùng selection button có `aria-pressed`. Voucher không đủ điều kiện vẫn đọc được
+và mở detail, chỉ selection bị khóa kèm lý do. Wallet và cart voucher sheet dùng chung
+ba tab Voucher của tôi / Nhận ưu đãi / Lịch sử; history chỉ cho xem detail, không cho chọn.
+Wallet và cart dùng chung voucher frame edge-to-edge với một lớp padding; detail thay nội dung
+trong cùng frame thay vì mở sheet lồng. Cart voucher sheet dùng layer `nested`; target/setup mở
+từ sheet này dùng layer `critical`.
+
+## Admin BUNDLE wizard
+
+Admin BUNDLE giữ wizard ba bước. Bước quyền lợi đặt Mua X/Tặng Y cùng hàng, rồi loại quà và mode
+Tặng cùng món/Tặng món chỉ định/Chọn quà trong danh sách, sau đó món điều kiện. Mỗi nhóm mua/quà
+có size và Base Liquid mặc định chung lấy từ giao cấu hình hợp lệ; Fusion chọn bột riêng, Latte
+giữ bột cố định, extras không có cấu hình đồ uống. Không âm thầm đổi lựa chọn khi giao không còn
+hợp lệ. Đơn tối thiểu/Lượt mỗi voucher trong đơn cùng hàng. Bước phát hành dùng ba nút cách nhận,
+Điểm đổi/Tối đa mỗi khách/Tổng phát hành cùng hàng và ngày kết thúc/số ngày hiệu lực theo tỷ lệ
+70/30. Free/auto khóa điểm ở 0 và tối đa mỗi khách ở 1 theo issuance hiện hành. Validation on-blur
+và từng bước dùng RHF/Zod với lỗi dưới field. Tạo thành công reset phiên wizard; lỗi giữ draft.
+Đóng overlay do backdrop, swipe hoặc Escape giữ nguyên draft, bước hiện tại và phần copy admin đã sửa
+trong suốt vòng đời trang; chỉ lần tạo thành công mới reset phiên wizard.
+Quy tắc sữa/bột/size và chống chồng voucher thuộc voucher-flow, không được suy từ bố cục form.
+
+## Nhận, đổi và auth intent
+
+Catalog nhận/đổi của customer wallet và cart ẩn `AUTO_GRANT` và gói có
+`(user_redeemed_count ?? 0) >= max_per_user`. Việc ẩn gói không xóa, ẩn hoặc thay đổi voucher đã
+sở hữu, quota hay lịch sử đổi. Detail đang mở phải khóa CTA nếu dữ liệu mới cho biết hết lượt.
+
+Footer chi tiết gói chỉ điều phối callbacks hiện có: guest đăng nhập với đúng package intent;
+`FREE_CLAIM` dùng “Nhận miễn phí”; `POINTS_EXCHANGE` hiển thị chi phí cá và vẫn cần xác nhận trước
+khi trừ cá. Busy, hết hàng, hết lượt, `AUTO_GRANT` hoặc thiếu callback thì không được nhận/đổi.
+Thiếu cá khóa đổi và báo đúng số còn thiếu, không thêm điều hướng menu. Eligibility dùng helper
+chung, giữ thứ tự kiểm tra hiện có; footer không tự gọi API.
+
+Auth từ voucher sheet mở ngay trên sheet còn mở, không đợi sheet đóng. Hủy auth bỏ intent nhưng
+giữ surface nền; đăng nhập thành công tiếp tục intent một lần và giữ bước xác nhận đổi bằng cá.
+
+## Admin overlay composition
+
+Trang admin voucher là flow đầu tiên bật managed stack: page bọc các primitive bằng
+`OverlayStackProvider` và dùng một discriminated surface duy nhất (`closed`, `create` hoặc
+`detail(packageId)`), vì vậy wizard tạo và detail package không thể cùng là base surface. Multi-select
+commit ngay mỗi lần chạm; CTA đóng ghi rõ số lựa chọn và query tìm kiếm được xóa sau khi đóng.
+Publish thành công và bỏ thay đổi bẩn đều đóng confirmation critical trước, rồi chỉ đóng base sau
+lifecycle `onAfterClose`; không thêm timer hoặc điều hướng Browser Back cho flow này.

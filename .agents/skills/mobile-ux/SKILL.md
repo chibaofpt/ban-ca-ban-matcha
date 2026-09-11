@@ -1,17 +1,16 @@
 ---
 name: mobile-ux
-description: Standardizes mobile-first UX/UI interactions, touch behaviors, animations, and Pro Max design intelligence rules (accessibility, performance, forms, styling) for the Next.js web application.
+description: Define shared mobile interaction, form feedback, accessibility, responsive layout, motion, and performance rules for project UI.
 ---
 
-# Mobile UX / UI Pro Max Guidelines
+# Mobile UX Guidelines
 
-Use this skill whenever building or reviewing UI components, pages, or optimizing the user experience. This skill combines Framer Motion and Tailwind CSS with industry-standard Pro Max design principles adapted for Web.
+Use this skill when building or reviewing shared mobile interaction behavior. Read the relevant
+feature specification for [catalog UI](../../../docs/specs/catalog-ui.md), [voucher UI](../../../docs/specs/voucher-ui.md),
+or [cart UI](../../../docs/specs/cart.md) when that route or flow is in scope.
 
-## Core Stack
-- **Framer Motion**: Used for all micro-interactions, gestures (drag/swipe), and animations.
-- **Tailwind CSS**: Used for responsive layouts, sticky positioning, scroll-snapping, and styling.
-- Use the project overlay primitives from `SPECIFICATION.md`: Radix for dialog semantics and Vaul for mobile sheets. Do not add another overlay library.
-- *Icons*: Use `lucide-react` (SVG icons). **Never use emojis as structural icons.**
+Shared component and overlay architecture belongs to [SPECIFICATION.md](../../../SPECIFICATION.md#ui-system).
+Use the project primitives named there; do not add or duplicate an overlay implementation.
 
 ## 1. Touch & Interaction
 - **Touch Spacing**: Maintain at least an 8px gap between touch targets.
@@ -27,22 +26,11 @@ Use this skill whenever building or reviewing UI components, pages, or optimizin
 
 ## 3. Swipe-to-Dismiss (Bottom Sheets)
 
-Prefer the shared project overlay/Vaul implementation. Vaul owns drag thresholds, focus, portal
-and swipe behavior; do not copy the custom Framer Motion sample below into new code.
+Use the shared project overlay/Vaul implementation. Vaul owns drag thresholds, focus, portal and
+swipe behavior; do not implement a second drag controller around it. Shared overlay architecture
+belongs to [SPECIFICATION.md](../../../SPECIFICATION.md#ui-system).
 - **Rule**: Bottom-sheet style modals must support drag/swipe-to-dismiss on mobile.
-- **Implementation**:
-  ```tsx
-  <motion.div
-    drag="y"
-    dragConstraints={{ top: 0, bottom: 0 }}
-    dragElastic={0.2}
-    onDragEnd={(e, info) => {
-      // Threshold to dismiss: 100px
-      if (info.offset.y > 100) onClose();
-    }}
-  >
-  ```
-- **Visual Cue**: Always include a small gray "drag handle" at the top center.
+- **Visual Cue**: Use the shared sheet's drag handle.
 
 ## 4. Forms & Feedback
 - **Error Placement**: Show validation errors immediately **below** the related field, not just at the top of the form.

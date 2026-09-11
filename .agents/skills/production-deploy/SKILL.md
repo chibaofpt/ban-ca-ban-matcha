@@ -17,7 +17,7 @@ description: >
 
 - Merge only after the user explicitly confirms staging testing passed. If the user asks only to inspect production,
   perform a read-only preflight and stop without merging.
-- Run `git fetch origin main dev`. Require a clean worktree and require local `dev` to match `origin/dev`.
+- Run `rtk git fetch origin main dev`. Require a clean worktree and require local `dev` to match `origin/dev`.
 - Stop for uncommitted changes, untracked files, remote divergence, or a potential merge conflict.
 - Review `origin/main...origin/dev`: commits, changed files, schema, migrations, API/business logic,
   and newly referenced `process.env.*` names. Never print secret values.
@@ -32,11 +32,11 @@ description: >
 - Run:
 
   ```powershell
-  npm.cmd run lint
-  npx.cmd tsc --noEmit
-  npm.cmd run test
-  npm.cmd run resources:check
-  npx.cmd dotenv -e .env.prod -- prisma validate
+  rtk npm run lint
+  rtk proxy npx.cmd tsc --noEmit
+  rtk npm run test
+  rtk npm run resources:check
+  rtk proxy npx.cmd dotenv -e .env.prod -- prisma validate
   ```
 
   Any failure is **BLOCKED**.
@@ -65,12 +65,12 @@ description: >
 Continue only when every gate passes and the user explicitly requested production deployment.
 
 ```powershell
-npm.cmd run backup:prod
-git switch main
-git pull --ff-only origin main
-git merge --no-ff origin/dev -m "chore: release dev to production"
-git push origin main
-git switch dev
+rtk npm run backup:prod
+rtk git switch main
+rtk git pull --ff-only origin main
+rtk git merge --no-ff origin/dev -m "chore: release dev to production"
+rtk git push origin main
+rtk git switch dev
 ```
 
 - Require `PRODUCTION_BACKUP_OK` before merging; report its path and SHA256. If backup fails, stop without

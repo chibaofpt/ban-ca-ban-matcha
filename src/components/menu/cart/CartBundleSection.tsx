@@ -1,11 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import Image from "next/image";
 import { X, Gift } from "lucide-react";
-import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
-import { buildBundleItemConfig } from "@/src/lib/utils/voucherUseNowHelpers";
-import type { CartItem, ProjectedCartLine } from "@/src/lib/types/cart";
+import type { ProjectedCartLine } from "@/src/lib/types/cart";
 import type { BundleVoucherRule, BundleVoucherProduct } from "@/src/services/customerVoucherService";
 import type { MenuData, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
@@ -30,11 +28,8 @@ interface CartBundleSectionProps {
   menuData: MenuData;
   powders: Powder[];
   milkTypes: MilkTypeOption[];
-  defaultPowderGram: Array<{ size: "SMALL" | "MEDIUM" | "LARGE"; grams: number }>;
   /** Called when user taps item to edit config — parent opens ProductModal. */
   onEditItem: (item: ProjectedCartLine, allowedSizes: Size[]) => void;
-  /** Called when user swaps an item — parent calls updateItem(oldCartId, newData). */
-  onSwapItem: (oldCartId: string, newData: Partial<CartItem>) => void;
   /** Called when user removes the entire bundle section. */
   onRemoveBundle: () => void;
   onRepairBundle?: () => void;
@@ -81,9 +76,7 @@ export function CartBundleSection({
   menuData,
   powders,
   milkTypes,
-  defaultPowderGram,
   onEditItem,
-  onSwapItem,
   onRemoveBundle,
   onRepairBundle,
   allowedSizesByCartId,
@@ -91,10 +84,6 @@ export function CartBundleSection({
   allocationBadgesByCartId,
   isVerifying = false,
 }: CartBundleSectionProps) {
-  const [swapRole, setSwapRole] = useState<"QUALIFIER" | "REWARD" | null>(null);
-  const [swapTargetCartId, setSwapTargetCartId] = useState<string | null>(null);
-
-  const allMenuItems = [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])];
   const bundleItems = [...qualifierItems, ...rewardItems];
   const bundleTotals = getBundleCartDisplayTotals(
     bundleItems,
@@ -117,32 +106,6 @@ export function CartBundleSection({
   const allowedSizesForItem = (item: ProjectedCartLine, role: "QUALIFIER" | "REWARD"): Size[] =>
     allowedSizesByCartId?.get(item.cartId) ?? getScopes(role).find((scope) => scope.menu_item_id === item.menuItemId)?.allowed_sizes ?? [];
 
-  const handleSwapSelect = (scope: BundleVoucherProduct) => {
-    if (!swapTargetCartId) return;
-    const fullItem = allMenuItems.find((i) => i.id === scope.menu_item_id);
-    if (!fullItem) return;
-    const initial = buildBundleItemConfig(scope, fullItem, milkTypes);
-    onSwapItem(swapTargetCartId, {
-      menuItemId: fullItem.id,
-      configuration: initial.size === null
-        ? { size: null, note: "" }
-        : {
-            size: initial.size,
-            sweetness: initial.sweetness,
-            iceOption: initial.iceOption,
-            coldwhisk: initial.coldwhisk,
-            note: "",
-            ...(initial.powderId ? { powderId: initial.powderId } : {}),
-            ...(initial.baseLiquidId ?? initial.milkTypeId ? { baseLiquidId: initial.baseLiquidId ?? initial.milkTypeId ?? undefined } : {}),
-            addonOptionIds: initial.selectedOptionIds,
-          },
-      lineVoucher: undefined,
-      addonVouchers: [],
-    });
-    setSwapRole(null);
-    setSwapTargetCartId(null);
-  };
-
   const renderItemGroup = (items: ProjectedCartLine[], role: "QUALIFIER" | "REWARD") => {
     const allocatedQuantity = (role === "QUALIFIER" ? qualifierAllocations : rewardAllocations)
       .reduce((sum, allocation) => sum + allocation.quantity, 0);
@@ -158,12 +121,12 @@ export function CartBundleSection({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-bold uppercase text-amber-800/80">{label}</h4>
-          {canSwap && items[0] && (
+          {canSwap && items[0] && onRepairBundle && (
             <button
-              onClick={() => { setSwapRole(role); setSwapTargetCartId(items[0]!.cartId); }}
+              onClick={onRepairBundle}
               className="min-h-11 px-3 text-xs font-bold text-amber-700 rounded-full bg-amber-100/60 active:bg-amber-200"
             >
-              Đổi món
+              Chọn lại món
             </button>
           )}
         </div>
@@ -202,7 +165,6 @@ export function CartBundleSection({
   };
 
   return (
-    <>
       <div className="rounded-2xl border border-amber-200 bg-amber-50/30 p-4 space-y-3 mx-1">
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
@@ -265,41 +227,5 @@ export function CartBundleSection({
             </div>
           )}
       </div>
-
-      {/* Swap sheet */}
-      <ResponsiveOverlay
-        open={swapRole !== null}
-        onOpenChange={(isOpen) => { if (!isOpen) { setSwapRole(null); setSwapTargetCartId(null); } }}
-        layer="nested"
-        title="Đổi món"
-      >
-        <div className="flex flex-col max-h-[60vh]">
-          <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none p-4 space-y-3">
-            {swapRole && bundleRule && getScopes(swapRole).map((s, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleSwapSelect(s)}
-                className="w-full flex items-center justify-between p-3 border rounded-xl bg-white text-left min-h-11"
-              >
-                <div>
-                  <p className="font-bold text-sm">{s.menu_item.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {s.allowed_sizes.length > 0 ? `Size ${s.allowed_sizes.join(", ")}` : "Add-on"}
-                  </p>
-                </div>
-              </button>
-            ))}
-          </div>
-          <div className="p-4 border-t">
-            <button
-              onClick={() => { setSwapRole(null); setSwapTargetCartId(null); }}
-              className="w-full h-12 rounded-xl bg-secondary/20 text-primary font-bold"
-            >
-              Quay lại
-            </button>
-          </div>
-        </div>
-      </ResponsiveOverlay>
-    </>
   );
 }

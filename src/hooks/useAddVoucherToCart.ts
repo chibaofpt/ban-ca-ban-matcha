@@ -1,9 +1,8 @@
 /**
  * useAddVoucherToCart — Handles "Dùng ngay" flow for PRODUCT vouchers.
  *
- * Fetches current menu data, finds the matching item, computes its price
- * with the voucher configuration (size, powder, milk, addons), builds a
- * CartItem, applies the voucher credit, and adds it to the cart store.
+ * Fetches current menu data, resolves the voucher configuration, and adds a
+ * minimal CartItem whose price and benefit are projected from current data.
  *
  * Usage: Call addToCart(voucher) from MyVouchersPage VoucherCard.
  */
@@ -12,7 +11,7 @@
 
 import { useState, useCallback } from "react";
 import { useCartStore } from "@/src/lib/store/cartStore";
-import { usePowderStore } from "@/src/lib/store/powderStore";
+import type { usePowderStore } from "@/src/lib/store/powderStore";
 import { fetchMenu } from "@/src/services/menuService";
 import {
   calcBaseLiquidDelta,
@@ -143,8 +142,6 @@ export function resolveVoucherBaseLiquidId(
  */
 export function useAddVoucherToCart() {
   const { addItem, setCartOpen } = useCartStore();
-  const powders = usePowderStore((s) => s.data);
-  const defaultPowderGram = usePowderStore((s) => s.defaultPowderGram);
   const [loading, setLoading] = useState(false);
 
   const addToCart = useCallback(
@@ -163,8 +160,6 @@ export function useAddVoucherToCart() {
         // Fetch fresh menu data (cannot rely on MenuPage cache from outside that context)
         const menuData = await fetchMenu();
         const allItems = [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])];
-        const latteItems = menuData.latte;
-
         const menuItem = allItems.find((i) => i.id === targetMenuItemId);
         if (!menuItem) {
           return { ok: false, reason: "item_unavailable" };
@@ -200,36 +195,12 @@ export function useAddVoucherToCart() {
         // Resolve addons — voucher.included_addon_option_ids is the snapshot config
         const includedAddonIds = (voucher as MyVoucher & { included_addon_option_ids?: string[] }).included_addon_option_ids ?? [];
 
-        // Compute the server-equivalent price for this item at its voucher configuration
         const resolvedBaseLiquidId = resolveVoucherBaseLiquidId(
           menuItem,
           selectedScope?.milk_type_id ?? voucher.milk_type_id ?? null,
           menuData.base_liquids ?? menuData.milk_types,
         );
         const effectivePowderId = selectedScope?.matcha_powder_id ?? voucher.matcha_powder_id ?? null;
-        const { drinkPrice, addonsCost } = computeVoucherItemPrice(
-          menuItem,
-          voucherSize,
-          effectivePowderId,
-          resolvedBaseLiquidId,
-          includedAddonIds,
-          powders,
-          defaultPowderGram,
-          latteItems,
-          menuData.milk_types,
-          menuData.addon_groups,
-        );
-        const originalPrice = drinkPrice + addonsCost;
-        let voucherBenefit = selectedScope?.covered_price_vnd ?? voucher.covered_price_vnd ?? 0;
-        if (voucher.voucher_type === "PRODUCT_DISCOUNT") {
-          const referencePrice = voucher.product_discount_mode === "PAY_AS_SIZE" && voucher.reference_size
-            ? computeVoucherItemPrice(menuItem, voucher.reference_size, voucher.matcha_powder_id ?? null,
-                resolvedBaseLiquidId, [], powders, defaultPowderGram, latteItems, menuData.milk_types,
-                menuData.addon_groups).drinkPrice
-            : null;
-          voucherBenefit = computeProductDiscountBenefit(voucher, drinkPrice, referencePrice);
-        }
-
         // Build addon details for display
         const allAddonOptions = menuData.addon_groups.flatMap((group) => group.options);
         const addonDetails = includedAddonIds
@@ -279,7 +250,7 @@ export function useAddVoucherToCart() {
         setLoading(false);
       }
     },
-    [addItem, setCartOpen, powders, defaultPowderGram]
+    [addItem, setCartOpen]
   );
 
   return { addToCart, loading };

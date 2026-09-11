@@ -64,4 +64,21 @@ describe("multi-choice voucher UI contracts", () => {
     });
     expect(copy).toEqual({ name: "Free 1 trong 2 món", description: "Tặng 1 trong 2 món đã chọn: Bánh A, Bánh B." });
   });
+
+  it("giữ chi tiết voucher trong cùng frame và không animate layout từng thẻ", () => {
+    const modal = readSource("../../components/shared/VoucherModal.tsx");
+    const cartDiscount = readSource("../../components/menu/cart/CartDiscountPicker.tsx");
+    const detail = readSource("../../components/shared/VoucherDetailSheet.tsx");
+    const cards = readSource("../../components/shared/VoucherCards.tsx");
+    const overlay = readSource("../../components/ui/ResponsiveOverlay.tsx");
+
+    expect(modal).toContain("<VoucherModalDetailTransition>");
+    expect(modal).toContain("onAfterClose={resetVoucherSurface}");
+    expect(cartDiscount).toContain("<VoucherModalDetailTransition>");
+    expect(detail).toContain('className="absolute inset-0 z-20');
+    expect(cards).not.toMatch(/<motion\.div\s+layout/);
+    expect(cartDiscount).toContain("nested\n      title=\"Mã ưu đãi\"");
+    expect(overlay).toContain("Drawer.NestedRoot");
+    expect(overlay).toContain("registration.parent?.supportsNestedDrawer");
+  });
 });

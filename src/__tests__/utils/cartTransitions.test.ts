@@ -97,7 +97,8 @@ describe("cartTransitions", () => {
       line(),
       { ...line(), cartId: "old", lineVoucher: { token: "voucher", kind: "PRODUCT" } },
     ]);
-    const { cartId: _cartId, ...edited } = line();
+    const { cartId, ...edited } = line();
+    void cartId;
     const transition = applyCartCommand(initial, {
       type: "UPDATE_LINE", cartId: "line-1", line: { ...edited, lineVoucher: { token: "voucher", kind: "PRODUCT" } },
     });
@@ -105,9 +106,36 @@ describe("cartTransitions", () => {
     expect(transition.state.items.map((item) => item.lineVoucher?.token ?? null)).toEqual(["voucher", null]);
   });
 
+  it("moves a token between voucher roles on the same unit instead of duplicating it", () => {
+    const initial = state([{
+      ...line(),
+      lineVoucher: { token: "shared-token", kind: "PRODUCT" },
+      configuration: {
+        size: "MEDIUM", sweetness: "FULL", iceOption: "NORMAL", coldwhisk: false,
+        note: "", addonOptionIds: ["addon-1"],
+      },
+    }]);
+    const transition = applyCartCommand(initial, {
+      type: "APPLY_ADDON_VOUCHER",
+      cartId: "line-1",
+      voucherToken: "shared-token",
+      addonOptionId: "addon-1",
+      groupOptionIds: ["addon-1"],
+      maxSelect: 1,
+      isExtraMatcha: false,
+    });
+
+    expect(transition.result.ok).toBe(true);
+    expect(transition.state.items[0]?.lineVoucher).toBeUndefined();
+    expect(transition.state.items[0]?.addonVouchers).toEqual([
+      { token: "shared-token", addonOptionId: "addon-1" },
+    ]);
+  });
+
   it("rejects an edit with an addon voucher whose topping is absent without changing state", () => {
     const initial = state();
-    const { cartId: _cartId, ...edited } = line();
+    const { cartId, ...edited } = line();
+    void cartId;
     const transition = applyCartCommand(initial, {
       type: "UPDATE_LINE",
       cartId: "line-1",

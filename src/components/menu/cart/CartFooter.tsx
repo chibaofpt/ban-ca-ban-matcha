@@ -45,6 +45,7 @@ interface CartFooterProps {
   subtotalVnd: number;
   shippingVnd: number;
   totalDiscountVnd: number;
+  voucherRevalidating: boolean;
   grandTotalVnd: number;
   totalAfterDiscountVnd: number;
   hasUnavailableItems: boolean;
@@ -83,6 +84,7 @@ export const CartFooter = memo(function CartFooter({
   subtotalVnd,
   shippingVnd,
   totalDiscountVnd,
+  voucherRevalidating,
   grandTotalVnd,
   totalAfterDiscountVnd,
   hasUnavailableItems,
@@ -217,6 +219,8 @@ export const CartFooter = memo(function CartFooter({
                 <p className="text-[10px] text-orange-600/80 leading-tight truncate">
                   {!isLoggedIn
                     ? "Đăng nhập để xem ưu đãi"
+                    : voucherRevalidating
+                      ? "Đang xác minh ưu đãi đã chọn…"
                     : totalDiscountVnd > 0
                       ? `Đã áp dụng giảm ${totalDiscountVnd.toLocaleString("vi-VN")}đ`
                       : "Chọn mã ưu đãi"}

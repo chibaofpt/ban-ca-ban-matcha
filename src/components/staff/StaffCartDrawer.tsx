@@ -80,10 +80,10 @@ interface StaffCartDrawerProps {
   customerVouchers?: MyVoucher[];
   selectedDiscountIds?: string[];
   onToggleDiscount?: (voucherId: string) => void;
-  onApplyProduct?: (cartId: string, voucher: MyVoucher) => void;
-  onRemoveProduct?: (cartId: string) => void;
-  onApplyAddon?: (cartId: string, voucher: MyVoucher, addonOptionId: string) => void;
-  onRemoveAddon?: (cartId: string, voucherId: string) => void;
+  onApplyProduct?: (cartId: string, voucher: MyVoucher) => CartMutationResult;
+  onRemoveProduct?: (cartId: string) => CartMutationResult;
+  onApplyAddon?: (cartId: string, voucher: MyVoucher, addonOptionId: string) => CartMutationResult;
+  onRemoveAddon?: (cartId: string, voucherId: string) => CartMutationResult;
   productModalNode?: React.ReactNode;
   onClearCart?: () => void;
   availableVoucherPackages?: VoucherPackage[];
@@ -93,6 +93,8 @@ interface StaffCartDrawerProps {
   onRetryVoucherRefresh?: () => void;
   preventCloseOutside?: boolean;
   checkoutBlocked?: boolean;
+  voucherRevalidating?: boolean;
+  persistenceWarning?: string | null;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -141,6 +143,8 @@ export function StaffCartDrawer({
   onRetryVoucherRefresh,
   preventCloseOutside = false,
   checkoutBlocked = false,
+  voucherRevalidating = false,
+  persistenceWarning = null,
 }: StaffCartDrawerProps) {
   const menuItems = menuData ? [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])] : [];
 
@@ -148,6 +152,13 @@ export function StaffCartDrawer({
   const [isDiscountPickerOpen, setIsDiscountPickerOpen] = useState(false);
   const [bundleTokenToRemove, setBundleTokenToRemove] = useState<string | null>(null);
   const [addonChoiceVoucherId, setAddonChoiceVoucherId] = useState<string | null>(null);
+  const closeVoucherPickerAfter = (result: CartMutationResult) => {
+    if (!result.ok) {
+      void import("sonner").then(({ toast }) => toast.error(result.message));
+      return;
+    }
+    setActiveItemForVoucher(null);
+  };
 
   // Pull-to-dismiss logic is handled by DismissableSheet.
   // Body scroll lock is handled by DismissableSheet.
@@ -250,6 +261,9 @@ export function StaffCartDrawer({
   const subtotalVnd = cartProjection.totals.subtotal_vnd;
   const totalDiscountVnd = cartProjection.totals.items_discount_vnd + cartProjection.totals.total_voucher_discount_vnd;
   const totalVnd = cartProjection.totals.total_vnd;
+  const hasVoucherSelection = selectedDiscountIds.length > 0 || bundleApplications.length > 0 || cart.some((item) =>
+    Boolean(item.lineVoucher) || item.addonVouchers.length > 0,
+  );
 
   const activeItem = cart.find(i => i.cartId === activeItemForVoucher);
   const addonChoicesFor = useCallback((voucher: MyVoucher, item: ProjectedCartLine) => {
@@ -337,6 +351,11 @@ export function StaffCartDrawer({
               <X size={16} />
             </button>
           </div>
+          {persistenceWarning ? (
+            <div className="mx-4 mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800" role="status">
+              {persistenceWarning}
+            </div>
+          ) : null}
         <>
         <div className="px-4 py-3 shrink-0 border-b border-border/30">
           <div className="bg-secondary/20 rounded-2xl p-3 border border-border flex items-center justify-between">
@@ -401,7 +420,6 @@ export function StaffCartDrawer({
                   menuItem={menuItem}
                   powderData={powderData}
                   milkTypes={menuData?.milk_types ?? []}
-                  addonGroups={menuData?.addon_groups ?? []}
                   customerVouchers={customerVouchers}
                   applicableProductVouchers={productVouchersForItem}
                   applicableAddonVouchers={addonVouchersForItem}
@@ -480,6 +498,9 @@ export function StaffCartDrawer({
 
               {/* Right Column - Totals */}
               <div className="w-[45%] flex flex-col justify-end gap-1 text-right">
+                {voucherRevalidating && hasVoucherSelection ? (
+                  <p className="text-xs font-semibold text-amber-700">Đang xác minh ưu đãi đã chọn…</p>
+                ) : null}
                 <div className="flex justify-between items-center text-xs text-muted-foreground font-medium">
                   <span>Tạm tính</span>
                   <span>{subtotalVnd.toLocaleString("vi-VN")}đ</span>
@@ -589,9 +610,8 @@ export function StaffCartDrawer({
                             disabledReason={isAlreadyUsed ? "Đã dùng ở món khác" : undefined}
                             onClick={() => {
                               if (isAlreadyUsed) return;
-                              if (isSelected && onRemoveProduct) onRemoveProduct(activeItem.cartId);
-                              else if (!isSelected && onApplyProduct) onApplyProduct(activeItem.cartId, v);
-                              setActiveItemForVoucher(null);
+                              if (isSelected && onRemoveProduct) closeVoucherPickerAfter(onRemoveProduct(activeItem.cartId));
+                              else if (!isSelected && onApplyProduct) closeVoucherPickerAfter(onApplyProduct(activeItem.cartId, v));
                             }}
                             actionNode={
                               isSelected ? (
@@ -626,11 +646,9 @@ export function StaffCartDrawer({
                             onClick={() => {
                               if (isAlreadyUsed) return;
                               if (isSelected && onRemoveAddon) {
-                                onRemoveAddon(activeItem.cartId, v.qr_token);
-                                setActiveItemForVoucher(null);
+                                closeVoucherPickerAfter(onRemoveAddon(activeItem.cartId, v.qr_token));
                               } else if (!isSelected && onApplyAddon && choices.length === 1) {
-                                onApplyAddon(activeItem.cartId, v, choices[0].addonOptionId);
-                                setActiveItemForVoucher(null);
+                                closeVoucherPickerAfter(onApplyAddon(activeItem.cartId, v, choices[0].addonOptionId));
                               } else if (!isSelected && choices.length > 1) {
                                 setAddonChoiceVoucherId(v.qr_token);
                               }
@@ -650,9 +668,10 @@ export function StaffCartDrawer({
                                   type="button"
                                   key={choice.addonOptionId}
                                   onClick={() => {
-                                    onApplyAddon?.(activeItem.cartId, v, choice.addonOptionId);
-                                    setAddonChoiceVoucherId(null);
-                                    setActiveItemForVoucher(null);
+                                    if (!onApplyAddon) return;
+                                    const result = onApplyAddon(activeItem.cartId, v, choice.addonOptionId);
+                                    if (result.ok) setAddonChoiceVoucherId(null);
+                                    closeVoucherPickerAfter(result);
                                   }}
                                   className="flex min-h-11 w-full items-center justify-between rounded-lg bg-white px-3 text-left text-sm font-semibold"
                                 >
