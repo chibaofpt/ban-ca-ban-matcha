@@ -50,6 +50,8 @@ function makeVoucher(overrides: Partial<Voucher> = {}): Voucher {
     expires_at: null,
     redeemed_at: null,
     redeemed_by: null,
+    issuing_admin_id: null,
+    manual_request_id: null,
     created_at: new Date(),
     ...overrides,
   };

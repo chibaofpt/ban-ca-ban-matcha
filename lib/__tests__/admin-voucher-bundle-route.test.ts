@@ -111,12 +111,50 @@ describe("POST /api/admin/voucher-packages — BUNDLE", () => {
     expect(mocks.packageCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
         voucher_type: "BUNDLE",
+        visibility: "PUBLIC",
         acquisition_mode: "AUTO_GRANT",
         ends_at: new Date(FUTURE_ENDS_AT),
         min_order_vnd: 80_000,
         bundleRule: { create: expect.objectContaining({ buy_quantity: 1 }) },
       }),
       include: expect.objectContaining({ bundleRule: expect.any(Object) }),
+    });
+  });
+
+  it("tạo BUNDLE PRIVATE hợp lệ ngay trong lần insert đầu tiên", async () => {
+    const body = { ...payload(), visibility: "PRIVATE", acquisition_mode: "NONE" };
+    mocks.packageCreate.mockImplementation(async (args: unknown) => {
+      const data = (args as { data: {
+        voucher_type: string;
+        visibility?: string;
+        acquisition_mode: string;
+      } }).data;
+      const visibility = data.visibility ?? "PUBLIC";
+      const validAcquisition =
+        (visibility === "PRIVATE" && data.acquisition_mode === "NONE") ||
+        (visibility === "PUBLIC" &&
+          ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"].includes(data.acquisition_mode));
+      if (!validAcquisition) throw new Error("voucher package visibility/acquisition constraint");
+      return {
+        id: "package-id",
+        voucher_type: data.voucher_type,
+        visibility,
+        acquisition_mode: data.acquisition_mode,
+      };
+    });
+
+    const response = await POST(request(body) as never);
+    const responseBody = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(responseBody.data).toMatchObject({ visibility: "PRIVATE", acquisition_mode: "NONE" });
+    expect(mocks.transaction).toHaveBeenCalledOnce();
+    expect(mocks.packageCreate).toHaveBeenCalledOnce();
+    const createCall = mocks.packageCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> };
+    expect(createCall.data).toMatchObject({
+      voucher_type: "BUNDLE",
+      visibility: "PRIVATE",
+      acquisition_mode: "NONE",
     });
   });
 

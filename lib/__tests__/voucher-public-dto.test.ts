@@ -2,6 +2,39 @@ import { describe, expect, it } from "vitest";
 import { toPublicVoucherDto } from "@/lib/voucherPublicDto";
 
 describe("Voucher public DTO", () => {
+  it("serialize nguồn ADMIN và từ chối issued_via NONE vi phạm invariant", () => {
+    const voucher = {
+      qr_token: "public-voucher-token",
+      voucher_type: "DISCOUNT",
+      discount_type: "FIXED",
+      discount_value: 10_000,
+      menu_item_id: null,
+      size: null,
+      matcha_powder_id: null,
+      milk_type_id: null,
+      included_addon_option_ids: [],
+      addon_option_id: null,
+      covered_price_vnd: null,
+      covered_delivery_fee_vnd: null,
+      min_order_vnd: null,
+      max_discount_vnd: null,
+      status: "ACTIVE",
+      used_channel: null,
+      expires_at: null,
+      redeemed_at: null,
+      created_at: new Date("2026-01-01T00:00:00Z"),
+      package: { name: "Giảm 10k", description: null, points_cost: 10 },
+      menuItem: null,
+      addonOption: null,
+      staff: null,
+    } satisfies Parameters<typeof toPublicVoucherDto>[0];
+
+    expect(toPublicVoucherDto({ ...voucher, issued_via: "ADMIN" })).toMatchObject({ issued_via: "ADMIN" });
+    expect(() => toPublicVoucherDto({ ...voucher, issued_via: "NONE" })).toThrow(
+      "Voucher issued_via invariant violated: NONE cannot be exposed by public DTO",
+    );
+  });
+
   it.each([
     { packageId: "catalog-package-id", expectedPackageId: "catalog-package-id" },
     { packageId: undefined, expectedPackageId: undefined },

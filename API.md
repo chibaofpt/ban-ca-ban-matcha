@@ -196,6 +196,8 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/admin/voucher-packages` | GET, POST |
 | `/api/admin/voucher-packages/[id]` | PUT, DELETE |
 | `/api/admin/voucher-packages/[id]/owners` | GET |
+| `/api/admin/voucher-packages/[id]/grants` | POST |
+| `/api/admin/voucher-packages/[id]/recipients/[userQrToken]` | GET |
 | `/api/auth/check-phone` | POST |
 | `/api/auth/login` | POST |
 | `/api/auth/logout` | POST |
@@ -761,7 +763,8 @@ with `details.reason = "MENU_REORDER_CONFLICT"`.
   voucher_type: "BUNDLE"
   name: string
   description?: string
-  acquisition_mode: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT"
+  visibility?: "PUBLIC" | "PRIVATE" // default PUBLIC; PRIVATE requires NONE/admin gifts
+  acquisition_mode: "NONE" | "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT"
   points_cost: number              // positive only for POINTS_EXCHANGE
   ends_at?: string | null          // exclusive UTC instant; no starts_at, active immediately
   min_order_vnd?: number | null
@@ -790,6 +793,13 @@ type ProductScope = {
 }
 ```
 
+Every admin package create variant accepts the same `visibility` and acquisition fields. PUBLIC
+packages retain POINTS_EXCHANGE, FREE_CLAIM, and AUTO_GRANT; PRIVATE packages require
+`visibility: "PRIVATE"`, `acquisition_mode: "NONE"`, and `points_cost: 0`. PRIVATE packages are
+absent from the public catalog and all customer acquisition mutations. `quantity` counts every
+issued voucher, including ADMIN gifts. `max_per_user` limits lifetime self-acquisition only;
+ADMIN gifts have no points cost, points log, or purchase refund and do not write `voucher_grants`.
+
 Rules are immutable after creation; `PUT /api/admin/voucher-packages/[id]` only accepts name,
 description, and `is_active`. Qualifier/reward arrays support multiple products, including seasonal
 items. Each BUNDLE has one reward kind. Package `min_order_vnd` uses paid merchandise: exclude
@@ -814,6 +824,40 @@ phone forms. `status` is `ALL`, `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, or 
 the same effective-expiry semantics without expiring `RESERVED`. It returns at most 20 users,
 grouped voucher instances, and `next_cursor` based on the public user `qr_token`. User and voucher
 internal IDs are never returned.
+
+### `POST /api/admin/voucher-packages/[id]/grants`
+ADMIN-only and CUSTOMER-recipient-only. The route accepts only public QR tokens and a durable UUID
+request id:
+
+```ts
+{
+  user_qr_token: string       // CUSTOMER qr_token UUID
+  request_id: string          // UUID; keep it for warning acknowledgement and uncertain retries
+  acknowledge_additional_gift?: boolean
+}
+```
+
+One successful request issues exactly one `ADMIN` voucher. The same request id bound to the same
+admin, package, and customer returns the existing voucher with its effective status, even after
+the package is paused, ended, or sold out. Rebinding it returns `409 CONFLICT`; a new request id
+is a new intentional gift. If the customer has an ACTIVE/RESERVED voucher or has reached the
+applicable PUBLIC self-acquisition limit, an omitted acknowledgement returns
+`422 BUSINESS_RULE_VIOLATION` with `details.reason = "ADDITIONAL_GIFT_CONFIRMATION_REQUIRED"` and
+a fresh summary. Acknowledgement never bypasses package validity or global stock.
+
+### `GET /api/admin/voucher-packages/[id]/recipients/[userQrToken]`
+ADMIN-only, bounded read-only history for one CUSTOMER. Query `status=ALL|CURRENT|USED` and an
+opaque `cursor`; each page has at most 20 rows. `CURRENT` includes every RESERVED voucher and
+only unexpired ACTIVE vouchers; `USED` contains REDEEMED vouchers. The response includes public
+user and voucher `qr_token` values, `issued_via`, `created_at`, effective status, expiry and
+redemption timestamps, plus a page-independent summary of self-acquisition usage/limit, current
+and used counts, global stock, warning reasons, grant eligibility and expiry preview. GET never
+writes lifecycle expiry.
+
+### `GET /api/voucher-packages`
+PUBLIC customer catalog. PRIVATE packages are filtered out in both the cached and live branches;
+the response contains only packages eligible for customer acquisition. Owned-wallet reads remain
+able to return PRIVATE voucher instances.
 
 All package/wallet voucher responses expose the same grouped `qualifier_products` and
 `reward_products`. Each product additionally contains

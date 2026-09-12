@@ -9,6 +9,7 @@ import { useCartStore } from "@/src/lib/store/cartStore";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { MenuData, MenuItem, Size } from "@/src/lib/types/menu";
 import type { MyVoucher, VoucherEligibleMenuItem } from "@/src/services/customerVoucherService";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 
 interface ScopedMenuVoucherPickerProps {
   voucher: MyVoucher;
@@ -89,6 +90,6 @@ export function ScopedMenuVoucherPicker({ voucher, menuData, canEdit = true, onB
 
   return <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} className="absolute inset-0 z-20 flex flex-col bg-background">
     <div className="flex items-center gap-3 border-b px-5 py-4"><button type="button" onClick={onBack} aria-label="Quay lại" className="grid h-11 w-11 place-items-center rounded-full bg-primary/5"><ArrowLeft className="h-5 w-5" /></button><h3 className="font-bold">Chọn một món được tặng</h3></div>
-    <div className="flex-1 space-y-2 overflow-y-auto p-5">{targets.map((target) => <button key={target.menu_item_id} type="button" disabled={!canEdit} onClick={() => pickTarget(target)} className="min-h-14 w-full rounded-xl border bg-card px-4 text-left disabled:cursor-not-allowed disabled:opacity-50"><span className="block font-semibold">{target.name}</span>{target.size ? <span className="text-xs text-muted-foreground">Size {target.size}</span> : <span className="text-xs text-muted-foreground">Món lẻ</span>}</button>)}</div>
+    <div className="flex-1 space-y-2 overflow-y-auto p-5">{targets.map((target) => <button key={target.menu_item_id} type="button" disabled={!canEdit} onClick={() => pickTarget(target)} className="min-h-14 w-full rounded-xl border bg-card px-4 text-left disabled:cursor-not-allowed disabled:opacity-50"><span className="block font-semibold">{target.name}</span>{target.size ? <span className="text-xs text-muted-foreground">Size <SizeLabel size={target.size} /></span> : <span className="text-xs text-muted-foreground">Món lẻ</span>}</button>)}</div>
   </motion.div>;
 }

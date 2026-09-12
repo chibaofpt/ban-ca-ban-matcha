@@ -32,6 +32,7 @@ import { StaffProductGrid } from "@/src/components/staff/StaffProductGrid";
 import { QRScannerModal } from "@/src/components/staff/QRScannerModal";
 import { VoucherQRVerifyModal } from "@/src/components/staff/VoucherQRVerifyModal";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 import { CounterTransferPaymentModal } from "@/src/components/staff/CounterTransferPaymentModal";
 import { PendingCounterTransfersLauncher } from "@/src/components/staff/PendingCounterTransfersLauncher";
 import * as staffOrderService from "@/src/services/staffOrderService";
@@ -106,13 +107,6 @@ function mergeScannedDiscountVoucher(vouchers: MyVoucher[], scanned: ReturnType<
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type LoadStatus = "loading" | "error" | "success";
-
-const SIZE_CARD_LABELS: Record<string, string> = {
-  M: "Cá Con",
-  L: "Cá Vừa",
-  XL: "Cá Lớn",
-};
-void SIZE_CARD_LABELS;
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -1322,7 +1316,7 @@ export default function StaffOrdersPage({
               className="min-h-14 w-full rounded-xl border bg-card px-4 text-left"
             >
               <span className="block font-semibold">{target.name}</span>
-              <span className="text-xs text-muted-foreground">{target.size ? `Size ${target.size}` : "Món lẻ"}</span>
+              <span className="text-xs text-muted-foreground">{target.size ? <>Size <SizeLabel size={target.size} /></> : "Món lẻ"}</span>
             </button>
           ))}
         </div>

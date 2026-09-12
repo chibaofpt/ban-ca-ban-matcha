@@ -1,6 +1,7 @@
 import type { BundleVoucherRule } from "@/src/services/customerVoucherService";
 import type { AddonGroup, Category, MenuItem, MilkTypeOption, SweetnessLevel, Size } from "@/src/lib/types/menu";
 import type { IceOption, ProjectedCartLine } from "@/src/lib/types/cart";
+import { formatSizeLabel } from "@/src/utils/display";
 
 export type BundleProductScope = BundleVoucherRule["qualifier_products"][number];
 
@@ -153,8 +154,6 @@ const ICE_LABEL: Record<string, string> = {
   SEPARATE_ICE: "Đá riêng",
 };
 
-const SIZE_SHORT: Record<string, string> = { SMALL: "S", MEDIUM: "M", LARGE: "L" };
-
 /**
  * Returns a compact display string for non-default config fields on a bundle slot card.
  * Only shows size, sweetness (if not QUARTER), ice (if not NORMAL), and coldwhisk (if true).
@@ -162,7 +161,7 @@ const SIZE_SHORT: Record<string, string> = { SMALL: "S", MEDIUM: "M", LARGE: "L"
  */
 export function formatBundleSlotConfig(config: BundleItemConfig): string {
   const parts: string[] = [];
-  if (config.size) parts.push(SIZE_SHORT[config.size] ?? config.size);
+  if (config.size) parts.push(formatSizeLabel(config.size));
   if (config.sweetness && config.sweetness !== "QUARTER") {
     parts.push(SWEETNESS_LABEL[config.sweetness] ?? config.sweetness);
   }

@@ -5,6 +5,7 @@ import { X, BarChart3, ChevronDown, Loader2, RefreshCw, TrendingUp } from "lucid
 import { getStaffReport, getAdminReport, getStaffList } from "@/src/services/reportService";
 import type { StaffReport, AdminReport, StaffMember } from "@/src/lib/types/report";
 import { toast } from "sonner";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -343,19 +344,19 @@ export function DailyReportModal({
                           <span className="text-lg font-bold text-foreground">
                             {adminReport.summary.cups_by_size.SMALL}
                           </span>
-                          <span className="text-[11px] text-muted-foreground font-medium">Nhỏ (S)</span>
+                          <span className="text-[11px] text-muted-foreground font-medium"><SizeLabel size="SMALL" /></span>
                         </div>
                         <div className="flex flex-col items-center gap-0.5 rounded-xl bg-secondary/30 py-2">
                           <span className="text-lg font-bold text-foreground">
                             {adminReport.summary.cups_by_size.MEDIUM}
                           </span>
-                          <span className="text-[11px] text-muted-foreground font-medium">Vừa (M)</span>
+                          <span className="text-[11px] text-muted-foreground font-medium"><SizeLabel size="MEDIUM" /></span>
                         </div>
                         <div className="flex flex-col items-center gap-0.5 rounded-xl bg-secondary/30 py-2">
                           <span className="text-lg font-bold text-foreground">
                             {adminReport.summary.cups_by_size.LARGE}
                           </span>
-                          <span className="text-[11px] text-muted-foreground font-medium">Lớn (L)</span>
+                          <span className="text-[11px] text-muted-foreground font-medium"><SizeLabel size="LARGE" /></span>
                         </div>
                       </div>
                     </div>
@@ -522,9 +523,9 @@ export function DailyReportModal({
                       <thead>
                         <tr className="text-xs text-muted-foreground border-b">
                           <th className="text-left pb-2 font-medium">Món</th>
-                          <th className="text-right pb-2 font-medium w-10">S</th>
-                          <th className="text-right pb-2 font-medium w-10">M</th>
-                          <th className="text-right pb-2 font-medium w-10">L</th>
+                          <th className="text-right pb-2 font-medium"><SizeLabel size="SMALL" /></th>
+                          <th className="text-right pb-2 font-medium"><SizeLabel size="MEDIUM" /></th>
+                          <th className="text-right pb-2 font-medium"><SizeLabel size="LARGE" /></th>
                           <th className="text-right pb-2 font-medium w-14">Tổng</th>
                         </tr>
                       </thead>
@@ -560,9 +561,9 @@ export function DailyReportModal({
                       <thead>
                         <tr className="text-xs text-muted-foreground border-b">
                           <th className="text-left pb-2 font-medium">Món</th>
-                          <th className="text-right pb-2 font-medium w-10">S</th>
-                          <th className="text-right pb-2 font-medium w-10">M</th>
-                          <th className="text-right pb-2 font-medium w-10">L</th>
+                          <th className="text-right pb-2 font-medium"><SizeLabel size="SMALL" /></th>
+                          <th className="text-right pb-2 font-medium"><SizeLabel size="MEDIUM" /></th>
+                          <th className="text-right pb-2 font-medium"><SizeLabel size="LARGE" /></th>
                           <th className="text-right pb-2 font-medium w-14">Tổng</th>
                         </tr>
                       </thead>

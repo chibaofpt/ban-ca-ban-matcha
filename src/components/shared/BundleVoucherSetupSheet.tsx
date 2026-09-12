@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useMemo } from "react";
 import { ResponsiveOverlay, type OverlayLayer } from "@/src/components/ui/ResponsiveOverlay";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 import Image from "next/image";
 import { Plus, X, CheckCircle2, ChevronRight, Gift, ShoppingBag } from "lucide-react";
 import {
@@ -543,9 +544,13 @@ export const BundleVoucherSetupSheet = ({
             <div className="flex-1 min-w-0">
               <p className="font-bold text-sm text-primary">{scope.menu_item.name}</p>
               <p className="text-xs text-primary/55 mt-0.5">
-                {scope.allowed_sizes.length > 0
-                  ? `Size ${scope.allowed_sizes.map((s) => (s === "SMALL" ? "S" : s === "MEDIUM" ? "M" : "L")).join(", ")}`
-                  : "Add-on"}
+                {scope.allowed_sizes.length > 0 ? (
+                  <>Size {scope.allowed_sizes.map((size, index) => (
+                    <React.Fragment key={size}>
+                      {index > 0 ? ", " : null}<SizeLabel size={size} />
+                    </React.Fragment>
+                  ))}</>
+                ) : "Add-on"}
               </p>
             </div>
             <ChevronRight className="w-4 h-4 text-primary/30 shrink-0" />

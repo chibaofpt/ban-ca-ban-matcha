@@ -11,6 +11,7 @@ import {
   MenuItemBaseLiquidFields,
   MenuItemBaseLiquidVolumeFields,
 } from "@/src/components/admin/MenuItemBaseLiquidFields";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 
 // ── Form field types (all strings for HTML inputs) ────────────────────────────
 // RHF works with raw string inputs; we parse manually on submit.
@@ -445,12 +446,11 @@ export default function MenuItemForm({
           <div className="grid grid-cols-3 gap-3 mt-2">
             {(["SMALL", "MEDIUM", "LARGE"] as const).map((size) => {
               const sizeFieldMap = { SMALL: "size_m", MEDIUM: "size_l", LARGE: "size_xl" } as const;
-              const sizeLabel = { SMALL: "S", MEDIUM: "M", LARGE: "L" } as const;
               const field = sizeFieldMap[size];
               return (
                 <div key={size} className="text-center">
-                  <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest block mb-1.5">
-                    {sizeLabel[size]}
+                  <span className="text-[11px] font-bold text-muted-foreground tracking-widest block mb-1.5">
+                    <SizeLabel size={size} />
                   </span>
                   <input
                     type="number"
@@ -725,12 +725,11 @@ export default function MenuItemForm({
                 <div className="grid grid-cols-3 gap-3">
                   {(["SMALL", "MEDIUM", "LARGE"] as const).map((size) => {
                     const gramsFieldMap = { SMALL: "grams_m", MEDIUM: "grams_l", LARGE: "grams_xl" } as const;
-                    const sizeLabel = { SMALL: "S", MEDIUM: "M", LARGE: "L" } as const;
                     const field = gramsFieldMap[size];
                     return (
                       <div key={size} className="text-center">
-                        <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest block mb-1.5">
-                          {sizeLabel[size]}
+                        <span className="text-[11px] font-bold text-muted-foreground tracking-widest block mb-1.5">
+                          <SizeLabel size={size} />
                         </span>
                         <input
                           type="number"
@@ -756,12 +755,11 @@ export default function MenuItemForm({
                   <div className="grid grid-cols-3 gap-3">
                     {(["SMALL", "MEDIUM", "LARGE"] as const).map((size) => {
                       const npGramsFieldMap = { SMALL: "new_powder_grams_m", MEDIUM: "new_powder_grams_l", LARGE: "new_powder_grams_xl" } as const;
-                      const sizeLabel = { SMALL: "S", MEDIUM: "M", LARGE: "L" } as const;
                       const field = npGramsFieldMap[size];
                       return (
                         <div key={size} className="text-center">
-                          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest block mb-1.5">
-                            {sizeLabel[size]}
+                          <span className="text-[11px] font-bold text-muted-foreground tracking-widest block mb-1.5">
+                            <SizeLabel size={size} />
                           </span>
                           <input
                             type="number"

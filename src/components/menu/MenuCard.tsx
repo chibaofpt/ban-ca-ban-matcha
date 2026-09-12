@@ -10,6 +10,7 @@ import { useCartStore } from '@/src/lib/store/cartStore';
 import { calcLattePrice, calcFusionPrice, resolveGram } from '@/src/utils/pricing';
 import { formatKa } from "@/src/utils/display";
 import { CartQuantityButton } from "@/src/components/menu/CartQuantityButton";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 
 interface MenuCardProps {
   item: MenuItem;
@@ -24,12 +25,6 @@ interface MenuCardProps {
   onItemClick: (item: MenuItem) => void;
   priority?: boolean;
 }
-
-const SIZE_CARD_LABELS: Record<string, string> = {
-  SMALL: "Cá Con",
-  MEDIUM: "Cá Vừa",
-  LARGE: "Cá Lớn",
-};
 
 /** Individual product card displayed on the customer menu page. */
 const MenuCard: React.FC<MenuCardProps> = ({
@@ -170,8 +165,8 @@ const MenuCard: React.FC<MenuCardProps> = ({
                 const price = getDisplayPrice(s);
                 return (
                   <div key={sizeKey} className="flex flex-col items-center gap-0.5">
-                    <span className={`uppercase tracking-wide whitespace-nowrap ${isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
-                      {SIZE_CARD_LABELS[sizeKey] ?? sizeKey}
+                    <span className={`tracking-wide whitespace-nowrap ${isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
+                      <SizeLabel size={sizeKey} />
                     </span>
                     <span className={`${isDefault ? 'text-base font-bold text-[#5b9a2b]' : 'text-sm font-semibold text-primary/50'}`}>
                       {formatKa(price, "ceil")}

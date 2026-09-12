@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Gift, Plus, Search } from "lucide-react";
-import axios from "axios";
 import { toast } from "sonner";
 import { VoucherWizard } from "@/src/components/admin/VoucherWizard";
 import { AdminVoucherPackageCard } from "@/src/components/admin/AdminVoucherPackageCard";
@@ -20,6 +19,7 @@ import {
 import { cn } from "@/src/utils/cn";
 import { getVoucherPackageStatus, type VoucherPackageOperationalStatus } from "@/src/lib/utils/adminVoucherPresentation";
 import { OverlayStackProvider } from "@/src/components/ui/OverlayStackProvider";
+import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
 
 const TYPE_LABEL: Record<VoucherPackage["voucher_type"], string> = {
   PRODUCT_DISCOUNT: "Giảm theo món",
@@ -33,7 +33,6 @@ type VoucherSurface =
   | { kind: "detail"; packageId: string };
 
 function errorMessage(error: unknown): string {
-  if (axios.isAxiosError<{ error?: string }>(error)) return error.response?.data?.error ?? "Thao tác thất bại";
   return error instanceof Error ? error.message : "Thao tác thất bại";
 }
 
@@ -42,11 +41,11 @@ export default function AdminVoucherPackagesPage() {
   const queryClient = useQueryClient(); const [surface, setSurface] = useState<VoucherSurface>({ kind: "closed" });
   const [query, setQuery] = useState(""); const [type, setType] = useState<"ALL" | VoucherPackage["voucher_type"]>("ALL");
   const [status, setStatus] = useState<"ALL" | VoucherPackageOperationalStatus>("ALL");
-  const { data: packages = [], isLoading } = useQuery({ queryKey: ["admin", "voucher-packages"], queryFn: listVoucherPackages });
+  const { data: packages = [], isLoading } = useQuery({ queryKey: VOUCHER_QUERY_KEYS.ADMIN_VOUCHER_PACKAGES, queryFn: listVoucherPackages });
   const { data: menu } = useQuery({ queryKey: ["menu"], queryFn: fetchMenu });
   const { data: powders } = useQuery({ queryKey: ["admin", "powders", "raw"], queryFn: fetchPowders });
-  const createMutation = useMutation({ mutationFn: createVoucherPackage, onSuccess: (created) => { queryClient.setQueryData<VoucherPackage[]>(["admin", "voucher-packages"], (current = []) => [created, ...current]); toast.success("Đã tạo voucher"); }, onError: (error) => toast.error(errorMessage(error)) });
-  const updateMutation = useMutation({ mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateVoucherPackage>[1] }) => updateVoucherPackage(id, input), onSuccess: (updated) => { queryClient.setQueryData<VoucherPackage[]>(["admin", "voucher-packages"], (current = []) => current.map((pkg) => pkg.id === updated.id ? { ...pkg, ...updated } : pkg)); toast.success("Đã cập nhật package"); }, onError: (error) => toast.error(errorMessage(error)) });
+  const createMutation = useMutation({ mutationFn: createVoucherPackage, onSuccess: (created) => { queryClient.setQueryData<VoucherPackage[]>(VOUCHER_QUERY_KEYS.ADMIN_VOUCHER_PACKAGES, (current = []) => [created, ...current]); toast.success("Đã tạo voucher"); }, onError: (error) => toast.error(errorMessage(error)) });
+  const updateMutation = useMutation({ mutationFn: ({ id, input }: { id: string; input: Parameters<typeof updateVoucherPackage>[1] }) => updateVoucherPackage(id, input), onSuccess: (updated) => { queryClient.setQueryData<VoucherPackage[]>(VOUCHER_QUERY_KEYS.ADMIN_VOUCHER_PACKAGES, (current = []) => current.map((pkg) => pkg.id === updated.id ? { ...pkg, ...updated } : pkg)); toast.success("Đã cập nhật package"); }, onError: (error) => toast.error(errorMessage(error)) });
   const filtered = useMemo(() => packages.filter((pkg) => (type === "ALL" || pkg.voucher_type === type) && (status === "ALL" || getVoucherPackageStatus(pkg) === status) && pkg.name.toLocaleLowerCase("vi").includes(query.toLocaleLowerCase("vi"))), [packages, query, status, type]);
   const selectedPackage = surface.kind === "detail" ? packages.find((pkg) => pkg.id === surface.packageId) ?? null : null;
   const menuItems = [...(menu?.latte ?? []), ...(menu?.fusion ?? []), ...(menu?.extras ?? [])];

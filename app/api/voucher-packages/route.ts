@@ -30,10 +30,12 @@ export async function GET() {
     );
     // Campaign windows and activation are live state; never put BUNDLE packages in app cache.
     const scheduledPackages = await fetchScheduledVoucherPackages(new Date());
-    const packages = [...cachedPackages, ...scheduledPackages].sort(
-      (left, right) =>
-        new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
-    );
+    const packages = [...cachedPackages, ...scheduledPackages]
+      .filter((pkg) => pkg.visibility !== "PRIVATE")
+      .sort(
+        (left, right) =>
+          new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
+      );
 
     const session = await getSession();
 
@@ -71,6 +73,7 @@ export async function GET() {
         where: {
           package_id: { in: packageIds },
           user_id: session.id,
+          issued_via: { in: ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"] },
         },
         _count: { id: true },
       });
@@ -101,7 +104,7 @@ export async function GET() {
 /** Fetches active voucher packages from DB. Called by withCache on cache miss. */
 async function fetchVoucherPackages() {
   return prisma.voucherPackage.findMany({
-    where: { is_active: true, ends_at: null, voucher_type: { in: ["DISCOUNT", "FREESHIP"] } },
+    where: { visibility: "PUBLIC", is_active: true, ends_at: null, voucher_type: { in: ["DISCOUNT", "FREESHIP"] } },
     orderBy: { created_at: "asc" },
     include: {
       menuItem: { select: { name: true, is_available: true } },
@@ -123,6 +126,7 @@ async function fetchVoucherPackages() {
 async function fetchScheduledVoucherPackages(now: Date) {
   const packages = await prisma.voucherPackage.findMany({
     where: {
+      visibility: "PUBLIC",
       is_active: true,
       OR: [
         { ends_at: { gt: now } },

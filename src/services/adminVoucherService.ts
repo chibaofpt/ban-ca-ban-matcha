@@ -24,7 +24,8 @@ export interface VoucherPackage {
   name: string;
   description: string | null;
   voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE";
-  acquisition_mode: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
+  visibility: "PUBLIC" | "PRIVATE";
+  acquisition_mode: "NONE" | "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
   points_cost: number;
   ends_at: string | null;
   discount_type: "PERCENT" | "FIXED" | null;
@@ -65,12 +66,42 @@ export interface VoucherPackage {
 export interface VoucherPackageStats {
   issued_count: number; active_count: number; reserved_count: number; redeemed_count: number;
   expired_count: number; refunded_count: number; remaining_quantity: number | null;
+  self_acquisition_count?: number;
+  self_acquisition_used_count?: number;
 }
 
 export type VoucherOwnerStatus = "ALL" | "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED";
-export interface VoucherOwnerInstance { qr_token: string; status: Exclude<VoucherOwnerStatus, "ALL">; effective_status: Exclude<VoucherOwnerStatus, "ALL">; issued_via: VoucherPackage["acquisition_mode"]; created_at: string; expires_at: string | null; redeemed_at: string | null; used_channel: "ONLINE" | "OFFLINE" | null }
+export type VoucherIssuedVia = "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT" | "ADMIN";
+export interface VoucherOwnerInstance { qr_token: string; status: Exclude<VoucherOwnerStatus, "ALL">; effective_status: Exclude<VoucherOwnerStatus, "ALL">; issued_via: VoucherIssuedVia; created_at: string; expires_at: string | null; redeemed_at: string | null; used_channel: "ONLINE" | "OFFLINE" | null }
 export interface VoucherPackageOwner { qr_token: string; name: string; insta_name: string | null; phone_number: string; vouchers: VoucherOwnerInstance[] }
 export interface VoucherOwnerPage { users: VoucherPackageOwner[]; next_cursor: string | null }
+
+export type VoucherRecipientStatus = "ALL" | "CURRENT" | "USED";
+export interface AdminVoucherRecipientVoucher {
+  qr_token: string;
+  issued_via: VoucherIssuedVia;
+  created_at: string;
+  effective_status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED";
+  expires_at: string | null;
+  redeemed_at: string | null;
+}
+export interface AdminVoucherRecipientSummary {
+  self_acquisition_count: number;
+  self_acquisition_limit: number | null;
+  self_acquisition_remaining: number | null;
+  current_count: number;
+  used_count: number;
+  global_remaining: number | null;
+  grant_eligible: boolean;
+  warning_reasons: string[];
+  expiry_preview: string | null;
+}
+export interface AdminVoucherRecipientPage {
+  user: { qr_token: string; name: string; phone_number: string };
+  vouchers: AdminVoucherRecipientVoucher[];
+  meta: { has_more: boolean; next_cursor: string | null };
+  summary: AdminVoucherRecipientSummary;
+}
 
 export interface VoucherBundleProductScope {
   menu_item_id: string;
@@ -108,7 +139,8 @@ export interface VoucherBundleRule {
 interface VoucherPackageCommonInput {
   name: string;
   description?: string;
-  acquisition_mode: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
+  visibility?: "PUBLIC" | "PRIVATE";
+  acquisition_mode: "NONE" | "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
   points_cost: number;
   ends_at?: string | null;
   expires_after_days?: number | null;
@@ -190,6 +222,8 @@ const URL = {
   list: "/api/admin/voucher-packages",
   byId: (id: string) => `/api/admin/voucher-packages/${id}`,
   owners: (id: string) => `/api/admin/voucher-packages/${id}/owners`,
+  recipients: (id: string, userQrToken: string) => `/api/admin/voucher-packages/${id}/recipients/${userQrToken}`,
+  grants: (id: string) => `/api/admin/voucher-packages/${id}/grants`,
 } as const;
 
 /** List all voucher packages (active and inactive) — ADMIN only. */
@@ -204,6 +238,47 @@ export async function listVoucherPackages(): Promise<VoucherPackage[]> {
 export async function searchVoucherPackageOwners(id: string, params: { q: string; status: VoucherOwnerStatus; cursor?: string }): Promise<VoucherOwnerPage> {
   return preserveApiError(async () => {
     const res = await apiClient.get<ApiResponse<VoucherOwnerPage>>(URL.owners(id), { params });
+    return res.data.data;
+  });
+}
+
+/** Reads one customer's bounded voucher history for a package. */
+export async function getVoucherPackageRecipientHistory(
+  id: string,
+  userQrToken: string,
+  params: { status: VoucherRecipientStatus; cursor?: string },
+): Promise<AdminVoucherRecipientPage> {
+  return preserveApiError(async () => {
+    const res = await apiClient.get<ApiResponse<AdminVoucherRecipientPage>>(
+      URL.recipients(id, userQrToken),
+      { params },
+    );
+    return res.data.data;
+  });
+}
+
+export interface GrantVoucherInput {
+  user_qr_token: string;
+  request_id: string;
+  acknowledge_additional_gift?: boolean;
+}
+
+export interface GrantedVoucher {
+  qr_token: string;
+  voucher_type: VoucherPackage["voucher_type"];
+  status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED";
+  effective_status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED";
+  expires_at: string | null;
+  already_granted: boolean;
+}
+
+/** Gives exactly one voucher to a selected CUSTOMER through the audited admin route. */
+export async function grantVoucherToCustomer(
+  id: string,
+  input: GrantVoucherInput,
+): Promise<GrantedVoucher> {
+  return preserveApiError(async () => {
+    const res = await apiClient.post<ApiResponse<GrantedVoucher>>(URL.grants(id), input);
     return res.data.data;
   });
 }

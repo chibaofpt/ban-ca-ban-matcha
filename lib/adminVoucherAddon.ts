@@ -66,6 +66,7 @@ export async function createAddonVoucherPackage(
       name: data.name,
       description: data.description ?? null,
       voucher_type: "ADDON",
+      visibility: data.visibility,
       acquisition_mode: data.acquisition_mode,
       points_cost: data.points_cost,
       ends_at: data.ends_at ? new Date(data.ends_at) : null,

@@ -27,6 +27,10 @@ import {
   mockAddonOptionFindMany,
 } from "@/lib/__tests__/voucher-issuance.fixtures";
 
+const ADMIN_ID = "44444444-4444-4444-8444-444444444444";
+const REQUEST_ID = "55555555-5555-4555-8555-555555555555";
+const SECOND_REQUEST_ID = "66666666-6666-4666-8666-666666666666";
+
 describe("Phát hành voucher dùng chung", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -76,6 +80,135 @@ describe("Phát hành voucher dùng chung", () => {
       }),
     });
     expect(mockGrantCreate).not.toHaveBeenCalled();
+  });
+
+  it("ADMIN gift ghi actor/request, không trừ điểm, không tạo grant và cho phép gift lặp lại", async () => {
+    const tx = makeTx();
+    tx.voucher.findUnique = vi.fn().mockResolvedValue(null);
+    mockPackageFindUnique.mockResolvedValue(makePackage({
+      visibility: "PRIVATE",
+      acquisition_mode: "NONE",
+      points_cost: 0,
+      quantity: 3,
+      max_per_user: 1,
+    }));
+    mockVoucherCreate
+      .mockResolvedValueOnce({ id: VOUCHER_ID, qr_token: "voucher-token-1" })
+      .mockResolvedValueOnce({ id: "77777777-7777-4777-8777-777777777777", qr_token: "voucher-token-2" });
+
+    await issueVoucherInTransaction(tx, {
+      user_id: USER_ID,
+      package_id: PACKAGE_ID,
+      source: "ADMIN",
+      performed_by: ADMIN_ID,
+      request_id: REQUEST_ID,
+      now: NOW,
+    });
+    await issueVoucherInTransaction(tx, {
+      user_id: USER_ID,
+      package_id: PACKAGE_ID,
+      source: "ADMIN",
+      performed_by: ADMIN_ID,
+      request_id: SECOND_REQUEST_ID,
+      now: NOW,
+    });
+
+    expect(mockVoucherCreate).toHaveBeenCalledTimes(2);
+    expect(mockVoucherCreate).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      data: expect.objectContaining({
+        issued_via: "ADMIN",
+        issuing_admin_id: ADMIN_ID,
+        manual_request_id: REQUEST_ID,
+      }),
+    }));
+    expect(mockUserUpdateMany).not.toHaveBeenCalled();
+    expect(mockPointsLogCreate).not.toHaveBeenCalled();
+    expect(mockGrantCreate).not.toHaveBeenCalled();
+    expect(mockVoucherCount).toHaveBeenCalledTimes(2);
+    expect(mockVoucherCount).toHaveBeenNthCalledWith(1, { where: { package_id: PACKAGE_ID } });
+  });
+
+  it("ADMIN gift replay trả voucher hiện có ngay cả khi package đã pause, và rebinding bị conflict", async () => {
+    const tx = makeTx();
+    const findUnique = vi.fn().mockResolvedValue({
+      id: VOUCHER_ID,
+      qr_token: "voucher-token",
+      user_id: USER_ID,
+      package_id: PACKAGE_ID,
+      issued_via: "ADMIN",
+      issuing_admin_id: ADMIN_ID,
+      manual_request_id: REQUEST_ID,
+      voucher_type: "DISCOUNT",
+      status: "ACTIVE",
+      expires_at: new Date("2026-08-01T00:00:00.000Z"),
+      redeemed_at: null,
+    });
+    tx.voucher.findUnique = findUnique;
+    mockPackageFindUnique.mockResolvedValue(makePackage({ is_active: false, quantity: 0 }));
+
+    const replay = await issueVoucherInTransaction(tx, {
+      user_id: USER_ID,
+      package_id: PACKAGE_ID,
+      source: "ADMIN",
+      performed_by: ADMIN_ID,
+      request_id: REQUEST_ID,
+      now: NOW,
+    });
+    expect(replay).toMatchObject({ id: VOUCHER_ID, already_granted: true, effective_status: "EXPIRED" });
+    expect(mockPackageFindUnique).not.toHaveBeenCalled();
+    expect(mockVoucherCreate).not.toHaveBeenCalled();
+
+    findUnique.mockResolvedValue({
+      id: VOUCHER_ID,
+      qr_token: "voucher-token",
+      user_id: "88888888-8888-4888-8888-888888888888",
+      package_id: PACKAGE_ID,
+      issued_via: "ADMIN",
+      issuing_admin_id: ADMIN_ID,
+      manual_request_id: REQUEST_ID,
+      voucher_type: "DISCOUNT",
+      status: "ACTIVE",
+      expires_at: null,
+      redeemed_at: null,
+    });
+    await expect(issueVoucherInTransaction(tx, {
+      user_id: USER_ID,
+      package_id: PACKAGE_ID,
+      source: "ADMIN",
+      performed_by: ADMIN_ID,
+      request_id: REQUEST_ID,
+      now: NOW,
+    })).rejects.toSatisfy((error: unknown) => {
+      expectReason(error, "CONFLICT");
+      return true;
+    });
+  });
+
+  it("ADMIN không bypass global quantity dù không áp dụng max_per_user", async () => {
+    const tx = makeTx();
+    tx.voucher.findUnique = vi.fn().mockResolvedValue(null);
+    mockPackageFindUnique.mockResolvedValue(makePackage({
+      visibility: "PRIVATE",
+      acquisition_mode: "NONE",
+      points_cost: 0,
+      quantity: 1,
+      max_per_user: 1,
+    }));
+    mockVoucherCount.mockResolvedValue(1);
+
+    await expect(issueVoucherInTransaction(tx, {
+      user_id: USER_ID,
+      package_id: PACKAGE_ID,
+      source: "ADMIN",
+      performed_by: ADMIN_ID,
+      request_id: REQUEST_ID,
+      now: NOW,
+    })).rejects.toSatisfy((error: unknown) => {
+      expectReason(error, "VOUCHER_SOLD_OUT");
+      return true;
+    });
+    expect(mockVoucherCount).toHaveBeenCalledWith({ where: { package_id: PACKAGE_ID } });
+    expect(mockVoucherCreate).not.toHaveBeenCalled();
   });
 
   it("chặn race số dư khi conditional update không cập nhật user", async () => {

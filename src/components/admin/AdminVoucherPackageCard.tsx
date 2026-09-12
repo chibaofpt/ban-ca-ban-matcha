@@ -14,8 +14,9 @@ export function AdminVoucherPackageCard({ pkg, onOpen }: { pkg: VoucherPackage; 
   const status = getVoucherPackageStatus(pkg);
   return <motion.button type="button" whileTap={{ scale: 0.96 }} onClick={onOpen} className="w-full rounded-2xl border bg-card p-4 text-left shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
     <span className={cn("inline-flex rounded-full px-2 py-1 text-[11px] font-bold", STATUS[status][1])}>{STATUS[status][0]}</span>
+    <span className={cn("ml-2 inline-flex rounded-full px-2 py-1 text-[11px] font-bold", pkg.visibility === "PRIVATE" ? "bg-violet-100 text-violet-800" : "bg-sky-100 text-sky-800")}>{pkg.visibility === "PRIVATE" ? "Riêng tư" : "Công khai"}</span>
     <h2 className="mt-3 font-bold">{pkg.name}</h2>
-    <p className="mt-1 text-xs text-muted-foreground">{TYPE[pkg.voucher_type]} · {pkg.acquisition_mode === "POINTS_EXCHANGE" ? `${pkg.points_cost} điểm` : pkg.acquisition_mode === "AUTO_GRANT" ? "Tự động cấp" : "Nhận miễn phí"}</p>
+    <p className="mt-1 text-xs text-muted-foreground">{TYPE[pkg.voucher_type]} · {pkg.visibility === "PRIVATE" || pkg.acquisition_mode === "NONE" ? "Admin tặng trực tiếp" : pkg.acquisition_mode === "POINTS_EXCHANGE" ? `${pkg.points_cost} điểm` : pkg.acquisition_mode === "AUTO_GRANT" ? "Tự động cấp" : "Nhận miễn phí"}</p>
     <p className="mt-3 text-sm">{summarizeVoucherBenefit(pkg)}</p>
     <p className="mt-2 text-xs text-muted-foreground">{summarizeVoucherCondition(pkg)}</p>
     <p className="mt-1 text-xs text-muted-foreground">{summarizeVoucherDeadline(pkg)}</p>

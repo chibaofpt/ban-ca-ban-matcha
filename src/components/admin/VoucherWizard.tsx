@@ -9,11 +9,12 @@ import { BundleScopeEditor } from "@/src/components/admin/BundleScopeEditor";
 import { VoucherInlineFieldErrors, VoucherIssuanceFields } from "@/src/components/admin/VoucherIssuanceFields";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
-import { buildVoucherInput, describeVoucherDraft, estimateVoucherLiabilityVnd, suggestVoucherCopy, type VoucherCopyLabels, type VoucherDraft, type VoucherType } from "@/src/lib/utils/adminVoucherForm";
+import { buildVoucherInput, describeProductDiscountTargets, describeVoucherDraft, estimateVoucherLiabilityVnd, suggestVoucherCopy, type VoucherCopyLabels, type VoucherDraft, type VoucherType } from "@/src/lib/utils/adminVoucherForm";
 import type { AdaptiveSelectOption } from "@/src/lib/utils/adaptiveSelect";
 import type { CreateVoucherPackageInput } from "@/src/services/adminVoucherService";
 import type { BundleMenuConfig } from "@/src/lib/utils/adminVoucherBundle";
 import { useAdminVoucherWizardForm } from "@/src/hooks/useAdminVoucherWizardForm";
+import { formatSizeLabel } from "@/src/utils/display";
 
 interface VoucherWizardProps {
   open: boolean;
@@ -52,8 +53,9 @@ const VOUCHER_TITLE_BY_TYPE: Record<VoucherType, string> = {
 const inputClass = "h-11 w-full min-w-0 max-w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary";
 const numberValue = (value: string): number => Number(value) || 0;
 
-function NumberField({ label, value, onChange, min = 0, step = 1 }: { label: string; value: number | null; onChange: (value: number | null) => void; min?: number; step?: number }) {
-  return <label className="block min-w-0 space-y-1.5"><span className="text-sm font-semibold">{label}</span><input type="number" min={min} step={step} value={value ?? ""} onChange={(event) => onChange(event.target.value ? numberValue(event.target.value) : null)} className={inputClass} /></label>;
+function NumberField({ label, value, onChange, min = 0, step = 1, thousands = false }: { label: string; value: number | null; onChange: (value: number | null) => void; min?: number; step?: number; thousands?: boolean }) {
+  const displayValue = thousands && value !== null ? value.toLocaleString("vi-VN") : value ?? "";
+  return <label className="block min-w-0 space-y-1.5"><span className="text-sm font-semibold">{label}</span><input type={thousands ? "text" : "number"} inputMode={thousands ? "numeric" : undefined} min={thousands ? undefined : min} step={thousands ? undefined : step} value={displayValue} onChange={(event) => { const rawValue = thousands ? event.target.value.replace(/\D/g, "") : event.target.value; onChange(rawValue ? numberValue(rawValue) : null); }} className={inputClass} /></label>;
 }
 
 function BenefitFields({ draft, update, menuOptions, bundleMenuItems, addonOptions, powderOptions, milkOptions }: {
@@ -67,16 +69,22 @@ function BenefitFields({ draft, update, menuOptions, bundleMenuItems, addonOptio
   }
   if (draft.voucherType === "PRODUCT_DISCOUNT") {
     const sizes = ["SMALL", "MEDIUM", "LARGE"] as const;
+    const sizeRank = { SMALL: 0, MEDIUM: 1, LARGE: 2 } as const;
     const selectedIds = draft.eligibleMenuItemIds?.length ? draft.eligibleMenuItemIds : draft.menuItemId ? [draft.menuItemId] : [];
     const selectedMenus = bundleMenuItems.filter((menu) => selectedIds.includes(menu.id));
     const sharedSizes = sizes.filter((size) => selectedMenus.length > 0 && selectedMenus.every((menu) => menu.availableSizes.includes(size)));
+    const purchaseSizes = sharedSizes.filter((size) => size !== "LARGE" && sharedSizes.some((candidate) => sizeRank[candidate] > sizeRank[size]));
+    const purchaseSize = purchaseSizes.includes(draft.referenceSize) ? draft.referenceSize : purchaseSizes[0];
+    const upsizeOptions = purchaseSize ? sharedSizes.filter((size) => sizeRank[size] > sizeRank[purchaseSize]) : [];
+    const upsizeTarget = upsizeOptions.includes(draft.eligibleSizes[0]) ? draft.eligibleSizes[0] : upsizeOptions[0];
+    const sizeOptions = (values: readonly (typeof sizes)[number][]) => values.map((size) => ({ value: size, label: formatSizeLabel(size) }));
     return <div className="space-y-4">
-      <AdaptiveSelect multiple label="Sản phẩm" options={menuOptions.filter((option) => bundleMenuItems.some((menu) => menu.id === option.value && menu.category !== "extras"))} value={selectedIds} onChange={(value) => { const ids = value as string[]; const nextMenus = bundleMenuItems.filter((menu) => ids.includes(menu.id)); const nextShared = sizes.filter((size) => nextMenus.length > 0 && nextMenus.every((menu) => menu.availableSizes.includes(size))); update("eligibleMenuItemIds", ids.slice(0, 100)); update("menuItemId", ids[0] ?? ""); update("eligibleSizes", draft.eligibleSizes.filter((size) => nextShared.includes(size))); if (!nextShared.includes(draft.referenceSize)) update("referenceSize", nextShared[0] ?? "SMALL"); }} />
-      <AdaptiveSelect label="Kiểu giảm" options={[{ value: "FIXED_AMOUNT", label: "Giảm số tiền" }, { value: "PAY_AS_SIZE", label: "Trả giá size vừa" }]} value={draft.productDiscountMode} onChange={(value) => update("productDiscountMode", value as VoucherDraft["productDiscountMode"])} />
-      <fieldset className="space-y-2"><legend className="text-sm font-semibold">Size được áp dụng</legend><div className="flex gap-2">{sizes.map((size) => <button key={size} type="button" disabled={!sharedSizes.includes(size)} onClick={() => update("eligibleSizes", draft.eligibleSizes.includes(size) ? draft.eligibleSizes.filter((value) => value !== size) : [...draft.eligibleSizes, size])} className={`min-h-11 min-w-11 rounded-xl border px-3 text-sm disabled:opacity-40 ${draft.eligibleSizes.includes(size) ? "border-primary bg-primary/5" : "border-input"}`}>{size}</button>)}</div></fieldset>
+      <AdaptiveSelect multiple label="Sản phẩm" options={menuOptions.filter((option) => bundleMenuItems.some((menu) => menu.id === option.value && menu.category !== "extras"))} value={selectedIds} onChange={(value) => { const ids = value as string[]; const nextMenus = bundleMenuItems.filter((menu) => ids.includes(menu.id)); const nextShared = sizes.filter((size) => nextMenus.length > 0 && nextMenus.every((menu) => menu.availableSizes.includes(size))); const nextPurchaseSizes = nextShared.filter((size) => size !== "LARGE" && nextShared.some((candidate) => sizeRank[candidate] > sizeRank[size])); const nextPurchase = nextPurchaseSizes.includes(draft.referenceSize) ? draft.referenceSize : nextPurchaseSizes[0]; const nextTargets = nextPurchase ? nextShared.filter((size) => sizeRank[size] > sizeRank[nextPurchase]) : []; update("eligibleMenuItemIds", ids.slice(0, 100)); update("menuItemId", ids[0] ?? ""); if (draft.productDiscountMode === "PAY_AS_SIZE") { update("referenceSize", nextPurchase ?? "SMALL"); update("eligibleSizes", nextTargets.includes(draft.eligibleSizes[0]) ? [draft.eligibleSizes[0]] : nextTargets[0] ? [nextTargets[0]] : []); } else { update("eligibleSizes", draft.eligibleSizes.filter((size) => nextShared.includes(size))); } }} />
+      <AdaptiveSelect label="Kiểu giảm" options={[{ value: "FIXED_AMOUNT", label: "Giảm số tiền" }, { value: "PAY_AS_SIZE", label: "Free upsize" }]} value={draft.productDiscountMode} onChange={(value) => { const mode = value as VoucherDraft["productDiscountMode"]; update("productDiscountMode", mode); if (mode === "PAY_AS_SIZE") { update("referenceSize", purchaseSize ?? "SMALL"); update("eligibleSizes", upsizeTarget ? [upsizeTarget] : []); } else if (draft.discountValue <= 0) update("discountValue", 10_000); }} />
+      {draft.productDiscountMode === "FIXED_AMOUNT" ? <fieldset className="space-y-2"><legend className="text-sm font-semibold">Size được áp dụng</legend><div className="flex gap-2">{sizes.map((size) => <button key={size} type="button" disabled={!sharedSizes.includes(size)} onClick={() => update("eligibleSizes", draft.eligibleSizes.includes(size) ? draft.eligibleSizes.filter((value) => value !== size) : [...draft.eligibleSizes, size])} className={`min-h-11 min-w-11 rounded-xl border px-3 text-sm disabled:opacity-40 ${draft.eligibleSizes.includes(size) ? "border-primary bg-primary/5" : "border-input"}`}>{formatSizeLabel(size)}</button>)}</div></fieldset> : null}
       {draft.productDiscountMode === "FIXED_AMOUNT"
-        ? <NumberField label="Mức giảm (VND)" value={draft.discountValue} min={1_000} step={1_000} onChange={(value) => update("discountValue", value ?? 0)} />
-        : <AdaptiveSelect label="Size tham chiếu" options={sharedSizes.map((size) => ({ value: size, label: size }))} value={sharedSizes.includes(draft.referenceSize) ? draft.referenceSize : sharedSizes[0] ?? ""} onChange={(value) => update("referenceSize", value as VoucherDraft["referenceSize"])} />}
+        ? <NumberField label="Mức giảm (VND)" value={draft.discountValue} min={1_000} step={1_000} thousands onChange={(value) => update("discountValue", value ?? 0)} />
+        : <div className="grid grid-cols-2 gap-2"><AdaptiveSelect label="Size mua" options={sizeOptions(purchaseSizes)} value={purchaseSize ?? ""} onChange={(value) => { const nextPurchase = value as VoucherDraft["referenceSize"]; const nextTargets = sharedSizes.filter((size) => sizeRank[size] > sizeRank[nextPurchase]); update("referenceSize", nextPurchase); update("eligibleSizes", nextTargets.includes(draft.eligibleSizes[0]) ? [draft.eligibleSizes[0]] : nextTargets[0] ? [nextTargets[0]] : []); }} /><AdaptiveSelect label="Size được up" options={sizeOptions(upsizeOptions)} value={upsizeTarget ?? ""} onChange={(value) => update("eligibleSizes", [value as VoucherDraft["eligibleSizes"][number]])} /></div>}
       <VoucherInlineFieldErrors fields={["eligibleMenuItemIds", "eligibleSizes", "discountValue", "referenceSize"]} />
     </div>;
   }
@@ -129,7 +137,13 @@ export function VoucherWizard(props: VoucherWizardProps) {
   const chooseType = (voucherType: VoucherType) => {
     manualCopy.current = { name: false, description: false };
     updateDraft((current) => {
-      const nextDraft = { ...current, voucherType };
+      const nextDraft = {
+        ...current,
+        voucherType,
+        discountValue: voucherType === "PRODUCT_DISCOUNT" && current.voucherType === "DISCOUNT"
+          ? 10_000
+          : current.discountValue,
+      };
       return { ...nextDraft, ...suggestVoucherCopy(nextDraft, copyLabels) };
     });
     setStep(2);
@@ -155,6 +169,7 @@ export function VoucherWizard(props: VoucherWizardProps) {
   const review = describeVoucherDraft(draft, copyLabels.menuLabels, copyLabels.addonLabels, copyLabels.powderLabels, copyLabels.milkLabels);
   const liability = estimateVoucherLiabilityVnd(draft, props.menuPriceById, props.addonPriceById);
   const suggestion = suggestVoucherCopy(draft, copyLabels);
+  const applicableItems = describeProductDiscountTargets(draft, copyLabels.menuLabels);
   const overlayTitle = step === 1 ? "Tạo voucher" : `Tạo voucher ${VOUCHER_TITLE_BY_TYPE[draft.voucherType]}`;
   const restoreSuggestion = () => {
     manualCopy.current = { name: false, description: false };
@@ -218,6 +233,7 @@ export function VoucherWizard(props: VoucherWizardProps) {
             </div>
             <label className="block min-w-0 space-y-1.5"><span className="text-sm font-semibold">Tên voucher</span><input value={draft.name} onBlur={() => void form.trigger("name")} onChange={(event) => update("name", event.target.value)} placeholder="Tên ngắn gọn khách dễ hiểu" className={`${inputClass} ${errorFor("name") ? "border-destructive" : ""}`} />{errorFor("name") ? <span className="text-xs text-destructive">{errorFor("name")}</span> : null}</label>
             <label className="block min-w-0 space-y-1.5"><span className="text-sm font-semibold">Mô tả</span><textarea value={draft.description} onChange={(event) => update("description", event.target.value)} placeholder="Mô tả quyền lợi và điều kiện áp dụng" className="min-h-24 w-full min-w-0 max-w-full rounded-xl border border-input bg-background p-3 text-sm outline-none focus:border-primary" /></label>
+            {applicableItems ? <p className="text-sm text-muted-foreground">{applicableItems}</p> : null}
           </section>
         </div>
       ) : null}

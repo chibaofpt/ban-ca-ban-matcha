@@ -63,6 +63,21 @@ và từng bước dùng RHF/Zod với lỗi dưới field. Tạo thành công r
 trong suốt vòng đời trang; chỉ lần tạo thành công mới reset phiên wizard.
 Quy tắc sữa/bột/size và chống chồng voucher thuộc voucher-flow, không được suy từ bố cục form.
 
+Admin có thêm selector `PUBLIC`/`PRIVATE` trong bước phát hành. Gói PRIVATE tự động chuyển sang
+`NONE`, điểm về 0, ẩn các control tự nhận/đổi và giải thích rõ ràng chỉ admin mới có thể tặng.
+
+## Admin PRODUCT_DISCOUNT wizard
+
+Chế độ `PAY_AS_SIZE` được trình bày là `Free upsize` và chỉ cấu hình một cặp size. Hai selector
+`Size mua` và `Size được up` nằm cùng hàng: size mua chỉ nhận size nhỏ hoặc vừa có trong giao size
+của mọi món đã chọn; size được up chỉ nhận một size lớn hơn size mua. API vẫn dùng
+`reference_size` cho size mua và mảng `eligible_sizes` một phần tử cho size được up.
+
+Tên gợi ý dùng mẫu `Free upsize lên cá vừa`; mô tả nêu các món và size đích theo mẫu
+`Free up size cho A, B lên size vừa.`. Bên dưới mô tả hiển thị dòng tóm tắt
+`Món áp dụng: A, B size vừa`. Chế độ giảm số tiền định dạng phân cách hàng nghìn trong input và
+khởi tạo mức giảm ở 10.000 VND.
+
 ## Nhận, đổi và auth intent
 
 Catalog nhận/đổi của customer wallet và cart ẩn `AUTO_GRANT` và gói có
@@ -74,6 +89,17 @@ Footer chi tiết gói chỉ điều phối callbacks hiện có: guest đăng n
 khi trừ cá. Busy, hết hàng, hết lượt, `AUTO_GRANT` hoặc thiếu callback thì không được nhận/đổi.
 Thiếu cá khóa đổi và báo đúng số còn thiếu, không thêm điều hướng menu. Eligibility dùng helper
 chung, giữ thứ tự kiểm tra hiện có; footer không tự gọi API.
+
+Admin package detail mở managed overlay có badge visibility và khu vực `Tặng cho khách hàng`.
+Search dùng service `GET /api/staff/users?q=`, chọn từng customer mới kích hoạt lịch sử package;
+việc chọn không phát hành. Lịch sử có tab `Tất cả`, `Đang có`, `Đã dùng`, hiển thị nguồn, ngày nhận,
+hạn và trạng thái; RESERVED hiển thị `Đang giữ cho đơn`. Summary luôn hiển thị số khách tự nhận/đổi,
+current/used, stock và expiry preview.
+
+CTA `Tặng 1 voucher cho [Tên]` tự sinh request id mới cho mỗi hành động. Cùng request id được giữ
+qua warning confirmation và retry mạng không chắc chắn. Warning dùng `ConfirmModal` critical với
+CTA `Vẫn tặng 1 voucher`; pending khóa submit và đổi customer. Sau thành công refresh history, stats
+package và cache voucher liên quan.
 
 Auth từ voucher sheet mở ngay trên sheet còn mở, không đợi sheet đóng. Hủy auth bỏ intent nhưng
 giữ surface nền; đăng nhập thành công tiếp tục intent một lần và giữ bước xác nhận đổi bằng cá.

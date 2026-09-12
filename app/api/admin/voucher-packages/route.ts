@@ -68,13 +68,22 @@ export async function GET() {
 
     const now = new Date();
     const packageIds = packages.map((pkg) => pkg.id);
-    const [statusAggregates, expiredActiveAggregates] = packageIds.length === 0 ? [[], []] : await Promise.all([
+    const [statusAggregates, expiredActiveAggregates, selfAggregates] = packageIds.length === 0 ? [[], [], []] : await Promise.all([
       prisma.voucher.groupBy({ by: ["package_id", "status"], where: { package_id: { in: packageIds } }, _count: { _all: true } }),
       prisma.voucher.groupBy({ by: ["package_id"], where: { package_id: { in: packageIds }, status: "ACTIVE", expires_at: { lte: now } }, _count: { _all: true } }),
+      prisma.voucher.groupBy({ by: ["package_id", "issued_via", "status"], where: { package_id: { in: packageIds, }, issued_via: { in: ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"] } }, _count: { _all: true } }),
     ]);
     return NextResponse.json({ data: packages.map((pkg) => ({
       ...toVoucherPackageBundleDto(pkg),
-      stats: buildAdminVoucherStats({ id: pkg.id, quantity: pkg.quantity, issued_count: pkg._count.vouchers }, statusAggregates, expiredActiveAggregates),
+      stats: {
+        ...buildAdminVoucherStats({ id: pkg.id, quantity: pkg.quantity, issued_count: pkg._count.vouchers }, statusAggregates, expiredActiveAggregates),
+        self_acquisition_count: selfAggregates
+          .filter((row) => row.package_id === pkg.id)
+          .reduce((sum, row) => sum + row._count._all, 0),
+        self_acquisition_used_count: selfAggregates
+          .filter((row) => row.package_id === pkg.id && row.status === "REDEEMED")
+          .reduce((sum, row) => sum + row._count._all, 0),
+      },
     })) });
   } catch (err) {
     console.error("[GET /api/admin/voucher-packages]", err);
@@ -143,6 +152,7 @@ export async function POST(req: NextRequest) {
           name: data.name,
           description: data.description ?? null,
           voucher_type: "ITEM",
+          visibility: data.visibility,
           acquisition_mode: data.acquisition_mode,
           points_cost: data.points_cost,
           ends_at: data.ends_at ? new Date(data.ends_at) : null,
@@ -363,6 +373,7 @@ export async function POST(req: NextRequest) {
           name: data.name,
           description: data.description ?? null,
           voucher_type: "PRODUCT",
+          visibility: data.visibility,
           acquisition_mode: data.acquisition_mode,
           points_cost: data.points_cost,
           ends_at: data.ends_at ? new Date(data.ends_at) : null,
@@ -408,6 +419,7 @@ export async function POST(req: NextRequest) {
       const pkg = await prisma.voucherPackage.create({
         data: {
           name: data.name, description: data.description ?? null, voucher_type: "PRODUCT_DISCOUNT",
+          visibility: data.visibility,
           acquisition_mode: data.acquisition_mode, points_cost: data.points_cost,
           ends_at: data.ends_at ? new Date(data.ends_at) : null, is_active: true,
           expires_after_days: data.expires_after_days ?? null, quantity: data.quantity ?? null,
@@ -430,6 +442,7 @@ export async function POST(req: NextRequest) {
           name: data.name,
           description: data.description ?? null,
           voucher_type: "FREESHIP",
+          visibility: data.visibility,
           acquisition_mode: data.acquisition_mode,
           points_cost: data.points_cost,
           ends_at: data.ends_at ? new Date(data.ends_at) : null,
@@ -452,6 +465,7 @@ export async function POST(req: NextRequest) {
         name: data.name,
         description: data.description ?? null,
         voucher_type: "DISCOUNT",
+        visibility: data.visibility,
         acquisition_mode: data.acquisition_mode,
         points_cost: data.points_cost,
         ends_at: data.ends_at ? new Date(data.ends_at) : null,

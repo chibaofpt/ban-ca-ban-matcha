@@ -11,6 +11,7 @@ import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { ceilTo1000 } from "@/src/utils/pricing";
 import type { PendingAddonVoucherIntent } from "@/src/lib/store/cartStore";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 import { hasAddonVoucherForOption, resolveAddonVoucherOptionId } from "@/src/utils/voucherMatchUtils";
 
 interface AddonItemPickerProps {
@@ -220,7 +221,7 @@ export const AddonItemPicker = ({
             </div>
             <div>
               <p className="font-bold text-sm text-primary">{item.name}</p>
-              <p className="text-xs text-primary/60">Size {item.configuration.size} • {(item.grossUnitPriceVnd / 1000).toLocaleString("vi-VN")}K</p>
+              <p className="text-xs text-primary/60">Size <SizeLabel size={item.configuration.size} /> • {(item.grossUnitPriceVnd / 1000).toLocaleString("vi-VN")}K</p>
             </div>
           </button>
         ))}

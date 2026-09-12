@@ -141,6 +141,7 @@ export async function createBundleVoucherPackage(
       name: input.name,
       description: input.description ?? null,
       voucher_type: "BUNDLE",
+      visibility: input.visibility,
       acquisition_mode: input.acquisition_mode,
       points_cost: input.points_cost,
       min_order_vnd: input.min_order_vnd ?? null,

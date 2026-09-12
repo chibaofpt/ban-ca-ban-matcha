@@ -16,6 +16,7 @@ import type { CartItem } from "@/src/lib/types/cart";
 import type { MenuData, Size } from "@/src/lib/types/menu";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import ProductModal from "@/src/components/shared/ProductModal";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 import {
   getEligibleProductDiscountItems,
   type EligibleProductDiscountItem,
@@ -56,8 +57,6 @@ export const ProductDiscountItemPicker = ({
     voucher.eligible_sizes as Size[] | undefined,
   );
   const voucherSizes = (voucher.eligible_sizes ?? []) as Size[];
-
-  const sizeLabel = (s: Size) => (s === "SMALL" ? "Nhỏ" : s === "MEDIUM" ? "Vừa" : "Lớn");
 
   /** Called when ProductModal's onConfirm fires with the fully configured CartItem. */
   const handleConfirm = (cartItem: CartItem) => {
@@ -186,7 +185,11 @@ export const ProductDiscountItemPicker = ({
           <h3 className="font-bold text-primary">Chọn món áp dụng</h3>
           {voucherSizes.length > 0 && (
             <p className="text-xs text-primary/50">
-              Size được giảm: {voucherSizes.map(sizeLabel).join(" / ")}
+              Size được giảm: {voucherSizes.map((size, index) => (
+                <React.Fragment key={size}>
+                  {index > 0 ? " / " : null}<SizeLabel size={size} />
+                </React.Fragment>
+              ))}
             </p>
           )}
         </div>

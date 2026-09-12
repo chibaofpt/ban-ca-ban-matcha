@@ -127,4 +127,21 @@ describe("Kiểm tra bản nháp voucher quản trị", () => {
     const paths = issuePaths(draft);
     expect(paths).toEqual(expect.arrayContaining([["buyQuantity"], ["maxApplications"], ["minOrderVnd"]]));
   });
+
+  it("serialize PRIVATE package thành NONE và không gửi chi phí điểm", () => {
+    const input = buildVoucherInput({
+      ...createEmptyVoucherDraft(),
+      name: "Tặng riêng",
+      visibility: "PRIVATE",
+      acquisitionMode: "POINTS_EXCHANGE",
+      pointsCost: 99,
+      voucherType: "DISCOUNT",
+    });
+
+    expect(input).toMatchObject({
+      visibility: "PRIVATE",
+      acquisition_mode: "NONE",
+      points_cost: 0,
+    });
+  });
 });

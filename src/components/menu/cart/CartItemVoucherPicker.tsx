@@ -8,6 +8,7 @@ import type { ProjectedCartLine } from "@/src/lib/types/cart";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import { toast } from "sonner";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 
 interface CartItemVoucherPickerProps {
   activeItem: ProjectedCartLine;
@@ -85,7 +86,7 @@ export const CartItemVoucherPicker = ({
           </div>
           <div>
             <p className="font-bold text-sm text-primary">{activeItem.name}</p>
-            <p className="text-[11px] text-primary/60">Size {activeItem.configuration.size}</p>
+            <p className="text-[11px] text-primary/60">Size <SizeLabel size={activeItem.configuration.size} /></p>
           </div>
         </div>
 

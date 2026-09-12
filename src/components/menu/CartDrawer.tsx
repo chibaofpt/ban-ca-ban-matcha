@@ -23,6 +23,7 @@ import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
 import { buildAddonVoucherMap, buildProductVoucherMap } from "@/src/utils/voucherMatchUtils";
 import { filterActiveMainCartVouchers } from "@/src/utils/customerVoucherSelection";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 import { DeliverySection } from "@/src/components/delivery/DeliverySection";
 import { useCustomerAddresses } from "@/src/hooks/useCustomerAddresses";
 import { deliveryService } from "@/src/services/deliveryService";
@@ -919,7 +920,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
                     <div className="space-y-3">
                       {checkout.conflicts.map((c) => (
                         <div key={`${c.menu_item_id}-${c.size}`} className="bg-white border border-border rounded-xl p-3">
-                          <p className="font-bold text-sm text-primary">{c.name} · {c.size}</p>
+                          <p className="font-bold text-sm text-primary">{c.name} · <SizeLabel size={c.size} /></p>
                           <div className="flex items-center gap-3 mt-1.5">
                             <span className="text-[13px] line-through text-primary/40">{c.client_price_vnd / 1000} ká</span>
                             <span className="text-xs">→</span>

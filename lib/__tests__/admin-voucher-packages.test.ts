@@ -162,7 +162,7 @@ describe("GET /api/admin/voucher-packages", () => {
     expect(json.data).toHaveLength(1);
     expect(json.data[0].id).toBe(PKG_ID);
     expect(mockPkgFindMany).toHaveBeenCalledWith(expect.not.objectContaining({ include: expect.objectContaining({ vouchers: expect.anything() }) }));
-    expect(mockVoucherGroupBy).toHaveBeenCalledTimes(2);
+    expect(mockVoucherGroupBy).toHaveBeenCalledTimes(3);
   });
 
   it("returns 500 on DB error", async () => {
@@ -404,9 +404,64 @@ describe("POST /api/admin/voucher-packages", () => {
     // covered_price_vnd should be 8000 (from addon.price_vnd)
     expect(mockPkgCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ covered_price_vnd: 8000 }),
+        data: expect.objectContaining({
+          visibility: "PUBLIC",
+          acquisition_mode: "POINTS_EXCHANGE",
+          covered_price_vnd: 8000,
+        }),
       })
     );
+  });
+
+  it("tạo ADDON PRIVATE hợp lệ ngay trong lần insert đầu tiên", async () => {
+    mockAddonFindUnique.mockResolvedValue({
+      gram_value: null,
+      label: "Kem",
+      price_vnd: 8000,
+      is_active: true,
+      group: { is_active: true },
+    });
+    mockPkgCreate.mockImplementation(async (args: unknown) => {
+      const data = (args as { data: {
+        voucher_type: string;
+        visibility?: string;
+        acquisition_mode: string;
+      } }).data;
+      const visibility = data.visibility ?? "PUBLIC";
+      const validAcquisition =
+        (visibility === "PRIVATE" && data.acquisition_mode === "NONE") ||
+        (visibility === "PUBLIC" &&
+          ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"].includes(data.acquisition_mode));
+      if (!validAcquisition) throw new Error("voucher package visibility/acquisition constraint");
+      return {
+        id: PKG_ID,
+        voucher_type: data.voucher_type,
+        visibility,
+        acquisition_mode: data.acquisition_mode,
+      };
+    });
+
+    const res = await POST(makeReq({
+      voucher_type: "ADDON",
+      name: "Tặng riêng Free Kem",
+      visibility: "PRIVATE",
+      acquisition_mode: "NONE",
+      points_cost: 0,
+      addon_option_id: ADDON_ID,
+    }));
+
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({
+      data: { visibility: "PRIVATE", acquisition_mode: "NONE" },
+    });
+    expect(mockPkgCreate).toHaveBeenCalledOnce();
+    const createCall = mockPkgCreate.mock.calls[0]?.[0] as { data: Record<string, unknown> };
+    expect(createCall.data).toMatchObject({
+      voucher_type: "ADDON",
+      visibility: "PRIVATE",
+      acquisition_mode: "NONE",
+    });
+    expect(mockPkgUpdate).not.toHaveBeenCalled();
   });
 
   it("returns 400 when ADDON package targets Extra Matcha (gram_value > 0)", async () => {

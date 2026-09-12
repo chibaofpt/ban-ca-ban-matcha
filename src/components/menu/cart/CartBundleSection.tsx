@@ -9,6 +9,7 @@ import type { MenuData, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
 import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
 import { getBundleCartDisplayTotals } from "@/src/lib/utils/bundleCartSummary";
+import { formatSizeLabel } from "@/src/utils/display";
 
 export interface BundleAllocationBadge {
   token: string;
@@ -44,7 +45,7 @@ interface CartBundleSectionProps {
 function formatItemConfig(item: ProjectedCartLine, milkTypes: MilkTypeOption[], powders: Powder[]): string {
   const parts: string[] = [];
   const config = item.configuration;
-  if (config.size) parts.push(`Size ${config.size === "SMALL" ? "S" : config.size === "MEDIUM" ? "M" : "L"}`);
+  if (config.size) parts.push(`Size ${formatSizeLabel(config.size)}`);
   const sweetnessLabel: Record<string, string> = {
     NONE: "Không đường", QUARTER: "Ít đường", HALF: "Nửa đường",
     THREE_QUARTER: "Vừa đường", FULL: "Nguyên đường", EXTRA: "Thêm đường",

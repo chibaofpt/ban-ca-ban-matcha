@@ -175,6 +175,8 @@ Overlay layer chỉ có `base`, `nested`, `critical`. Không tạo z-index tùy 
 
 Button dùng variants `primary`, `secondary`, `outline`, `ghost`, `destructive`. Option card/tab có thể là specialized control nhưng vẫn phải có semantic button và focus state.
 
+Nhãn size đồ uống trong UI dùng `SizeLabel`; khi cần ghép thành chuỗi, dùng `formatSizeLabel`. Enum `SMALL`/`MEDIUM`/`LARGE` chỉ thuộc data contract, không render trực tiếp cho người dùng.
+
 ## Legacy UI migration policy
 
 - Existing direct Radix/Vaul imports và manual overlays là legacy, không phải API mẫu.

@@ -23,6 +23,7 @@ import { getVoucherAvailabilityMessage, type VoucherModalTab } from "@/src/lib/u
 import { BundleVoucherSetupSheet } from "@/src/components/shared/BundleVoucherSetupSheet";
 import { getBundleVoucherSummary } from "@/src/components/menu/cart/CartBundleVoucherPanel";
 import { validateBundleCartDraft } from "@/src/lib/utils/bundleCartDraft";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 import { resolveBundleSelectionSiblings } from "@/src/lib/utils/bundleVoucher";
 import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 
@@ -535,7 +536,7 @@ export const CartDiscountPicker = ({
               >
                 <span>
                   <span className="block text-sm font-bold">{item?.name}</span>
-                  <span className="block text-xs text-muted-foreground">Size {target.size}</span>
+                  <span className="block text-xs text-muted-foreground">Size <SizeLabel size={target.size} /></span>
                 </span>
                 <span className="text-sm font-bold text-primary">-{target.estimatedBenefitVnd.toLocaleString("vi-VN")}đ</span>
               </button>

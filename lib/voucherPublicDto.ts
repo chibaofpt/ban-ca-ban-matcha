@@ -6,10 +6,20 @@ import type {
   VoucherStatus,
   VoucherType,
   VoucherAcquisitionMode,
+  VoucherPackageVisibility,
   ProductDiscountMode,
 } from "@prisma/client";
 import { toBundleRuleDto, type BundleRuleDtoSource } from "@/lib/voucherBundleDto";
 import type { VoucherAvailability } from "@/lib/voucherAvailability";
+
+type VoucherIssuedVia = Exclude<VoucherAcquisitionMode, "NONE">;
+
+function narrowVoucherIssuedVia(value: VoucherAcquisitionMode | undefined): VoucherIssuedVia | undefined {
+  if (value === "NONE") {
+    throw new Error("Voucher issued_via invariant violated: NONE cannot be exposed by public DTO");
+  }
+  return value;
+}
 
 interface VoucherDtoSource {
   id?: unknown;
@@ -18,6 +28,7 @@ interface VoucherDtoSource {
   redeemed_by?: unknown;
   qr_token: string;
   voucher_type: VoucherType;
+  issued_via?: VoucherAcquisitionMode;
   discount_type: DiscountType | null;
   discount_value: number | null;
   product_discount_mode?: ProductDiscountMode | null;
@@ -43,6 +54,7 @@ interface VoucherDtoSource {
     description: string | null;
     points_cost: number;
     acquisition_mode?: VoucherAcquisitionMode;
+    visibility?: VoucherPackageVisibility;
     ends_at?: Date | null;
     bundleRule?: BundleRuleDtoSource | null;
   };
@@ -66,10 +78,12 @@ interface VoucherDtoSource {
 
 /** Map a database voucher to the only voucher shape allowed across API/UI boundaries. */
 export function toPublicVoucherDto(voucher: VoucherDtoSource) {
+  const issuedVia = narrowVoucherIssuedVia(voucher.issued_via);
   return {
     ...(typeof voucher.package_id === "string" ? { package_id: voucher.package_id } : {}),
     qr_token: voucher.qr_token,
     voucher_type: voucher.voucher_type,
+    ...(issuedVia ? { issued_via: issuedVia } : {}),
     discount_type: voucher.discount_type,
     discount_value: voucher.discount_value,
     product_discount_mode: voucher.product_discount_mode ?? null,

@@ -9,7 +9,13 @@ vi.mock("@/src/lib/api/client", () => ({
   },
 }));
 
-import { createVoucherPackage, searchVoucherPackageOwners, type CreateVoucherPackageInput } from "@/src/services/adminVoucherService";
+import {
+  createVoucherPackage,
+  getVoucherPackageRecipientHistory,
+  grantVoucherToCustomer,
+  searchVoucherPackageOwners,
+  type CreateVoucherPackageInput,
+} from "@/src/services/adminVoucherService";
 
 describe("Dịch vụ quản trị chủ sở hữu voucher", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -18,6 +24,67 @@ describe("Dịch vụ quản trị chủ sở hữu voucher", () => {
     mockGet.mockResolvedValue({ data: { data: { users: [], next_cursor: null } } });
     await searchVoucherPackageOwners("pkg-1", { q: "@matcha", status: "ACTIVE", cursor: "user-token" });
     expect(mockGet).toHaveBeenCalledWith("/api/admin/voucher-packages/pkg-1/owners", { params: { q: "@matcha", status: "ACTIVE", cursor: "user-token" } });
+  });
+
+  it("gọi đúng URL lịch sử recipient và truyền status/cursor", async () => {
+    const history = { vouchers: [], meta: { has_more: false, next_cursor: null } };
+    mockGet.mockResolvedValue({ data: { data: history } });
+
+    await expect(getVoucherPackageRecipientHistory("pkg-1", "customer-token", {
+      status: "CURRENT",
+      cursor: "next-token",
+    })).resolves.toEqual(history);
+    expect(mockGet).toHaveBeenCalledWith(
+      "/api/admin/voucher-packages/pkg-1/recipients/customer-token",
+      { params: { status: "CURRENT", cursor: "next-token" } },
+    );
+  });
+
+  it("gửi đúng payload cho một admin gift và giữ lỗi có cấu trúc", async () => {
+    const voucher = {
+      qr_token: "voucher-token",
+      voucher_type: "DISCOUNT",
+      status: "ACTIVE",
+      effective_status: "ACTIVE",
+      expires_at: null,
+      already_granted: false,
+    } as const;
+    mockPost.mockResolvedValueOnce({ data: { data: voucher } });
+
+    await expect(grantVoucherToCustomer("pkg-1", {
+      user_qr_token: "customer-token",
+      request_id: "55555555-5555-4555-8555-555555555555",
+      acknowledge_additional_gift: true,
+    })).resolves.toEqual(voucher);
+    expect(mockPost).toHaveBeenCalledWith(
+      "/api/admin/voucher-packages/pkg-1/grants",
+      {
+        user_qr_token: "customer-token",
+        request_id: "55555555-5555-4555-8555-555555555555",
+        acknowledge_additional_gift: true,
+      },
+    );
+
+    const error = Object.assign(new Error("Need confirmation"), {
+      response: {
+        status: 422,
+        data: {
+          error: "Need confirmation",
+          code: "BUSINESS_RULE_VIOLATION",
+          details: { reason: "ADDITIONAL_GIFT_CONFIRMATION_REQUIRED" },
+        },
+      },
+      isAxiosError: true,
+    });
+    mockPost.mockRejectedValueOnce(error);
+    await expect(grantVoucherToCustomer("pkg-1", {
+      user_qr_token: "customer-token",
+      request_id: "66666666-6666-4666-8666-666666666666",
+    })).rejects.toMatchObject({
+      status: 422,
+      code: "BUSINESS_RULE_VIOLATION",
+      details: { reason: "ADDITIONAL_GIFT_CONFIRMATION_REQUIRED" },
+    });
   });
 
   it("unwrap response thành công và giữ nguyên payload BUNDLE", async () => {

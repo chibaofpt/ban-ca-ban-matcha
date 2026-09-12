@@ -6,6 +6,7 @@
  */
 
 import type { MyVoucher, VoucherPackage } from "@/src/services/customerVoucherService";
+import { formatSizeLabel } from "@/src/utils/display";
 
 // ── Section 1: My Vouchers ────────────────────────────────────────────────────
 
@@ -213,8 +214,8 @@ export function getTicketHighlightText(
   referenceSize?: "SMALL" | "MEDIUM" | "LARGE" | null,
 ): { text: string; subtext: string } {
   if (vType === "PRODUCT_DISCOUNT") {
-    const sizeLabel = referenceSize === "SMALL" ? "S" : referenceSize === "LARGE" ? "L" : "M";
-    return discountValue ? { text: `${Math.floor(discountValue / 1000)}K`, subtext: "GIẢM MÓN" } : { text: `SIZE ${sizeLabel}`, subtext: "TRẢ GIÁ" };
+    const sizeLabel = formatSizeLabel(referenceSize ?? "MEDIUM");
+    return discountValue ? { text: `${Math.floor(discountValue / 1000)}K`, subtext: "GIẢM MÓN" } : { text: sizeLabel, subtext: "TRẢ GIÁ" };
   }
   if (vType === "DISCOUNT") {
     if (discountType === "PERCENT") return { text: `${discountValue}%`, subtext: "GIẢM" };
@@ -248,10 +249,10 @@ export function getVoucherBenefitText(v: MyVoucher): string {
     if (targets.length > 1) return `Chọn 1 trong ${targets.length} ly miễn phí`;
     const target = targets[0];
     const itemName = target?.name ?? v.menuItem?.name ?? "Sản phẩm";
-    return `${itemName}${target?.size || v.size ? ` Size ${target?.size ?? v.size}` : ""} miễn phí`;
+    return `${itemName}${target?.size || v.size ? ` Size ${formatSizeLabel(target?.size ?? v.size!)}` : ""} miễn phí`;
   }
   if (v.voucher_type === "PRODUCT_DISCOUNT") {
-    const referenceLabel = v.reference_size === "SMALL" ? "nhỏ" : v.reference_size === "LARGE" ? "lớn" : "vừa";
+    const referenceLabel = formatSizeLabel(v.reference_size ?? "MEDIUM");
     const scopeLabel = (v.eligible_menu_items?.length ?? 0) > 1 ? ` · ${v.eligible_menu_items!.length} món lựa chọn` : "";
     return `${v.product_discount_mode === "PAY_AS_SIZE" ? `Trả giá size ${referenceLabel}` : `Giảm ${(v.discount_value ?? 0).toLocaleString("vi-VN")}đ`}${scopeLabel}`;
   }
@@ -307,10 +308,10 @@ export function getPackageBenefitText(pkg: VoucherPackage): string {
     const targets = pkg.eligible_menu_items ?? [];
     if (targets.length > 1) return `Chọn 1 trong ${targets.length} ly miễn phí`;
     const target = targets[0];
-    if (target || pkg.menuItem) return `${target?.name ?? pkg.menuItem?.name}${target?.size || pkg.size ? ` Size ${target?.size ?? pkg.size}` : ""} miễn phí`;
+    if (target || pkg.menuItem) return `${target?.name ?? pkg.menuItem?.name}${target?.size || pkg.size ? ` Size ${formatSizeLabel(target?.size ?? pkg.size!)}` : ""} miễn phí`;
   }
   if (pkg.voucher_type === "PRODUCT_DISCOUNT") {
-    const referenceLabel = pkg.reference_size === "SMALL" ? "nhỏ" : pkg.reference_size === "LARGE" ? "lớn" : "vừa";
+    const referenceLabel = formatSizeLabel(pkg.reference_size ?? "MEDIUM");
     const scopeLabel = (pkg.eligible_menu_items?.length ?? 0) > 1 ? ` · ${pkg.eligible_menu_items!.length} món lựa chọn` : "";
     return `${pkg.product_discount_mode === "PAY_AS_SIZE" ? `Trả giá size ${referenceLabel}` : `Giảm ${(pkg.discount_value ?? 0).toLocaleString("vi-VN")}đ`}${scopeLabel}`;
   }

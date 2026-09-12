@@ -9,6 +9,7 @@ import type { CustomerInfo } from "./CustomerSelectModal";
 import type { MyVoucher } from "@/src/services/staffVoucherService";
 import { cn } from "@/src/utils/cn";
 import { formatVietnamPhone } from "@/src/utils/display";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 import {
   buildProductVoucherMap,
   buildAddonVoucherMap,
@@ -588,7 +589,7 @@ export function StaffCartDrawer({
                   <div>
                     <p className="font-bold text-sm">{activeItem.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {activeItem.category === "extras" ? "Add-on" : `Size ${activeItem.configuration.size}`}
+                      {activeItem.category === "extras" ? "Add-on" : <>Size <SizeLabel size={activeItem.configuration.size} /></>}
                     </p>
                   </div>
                 </div>

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { createEmptyVoucherDraft, suggestVoucherCopy } from "@/src/lib/utils/adminVoucherForm";
+import { createEmptyVoucherDraft, describeProductDiscountTargets, suggestVoucherCopy } from "@/src/lib/utils/adminVoucherForm";
 import { getPackageBenefitText } from "@/src/lib/utils/voucherModalHelpers";
 import type { VoucherPackage } from "@/src/services/customerVoucherService";
 
@@ -63,6 +63,30 @@ describe("multi-choice voucher UI contracts", () => {
       defaultPowderByMenuId: new Map(), defaultMilkByMenuId: new Map(),
     });
     expect(copy).toEqual({ name: "Free 1 trong 2 món", description: "Tặng 1 trong 2 món đã chọn: Bánh A, Bánh B." });
+  });
+
+  it("tạo copy free upsize và dòng món áp dụng theo đúng cặp size", () => {
+    const draft = {
+      ...createEmptyVoucherDraft(),
+      voucherType: "PRODUCT_DISCOUNT" as const,
+      productDiscountMode: "PAY_AS_SIZE" as const,
+      eligibleMenuItemIds: ["a", "b"],
+      referenceSize: "SMALL" as const,
+      eligibleSizes: ["MEDIUM" as const],
+    };
+    const labels = {
+      menuLabels: new Map([["a", "Matcha A"], ["b", "Matcha B"]]),
+      addonLabels: new Map(), powderLabels: new Map(), milkLabels: new Map(),
+      defaultPowderByMenuId: new Map(), defaultMilkByMenuId: new Map(),
+    };
+
+    expect(suggestVoucherCopy(draft, labels)).toEqual({
+      name: "Free upsize lên cá vừa",
+      description: "Free up size cho Matcha A, Matcha B lên size vừa.",
+    });
+    expect(describeProductDiscountTargets(draft, labels.menuLabels)).toBe(
+      "Món áp dụng: Matcha A, Matcha B size vừa",
+    );
   });
 
   it("giữ chi tiết voucher trong cùng frame và không animate layout từng thẻ", () => {

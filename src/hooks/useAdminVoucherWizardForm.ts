@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { useForm, type FieldPath } from "react-hook-form";
+import { useForm, type FieldPath, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { adminVoucherDraftSchema, getAdminVoucherStep2FieldPaths } from "@/src/lib/validations/adminVoucher";
 import { createEmptyVoucherDraft, type VoucherDraft } from "@/src/lib/utils/adminVoucherForm";
@@ -10,6 +10,7 @@ type DraftUpdater = (current: VoucherDraft) => VoucherDraft;
 
 function normalizeDraft(draft: VoucherDraft): VoucherDraft {
   let next = draft;
+  if (next.visibility === "PRIVATE") next = { ...next, acquisitionMode: "FREE_CLAIM", pointsCost: 0, maxPerUser: 1 };
   if (next.acquisitionMode !== "POINTS_EXCHANGE") next = { ...next, pointsCost: 0, maxPerUser: 1 };
   if (next.rewardKind === "PRODUCT") next = { ...next, rewardAddonOptionIds: [], benefitScaling: "PER_BUNDLE" };
   if (next.rewardKind === "ADDON") next = { ...next, rewardMode: "ALLOWED_SCOPE", rewardProductScopes: [] };
@@ -23,9 +24,10 @@ export function useAdminVoucherWizardForm() {
   const emptyDraft = createEmptyVoucherDraft();
   const [draft, setDraft] = useState<VoucherDraft>(emptyDraft);
   const draftRef = useRef<VoucherDraft>(emptyDraft);
+  const resolver = zodResolver(adminVoucherDraftSchema) as unknown as Resolver<VoucherDraft>;
   const form = useForm<VoucherDraft>({
     mode: "onBlur",
-    resolver: zodResolver(adminVoucherDraftSchema),
+    resolver,
     defaultValues: emptyDraft,
   });
   const submitting = useRef(false);

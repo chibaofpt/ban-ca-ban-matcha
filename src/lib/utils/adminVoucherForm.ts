@@ -1,12 +1,14 @@
 import type { CreateVoucherPackageInput } from "@/src/services/adminVoucherService";
 import { buildBundleVoucherInput, type BundleProductScopeDraft, type BundleVoucherFormState } from "@/src/lib/utils/adminVoucherBundle";
 import { toExclusiveEndIso } from "@/src/lib/utils/voucherDates";
+import { formatSizeLabel } from "@/src/utils/display";
 
 export { formatInclusiveEndDate, toExclusiveEndIso } from "@/src/lib/utils/voucherDates";
 
 export type VoucherType = "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE";
 export interface VoucherDraft extends BundleVoucherFormState {
   voucherType: VoucherType;
+  visibility: "PUBLIC" | "PRIVATE";
   discountType: "PERCENT" | "FIXED";
   discountValue: number;
   productDiscountMode: "FIXED_AMOUNT" | "PAY_AS_SIZE";
@@ -27,7 +29,7 @@ export interface VoucherDraft extends BundleVoucherFormState {
 /** Creates a predictable initial state for the admin voucher wizard. */
 export function createEmptyVoucherDraft(): VoucherDraft {
   return {
-    voucherType: "DISCOUNT", name: "", description: "", endsAt: "",
+    voucherType: "DISCOUNT", visibility: "PUBLIC", name: "", description: "", endsAt: "",
     acquisitionMode: "POINTS_EXCHANGE", pointsCost: 10, expiresAfterDays: 30,
     quantity: null, maxPerUser: 1, minOrderVnd: null,
     discountType: "PERCENT", discountValue: 10, productDiscountMode: "FIXED_AMOUNT", eligibleSizes: ["MEDIUM"], referenceSize: "SMALL", menuItemId: "", productTargets: [], eligibleMenuItemIds: [], size: "SMALL",
@@ -41,8 +43,9 @@ export function createEmptyVoucherDraft(): VoucherDraft {
 function common(draft: VoucherDraft) {
   return {
     name: draft.name.trim(), description: draft.description.trim() || undefined,
-    acquisition_mode: draft.acquisitionMode,
-    points_cost: draft.acquisitionMode === "POINTS_EXCHANGE" ? draft.pointsCost : 0,
+    visibility: draft.visibility,
+    acquisition_mode: draft.visibility === "PRIVATE" ? "NONE" as const : draft.acquisitionMode,
+    points_cost: draft.visibility === "PRIVATE" || draft.acquisitionMode !== "POINTS_EXCHANGE" ? 0 : draft.pointsCost,
     ends_at: toExclusiveEndIso(draft.endsAt),
     expires_after_days: draft.expiresAfterDays, quantity: draft.quantity,
     max_per_user: draft.maxPerUser,
@@ -51,7 +54,15 @@ function common(draft: VoucherDraft) {
 
 /** Builds the strict create payload for every voucher benefit type. */
 export function buildVoucherInput(draft: VoucherDraft): CreateVoucherPackageInput {
-  if (draft.voucherType === "BUNDLE") return buildBundleVoucherInput(draft);
+  if (draft.voucherType === "BUNDLE") {
+    const bundle = buildBundleVoucherInput(draft);
+    return {
+      ...bundle,
+      visibility: draft.visibility,
+      acquisition_mode: draft.visibility === "PRIVATE" ? "NONE" : bundle.acquisition_mode,
+      points_cost: draft.visibility === "PRIVATE" ? 0 : bundle.points_cost,
+    };
+  }
   const base = common(draft);
   if (draft.voucherType === "ITEM") return { ...base, voucher_type: "ITEM", menu_item_id: draft.menuItemId, eligible_menu_item_ids: draft.eligibleMenuItemIds?.length ? draft.eligibleMenuItemIds : [draft.menuItemId] };
   if (draft.voucherType === "PRODUCT") return {
@@ -141,8 +152,6 @@ function names(ids: string[], labels: ReadonlyMap<string, string>): string {
   return ids.map((id) => labels.get(id) ?? "Món đã chọn").join(", ");
 }
 
-const SIZE_LABEL = { SMALL: "Nhỏ", MEDIUM: "Vừa", LARGE: "Lớn" } as const;
-
 export interface VoucherCopyLabels {
   menuLabels: ReadonlyMap<string, string>;
   addonLabels: ReadonlyMap<string, string>;
@@ -165,6 +174,12 @@ function compactVnd(value: number): string {
 function fullVnd(value: number): string {
   return `${value.toLocaleString("vi-VN")}đ`;
 }
+
+const PRODUCT_DISCOUNT_SIZE_LABELS = {
+  SMALL: "nhỏ",
+  MEDIUM: "vừa",
+  LARGE: "lớn",
+} as const;
 
 function limitedLabels(ids: string[], labels: ReadonlyMap<string, string>): string {
   const uniqueIds = [...new Set(ids)];
@@ -200,7 +215,7 @@ export function suggestVoucherCopy(draft: VoucherDraft, labels: VoucherCopyLabel
     if (!menu) return { name: "", description: "" };
     const powderId = target?.powderIds[0] || labels.defaultPowderByMenuId.get(menuId) || "";
     const milkId = target?.milkTypeIds[0] || labels.defaultMilkByMenuId.get(menuId) || "";
-    const detail = [menu, `size ${SIZE_LABEL[target?.sizes[0] ?? draft.size]}`, labels.powderLabels.get(powderId), labels.milkLabels.get(milkId)].filter(Boolean).join(" ");
+    const detail = [menu, `size ${formatSizeLabel(target?.sizes[0] ?? draft.size)}`, labels.powderLabels.get(powderId), labels.milkLabels.get(milkId)].filter(Boolean).join(" ");
     return { name: `Free 1 ly ${menu}`, description: `Tặng 1 ly ${detail}.` };
   }
   if (draft.voucherType === "ITEM" || draft.voucherType === "ADDON") {
@@ -223,10 +238,16 @@ export function suggestVoucherCopy(draft: VoucherDraft, labels: VoucherCopyLabel
     const ids = draft.eligibleMenuItemIds?.length ? draft.eligibleMenuItemIds : [draft.menuItemId];
     const targets = limitedLabels(ids.filter(Boolean), labels.menuLabels);
     const targetName = targets ? ` cho ${targets}` : " theo món";
-    const sizes = draft.eligibleSizes.map((size) => SIZE_LABEL[size]).join(", ");
+    const sizes = draft.eligibleSizes.map(formatSizeLabel).join(", ");
     if (draft.productDiscountMode === "PAY_AS_SIZE") {
-      const name = `Trả giá size ${SIZE_LABEL[draft.referenceSize]}${targetName}`;
-      return { name, description: `${name}${sizes ? ` khi chọn size ${sizes}` : ""}.` };
+      const targetSize = draft.eligibleSizes[0];
+      const targetSizeLabel = targetSize ? PRODUCT_DISCOUNT_SIZE_LABELS[targetSize] : "";
+      const targetFishLabel = targetSize ? formatSizeLabel(targetSize).toLocaleLowerCase("vi-VN") : "";
+      const targetLabels = names(ids.filter(Boolean), labels.menuLabels);
+      return {
+        name: targetFishLabel ? `Free upsize lên ${targetFishLabel}` : "Free upsize",
+        description: `Free up size cho ${targetLabels || "các món đã chọn"}${targetSizeLabel ? ` lên size ${targetSizeLabel}` : ""}.`,
+      };
     }
     const name = `Giảm ${compactVnd(draft.discountValue)}${targetName}`;
     return { name, description: `Giảm ${fullVnd(draft.discountValue)} cho ${targets || "các món đã chọn"}${sizes ? ` ở size ${sizes}` : ""}.` };
@@ -242,6 +263,19 @@ export function suggestVoucherCopy(draft: VoucherDraft, labels: VoucherCopyLabel
   return { name, description: `${name}.` };
 }
 
+/** Describe the selected PRODUCT_DISCOUNT menu items and customer-facing target sizes. */
+export function describeProductDiscountTargets(
+  draft: VoucherDraft,
+  menuLabels: ReadonlyMap<string, string>,
+): string {
+  if (draft.voucherType !== "PRODUCT_DISCOUNT") return "";
+  const ids = (draft.eligibleMenuItemIds?.length ? draft.eligibleMenuItemIds : [draft.menuItemId]).filter(Boolean);
+  const targetLabels = names(ids, menuLabels);
+  const sizeLabels = draft.eligibleSizes.map((size) => PRODUCT_DISCOUNT_SIZE_LABELS[size]).join(", ");
+  if (!targetLabels || !sizeLabels) return "";
+  return `Món áp dụng: ${targetLabels} size ${sizeLabels}`;
+}
+
 function describeScope(
   scope: BundleVoucherFormState["qualifierScopes"][number],
   menuLabels: ReadonlyMap<string, string>,
@@ -249,7 +283,7 @@ function describeScope(
   milkLabels: ReadonlyMap<string, string>,
 ): string {
   const details: string[] = [];
-  if (scope.sizes.length > 0) details.push(scope.sizes.map((size) => SIZE_LABEL[size]).join(" + "));
+  if (scope.sizes.length > 0) details.push(scope.sizes.map(formatSizeLabel).join(" + "));
   if (scope.category === "fusion" && scope.powderIds.length > 0) {
     details.push(scope.powderIds.map((id) => powderLabels.get(id) ?? "Bột đã chọn").join(" + "));
   }

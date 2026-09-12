@@ -5,6 +5,7 @@ import { useForm, Controller } from "react-hook-form";
 import { cn } from "@/src/utils/cn";
 import type { Powder, PowderType } from "@/src/lib/types/powder";
 import type { AdminMenuItem } from "@/src/lib/types/menu";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 
 // Form field types matching updatePowderSchema
 interface FormFields {
@@ -267,7 +268,7 @@ export default function PowderForm({
             const field = gramsFieldMap[size];
             return (
               <div key={size}>
-                <label className="text-xs text-muted-foreground">Size {size}</label>
+                <label className="text-xs text-muted-foreground">Size <SizeLabel size={size} /></label>
                 <input
                   type="number"
                   min="0"

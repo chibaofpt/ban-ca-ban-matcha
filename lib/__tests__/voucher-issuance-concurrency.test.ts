@@ -99,4 +99,36 @@ describe("Serializable transaction và lazy AUTO_GRANT", () => {
       }),
     ).resolves.toEqual({ id: "", already_granted: true });
   });
+
+  it("ADMIN unique race retry đọc request đã commit và trả lại gift hiện có", async () => {
+    const replayTx = makeTx();
+    replayTx.voucher.findUnique = vi.fn().mockResolvedValue({
+      id: VOUCHER_ID,
+      qr_token: "voucher-token",
+      user_id: USER_ID,
+      package_id: PACKAGE_ID,
+      issued_via: "ADMIN",
+      issuing_admin_id: "44444444-4444-4444-8444-444444444444",
+      manual_request_id: "55555555-5555-4555-8555-555555555555",
+      voucher_type: "DISCOUNT",
+      status: "ACTIVE",
+      expires_at: null,
+      redeemed_at: null,
+    });
+    const transaction = vi
+      .fn()
+      .mockRejectedValueOnce({ code: "P2002" })
+      .mockImplementationOnce(async (callback: (tx: VoucherIssuanceTransaction) => Promise<unknown>) => callback(replayTx));
+    const db = { $transaction: transaction } as unknown as VoucherIssuanceDatabase;
+
+    await expect(issueVoucher(db, {
+      user_id: USER_ID,
+      package_id: PACKAGE_ID,
+      source: "ADMIN",
+      performed_by: "44444444-4444-4444-8444-444444444444",
+      request_id: "55555555-5555-4555-8555-555555555555",
+      now: NOW,
+    })).resolves.toMatchObject({ id: VOUCHER_ID, already_granted: true });
+    expect(transaction).toHaveBeenCalledTimes(2);
+  });
 });

@@ -28,6 +28,7 @@ model User {
   pointsLogs        PointsLog[]        @relation("UserPoints")
   sessions          Session[]
   redeemedVouchers  Voucher[]          @relation("StaffRedeemed")
+  issuedVouchers    Voucher[]          @relation("AdminIssuedVouchers")
   vouchers          Voucher[]          @relation("UserVouchers")
   voucherGrants     VoucherGrant[]
   pushSubscriptions PushSubscription[]
@@ -93,6 +94,7 @@ model VoucherPackage {
   name                      String
   description               String?
   voucher_type              VoucherType
+  visibility                VoucherPackageVisibility @default(PUBLIC)
   acquisition_mode          VoucherAcquisitionMode @default(POINTS_EXCHANGE)
   points_cost               Int
   discount_type             DiscountType?
@@ -141,7 +143,7 @@ model Voucher {
   package_id                String                     @db.Uuid
   qr_token                  String                     @unique @default(dbgenerated("(gen_random_uuid())::text"))
   voucher_type              VoucherType
-  issued_via                VoucherAcquisitionMode     @default(POINTS_EXCHANGE)
+  issued_via                VoucherAcquisitionMode @default(POINTS_EXCHANGE)
   discount_type             DiscountType?
   discount_value            Int?
   /// Maximum VND reduction — snapshot from package. NULL = no cap.
@@ -165,6 +167,8 @@ model Voucher {
   expires_at                DateTime?                  @db.Timestamptz(6)
   redeemed_at               DateTime?                  @db.Timestamptz(6)
   redeemed_by               String?                    @db.Uuid
+  issuing_admin_id          String?                    @db.Uuid
+  manual_request_id         String?                    @unique @db.Uuid
   created_at                DateTime                   @default(now()) @db.Timestamptz(6)
   /// Legacy PRODUCT voucher links retained for one-release compatibility.
   orderItems                OrderItem[]              @relation("ProductVoucher")
@@ -178,6 +182,7 @@ model Voucher {
   addonOption               AddonOption?               @relation(fields: [addon_option_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   package                   VoucherPackage             @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   staff                     User?                      @relation("StaffRedeemed", fields: [redeemed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  issuingAdmin              User?                      @relation("AdminIssuedVouchers", fields: [issuing_admin_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   user                      User                       @relation("UserVouchers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   grant                     VoucherGrant?
   bundleApplication         OrderBundleApplication?
@@ -190,6 +195,8 @@ model Voucher {
   @@index([user_id, created_at(sort: Desc), id(sort: Desc)], map: "idx_vouchers_user_created_cursor")
   @@index([package_id, status], map: "idx_vouchers_package_status")
   @@index([package_id, user_id], map: "idx_vouchers_package_user")
+  @@index([package_id, issued_via], map: "idx_vouchers_package_issued_via")
+  @@index([issuing_admin_id])
   @@map("vouchers")
 }
 
@@ -739,6 +746,11 @@ enum VoucherType {
   BUNDLE
 }
 
+enum VoucherPackageVisibility {
+  PUBLIC
+  PRIVATE
+}
+
 enum ProductDiscountMode {
   FIXED_AMOUNT
   PAY_AS_SIZE
@@ -748,6 +760,8 @@ enum VoucherAcquisitionMode {
   POINTS_EXCHANGE
   FREE_CLAIM
   AUTO_GRANT
+  NONE
+  ADMIN
 }
 
 enum BundleRewardKind {

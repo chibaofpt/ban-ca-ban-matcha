@@ -22,6 +22,7 @@ import {
   VOUCHER_TYPE_CONFIG,
 } from "@/src/lib/utils/voucherModalHelpers";
 import { cn } from "@/src/utils/cn";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 import { AddonItemPicker } from "./AddonItemPicker";
 import { ProductDiscountItemPicker } from "./ProductDiscountItemPicker";
 import { ScopedMenuVoucherPicker } from "./ScopedMenuVoucherPicker";
@@ -149,8 +150,6 @@ function PackageVoucherDetailSheet({
   const liquidLabels = new Map(
     [...(menuData?.milk_types ?? []), ...(menuData?.base_liquids ?? [])].map((liquid) => [liquid.id, liquid.name]),
   );
-  const sizeLabel = { SMALL: "nhỏ", MEDIUM: "vừa", LARGE: "lớn" } as const;
-
   return (
     <VoucherDetailPanel>
       <div className="flex shrink-0 items-center gap-3 border-b border-border/40 bg-card px-5 py-4">
@@ -199,7 +198,7 @@ function PackageVoucherDetailSheet({
                     {packageData.voucher_type === "PRODUCT" ? (
                       <>
                         <p className="mt-1 text-xs text-primary/65">
-                          Size {target.size ? sizeLabel[target.size] : "hiện tại"}
+                          Size {target.size ? <SizeLabel size={target.size} /> : "hiện tại"}
                           {target.matcha_powder_id ? ` · Bột ${powderLabels?.get(target.matcha_powder_id) ?? "mặc định hiện tại"}` : ""}
                           {target.milk_type_id ? ` · Nền ${liquidLabels.get(target.milk_type_id) ?? "mặc định hiện tại"}` : ""}
                         </p>
@@ -209,7 +208,11 @@ function PackageVoucherDetailSheet({
                       </>
                     ) : packageData.voucher_type === "PRODUCT_DISCOUNT" && (packageData.eligible_sizes?.length ?? 0) > 0 ? (
                       <p className="mt-1 text-xs text-primary/65">
-                        Size áp dụng: {packageData.eligible_sizes?.map((size) => sizeLabel[size]).join(", ")}
+                        Size áp dụng: {packageData.eligible_sizes?.map((size, index) => (
+                          <React.Fragment key={size}>
+                            {index > 0 ? ", " : null}<SizeLabel size={size} />
+                          </React.Fragment>
+                        ))}
                       </p>
                     ) : null}
                   </div>

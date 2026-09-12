@@ -10,6 +10,7 @@ import type { BundleRuntimeStatus, CartBundleApplication, BundleCreatedRewardEff
 import { summarizeBundleCart, type BundleSelectionAllocation, type BundleVoucherSummary } from "@/src/lib/utils/bundleVoucher";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { cn } from "@/src/utils/cn";
+import { formatSizeLabel } from "@/src/utils/display";
 
 /** Convert the wallet DTO into the shared selector's minimal rule summary. */
 export function getBundleVoucherSummary(voucher: MyVoucher): BundleVoucherSummary | null {
@@ -60,7 +61,7 @@ function getOptions(
       .map((item) => ({
         client_line_id: item.cartId,
         quantity: item.quantity - (item.lineVoucher ? 1 : 0),
-        label: `${item.name} · ${item.configuration.size ?? "Add-on"}`,
+        label: `${item.name} · ${item.configuration.size ? formatSizeLabel(item.configuration.size) : "Add-on"}`,
       }));
   }
   const allowedAddonIds = new Set(rule.reward_addon_option_ids);

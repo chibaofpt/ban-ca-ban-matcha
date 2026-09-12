@@ -68,6 +68,18 @@ describe("GET /api/voucher-packages", () => {
     expect(json.data[0].user_redeemed_count).toBe(0);
   });
 
+  it("lọc PRIVATE khỏi cả nhánh catalog cache và live", async () => {
+    mockGetSession.mockResolvedValue(null);
+    mockFindManyPackages.mockImplementation(async (args: { where?: { visibility?: string } }) =>
+      args.where?.visibility === "PUBLIC" ? [] : [{ id: "private", visibility: "PRIVATE", is_active: true, menuItem: null, addonOption: null }]);
+
+    const json = await (await GET()).json();
+
+    expect(json.data).toEqual([]);
+    expect(mockFindManyPackages).toHaveBeenNthCalledWith(1, expect.objectContaining({ where: expect.objectContaining({ visibility: "PUBLIC" }) }));
+    expect(mockFindManyPackages).toHaveBeenNthCalledWith(2, expect.objectContaining({ where: expect.objectContaining({ visibility: "PUBLIC" }) }));
+  });
+
   it("trả về danh sách packages active kèm số lượng đã đổi nếu đã đăng nhập", async () => {
     mockGetSession.mockResolvedValue({ id: "user-1", role: "CUSTOMER" });
     mockFindManyPackages.mockResolvedValueOnce([
@@ -95,6 +107,7 @@ describe("GET /api/voucher-packages", () => {
       where: {
         package_id: { in: ["pkg-1", "pkg-2"] },
         user_id: "user-1",
+        issued_via: { in: ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"] },
       },
       _count: { id: true },
     });
@@ -137,7 +150,7 @@ describe("GET /api/voucher-packages", () => {
     expect(mockFindManyPackages).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        where: { is_active: true, ends_at: null, voucher_type: { in: ["DISCOUNT", "FREESHIP"] } },
+        where: { visibility: "PUBLIC", is_active: true, ends_at: null, voucher_type: { in: ["DISCOUNT", "FREESHIP"] } },
       }),
     );
   });

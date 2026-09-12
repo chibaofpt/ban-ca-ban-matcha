@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-const acquisitionModeSchema = z.enum(["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"]);
+const acquisitionModeSchema = z.enum(["NONE", "POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"]);
+const visibilitySchema = z.enum(["PUBLIC", "PRIVATE"]).default("PUBLIC");
 const sizeSchema = z.enum(["SMALL", "MEDIUM", "LARGE"]);
 const nullableUuid = z.string().uuid().nullable().optional();
 
@@ -34,6 +35,7 @@ const bundleRuleSchema = z.object({
 const commonFields = {
   name: z.string().trim().min(1).max(200),
   description: z.string().trim().max(500).optional(),
+  visibility: visibilitySchema,
   acquisition_mode: acquisitionModeSchema.default("POINTS_EXCHANGE"),
   points_cost: z.number().int().min(0),
   ends_at: z.string().datetime().nullable().optional(),
@@ -102,6 +104,21 @@ const rawVoucherPackageSchema = z.discriminatedUnion("voucher_type", [
 /** Validates every admin voucher package before any database access. */
 export const createVoucherPackageSchema = rawVoucherPackageSchema.superRefine((data, ctx) => {
   const usesPoints = data.acquisition_mode === "POINTS_EXCHANGE";
+  const privatePackage = data.visibility === "PRIVATE";
+  if (privatePackage && data.acquisition_mode !== "NONE") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["acquisition_mode"],
+      message: "PRIVATE package requires ADMIN issuance",
+    });
+  }
+  if (!privatePackage && data.acquisition_mode === "NONE") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["acquisition_mode"],
+      message: "PUBLIC package requires a customer acquisition mode",
+    });
+  }
   if ((usesPoints && data.points_cost < 1) || (!usesPoints && data.points_cost !== 0)) {
     ctx.addIssue({
       code: "custom",
@@ -109,7 +126,7 @@ export const createVoucherPackageSchema = rawVoucherPackageSchema.superRefine((d
       message: usesPoints ? "POINTS_EXCHANGE requires positive points" : "Free acquisition requires zero points",
     });
   }
-  if (!usesPoints && data.max_per_user !== 1) {
+  if (!privatePackage && !usesPoints && data.acquisition_mode !== "NONE" && data.max_per_user !== 1) {
     ctx.addIssue({ code: "custom", path: ["max_per_user"], message: "Free acquisition allows one voucher per customer" });
   }
   if (data.ends_at && new Date(data.ends_at) <= new Date()) {

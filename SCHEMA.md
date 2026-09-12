@@ -86,6 +86,8 @@ Detailed earning and reversal rules belong to [order-flow — Points](.agents/sk
 | `VoucherType` | `ITEM`, `DISCOUNT`, `PRODUCT`, `PRODUCT_DISCOUNT`, `ADDON`, `FREESHIP`, `BUNDLE` |
 | `ProductDiscountMode` | `FIXED_AMOUNT`, `PAY_AS_SIZE` |
 | `DiscountType` | `PERCENT`, `FIXED` |
+| `VoucherPackageVisibility` | `PUBLIC`, `PRIVATE` |
+| `VoucherAcquisitionMode` | `POINTS_EXCHANGE`, `FREE_CLAIM`, `AUTO_GRANT`, `NONE`, `ADMIN` |
 | `VoucherStatus` | `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, `REFUNDED` |
 | `UsedChannel` | `ONLINE`, `OFFLINE` |
 | `OrderStatus` | `PENDING`, `ADMIN_CONFIRMED`, `STAFF_DONE`, `COMPLETED`, `CANCELLED` |
@@ -95,6 +97,15 @@ Detailed earning and reversal rules belong to [order-flow — Points](.agents/sk
 | `Size` | `SMALL`, `MEDIUM`, `LARGE` |
 | `PowderType` | `RECOMMEND`, `NEW`, `SEASONAL`, `NONE` |
 | `IceOption` | `NORMAL`, `LESS_ICE`, `NO_ICE`, `SEPARATE_ICE` |
+
+`VoucherAcquisitionMode` is one physical Prisma/PostgreSQL enum shared by
+`voucher_packages.acquisition_mode` and `vouchers.issued_via`. The semantic subsets differ:
+packages use `NONE` only for `PRIVATE` visibility and otherwise use the public allowlist
+`POINTS_EXCHANGE`, `FREE_CLAIM`, or `AUTO_GRANT`; vouchers use `POINTS_EXCHANGE`, `FREE_CLAIM`,
+`AUTO_GRANT`, or `ADMIN`, and never `NONE`. `ADMIN` is an issuance label and is not a package
+acquisition mode.
+The private-voucher migration extends this existing enum additively and keeps the existing
+`vouchers.issued_via` type and default; there is no separate database enum for issuance source.
 
 ---
 
@@ -439,7 +450,8 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `name` string
 - `description` string nullable
 - `voucher_type` VoucherType
-- `acquisition_mode` VoucherAcquisitionMode — `POINTS_EXCHANGE`, `FREE_CLAIM`, or `AUTO_GRANT`
+- `visibility` VoucherPackageVisibility — `PUBLIC` by default; `PRIVATE` packages are admin-gift only
+- `acquisition_mode` VoucherAcquisitionMode — package subset: `NONE` for PRIVATE; PUBLIC uses only `POINTS_EXCHANGE`, `FREE_CLAIM`, or `AUTO_GRANT`
 - `points_cost` int
 - `discount_type` DiscountType nullable
 - `discount_value` int nullable
@@ -456,8 +468,12 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `is_active` bool — default true
 - `expires_after_days` int nullable
 - `quantity` int nullable — maximum total vouchers issued; NULL = unlimited
-- `max_per_user` int — maximum issued per customer, default 1
+- `max_per_user` int — lifetime self-acquisition limit per customer, default 1; ADMIN gifts do not consume it
 - `created_at` timestamp
+
+The database constraint `voucher_packages_visibility_acquisition_mode_check` requires PRIVATE
+packages to use `NONE` and restricts PUBLIC packages to `POINTS_EXCHANGE`, `FREE_CLAIM`, or
+`AUTO_GRANT`; `ADMIN` is not a package acquisition mode.
 
 > PRODUCT package fields such as size, powder, milk, and included addons remain snapshots for
 > package display and issuance. At order application time, PRODUCT eligibility matches
@@ -475,7 +491,7 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `package_id` uuid FK → voucher_packages
 - `qr_token` string UK — UUID, NEVER expose `id`
 - `voucher_type` VoucherType — copied from package
-- `issued_via` VoucherIssuedVia — immutable issuance audit (`POINTS_EXCHANGE`, `FREE_CLAIM`, `AUTO_GRANT`, `ADMIN`)
+- `issued_via` VoucherAcquisitionMode — shared physical enum, voucher subset; immutable issuance audit (`POINTS_EXCHANGE`, `FREE_CLAIM`, `AUTO_GRANT`, `ADMIN`), never `NONE`
 - `discount_type` DiscountType nullable — copied from package
 - `discount_value` int nullable — copied from package
 - `max_discount_vnd` int nullable — copied from package
@@ -493,6 +509,8 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `expires_at` timestamp nullable
 - `redeemed_at` timestamp nullable
 - `redeemed_by` uuid FK nullable → users — STAFF or ADMIN only
+- `issuing_admin_id` uuid FK nullable → users — actor for an ADMIN gift
+- `manual_request_id` uuid UK nullable — durable idempotency key for one ADMIN gift action
 - `created_at` timestamp
 
 > `expires_at` is authoritative for eligibility at the server's order acceptance time.
@@ -500,11 +518,20 @@ Junction table mapping multiple ADDON vouchers to an order item.
 > moves only expired `ACTIVE` vouchers to `EXPIRED`; never lazy-expire `RESERVED` vouchers.
 > Cancelling an expired reservation restores it to `EXPIRED`, not `ACTIVE`.
 >
+> `issued_via` is immutable. ADMIN gifts have no points log and do not write `voucher_grants`;
+> `voucher_grants` remains the unique `(package_id, user_id)` guard for FREE_CLAIM and AUTO_GRANT.
 > Admin package statistics and owner lookup use composite indexes
 > `idx_vouchers_package_status (package_id, status)` and
 > `idx_vouchers_package_user (package_id, user_id)`. These indexes add no counters or lifecycle
 > state; effective expiry remains derived from `status` plus `expires_at`.
+> Admin actor audit lookups use `vouchers_issuing_admin_id_idx`.
 > Cursor wallet reads use `idx_vouchers_user_created_cursor (user_id, created_at DESC, id DESC)`.
+> The database constraints `vouchers_issued_via_not_none_check` and `vouchers_admin_audit_fields_check`
+> reject `NONE`, require both audit fields for `ADMIN`,
+> and require both audit fields to be NULL for every other issuance label.
+> The private-voucher migration uses `CREATE INDEX CONCURRENTLY`; Prisma migrate deploy must run
+> it without transaction wrapping. An interrupted concurrent build can leave an invalid index
+> that requires operational cleanup before retrying the migration.
 
 ---
 

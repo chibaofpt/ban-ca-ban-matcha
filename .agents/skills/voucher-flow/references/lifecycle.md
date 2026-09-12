@@ -60,6 +60,17 @@ ACTIVE → REFUNDED                                (auto: target item soft-delet
 
 ---
 
+## Admin Gift Issuance
+
+- ADMIN gifts use issued_via = ADMIN, persist issuing_admin_id and a unique manual request_id, and may issue from either PUBLIC or PRIVATE packages.
+- One intentional request issues one voucher. Replaying the same request id for the same admin, package, and customer returns that voucher with its effective lifecycle status; rebinding the id is a 409 CONFLICT. ADMIN gifts never write voucher_grants, deduct points, or create a voucher_purchase log.
+- Package quantity counts every source, while max_per_user counts only lifetime self-acquisition through POINTS_EXCHANGE, FREE_CLAIM, and AUTO_GRANT. Warnings require an explicit additional-gift acknowledgement; acknowledgement cannot bypass package validity, live targets, or global stock.
+
+### Recipient History
+
+- ADMIN recipient history is a bounded read. ALL includes every instance, CURRENT includes all RESERVED rows plus unexpired ACTIVE rows, and USED includes REDEEMED rows.
+- History projects effective expiry without writing rows, uses a stable (created_at, id) cursor, and returns source, timestamps, public QR tokens, and a fresh page-independent summary.
+
 ## Voucher Refund
 
 - **Eligibility**: an unexpired ACTIVE `POINTS_EXCHANGE` voucher whose live target/configuration is

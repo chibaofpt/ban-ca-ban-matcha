@@ -16,11 +16,12 @@ import {
 } from "@/src/lib/utils/adminVoucherBundle";
 import type { VoucherDraft } from "@/src/lib/utils/adminVoucherForm";
 import type { AdaptiveSelectOption } from "@/src/lib/utils/adaptiveSelect";
+import { formatSizeLabel } from "@/src/utils/display";
 
 const SIZE_OPTIONS: AdaptiveSelectOption[] = [
-  { value: "SMALL", label: "Nhỏ" },
-  { value: "MEDIUM", label: "Vừa" },
-  { value: "LARGE", label: "Lớn" },
+  { value: "SMALL", label: formatSizeLabel("SMALL") },
+  { value: "MEDIUM", label: formatSizeLabel("MEDIUM") },
+  { value: "LARGE", label: formatSizeLabel("LARGE") },
 ];
 
 interface BundleSharedScopeEditorProps {

@@ -3,13 +3,7 @@
 import React, { memo } from "react";
 import Image from "next/image";
 import type { MenuItem } from "@/src/lib/types/menu";
-
-const SIZE_CARD_LABELS: Record<string, string> = {
-  S: "Nhỏ",
-  M: "Vừa",
-  L: "Lớn",
-  XL: "Khổng lồ"
-};
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 
 interface StaffProductGridProps {
   items: MenuItem[];
@@ -70,8 +64,8 @@ export const StaffProductGrid = memo(function StaffProductGrid({
                   <span className="text-sm font-bold text-primary">{Math.round((item.unit_price_vnd ?? 0) / 1000)}k / món</span>
                 ) : item.sizes.filter((s) => s.base_price_vnd != null).map((s) => (
                   <div key={s.size} className="flex flex-col items-center gap-0.5 flex-1">
-                    <span className="text-[8px] font-bold text-primary/50 uppercase tracking-wide whitespace-nowrap">
-                      {SIZE_CARD_LABELS[s.size] ?? s.size}
+                    <span className="text-[8px] font-bold text-primary/50 tracking-wide whitespace-nowrap">
+                      <SizeLabel size={s.size} />
                     </span>
                     <span className="text-[11px] font-bold text-primary">
                       {getDisplayPrice(item, s) / 1000}k

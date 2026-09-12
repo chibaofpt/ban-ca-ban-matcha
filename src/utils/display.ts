@@ -5,7 +5,7 @@ export type KaRoundingMode = "exact" | "ceil" | "floor";
 const SIZE_DISPLAY: Record<Size, { label: string; volume: string }> = {
   SMALL: { label: "Cá con", volume: "360ml" },
   MEDIUM: { label: "Cá vừa", volume: "500ml" },
-  LARGE: { label: "Cá lớn", volume: "700ml" },
+  LARGE: { label: "Cá Lớn", volume: "700ml" },
 };
 
 /** Formats integer VND as compact thousands with the ká suffix. */
@@ -26,6 +26,12 @@ export function formatOrderSize(size: Size | string): string {
   if (size !== "SMALL" && size !== "MEDIUM" && size !== "LARGE") return size;
   const display = SIZE_DISPLAY[size];
   return `${display.label} (${display.volume})`;
+}
+
+/** Returns the customer-facing fish label for a size enum. */
+export function formatSizeLabel(size: Size | string): string {
+  if (size !== "SMALL" && size !== "MEDIUM" && size !== "LARGE") return size;
+  return SIZE_DISPLAY[size].label;
 }
 
 /** Returns the separate label and volume used by the product size selector. */

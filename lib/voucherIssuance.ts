@@ -7,13 +7,15 @@ import {
   type VoucherBundleRuleSource,
 } from "@/lib/voucherAvailability";
 
-type AcquisitionMode = "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
+type AcquisitionMode = "NONE" | "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
+export type VoucherIssuedVia = "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT" | "ADMIN";
 
 interface VoucherPackageSnapshot {
   id: string;
   name: string;
   voucher_type: string;
   acquisition_mode: AcquisitionMode;
+  visibility?: "PUBLIC" | "PRIVATE";
   points_cost: number;
   is_active: boolean;
   quantity: number | null;
@@ -54,6 +56,15 @@ interface VoucherPackageSnapshot {
 interface CreatedVoucher {
   id: string;
   qr_token?: string;
+  status?: string;
+  expires_at?: Date | null;
+  redeemed_at?: Date | null;
+  voucher_type?: string;
+  user_id?: string;
+  package_id?: string;
+  issued_via?: VoucherIssuedVia;
+  issuing_admin_id?: string | null;
+  manual_request_id?: string | null;
   [key: string]: unknown;
 }
 
@@ -63,6 +74,7 @@ export interface VoucherIssuanceTransaction {
   };
   voucher: {
     count: (args: unknown) => Promise<number>;
+    findUnique?: (args: unknown) => Promise<CreatedVoucher | null>;
     create: (args: unknown) => Promise<CreatedVoucher>;
   };
   user: {
@@ -94,12 +106,13 @@ export interface VoucherIssuanceDatabase {
 export interface IssueVoucherInput {
   user_id: string;
   package_id: string;
-  source: AcquisitionMode;
+  source: VoucherIssuedVia;
   now?: Date;
   performed_by?: string | null;
+  request_id?: string | null;
 }
 
-export type IssuedVoucherResult = CreatedVoucher | { id: string; already_granted: true };
+export type IssuedVoucherResult = CreatedVoucher | (CreatedVoucher & { already_granted: true });
 
 /** Stable business error raised by all voucher acquisition modes. */
 export class VoucherIssuanceError extends Error {
@@ -111,6 +124,12 @@ export class VoucherIssuanceError extends Error {
 
 function isPrismaError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
+
+function projectEffectiveStatus(voucher: CreatedVoucher, now: Date): CreatedVoucher {
+  return voucher.status === "ACTIVE" && voucher.expires_at !== null && voucher.expires_at !== undefined && voucher.expires_at <= now
+    ? { ...voucher, effective_status: "EXPIRED" }
+    : { ...voucher, effective_status: voucher.status };
 }
 
 function calculateExpiry(
@@ -127,9 +146,18 @@ function calculateExpiry(
   return relativeExpiry;
 }
 
+/** Calculates the same expiry snapshot used by issuance for admin previews. */
+export function previewVoucherExpiry(
+  now: Date,
+  expiresAfterDays: number | null,
+  packageEndsAt: Date | null,
+): Date | null {
+  return calculateExpiry(now, expiresAfterDays, packageEndsAt);
+}
+
 function assertPackageAvailable(
   pkg: VoucherPackageSnapshot | null,
-  source: AcquisitionMode,
+  source: VoucherIssuedVia,
   now: Date,
 ): asserts pkg is VoucherPackageSnapshot {
   if (!pkg || !pkg.is_active) {
@@ -142,9 +170,13 @@ function assertPackageAvailable(
   ) {
     throw new VoucherIssuanceError("NOT_FOUND", "Voucher package targets an unavailable addon");
   }
-  if (pkg.acquisition_mode !== source) {
+  if (source !== "ADMIN" && (
+    pkg.visibility === "PRIVATE" ||
+    pkg.acquisition_mode === "NONE" ||
+    pkg.acquisition_mode !== source
+  )) {
     throw new VoucherIssuanceError(
-      "ACQUISITION_MODE_MISMATCH",
+      pkg.visibility === "PRIVATE" ? "NOT_FOUND" : "ACQUISITION_MODE_MISMATCH",
       "Voucher package cannot be acquired through this flow",
     );
   }
@@ -157,6 +189,7 @@ async function assertIssuanceLimits(
   tx: VoucherIssuanceTransaction,
   pkg: VoucherPackageSnapshot,
   userId: string,
+  source: VoucherIssuedVia,
 ): Promise<void> {
   if (pkg.quantity !== null) {
     const issuedCount = await tx.voucher.count({ where: { package_id: pkg.id } });
@@ -164,11 +197,17 @@ async function assertIssuanceLimits(
       throw new VoucherIssuanceError("VOUCHER_SOLD_OUT", "Voucher package is sold out");
     }
   }
-  const userIssuedCount = await tx.voucher.count({
-    where: { package_id: pkg.id, user_id: userId },
-  });
-  if (userIssuedCount >= pkg.max_per_user) {
-    throw new VoucherIssuanceError("VOUCHER_LIMIT_REACHED", "Per-user voucher limit reached");
+  if (source !== "ADMIN") {
+    const userIssuedCount = await tx.voucher.count({
+      where: {
+        package_id: pkg.id,
+        user_id: userId,
+        issued_via: { in: ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"] },
+      },
+    });
+    if (userIssuedCount >= pkg.max_per_user) {
+      throw new VoucherIssuanceError("VOUCHER_LIMIT_REACHED", "Per-user voucher limit reached");
+    }
   }
 }
 
@@ -179,6 +218,37 @@ export async function issueVoucherInTransaction(
   availabilityCatalog?: VoucherAvailabilityCatalog,
 ): Promise<IssuedVoucherResult> {
   const now = input.now ?? new Date();
+  if (input.source === "ADMIN" && (!input.performed_by || !input.request_id)) {
+    throw new VoucherIssuanceError("VALIDATION_ERROR", "Admin issuance requires an actor and request id");
+  }
+  if (input.source === "ADMIN" && input.request_id && tx.voucher.findUnique) {
+    const existing = await tx.voucher.findUnique({
+      where: { manual_request_id: input.request_id },
+      select: {
+        id: true,
+        qr_token: true,
+        user_id: true,
+        package_id: true,
+        issued_via: true,
+        issuing_admin_id: true,
+        manual_request_id: true,
+        voucher_type: true,
+        status: true,
+        expires_at: true,
+        redeemed_at: true,
+      },
+    });
+    if (existing) {
+      if (
+        existing.user_id !== input.user_id ||
+        existing.package_id !== input.package_id ||
+        existing.issuing_admin_id !== input.performed_by
+      ) {
+        throw new VoucherIssuanceError("CONFLICT", "Request id is already bound to another gift");
+      }
+      return { ...projectEffectiveStatus(existing, now), already_granted: true };
+    }
+  }
   const pkg = await tx.voucherPackage.findUnique({
     where: { id: input.package_id },
     include: {
@@ -218,7 +288,7 @@ export async function issueVoucherInTransaction(
     }
   }
 
-  if (input.source !== "POINTS_EXCHANGE") {
+  if (input.source === "FREE_CLAIM" || input.source === "AUTO_GRANT") {
     const existingGrant = await tx.voucherGrant.findUnique({
       where: { user_id_package_id: { user_id: input.user_id, package_id: pkg.id } },
       select: { voucher_id: true },
@@ -228,7 +298,7 @@ export async function issueVoucherInTransaction(
     }
   }
 
-  await assertIssuanceLimits(tx, pkg, input.user_id);
+  await assertIssuanceLimits(tx, pkg, input.user_id, input.source);
   if (input.source === "POINTS_EXCHANGE") {
     const updated = await tx.user.updateMany({
       where: { id: input.user_id, points_balance: { gte: pkg.points_cost } },
@@ -262,6 +332,9 @@ export async function issueVoucherInTransaction(
       max_discount_vnd: pkg.max_discount_vnd,
       status: "ACTIVE",
       expires_at: calculateExpiry(now, pkg.expires_after_days, pkg.ends_at),
+      ...(input.source === "ADMIN"
+        ? { issuing_admin_id: input.performed_by, manual_request_id: input.request_id }
+        : {}),
       ...(["ITEM", "PRODUCT", "PRODUCT_DISCOUNT"].includes(pkg.voucher_type) && pkg.menuItemScopes?.length
         ? { menuItemScopes: { create: pkg.menuItemScopes.map((scope) => ({
             menu_item_id: scope.menu_item_id,
@@ -288,7 +361,7 @@ export async function issueVoucherInTransaction(
         order_id: null,
       },
     });
-  } else {
+  } else if (input.source === "FREE_CLAIM" || input.source === "AUTO_GRANT") {
     await tx.voucherGrant.create({
       data: { user_id: input.user_id, package_id: pkg.id, voucher_id: voucher.id },
     });
@@ -310,7 +383,8 @@ export async function issueVoucher(
     } catch (error) {
       if (isPrismaError(error, "P2034") && attempt < 2) continue;
       if (isPrismaError(error, "P2002")) {
-        if (input.source !== "POINTS_EXCHANGE") return { id: "", already_granted: true };
+        if (input.source === "ADMIN" && input.request_id && attempt < 2) continue;
+        if (input.source === "FREE_CLAIM" || input.source === "AUTO_GRANT") return { id: "", already_granted: true };
         throw new VoucherIssuanceError("VOUCHER_ALREADY_GRANTED", "Voucher was already claimed");
       }
       throw error;
@@ -328,6 +402,7 @@ export async function ensureAutoGrantedVouchers(
   const packages = await db.voucherPackage.findMany({
     where: {
       acquisition_mode: "AUTO_GRANT",
+      visibility: "PUBLIC",
       is_active: true,
       OR: [{ ends_at: null }, { ends_at: { gt: now } }],
     },

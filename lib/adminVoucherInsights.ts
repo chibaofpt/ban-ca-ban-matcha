@@ -13,6 +13,10 @@ export interface AdminVoucherStats {
   expired_count: number;
   refunded_count: number;
   remaining_quantity: number | null;
+  /** Number of vouchers acquired by customers through the package's own mode. */
+  self_acquisition_count?: number;
+  /** Number of self-acquired vouchers that have been redeemed. */
+  self_acquisition_used_count?: number;
 }
 
 /** Resolves display expiry without mutating a voucher row. */
