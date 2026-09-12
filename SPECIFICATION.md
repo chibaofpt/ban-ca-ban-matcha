@@ -118,6 +118,9 @@ evict; PostgreSQL session state vẫn là authorization authority. Không thêm 
 - Auth middleware treats PostgreSQL session state as authoritative. Legacy Redis session keys are
   only evicted, never trusted for authorization. Refresh rotates the existing row and re-reads the
   winning token; a missing row, failed update or invalid grace/binding fails closed.
+- Password change verifies the current bcrypt credential, conditionally replaces the old hash, revokes
+  every other session and rotates the current session refresh token in one transaction. The stable
+  session ID is retained; the previous token follows the existing 30-second rotation grace policy.
 - Access JWT `sid` giữ nguyên qua refresh. Mỗi authoritative check đọc session còn hạn và role hiện
   tại từ DB; logout xóa session trước khi clear cookie. In-flight request đã qua check có thể hoàn tất.
 - QR user/voucher sinh cục bộ bằng adapter `qrcode` lazy-loaded; không gửi bearer content tới QR

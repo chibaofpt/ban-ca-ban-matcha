@@ -161,7 +161,15 @@ export async function getRefreshTokenCookie(): Promise<string | null> {
  * Verifies the access JWT and its live database session, returning the user's current role.
  * Returns null for missing/invalid tokens, revoked/expired sessions or database failures.
  */
-export async function getSession() {
+export interface AuthSession {
+  id: string;
+  role: string;
+  phone_number: string;
+  /** Stable database session ID used only by internal session workflows. */
+  session_id?: string;
+}
+
+export async function getSession(): Promise<AuthSession | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get("access_token")?.value;
   if (!token) return null;
@@ -173,7 +181,12 @@ export async function getSession() {
       include: { user: { select: { id: true, role: true, phone_number: true } } },
     });
     if (!session || session.user.id !== claims.id) return null;
-    return { id: session.user.id, role: session.user.role, phone_number: session.user.phone_number };
+    return {
+      id: session.user.id,
+      role: session.user.role,
+      phone_number: session.user.phone_number,
+      session_id: session.id,
+    };
   } catch {
     return null;
   }

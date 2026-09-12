@@ -5,7 +5,8 @@ import { estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
 import { type MyVoucher, type VoucherPackage } from "@/src/services/customerVoucherService";
 import { useVoucherAcquisition } from "@/src/hooks/useVoucherAcquisition";
 import { VoucherCard } from "@/src/components/shared/VoucherCards";
-import { VoucherHistorySection, VoucherModalDetailTransition, VoucherModalFrame } from "@/src/components/shared/VoucherModalSections";
+import { VoucherModalDetailTransition, VoucherModalFrame } from "@/src/components/shared/VoucherModalSections";
+import { CustomerVoucherHistory } from "@/src/components/shared/CustomerVoucherHistory";
 import { VoucherPackageCatalog } from "@/src/components/shared/VoucherPackageCatalog";
 import { VoucherAcquisitionConfirm } from "@/src/components/shared/VoucherAcquisitionConfirm";
 import { CartDiscountPickerFooter } from "@/src/components/menu/cart/CartDiscountPickerFooter";
@@ -29,7 +30,6 @@ interface CartDiscountPickerProps {
   discountVouchers: MyVoucher[];
   freeshipVouchers: MyVoucher[];
   productDiscountVouchers: MyVoucher[];
-  historyVouchers: MyVoucher[];
   availableVoucherPackages: VoucherPackage[];
   pointsBalance: number;
   isLoading: boolean;
@@ -75,7 +75,6 @@ export const CartDiscountPicker = ({
   discountVouchers,
   freeshipVouchers,
   productDiscountVouchers,
-  historyVouchers,
   availableVoucherPackages,
   pointsBalance,
   isLoading,
@@ -287,7 +286,7 @@ export const CartDiscountPicker = ({
                   voucher={detailVoucher}
                   cartItems={cart}
                   subtotalVnd={subtotalPrice}
-                  myVouchers={[...myVouchers, ...historyVouchers]}
+                  myVouchers={detailVoucher.status === "ACTIVE" ? myVouchers : [...myVouchers, detailVoucher]}
                   orderType={orderType}
                   shippingFee={shippingFee}
                   menuData={menuData}
@@ -510,8 +509,7 @@ export const CartDiscountPicker = ({
         )}
 
         {activeTab === "history" && (
-          <VoucherHistorySection
-            vouchers={historyVouchers}
+          <CustomerVoucherHistory
             onVoucherClick={(voucher) => setActiveView({ kind: "detail", voucher })}
           />
         )}

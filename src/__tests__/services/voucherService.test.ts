@@ -22,6 +22,7 @@ import { apiClient } from "@/src/lib/api/client";
 import {
   listActiveVoucherPackages,
   listMyVouchers,
+  listMyVoucherPage,
   exchangeVoucher,
   claimFreeVoucher,
   refundVoucher,
@@ -203,7 +204,7 @@ describe("refundVoucher", () => {
 // ── listMyVouchers ────────────────────────────────────────────────────────────
 
 describe("listMyVouchers", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => vi.resetAllMocks());
 
   it("gọi đúng endpoint GET /api/profile/vouchers", async () => {
     vi.mocked(apiClient.post).mockResolvedValueOnce({
@@ -216,7 +217,64 @@ describe("listMyVouchers", () => {
     await listMyVouchers();
 
     expect(apiClient.post).toHaveBeenCalledWith("/api/profile/vouchers/sync");
-    expect(apiClient.get).toHaveBeenCalledWith("/api/profile/vouchers");
+    expect(apiClient.get).toHaveBeenCalledWith("/api/profile/vouchers?limit=50&status=ACTIVE%2CRESERVED");
+  });
+
+  it("đọc đủ voucher ACTIVE qua cursor và chỉ sync một lần", async () => {
+    const firstPage = Array.from({ length: 50 }, (_, index) => ({
+      ...mockMyVoucher, qr_token: `active-${index}`,
+    }));
+    const lastVoucher = { ...mockMyVoucher, qr_token: "older-active" };
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: {} } });
+    vi.mocked(apiClient.get)
+      .mockResolvedValueOnce({ data: {
+        data: firstPage, meta: { limit: 50, has_more: true, next_cursor: "opaque-cursor" },
+      } })
+      .mockResolvedValueOnce({ data: {
+        data: [lastVoucher], meta: { limit: 50, has_more: false, next_cursor: null },
+      } });
+
+    const result = await listMyVouchers();
+
+    expect(result).toEqual([...firstPage, lastVoucher]);
+    expect(apiClient.post).toHaveBeenCalledTimes(1);
+    expect(apiClient.get).toHaveBeenNthCalledWith(1, "/api/profile/vouchers?limit=50&status=ACTIVE%2CRESERVED");
+    expect(apiClient.get).toHaveBeenNthCalledWith(2, "/api/profile/vouchers?limit=50&status=ACTIVE%2CRESERVED&cursor=opaque-cursor");
+  });
+
+  it("không trả ví thiếu khi trang tiếp theo lỗi", async () => {
+    const error = { response: { status: 503, data: { error: "Tạm thời không đọc được ví", code: "INTERNAL_ERROR" } } };
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: {} } });
+    vi.mocked(apiClient.get)
+      .mockResolvedValueOnce({ data: { data: [mockMyVoucher], meta: { limit: 50, has_more: true, next_cursor: "next" } } })
+      .mockRejectedValueOnce(error);
+    await expect(listMyVouchers()).rejects.toBe(error);
+  });
+
+  it("từ chối cursor lặp thay vì treo tải ví", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: {} } });
+    vi.mocked(apiClient.get).mockResolvedValue({ data: {
+      data: [mockMyVoucher], meta: { limit: 50, has_more: true, next_cursor: "repeated" },
+    } });
+    await expect(listMyVouchers()).rejects.toThrow("Không thể tải đầy đủ ví voucher");
+  });
+
+  it("giữ voucher RESERVED để hiển thị đơn đang giữ voucher", async () => {
+    const reserved = { ...mockMyVoucher, qr_token: "reserved", status: "RESERVED" };
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: {} } });
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: {
+      data: [reserved], meta: { limit: 50, has_more: false, next_cursor: null },
+    } });
+    expect(await listMyVouchers()).toEqual([reserved]);
+  });
+
+  it("lịch sử giữ metadata và chỉ đọc một trang với cursor được mã hóa", async () => {
+    const response = { data: [{ ...mockMyVoucher, status: "REDEEMED" }],
+      meta: { limit: 50, has_more: true, next_cursor: "later" } };
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: response });
+    expect(await listMyVoucherPage({ statuses: ["REDEEMED", "EXPIRED"], cursor: "opaque+/=" })).toEqual(response);
+    expect(apiClient.get).toHaveBeenCalledExactlyOnceWith("/api/profile/vouchers?limit=50&status=REDEEMED%2CEXPIRED&cursor=opaque%2B%2F%3D");
+    expect(apiClient.post).not.toHaveBeenCalled();
   });
 
   it("trả về mảng voucher của người dùng", async () => {

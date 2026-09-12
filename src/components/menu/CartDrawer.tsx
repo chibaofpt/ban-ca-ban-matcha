@@ -22,7 +22,6 @@ import { useVoucherPackages } from "@/src/hooks/useVoucherPackages";
 import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
 import { buildAddonVoucherMap, buildProductVoucherMap } from "@/src/utils/voucherMatchUtils";
 import { filterActiveMainCartVouchers } from "@/src/utils/customerVoucherSelection";
-import { filterHistoryVouchers } from "@/src/lib/utils/voucherModalHelpers";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { DeliverySection } from "@/src/components/delivery/DeliverySection";
 import { useCustomerAddresses } from "@/src/hooks/useCustomerAddresses";
@@ -292,7 +291,6 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
   const discountVouchers = filterActiveMainCartVouchers(editableWalletVouchers, "DISCOUNT");
   const freeshipVouchers = filterActiveMainCartVouchers(editableWalletVouchers, "FREESHIP");
   const productDiscountVouchers = filterActiveMainCartVouchers(editableWalletVouchers, "PRODUCT_DISCOUNT");
-  const historyVouchers = filterHistoryVouchers(visibleWalletVouchers);
   const applicableAddonVouchersMap = buildAddonVoucherMap(editableWalletVouchers, projectedItems);
   const applicableProductVouchers = buildProductVoucherMap(editableWalletVouchers, projectedItems);
   const bundleVouchers = filterActiveMainCartVouchers(visibleWalletVouchers, "BUNDLE").filter(
@@ -1107,7 +1105,6 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
                 discountVouchers={discountVouchers}
                 freeshipVouchers={freeshipVouchers}
                 productDiscountVouchers={productDiscountVouchers}
-                historyVouchers={historyVouchers}
                 availableVoucherPackages={availableVoucherPackages}
                 pointsBalance={pointsBalance}
                 isLoading={voucherLoadState !== "loaded"}

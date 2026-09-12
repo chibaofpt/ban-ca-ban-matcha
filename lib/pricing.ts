@@ -323,13 +323,18 @@ function ceil1000(value: number): number {
 /**
  * Computes Premium_Latte[size] = BaseField[selectedLatte][size] - BaseField[defaultLatte][size].
  * BaseField here refers to the 'base_price_vnd' column in 'menu_item_sizes' table.
+ * Order callers supply their transaction's preloaded context to avoid per-item queries.
  */
 export async function resolveOrderItemPremiumLatte(
   selectedPowderId: string,
   defaultPowderId: string,
   size: Size,
-  client: PrismaTransactionClient = prisma
+  client: PrismaTransactionClient = prisma,
+  context?: PricingContext,
 ): Promise<number> {
+  if (context?.referenceLatteItemMap && context.referenceLatteBasePriceMap) {
+    return premiumLatteFromContext(selectedPowderId, defaultPowderId, size, context);
+  }
   const selectedPowder = await client.matchaPowder.findUnique({
     where: { id: selectedPowderId },
     select: { reference_latte_item_id: true },

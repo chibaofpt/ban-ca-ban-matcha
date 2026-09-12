@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronRight,
   History,
+  KeyRound,
   MapPin,
   Pencil,
   QrCode,
@@ -16,11 +17,13 @@ import { toast } from "sonner";
 import { AddressBookSheetContainer } from "@/src/views/customer/AddressBookSheetContainer";
 import { ProfileQRSheet } from "@/src/components/customer/ProfileQRSheet";
 import { ProfileEditSheet } from "@/src/components/customer/ProfileEditSheet";
+import { ChangePasswordSheet } from "@/src/components/customer/ChangePasswordSheet";
 import VoucherModal from "@/src/components/shared/VoucherModal";
-import { getProfile, updateProfile } from "@/src/services/profileService";
+import { changePassword, getProfile, updateProfile } from "@/src/services/profileService";
 import { useAuthStore } from "@/src/lib/store/authStore";
 import type {
   CustomerProfile,
+  ChangePasswordPayload,
   UpdateProfilePayload,
 } from "@/src/lib/types/user";
 import { formatVietnamPhone } from "@/src/utils/display";
@@ -31,6 +34,7 @@ const profileQueryKey = ["customer", "profile"] as const;
 /** Customer account page with QR, points and editable profile details. */
 export default function ProfilePage() {
   const [editOpen, setEditOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [addressBookOpen, setAddressBookOpen] = useState(false);
   const openVoucherModal = useVoucherModalStore((state) => state.openModal);
@@ -53,6 +57,11 @@ export default function ProfilePage() {
     queryClient.setQueryData<CustomerProfile>(profileQueryKey, updated);
     updateName(updated.name);
     toast.success("Đã cập nhật thông tin", { duration: 3500 });
+  };
+
+  const savePassword = async (payload: ChangePasswordPayload): Promise<void> => {
+    await changePassword(payload);
+    toast.success("Đã đổi mật khẩu. Các thiết bị khác đã được đăng xuất.", { duration: 3500 });
   };
 
   if (isLoading) return <ProfileSkeleton />;
@@ -125,7 +134,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <nav className="space-y-1 pb-2 pt-2" aria-label="Tài khoản">
+        <nav className="space-y-2 pb-2 pt-2" aria-label="Tài khoản">
           <motion.div whileTap={{ scale: 0.98 }} transition={{ duration: 0.18 }}>
             <Link
               href="/history?tab=points"
@@ -148,6 +157,12 @@ export default function ProfilePage() {
             onClick={openVoucherModal}
           />
           <ProfileActionRow
+            label="Đổi mật khẩu"
+            icon={<KeyRound size={20} />}
+            iconClassName="bg-blue-50 text-blue-700"
+            onClick={() => setPasswordOpen(true)}
+          />
+          <ProfileActionRow
             label="Xem mã QR"
             icon={<QrCode size={20} />}
             iconClassName="bg-emerald-50 text-emerald-700"
@@ -167,6 +182,11 @@ export default function ProfilePage() {
         profile={profile}
         onClose={() => setEditOpen(false)}
         onSubmit={saveProfile}
+      />
+      <ChangePasswordSheet
+        open={passwordOpen}
+        onClose={() => setPasswordOpen(false)}
+        onSubmit={savePassword}
       />
       <ProfileQRSheet open={qrOpen} qrToken={profile.qr_token} onOpenChange={setQrOpen} />
       <AddressBookSheetContainer open={addressBookOpen} onOpenChange={setAddressBookOpen} />

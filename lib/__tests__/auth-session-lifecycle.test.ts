@@ -98,7 +98,7 @@ describe("Auth lifecycle — stable sid và thu hồi phiên", () => {
 
   it("getSession trả quyền hiện hành thay vì role ADMIN đã ký", async () => {
     boundary.cookieValues.set("access_token", await signJwt(claims));
-    expect(await getSession()).toEqual(session().user);
+    expect(await getSession()).toEqual({ ...session().user, session_id: "session-1" });
     expect(boundary.findFirst).toHaveBeenCalledWith({
       where: { id: "session-1", user_id: "user-1", expires_at: { gt: now } },
       include: { user: { select: { id: true, role: true, phone_number: true } } },
@@ -147,7 +147,7 @@ describe("Auth lifecycle — stable sid và thu hồi phiên", () => {
     expect(boundary.findFirst).not.toHaveBeenCalled();
     expect((await refresh()).status).toBe(200);
     boundary.findFirst.mockResolvedValue(winner());
-    expect(await getSession()).toEqual(session().user);
+    expect(await getSession()).toEqual({ ...session().user, session_id: "session-1" });
   });
 
   it("verifyJwt từ chối chữ ký sai, JWT hết hạn và thuật toán không cho phép", async () => {

@@ -566,13 +566,10 @@ describe("processOrderItems", () => {
       tx as never
     );
 
-    expect(result[0].selected_powder_id).toBe(FUSION_ALLOWED_POWDER);
-    expect(mockResolveOrderItemPremiumLatte).toHaveBeenCalledWith(
-      FUSION_ALLOWED_POWDER,
-      FUSION_DEFAULT_POWDER,
-      "SMALL",
-      tx
-    );
+    expect(result[0]).toMatchObject({
+      selected_powder_id: FUSION_ALLOWED_POWDER,
+      unit_price_vnd: 85000,
+    });
   });
 
   it("Fusion dùng cùng fallback powder rẻ nhất và Base Liquid active như menu/BUNDLE", async () => {

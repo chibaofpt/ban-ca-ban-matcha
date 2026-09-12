@@ -40,6 +40,11 @@ desktop là centered dialog. Voucher card giữ content button mở detail độ
 “Dùng ngay”, cart dùng selection button có `aria-pressed`. Voucher không đủ điều kiện vẫn đọc được
 và mở detail, chỉ selection bị khóa kèm lý do. Wallet và cart voucher sheet dùng chung
 ba tab Voucher của tôi / Nhận ưu đãi / Lịch sử; history chỉ cho xem detail, không cho chọn.
+Danh sách chọn voucher tải đủ các trang ACTIVE và RESERVED trước khi coi ví đã xác minh; RESERVED
+vẫn hiển thị đang được giữ cho đơn và không được chọn. Lỗi ở bất kỳ trang
+nào giữ trạng thái chưa xác minh. Lịch sử dùng cache riêng, chỉ tải khi mở tab và đọc tiếp theo
+cursor bằng nút “Xem thêm”; lỗi tải thêm giữ các mục đã tải và cho thử lại. Reconciliation chạy
+trước trang đầu của mỗi lần làm mới ví, không lặp lại ở từng trang tiếp theo.
 Wallet và cart dùng chung voucher frame edge-to-edge với một lớp padding; detail thay nội dung
 trong cùng frame thay vì mở sheet lồng. Cart voucher sheet dùng layer `nested`; target/setup mở
 từ sheet này dùng layer `critical`.

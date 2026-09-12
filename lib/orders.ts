@@ -382,7 +382,8 @@ async function resolveOneItem(
         powder_id,
         resolvedDefault,
         item.size,
-        client as Parameters<typeof resolveOrderItemPremiumLatte>[3]
+        client as Parameters<typeof resolveOrderItemPremiumLatte>[3],
+        pricingCtx,
       );
     }
   }
@@ -564,7 +565,7 @@ async function resolveOneItem(
             throw new OrderValidationError("BUSINESS_RULE_VIOLATION", "Product discount reference size is unavailable");
           }
           const referencePremium = menuItem.category === "fusion" && effectiveFusionDefaultPowderId && powder_id !== effectiveFusionDefaultPowderId
-            ? await resolveOrderItemPremiumLatte(powder_id, effectiveFusionDefaultPowderId, pvInfo.reference_size, client as Parameters<typeof resolveOrderItemPremiumLatte>[3])
+            ? await resolveOrderItemPremiumLatte(powder_id, effectiveFusionDefaultPowderId, pvInfo.reference_size, client as Parameters<typeof resolveOrderItemPremiumLatte>[3], pricingCtx)
             : 0;
           const referencePrice = resolveOrderItemPrice({
             category: menuItem.category as "latte" | "fusion",

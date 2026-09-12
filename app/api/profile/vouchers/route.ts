@@ -48,9 +48,10 @@ export async function GET(req: NextRequest) {
       : null;
     const cursor = searchParams.get("cursor");
     const cursorId = cursor ? decodeCursor(cursor) : null;
-    const status = searchParams.get("status") as VoucherStatus | null;
+    const statusParam = searchParams.get("status");
+    const statuses = statusParam ? [...new Set(statusParam.split(","))] as VoucherStatus[] : [];
     const validStatuses: VoucherStatus[] = ["ACTIVE", "RESERVED", "REDEEMED", "EXPIRED", "REFUNDED"];
-    if (!limit || (cursor && !cursorId) || (status && !validStatuses.includes(status))) {
+    if (!limit || (cursor && !cursorId) || statuses.some((status) => !validStatuses.includes(status))) {
       return NextResponse.json(
         { error: "Invalid pagination", code: "VALIDATION_ERROR" },
         { status: 400 },
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest) {
     }
 
     const now = new Date();
-    const lifecycleWhere: Prisma.VoucherWhereInput = status === "ACTIVE"
+    const lifecycleFilters = statuses.map((status): Prisma.VoucherWhereInput => status === "ACTIVE"
       ? { status: "ACTIVE", OR: [{ expires_at: null }, { expires_at: { gt: now } }] }
       : status === "EXPIRED"
         ? {
@@ -67,9 +68,10 @@ export async function GET(req: NextRequest) {
               { status: "ACTIVE", expires_at: { lte: now } },
             ],
           }
-        : status
-          ? { status }
-          : {};
+        : { status });
+    const lifecycleWhere: Prisma.VoucherWhereInput = lifecycleFilters.length > 1
+      ? { OR: lifecycleFilters }
+      : lifecycleFilters[0] ?? {};
 
     const vouchers = await prisma.voucher.findMany({
       where: { user_id: session.id, ...lifecycleWhere },

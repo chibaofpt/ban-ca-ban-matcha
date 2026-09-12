@@ -30,3 +30,12 @@ export interface UpdateProfilePayload {
   insta_name?: string | null;
   current_password?: string;
 }
+
+export interface ChangePasswordPayload {
+  current_password: string;
+  new_password: string;
+}
+
+export interface ChangePasswordResult {
+  success: true;
+}

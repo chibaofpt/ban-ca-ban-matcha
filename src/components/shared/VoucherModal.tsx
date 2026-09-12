@@ -15,7 +15,6 @@ import { useCustomerVouchers } from "@/src/hooks/useCustomerVouchers";
 import { useVoucherAcquisition } from "@/src/hooks/useVoucherAcquisition";
 import { useVoucherPackages } from "@/src/hooks/useVoucherPackages";
 import {
-  filterHistoryVouchers,
   filterModalVouchers,
   getExchangeErrorMessage,
   type VoucherModalTab,
@@ -25,7 +24,8 @@ import { listMyVouchers, refundVoucher } from "@/src/services/customerVoucherSer
 import { QrModal } from "./QrModal";
 import { VoucherAcquisitionConfirm } from "./VoucherAcquisitionConfirm";
 import { VoucherCard } from "./VoucherCards";
-import { VoucherHistorySection, VoucherModalDetailTransition, VoucherModalFrame } from "./VoucherModalSections";
+import { VoucherModalDetailTransition, VoucherModalFrame } from "./VoucherModalSections";
+import { CustomerVoucherHistory } from "@/src/components/shared/CustomerVoucherHistory";
 import { VoucherPackageCatalog } from "./VoucherPackageCatalog";
 import { VoucherDetailSheet } from "./VoucherDetailSheet";
 import { BundleVoucherSetupSheet } from "./BundleVoucherSetupSheet";
@@ -469,7 +469,7 @@ export default function VoucherModal() {
             />
           ))}</div></> : null}</>
         ) : activeTab === "history" && isLoggedIn ? (
-          <>{walletVerificationBanner}{walletErrorView ?? <VoucherHistorySection vouchers={filterHistoryVouchers(vouchers)} onVoucherClick={setDetailVoucher} />}</>
+          <CustomerVoucherHistory onVoucherClick={setDetailVoucher} />
         ) : (
           <div>
             {!isLoggedIn && <div className="mb-4 flex items-center gap-3 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3"><LogIn className="size-5 shrink-0 text-primary" /><p className="flex-1 text-sm font-bold text-primary">Đăng nhập để nhận hoặc đổi ưu đãi</p><button type="button" onClick={() => useAuthModalStore.getState().openLogin()} className="min-h-11 rounded-lg bg-primary px-3 text-xs font-bold text-primary-foreground focus-visible:ring-2 focus-visible:ring-ring">Đăng nhập</button></div>}

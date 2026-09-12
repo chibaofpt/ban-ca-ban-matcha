@@ -214,6 +214,7 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/orders/[id]` | GET, PATCH |
 | `/api/powders` | GET |
 | `/api/profile` | GET, PATCH |
+| `/api/profile/password` | PATCH |
 | `/api/profile/addresses` | GET, POST |
 | `/api/profile/addresses/[id]` | PUT, DELETE |
 | `/api/profile/points` | GET |
@@ -265,6 +266,7 @@ order or voucher write.
 | Scope | Limit |
 |---|---:|
 | Auth mutations (`login`, `register`, `check-phone`, `refresh`) | 10/min/IP |
+| Password change (`PATCH /api/profile/password`) | 5/15 min/account + shared `authMutationIp` 10/min/IP |
 | Failed login attempts | 5/15 min/IP |
 | Failed normalized login identifier | 10/15 min/identifier |
 | Customer order creation | 5/10 min/account and 50/10 min/IP |
@@ -446,6 +448,9 @@ Returns `{ qr_token, id, name, role }[]`. `qr_token` is canonical. During the on
 
 Read-only, maximum 50 rows, ordered by `(created_at DESC, id DESC)`. Returns
 `meta: { limit, has_more, next_cursor }`. Effective expiry is projected without writing data.
+`status` accepts one lifecycle status or a comma-separated list. Omission still returns all
+statuses; each selected status retains its effective-expiry semantics. Customer selection reads
+follow every cursor for `ACTIVE,RESERVED`; history reads page through `REDEEMED,EXPIRED` on demand.
 Each owned voucher may include `package_id?: string` as a public catalog reference. Older
 responses may omit it. The mapper emits it only when the source value is a string; raw
 `vouchers.id`, `users.id`, `user_id`, and `redeemed_by` remain internal and are never returned.
@@ -465,6 +470,27 @@ the wallet; GET routes never grant, expire, or cancel records.
 }
 // CUSTOMER-only. phone_number is intentionally not editable.
 ```
+
+### `PATCH /api/profile/password`
+
+CUSTOMER-only. The request changes the password only when the current password matches. The current
+device keeps its stable session ID, receives a rotated refresh token and a new access token, and all
+other sessions are revoked in the same database transaction.
+
+```ts
+{
+  current_password: string // 6–72 characters
+  new_password: string     // at least 6 characters, at most 72 UTF-8 bytes; must differ from current
+}
+
+// Success
+{ data: { success: true } }
+```
+
+Errors use the standard envelope. Validation errors include `details.field` for
+`current_password` or `new_password`; conditional transaction losers return `409 CONFLICT`. The
+route consumes the `passwordChangeAccount` bucket (5/15 minutes/account) and the shared
+`authMutationIp` bucket (10/minute/IP).
 
 ### `GET /api/powders`
 ```ts

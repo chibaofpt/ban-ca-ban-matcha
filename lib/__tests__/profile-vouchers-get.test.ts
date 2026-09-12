@@ -69,4 +69,39 @@ describe("GET /api/profile/vouchers", () => {
     expect(response.status).toBe(400);
     expect(mocks.findMany).not.toHaveBeenCalled();
   });
+
+  it("lọc ACTIVE còn hạn và RESERVED trong cùng một trang của đúng khách", async () => {
+    const response = await GET(new NextRequest("http://localhost/api/profile/vouchers?status=ACTIVE,RESERVED"));
+
+    expect(response.status).toBe(200);
+    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { user_id: "customer-id", OR: [
+        { status: "ACTIVE", OR: [{ expires_at: null }, { expires_at: { gt: expect.any(Date) } }] },
+        { status: "RESERVED" },
+      ] },
+      take: 51,
+    }));
+  });
+
+  it("lịch sử gồm REDEEMED và effective EXPIRED, không đổi filter một trạng thái", async () => {
+    const response = await GET(new NextRequest("http://localhost/api/profile/vouchers?status=REDEEMED,EXPIRED"));
+    expect(response.status).toBe(200);
+    expect(mocks.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: { user_id: "customer-id", OR: [
+        { status: "REDEEMED" },
+        { OR: [{ status: "EXPIRED" }, { status: "ACTIVE", expires_at: { lte: expect.any(Date) } }] },
+      ] },
+    }));
+    const single = await GET(new NextRequest("http://localhost/api/profile/vouchers?status=RESERVED"));
+    expect(single.status).toBe(200);
+    expect(mocks.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: { user_id: "customer-id", status: "RESERVED" },
+    }));
+  });
+
+  it("từ chối danh sách có trạng thái không hợp lệ trước query", async () => {
+    const response = await GET(new NextRequest("http://localhost/api/profile/vouchers?status=ACTIVE,UNKNOWN"));
+    expect(response.status).toBe(400);
+    expect(mocks.findMany).not.toHaveBeenCalled();
+  });
 });

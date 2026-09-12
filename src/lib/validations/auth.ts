@@ -52,6 +52,39 @@ export const profileEditFormSchema = z.object({
     .max(72, "Mật khẩu quá dài"),
 });
 
+const passwordByteLength = (value: string): number => new TextEncoder().encode(value).length;
+
+/** Client-side password-change form schema; the server remains authoritative. */
+export const changePasswordFormSchema = z
+  .object({
+    current_password: z
+      .string()
+      .min(6, "Mật khẩu hiện tại phải có ít nhất 6 ký tự")
+      .max(72, "Mật khẩu hiện tại không được vượt quá 72 ký tự"),
+    new_password: z
+      .string()
+      .min(6, "Mật khẩu mới phải có ít nhất 6 ký tự")
+      .refine((value) => passwordByteLength(value) <= 72, "Mật khẩu mới không được vượt quá 72 byte UTF-8"),
+    confirm_password: z.string().min(1, "Vui lòng xác nhận mật khẩu mới"),
+  })
+  .superRefine((value, context) => {
+    if (value.new_password !== value.confirm_password) {
+      context.addIssue({
+        code: "custom",
+        path: ["confirm_password"],
+        message: "Mật khẩu xác nhận không khớp",
+      });
+    }
+    if (value.current_password === value.new_password) {
+      context.addIssue({
+        code: "custom",
+        path: ["new_password"],
+        message: "Mật khẩu mới phải khác mật khẩu hiện tại",
+      });
+    }
+  });
+
 export type LoginFormValues = z.infer<typeof loginFormSchema>;
 export type RegisterFormValues = z.infer<typeof registerFormSchema>;
 export type ProfileEditFormValues = z.infer<typeof profileEditFormSchema>;
+export type ChangePasswordFormValues = z.infer<typeof changePasswordFormSchema>;

@@ -185,14 +185,41 @@ export async function listActiveVoucherPackages(): Promise<VoucherPackage[]> {
   return res.data.data;
 }
 
-/**
- * Fetches vouchers in every lifecycle status belonging to the current user.
- * Calls GET /api/profile/vouchers (requires CUSTOMER auth).
- */
+export interface MyVoucherPage {
+  data: MyVoucher[];
+  /** Older, unpaginated responses may omit metadata. */
+  meta?: { limit: number; has_more: boolean; next_cursor: string | null };
+}
+
+const WALLET_URL = "/api/profile/vouchers";
+
+/** Read one bounded wallet page, reconciling lifecycle only before the first page. */
+export async function listMyVoucherPage(
+  options: { statuses?: MyVoucher["status"][]; cursor?: string } = {},
+): Promise<MyVoucherPage> {
+  if (!options.cursor) await apiClient.post(`${WALLET_URL}/sync`);
+  const query = new URLSearchParams({ limit: "50" });
+  if (options.statuses?.length) query.set("status", options.statuses.join(","));
+  if (options.cursor) query.set("cursor", options.cursor);
+  const res = await apiClient.get<MyVoucherPage>(`${WALLET_URL}?${query}`);
+  return res.data;
+}
+
+/** Read every ACTIVE/RESERVED voucher without loading redeemed or expired history. */
 export async function listMyVouchers(): Promise<MyVoucher[]> {
-  await apiClient.post("/api/profile/vouchers/sync");
-  const res = await apiClient.get<ApiResponse<MyVoucher[]>>("/api/profile/vouchers");
-  return res.data.data;
+  const vouchers = new Map<string, MyVoucher>();
+  const cursors = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const page = await listMyVoucherPage({ statuses: ["ACTIVE", "RESERVED"], cursor });
+    for (const voucher of page.data) vouchers.set(voucher.qr_token, voucher);
+    if (!page.meta?.has_more) break;
+    const next = page.meta.next_cursor;
+    if (!next || cursors.has(next)) throw new Error("Không thể tải đầy đủ ví voucher. Vui lòng thử lại.");
+    cursors.add(next);
+    cursor = next;
+  } while (cursor);
+  return [...vouchers.values()];
 }
 
 /**
