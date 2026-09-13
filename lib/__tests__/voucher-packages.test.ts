@@ -42,7 +42,7 @@ describe("GET /api/voucher-packages", () => {
     mockAddonOptionFindMany.mockResolvedValue([]);
   });
 
-  it("trả remaining_quantity theo tổng voucher đã phát hành", async () => {
+  it("trả remaining_quantity theo quota legacy và loại trừ nguồn reward hệ thống", async () => {
     mockGetSession.mockResolvedValue(null);
     mockFindManyPackages
       .mockResolvedValueOnce([{ id: "pkg-1", quantity: 10, created_at: new Date().toISOString() }])
@@ -52,6 +52,14 @@ describe("GET /api/voucher-packages", () => {
     const json = await (await GET()).json();
 
     expect(json.data[0].remaining_quantity).toBe(3);
+    expect(mockGroupByVouchers).toHaveBeenCalledWith({
+      by: ["package_id"],
+      where: {
+        package_id: { in: ["pkg-1"] },
+        issued_via: { in: ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT", "ADMIN"] },
+      },
+      _count: { id: true },
+    });
   });
 
   it("trả về danh sách packages active, user_redeemed_count = 0 nếu chưa đăng nhập", async () => {

@@ -31,3 +31,4 @@ thêm ADR mới và đánh dấu bản cũ `Superseded` kèm link; giữ lại b
 | ADR | Status | Phạm vi |
 |---|---|---|
 | [0001 — Nạp ngữ cảnh theo owner](0001-context-routing.md) | Accepted | Harness và tài liệu |
+| [0002 — Entitlement và pool cho quà chào mừng](0002-welcome-reward-entitlement-and-pool.md) | Accepted | Welcome reward và gacha pool |

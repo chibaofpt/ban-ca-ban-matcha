@@ -8,6 +8,7 @@ const SUPPORTED_IMAGE_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image
 const MENU_IMAGE_UPLOAD_PRESETS = {
   full: { maxDimension: 800, quality: 75 },
   compact: { maxDimension: 320, quality: 70 },
+  "reward-box": { maxDimension: 800, quality: 75 },
 } as const;
 
 export const MENU_IMAGE_OUTPUT_CONTENT_TYPE = "image/webp";
@@ -31,7 +32,7 @@ export interface DownloadedMenuImage {
 
 /** Inputs used to generate a collision-safe SEO storage path. */
 export interface MenuImagePathInput {
-  category: "latte" | "fusion" | "extras" | "addons" | "powders" | "milk-types";
+  category: "latte" | "fusion" | "extras" | "addons" | "powders" | "milk-types" | "reward-boxes";
   productName: string;
   requestedName?: string | null;
   contentType: string;
@@ -93,6 +94,16 @@ function publicUrlForPath(path: string): string {
   return getSupabase().storage.from(MENU_IMAGES_BUCKET).getPublicUrl(path).data.publicUrl;
 }
 
+function isDecodedImageFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return /unsupported image format|corrupt header|libpng read error|pngload|jpe?gload|webpload|webp: unable to parse image|premature end of jpeg/i.test(error.message);
+}
+
+async function invalidDecodedImage(error: unknown): Promise<never> {
+  if (isDecodedImageFailure(error)) throw new Error("INVALID_DECODED_IMAGE_FORMAT");
+  throw error;
+}
+
 /** Build a normalized product image path with a random collision suffix. */
 export function buildMenuImagePath(input: MenuImagePathInput): string {
   const requestedName = input.requestedName?.trim() ?? "";
@@ -142,16 +153,24 @@ export async function uploadMenuImage(
     throw new Error("INVALID_IMAGE_CONTENT_TYPE");
   }
   const { maxDimension, quality } = MENU_IMAGE_UPLOAD_PRESETS[preset];
-  const optimizedBuffer = await sharp(buffer)
-    .rotate()
-    .resize({
-      width: maxDimension,
-      height: maxDimension,
-      fit: "inside",
-      withoutEnlargement: true,
-    })
+  const source = sharp(buffer);
+  const metadata = await source.metadata().catch(invalidDecodedImage);
+  if (!metadata.format || !["jpeg", "png", "webp"].includes(metadata.format)) {
+    throw new Error("INVALID_DECODED_IMAGE_FORMAT");
+  }
+  const rewardBox = preset === "reward-box";
+  const transparent = { r: 0, g: 0, b: 0, alpha: 0 };
+  const resized = rewardBox
+    ? source.rotate().ensureAlpha().resize({
+      width: maxDimension - 2, height: maxDimension - 2, fit: "contain", background: transparent,
+    }).extend({ top: 1, bottom: 1, left: 1, right: 1, background: transparent })
+    : source.rotate().resize({
+      width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true,
+    });
+  const optimizedBuffer = await resized
     .webp({ quality, effort: 4 })
-    .toBuffer();
+    .toBuffer()
+    .catch(invalidDecodedImage);
   const bucket = getSupabase().storage.from(MENU_IMAGES_BUCKET);
   const { error } = await bucket.upload(fileName, optimizedBuffer, {
     contentType: MENU_IMAGE_OUTPUT_CONTENT_TYPE,

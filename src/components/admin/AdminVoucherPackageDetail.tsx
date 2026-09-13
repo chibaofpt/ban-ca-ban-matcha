@@ -47,6 +47,8 @@ const ISSUED_VIA_LABEL: Record<AdminVoucherRecipientPage["vouchers"][number]["is
   FREE_CLAIM: "Nhận miễn phí",
   AUTO_GRANT: "Tự động cấp",
   ADMIN: "Admin tặng",
+  WELCOME_GIFT: "Quà chào mừng",
+  GACHA_REWARD: "Phần thưởng gacha",
 };
 const REWARD_MODE = { SAME_CONFIG: "Cùng cấu hình món mua", FIXED_CONFIG: "Cấu hình cố định", ALLOWED_SCOPE: "Chọn trong phạm vi" } as const;
 const BENEFIT_SCALING = { PER_BUNDLE: "Theo mỗi combo", ONCE_PER_ORDER: "Một lần mỗi đơn", PER_QUALIFYING_ITEM: "Theo mỗi món đủ điều kiện" } as const;
@@ -134,7 +136,7 @@ export function AdminVoucherPackageDetail({ pkg, open, saving, onClose, onSave, 
   if (!pkg) return null;
   const dirty = name !== pkg.name || description !== (pkg.description ?? "");
   const operationalStatus = getVoucherPackageStatus(pkg);
-  const stats = pkg.stats ?? { issued_count: 0, active_count: 0, reserved_count: 0, redeemed_count: 0, expired_count: 0, refunded_count: 0, remaining_quantity: pkg.quantity };
+  const stats = pkg.stats ?? { issued_count: 0, quota_issued_count: 0, active_count: 0, reserved_count: 0, redeemed_count: 0, expired_count: 0, refunded_count: 0, remaining_quantity: pkg.quantity };
   const selfAcquisitionCount = stats.self_acquisition_count ?? 0;
   const selfAcquisitionUsedCount = stats.self_acquisition_used_count ?? 0;
   const canToggle = operationalStatus === "ACTIVE" || operationalStatus === "PAUSED";

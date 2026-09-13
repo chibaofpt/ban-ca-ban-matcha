@@ -1,6 +1,7 @@
 import { apiClient } from "@/src/lib/api/client";
 import type { ApiResponse } from "@/src/lib/types/api";
 import type { AuthUser } from "@/src/lib/types/user";
+import type { WelcomeRewardSummary } from "@/src/services/welcomeRewardService";
 
 const URL = {
   register:   "/api/auth/register",
@@ -17,6 +18,8 @@ export interface RegisterPayload {
   insta_name?: string;
 }
 
+export type RegisterResult = AuthUser & { welcome_reward: WelcomeRewardSummary };
+
 export type LoginPayload =
   | { phone_number: string; password: string; insta_name?: never }
   | { insta_name: string; password: string; phone_number?: never };
@@ -28,8 +31,8 @@ export async function checkPhone(phone_number: string): Promise<{ exists: boolea
 }
 
 /** Register a new account */
-export async function register(payload: RegisterPayload): Promise<AuthUser> {
-  const res = await apiClient.post<ApiResponse<AuthUser>>(URL.register, payload);
+export async function register(payload: RegisterPayload): Promise<RegisterResult> {
+  const res = await apiClient.post<ApiResponse<RegisterResult>>(URL.register, payload);
   return res.data.data;
 }
 

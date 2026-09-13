@@ -51,6 +51,63 @@ ACTIVE → REFUNDED                                (auto: target item soft-delet
 
 ---
 
+## Welcome Reward and Gacha
+
+Mỗi user có đúng một entitlement quà chào mừng bền vững, được quyết định trong transaction đăng ký.
+`mode` của entitlement là effective mode đã commit sau khi áp dụng fallback availability, không
+nhất thiết là raw settings mode; settings thay đổi sau đó không viết lại entitlement. Ba mode loại
+trừ nhau:
+
+- `POINTS`: cộng ngay 5 🐟, ghi `points_log.reason = "welcome_bonus"` và hoàn tất entitlement.
+- `FIXED_VOUCHER`: phát ngay voucher từ `fixed_package_id` với `issued_via = WELCOME_GIFT`. Nếu
+  package hoặc target không còn khả dụng lúc phát, commit entitlement với mode `POINTS` và cộng
+  5 🐟.
+- `GACHA`: chụp `active_campaign_id` vào entitlement và để `PENDING` khi campaign đang `ACTIVE` và
+  còn ít nhất một allocation chưa phát. Nếu điều kiện đó không còn đúng lúc đăng ký, dùng fallback
+  5 🐟 ngay.
+
+Entitlement `GACHA` không giữ chỗ trong pool khi đăng ký hoặc khi user chỉ xem hộp. Stock được giải
+quyết đúng một lần ở lần mở đầu tiên thành công, trong Serializable transaction; outcome đã commit
+được trả lại cho các lần mở lại. `request_id` là idempotency key của lần mở và không được gắn lại
+sang entitlement khác.
+
+Với campaign còn `ACTIVE`, đặt `n` bằng số outcome voucher đã commit của campaign. Mỗi pool item có
+`remaining = max(quantity - issued_count, 0)` và đủ điều kiện khi `unlock_after_draws <= n`.
+Chọn ngẫu nhiên theo trọng số `remaining` trên các item còn hàng, đã mở khóa và có package/target
+đang khả dụng. Vì vậy `unlock_after_draws = 60` bắt đầu tham gia khi đã có 60 voucher outcome và
+voucher kế tiếp mang `draw_number = 61`. Nếu item được chọn mất availability, loại item đó khỏi
+candidates của transaction và thử phần còn lại; không tự đổi trọng số thành tỷ lệ cấu hình khác.
+
+- `PAUSED` chặn mở với `REWARD_PAUSED` và giữ nguyên entitlement `PENDING`.
+- `ENDED`, hoặc pool thực sự hết allocation, hoàn tất lần mở bằng fallback 5 🐟; box đã chọn vẫn
+  được lưu trong outcome.
+- Nếu campaign `ACTIVE` còn allocation nhưng hiện không có candidate khả dụng, trả
+  `REWARD_TEMPORARILY_UNAVAILABLE`; không phát fallback và user có thể thử lại sau.
+- Lần mở chỉ chọn box thuộc campaign đã chụp. Box là lựa chọn trình bày/audit; package trúng do pool
+  và server quyết định, không phụ thuộc box.
+
+`DRAFT` cho phép đổi tên, thay toàn bộ pool và thêm/sửa/xóa box. Kích hoạt cần pool không rỗng, mọi
+package hiện khả dụng, mọi mốc mở đạt được và 3–12 box. Các transition duy nhất là
+`DRAFT → ACTIVE`, `ACTIVE → PAUSED`, `PAUSED → ACTIVE`, và `ACTIVE|PAUSED → ENDED`; `ENDED` không
+mở lại. Pool, tên và box bất biến sau khi rời `DRAFT`; pause/resume/end dùng revision để phát hiện
+ghi đồng thời. Settings có thể trỏ `GACHA` tới một campaign `ACTIVE`, nhưng entitlement đã tạo luôn
+giữ campaign snapshot của chính nó.
+
+Voucher `WELCOME_GIFT` và `GACHA_REWARD` vẫn phải qua package/target availability và copy đầy đủ
+snapshot phát hành. Hai nguồn này không dùng quota `voucher_packages.quantity` legacy và không tính
+vào `max_per_user`; `GACHA_REWARD` bị giới hạn riêng bởi `reward_pool_items.quantity` của từng
+campaign. `WELCOME_GIFT` cố định không đặt trước hoặc tiêu thụ pool campaign.
+
+Core chọn thưởng được thiết kế để có thể tái sử dụng cho point-to-draw sau này, nhưng hiện chỉ có
+welcome entitlement. Chưa có endpoint mua lượt, trừ điểm, ticket hay refund cho lượt quay; phạm vi
+đó vẫn deferred trong [NOTES](../../../../NOTES.md#phase-5).
+
+HTTP payload, DTO và error envelope thuộc [API](../../../../API.md#customer-welcome-reward);
+persistence và invariant thuộc [SCHEMA](../../../../SCHEMA.md#welcome_reward_settings); UI thuộc
+[Reward UI](../../../../docs/specs/reward-ui.md).
+
+---
+
 ## Voucher Exchange (Points to Voucher)
 
 - Require an active package and sufficient customer points.

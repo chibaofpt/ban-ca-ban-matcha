@@ -125,8 +125,48 @@ describe("Phát hành voucher dùng chung", () => {
     expect(mockPointsLogCreate).not.toHaveBeenCalled();
     expect(mockGrantCreate).not.toHaveBeenCalled();
     expect(mockVoucherCount).toHaveBeenCalledTimes(2);
-    expect(mockVoucherCount).toHaveBeenNthCalledWith(1, { where: { package_id: PACKAGE_ID } });
+    expect(mockVoucherCount).toHaveBeenNthCalledWith(1, {
+      where: {
+        package_id: PACKAGE_ID,
+        issued_via: { in: ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT", "ADMIN"] },
+      },
+    });
   });
+
+  it.each(["WELCOME_GIFT", "GACHA_REWARD"] as const)(
+    "%s phát hành package PRIVATE/NONE mà không tạo side effect của points, grant hoặc admin",
+    async (source) => {
+      mockPackageFindUnique.mockResolvedValue(makePackage({
+        visibility: "PRIVATE",
+        acquisition_mode: "NONE",
+        points_cost: 99,
+        quantity: 3,
+        max_per_user: 1,
+      }));
+      mockVoucherCount.mockResolvedValue(3);
+
+      await issueVoucherInTransaction(makeTx(), {
+        user_id: USER_ID,
+        package_id: PACKAGE_ID,
+        source,
+        performed_by: ADMIN_ID,
+        request_id: REQUEST_ID,
+        now: NOW,
+      });
+
+      expect(mockVoucherCreate).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ issued_via: source }),
+      }));
+      const createData = mockVoucherCreate.mock.calls[0]?.[0]?.data as Record<string, unknown>;
+      expect(createData).not.toHaveProperty("issuing_admin_id");
+      expect(createData).not.toHaveProperty("manual_request_id");
+      expect(mockUserUpdateMany).not.toHaveBeenCalled();
+      expect(mockPointsLogCreate).not.toHaveBeenCalled();
+      expect(mockGrantFindUnique).not.toHaveBeenCalled();
+      expect(mockGrantCreate).not.toHaveBeenCalled();
+      expect(mockVoucherCount).not.toHaveBeenCalled();
+    },
+  );
 
   it("ADMIN gift replay trả voucher hiện có ngay cả khi package đã pause, và rebinding bị conflict", async () => {
     const tx = makeTx();
@@ -207,7 +247,12 @@ describe("Phát hành voucher dùng chung", () => {
       expectReason(error, "VOUCHER_SOLD_OUT");
       return true;
     });
-    expect(mockVoucherCount).toHaveBeenCalledWith({ where: { package_id: PACKAGE_ID } });
+    expect(mockVoucherCount).toHaveBeenCalledWith({
+      where: {
+        package_id: PACKAGE_ID,
+        issued_via: { in: ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT", "ADMIN"] },
+      },
+    });
     expect(mockVoucherCreate).not.toHaveBeenCalled();
   });
 
@@ -310,6 +355,13 @@ describe("Phát hành voucher dùng chung", () => {
     ).rejects.toSatisfy((error: unknown) => {
       expectReason(error, "VOUCHER_LIMIT_REACHED");
       return true;
+    });
+    expect(mockVoucherCount).toHaveBeenNthCalledWith(2, {
+      where: {
+        package_id: PACKAGE_ID,
+        user_id: USER_ID,
+        issued_via: { in: ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"] },
+      },
     });
   });
 

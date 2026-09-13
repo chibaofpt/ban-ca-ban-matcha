@@ -155,14 +155,32 @@ describe("GET /api/admin/voucher-packages", () => {
   });
 
   it("returns all packages for ADMIN", async () => {
-    mockPkgFindMany.mockResolvedValue([existingPkg]);
+    mockPkgFindMany.mockResolvedValue([{ ...existingPkg, quantity: 10, _count: { vouchers: 5 } }]);
+    mockVoucherGroupBy
+      .mockResolvedValueOnce([{ package_id: PKG_ID, status: "ACTIVE", _count: { _all: 5 } }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ package_id: PKG_ID, _count: { _all: 3 } }]);
     const res = await GET();
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.data).toHaveLength(1);
     expect(json.data[0].id).toBe(PKG_ID);
     expect(mockPkgFindMany).toHaveBeenCalledWith(expect.not.objectContaining({ include: expect.objectContaining({ vouchers: expect.anything() }) }));
-    expect(mockVoucherGroupBy).toHaveBeenCalledTimes(3);
+    expect(json.data[0].stats).toMatchObject({
+      issued_count: 5,
+      quota_issued_count: 3,
+      remaining_quantity: 7,
+    });
+    expect(mockVoucherGroupBy).toHaveBeenCalledTimes(4);
+    expect(mockVoucherGroupBy).toHaveBeenNthCalledWith(4, {
+      by: ["package_id"],
+      where: {
+        package_id: { in: [PKG_ID] },
+        issued_via: { in: ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT", "ADMIN"] },
+      },
+      _count: { _all: true },
+    });
   });
 
   it("returns 500 on DB error", async () => {

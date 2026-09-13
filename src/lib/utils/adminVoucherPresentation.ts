@@ -6,7 +6,7 @@ type StatusSource = { is_active: boolean; ends_at: string | null; quantity: numb
 type BenefitSource = Pick<VoucherPackage, "voucher_type"> & Partial<VoucherPackage>;
 
 const money = (value: number | null | undefined) => `${(value ?? 0).toLocaleString("vi-VN")}đ`;
-const emptyStats: VoucherPackageStats = { issued_count: 0, active_count: 0, reserved_count: 0, redeemed_count: 0, expired_count: 0, refunded_count: 0, remaining_quantity: null };
+const emptyStats: VoucherPackageStats = { issued_count: 0, quota_issued_count: 0, active_count: 0, reserved_count: 0, redeemed_count: 0, expired_count: 0, refunded_count: 0, remaining_quantity: null };
 
 /** Resolves package status using the approved operational precedence. */
 export function getVoucherPackageStatus(pkg: StatusSource, now = new Date()): VoucherPackageOperationalStatus {
@@ -21,7 +21,7 @@ export function getVoucherPackageStatus(pkg: StatusSource, now = new Date()): Vo
 export function summarizeVoucherCapacity(pkg: Pick<StatusSource, "quantity" | "stats">): string {
   const stats = pkg.stats ?? emptyStats;
   if (pkg.quantity === null) return stats.issued_count === 0 ? "Đã cấp 0 · Không giới hạn · Chưa có lượt sử dụng" : `Đã cấp ${stats.issued_count} · Không giới hạn · Đã dùng ${stats.redeemed_count}/${stats.issued_count}`;
-  const issued = `Đã cấp ${stats.issued_count}/${pkg.quantity}`;
+  const issued = `Đã cấp ${stats.quota_issued_count}/${pkg.quantity}`;
   return stats.issued_count === 0 ? `${issued} · Chưa có lượt sử dụng` : `${issued} · Đã dùng ${stats.redeemed_count}/${stats.issued_count}`;
 }
 

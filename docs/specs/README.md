@@ -28,6 +28,7 @@ cùng owner. Khi một loại thông tin đổi, sửa owner và liên kết t�
 |---|---|
 | [Catalog UI](catalog-ui.md) | Menu/editor, ảnh, ProductModal, admin add-ons |
 | [Voucher UI](voucher-ui.md) | Wallet/detail/target, nhận/đổi, auth intent, admin wizard |
+| [Reward UI](reward-ui.md) | Quà đăng ký, hộp matcha, resume points và admin campaign |
 | [Cart và POS](cart.md) | Source state/persistence, BUNDLE setup, nhóm giỏ, khôi phục chuyển khoản |
 
 Đây là yêu cầu đang được tài liệu dự án mô tả, không phải bằng chứng implementation hoặc UI đã

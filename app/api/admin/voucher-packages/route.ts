@@ -29,6 +29,7 @@ import {
   resolveFusionDefaultPowderId,
 } from "@/src/utils/menuConfiguration";
 import { buildAdminVoucherStats } from "@/lib/adminVoucherInsights";
+import { LEGACY_PACKAGE_QUOTA_SOURCES, SELF_ACQUISITION_SOURCES } from "@/lib/voucherIssuance";
 
 export const dynamic = "force-dynamic";
 
@@ -68,15 +69,21 @@ export async function GET() {
 
     const now = new Date();
     const packageIds = packages.map((pkg) => pkg.id);
-    const [statusAggregates, expiredActiveAggregates, selfAggregates] = packageIds.length === 0 ? [[], [], []] : await Promise.all([
+    const [statusAggregates, expiredActiveAggregates, selfAggregates, quotaAggregates] = packageIds.length === 0 ? [[], [], [], []] : await Promise.all([
       prisma.voucher.groupBy({ by: ["package_id", "status"], where: { package_id: { in: packageIds } }, _count: { _all: true } }),
       prisma.voucher.groupBy({ by: ["package_id"], where: { package_id: { in: packageIds }, status: "ACTIVE", expires_at: { lte: now } }, _count: { _all: true } }),
-      prisma.voucher.groupBy({ by: ["package_id", "issued_via", "status"], where: { package_id: { in: packageIds, }, issued_via: { in: ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"] } }, _count: { _all: true } }),
+      prisma.voucher.groupBy({ by: ["package_id", "issued_via", "status"], where: { package_id: { in: packageIds, }, issued_via: { in: [...SELF_ACQUISITION_SOURCES] } }, _count: { _all: true } }),
+      prisma.voucher.groupBy({ by: ["package_id"], where: { package_id: { in: packageIds }, issued_via: { in: [...LEGACY_PACKAGE_QUOTA_SOURCES] } }, _count: { _all: true } }),
     ]);
     return NextResponse.json({ data: packages.map((pkg) => ({
       ...toVoucherPackageBundleDto(pkg),
       stats: {
-        ...buildAdminVoucherStats({ id: pkg.id, quantity: pkg.quantity, issued_count: pkg._count.vouchers }, statusAggregates, expiredActiveAggregates),
+        ...buildAdminVoucherStats({
+          id: pkg.id,
+          quantity: pkg.quantity,
+          issued_count: pkg._count.vouchers,
+          quota_issued_count: quotaAggregates.find((row) => row.package_id === pkg.id)?._count._all ?? 0,
+        }, statusAggregates, expiredActiveAggregates),
         self_acquisition_count: selfAggregates
           .filter((row) => row.package_id === pkg.id)
           .reduce((sum, row) => sum + row._count._all, 0),

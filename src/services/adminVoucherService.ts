@@ -64,14 +64,20 @@ export interface VoucherPackage {
 }
 
 export interface VoucherPackageStats {
-  issued_count: number; active_count: number; reserved_count: number; redeemed_count: number;
+  issued_count: number; quota_issued_count: number; active_count: number; reserved_count: number; redeemed_count: number;
   expired_count: number; refunded_count: number; remaining_quantity: number | null;
   self_acquisition_count?: number;
   self_acquisition_used_count?: number;
 }
 
 export type VoucherOwnerStatus = "ALL" | "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED";
-export type VoucherIssuedVia = "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT" | "ADMIN";
+export type VoucherIssuedVia =
+  | "POINTS_EXCHANGE"
+  | "FREE_CLAIM"
+  | "AUTO_GRANT"
+  | "ADMIN"
+  | "WELCOME_GIFT"
+  | "GACHA_REWARD";
 export interface VoucherOwnerInstance { qr_token: string; status: Exclude<VoucherOwnerStatus, "ALL">; effective_status: Exclude<VoucherOwnerStatus, "ALL">; issued_via: VoucherIssuedVia; created_at: string; expires_at: string | null; redeemed_at: string | null; used_channel: "ONLINE" | "OFFLINE" | null }
 export interface VoucherPackageOwner { qr_token: string; name: string; insta_name: string | null; phone_number: string; vouchers: VoucherOwnerInstance[] }
 export interface VoucherOwnerPage { users: VoucherPackageOwner[]; next_cursor: string | null }

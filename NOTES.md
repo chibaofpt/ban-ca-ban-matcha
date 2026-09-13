@@ -60,7 +60,9 @@ Không implement nội dung trong file này nếu task hiện tại chưa đư�
   xác định freshness, invalidation và failure behavior.
 - Chưa có ADR ghi lý do hoặc thời điểm duyệt phạm vi Redis cache-aside hiện tại; SPECIFICATION phản
   ánh implementation đang chạy trong code, không phải bằng chứng lịch sử phê duyệt.
-- Voucher gacha: dùng `VoucherPackage` + `Voucher`; nếu được duyệt sẽ thêm pool/play boundary mà không đổi order calculator.
+- Point-to-draw ngoài welcome reward chưa được thiết kế: cần quyết định giá mỗi lượt, atomic points
+  debit, ticket/idempotency, refund khi không thể resolve reward, cùng API request/response. Chưa có
+  endpoint hoặc points debit cho flow này; reusable reward-selection core không tự cấp quyền triển khai.
 
 ### Product options
 

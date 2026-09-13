@@ -15,6 +15,7 @@ Tài liệu này mô tả hệ thống đang được hỗ trợ, không phải 
 | Primitive, overlay stack, form | UI system bên dưới + mobile-ux |
 | Menu/editor/upload/ProductModal | [Catalog UI](docs/specs/catalog-ui.md) |
 | Wallet, voucher detail/claim, admin wizard | [Voucher UI](docs/specs/voucher-ui.md) |
+| Quà đăng ký, hộp matcha, admin reward campaign | [Reward UI](docs/specs/reward-ui.md) |
 | Cart source model, BUNDLE setup, POS recovery | [Cart và POS](docs/specs/cart.md) |
 | Cách duy trì spec/harness | [Spec registry](docs/specs/README.md) |
 
@@ -22,6 +23,14 @@ Tài liệu này mô tả hệ thống đang được hỗ trợ, không phải 
 
 Feature specification nằm tại [Voucher UI](docs/specs/voucher-ui.md); cart transitions và persistence
 nằm tại [Cart và POS](docs/specs/cart.md). Chỉ nạp file có behavior đang thay đổi.
+
+## Quà chào mừng
+
+Customer reveal, defer/resume và Admin campaign UI nằm tại
+[Reward UI](docs/specs/reward-ui.md). Business lifecycle thuộc
+[voucher-flow](.agents/skills/voucher-flow/references/lifecycle.md#welcome-reward-and-gacha), API
+thuộc [API](API.md#customer-welcome-reward), và dữ liệu thuộc
+[SCHEMA](SCHEMA.md#welcome_reward_settings).
 
 ## Runtime architecture
 
@@ -75,6 +84,10 @@ Một feature có dữ liệu đi qua các ranh giới sau; chỉ tạo hoặc s
    service, còn view/container/hook quản lý state thuần UI. `useEffect` chỉ gọi service cho lifecycle
    synchronization không phù hợp với query/mutation và vẫn phải xử lý cancel hoặc stale response.
 7. **Leaf UI:** nhận data và callback qua props; không biết URL, Axios, API envelope hay Prisma.
+
+Welcome reward đi đúng đường này: auth registration tạo entitlement trong transaction; customer và
+Admin orchestration dùng TanStack Query qua domain service. Reward reveal nằm trong managed overlay,
+và mở voucher wallet bằng callback của composition boundary thay vì gọi transport từ leaf UI.
 
 Luồng đọc đi từ UI xuống các boundary rồi response đi ngược lên. Luồng ghi cũng đi cùng đường và
 server luôn revalidate dữ liệu; customer/staff có thể dùng route khác nhau nhưng dùng chung domain
@@ -170,6 +183,10 @@ trên mobile và nested layer popover trên desktop. Flow ngoài provider tiếp
 trước; không dùng Zustand hoặc history thủ công để điều phối stack.
 
 Authentication dùng centered Radix dialog ở layer `critical` trên mọi breakpoint. Dialog đăng nhập được mount toàn cục, phủ lên nhưng không đóng page, cart hoặc voucher sheet đang hoạt động và sở hữu focus trên cùng. Hủy chỉ đóng auth, còn đăng nhập thành công trả quyền điều khiển cho surface nền để tiếp tục intent đã yêu cầu.
+
+Khi đăng ký tạo `GACHA PENDING`, auth dialog giữ layer `critical` và chuyển nội dung sang
+[Reward UI](docs/specs/reward-ui.md). Reward mở lại từ wallet dùng nested overlay trong cùng stack;
+profile mở standalone critical overlay. Cả hai dùng shared focus/dismiss policy bên trên.
 
 Overlay layer chỉ có `base`, `nested`, `critical`. Không tạo z-index tùy ý cho overlay mới.
 

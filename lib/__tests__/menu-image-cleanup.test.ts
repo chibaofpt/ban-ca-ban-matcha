@@ -5,6 +5,7 @@ const mockMenuItemFindMany = vi.fn();
 const mockAddonGroupFindMany = vi.fn();
 const mockAddonOptionFindMany = vi.fn();
 const mockMatchaPowderFindMany = vi.fn();
+const mockRewardBoxFindMany = vi.fn();
 const mockListMenuImages = vi.fn();
 const mockRemoveMenuImages = vi.fn();
 const mockCaptureServerException = vi.fn();
@@ -16,6 +17,7 @@ vi.mock("@/lib/prisma", () => ({
     addonOption: { findMany: (...args: unknown[]) => mockAddonOptionFindMany(...args) },
     matchaPowder: { findMany: (...args: unknown[]) => mockMatchaPowderFindMany(...args) },
     milkType: { findMany: vi.fn().mockResolvedValue([]) },
+    rewardBox: { findMany: (...args: unknown[]) => mockRewardBoxFindMany(...args) },
   },
 }));
 
@@ -47,6 +49,7 @@ describe("Cron dọn orphan image", () => {
     mockAddonGroupFindMany.mockResolvedValue([]);
     mockAddonOptionFindMany.mockResolvedValue([]);
     mockMatchaPowderFindMany.mockResolvedValue([]);
+    mockRewardBoxFindMany.mockResolvedValue([]);
     mockListMenuImages.mockResolvedValue([]);
     mockRemoveMenuImages.mockResolvedValue(undefined);
   });
@@ -108,6 +111,24 @@ describe("Cron dọn orphan image", () => {
     });
     expect(mockRemoveMenuImages).toHaveBeenCalledWith(["orphan.webp"]);
     expect(result.deleted).toBe(1);
+  });
+
+  it("giữ cả ảnh đóng và mở của reward box ở mọi trạng thái campaign", async () => {
+    mockRewardBoxFindMany.mockResolvedValue([{ closed_image_url: `${baseUrl}products/reward-boxes/closed.webp`, open_image_url: `${baseUrl}products/reward-boxes/open.webp` }]);
+    mockListMenuImages.mockResolvedValue([
+      { path: "products/reward-boxes/closed.webp", createdAt: "2026-07-01T00:00:00.000Z" },
+      { path: "products/reward-boxes/open.webp", createdAt: "2026-07-01T00:00:00.000Z" },
+      { path: "products/reward-boxes/orphan.webp", createdAt: "2026-07-01T00:00:00.000Z" },
+    ]);
+
+    const result = await runMenuImageCleanup({ now, dryRun: false });
+
+    expect(mockRewardBoxFindMany).toHaveBeenCalledWith({
+      where: { campaign: { status: { in: ["DRAFT", "ACTIVE", "PAUSED", "ENDED"] } } },
+      select: { closed_image_url: true, open_image_url: true },
+    });
+    expect(mockRemoveMenuImages).toHaveBeenCalledWith(["products/reward-boxes/orphan.webp"]);
+    expect(result.referenced).toBe(2);
   });
 
   it("không xóa orphan mới hơn 48 giờ", async () => {

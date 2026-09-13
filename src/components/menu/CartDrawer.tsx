@@ -143,6 +143,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
   const openLogin = useAuthModalStore((s) => s.openLogin);
   const openLoginWithIntent = useAuthModalStore((s) => s.openLoginWithIntent);
   const pendingAuthIntent = useAuthModalStore((s) => s.pendingIntent);
+  const authModalOpen = useAuthModalStore((s) => s.open);
   const clearAuthIntent = useAuthModalStore((s) => s.clearIntent);
   const router = useRouter();
 
@@ -528,10 +529,10 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
   };
 
   useEffect(() => {
-    if (!isLoggedIn || !isCartOpen || pendingAuthIntent?.type !== "open_cart_vouchers") return;
+    if (authModalOpen || !isLoggedIn || !isCartOpen || pendingAuthIntent?.type !== "open_cart_vouchers") return;
     setIsDiscountPickerOpen(true);
     clearAuthIntent();
-  }, [clearAuthIntent, isCartOpen, isLoggedIn, pendingAuthIntent]);
+  }, [authModalOpen, clearAuthIntent, isCartOpen, isLoggedIn, pendingAuthIntent]);
 
   // Auto-select default address when addresses load for DELIVERY
   useEffect(() => {

@@ -8,6 +8,9 @@ import {
   ensureAutoGrantedVouchers,
   type VoucherIssuanceDatabase,
 } from "@/lib/voucherIssuance";
+import { createWelcomeRewardInTransaction } from "@/lib/welcomeReward";
+
+class GhostRegistrationConflictError extends Error {}
 
 /**
  * Handle POST request for user registration.
@@ -50,42 +53,35 @@ export async function POST(req: Request) {
     /** Maximum number of concurrent active sessions per user. */
     const MAX_ACTIVE_SESSIONS = 5;
 
-    // Create or update user, award welcome points, and open a session in one atomic transaction
-    const { user, session } = await prisma.$transaction(async (tx) => {
+    // Create or convert the user, persist the welcome reward, and open a session atomically.
+    const { user, session, welcomeReward } = await prisma.$transaction(async (tx) => {
       let finalUser;
 
       if (existingUser && existingUser.password_hash === "GHOST_USER_NO_PASSWORD") {
-        // Convert ghost user to real user
-        finalUser = await tx.user.update({
-          where: { id: existingUser.id },
+        const converted = await tx.user.updateMany({
+          where: { id: existingUser.id, password_hash: "GHOST_USER_NO_PASSWORD" },
           data: {
             name,
             password_hash: passwordHash,
             insta_name,
-            points_balance: { increment: 5 }, // Award welcome bonus
           },
         });
+        if (converted.count !== 1) throw new GhostRegistrationConflictError();
+        finalUser = await tx.user.findUnique({ where: { id: existingUser.id } });
+        if (!finalUser) throw new GhostRegistrationConflictError();
       } else {
-        // Create brand new user
         finalUser = await tx.user.create({
           data: {
             name,
             phone_number: normalizedPhone,
             password_hash: passwordHash,
             insta_name,
-            points_balance: 5, // Award welcome bonus
+            points_balance: 0,
           },
         });
       }
 
-      await tx.pointsLog.create({
-        data: {
-          user_id: finalUser.id,
-          delta: 5,
-          reason: "welcome_bonus",
-          performed_by: null,
-        },
-      });
+      const welcomeReward = await createWelcomeRewardInTransaction(tx, finalUser.id);
 
       // EDGE-4: Session limit — enforce max active sessions before creating new one
       const activeSessions = await tx.session.findMany({
@@ -108,7 +104,7 @@ export async function POST(req: Request) {
         },
       });
 
-      return { user: finalUser, session };
+      return { user: finalUser, session, welcomeReward };
     });
 
     // Create access token
@@ -133,11 +129,18 @@ export async function POST(req: Request) {
           phone_number: user.phone_number,
           insta_name: user.insta_name,
           role: user.role,
+          welcome_reward: welcomeReward,
         },
       },
       { status: 201 }
     );
   } catch (err: unknown) {
+    if (err instanceof GhostRegistrationConflictError) {
+      return NextResponse.json(
+        { error: "Số điện thoại đã được đăng ký", code: "CONFLICT" },
+        { status: 409 },
+      );
+    }
     if (isUniqueConstraintError(err)) {
       return NextResponse.json(
         { error: "Tên Instagram này đã được sử dụng", code: "CONFLICT" },

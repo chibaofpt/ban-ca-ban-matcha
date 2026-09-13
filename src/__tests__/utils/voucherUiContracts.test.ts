@@ -7,6 +7,16 @@ import type { VoucherPackage } from "@/src/services/customerVoucherService";
 const readSource = (path: string): string => readFileSync(new URL(path, import.meta.url), "utf8");
 
 describe("multi-choice voucher UI contracts", () => {
+  it("khai báo và hiển thị hai nguồn phát hành reward hệ thống", () => {
+    const service = readSource("../../services/adminVoucherService.ts");
+    const detail = readSource("../../components/admin/AdminVoucherPackageDetail.tsx");
+
+    expect(service).toContain('| "WELCOME_GIFT"');
+    expect(service).toContain('| "GACHA_REWARD"');
+    expect(detail).toContain('WELCOME_GIFT: "Quà chào mừng"');
+    expect(detail).toContain('GACHA_REWARD: "Phần thưởng gacha"');
+  });
+
   it("wires BUNDLE allocation into every ADDON use-now picker and applies atomically", () => {
     const detail = readSource("../../components/shared/VoucherDetailSheet.tsx");
     const modal = readSource("../../components/shared/VoucherModal.tsx");

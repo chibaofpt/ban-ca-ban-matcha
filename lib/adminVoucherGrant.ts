@@ -1,6 +1,8 @@
 import { previewVoucherExpiry } from "@/lib/voucherIssuance";
 import {
   issueVoucherInTransaction,
+  LEGACY_PACKAGE_QUOTA_SOURCES,
+  SELF_ACQUISITION_SOURCES,
   VoucherIssuanceError,
   type IssuedVoucherResult,
   type VoucherIssuanceDatabase,
@@ -95,7 +97,12 @@ export async function getAdminVoucherRecipientSummary(
   if (!pkg) return null;
 
   const [issuedCount, currentCount, usedCount, selfAcquisitionCount] = await Promise.all([
-    db.voucher.count({ where: { package_id: packageId } }),
+    db.voucher.count({
+      where: {
+        package_id: packageId,
+        issued_via: { in: [...LEGACY_PACKAGE_QUOTA_SOURCES] },
+      },
+    }),
     db.voucher.count({
       where: {
         package_id: packageId,
@@ -111,7 +118,7 @@ export async function getAdminVoucherRecipientSummary(
       where: {
         package_id: packageId,
         user_id: userId,
-        issued_via: { in: ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"] },
+        issued_via: { in: [...SELF_ACQUISITION_SOURCES] },
       },
     }),
   ]);

@@ -1,4 +1,4 @@
-import type { Size } from "@prisma/client";
+import type { DiscountType, Prisma, Size, VoucherAcquisitionMode, VoucherType } from "@prisma/client";
 import {
   loadVoucherAvailabilityCatalog,
   resolveVoucherTargetAvailability,
@@ -7,13 +7,32 @@ import {
   type VoucherBundleRuleSource,
 } from "@/lib/voucherAvailability";
 
-type AcquisitionMode = "NONE" | "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
-export type VoucherIssuedVia = "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT" | "ADMIN";
+type AcquisitionMode = VoucherAcquisitionMode;
+export type VoucherIssuedVia =
+  | "POINTS_EXCHANGE"
+  | "FREE_CLAIM"
+  | "AUTO_GRANT"
+  | "ADMIN"
+  | "WELCOME_GIFT"
+  | "GACHA_REWARD";
+
+export const LEGACY_PACKAGE_QUOTA_SOURCES = [
+  "POINTS_EXCHANGE",
+  "FREE_CLAIM",
+  "AUTO_GRANT",
+  "ADMIN",
+] as const satisfies readonly VoucherIssuedVia[];
+
+export const SELF_ACQUISITION_SOURCES = [
+  "POINTS_EXCHANGE",
+  "FREE_CLAIM",
+  "AUTO_GRANT",
+] as const satisfies readonly VoucherIssuedVia[];
 
 interface VoucherPackageSnapshot {
   id: string;
   name: string;
-  voucher_type: string;
+  voucher_type: VoucherType;
   acquisition_mode: AcquisitionMode;
   visibility?: "PUBLIC" | "PRIVATE";
   points_cost: number;
@@ -21,7 +40,7 @@ interface VoucherPackageSnapshot {
   quantity: number | null;
   max_per_user: number;
   expires_after_days: number | null;
-  discount_type: string | null;
+  discount_type: DiscountType | null;
   discount_value: number | null;
   product_discount_mode: "FIXED_AMOUNT" | "PAY_AS_SIZE" | null;
   menu_item_id: string | null;
@@ -62,35 +81,25 @@ interface CreatedVoucher {
   voucher_type?: string;
   user_id?: string;
   package_id?: string;
-  issued_via?: VoucherIssuedVia;
+  issued_via?: VoucherAcquisitionMode;
   issuing_admin_id?: string | null;
   manual_request_id?: string | null;
   [key: string]: unknown;
 }
 
-export interface VoucherIssuanceTransaction {
-  voucherPackage: {
-    findUnique: (args: unknown) => Promise<VoucherPackageSnapshot | null>;
-  };
+export interface VoucherIssuanceTransaction extends VoucherAvailabilityDatabase {
+  voucherPackage: { findUnique(args: Prisma.VoucherPackageFindUniqueArgs): PromiseLike<VoucherPackageSnapshot | null> };
   voucher: {
-    count: (args: unknown) => Promise<number>;
-    findUnique?: (args: unknown) => Promise<CreatedVoucher | null>;
-    create: (args: unknown) => Promise<CreatedVoucher>;
+    count(args: Prisma.VoucherCountArgs): PromiseLike<number>;
+    findUnique(args: Prisma.VoucherFindUniqueArgs): PromiseLike<CreatedVoucher | null>;
+    create(args: Prisma.VoucherCreateArgs): PromiseLike<CreatedVoucher>;
   };
-  user: {
-    updateMany: (args: unknown) => Promise<{ count: number }>;
-  };
-  pointsLog: {
-    create: (args: unknown) => Promise<unknown>;
-  };
+  user: { updateMany(args: Prisma.UserUpdateManyArgs): PromiseLike<{ count: number }> };
+  pointsLog: { create(args: Prisma.PointsLogCreateArgs): PromiseLike<unknown> };
   voucherGrant: {
-    findUnique: (args: unknown) => Promise<{ voucher_id: string } | null>;
-    create: (args: unknown) => Promise<unknown>;
+    findUnique(args: Prisma.VoucherGrantFindUniqueArgs): PromiseLike<{ voucher_id: string } | null>;
+    create(args: Prisma.VoucherGrantCreateArgs): PromiseLike<unknown>;
   };
-  menuItem: VoucherAvailabilityDatabase["menuItem"];
-  matchaPowder: VoucherAvailabilityDatabase["matchaPowder"];
-  milkType: VoucherAvailabilityDatabase["milkType"];
-  addonOption: VoucherAvailabilityDatabase["addonOption"];
 }
 
 export interface VoucherIssuanceDatabase {
@@ -170,7 +179,7 @@ function assertPackageAvailable(
   ) {
     throw new VoucherIssuanceError("NOT_FOUND", "Voucher package targets an unavailable addon");
   }
-  if (source !== "ADMIN" && (
+  if (!["ADMIN", "WELCOME_GIFT", "GACHA_REWARD"].includes(source) && (
     pkg.visibility === "PRIVATE" ||
     pkg.acquisition_mode === "NONE" ||
     pkg.acquisition_mode !== source
@@ -191,18 +200,26 @@ async function assertIssuanceLimits(
   userId: string,
   source: VoucherIssuedVia,
 ): Promise<void> {
-  if (pkg.quantity !== null) {
-    const issuedCount = await tx.voucher.count({ where: { package_id: pkg.id } });
+  if (
+    pkg.quantity !== null &&
+    LEGACY_PACKAGE_QUOTA_SOURCES.some((candidate) => candidate === source)
+  ) {
+    const issuedCount = await tx.voucher.count({
+      where: {
+        package_id: pkg.id,
+        issued_via: { in: [...LEGACY_PACKAGE_QUOTA_SOURCES] },
+      },
+    });
     if (issuedCount >= pkg.quantity) {
       throw new VoucherIssuanceError("VOUCHER_SOLD_OUT", "Voucher package is sold out");
     }
   }
-  if (source !== "ADMIN") {
+  if (SELF_ACQUISITION_SOURCES.some((candidate) => candidate === source)) {
     const userIssuedCount = await tx.voucher.count({
       where: {
         package_id: pkg.id,
         user_id: userId,
-        issued_via: { in: ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"] },
+        issued_via: { in: [...SELF_ACQUISITION_SOURCES] },
       },
     });
     if (userIssuedCount >= pkg.max_per_user) {
@@ -221,7 +238,7 @@ export async function issueVoucherInTransaction(
   if (input.source === "ADMIN" && (!input.performed_by || !input.request_id)) {
     throw new VoucherIssuanceError("VALIDATION_ERROR", "Admin issuance requires an actor and request id");
   }
-  if (input.source === "ADMIN" && input.request_id && tx.voucher.findUnique) {
+  if (input.source === "ADMIN" && input.request_id) {
     const existing = await tx.voucher.findUnique({
       where: { manual_request_id: input.request_id },
       select: {

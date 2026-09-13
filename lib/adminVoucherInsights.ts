@@ -7,6 +7,7 @@ export type VoucherExpiredAggregate = { package_id: string; _count: { _all: numb
 
 export interface AdminVoucherStats {
   issued_count: number;
+  quota_issued_count: number;
   active_count: number;
   reserved_count: number;
   redeemed_count: number;
@@ -28,7 +29,7 @@ export function effectiveVoucherStatus(voucher: VoucherSnapshot, now = new Date(
 
 /** Builds package operational counts from current voucher rows. */
 export function buildAdminVoucherStats(
-  pkg: { id: string; quantity: number | null; issued_count: number },
+  pkg: { id: string; quantity: number | null; issued_count: number; quota_issued_count: number },
   statusAggregates: VoucherStatusAggregate[],
   expiredActiveAggregates: VoucherExpiredAggregate[],
 ): AdminVoucherStats {
@@ -39,11 +40,12 @@ export function buildAdminVoucherStats(
   counts.EXPIRED += expiredActive;
   return {
     issued_count: pkg.issued_count,
+    quota_issued_count: pkg.quota_issued_count,
     active_count: counts.ACTIVE,
     reserved_count: counts.RESERVED,
     redeemed_count: counts.REDEEMED,
     expired_count: counts.EXPIRED,
     refunded_count: counts.REFUNDED,
-    remaining_quantity: pkg.quantity === null ? null : Math.max(pkg.quantity - pkg.issued_count, 0),
+    remaining_quantity: pkg.quantity === null ? null : Math.max(pkg.quantity - pkg.quota_issued_count, 0),
   };
 }

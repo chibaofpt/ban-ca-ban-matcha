@@ -36,6 +36,7 @@ const mockSessionDeleteMany = vi.fn();
 const mockPointsLogCreate = vi.fn();
 const mockTransaction = vi.fn();
 const mockEnsureAutoGrantedVouchers = vi.fn();
+const mockCreateWelcomeReward = vi.fn();
 const mockCacheDelete = vi.fn();
 
 const mockBcryptCompare = vi.fn();
@@ -98,6 +99,10 @@ vi.mock("bcryptjs", () => ({
 
 vi.mock("@/lib/voucherIssuance", () => ({
   ensureAutoGrantedVouchers: (...args: unknown[]) => mockEnsureAutoGrantedVouchers(...args),
+}));
+
+vi.mock("@/lib/welcomeReward", () => ({
+  createWelcomeRewardInTransaction: (...args: unknown[]) => mockCreateWelcomeReward(...args),
 }));
 
 vi.mock("@/lib/redis", () => ({
@@ -507,6 +512,12 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
     vi.resetAllMocks();
     mockBcryptHash.mockResolvedValue("$2a$12$hashed");
     mockBcryptCompare.mockResolvedValue(false);
+    mockCreateWelcomeReward.mockResolvedValue({
+      id: "welcome-reward-id",
+      mode: "GACHA",
+      status: "PENDING",
+      outcome_kind: null,
+    });
   });
 
   it("đăng ký user mới thành công → trả 201 và set cookies", async () => {
@@ -536,6 +547,12 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
 
     expect(res.status).toBe(201);
     expect(body.data.role).toBe("CUSTOMER");
+    expect(body.data.welcome_reward).toEqual({
+      id: "welcome-reward-id",
+      mode: "GACHA",
+      status: "PENDING",
+      outcome_kind: null,
+    });
     const token = mockCookieSet.mock.calls.find(([key]) => key === "access_token")?.[1] as string;
     expect((await jwtVerify(token, new TextEncoder().encode("auth-route-cookie-test-secret-at-least-32-bytes"))).payload)
       .toMatchObject({ id: "new-user-id", sid: "registered-session-id", role: "CUSTOMER" });
@@ -543,6 +560,7 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
       httpOnly: true, sameSite: "strict", maxAge: 604800,
     }));
     expect(mockEnsureAutoGrantedVouchers).toHaveBeenCalledWith(expect.anything(), "new-user-id");
+    expect(mockCreateWelcomeReward).toHaveBeenCalledWith(expect.anything(), "new-user-id");
   });
 
   it("trả 409 CONFLICT khi số điện thoại đã đăng ký (không phải ghost)", async () => {
@@ -560,7 +578,8 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
 
   it("convert ghost user thành real user khi đăng ký với số điện thoại ghost", async () => {
     mockUserFindUnique.mockResolvedValueOnce(GHOST_USER);
-    const mockTxUserUpdate = vi.fn().mockResolvedValue({ ...GHOST_USER, password_hash: "$2a$12$hashed", name: "Real Name" });
+    const mockTxUserUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const convertedUser = { ...GHOST_USER, password_hash: "$2a$12$hashed", name: "Real Name" };
     const mockTxSessionCreate = vi.fn().mockResolvedValue({ id: "registered-session-id", refresh_token: "new-refresh-token" });
     const mockTxSessionFindMany = vi.fn().mockResolvedValue([]);
     const mockTxSessionDeleteMany = vi.fn();
@@ -569,7 +588,7 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
     mockTransaction.mockImplementationOnce(
       async (fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {
-          user: { update: mockTxUserUpdate, create: vi.fn() },
+          user: { updateMany: mockTxUserUpdateMany, findUnique: vi.fn().mockResolvedValue(convertedUser), create: vi.fn() },
           session: {
             findMany: mockTxSessionFindMany,
             create: mockTxSessionCreate,
@@ -586,9 +605,9 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
     );
 
     expect(res.status).toBe(201);
-    expect(mockTxUserUpdate).toHaveBeenCalledWith(
+    expect(mockTxUserUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: GHOST_USER.id },
+        where: { id: GHOST_USER.id, password_hash: "GHOST_USER_NO_PASSWORD" },
         data: expect.objectContaining({ name: "Real Name", password_hash: "$2a$12$hashed" }),
       })
     );
@@ -596,7 +615,8 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
 
   it("xóa session cũ nhất khi ghost user đã có 5 session active (edge case đặc biệt)", async () => {
     mockUserFindUnique.mockResolvedValueOnce(GHOST_USER);
-    const mockTxUserUpdate = vi.fn().mockResolvedValue({ ...GHOST_USER, password_hash: "$2a$12$hashed" });
+    const mockTxUserUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const convertedUser = { ...GHOST_USER, password_hash: "$2a$12$hashed" };
     const mockTxSessionCreate = vi.fn().mockResolvedValue({ id: "registered-session-id", refresh_token: "new-token" });
     const mockTxSessionFindMany = vi.fn().mockResolvedValue([
       { id: "s1" }, { id: "s2" }, { id: "s3" }, { id: "s4" }, { id: "s5" },
@@ -606,7 +626,7 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
     mockTransaction.mockImplementationOnce(
       async (fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {
-          user: { update: mockTxUserUpdate, create: vi.fn() },
+          user: { updateMany: mockTxUserUpdateMany, findUnique: vi.fn().mockResolvedValue(convertedUser), create: vi.fn() },
           session: {
             findMany: mockTxSessionFindMany,
             create: mockTxSessionCreate,
@@ -627,6 +647,24 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
         where: expect.objectContaining({ id: { in: ["s1"] } }),
       })
     );
+  });
+
+  it("ghost conversion thua conditional update trả 409 và không tạo reward/session", async () => {
+    mockUserFindUnique.mockResolvedValueOnce(GHOST_USER);
+    const sessionCreate = vi.fn();
+    mockTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { updateMany: vi.fn().mockResolvedValue({ count: 0 }), findUnique: vi.fn(), create: vi.fn() },
+      session: { findMany: vi.fn(), create: sessionCreate, deleteMany: vi.fn() },
+    }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Real Name", phone_number: "0912345678", password: "newpassword",
+    }));
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("CONFLICT");
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
+    expect(sessionCreate).not.toHaveBeenCalled();
   });
 });
 

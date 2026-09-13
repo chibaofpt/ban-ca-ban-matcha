@@ -190,6 +190,11 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/admin/powders` | GET, POST |
 | `/api/admin/powders/[id]` | PUT, DELETE |
 | `/api/admin/report` | GET |
+| `/api/admin/reward-campaigns` | GET, POST |
+| `/api/admin/reward-campaigns/[id]` | GET, PATCH |
+| `/api/admin/reward-campaigns/[id]/pool` | PUT |
+| `/api/admin/reward-campaigns/[id]/boxes` | POST |
+| `/api/admin/reward-campaigns/[id]/boxes/[boxId]` | PATCH, DELETE |
 | `/api/admin/staff` | GET |
 | `/api/admin/store-closure` | POST |
 | `/api/admin/store-schedule` | GET, PUT |
@@ -198,12 +203,15 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/admin/voucher-packages/[id]/owners` | GET |
 | `/api/admin/voucher-packages/[id]/grants` | POST |
 | `/api/admin/voucher-packages/[id]/recipients/[userQrToken]` | GET |
+| `/api/admin/welcome-reward-settings` | GET, PUT |
 | `/api/auth/check-phone` | POST |
 | `/api/auth/login` | POST |
 | `/api/auth/logout` | POST |
 | `/api/auth/me` | GET |
 | `/api/auth/refresh` | POST |
 | `/api/auth/register` | POST |
+| `/api/customer/rewards/welcome` | GET |
+| `/api/customer/rewards/welcome/open` | POST |
 | `/api/cron/cancel-expired-orders` | GET |
 | `/api/cron/clean-sessions` | GET |
 | `/api/cron/cleanup-menu-images` | GET |
@@ -370,7 +378,172 @@ in `Asia/Ho_Chi_Minh`.
   insta_name?: string // optional, unique, normalized without @ and to lowercase
 }
 // If phone exists with password_hash = "GHOST_USER_NO_PASSWORD" → UPDATE instead of INSERT
+
+// 201 — existing identity fields remain; welcome_reward is additive
+{
+  data: {
+    name: string
+    phone_number: string
+    insta_name: string | null
+    role: "CUSTOMER" | "STAFF" | "ADMIN"
+    welcome_reward: {
+      id: string
+      mode: "POINTS" | "FIXED_VOUCHER" | "GACHA"
+      status: "PENDING" | "COMPLETED"
+      outcome_kind: "VOUCHER" | "POINTS" | null
+    }
+  }
+}
 ```
+
+Registration creates or resolves exactly one welcome entitlement in the user/session transaction.
+`POINTS` and `FIXED_VOUCHER` complete immediately; only an available `GACHA` entitlement returns
+`PENDING`. Detailed selection, fallback and campaign rules belong to
+[voucher-flow lifecycle](.agents/skills/voucher-flow/references/lifecycle.md#welcome-reward-and-gacha).
+
+### Customer welcome reward
+
+Both routes are CUSTOMER-only. `GET /api/customer/rewards/welcome` is read-only and returns
+`{ data: { reward: WelcomeReward | null } }`. It never creates, opens or reconciles an entitlement.
+
+```ts
+type RewardBox = {
+  id: string
+  name: string
+  closed_image_url: string
+  open_image_url: string
+  mouth_anchor_x: number // normalized 0..1
+  mouth_anchor_y: number // normalized 0..1
+  sort_order: number
+}
+type WelcomeReward = {
+  id: string
+  mode: "POINTS" | "FIXED_VOUCHER" | "GACHA"
+  status: "PENDING" | "COMPLETED"
+  can_open: boolean
+  unavailable_reason: "REWARD_PAUSED" | null
+  campaign: {
+    id: string
+    name: string
+    status: "DRAFT" | "ACTIVE" | "PAUSED" | "ENDED"
+    boxes: RewardBox[]
+  } | null
+  outcome:
+    | { kind: "POINTS", points: 5 }
+    | { kind: "VOUCHER", voucher: OwnedVoucher }
+    | null
+}
+```
+
+`OwnedVoucher` is the same public owned-voucher projection used by `GET /api/profile/vouchers`.
+It exposes the voucher `qr_token`, never `vouchers.id`, `users.id`, ownership foreign keys or actor
+IDs.
+
+`POST /api/customer/rewards/welcome/open` accepts the strict JSON body below. `request_id` is an
+idempotency key: replay for the same entitlement returns its committed outcome; an existing key
+bound to another entitlement returns `409 CONFLICT`.
+
+```ts
+{ reward_id: string, box_id: string, request_id: string } // all UUID
+// 200
+{ data: { reward: WelcomeReward } }
+```
+
+Stable failures are `400 VALIDATION_ERROR`, `401 UNAUTHORIZED`, `403 FORBIDDEN`, `404 NOT_FOUND`,
+`409 CONFLICT`, and `422 BUSINESS_RULE_VIOLATION`. The 422
+`details.reason` is `REWARD_PAUSED` or `REWARD_TEMPORARILY_UNAVAILABLE`; clients may defer and
+resume the durable reward instead of treating either reason as loss.
+
+### Admin welcome reward settings and campaigns
+
+Every route in this section is ADMIN-only and returns `401 UNAUTHORIZED` or `403 FORBIDDEN` before
+parsing mutation input. Settings use optimistic `revision` protection:
+
+```ts
+// GET /api/admin/welcome-reward-settings — 200
+{ data: { settings: {
+  mode: "POINTS" | "FIXED_VOUCHER" | "GACHA"
+  fixed_package_id: string | null
+  active_campaign_id: string | null
+  revision: number
+} } }
+
+// PUT /api/admin/welcome-reward-settings
+{
+  mode: "POINTS" | "FIXED_VOUCHER" | "GACHA"
+  fixed_package_id?: string | null
+  active_campaign_id?: string | null
+  revision: number
+}
+// 200: { data: { settings } }
+```
+
+Exactly one reference matches the mode: neither for `POINTS`, only `fixed_package_id` for
+`FIXED_VOUCHER`, and only `active_campaign_id` for `GACHA`. A fixed package must be active and
+unexpired; a selected campaign must be `ACTIVE`.
+
+```ts
+type CampaignSummary = {
+  id: string; name: string; status: "DRAFT" | "ACTIVE" | "PAUSED" | "ENDED"
+  revision: number; created_at: string; updated_at: string
+  draw_count: number; total_allocated: number; total_remaining: number; box_count: number
+}
+type Campaign = CampaignSummary & {
+  pool_items: Array<{
+    id: string; voucher_package_id: string
+    voucher_package: { name: string; is_active: boolean; ends_at: string | null }
+    quantity: number; unlock_after_draws: number; issued_count: number
+    remaining_quantity: number; unlocked: boolean; current_weight: number
+    eligible_weight_total: number
+  }>
+  boxes: RewardBox[]
+}
+```
+
+Campaign endpoints and envelopes:
+
+- `GET /api/admin/reward-campaigns` → `200 { data: { items: CampaignSummary[] } }`, newest first.
+- `POST /api/admin/reward-campaigns` with strict JSON `{ name: string }` →
+  `201 { data: { campaign: Campaign } }` in `DRAFT`.
+- `GET /api/admin/reward-campaigns/[id]` → `200 { data: { campaign: Campaign } }`.
+- `PATCH /api/admin/reward-campaigns/[id]` accepts exactly one of
+  `{ action: "RENAME", name: string, revision: number }` or
+  `{ action: "ACTIVATE" | "PAUSE" | "RESUME" | "END", revision: number }`; response is
+  `200 { data: { campaign: Campaign } }`.
+- `PUT /api/admin/reward-campaigns/[id]/pool` replaces the complete draft pool with strict JSON
+  `{ revision: number, items: Array<{ voucher_package_id: string, quantity: number,
+  unlock_after_draws: number }> }`; response is `200 { data: { campaign: Campaign } }`.
+- `POST /api/admin/reward-campaigns/[id]/boxes` uses multipart fields `revision`, `name`, optional
+  `mouth_anchor_x`/`mouth_anchor_y`, and required `closed_image`/`open_image`; response is
+  `201 { data: { box, campaign } }`. Omitted create anchors default to `0.5` and `0.2`.
+- `PATCH /api/admin/reward-campaigns/[id]/boxes/[boxId]` uses multipart `revision` plus at least one
+  of `name`, `mouth_anchor_x`, `mouth_anchor_y`, `closed_image`, `open_image`; response is
+  `200 { data: { box, campaign } }`.
+- `DELETE /api/admin/reward-campaigns/[id]/boxes/[boxId]` uses strict JSON
+  `{ revision: number }`; response is `200 { data: { deleted: true, revision: number } }`.
+
+Box anchors are normalized from 0 through 1. Images accept JPEG, PNG or WebP; each file is at most
+2 MiB, supplied files total at most 4 MiB, and a declared multipart `Content-Length` above 4.5 MiB
+is rejected before parsing. Campaign names contain 1–100 trimmed characters and box names 1–80.
+Pool JSON contains 1–100 unique package rows; each `quantity` is 1–10,000, total allocation is at
+most 100,000, and `unlock_after_draws` is 0–99,999 and below total allocation. JSON bodies are
+strict, and box multipart rejects fields outside those listed above.
+
+Mutation failures use `400 VALIDATION_ERROR` for malformed route IDs, JSON/multipart input or images,
+`404 NOT_FOUND`, and `409 CONFLICT` for a stale revision. Rule failures use
+`422 BUSINESS_RULE_VIOLATION` with stable `details.reason`:
+`CAMPAIGN_NOT_DRAFT`, `INVALID_TRANSITION`, `CAMPAIGN_NOT_READY`,
+`UNREACHABLE_UNLOCK_THRESHOLD`, or `PACKAGE_UNAVAILABLE`. Image validation reasons are
+`INVALID_IMAGE_CONTENT_TYPE`, `IMAGE_TOO_LARGE`, `COMBINED_IMAGES_TOO_LARGE`, or
+`INVALID_DECODED_IMAGE_FORMAT` under `400 VALIDATION_ERROR`. Unexpected failures return
+`500 INTERNAL_ERROR`; customer reward routes use the same terminal error code.
+
+The pool field `quantity` is campaign allocation and controls remaining gacha weight. Voucher
+issuance sources `WELCOME_GIFT` and `GACHA_REWARD` do not consume the package's legacy `quantity`
+quota and do not count toward `max_per_user`; fixed welcome issuance has no campaign allocation.
+Package availability still applies. See the canonical business rules in
+[voucher-flow lifecycle](.agents/skills/voucher-flow/references/lifecycle.md#welcome-reward-and-gacha)
+and persistence semantics in [SCHEMA](SCHEMA.md#welcome_reward_settings).
 
 ### `POST /api/auth/login`
 Password minimum remains 6 characters. New registration rejects passwords over 72 UTF-8 bytes;

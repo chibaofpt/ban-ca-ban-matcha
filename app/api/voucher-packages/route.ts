@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
 import { toVoucherPackageBundleDto } from "@/lib/voucherBundleDto";
+import { LEGACY_PACKAGE_QUOTA_SOURCES, SELF_ACQUISITION_SOURCES } from "@/lib/voucherIssuance";
 import {
   loadVoucherAvailabilityCatalog,
   retainUsableVoucherTargetScopes,
@@ -45,7 +46,10 @@ export async function GET() {
     if (packageIds.length > 0) {
       const globalRedeemedCounts = await prisma.voucher.groupBy({
         by: ["package_id"],
-        where: { package_id: { in: packageIds } },
+        where: {
+          package_id: { in: packageIds },
+          issued_via: { in: [...LEGACY_PACKAGE_QUOTA_SOURCES] },
+        },
         _count: { id: true },
       });
       globalCountMap = Object.fromEntries(
@@ -73,7 +77,7 @@ export async function GET() {
         where: {
           package_id: { in: packageIds },
           user_id: session.id,
-          issued_via: { in: ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"] },
+          issued_via: { in: [...SELF_ACQUISITION_SOURCES] },
         },
         _count: { id: true },
       });

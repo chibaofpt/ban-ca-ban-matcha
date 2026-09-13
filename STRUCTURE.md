@@ -42,6 +42,7 @@ Chỉ đọc mapping liên quan feature; behavior nằm ở link owner, không �
 |---|---|
 | Voucher admin composition | `src/components/admin`; use-now trong shared voucher sheet/hook hiện có; [Voucher UI](docs/specs/voucher-ui.md) |
 | Voucher scope normalization/fallback | `lib/`; URL/types tại voucher services; persistence tại Prisma |
+| Welcome reward/gacha | Customer UI tại `src/components/rewards`, Admin UI tại `src/components/admin/rewards`; orchestration tại `src/hooks`, URL/DTO tại `src/services`, pure presentation tại `src/utils`; server workflow tại `lib/welcomeReward*.ts` và `lib/adminReward*.ts`; HTTP tại `app/api/customer/rewards/welcome` và `app/api/admin/{welcome-reward-settings,reward-campaigns}`; [Reward UI](docs/specs/reward-ui.md) |
 | `OverlayStackProvider` và hook/scope nội bộ | `src/components/ui`; composition/dismiss behavior tại [UI system](SPECIFICATION.md#ui-system) |
 | `ScopedMenuVoucherPicker`, `AddonItemPicker` | Feature picker hiện có; target/setup behavior tại [Voucher UI](docs/specs/voucher-ui.md) |
 | Cart source type | `src/lib/types/cart.ts` |

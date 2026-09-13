@@ -33,6 +33,8 @@ model User {
   voucherGrants     VoucherGrant[]
   pushSubscriptions PushSubscription[]
   addresses         Address[]
+  welcomeReward     WelcomeReward?
+  rewardOutcomes    RewardOutcome[]
 
   @@map("users")
 }
@@ -133,6 +135,8 @@ model VoucherPackage {
   grants                    VoucherGrant[]
   menuItemScopes            VoucherPackageMenuItemScope[]
   addonOptionScopes         VoucherPackageAddonOptionScope[]
+  fixedWelcomeSettings      WelcomeRewardSettings[]
+  rewardPoolItems           RewardPoolItem[]
 
   @@map("voucher_packages")
 }
@@ -188,6 +192,7 @@ model Voucher {
   bundleApplication         OrderBundleApplication?
   menuItemScopes            VoucherMenuItemScope[]
   addonOptionScopes         VoucherAddonOptionScope[]
+  rewardOutcome             RewardOutcome?
 
   @@index([qr_token], map: "idx_vouchers_qr_token")
   @@index([status], map: "idx_vouchers_status")
@@ -216,11 +221,124 @@ model PointsLog {
   reversalLogs    PointsLog[] @relation("Reversal")
   user            User        @relation("UserPoints", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   voucher         Voucher?    @relation(fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rewardOutcome   RewardOutcome?
 
   @@index([created_at(sort: Desc)], map: "idx_points_log_created_at")
   @@index([user_id], map: "idx_points_log_user_id")
   @@index([user_id, created_at(sort: Desc), id(sort: Desc)], map: "idx_points_log_user_created_cursor")
   @@map("points_log")
+}
+
+model WelcomeRewardSettings {
+  id                 Int               @id @default(1)
+  mode               WelcomeRewardMode @default(POINTS)
+  fixed_package_id   String?           @db.Uuid
+  active_campaign_id String?           @db.Uuid
+  revision           Int               @default(0)
+  created_at         DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime          @default(now()) @updatedAt @db.Timestamptz(6)
+  fixedPackage       VoucherPackage?   @relation(fields: [fixed_package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  activeCampaign     RewardCampaign?   @relation(fields: [active_campaign_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([fixed_package_id])
+  @@index([active_campaign_id])
+  @@map("welcome_reward_settings")
+}
+
+model RewardCampaign {
+  id              String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  status          RewardCampaignStatus @default(DRAFT)
+  revision        Int                  @default(0)
+  created_at      DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime             @default(now()) @updatedAt @db.Timestamptz(6)
+  activeSettings  WelcomeRewardSettings[]
+  poolItems       RewardPoolItem[]
+  boxes           RewardBox[]
+  welcomeRewards  WelcomeReward[]
+  outcomes        RewardOutcome[]
+
+  @@map("reward_campaigns")
+}
+
+model RewardPoolItem {
+  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  campaign_id        String         @db.Uuid
+  voucher_package_id String         @db.Uuid
+  quantity           Int
+  unlock_after_draws Int            @default(0)
+  created_at         DateTime       @default(now()) @db.Timestamptz(6)
+  campaign           RewardCampaign @relation(fields: [campaign_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  voucherPackage     VoucherPackage @relation(fields: [voucher_package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  outcomes           RewardOutcome[]
+
+  @@unique([campaign_id, voucher_package_id])
+  @@index([campaign_id])
+  @@index([voucher_package_id])
+  @@map("reward_pool_items")
+}
+
+model RewardBox {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  campaign_id      String         @db.Uuid
+  name             String
+  closed_image_url String
+  open_image_url   String
+  mouth_anchor_x   Decimal        @db.Decimal(5, 4)
+  mouth_anchor_y   Decimal        @db.Decimal(5, 4)
+  sort_order       Int
+  created_at       DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime       @default(now()) @updatedAt @db.Timestamptz(6)
+  campaign         RewardCampaign @relation(fields: [campaign_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  outcomes         RewardOutcome[]
+
+  @@unique([campaign_id, sort_order])
+  @@index([campaign_id])
+  @@map("reward_boxes")
+}
+
+model WelcomeReward {
+  id          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String            @unique @db.Uuid
+  mode        WelcomeRewardMode
+  campaign_id String?           @db.Uuid
+  created_at  DateTime          @default(now()) @db.Timestamptz(6)
+  user        User              @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  campaign    RewardCampaign?   @relation(fields: [campaign_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  outcome     RewardOutcome?
+
+  @@index([campaign_id])
+  @@map("welcome_rewards")
+}
+
+model RewardOutcome {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  welcome_reward_id String            @unique @db.Uuid
+  user_id           String            @db.Uuid
+  origin            RewardOrigin      @default(WELCOME)
+  kind              RewardOutcomeKind
+  campaign_id       String?           @db.Uuid
+  pool_item_id      String?           @db.Uuid
+  box_id            String?           @db.Uuid
+  voucher_id        String?           @unique @db.Uuid
+  points_log_id     String?           @unique @db.Uuid
+  draw_number       Int?
+  request_id        String?           @unique @db.Uuid
+  created_at        DateTime          @default(now()) @db.Timestamptz(6)
+  welcomeReward     WelcomeReward     @relation(fields: [welcome_reward_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user              User              @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  campaign          RewardCampaign?   @relation(fields: [campaign_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  poolItem          RewardPoolItem?   @relation(fields: [pool_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  box               RewardBox?        @relation(fields: [box_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  voucher           Voucher?          @relation(fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pointsLog         PointsLog?        @relation(fields: [points_log_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([campaign_id, draw_number])
+  @@index([user_id, created_at(sort: Desc), id(sort: Desc)], map: "idx_reward_outcomes_user_created_cursor")
+  @@index([campaign_id])
+  @@index([pool_item_id])
+  @@index([box_id])
+  @@map("reward_outcomes")
 }
 
 model VoucherBundleRule {
@@ -762,6 +880,30 @@ enum VoucherAcquisitionMode {
   AUTO_GRANT
   NONE
   ADMIN
+  WELCOME_GIFT
+  GACHA_REWARD
+}
+
+enum WelcomeRewardMode {
+  POINTS
+  FIXED_VOUCHER
+  GACHA
+}
+
+enum RewardCampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum RewardOutcomeKind {
+  VOUCHER
+  POINTS
+}
+
+enum RewardOrigin {
+  WELCOME
 }
 
 enum BundleRewardKind {

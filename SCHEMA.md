@@ -87,7 +87,11 @@ Detailed earning and reversal rules belong to [order-flow — Points](.agents/sk
 | `ProductDiscountMode` | `FIXED_AMOUNT`, `PAY_AS_SIZE` |
 | `DiscountType` | `PERCENT`, `FIXED` |
 | `VoucherPackageVisibility` | `PUBLIC`, `PRIVATE` |
-| `VoucherAcquisitionMode` | `POINTS_EXCHANGE`, `FREE_CLAIM`, `AUTO_GRANT`, `NONE`, `ADMIN` |
+| `VoucherAcquisitionMode` | `POINTS_EXCHANGE`, `FREE_CLAIM`, `AUTO_GRANT`, `NONE`, `ADMIN`, `WELCOME_GIFT`, `GACHA_REWARD` |
+| `WelcomeRewardMode` | `POINTS`, `FIXED_VOUCHER`, `GACHA` |
+| `RewardCampaignStatus` | `DRAFT`, `ACTIVE`, `PAUSED`, `ENDED` |
+| `RewardOutcomeKind` | `VOUCHER`, `POINTS` |
+| `RewardOrigin` | `WELCOME` |
 | `VoucherStatus` | `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, `REFUNDED` |
 | `UsedChannel` | `ONLINE`, `OFFLINE` |
 | `OrderStatus` | `PENDING`, `ADMIN_CONFIRMED`, `STAFF_DONE`, `COMPLETED`, `CANCELLED` |
@@ -102,8 +106,8 @@ Detailed earning and reversal rules belong to [order-flow — Points](.agents/sk
 `voucher_packages.acquisition_mode` and `vouchers.issued_via`. The semantic subsets differ:
 packages use `NONE` only for `PRIVATE` visibility and otherwise use the public allowlist
 `POINTS_EXCHANGE`, `FREE_CLAIM`, or `AUTO_GRANT`; vouchers use `POINTS_EXCHANGE`, `FREE_CLAIM`,
-`AUTO_GRANT`, or `ADMIN`, and never `NONE`. `ADMIN` is an issuance label and is not a package
-acquisition mode.
+`AUTO_GRANT`, `ADMIN`, `WELCOME_GIFT`, or `GACHA_REWARD`, and never `NONE`. `ADMIN`,
+`WELCOME_GIFT`, and `GACHA_REWARD` are issuance labels and are not package acquisition modes.
 The private-voucher migration extends this existing enum additively and keeps the existing
 `vouchers.issued_via` type and default; there is no separate database enum for issuance source.
 
@@ -473,7 +477,7 @@ Junction table mapping multiple ADDON vouchers to an order item.
 
 The database constraint `voucher_packages_visibility_acquisition_mode_check` requires PRIVATE
 packages to use `NONE` and restricts PUBLIC packages to `POINTS_EXCHANGE`, `FREE_CLAIM`, or
-`AUTO_GRANT`; `ADMIN` is not a package acquisition mode.
+`AUTO_GRANT`; `ADMIN`, `WELCOME_GIFT`, and `GACHA_REWARD` are not package acquisition modes.
 
 > PRODUCT package fields such as size, powder, milk, and included addons remain snapshots for
 > package display and issuance. At order application time, PRODUCT eligibility matches
@@ -491,7 +495,7 @@ packages to use `NONE` and restricts PUBLIC packages to `POINTS_EXCHANGE`, `FREE
 - `package_id` uuid FK → voucher_packages
 - `qr_token` string UK — UUID, NEVER expose `id`
 - `voucher_type` VoucherType — copied from package
-- `issued_via` VoucherAcquisitionMode — shared physical enum, voucher subset; immutable issuance audit (`POINTS_EXCHANGE`, `FREE_CLAIM`, `AUTO_GRANT`, `ADMIN`), never `NONE`
+- `issued_via` VoucherAcquisitionMode — shared physical enum, voucher subset; immutable issuance audit (`POINTS_EXCHANGE`, `FREE_CLAIM`, `AUTO_GRANT`, `ADMIN`, `WELCOME_GIFT`, `GACHA_REWARD`), never `NONE`
 - `discount_type` DiscountType nullable — copied from package
 - `discount_value` int nullable — copied from package
 - `max_discount_vnd` int nullable — copied from package
@@ -583,6 +587,104 @@ addon-unit `discount_applied_vnd` described in `order_item_addon_vouchers`.
 | `voucher_surplus_reversed` | Reversal of a `voucher_surplus` entry when a completed COUNTER order is cancelled |
 | `voucher_refund` | Full purchase-cost refund for an eligible voucher, including soft-delete reconciliation or completed COUNTER cancellation recovery |
 | `reversed_by_admin` | Admin reverses a manual adjustment |
+| `welcome_bonus` | Immediate signup points and the five-point welcome-reward fallback |
+
+---
+
+### welcome_reward_settings
+Singleton configuration row for the signup reward. The migration inserts `id = 1` with mode
+`POINTS`, preserving the current five-point signup behavior until an administrator changes it.
+
+- `id` int PK — database check fixes the only valid value to 1
+- `mode` WelcomeRewardMode — default `POINTS`
+- `fixed_package_id` uuid FK nullable → voucher_packages (no action delete)
+- `active_campaign_id` uuid FK nullable → reward_campaigns (no action delete)
+- `revision` int — default 0, used for optimistic configuration updates
+- `created_at`, `updated_at` timestamp
+
+The mode-target check requires both foreign keys null for `POINTS`, only `fixed_package_id` for
+`FIXED_VOUCHER`, and only `active_campaign_id` for `GACHA`.
+
+### reward_campaigns
+Durable gacha campaign definition. Availability and draw counts are derived from pool items and
+immutable outcomes; no remaining quantity, exhausted flag, or mutable draw counter is stored.
+
+- `id` uuid PK
+- `name` text
+- `status` RewardCampaignStatus — default `DRAFT`
+- `revision` int — default 0
+- `created_at`, `updated_at` timestamp
+
+### reward_pool_items
+
+- `id` uuid PK
+- `campaign_id` uuid FK → reward_campaigns (no action delete)
+- `voucher_package_id` uuid FK → voucher_packages (no action delete)
+- `quantity` positive int
+- `unlock_after_draws` non-negative int — default 0
+- `created_at` timestamp
+- UK: (`campaign_id`, `voucher_package_id`)
+
+Application code must verify that an outcome's pool item belongs to its campaign; this cannot be
+expressed by the independent foreign keys without duplicating identity columns.
+
+### reward_boxes
+Campaign-specific visual choices retained for historical outcomes.
+
+- `id` uuid PK
+- `campaign_id` uuid FK → reward_campaigns (no action delete)
+- `name` text
+- `closed_image_url`, `open_image_url` text
+- `mouth_anchor_x`, `mouth_anchor_y` Decimal(5,4) — exact normalized coordinates from 0 through 1
+- `sort_order` non-negative int
+- `created_at`, `updated_at` timestamp
+- UK: (`campaign_id`, `sort_order`)
+
+Application code must verify that a selected box belongs to the selected campaign.
+
+### welcome_rewards
+One durable signup entitlement per user. `mode` stores the immutable effective mode committed after
+the signup transaction applies availability fallback; it is not necessarily the raw settings mode.
+For example, unavailable `FIXED_VOUCHER` commits the entitlement as `POINTS`. Later configuration
+changes do not rewrite pending or completed rewards.
+
+- `id` uuid PK
+- `user_id` uuid UK FK → users (no action delete)
+- `mode` WelcomeRewardMode
+- `campaign_id` uuid FK nullable → reward_campaigns (no action delete)
+- `created_at` timestamp
+- optional one-to-one outcome
+
+The campaign is non-null exactly when `mode = GACHA`. `POINTS` and `FIXED_VOUCHER` workflows create
+their outcome immediately; `GACHA` may remain pending until the user draws.
+
+### reward_outcomes
+Immutable fulfillment audit for a welcome entitlement. A voucher outcome issues through
+`WELCOME_GIFT` for fixed mode or `GACHA_REWARD` for a draw. A points outcome links the five-point
+fallback `points_log` row.
+
+- `id` uuid PK
+- `welcome_reward_id` uuid UK FK → welcome_rewards (no action delete)
+- `user_id` uuid FK → users (no action delete)
+- `origin` RewardOrigin — default `WELCOME`
+- `kind` RewardOutcomeKind
+- `campaign_id`, `pool_item_id`, `box_id` nullable UUID foreign keys (no action delete)
+- `voucher_id` uuid UK nullable FK → vouchers (no action delete)
+- `points_log_id` uuid UK nullable FK → points_log (no action delete)
+- `draw_number` int nullable; UK with `campaign_id`
+- `request_id` uuid UK nullable idempotency key
+- `created_at` timestamp
+
+The target check enforces XOR fulfillment: `VOUCHER` requires only `voucher_id`, while `POINTS`
+requires only `points_log_id`. A campaign voucher also requires campaign, pool item, box, and draw
+number. A five-point campaign fallback has campaign and box but null pool item and draw number;
+non-campaign fixed/points outcomes have all campaign detail fields null. Application code must also
+verify that `user_id` matches the entitlement and issued artifact, that campaign/pool/box identities
+agree, that the entitlement mode permits the outcome, and that point fallback delta equals 5.
+
+All six welcome-reward tables have RLS enabled and all privileges revoked from `PUBLIC`, `anon`,
+`authenticated`, and `service_role`. Custom-auth application access remains through direct Prisma;
+there are no `auth.uid()` policies or Realtime publication entries.
 
 ---
 

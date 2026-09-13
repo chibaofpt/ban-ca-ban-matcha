@@ -1,4 +1,4 @@
-import type { Size } from "@prisma/client";
+import type { Prisma, Size } from "@prisma/client";
 import { resolveDefaultBaseLiquidId, resolveFusionDefaultPowderId } from "@/src/utils/menuConfiguration";
 
 export type VoucherAvailabilityStatus =
@@ -55,18 +55,10 @@ export interface VoucherAvailabilityCatalog {
 }
 
 export interface VoucherAvailabilityDatabase {
-  menuItem: { findMany: (args: unknown) => Promise<Array<{
-    id: string; name: string; category: string; is_available: boolean; unit_price_vnd: number | null;
-    matcha_powder_id: string | null; default_powder_id: string | null; default_base_liquid_id: string | null;
-    sizes: Array<{ size: Size; base_price_vnd: number | null }>;
-    fusionAllowedPowders?: Array<{ powder_id: string }>;
-    allowedBaseLiquids: Array<{ base_liquid_id: string }>;
-  }>> };
-  matchaPowder: { findMany: (args: unknown) => Promise<VoucherAvailabilityCatalog["powders"]> };
-  milkType: { findMany: (args: unknown) => Promise<VoucherAvailabilityCatalog["baseLiquids"]> };
-  addonOption: { findMany: (args: unknown) => Promise<Array<{
-    id: string; is_active: boolean; gram_value: unknown | null; group: { is_active: boolean };
-  }>> };
+  menuItem: Pick<Prisma.TransactionClient["menuItem"], "findMany">;
+  matchaPowder: Pick<Prisma.TransactionClient["matchaPowder"], "findMany">;
+  milkType: Pick<Prisma.TransactionClient["milkType"], "findMany">;
+  addonOption: Pick<Prisma.TransactionClient["addonOption"], "findMany">;
 }
 
 function unavailable(status: VoucherAvailabilityStatus): VoucherAvailability {

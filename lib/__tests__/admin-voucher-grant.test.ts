@@ -76,7 +76,10 @@ describe("admin voucher grant recipient summary", () => {
       issued_via: { in: ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"] },
     });
     const globalCountArgs = db.count.mock.calls[0]?.[0] as { where: Record<string, unknown> };
-    expect(globalCountArgs.where).toEqual({ package_id: PACKAGE_ID });
+    expect(globalCountArgs.where).toEqual({
+      package_id: PACKAGE_ID,
+      issued_via: { in: ["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT", "ADMIN"] },
+    });
   });
 
   it("does not permanently apply a public self-acquisition limit to PRIVATE gifts", async () => {

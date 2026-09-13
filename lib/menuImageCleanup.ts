@@ -35,7 +35,7 @@ export async function runMenuImageCleanup(options: {
   dryRun: boolean;
 }): Promise<MenuImageCleanupResult> {
   const now = options.now ?? new Date();
-  const [menuRows, addonRows, optionRows, powderRows, milkTypeRows] = await Promise.all([
+  const [menuRows, addonRows, optionRows, powderRows, milkTypeRows, rewardBoxRows] = await Promise.all([
     prisma.menuItem.findMany({
       where: { image_url: { not: null } },
       select: { image_url: true },
@@ -56,8 +56,17 @@ export async function runMenuImageCleanup(options: {
       where: { image_url: { not: null } },
       select: { image_url: true },
     }),
+    prisma.rewardBox.findMany({
+      where: { campaign: { status: { in: ["DRAFT", "ACTIVE", "PAUSED", "ENDED"] } } },
+      select: { closed_image_url: true, open_image_url: true },
+    }),
   ]);
-  const rows = [...menuRows, ...addonRows, ...optionRows, ...powderRows, ...milkTypeRows];
+  const rows = [
+    ...menuRows, ...addonRows, ...optionRows, ...powderRows, ...milkTypeRows,
+    ...rewardBoxRows.flatMap((row) => [
+      { image_url: row.closed_image_url }, { image_url: row.open_image_url },
+    ]),
+  ];
   const referencedPaths = new Set(
     rows.flatMap((row) => {
       const path = row.image_url ? parseMenuImagePath(row.image_url) : null;

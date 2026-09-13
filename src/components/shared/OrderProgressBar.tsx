@@ -1,6 +1,7 @@
+import Image from "next/image";
 import { cn } from "@/src/utils/cn";
 import type { OrderStatus } from "@/src/lib/types/order";
-import { ShoppingBag, Check, ChefHat, Star } from "lucide-react";
+import { ShoppingBag, Check, Star } from "lucide-react";
 
 interface StepConfig {
   icon: React.ReactNode;
@@ -24,7 +25,7 @@ const STEPS: StepConfig[] = [
     subtitle: "Nhân viên đang pha chế",
   },
   {
-    icon: <ChefHat size={14} />,
+    icon: <Image src="/favicon.ico" alt="" width={18} height={18} unoptimized aria-hidden="true" />,
     activeAt: "STAFF_DONE",
     title: "Sẵn sàng!",
     subtitle: "Đến quầy nhận đồ nhé 🎉",

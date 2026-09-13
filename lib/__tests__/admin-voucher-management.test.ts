@@ -9,12 +9,12 @@ describe("Thống kê quản trị voucher", () => {
     expect(effectiveVoucherStatus({ status: "RESERVED", expires_at: new Date("2026-08-20T00:00:00.000Z") }, now)).toBe("RESERVED");
   });
 
-  it("đếm mọi voucher đã cấp và tính số lượng còn lại", () => {
+  it("giữ tổng issued riêng với issued dùng quota khi tính capacity", () => {
     const stats = buildAdminVoucherStats(
-      { id: "pkg", quantity: 10, issued_count: 5 },
+      { id: "pkg", quantity: 10, issued_count: 5, quota_issued_count: 3 },
       [{ package_id: "pkg", status: "ACTIVE", _count: { _all: 2 } }, { package_id: "pkg", status: "RESERVED", _count: { _all: 1 } }, { package_id: "pkg", status: "REDEEMED", _count: { _all: 1 } }, { package_id: "pkg", status: "REFUNDED", _count: { _all: 1 } }],
       [{ package_id: "pkg", _count: { _all: 1 } }],
     );
-    expect(stats).toEqual({ issued_count: 5, active_count: 1, reserved_count: 1, redeemed_count: 1, expired_count: 1, refunded_count: 1, remaining_quantity: 5 });
+    expect(stats).toEqual({ issued_count: 5, quota_issued_count: 3, active_count: 1, reserved_count: 1, redeemed_count: 1, expired_count: 1, refunded_count: 1, remaining_quantity: 7 });
   });
 });

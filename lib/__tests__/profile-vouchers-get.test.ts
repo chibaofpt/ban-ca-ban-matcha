@@ -17,7 +17,8 @@ vi.mock("@/lib/voucherAvailability", () => ({
 vi.mock("@/lib/voucherBundleDto", () => ({
   attachBundleRewardBaselines: (_db: unknown, vouchers: unknown[]) => Promise.resolve(vouchers),
 }));
-vi.mock("@/lib/voucherPublicDto", () => ({
+vi.mock("@/lib/voucherPublicDto", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/voucherPublicDto")>(),
   toPublicVoucherDto: (voucher: { qr_token: string; status: string }) => ({
     qr_token: voucher.qr_token,
     status: voucher.status,

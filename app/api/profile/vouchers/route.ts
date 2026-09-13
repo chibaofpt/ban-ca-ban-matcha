@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Prisma, VoucherStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { toPublicVoucherDto } from "@/lib/voucherPublicDto";
+import { PUBLIC_VOUCHER_PACKAGE_SELECT, toPublicVoucherDto } from "@/lib/voucherPublicDto";
 import { attachBundleRewardBaselines } from "@/lib/voucherBundleDto";
 import {
   attachOwnedVoucherAvailability,
@@ -80,35 +80,7 @@ export async function GET(req: NextRequest) {
       ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
       include: {
         package: {
-          select: {
-            name: true,
-            description: true,
-            points_cost: true,
-            acquisition_mode: true,
-            ends_at: true,
-            bundleRule: {
-              select: {
-                buy_quantity: true,
-                reward_quantity: true,
-                reward_kind: true,
-                reward_mode: true,
-                benefit_scaling: true,
-                max_applications_order: true,
-                max_reward_units_order: true,
-                productScopes: {
-                  select: {
-                    role: true,
-                    menu_item_id: true,
-                    default_powder_id: true,
-                    default_base_liquid_id: true,
-                    sizes: { select: { size: true } },
-                    menuItem: { select: { name: true, category: true, is_available: true } },
-                  },
-                },
-                addonRewards: { select: { addon_option_id: true } },
-              },
-            },
-          },
+          select: PUBLIC_VOUCHER_PACKAGE_SELECT,
         },
         menuItem: { select: { name: true, is_available: true } },
         menuItemScopes: { include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } } },

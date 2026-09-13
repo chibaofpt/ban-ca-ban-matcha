@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronRight,
   History,
+  Gift,
   KeyRound,
   MapPin,
   Pencil,
@@ -28,6 +29,8 @@ import type {
 } from "@/src/lib/types/user";
 import { formatVietnamPhone } from "@/src/utils/display";
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
+import { useWelcomeReward } from "@/src/hooks/useWelcomeReward";
+import { WelcomeRewardOverlay } from "@/src/components/rewards/WelcomeRewardOverlay";
 
 const profileQueryKey = ["customer", "profile"] as const;
 
@@ -37,9 +40,12 @@ export default function ProfilePage() {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [addressBookOpen, setAddressBookOpen] = useState(false);
+  const [welcomeRewardOpen, setWelcomeRewardOpen] = useState(false);
   const openVoucherModal = useVoucherModalStore((state) => state.openModal);
   const queryClient = useQueryClient();
   const updateName = useAuthStore((state) => state.updateName);
+  const { data: welcomeReward } = useWelcomeReward();
+  const hasPendingWelcomeReward = welcomeReward?.mode === "GACHA" && welcomeReward.status === "PENDING";
   const {
     data: profile,
     isLoading,
@@ -92,6 +98,19 @@ export default function ProfilePage() {
           Quản lý thông tin và mã QR tích điểm
         </p>
       </header>
+
+      {hasPendingWelcomeReward ? (
+        <motion.button
+          type="button"
+          whileTap={{ scale: 0.96 }}
+          onClick={() => setWelcomeRewardOpen(true)}
+          className="flex min-h-16 w-full items-center gap-3 rounded-2xl border border-primary/25 bg-primary/10 p-4 text-left shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"><Gift className="size-5" /></span>
+          <span className="min-w-0 flex-1"><span className="block font-bold text-primary">Bạn còn một hộp quà chào mừng</span><span className="block text-sm text-muted-foreground">Chạm để chọn hộp matcha và mở quà</span></span>
+          <ChevronRight className="size-5 text-primary" />
+        </motion.button>
+      ) : null}
 
       <section className="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm">
         <div className="flex items-start gap-3 border-b border-border/50 pb-5">
@@ -191,6 +210,11 @@ export default function ProfilePage() {
       <ProfileQRSheet open={qrOpen} qrToken={profile.qr_token} onOpenChange={setQrOpen} />
       <AddressBookSheetContainer open={addressBookOpen} onOpenChange={setAddressBookOpen} />
       <VoucherModal />
+      <WelcomeRewardOverlay
+        open={welcomeRewardOpen}
+        onOpenChange={setWelcomeRewardOpen}
+        onViewVoucher={() => { setWelcomeRewardOpen(false); openVoucherModal(); }}
+      />
     </main>
   );
 }

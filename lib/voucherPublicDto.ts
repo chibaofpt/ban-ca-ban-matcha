@@ -8,11 +8,42 @@ import type {
   VoucherAcquisitionMode,
   VoucherPackageVisibility,
   ProductDiscountMode,
+  Prisma,
 } from "@prisma/client";
 import { toBundleRuleDto, type BundleRuleDtoSource } from "@/lib/voucherBundleDto";
 import type { VoucherAvailability } from "@/lib/voucherAvailability";
 
 type VoucherIssuedVia = Exclude<VoucherAcquisitionMode, "NONE">;
+
+export const PUBLIC_VOUCHER_PACKAGE_SELECT = {
+  name: true,
+  description: true,
+  points_cost: true,
+  acquisition_mode: true,
+  ends_at: true,
+  bundleRule: {
+    select: {
+      buy_quantity: true,
+      reward_quantity: true,
+      reward_kind: true,
+      reward_mode: true,
+      benefit_scaling: true,
+      max_applications_order: true,
+      max_reward_units_order: true,
+      productScopes: {
+        select: {
+          role: true,
+          menu_item_id: true,
+          default_powder_id: true,
+          default_base_liquid_id: true,
+          sizes: { select: { size: true } },
+          menuItem: { select: { name: true, category: true, is_available: true } },
+        },
+      },
+      addonRewards: { select: { addon_option_id: true } },
+    },
+  },
+} satisfies Prisma.VoucherPackageSelect;
 
 function narrowVoucherIssuedVia(value: VoucherAcquisitionMode | undefined): VoucherIssuedVia | undefined {
   if (value === "NONE") {

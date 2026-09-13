@@ -46,6 +46,8 @@ import { getVoucherRefundConfirmation } from "@/src/lib/utils/voucherModalHelper
 import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 import { getBundleAllocatedQuantities } from "@/src/lib/utils/bundleCartSummary";
+import { useWelcomeReward } from "@/src/hooks/useWelcomeReward";
+import { WelcomeRewardOverlay } from "@/src/components/rewards/WelcomeRewardOverlay";
 
 /** Unified customer wallet and voucher acquisition modal. */
 export default function VoucherModal() {
@@ -54,6 +56,7 @@ export default function VoucherModal() {
   const isLoggedIn = useIsLoggedIn();
   const currentUser = useCurrentUser();
   const pendingIntent = useAuthModalStore((state) => state.pendingIntent);
+  const authModalOpen = useAuthModalStore((state) => state.open);
   const clearIntent = useAuthModalStore((state) => state.clearIntent);
   const setCartOpen = useCartStore((state) => state.setCartOpen);
   const commitBundleCartDraft = useCartStore((state) => state.commitBundleCartDraft);
@@ -85,6 +88,9 @@ export default function VoucherModal() {
   const [bundleSetupVoucher, setBundleSetupVoucher] = useState<MyVoucher | null>(null);
   const [refundCandidate, setRefundCandidate] = useState<MyVoucher | null>(null);
   const [isRetryingWallet, setIsRetryingWallet] = useState(false);
+  const [welcomeRewardOpen, setWelcomeRewardOpen] = useState(false);
+  const { data: welcomeReward } = useWelcomeReward({ enabled: open && isLoggedIn });
+  const hasPendingWelcomeReward = welcomeReward?.mode === "GACHA" && welcomeReward.status === "PENDING";
   const resetVoucherSurface = useCallback(() => {
     setPendingPackage(null);
     setQrVoucher(null);
@@ -92,6 +98,7 @@ export default function VoucherModal() {
     setDetailVoucher(null);
     setBundleSetupVoucher(null);
     setRefundCandidate(null);
+    setWelcomeRewardOpen(false);
   }, []);
   const closeVoucherSurface = useCallback(() => {
     close();
@@ -275,7 +282,7 @@ export default function VoucherModal() {
   }, [acquirePackage, isLoggedIn]);
 
   useEffect(() => {
-    if (!open || !isLoggedIn || pendingIntent?.type !== "voucher_acquire" || packagesLoading) return;
+    if (!open || authModalOpen || !isLoggedIn || pendingIntent?.type !== "voucher_acquire" || packagesLoading) return;
     if (consumedIntentRef.current === pendingIntent) return;
     consumedIntentRef.current = pendingIntent;
     const pkg = packages.find((item) => item.id === pendingIntent.packageId);
@@ -284,7 +291,7 @@ export default function VoucherModal() {
     if (!pkg) return void toast.error("Gói ưu đãi không còn khả dụng.");
     if (pkg.acquisition_mode === "POINTS_EXCHANGE") setPendingPackage(pkg);
     else void acquirePackage(pkg);
-  }, [acquirePackage, clearIntent, isLoggedIn, open, packages, packagesLoading, pendingIntent]);
+  }, [acquirePackage, authModalOpen, clearIntent, isLoggedIn, open, packages, packagesLoading, pendingIntent]);
 
   useEffect(() => {
     if (!pendingIntent) consumedIntentRef.current = null;
@@ -447,9 +454,17 @@ export default function VoucherModal() {
             onCancel={() => setRefundCandidate(null)}
             onConfirm={handleRefund}
           />
+          <WelcomeRewardOverlay
+            open={welcomeRewardOpen}
+            onOpenChange={setWelcomeRewardOpen}
+            layer="critical"
+            nested
+            onViewVoucher={() => { setWelcomeRewardOpen(false); setActiveTab("my_vouchers"); }}
+          />
         </>
       )}
     >
+        {hasPendingWelcomeReward ? <button type="button" onClick={() => setWelcomeRewardOpen(true)} className="mb-4 flex min-h-12 w-full items-center justify-between rounded-xl border border-primary/25 bg-primary/10 px-4 py-3 text-left text-sm font-bold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span>🎁 Mở quà chào mừng của bạn</span><span aria-hidden="true">›</span></button> : null}
         {loading ? <div className="flex h-full items-center justify-center"><Loader2 className="animate-spin text-primary" /></div> : activeTab === "my_vouchers" && isLoggedIn ? (
           <>{walletVerificationBanner}{walletErrorView}{!walletErrorView && activeVouchers.length === 0 ? <>{acquisitionReceiptView}<div className="mt-4 flex flex-col items-center gap-2 rounded-2xl border border-dashed py-16 text-center"><Ticket className="text-primary/30" /><p className="text-sm font-bold text-primary/60">Bạn chưa có voucher nào</p></div></> : null}{!walletErrorView && activeVouchers.length > 0 ? <>{acquisitionReceiptView}<div className="grid gap-3 pb-8 sm:grid-cols-2">{activeVouchers.map((voucher) => (
             <VoucherCard
