@@ -7,8 +7,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/src/components/ui/button";
 import { VoucherCard } from "@/src/components/shared/VoucherCards";
 import { useWelcomeReward } from "@/src/hooks/useWelcomeReward";
+import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
 import { ApiServiceError } from "@/src/services/orderService";
 import type { WelcomeReward, WelcomeRewardBox } from "@/src/services/welcomeRewardService";
+import { buildVoucherActionModel } from "@/src/utils/customerVoucherSelection";
 import { toWelcomeRewardAnchorPercent } from "@/src/utils/welcomeRewardPresentation";
 
 interface WelcomeRewardExperienceProps {
@@ -19,10 +21,16 @@ interface WelcomeRewardExperienceProps {
 }
 
 const smokePuffs = [
-  { className: "size-5", x: -24, y: -30, delay: 0 },
-  { className: "size-4", x: 20, y: -36, delay: 0.03 },
-  { className: "size-6", x: -6, y: -44, delay: 0.06 },
-  { className: "size-3", x: 30, y: -22, delay: 0.08 },
+  { className: "size-12", x: -92, y: -48, delay: 0 },
+  { className: "size-14", x: -58, y: -82, delay: 0.02 },
+  { className: "size-16", x: -18, y: -98, delay: 0.04 },
+  { className: "size-14", x: 28, y: -94, delay: 0.03 },
+  { className: "size-12", x: 68, y: -72, delay: 0.06 },
+  { className: "size-10", x: 98, y: -42, delay: 0.08 },
+  { className: "size-11", x: -76, y: -18, delay: 0.07 },
+  { className: "size-12", x: 76, y: -16, delay: 0.09 },
+  { className: "size-10", x: -34, y: -46, delay: 0.1 },
+  { className: "size-11", x: 42, y: -50, delay: 0.11 },
 ];
 
 function gridColumn(boxCount: number, index: number): string {
@@ -52,6 +60,7 @@ export function WelcomeRewardExperience({
   onViewVoucher,
 }: WelcomeRewardExperienceProps) {
   const reducedMotion = useReducedMotion();
+  const requestUseNowVoucher = useVoucherModalStore((state) => state.requestUseNowVoucher);
   const { data: reward, isLoading, isError, refetch, openReward } = useWelcomeReward({ initialData: initialReward });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [centerStage, setCenterStage] = useState(false);
@@ -68,8 +77,27 @@ export function WelcomeRewardExperience({
   const completed = reward?.status === "COMPLETED" && reward.outcome !== null;
   const externallyCompleted = completed && selectedId === null;
   const resultVisible = externallyCompleted || showResult;
+  const outcomeVoucher = reward?.outcome?.kind === "VOUCHER" ? reward.outcome.voucher : null;
+  const canUseOutcomeVoucher = Boolean(outcomeVoucher?.status === "ACTIVE" && outcomeVoucher.availability.can_apply);
+  const handleUseOutcomeVoucher = () => {
+    if (!outcomeVoucher || !canUseOutcomeVoucher) return;
+    if (onViewVoucher) onViewVoucher();
+    else onContinue();
+    requestUseNowVoucher(outcomeVoucher.qr_token);
+  };
   const outcomeCard = reward?.outcome ? (
-    reward.outcome.kind === "VOUCHER" ? <VoucherCard voucher={reward.outcome.voucher} /> : (
+    reward.outcome.kind === "VOUCHER" ? (
+      <VoucherCard
+        voucher={reward.outcome.voucher}
+        actionModel={buildVoucherActionModel({
+          context: "wallet",
+          busy: false,
+          selectable: canUseOutcomeVoucher,
+          disabledReason: canUseOutcomeVoucher ? null : "Voucher hiện chưa thể sử dụng",
+        })}
+        onAction={canUseOutcomeVoucher ? handleUseOutcomeVoucher : undefined}
+      />
+    ) : (
       <div className="rounded-2xl border border-amber-300 bg-card p-5 shadow-xl"><p className="text-sm font-semibold text-muted-foreground">Quà chào mừng</p><p className="mt-1 text-3xl font-black text-amber-600">{reward.outcome.points} 🐟</p></div>
     )
   ) : null;
@@ -94,7 +122,7 @@ export function WelcomeRewardExperience({
   useEffect(() => {
     if (!centerComplete || !completed) return;
     setShowOpen(true);
-    const timer = window.setTimeout(() => setShowResult(true), reducedMotion ? 150 : 220);
+    const timer = window.setTimeout(() => setShowResult(true), reducedMotion ? 150 : 170);
     return () => window.clearTimeout(timer);
   }, [centerComplete, completed, reducedMotion]);
 
@@ -193,17 +221,17 @@ export function WelcomeRewardExperience({
                     left: toWelcomeRewardAnchorPercent(selected.mouth_anchor_x),
                     top: toWelcomeRewardAnchorPercent(selected.mouth_anchor_y),
                   }}
-                  className="pointer-events-none absolute z-[5] size-1"
+                  className="pointer-events-none absolute z-20 size-1"
                 >
                   {smokePuffs.map((puff, index) => (
                     <motion.span
                       key={index}
                       initial={{ opacity: 0 }}
                       animate={reducedMotion
-                        ? { opacity: [0, 0.4, 0] }
-                        : { opacity: [0, 0.5, 0], scale: [0.65, 1.2], x: [0, puff.x], y: [0, puff.y] }}
-                      transition={{ duration: reducedMotion ? 0.15 : 0.36, delay: reducedMotion ? 0 : puff.delay, ease: "easeOut" }}
-                      className={`absolute -left-2 -top-2 rounded-full bg-primary/35 blur-sm ${puff.className}`}
+                        ? { opacity: [0, 0.14, 0] }
+                        : { opacity: [0, 0.85, 0.7, 0], scale: [0.35, 1.35, 1.9], x: [0, puff.x], y: [0, puff.y] }}
+                      transition={{ duration: reducedMotion ? 0.15 : 0.39, delay: reducedMotion ? 0 : puff.delay, ease: "easeOut" }}
+                      className={`absolute -left-6 -top-6 rounded-full bg-primary/60 blur-md ${puff.className}`}
                     />
                   ))}
                 </div>
@@ -212,14 +240,14 @@ export function WelcomeRewardExperience({
             <AnimatePresence>
               {showResult && reward.outcome ? (
                 <motion.div
-                  initial={reducedMotion ? { opacity: 0, x: "-50%", y: "-50%" } : { opacity: 0, scale: 0.82, x: "-50%", y: "-45%" }}
+                  initial={reducedMotion ? { opacity: 0, x: "-50%", y: "-50%" } : { opacity: 0, scale: 0.18, x: "-50%", y: "-18%" }}
                   animate={reducedMotion ? { opacity: 1, x: "-50%", y: "-50%" } : { opacity: 1, scale: 1, x: "-50%", y: "-115%" }}
                   transition={{ duration: reducedMotion ? 0.15 : 0.28, ease: "easeOut" }}
                   style={{
                     left: toWelcomeRewardAnchorPercent(selected.mouth_anchor_x),
                     top: toWelcomeRewardAnchorPercent(selected.mouth_anchor_y),
                   }}
-                  className="absolute z-10 w-[min(19rem,90vw)]"
+                  className="absolute z-10 w-[min(19rem,90vw)] origin-top"
                 >
                   {outcomeCard}
                 </motion.div>

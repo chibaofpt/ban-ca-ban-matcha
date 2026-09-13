@@ -33,7 +33,7 @@ const claims = { id: "user-1", sid: "session-1", role: "ADMIN", phone_number: "+
 const session = () => ({
   id: "session-1", user_id: "user-1", refresh_token: oldToken, previous_refresh_token: null as string | null,
   rotating_at: null as Date | null, expires_at: new Date("2026-09-05T00:00:00Z"),
-  user: { id: "user-1", role: "STAFF", phone_number: "+84912345678" },
+  user: { id: "user-1", role: "STAFF", phone_number: "+84912345678", is_blocked: false },
 });
 const winner = () => ({ ...session(), refresh_token: newToken, previous_refresh_token: oldToken, rotating_at: now });
 
@@ -98,10 +98,12 @@ describe("Auth lifecycle — stable sid và thu hồi phiên", () => {
 
   it("getSession trả quyền hiện hành thay vì role ADMIN đã ký", async () => {
     boundary.cookieValues.set("access_token", await signJwt(claims));
-    expect(await getSession()).toEqual({ ...session().user, session_id: "session-1" });
+    expect(await getSession()).toEqual({
+      id: "user-1", role: "STAFF", phone_number: "+84912345678", session_id: "session-1",
+    });
     expect(boundary.findFirst).toHaveBeenCalledWith({
       where: { id: "session-1", user_id: "user-1", expires_at: { gt: now } },
-      include: { user: { select: { id: true, role: true, phone_number: true } } },
+      include: { user: { select: { id: true, role: true, phone_number: true, is_blocked: true } } },
     });
   });
 
@@ -112,6 +114,28 @@ describe("Auth lifecycle — stable sid và thu hồi phiên", () => {
     expect(boundary.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "session-1", user_id: "user-1", expires_at: { gt: now } },
     }));
+  });
+
+  it("getSession từ chối session còn hạn khi user đã bị chặn", async () => {
+    boundary.cookieValues.set("access_token", await signJwt(claims));
+    boundary.findFirst.mockResolvedValue({
+      ...session(),
+      user: { ...session().user, is_blocked: true },
+    });
+
+    expect(await getSession()).toBeNull();
+  });
+
+  it("refresh từ chối user bị chặn ở lần đọc authoritative cuối", async () => {
+    boundary.findUnique.mockResolvedValue({
+      ...winner(),
+      user: { ...winner().user, is_blocked: true },
+    });
+
+    const response = await refresh();
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ code: "UNAUTHORIZED" });
+    expect(boundary.set).not.toHaveBeenCalled();
   });
 
   it.each(["before", "after"])("refresh từ chối row hết hạn tại boundary %s", async (phase) => {
@@ -147,7 +171,9 @@ describe("Auth lifecycle — stable sid và thu hồi phiên", () => {
     expect(boundary.findFirst).not.toHaveBeenCalled();
     expect((await refresh()).status).toBe(200);
     boundary.findFirst.mockResolvedValue(winner());
-    expect(await getSession()).toEqual({ ...session().user, session_id: "session-1" });
+    expect(await getSession()).toEqual({
+      id: "user-1", role: "STAFF", phone_number: "+84912345678", session_id: "session-1",
+    });
   });
 
   it("verifyJwt từ chối chữ ký sai, JWT hết hạn và thuật toán không cho phép", async () => {

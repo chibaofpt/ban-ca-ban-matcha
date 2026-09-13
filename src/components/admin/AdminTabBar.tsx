@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ClipboardList, Package, Gift, Megaphone, Receipt, Settings, Sparkles } from "lucide-react";
+import { ClipboardList, Package, Gift, Megaphone, Receipt, Settings, Sparkles, Users } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { Role } from "@/src/lib/types/user";
 import * as authService from "@/src/services/authService";
@@ -27,6 +27,7 @@ const LEGACY_TABS: Tab[] = [
   { to: "/staff/orders", label: "Tạo Order", icon: ClipboardList, roles: ["ADMIN", "STAFF"] },
   { to: "/staff/orders-list", label: "Đơn hàng", icon: Receipt, roles: ["STAFF"] },
   { to: "/admin/orders", label: "Đơn hàng", icon: Receipt, roles: ["ADMIN"] },
+  { to: "/admin/users", label: "Khách hàng", icon: Users, roles: ["ADMIN"] },
   { to: "/admin/menu", label: "Menu", icon: Package, roles: ["ADMIN"] },
   { to: "/admin/voucher-packages", label: "Điểm & Voucher", icon: Gift, roles: ["ADMIN"] },
   { to: "/admin/rewards", label: "Quà chào mừng", icon: Sparkles, roles: ["ADMIN"] },
@@ -195,16 +196,10 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
       {isNavigationPending ? <AdminRouteSkeleton /> : children}
 
       {/* Bottom tab bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)]">
+      <nav aria-label="Điều hướng quản trị" className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_12px_rgba(0,0,0,0.05)] md:hidden">
         <div
           className={cn(
-            "grid",
-            tabs.length === 2 && "grid-cols-2",
-            tabs.length === 3 && "grid-cols-3",
-            tabs.length === 4 && "grid-cols-4",
-            tabs.length === 5 && "grid-cols-5",
-            tabs.length === 6 && "grid-cols-6",
-            tabs.length === 7 && "grid-cols-7",
+            "flex max-w-full gap-2 overflow-x-auto overscroll-x-contain scroll-px-2 snap-x snap-mandatory px-2 py-1 touch-pan-x",
           )}
         >
           {tabs.map(({ to, label, icon: Icon }) => {
@@ -216,14 +211,15 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
                 aria-current={isActive ? "page" : undefined}
                 onClick={(event) => handleTabClick(event, to)}
                 className={cn(
-                  "relative flex flex-col items-center justify-center py-2 text-xs transition-colors w-full",
+                  "relative flex min-h-14 snap-start flex-col items-center justify-center rounded-xl py-2 text-xs transition-colors",
+                  tabs.length <= 4 ? "min-w-0 flex-1" : "w-20 shrink-0",
                   isActive ? "text-primary font-medium" : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 {isActive && (
                   <motion.div
                     layoutId="admin-mobile-tab-indicator"
-                    className="absolute inset-0 bg-primary/5 rounded-xl pointer-events-none mx-1"
+                    className="pointer-events-none absolute inset-0 rounded-xl bg-primary/5"
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                   />
                 )}

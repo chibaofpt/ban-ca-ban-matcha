@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { jwtVerify } from "jose";
 
 const mockUserFindUnique = vi.fn();
+const mockUserUpdateMany = vi.fn();
 const mockSessionFindMany = vi.fn();
 const mockSessionCreate = vi.fn();
 const mockSessionDeleteMany = vi.fn();
+const mockTransaction = vi.fn();
 const mockBcryptCompare = vi.fn();
 const mockCheckLoginFailLimit = vi.fn();
 const mockCheckIdentifierFloodGuard = vi.fn();
@@ -15,12 +17,16 @@ const mockResetIdentifierFlood = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    user: { findUnique: (...args: unknown[]) => mockUserFindUnique(...args) },
+    user: {
+      findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
+      updateMany: (...args: unknown[]) => mockUserUpdateMany(...args),
+    },
     session: {
       create: (...args: unknown[]) => mockSessionCreate(...args),
       findMany: (...args: unknown[]) => mockSessionFindMany(...args),
       deleteMany: (...args: unknown[]) => mockSessionDeleteMany(...args),
     },
+    $transaction: (fn: (tx: unknown) => Promise<unknown>) => mockTransaction(fn),
   },
 }));
 
@@ -103,6 +109,7 @@ const CUSTOMER = {
   insta_name: "ban.ca",
   password_hash: "$2a$12$validhash",
   role: "CUSTOMER",
+  is_blocked: false,
 };
 
 describe("Chuẩn hoá Instagram username", () => {
@@ -128,6 +135,17 @@ describe("Chuẩn hoá Instagram username", () => {
 describe("POST /api/auth/login — Instagram", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUserUpdateMany.mockResolvedValue({ count: 1 });
+    mockTransaction.mockImplementation(
+      async (fn: (tx: unknown) => Promise<unknown>) => fn({
+        user: { updateMany: (...args: unknown[]) => mockUserUpdateMany(...args) },
+        session: {
+          findMany: (...args: unknown[]) => mockSessionFindMany(...args),
+          create: (...args: unknown[]) => mockSessionCreate(...args),
+          deleteMany: (...args: unknown[]) => mockSessionDeleteMany(...args),
+        },
+      }),
+    );
     mockCheckLoginFailLimit.mockResolvedValue({ allowed: true, remaining: 5 });
     mockCheckIdentifierFloodGuard.mockResolvedValue({ allowed: true });
     mockSessionFindMany.mockResolvedValue([]);
@@ -157,6 +175,20 @@ describe("POST /api/auth/login — Instagram", () => {
       "instagram",
       "ban.ca",
     );
+    expect(mockUserUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: CUSTOMER.id,
+        password_hash: CUSTOMER.password_hash,
+        is_blocked: false,
+      },
+      data: { password_hash: CUSTOMER.password_hash },
+    });
+    expect(mockSessionCreate).toHaveBeenCalledWith({
+      data: {
+        user_id: CUSTOMER.id,
+        expires_at: expect.any(Date),
+      },
+    });
     expect(body.data).toEqual({
       name: "Bạn Cá",
       phone_number: "+84912345678",
@@ -174,6 +206,22 @@ describe("POST /api/auth/login — Instagram", () => {
 
     expect(response.status).toBe(401);
     expect(mockBcryptCompare).toHaveBeenCalled();
+    expect(mockSessionCreate).not.toHaveBeenCalled();
+  });
+
+  it("từ chối CUSTOMER bị chặn bằng Instagram sau khi kiểm tra mật khẩu", async () => {
+    mockUserFindUnique.mockResolvedValue({ ...CUSTOMER, is_blocked: true });
+
+    const response = await loginPOST(
+      makeRequest({ insta_name: "ban.ca", password: "secret12" }),
+    );
+
+    expect(mockBcryptCompare).toHaveBeenCalledOnce();
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.",
+      code: "FORBIDDEN",
+    });
     expect(mockSessionCreate).not.toHaveBeenCalled();
   });
 

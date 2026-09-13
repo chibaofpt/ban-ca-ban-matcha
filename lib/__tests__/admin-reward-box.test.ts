@@ -8,6 +8,82 @@ vi.mock("@/lib/voucherAvailability", async (importOriginal) => ({
 }));
 
 describe("Workflow lưu reward box", () => {
+  it.each(["ACTIVE", "PAUSED"] as const)("từ chối đổi tên hộp khi campaign đang %s", async (status) => {
+    const before = {
+      id: "box", name: "Hộp cũ", closed_image_url: "https://storage/closed.webp",
+      open_image_url: "https://storage/open.webp", mouth_anchor_x: 0.5, mouth_anchor_y: 0.2, sort_order: 0,
+    };
+    const updated = { ...before, name: "Hộp mới" };
+    const campaign = {
+      id: "campaign", name: "Tết", status, revision: 2,
+      created_at: new Date("2026-01-01"), updated_at: new Date("2026-01-02"),
+      poolItems: [], boxes: [updated],
+    };
+    const tx = {
+      rewardCampaign: { findUnique: vi.fn().mockResolvedValue(campaign), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      rewardBox: { findFirst: vi.fn().mockResolvedValue(before), update: vi.fn().mockResolvedValue(updated) },
+    };
+    const db = {
+      rewardBox: { findFirst: vi.fn().mockResolvedValue(before) },
+      rewardCampaign: { findUnique: vi.fn().mockResolvedValue(campaign) },
+      rewardOutcome: { groupBy: vi.fn().mockResolvedValue([]) },
+      $transaction: vi.fn((callback) => callback(tx)),
+    } as unknown as AdminRewardDatabase;
+
+    await expect(updateAdminRewardBox(db, {
+      campaignId: "campaign", boxId: "box", revision: 1, fields: { name: "Hộp mới" },
+    })).rejects.toMatchObject({ reason: "CAMPAIGN_NOT_DRAFT" });
+
+    expect(tx.rewardCampaign.updateMany).not.toHaveBeenCalled();
+    expect(tx.rewardBox.update).not.toHaveBeenCalled();
+  });
+
+  it("từ chối cập nhật hộp khi campaign đã kết thúc", async () => {
+    const before = {
+      id: "box", name: "Hộp cũ", closed_image_url: "https://storage/closed.webp",
+      open_image_url: "https://storage/open.webp", mouth_anchor_x: 0.5, mouth_anchor_y: 0.2, sort_order: 0,
+    };
+    const tx = {
+      rewardCampaign: { findUnique: vi.fn().mockResolvedValue({ status: "ENDED" }), updateMany: vi.fn() },
+      rewardBox: { findFirst: vi.fn(), update: vi.fn() },
+    };
+    const db = {
+      rewardBox: { findFirst: vi.fn().mockResolvedValue(before) },
+      $transaction: vi.fn((callback) => callback(tx)),
+    } as unknown as AdminRewardDatabase;
+
+    await expect(updateAdminRewardBox(db, {
+      campaignId: "campaign", boxId: "box", revision: 1, fields: { name: "Hộp mới" },
+    })).rejects.toMatchObject({ reason: "CAMPAIGN_NOT_DRAFT" });
+    expect(tx.rewardBox.update).not.toHaveBeenCalled();
+  });
+
+  it("vẫn cho phép cập nhật anchor khi campaign đang PAUSED", async () => {
+    const before = {
+      id: "box", name: "Hộp cũ", closed_image_url: "https://storage/closed.webp",
+      open_image_url: "https://storage/open.webp", mouth_anchor_x: 0.5, mouth_anchor_y: 0.2, sort_order: 0,
+    };
+    const updated = { ...before, mouth_anchor_x: 0.7 };
+    const campaign = {
+      id: "campaign", name: "Tết", status: "PAUSED", revision: 2,
+      created_at: new Date("2026-01-01"), updated_at: new Date("2026-01-02"), poolItems: [], boxes: [updated],
+    };
+    const tx = {
+      rewardCampaign: { findUnique: vi.fn().mockResolvedValue(campaign), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      rewardBox: { findFirst: vi.fn().mockResolvedValue(before), update: vi.fn().mockResolvedValue(updated) },
+    };
+    const db = {
+      rewardBox: { findFirst: vi.fn().mockResolvedValue(before) }, rewardCampaign: { findUnique: vi.fn().mockResolvedValue(campaign) },
+      rewardOutcome: { groupBy: vi.fn().mockResolvedValue([]) }, $transaction: vi.fn((callback) => callback(tx)),
+    } as unknown as AdminRewardDatabase;
+
+    await updateAdminRewardBox(db, {
+      campaignId: "campaign", boxId: "box", revision: 1, fields: { mouth_anchor_x: 0.7 },
+    });
+
+    expect(tx.rewardBox.update).toHaveBeenCalledWith({ where: { id: "box" }, data: { mouth_anchor_x: 0.7 } });
+  });
+
   it("xóa cả hai upload mới khi transaction DB rollback", async () => {
     const upload = vi.fn()
       .mockResolvedValueOnce("https://storage/closed.webp")
@@ -66,7 +142,7 @@ describe("Workflow lưu reward box", () => {
     };
     const updated = { ...before, closed_image_url: `${baseUrl}products/reward-boxes/new-closed.webp` };
     const campaign = {
-      id: "campaign", name: "Tết", status: "DRAFT", revision: 2,
+      id: "campaign", name: "Tết", status: "ACTIVE", revision: 2,
       created_at: new Date("2026-01-01"), updated_at: new Date("2026-01-02"),
       poolItems: [], boxes: [updated],
     };
@@ -88,7 +164,44 @@ describe("Workflow lưu reward box", () => {
       closedImage: new File(["new"], "closed.png", { type: "image/png" }),
     }, { uploadMenuImage: upload, removeMenuImages: remove });
 
+    expect(tx.rewardBox.update).toHaveBeenCalledWith({
+      where: { id: "box" },
+      data: { closed_image_url: updated.closed_image_url },
+    });
     expect(remove).toHaveBeenCalledWith(["products/reward-boxes/old-closed.webp"]);
     expect(remove).not.toHaveBeenCalledWith(expect.arrayContaining(["products/reward-boxes/old-open.webp"]));
+  });
+
+  it("rollback upload mới khi optimistic update thua với count bằng 0", async () => {
+    const baseUrl = "https://project.supabase.co/storage/v1/object/public/menu-images/";
+    const before = {
+      id: "box", name: "Hộp cũ", closed_image_url: `${baseUrl}products/reward-boxes/old-closed.webp`,
+      open_image_url: `${baseUrl}products/reward-boxes/old-open.webp`, mouth_anchor_x: 0.5, mouth_anchor_y: 0.2, sort_order: 0,
+    };
+    const rewardBoxUpdate = vi.fn();
+    const tx = {
+      rewardCampaign: {
+        findUnique: vi.fn().mockResolvedValue({ status: "ACTIVE" }),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      rewardBox: { findFirst: vi.fn().mockResolvedValue(before), update: rewardBoxUpdate },
+    };
+    const db = {
+      rewardBox: { findFirst: vi.fn().mockResolvedValue(before) },
+      $transaction: vi.fn((callback) => callback(tx)),
+    } as unknown as AdminRewardDatabase;
+    const upload = vi.fn().mockResolvedValue(`${baseUrl}products/reward-boxes/new-closed.webp`);
+    const remove = vi.fn().mockResolvedValue(undefined);
+
+    await expect(updateAdminRewardBox(db, {
+      campaignId: "campaign", boxId: "box", revision: 1, fields: {},
+      closedImage: new File(["new"], "closed.png", { type: "image/png" }),
+    }, { uploadMenuImage: upload, removeMenuImages: remove })).rejects.toMatchObject({ reason: "CONFLICT" });
+
+    expect(rewardBoxUpdate).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledWith([
+      expect.stringMatching(/closed-[a-z0-9]{8}\.webp$/),
+    ]);
+    expect(remove).not.toHaveBeenCalledWith(["products/reward-boxes/old-closed.webp"]);
   });
 });

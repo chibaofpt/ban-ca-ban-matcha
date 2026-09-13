@@ -151,6 +151,8 @@ The private-voucher migration extends this existing enum additively and keeps th
 - `points_balance` int — default 0
 - `qr_token` string UK — UUID, encoded in QR, NEVER expose `id`
 - `otp_enabled` bool — default false, Phase 5
+- `is_verified` bool — default false; admin-managed customer identity verification state
+- `is_blocked` bool — default false; admin-managed account block state that denies authentication and live sessions
 - `created_at` timestamp
 - `updated_at` timestamp
 

@@ -145,7 +145,11 @@ export function useAddVoucherToCart() {
   const [loading, setLoading] = useState(false);
 
   const addToCart = useCallback(
-    async (voucher: MyVoucher, selection?: { menuItemId: string; size: Size }): Promise<AddVoucherResult> => {
+    async (
+      voucher: MyVoucher,
+      selection?: { menuItemId: string; size: Size },
+      canCommit: () => boolean = () => true,
+    ): Promise<AddVoucherResult> => {
       const supportsAddToCart = voucher.voucher_type === "PRODUCT" ||
         voucher.voucher_type === "PRODUCT_DISCOUNT" || voucher.voucher_type === "ITEM";
       const targetMenuItemId = selection?.menuItemId
@@ -169,6 +173,7 @@ export function useAddVoucherToCart() {
           if (menuItem.category !== "extras" || menuItem.unit_price_vnd == null) {
             return { ok: false, reason: "item_unavailable" };
           }
+          if (!canCommit()) return { ok: false, reason: "fetch_failed" };
           const result = addItem({
             menuItemId: menuItem.id,
             quantity: 1,
@@ -239,6 +244,7 @@ export function useAddVoucherToCart() {
           addonVouchers: [],
         };
 
+        if (!canCommit()) return { ok: false, reason: "fetch_failed" };
         const result = addItem(cartItemBase);
         if (!result.ok) return { ok: false, reason: "fetch_failed" };
 

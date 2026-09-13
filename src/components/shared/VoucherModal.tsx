@@ -8,7 +8,7 @@ import { Loader2, LogIn, Ticket } from "lucide-react";
 import { toast } from "sonner";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { useCartStore } from "@/src/lib/store/cartStore";
-import { useCurrentUser, useIsLoggedIn } from "@/src/lib/store/authStore";
+import { useAuthStore, useCurrentUser, useIsLoggedIn } from "@/src/lib/store/authStore";
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
 import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
 import { useCustomerVouchers } from "@/src/hooks/useCustomerVouchers";
@@ -52,7 +52,13 @@ import { WelcomeRewardOverlay } from "@/src/components/rewards/WelcomeRewardOver
 /** Unified customer wallet and voucher acquisition modal. */
 export default function VoucherModal() {
   const queryClient = useQueryClient();
-  const { open, close } = useVoucherModalStore();
+  const {
+    open,
+    close,
+    requestedUseNowVoucherToken,
+    useNowRequestVersion,
+    claimUseNowVoucherRequest,
+  } = useVoucherModalStore();
   const isLoggedIn = useIsLoggedIn();
   const currentUser = useCurrentUser();
   const pendingIntent = useAuthModalStore((state) => state.pendingIntent);
@@ -119,6 +125,7 @@ export default function VoucherModal() {
   const defaultPowderGram = usePowderStore((s) => s.defaultPowderGram);
   const { addToCart, loading: isUsingVoucher } = useAddVoucherToCart();
   const consumedIntentRef = useRef<object | null>(null);
+  const consumingUseNowVersionRef = useRef<number | null>(null);
   const resolvedDetailPackageRef = useRef<string | null>(null);
   const detailPackage = detailPackageId
     ? packages.find((pkg) => pkg.id === detailPackageId) ?? null
@@ -192,7 +199,8 @@ export default function VoucherModal() {
     setCartOpen(true);
   }, [closeVoucherSurface, setCartOpen]);
 
-  const handleWalletUseNow = useCallback(async (voucher: MyVoucher) => {
+  const handleWalletUseNow = useCallback(async (voucher: MyVoucher, canCommit: () => boolean = () => true) => {
+    if (!canCommit()) return;
     if (!walletVerified) {
       toast.error(walletVerificationMessage);
       return;
@@ -213,10 +221,57 @@ export default function VoucherModal() {
       handleUseNowSuccess();
       return;
     }
-    const result = await addToCart(voucher);
+    const result = await addToCart(voucher, undefined, canCommit);
+    if (!canCommit()) return;
     if (result.ok) handleUseNowSuccess();
     else setDetailVoucher(voucher);
   }, [activeVouchers, addToCart, handleUseNowSuccess, setSelectedVoucherIds, subtotalVnd, walletVerificationMessage, walletVerified]);
+
+  useEffect(() => {
+    const token = requestedUseNowVoucherToken;
+    const requestVersion = useNowRequestVersion;
+    if (!token || !open || authModalOpen || !isLoggedIn || !walletVerified) return;
+    if (consumingUseNowVersionRef.current === requestVersion) return;
+    if (!claimUseNowVoucherRequest(token, requestVersion)) return;
+    consumingUseNowVersionRef.current = requestVersion;
+    if (pendingIntent) clearIntent();
+    setActiveTab("my_vouchers");
+
+    const stillOwnsDispatch = () => {
+      const modalState = useVoucherModalStore.getState();
+      const authState = useAuthModalStore.getState();
+      return modalState.open &&
+        modalState.useNowRequestVersion === requestVersion &&
+        modalState.requestedUseNowVoucherToken === null &&
+        !authState.open &&
+        authState.pendingIntent === null &&
+        useAuthStore.getState().user !== null;
+    };
+
+    void refetchVouchers().then(async (result) => {
+      if (!stillOwnsDispatch()) return;
+      if (result.isError || !Array.isArray(result.data)) {
+        toast.error("Không thể xác minh voucher lúc này. Hãy thử lại từ ví voucher.");
+        return;
+      }
+      const voucher = result.data.find((candidate) => candidate.qr_token === token);
+      if (!voucher) {
+        toast.error("Không tìm thấy voucher vừa nhận trong ví. Hãy thử làm mới ví voucher.");
+        return;
+      }
+      if (voucher.status !== "ACTIVE" || !voucher.availability.can_apply) {
+        toast.error("Voucher vừa nhận hiện chưa thể sử dụng.");
+        return;
+      }
+      await handleWalletUseNow(voucher, stillOwnsDispatch);
+    }).catch(() => {
+      if (stillOwnsDispatch()) {
+        toast.error("Không thể xác minh voucher lúc này. Hãy thử lại từ ví voucher.");
+      }
+    }).finally(() => {
+      if (consumingUseNowVersionRef.current === requestVersion) consumingUseNowVersionRef.current = null;
+    });
+  }, [authModalOpen, claimUseNowVoucherRequest, clearIntent, handleWalletUseNow, isLoggedIn, open, pendingIntent, refetchVouchers, requestedUseNowVoucherToken, useNowRequestVersion, walletVerified]);
 
   const handleBundleSuccess = useCallback(() => {
     closeVoucherSurface();
@@ -282,7 +337,7 @@ export default function VoucherModal() {
   }, [acquirePackage, isLoggedIn]);
 
   useEffect(() => {
-    if (!open || authModalOpen || !isLoggedIn || pendingIntent?.type !== "voucher_acquire" || packagesLoading) return;
+    if (!open || authModalOpen || !isLoggedIn || requestedUseNowVoucherToken || pendingIntent?.type !== "voucher_acquire" || packagesLoading) return;
     if (consumedIntentRef.current === pendingIntent) return;
     consumedIntentRef.current = pendingIntent;
     const pkg = packages.find((item) => item.id === pendingIntent.packageId);
@@ -291,7 +346,7 @@ export default function VoucherModal() {
     if (!pkg) return void toast.error("Gói ưu đãi không còn khả dụng.");
     if (pkg.acquisition_mode === "POINTS_EXCHANGE") setPendingPackage(pkg);
     else void acquirePackage(pkg);
-  }, [acquirePackage, authModalOpen, clearIntent, isLoggedIn, open, packages, packagesLoading, pendingIntent]);
+  }, [acquirePackage, authModalOpen, clearIntent, isLoggedIn, open, packages, packagesLoading, pendingIntent, requestedUseNowVoucherToken]);
 
   useEffect(() => {
     if (!pendingIntent) consumedIntentRef.current = null;

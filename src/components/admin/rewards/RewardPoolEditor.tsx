@@ -37,16 +37,18 @@ export function RewardPoolEditor({ campaign, packages, saving, onSave }: RewardP
           {items.map((item, index) => {
             const live = campaign.pool_items.find((row) => row.voucher_package_id === item.voucher_package_id);
             return (
-              <div key={`${item.voucher_package_id}-${index}`} className="grid gap-3 rounded-xl border p-3 md:grid-cols-[minmax(12rem,1fr)_8rem_10rem_auto] md:items-end">
+              <div key={`${item.voucher_package_id}-${index}`} className="grid gap-3 rounded-xl border p-3 md:grid-cols-[minmax(12rem,1fr)_minmax(16rem,18rem)_auto] md:items-end">
                 <label className="text-sm font-medium">Voucher
                   <select value={item.voucher_package_id} disabled={!editable} onChange={(event) => update(index, { voucher_package_id: event.target.value })} className="mt-1 h-11 w-full rounded-lg border bg-background px-3">
                     {available.map((pkg) => { const packageAvailable = isAdminRewardPackageAvailable(pkg); return <option key={pkg.id} value={pkg.id} disabled={!packageAvailable || items.some((row, rowIndex) => rowIndex !== index && row.voucher_package_id === pkg.id)}>{pkg.name}{packageAvailable ? "" : " (không còn khả dụng — đang trong pool)"}</option>; })}
                   </select>
                 </label>
-                <label className="text-sm font-medium">Số lượng<input type="number" min={1} max={10000} value={item.quantity} disabled={!editable} onChange={(event) => update(index, { quantity: Number(event.target.value) })} className="mt-1 h-11 w-full rounded-lg border bg-background px-3" /></label>
-                <label className="text-sm font-medium">Mở sau lượt<input type="number" min={0} max={99999} value={item.unlock_after_draws} disabled={!editable} onChange={(event) => update(index, { unlock_after_draws: Number(event.target.value) })} className="mt-1 h-11 w-full rounded-lg border bg-background px-3" /></label>
+                <div className="grid min-w-0 grid-cols-2 gap-3">
+                  <label className="min-w-0 text-sm font-medium">Số lượng<input type="number" min={1} max={10000} value={item.quantity} disabled={!editable} onChange={(event) => update(index, { quantity: Number(event.target.value) })} className="mt-1 h-11 w-full min-w-0 rounded-lg border bg-background px-3" /></label>
+                  <label className="min-w-0 text-sm font-medium">Mở sau lượt<input type="number" min={0} max={99999} value={item.unlock_after_draws} disabled={!editable} onChange={(event) => update(index, { unlock_after_draws: Number(event.target.value) })} className="mt-1 h-11 w-full min-w-0 rounded-lg border bg-background px-3" /></label>
+                </div>
                 <Button variant="ghost" size="icon" aria-label="Xóa voucher khỏi pool" disabled={!editable} onClick={() => setItems((current) => current.filter((_, rowIndex) => rowIndex !== index))}><Trash2 className="size-4 text-destructive" /></Button>
-                {live ? <p className="text-xs text-muted-foreground md:col-span-4">Đã phát {live.issued_count} · Còn {live.remaining_quantity} · Trọng số {live.current_weight}/{live.eligible_weight_total}</p> : null}
+                {live ? <p className="text-xs text-muted-foreground md:col-span-3">Đã phát {live.issued_count} · Còn {live.remaining_quantity} · Trọng số {live.current_weight}/{live.eligible_weight_total}</p> : null}
               </div>
             );
           })}

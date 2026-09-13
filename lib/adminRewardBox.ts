@@ -43,7 +43,7 @@ export async function createAdminRewardBox(
   return { box: toAdminRewardBoxDto(box), campaign: await getAdminRewardCampaign(db, input.campaignId) };
 }
 
-/** Update mutable fields and optional images for one draft campaign box. */
+/** Update mutable fields and optional images while a campaign is not ended. */
 export async function updateAdminRewardBox(
   db: AdminRewardDatabase,
   input: { campaignId: string; boxId: string; revision: number; fields: Partial<BoxFields>; closedImage?: File; openImage?: File },
@@ -57,10 +57,13 @@ export async function updateAdminRewardBox(
     box = await db.$transaction(async (tx) => {
       const campaign = await tx.rewardCampaign.findUnique({ where: { id: input.campaignId } });
       if (!campaign) throw new AdminRewardError("NOT_FOUND");
-      if (campaign.status !== "DRAFT") throw new AdminRewardError("CAMPAIGN_NOT_DRAFT");
+      if (campaign.status === "ENDED") throw new AdminRewardError("CAMPAIGN_NOT_DRAFT");
       const current = await tx.rewardBox.findFirst({ where: { id: input.boxId, campaign_id: input.campaignId } });
       if (!current) throw new AdminRewardError("NOT_FOUND");
-      const claimed = await tx.rewardCampaign.updateMany({ where: { id: input.campaignId, status: "DRAFT", revision: input.revision }, data: { revision: { increment: 1 } } });
+      if (campaign.status !== "DRAFT" && input.fields.name !== undefined && input.fields.name !== current.name) {
+        throw new AdminRewardError("CAMPAIGN_NOT_DRAFT");
+      }
+      const claimed = await tx.rewardCampaign.updateMany({ where: { id: input.campaignId, status: campaign.status, revision: input.revision }, data: { revision: { increment: 1 } } });
       if (claimed.count !== 1) throw new AdminRewardError("CONFLICT");
       return tx.rewardBox.update({ where: { id: input.boxId }, data: {
         ...input.fields,

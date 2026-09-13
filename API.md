@@ -198,6 +198,13 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/admin/staff` | GET |
 | `/api/admin/store-closure` | POST |
 | `/api/admin/store-schedule` | GET, PUT |
+| `/api/admin/users` | GET |
+| `/api/admin/users/voucher-packages` | GET |
+| `/api/admin/users/[userQrToken]` | GET, PATCH |
+| `/api/admin/users/[userQrToken]/orders` | GET |
+| `/api/admin/users/[userQrToken]/orders/[orderId]` | GET |
+| `/api/admin/users/[userQrToken]/points` | POST |
+| `/api/admin/users/[userQrToken]/vouchers` | GET |
 | `/api/admin/voucher-packages` | GET, POST |
 | `/api/admin/voucher-packages/[id]` | PUT, DELETE |
 | `/api/admin/voucher-packages/[id]/owners` | GET |
@@ -518,11 +525,14 @@ Campaign endpoints and envelopes:
   `201 { data: { box, campaign } }`. Omitted create anchors default to `0.5` and `0.2`.
 - `PATCH /api/admin/reward-campaigns/[id]/boxes/[boxId]` uses multipart `revision` plus at least one
   of `name`, `mouth_anchor_x`, `mouth_anchor_y`, `closed_image`, `open_image`; response is
-  `200 { data: { box, campaign } }`.
+  `200 { data: { box, campaign } }`. A `DRAFT` campaign accepts every listed field. `ACTIVE` and
+  `PAUSED` accept only the image and anchor fields; changing `name` returns
+  `422 BUSINESS_RULE_VIOLATION`. An `ENDED` campaign is immutable.
 - `DELETE /api/admin/reward-campaigns/[id]/boxes/[boxId]` uses strict JSON
   `{ revision: number }`; response is `200 { data: { deleted: true, revision: number } }`.
 
-Box anchors are normalized from 0 through 1. Images accept JPEG, PNG or WebP; each file is at most
+Box anchors are normalized from 0 through 1. Images accept JPEG, PNG or WebP source files in
+landscape, portrait, or square orientation; each file is at most
 2 MiB, supplied files total at most 4 MiB, and a declared multipart `Content-Length` above 4.5 MiB
 is rejected before parsing. Campaign names contain 1–100 trimmed characters and box names 1–80.
 Pool JSON contains 1–100 unique package rows; each `quantity` is 1–10,000, total allocation is at
@@ -544,6 +554,45 @@ quota and do not count toward `max_per_user`; fixed welcome issuance has no camp
 Package availability still applies. See the canonical business rules in
 [voucher-flow lifecycle](.agents/skills/voucher-flow/references/lifecycle.md#welcome-reward-and-gacha)
 and persistence semantics in [SCHEMA](SCHEMA.md#welcome_reward_settings).
+
+### Admin customer management — ADMIN only
+
+Every route in this section requires an authenticated `ADMIN`. Missing authentication returns
+`401 UNAUTHORIZED`; another role returns `403 FORBIDDEN`. Customer path identifiers are public
+`users.qr_token` UUIDs. A missing token, a non-CUSTOMER account, or a malformed token is reported as
+`404 NOT_FOUND` without exposing `users.id`.
+
+- `GET /api/admin/users?page=1&q?=` returns a 10-row page ordered by latest order, then customers
+  without orders. Search matches name, phone, or Instagram alias. Each summary contains
+  `qr_token`, identity fields, `is_verified`, `is_blocked`, `points_balance`, current-year spend,
+  spent/exchanged/current-voucher counts, and `latest_order_at`.
+- `GET /api/admin/users/[userQrToken]` returns the same summary for one customer.
+- `PATCH /api/admin/users/[userQrToken]` accepts exactly one strict action:
+
+```ts
+{ action: "verify", is_verified: boolean }
+{ action: "block", is_blocked: boolean }
+{ action: "reset_password" }
+```
+
+Verify and block return `{ data: { success: true } }`. Blocking revokes all active sessions in the
+same transaction. Reset replaces the password with a cryptographically random bcrypt credential,
+revokes all sessions, and returns the plaintext once as
+`{ data: { success: true, temporary_password: string } }`; clients must not persist or log it.
+
+- `POST /api/admin/users/[userQrToken]/points` accepts strict JSON `{ points: number }`, where
+  `points` is an integer from 1 through 100. The server atomically increments the balance and appends
+  a `manual_admin_adjustment` points log with the Admin actor in one transaction. Integer overflow
+  returns `422 BUSINESS_RULE_VIOLATION`; success returns `{ data: { points_balance: number } }`.
+- `GET /api/admin/users/[userQrToken]/orders?page=1` returns 10 stored order snapshots; the nested
+  detail route additionally requires the order UUID and resolves it together with the selected
+  customer ID. Responses expose stored totals, items, voucher package names and BUNDLE allocations,
+  but not user or voucher database IDs. `points_earned` is `number | null` until completion.
+- `GET /api/admin/users/[userQrToken]/vouchers?page=1` returns 10 wallet entries using voucher
+  `qr_token`, effective status, issuance source and remaining days.
+- `GET /api/admin/users/voucher-packages?page=1&category=ALL|DISCOUNT|GIFT|SHIPPING` returns 10 active,
+  unended packages for the picker. Granting still uses the idempotent
+  `POST /api/admin/voucher-packages/[id]/grants` contract and its additional-gift acknowledgement.
 
 ### `POST /api/auth/login`
 Password minimum remains 6 characters. New registration rejects passwords over 72 UTF-8 bytes;

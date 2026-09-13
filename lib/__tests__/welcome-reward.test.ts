@@ -137,11 +137,15 @@ describe("Tạo welcome reward khi đăng ký", () => {
   });
 
   it("GACHA active có allocation chỉ tạo entitlement pending", async () => {
-    const { tx } = registrationTx("GACHA");
+    const { tx, account } = registrationTx("GACHA");
+    const initialPointsBalance = account.pointsBalance;
     await expect(createWelcomeRewardInTransaction(tx as never, USER_ID)).resolves.toEqual({
       id: REWARD_ID, mode: "GACHA", status: "PENDING", outcome_kind: null,
     });
+    expect(account.pointsBalance).toBe(initialPointsBalance);
     expect(tx.user.update).not.toHaveBeenCalled();
+    expect(tx.pointsLog.create).not.toHaveBeenCalled();
+    expect(tx.rewardOutcome.create).not.toHaveBeenCalled();
     expect(tx.voucher.create).not.toHaveBeenCalled();
   });
 
