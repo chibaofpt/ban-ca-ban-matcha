@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ClipboardList, Package, Gift, Megaphone, Receipt, Settings, Sparkles, Users } from "lucide-react";
+import { ClipboardList, Package, Gift, Megaphone, Receipt, Settings, Users } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { Role } from "@/src/lib/types/user";
 import * as authService from "@/src/services/authService";
@@ -30,7 +30,6 @@ const LEGACY_TABS: Tab[] = [
   { to: "/admin/users", label: "Khách hàng", icon: Users, roles: ["ADMIN"] },
   { to: "/admin/menu", label: "Menu", icon: Package, roles: ["ADMIN"] },
   { to: "/admin/voucher-packages", label: "Điểm & Voucher", icon: Gift, roles: ["ADMIN"] },
-  { to: "/admin/rewards", label: "Quà chào mừng", icon: Sparkles, roles: ["ADMIN"] },
   { to: "/admin/promotions", label: "Khuyến mãi", icon: Megaphone, roles: ["ADMIN"] },
 ];
 

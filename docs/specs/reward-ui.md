@@ -73,7 +73,10 @@ bày và điều phối trong UI.
 
 ## Admin experience
 
-- Trang **Quà chào mừng** tải song song settings, campaign summaries và voucher packages. Loading có
+- Workspace **Quản lý campaign** mở từ nút **Tạo campaign** trên trang quản lý voucher bằng
+  `ResponsiveOverlay` (bottom sheet trên mobile, dialog full-size trên desktop); không có tab Admin
+  hay trang reward độc lập. URL `/admin/rewards` cũ chuyển về `/admin/voucher-packages`.
+  Workspace tải song song settings, campaign summaries và voucher packages. Loading có
   trạng thái bận; lỗi đọc có thông báo và một action retry toàn bộ nguồn.
 - Settings trình bày ba mode bằng radio cards. `POINTS` không có reference; `FIXED_VOUCHER` chỉ cho
   chọn package active; `GACHA` chỉ cho chọn campaign `ACTIVE`. Nút lưu chỉ bật khi cấu hình hợp lệ,

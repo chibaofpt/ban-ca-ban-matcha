@@ -107,8 +107,15 @@ giữ surface nền; đăng nhập thành công tiếp tục intent một lần 
 ## Admin overlay composition
 
 Trang admin voucher là flow đầu tiên bật managed stack: page bọc các primitive bằng
-`OverlayStackProvider` và dùng một discriminated surface duy nhất (`closed`, `create` hoặc
-`detail(packageId)`), vì vậy wizard tạo và detail package không thể cùng là base surface. Multi-select
+`OverlayStackProvider` và dùng một discriminated surface duy nhất (`closed`, `campaign`, `create` hoặc
+`detail(packageId)`), vì vậy campaign workspace, wizard tạo và detail package không thể cùng là base surface.
+Nút **Tạo campaign** nằm bên trái **Tạo voucher** và mở campaign workspace bằng
+`ResponsiveOverlay`: Vaul bottom sheet trên mobile và dialog full-size trên desktop. Admin navigation
+không giữ tab reward riêng; URL cũ chuyển về trang voucher. Multi-select
 commit ngay mỗi lần chạm; CTA đóng ghi rõ số lựa chọn và query tìm kiếm được xóa sau khi đóng.
 Publish thành công và bỏ thay đổi bẩn đều đóng confirmation critical trước, rồi chỉ đóng base sau
 lifecycle `onAfterClose`; không thêm timer hoặc điều hướng Browser Back cho flow này.
+
+Trang tổng quan hiển thị ba KPI trên cùng một hàng: tổng cấu hình voucher, tổng voucher đã phát và
+tổng voucher đã sử dụng. Danh sách mặc định lọc `ACTIVE` và `PUBLIC`; hai select này không có lựa
+chọn tất cả. Select thể loại đứng giữa, mặc định **Không có** để không lọc theo voucher type.

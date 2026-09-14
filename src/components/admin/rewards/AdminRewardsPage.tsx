@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Gift, Loader2, Plus, RefreshCcw } from "lucide-react";
+import { Loader2, Plus, RefreshCcw } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/src/components/ui/button";
@@ -18,7 +18,7 @@ function errorText(error: unknown): string {
   return error instanceof ApiServiceError ? error.message : "Không thể cập nhật phần thưởng lúc này.";
 }
 
-/** Render the complete admin welcome-reward settings and campaign workspace. */
+/** Render the admin welcome-reward settings and campaign workspace inside its owning surface. */
 export function AdminRewardsPage() {
   const { settings, campaigns } = useAdminRewardOverview();
   const packages = useQuery({ queryKey: ADMIN_REWARD_QUERY_KEYS.VOUCHER_PACKAGES, queryFn: listVoucherPackages });
@@ -80,12 +80,11 @@ export function AdminRewardsPage() {
   const loading = settings.isLoading || campaigns.isLoading || packages.isLoading;
   const failed = settings.isError || campaigns.isError || packages.isError;
   const busy = Object.values(mutations).some((mutation) => mutation.isPending);
-  if (loading) return <main className="mx-auto flex min-h-80 max-w-7xl items-center justify-center px-4" aria-busy="true"><Loader2 className="size-6 animate-spin" /><span className="sr-only">Đang tải quản lý phần thưởng</span></main>;
-  if (failed || !settings.data || !packages.data) return <main className="mx-auto max-w-3xl px-4 py-12 text-center"><p role="alert">Không thể tải dữ liệu phần thưởng.</p><Button className="mt-4" variant="outline" onClick={() => void Promise.all([settings.refetch(), campaigns.refetch(), packages.refetch()])}><RefreshCcw className="size-4" /> Thử lại</Button></main>;
+  if (loading) return <div className="mx-auto flex min-h-80 max-w-7xl items-center justify-center px-4" aria-busy="true"><Loader2 className="size-6 animate-spin" /><span className="sr-only">Đang tải quản lý phần thưởng</span></div>;
+  if (failed || !settings.data || !packages.data) return <div className="mx-auto max-w-3xl px-4 py-12 text-center"><p role="alert">Không thể tải dữ liệu phần thưởng.</p><Button className="mt-4" variant="outline" onClick={() => void Promise.all([settings.refetch(), campaigns.refetch(), packages.refetch()])}><RefreshCcw className="size-4" /> Thử lại</Button></div>;
 
   return (
-    <main className="mx-auto w-full max-w-7xl space-y-6 overflow-x-clip px-3 pb-24 pt-6 md:px-8 md:pb-8">
-      <header><h1 className="flex items-center gap-2 font-serif text-2xl font-bold"><Gift className="size-6" /> Quà chào mừng</h1><p className="mt-1 text-sm text-muted-foreground">Thiết lập quà đăng ký và quản lý campaign hộp matcha.</p></header>
+    <div className="mx-auto w-full max-w-7xl space-y-6 overflow-x-clip">
       <RewardSettingsPanel key={settings.data.revision} settings={settings.data} packages={packages.data} campaigns={items} saving={mutations.settings.isPending} onSave={saveSettings} />
       <section className="grid gap-5 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <aside className="space-y-3 rounded-2xl border bg-card p-4">
@@ -95,6 +94,6 @@ export function AdminRewardsPage() {
         </aside>
         <div className="min-w-0">{effectiveSelectedId && detail.isLoading ? <div className="flex min-h-60 items-center justify-center rounded-2xl border"><Loader2 className="size-5 animate-spin" /></div> : detail.isError ? <div className="rounded-2xl border p-8 text-center"><p role="alert">Không thể tải chi tiết campaign.</p><Button variant="outline" className="mt-3" onClick={() => void detail.refetch()}>Thử lại</Button></div> : detail.data ? <RewardCampaignEditor key={`${detail.data.id}-${detail.data.revision}`} campaign={detail.data} packages={packages.data} busy={busy} onAction={campaignAction} onPoolSave={savePool} onBoxCreate={createBox} onBoxUpdate={updateBox} onBoxDelete={deleteBox} /> : <div className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">Chọn hoặc tạo campaign để chỉnh sửa.</div>}</div>
       </section>
-    </main>
+    </div>
   );
 }

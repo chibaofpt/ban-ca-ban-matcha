@@ -1,11 +1,5 @@
-import type { Metadata } from "next";
-import { AdminRewardsPage } from "@/src/components/admin/rewards/AdminRewardsPage";
-
-export const metadata: Metadata = {
-  title: "Quà chào mừng — Quản trị Bạn Cá Bán Matcha",
-  description: "Thiết lập quà đăng ký và campaign hộp matcha.",
-};
+import { redirect } from "next/navigation";
 
 export default function Page() {
-  return <AdminRewardsPage />;
+  redirect("/admin/voucher-packages");
 }
