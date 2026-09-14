@@ -59,6 +59,13 @@ export async function middleware(request: NextRequest) {
 
   if (pathname.startsWith("/api/auth")) return NextResponse.next();
 
+  // Profile routes own their authoritative Prisma session and role checks.
+  // Let them produce the documented 401/403 instead of failing early when the
+  // middleware-only PostgREST session lookup is unavailable.
+  if (pathname === "/api/profile" || pathname.startsWith("/api/profile/")) {
+    return NextResponse.next();
+  }
+
   const customerFacing = isCustomerFacing(pathname);
   const protectedApi = isProtectedApi(pathname);
   const protectedPage = isProtectedPage(pathname);

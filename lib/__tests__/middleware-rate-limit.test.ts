@@ -67,6 +67,16 @@ describe("Middleware rate limit auth mutation", () => {
     expect(mockCheckRateLimit).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["GET", "/api/profile/points?page=1&limit=10"],
+    ["POST", "/api/profile/vouchers/sync"],
+  ])("để route profile tự xác thực cho %s %s", async (method, path) => {
+    const response = await middleware(makeRequest(path, method));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+  });
+
   it("trả 429 và Retry-After khi auth mutation vượt giới hạn", async () => {
     mockCheckRateLimit.mockResolvedValue({
       allowed: false,
