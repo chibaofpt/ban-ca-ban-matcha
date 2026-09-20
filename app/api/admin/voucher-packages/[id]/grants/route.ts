@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import type { GrantVoucherInput, GrantedVoucher } from "@/contracts/admin/voucher";
+import type { OwnedVoucherStatus, VoucherType } from "@/contracts/voucher";
 
 import { getSession } from "@/lib/auth";
 import { invalidateVoucherCaches } from "@/lib/cacheInvalidation";
@@ -27,13 +29,21 @@ function errorResponse(error: VoucherIssuanceError): NextResponse {
   return NextResponse.json({ error: error.message, code: error.reason }, { status });
 }
 
-function serializeVoucher(voucher: IssuedVoucherResult, now: Date, alreadyGranted: boolean) {
-  const status = "status" in voucher && typeof voucher.status === "string" ? voucher.status : "ACTIVE";
+function serializeVoucher(
+  voucher: IssuedVoucherResult,
+  now: Date,
+  alreadyGranted: boolean,
+): GrantedVoucher {
+  const status = (
+    "status" in voucher && typeof voucher.status === "string" ? voucher.status : "ACTIVE"
+  ) as OwnedVoucherStatus;
   const expiresAt = "expires_at" in voucher && voucher.expires_at instanceof Date ? voucher.expires_at.toISOString() : null;
   const effectiveStatus = status === "ACTIVE" && expiresAt !== null && new Date(expiresAt) <= now ? "EXPIRED" : status;
   return {
     qr_token: "qr_token" in voucher && typeof voucher.qr_token === "string" ? voucher.qr_token : "",
-    voucher_type: "voucher_type" in voucher && typeof voucher.voucher_type === "string" ? voucher.voucher_type : "",
+    voucher_type: (
+      "voucher_type" in voucher && typeof voucher.voucher_type === "string" ? voucher.voucher_type : ""
+    ) as VoucherType,
     status,
     effective_status: effectiveStatus,
     expires_at: expiresAt,
@@ -60,8 +70,9 @@ export async function POST(
   }
 
   try {
+    const input: GrantVoucherInput = parsed.data;
     const recipient = await prisma.user.findUnique({
-      where: { qr_token: parsed.data.user_qr_token },
+      where: { qr_token: input.user_qr_token },
       select: { id: true, role: true },
     });
     if (!recipient) return NextResponse.json({ error: "Customer not found", code: "NOT_FOUND" }, { status: 404 });
@@ -78,9 +89,9 @@ export async function POST(
       user_id: recipient.id,
       package_id: packageId,
       performed_by: session.id,
-      request_id: parsed.data.request_id,
+      request_id: input.request_id,
       now,
-      acknowledge_additional_gift: parsed.data.acknowledge_additional_gift,
+      acknowledge_additional_gift: input.acknowledge_additional_gift,
     });
     const replayed = "already_granted" in voucher && voucher.already_granted === true;
     await invalidateVoucherCaches();

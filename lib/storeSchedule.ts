@@ -1,4 +1,10 @@
 import { prisma } from "@/lib/prisma";
+import type {
+  DaySchedule,
+  ScheduleSlot,
+  StoreOpenReason,
+  StoreStatusResponse,
+} from "@/contracts/store";
 
 /** Asia/Ho_Chi_Minh UTC offset in minutes */
 const VN_OFFSET_MINUTES = 7 * 60;
@@ -21,17 +27,8 @@ function parseTime(hhmm: string): number {
   return h * 60 + m;
 }
 
-export type StoreOpenReason =
-  | "OPEN"
-  | "OUTSIDE_HOURS"
-  | "TEMPORARY_CLOSURE"
-  | "DAY_OFF";
-
-export interface StoreOpenResult {
-  is_open: boolean;
-  reason: StoreOpenReason;
-  closure_note: string | null;
-}
+export type { StoreOpenReason } from "@/contracts/store";
+export type StoreOpenResult = Pick<StoreStatusResponse, "is_open" | "reason" | "closure_note">;
 
 /**
  * Check if the store is currently open based on schedule + temporary closure.
@@ -79,16 +76,8 @@ export async function checkStoreOpen(): Promise<StoreOpenResult> {
   return { is_open: false, reason: "OUTSIDE_HOURS", closure_note: null };
 }
 
-export interface StoreScheduleSlot {
-  slot: number;
-  open_time: string;
-  close_time: string;
-}
-
-export interface StoreDaySchedule {
-  day_of_week: number;
-  slots: StoreScheduleSlot[];
-}
+export type StoreScheduleSlot = ScheduleSlot;
+export type StoreDaySchedule = DaySchedule;
 
 /**
  * Fetch the full weekly schedule grouped by day_of_week.

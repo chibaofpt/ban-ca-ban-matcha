@@ -13,8 +13,8 @@ import {
 import { calcOrderTotals } from "@/lib/orderCalculator";
 import type { CalcDiscountVoucher } from "@/lib/orderCalculator";
 import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
-import type { SweetnessLevel } from "@/src/lib/types/menu";
-import type { IceOption } from "@/src/lib/types/cart";
+import type { SweetnessLevel } from "@/contracts/menu";
+import type { IceOption } from "@/contracts/order";
 import { BundlePromotionError } from "@/lib/promotionBundle";
 import { resolveOrderBundles, type OrderBundleDatabase } from "@/lib/orderBundle";
 import { persistOrderBundles } from "@/lib/orderBundleWrite";
@@ -29,7 +29,7 @@ import {
   resolveCustomerIdentifier,
   resolveOwnedVoucherIdentifier,
 } from "@/lib/publicIdentifiers";
-import { toPublicOrderDto } from "@/lib/orderPublicDto";
+import { toOrderListItemDto } from "@/lib/orderPublicDto";
 import { getOrderValueViolation } from "@/lib/orderLimits";
 import {
   claimCounterVoucher,
@@ -803,10 +803,10 @@ export async function GET(req: NextRequest) {
 
     const totalPages = Math.ceil(total / limit);
 
-    const data = orders.map((order) => ({
-      ...toPublicOrderDto(order),
-      payment_qr_url: getPendingPaymentQrUrl(order),
-    }));
+    const data = orders.map((order) => toOrderListItemDto(
+      order,
+      getPendingPaymentQrUrl(order),
+    ));
 
     return NextResponse.json({ 
       data,

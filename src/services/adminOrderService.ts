@@ -1,40 +1,26 @@
 import { apiClient } from '@/src/lib/api/client';
-import type { OrderRes } from './staffOrdersListService';
-import type { OrderType, PaymentMethod } from '@/src/lib/types/order';
+import type {
+  AdminOrderFilters,
+  AdminOrderListItem,
+} from '@/contracts/admin/order';
+import type {
+  OrderType,
+  PaginatedResponse,
+  PaymentMethod,
+  StaffOrderResult,
+} from '@/contracts/order';
 import type { ApiError, ApiResponse } from '@/src/lib/types/api';
-import type { StaffOrderResult } from '@/src/lib/types/order';
 import { isAxiosError } from 'axios';
+
+export type { AdminOrderFilters, AdminOrderListItem } from '@/contracts/admin/order';
+export type { PaginatedResponse } from '@/contracts/order';
 
 const ORDER_URLS = {
   staffById: (orderId: string) => `/api/staff/orders/${orderId}`,
   confirmPayment: (orderId: string) => `/api/admin/orders/${orderId}/confirm-payment`,
 } as const;
 
-export interface AdminOrderRes extends OrderRes {
-  handler: { name: string; role: "ADMIN" | "STAFF" } | null;
-}
-
-export interface AdminOrderFilters {
-  startDate?: string;
-  endDate?: string;
-  search?: string;
-  staffId?: string;
-  staffName?: string;
-  order_type?: string;
-  status?: string;
-  exclude_cancelled?: boolean;
-  page?: number;
-  limit?: number;
-}
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  meta: {
-    total: number;
-    page: number;
-    totalPages: number;
-  };
-}
+export type AdminOrderRes = AdminOrderListItem;
 
 /** Lấy danh sách order cho Admin (có bộ lọc). */
 export async function fetchAdminOrders(filters: AdminOrderFilters = {}): Promise<PaginatedResponse<AdminOrderRes>> {

@@ -1,4 +1,5 @@
-import type { BundleScopeRole, Size } from "@prisma/client";
+import type { BundleBenefitScaling, BundleScopeRole, Size } from "@prisma/client";
+import type { BundleVoucherProduct, BundleVoucherRule } from "@/contracts/voucher";
 import { resolveBundleBaselineProducts } from "@/lib/pricing";
 
 const SIZE_ORDER: Record<Size, number> = { SMALL: 0, MEDIUM: 1, LARGE: 2 };
@@ -24,19 +25,19 @@ export interface BundleRuleDtoSource {
   reward_quantity: number;
   reward_kind: "PRODUCT" | "ADDON";
   reward_mode: "SAME_CONFIG" | "FIXED_CONFIG" | "ALLOWED_SCOPE";
-  benefit_scaling: string;
+  benefit_scaling: BundleBenefitScaling;
   max_applications_order: number;
   max_reward_units_order: number | null;
   productScopes: BundleScopeDtoSource[];
   addonRewards: BundleAddonDtoSource[];
 }
 
-function mapProduct(scope: BundleScopeDtoSource) {
+function mapProduct(scope: BundleScopeDtoSource): BundleVoucherProduct {
   return {
     menu_item_id: scope.menu_item_id,
     menu_item: {
       name: scope.menuItem.name,
-      category: scope.menuItem.category,
+      category: scope.menuItem.category as BundleVoucherProduct["menu_item"]["category"],
       is_available: scope.menuItem.is_available,
     },
     default_powder_id: scope.default_powder_id,
@@ -99,7 +100,7 @@ export async function attachBundleRewardBaselines<T extends VoucherWithBundleRul
 }
 
 /** Convert the internal normalized BUNDLE rule into its grouped public API contract. */
-export function toBundleRuleDto(rule: BundleRuleDtoSource) {
+export function toBundleRuleDto(rule: BundleRuleDtoSource): BundleVoucherRule {
   return {
     buy_quantity: rule.buy_quantity,
     reward_quantity: rule.reward_quantity,

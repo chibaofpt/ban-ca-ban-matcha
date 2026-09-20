@@ -1,6 +1,37 @@
 import { apiClient } from "@/src/lib/api/client";
 import type { ApiError, ApiResponse } from "@/src/lib/types/api";
-import { ApiServiceError } from "@/src/services/orderService";
+import type {
+  AdminRewardBox,
+  AdminRewardBoxDeleteResult,
+  AdminRewardBoxMutationResult,
+  AdminRewardCampaign,
+  AdminRewardCampaignAction,
+  AdminRewardCampaignCreateInput,
+  AdminRewardCampaignSummary,
+  AdminRewardPoolInput,
+  AdminRewardPoolReplaceInput,
+  AdminWelcomeRewardSettings,
+  AdminWelcomeRewardSettingsInput,
+} from "@/contracts/admin/reward";
+import { ApiServiceError } from "@/src/lib/api/serviceError";
+
+export type {
+  AdminRewardBox,
+  AdminRewardBoxDeleteResult,
+  AdminRewardBoxMutationResult,
+  AdminRewardCampaign,
+  AdminRewardCampaignAction,
+  AdminRewardCampaignCreateInput,
+  AdminRewardCampaignStatus,
+  AdminRewardCampaignSummary,
+  AdminRewardCampaignTransition,
+  AdminRewardMode,
+  AdminRewardPoolInput,
+  AdminRewardPoolItem,
+  AdminRewardPoolReplaceInput,
+  AdminWelcomeRewardSettings,
+  AdminWelcomeRewardSettingsInput,
+} from "@/contracts/admin/reward";
 
 const URL = {
   settings: "/api/admin/welcome-reward-settings",
@@ -10,67 +41,6 @@ const URL = {
   boxes: (id: string) => `/api/admin/reward-campaigns/${id}/boxes`,
   box: (id: string, boxId: string) => `/api/admin/reward-campaigns/${id}/boxes/${boxId}`,
 } as const;
-
-export type AdminRewardMode = "POINTS" | "FIXED_VOUCHER" | "GACHA";
-export type AdminRewardCampaignStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "ENDED";
-
-export interface AdminWelcomeRewardSettings {
-  mode: AdminRewardMode;
-  fixed_package_id: string | null;
-  active_campaign_id: string | null;
-  revision: number;
-}
-
-export interface AdminRewardCampaignSummary {
-  id: string;
-  name: string;
-  status: AdminRewardCampaignStatus;
-  revision: number;
-  created_at: string;
-  updated_at: string;
-  draw_count: number;
-  total_allocated: number;
-  total_remaining: number;
-  box_count: number;
-}
-
-export interface AdminRewardPoolItem {
-  id: string;
-  voucher_package_id: string;
-  voucher_package: { name: string; is_active: boolean; ends_at: string | null };
-  quantity: number;
-  unlock_after_draws: number;
-  issued_count: number;
-  remaining_quantity: number;
-  unlocked: boolean;
-  current_weight: number;
-  eligible_weight_total: number;
-}
-
-export interface AdminRewardBox {
-  id: string;
-  name: string;
-  closed_image_url: string;
-  open_image_url: string;
-  mouth_anchor_x: number;
-  mouth_anchor_y: number;
-  sort_order: number;
-}
-
-export interface AdminRewardCampaign extends AdminRewardCampaignSummary {
-  pool_items: AdminRewardPoolItem[];
-  boxes: AdminRewardBox[];
-}
-
-export interface AdminRewardPoolInput {
-  voucher_package_id: string;
-  quantity: number;
-  unlock_after_draws: number;
-}
-
-export type AdminRewardCampaignAction =
-  | { action: "RENAME"; revision: number; name: string }
-  | { action: "ACTIVATE" | "PAUSE" | "RESUME" | "END"; revision: number };
 
 export interface AdminRewardBoxCreateInput {
   revision: number;
@@ -124,7 +94,7 @@ export async function getAdminWelcomeRewardSettings(): Promise<AdminWelcomeRewar
 }
 
 /** Update singleton welcome-reward settings with revision protection. */
-export async function updateAdminWelcomeRewardSettings(input: AdminWelcomeRewardSettings): Promise<AdminWelcomeRewardSettings> {
+export async function updateAdminWelcomeRewardSettings(input: AdminWelcomeRewardSettingsInput): Promise<AdminWelcomeRewardSettings> {
   return preserveApiError(async () => (await apiClient.put<ApiResponse<{ settings: AdminWelcomeRewardSettings }>>(URL.settings, input)).data.data.settings);
 }
 
@@ -134,7 +104,7 @@ export async function listAdminRewardCampaigns(): Promise<AdminRewardCampaignSum
 }
 
 /** Create one draft reward campaign. */
-export async function createAdminRewardCampaign(input: { name: string }): Promise<AdminRewardCampaign> {
+export async function createAdminRewardCampaign(input: AdminRewardCampaignCreateInput): Promise<AdminRewardCampaign> {
   return preserveApiError(async () => (await apiClient.post<ApiResponse<{ campaign: AdminRewardCampaign }>>(URL.campaigns, input)).data.data.campaign);
 }
 
@@ -149,21 +119,21 @@ export async function mutateAdminRewardCampaign(id: string, input: AdminRewardCa
 }
 
 /** Replace one draft campaign's weighted pool. */
-export async function replaceAdminRewardPool(id: string, input: { revision: number; items: AdminRewardPoolInput[] }): Promise<AdminRewardCampaign> {
+export async function replaceAdminRewardPool(id: string, input: AdminRewardPoolReplaceInput): Promise<AdminRewardCampaign> {
   return preserveApiError(async () => (await apiClient.put<ApiResponse<{ campaign: AdminRewardCampaign }>>(URL.pool(id), input)).data.data.campaign);
 }
 
 /** Add one visual box using browser-managed multipart headers. */
-export async function createAdminRewardBox(id: string, input: AdminRewardBoxCreateInput): Promise<{ box: AdminRewardBox; campaign: AdminRewardCampaign }> {
-  return preserveApiError(async () => (await apiClient.post<ApiResponse<{ box: AdminRewardBox; campaign: AdminRewardCampaign }>>(URL.boxes(id), toBoxFormData(input))).data.data);
+export async function createAdminRewardBox(id: string, input: AdminRewardBoxCreateInput): Promise<AdminRewardBoxMutationResult> {
+  return preserveApiError(async () => (await apiClient.post<ApiResponse<AdminRewardBoxMutationResult>>(URL.boxes(id), toBoxFormData(input))).data.data);
 }
 
 /** Update at least one visual box field using browser-managed multipart headers. */
-export async function updateAdminRewardBox(id: string, boxId: string, input: AdminRewardBoxUpdateInput): Promise<{ box: AdminRewardBox; campaign: AdminRewardCampaign }> {
-  return preserveApiError(async () => (await apiClient.patch<ApiResponse<{ box: AdminRewardBox; campaign: AdminRewardCampaign }>>(URL.box(id, boxId), toBoxFormData(input))).data.data);
+export async function updateAdminRewardBox(id: string, boxId: string, input: AdminRewardBoxUpdateInput): Promise<AdminRewardBoxMutationResult> {
+  return preserveApiError(async () => (await apiClient.patch<ApiResponse<AdminRewardBoxMutationResult>>(URL.box(id, boxId), toBoxFormData(input))).data.data);
 }
 
 /** Delete one visual box with revision protection. */
-export async function deleteAdminRewardBox(id: string, boxId: string, revision: number): Promise<{ deleted: true; revision: number }> {
-  return preserveApiError(async () => (await apiClient.delete<ApiResponse<{ deleted: true; revision: number }>>(URL.box(id, boxId), { data: { revision } })).data.data);
+export async function deleteAdminRewardBox(id: string, boxId: string, revision: number): Promise<AdminRewardBoxDeleteResult> {
+  return preserveApiError(async () => (await apiClient.delete<ApiResponse<AdminRewardBoxDeleteResult>>(URL.box(id, boxId), { data: { revision } })).data.data);
 }

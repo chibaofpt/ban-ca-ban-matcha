@@ -1,15 +1,16 @@
 import { apiClient } from "@/src/lib/api/client";
 import axios from "axios";
-import type { ApiResponse } from "@/src/lib/types/api";
 import type {
+  AdminMenuData,
   AdminMenuItem,
+  CreateLatteWithPowderResponse,
   MenuReorderPayload,
   MenuReorderResult,
-  MilkTypeOption,
-  Size,
-} from "@/src/lib/types/menu";
-import type { ApiError } from "@/src/lib/types/api";
-import { ApiServiceError } from "@/src/services/orderService";
+} from "@/contracts/admin/catalog";
+import type { ApiError, ApiResponse } from "@/contracts/api";
+import { ApiServiceError } from "@/src/lib/api/serviceError";
+
+export type { AdminMenuData, CreateLatteWithPowderResponse } from "@/contracts/admin/catalog";
 
 // ── URL map ──────────────────────────────────────────────────────────────────
 
@@ -19,25 +20,6 @@ const URL = {
   createLatteWithPowder: "/api/admin/menu/create-latte-with-powder",
   reorder: "/api/admin/menu/reorder",
 } as const;
-
-// ── Response shapes ───────────────────────────────────────────────────────────
-
-/** Response shape for POST /api/admin/menu/create-latte-with-powder. */
-export interface CreateLatteWithPowderResponse {
-  menu_item: AdminMenuItem;
-  powder_name: string;
-}
-
-// ── Response shape from GET /api/admin/menu ───────────────────────────────────
-
-export interface AdminMenuData {
-  updated_at: string;
-  latte: AdminMenuItem[];
-  fusion: AdminMenuItem[];
-  extras?: AdminMenuItem[];
-  base_liquids?: MilkTypeOption[];
-  default_size_config?: Array<{ size: Size; base_liquid_ml: number }>;
-}
 
 // ── Service functions ─────────────────────────────────────────────────────────
 

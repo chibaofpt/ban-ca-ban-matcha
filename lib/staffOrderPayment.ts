@@ -1,6 +1,7 @@
 import { generateOrderCode } from "@/lib/orderCode";
+import type { StaffOrderResult } from "@/contracts/order";
 import { OrderValidationError } from "@/lib/orders";
-import { toPublicOrderDto } from "@/lib/orderPublicDto";
+import { serializeOrderDate } from "@/lib/orderPublicDto";
 import { prisma } from "@/lib/prisma";
 import { redeemOrderVouchers } from "@/lib/redeemVouchers";
 import { buildVietQRUrl } from "@/lib/vietqr";
@@ -95,14 +96,14 @@ export function toStaffOrderPaymentResult(
   order: CreatedCounterOrder,
   payment: CounterPaymentPreparation,
   skippedVouchers: string[],
-): Record<string, unknown> {
+): StaffOrderResult {
   return {
     id: order.id,
     status: order.status,
     order_type: "COUNTER",
     payment_method: payment.paymentMethod,
     order_code: payment.orderCode,
-    auto_cancel_at: payment.autoCancelAt,
+    auto_cancel_at: serializeOrderDate(payment.autoCancelAt),
     payment_qr_url: payment.paymentQrUrl,
     subtotal_vnd: order.subtotal_vnd,
     total_voucher_discount_vnd: order.total_voucher_discount_vnd,
@@ -270,7 +271,7 @@ export function getPendingPaymentWhere(
 export async function getAuthorizedStaffPaymentOrder(
   orderId: string,
   session: { id: string; role: string },
-): Promise<Record<string, unknown>> {
+): Promise<StaffOrderResult> {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     select: {
@@ -300,8 +301,21 @@ export async function getAuthorizedStaffPaymentOrder(
   }
 
   return {
-    ...toPublicOrderDto(order),
+    id: order.id,
+    status: order.status,
+    order_type: order.order_type,
+    payment_method: order.payment_method,
+    order_code: order.order_code,
+    auto_cancel_at: serializeOrderDate(order.auto_cancel_at),
     payment_qr_url: getPendingPaymentQrUrl(order),
+    subtotal_vnd: order.subtotal_vnd,
+    total_voucher_discount_vnd: order.total_voucher_discount_vnd,
+    total_vnd: order.total_vnd,
+    shipping_fee_vnd: order.shipping_fee_vnd,
+    freeship_discount_vnd: order.freeship_discount_vnd,
+    grand_total_vnd: order.grand_total_vnd,
+    points_earned: order.points_earned,
     skipped_vouchers: [],
+    created_at: serializeOrderDate(order.created_at),
   };
 }

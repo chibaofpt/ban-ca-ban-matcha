@@ -9,7 +9,7 @@ import type {
   AdminUserVoucher,
   AdminUserVoucherCategory,
   AdminUserVoucherPackage,
-} from "@/src/lib/types/adminUser";
+} from "@/contracts/admin/user";
 
 const PAGE_SIZE = 10;
 
@@ -130,9 +130,11 @@ export async function listAdminUserVouchers(userQrToken: string, page: number, n
       orderBy: [{ created_at: "desc" }, { id: "desc" }], skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE }),
   ]);
   return { items: rows.map((row) => ({ qr_token: row.qr_token, name: row.package.name,
-    description: row.package.description, status: effectiveAdminVoucherStatus(row.status, row.expires_at, now),
+    description: row.package.description,
+    status: effectiveAdminVoucherStatus(row.status, row.expires_at, now) as AdminUserVoucher["status"],
     expires_at: row.expires_at?.toISOString() ?? null, created_at: row.created_at.toISOString(),
-    redeemed_at: row.redeemed_at?.toISOString() ?? null, issued_via: row.issued_via,
+    redeemed_at: row.redeemed_at?.toISOString() ?? null,
+    issued_via: row.issued_via as AdminUserVoucher["issued_via"],
     days_remaining: adminVoucherDaysRemaining(row.expires_at, now),
   })), total, page, total_pages: Math.ceil(total / PAGE_SIZE) };
 }
@@ -199,10 +201,10 @@ function pointsBreakdown(row: AdminOrderRow): AdminUserOrder["points_breakdown"]
 }
 
 function toAdminUserOrder(row: AdminOrderRow, freeshipName?: string): AdminUserOrderDto {
-  const itemVouchers = row.items.flatMap((item) => [
-    ...(item.itemVoucher ? [{ name: item.itemVoucher.package.name, type: "ITEM" }] : []),
+  const itemVouchers: AdminUserOrder["order_vouchers"] = row.items.flatMap((item) => [
+    ...(item.itemVoucher ? [{ name: item.itemVoucher.package.name, type: "ITEM" as const }] : []),
     ...(item.productVoucher ? [{ name: item.productVoucher.package.name, type: item.productVoucher.voucher_type }] : []),
-    ...item.addonVouchers.map(({ voucher }) => ({ name: voucher.package.name, type: "ADDON" })),
+    ...item.addonVouchers.map(({ voucher }) => ({ name: voucher.package.name, type: "ADDON" as const })),
   ]);
   return {
     id: row.id, code: row.order_code, status: row.status, type: row.order_type,
@@ -219,7 +221,11 @@ function toAdminUserOrder(row: AdminOrderRow, freeshipName?: string): AdminUserO
       addons_price_vnd: item.addons_price_vnd,
       line_total_vnd: item.quantity * (item.unit_price_vnd + item.addons_price_vnd),
       line_payable_vnd: Math.max(0, item.quantity * (item.unit_price_vnd + item.addons_price_vnd) - item.total_discount_vnd),
-      total_discount_vnd: item.total_discount_vnd, menu_item: item.menuItem,
+      total_discount_vnd: item.total_discount_vnd,
+      menu_item: {
+        ...item.menuItem,
+        category: item.menuItem.category as AdminUserOrder["items"][number]["menu_item"]["category"],
+      },
       selected_powder: item.selectedPowder, base_liquid: item.milkType,
       sweetness: item.sweetness, ice_option: item.ice_option, coldwhisk: item.coldwhisk, note: item.note,
       addons: item.addons.map((addon) => ({
@@ -234,7 +240,7 @@ function toAdminUserOrder(row: AdminOrderRow, freeshipName?: string): AdminUserO
       ...row.discountVouchers.map(({ voucher }) => ({ name: voucher.package.name, type: voucher.voucher_type })),
       ...itemVouchers,
       ...row.bundleApplications.map(({ voucher }) => ({ name: voucher.package.name, type: voucher.voucher_type })),
-      ...(freeshipName ? [{ name: freeshipName, type: "FREESHIP" }] : []),
+      ...(freeshipName ? [{ name: freeshipName, type: "FREESHIP" as const }] : []),
     ],
     bundle_applications: row.bundleApplications.map((application) => ({
       id: application.id, name: application.voucher.package.name, status: application.status,

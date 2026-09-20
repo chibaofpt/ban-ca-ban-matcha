@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import type { CreateVoucherPackageInput } from "@/contracts/admin/voucher";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import {
@@ -120,7 +121,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const data = parsed.data;
+    const data = parsed.data satisfies CreateVoucherPackageInput;
 
     if (data.voucher_type === "BUNDLE") {
       try {

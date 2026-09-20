@@ -42,8 +42,8 @@ Vercel; Upstash cho cache-aside public reads và distributed security rate limit
 
 ```text
 Client page/view -> feature container/hook -> frontend service -> API route
-                           |                                      |
-                           +-> shared UI                           +-> optional Redis cache-aside
+                           |                     |                |
+                           +-> shared UI         +-- contracts/ --+-> optional Redis cache-aside
                                                                         |
                                                                         +-> lib domain workflow
                                                                              |
@@ -59,6 +59,8 @@ Server page/layout -----------------------> lib read workflow -------> Prisma
 - `src/components/ui/` chỉ chứa primitive dùng chung; không gọi service, không biết API URL và không chứa domain rule.
 - `src/services/` là frontend HTTP boundary: sở hữu API URL, Axios calls và DTO mapping. Mọi
   client request đi qua một `apiClient` tại `src/lib/api/client.ts`.
+- `contracts/` sở hữu type/schema của API wire shape được frontend service và API route dùng chung;
+  nó không sở hữu HTTP transport, service orchestration, persistence hoặc business rule.
 - `app/api/**/route.ts` là HTTP controller mỏng: parse/validate, auth, gọi workflow và map response.
 - `lib/` là server-only, sở hữu domain workflow, Prisma data access và adapter cho dịch vụ ngoài.
   Phần giao tiếp database gọi là **data access boundary**; chỉ tách repository/query module khi query
@@ -79,8 +81,10 @@ Một feature có dữ liệu đi qua các ranh giới sau; chỉ tạo hoặc s
 2. **Data access:** hàm server-only dùng Prisma hoặc transaction client để query/write; không trả
    Prisma model thẳng ra UI.
 3. **Domain workflow:** áp dụng business rule, authorization thuộc nghiệp vụ và transaction boundary.
-4. **API route:** nhận HTTP input, validate/authenticate, gọi workflow và trả contract trong `API.md`.
-5. **Frontend service:** giữ URL, gọi Axios qua `apiClient`, unwrap envelope, map DTO và transport error.
+4. **API route:** nhận HTTP input, validate/authenticate, gọi workflow và trả wire shape được định nghĩa
+   trong `contracts/` theo behavior contract tại `API.md`.
+5. **Frontend service:** giữ URL, gọi Axios qua `apiClient`, dùng shared wire shape, unwrap envelope,
+   map DTO và transport error.
 6. **UI orchestration:** TanStack Query quản lý remote server state; `queryFn`/`mutationFn` chỉ gọi
    service, còn view/container/hook quản lý state thuần UI. `useEffect` chỉ gọi service cho lifecycle
    synchronization không phù hợp với query/mutation và vẫn phải xử lý cancel hoặc stale response.

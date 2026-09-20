@@ -1,73 +1,27 @@
 import { apiClient } from "@/src/lib/api/client";
+import { ApiServiceError } from "@/src/lib/api/serviceError";
 import type { ProjectedCartLine } from "@/src/lib/types/cart";
 import type { ApiError, ApiResponse } from "@/src/lib/types/api";
 import type {
+  BundleApplicationPayload,
+  CreateOrderPayload,
   CustomerHistoryOrdersResponse,
   CustomerOrderDetail,
   CreateOrderResult,
-} from "@/src/lib/types/order";
-import type { BundleApplicationPayload } from "@/src/lib/utils/bundleVoucher";
+  PriceConflict,
+} from "@/contracts/order";
 import { getBundleCheckoutAvailabilityReason } from "@/src/lib/utils/bundleCheckoutError";
 import { serializeCartOrderItems } from "@/src/lib/utils/cartOrderPayload";
 
 // Re-export for consumers
-export type { CreateOrderResult } from "@/src/lib/types/order";
-
-export interface CreateOrderPayload {
-  order_type: "PICKUP" | "DELIVERY";
-  items: {
-    client_line_id?: string;
-    menu_item_id: string;
-    quantity: number;
-    size: "SMALL" | "MEDIUM" | "LARGE" | null;
-    sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL" | "EXTRA";
-    ice_option: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
-    coldwhisk: boolean;
-    note?: string;
-    addon_option_ids: string[];
-    product_voucher_id?: string;
-    item_voucher_id?: string;
-    addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
-    selected_powder_id?: string;
-    selected_milk_type_id?: string;
-    selected_base_liquid_id?: string;
-    client_price_vnd: number;
-  }[];
-  discount_voucher_ids: string[];
-  pickup_time?: string;
-  note?: string;
-  delivery_address?: string;
-
-  // Delivery fields
-  address_id?: string;
-  delivery_lat?: number;
-  delivery_lng?: number;
-  delivery_receiver_name?: string;
-  delivery_receiver_phone?: string;
-  client_shipping_fee_vnd?: number;
-  freeship_voucher_id?: string;
-  bundle_applications?: BundleApplicationPayload[];
-}
-
-export interface PriceConflict {
-  menu_item_id: string;
-  name: string;
-  size: string;
-  client_price_vnd: number;
-  server_price_vnd: number;
-}
-
-export class ApiServiceError<TDetails = unknown> extends Error {
-  constructor(
-    message: string,
-    public readonly status: number,
-    public readonly code: string,
-    public readonly details?: TDetails,
-  ) {
-    super(message);
-    this.name = "ApiServiceError";
-  }
-}
+export type {
+  CreateOrderPayload,
+  CreateOrderResult,
+  CustomerHistoryOrdersResponse,
+  CustomerOrderDetail,
+  PriceConflict,
+} from "@/contracts/order";
+export { ApiServiceError } from "@/src/lib/api/serviceError";
 
 export class PriceChangedError extends ApiServiceError {
   constructor(

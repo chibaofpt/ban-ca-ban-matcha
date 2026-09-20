@@ -1,6 +1,6 @@
 import { apiClient } from "@/src/lib/api/client";
-import type { ApiResponse } from "@/src/lib/types/api";
-import type { MenuData, MenuItem } from "@/src/lib/types/menu";
+import type { ApiResponse } from "@/contracts/api";
+import type { MenuData, MenuItem } from "@/contracts/menu";
 
 const URL = {
   menu: "/api/menu",

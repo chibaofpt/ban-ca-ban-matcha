@@ -1,5 +1,6 @@
 import { randomInt } from "node:crypto";
 import type { Prisma } from "@prisma/client";
+import type { WelcomeRewardSummary } from "@/contracts/reward";
 import { issueVoucherInTransaction, VoucherIssuanceError } from "@/lib/voucherIssuance";
 import { loadVoucherAvailabilityCatalog } from "@/lib/voucherAvailability";
 import { selectWeightedReward } from "@/lib/welcomeRewardSelection";
@@ -7,7 +8,6 @@ import {
   WELCOME_REWARD_INCLUDE,
   toWelcomeRewardSummary,
   type WelcomeRewardRecord,
-  type WelcomeRewardSummary,
 } from "@/lib/welcomeRewardDto";
 
 type Tx = Prisma.TransactionClient;

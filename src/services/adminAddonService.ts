@@ -1,16 +1,16 @@
 import { isAxiosError } from "axios";
 import { apiClient } from "@/src/lib/api/client";
-import type { ApiError } from "@/src/lib/types/api";
-import { ApiServiceError } from "@/src/services/orderService";
+import type { ApiError, ApiResponse } from "@/contracts/api";
+import { ApiServiceError } from "@/src/lib/api/serviceError";
 import type {
   AdminAddonGroup,
   AddonGroupMutationPayload,
-  AddonOptionImageUpload,
   AddonGroupDetailsMutationPayload,
   AddonGroupReorderEntry,
   AddonOptionCreatePayload,
   AddonOptionDetailsMutationPayload,
-} from "@/src/lib/types/addonGroup";
+} from "@/contracts/admin/catalog";
+import type { AddonOptionImageUpload } from "@/src/lib/types/addonGroup";
 
 const URL = {
   list: "/api/admin/addon-groups",
@@ -20,14 +20,6 @@ const URL = {
   optionById: (groupId: string, optionId: string) =>
     `/api/admin/addon-groups/${groupId}/options/${optionId}`,
 } as const;
-
-export interface AdminAddonGroupApiResponse {
-  data: AdminAddonGroup[];
-}
-
-export interface AdminSingleAddonGroupResponse {
-  data: AdminAddonGroup;
-}
 
 async function preserveApiError<T>(request: () => Promise<T>): Promise<T> {
   try {
@@ -85,7 +77,7 @@ function buildEntityMultipartPayload(
 /** List every addon group for admin management. */
 export async function listAdminAddonGroups(): Promise<AdminAddonGroup[]> {
   return preserveApiError(async () => {
-    const { data } = await apiClient.get<AdminAddonGroupApiResponse>(URL.list);
+    const { data } = await apiClient.get<ApiResponse<AdminAddonGroup[]>>(URL.list);
     return data.data;
   });
 }
@@ -99,7 +91,7 @@ export async function createAddonGroup(
 ): Promise<AdminAddonGroup> {
   return preserveApiError(async () => {
     const body = buildMultipartPayload(payload, imageFile, imageFilename, optionImages);
-    const { data } = await apiClient.post<AdminSingleAddonGroupResponse>(URL.list, body);
+    const { data } = await apiClient.post<ApiResponse<AdminAddonGroup>>(URL.list, body);
     return data.data;
   });
 }
@@ -114,7 +106,7 @@ export async function updateAddonGroup(
 ): Promise<AdminAddonGroup> {
   return preserveApiError(async () => {
     const body = buildMultipartPayload(payload, imageFile, imageFilename, optionImages);
-    const { data } = await apiClient.put<AdminSingleAddonGroupResponse>(URL.byId(id), body);
+    const { data } = await apiClient.put<ApiResponse<AdminAddonGroup>>(URL.byId(id), body);
     return data.data;
   });
 }
@@ -128,7 +120,7 @@ export async function updateAddonGroupDetails(
 ): Promise<AdminAddonGroup> {
   return preserveApiError(async () => {
     const body = buildEntityMultipartPayload(payload, imageFile, imageFilename);
-    const { data } = await apiClient.put<AdminSingleAddonGroupResponse>(URL.byId(id), body);
+    const { data } = await apiClient.put<ApiResponse<AdminAddonGroup>>(URL.byId(id), body);
     return data.data;
   });
 }
@@ -142,7 +134,7 @@ export async function createAddonOption(
 ): Promise<AdminAddonGroup> {
   return preserveApiError(async () => {
     const body = buildEntityMultipartPayload(payload, imageFile, imageFilename);
-    const { data } = await apiClient.post<AdminSingleAddonGroupResponse>(URL.options(groupId), body);
+    const { data } = await apiClient.post<ApiResponse<AdminAddonGroup>>(URL.options(groupId), body);
     return data.data;
   });
 }
@@ -157,7 +149,7 @@ export async function updateAddonOptionDetails(
 ): Promise<AdminAddonGroup> {
   return preserveApiError(async () => {
     const body = buildEntityMultipartPayload(payload, imageFile, imageFilename);
-    const { data } = await apiClient.put<AdminSingleAddonGroupResponse>(
+    const { data } = await apiClient.put<ApiResponse<AdminAddonGroup>>(
       URL.optionById(groupId, optionId),
       body,
     );
@@ -172,7 +164,7 @@ export async function toggleAddonOptionActive(
   is_active: boolean,
 ): Promise<AdminAddonGroup> {
   return preserveApiError(async () => {
-    const { data } = await apiClient.put<AdminSingleAddonGroupResponse>(
+    const { data } = await apiClient.put<ApiResponse<AdminAddonGroup>>(
       URL.optionById(groupId, optionId),
       { is_active },
     );
@@ -185,7 +177,7 @@ export async function reorderAddonGroups(
   groups: AddonGroupReorderEntry[],
 ): Promise<AdminAddonGroup[]> {
   return preserveApiError(async () => {
-    const { data } = await apiClient.put<AdminAddonGroupApiResponse>(URL.reorder, { groups });
+    const { data } = await apiClient.put<ApiResponse<AdminAddonGroup[]>>(URL.reorder, { groups });
     return data.data;
   });
 }
@@ -193,7 +185,7 @@ export async function reorderAddonGroups(
 /** Toggle addon group activity without uploading an image. */
 export async function toggleAddonGroupActive(id: string, is_active: boolean): Promise<AdminAddonGroup> {
   return preserveApiError(async () => {
-    const { data } = await apiClient.put<AdminSingleAddonGroupResponse>(URL.byId(id), { is_active });
+    const { data } = await apiClient.put<ApiResponse<AdminAddonGroup>>(URL.byId(id), { is_active });
     return data.data;
   });
 }
@@ -201,7 +193,7 @@ export async function toggleAddonGroupActive(id: string, is_active: boolean): Pr
 /** Soft-delete an addon group. */
 export async function deleteAddonGroup(id: string): Promise<AdminAddonGroup> {
   return preserveApiError(async () => {
-    const { data } = await apiClient.delete<AdminSingleAddonGroupResponse>(URL.byId(id));
+    const { data } = await apiClient.delete<ApiResponse<AdminAddonGroup>>(URL.byId(id));
     return data.data;
   });
 }

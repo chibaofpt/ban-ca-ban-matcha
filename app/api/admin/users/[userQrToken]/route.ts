@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import type { AdminUserMutationResult, AdminUserPasswordResetResult } from "@/contracts/admin/user";
 
 import { getSession } from "@/lib/auth";
 import { captureServerException } from "@/lib/observability";
@@ -51,9 +52,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (parsed.data.action === "block") await setAdminUserBlocked(userQrToken, parsed.data.is_blocked);
     if (parsed.data.action === "reset_password") {
       const temporaryPassword = await resetAdminUserPassword(userQrToken);
-      return NextResponse.json({ data: { success: true, temporary_password: temporaryPassword } });
+      const data = {
+        success: true,
+        temporary_password: temporaryPassword,
+      } satisfies AdminUserPasswordResetResult;
+      return NextResponse.json({ data });
     }
-    return NextResponse.json({ data: { success: true } });
+    const data = { success: true } satisfies AdminUserMutationResult;
+    return NextResponse.json({ data });
   } catch (error) {
     if (error instanceof AdminUserWorkflowError && error.reason === "NOT_FOUND") return notFound();
     if (error instanceof AdminUserWorkflowError && error.reason === "RESET_NOT_ALLOWED") {

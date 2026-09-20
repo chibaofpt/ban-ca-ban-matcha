@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
+import type { AdminVoucherRecipientPage } from "@/contracts/admin/voucher";
+import type { VoucherIssuedVia } from "@/contracts/voucher";
 
 import { getSession } from "@/lib/auth";
 import {
@@ -102,21 +104,23 @@ export async function GET(
     const hasMore = vouchers.length > 20;
     const page = vouchers.slice(0, 20);
     const next = hasMore && page.length > 0 ? encodeCursor(page[page.length - 1]!.created_at, page[page.length - 1]!.id) : null;
-    return NextResponse.json({
-      data: {
-        user: { qr_token: user.qr_token, name: user.name, phone_number: user.phone_number },
-        vouchers: page.map((voucher) => ({
-          qr_token: voucher.qr_token,
-          issued_via: voucher.issued_via,
-          created_at: voucher.created_at,
-          effective_status: effectiveAdminGrantStatus(voucher, now),
-          expires_at: voucher.expires_at,
-          redeemed_at: voucher.redeemed_at,
-        })),
-        meta: { has_more: hasMore, next_cursor: next },
-        summary: { ...fresh.summary, expiry_preview: fresh.summary.expiry_preview?.toISOString() ?? null },
+    const data: AdminVoucherRecipientPage = {
+      user: { qr_token: user.qr_token, name: user.name, phone_number: user.phone_number },
+      vouchers: page.map((voucher) => ({
+        qr_token: voucher.qr_token,
+        issued_via: voucher.issued_via as VoucherIssuedVia,
+        created_at: voucher.created_at.toISOString(),
+        effective_status: effectiveAdminGrantStatus(voucher, now),
+        expires_at: voucher.expires_at?.toISOString() ?? null,
+        redeemed_at: voucher.redeemed_at?.toISOString() ?? null,
+      })),
+      meta: { has_more: hasMore, next_cursor: next },
+      summary: {
+        ...fresh.summary,
+        expiry_preview: fresh.summary.expiry_preview?.toISOString() ?? null,
       },
-    });
+    };
+    return NextResponse.json({ data });
   } catch (error) {
     console.error("[GET /api/admin/voucher-packages/[id]/recipients/[userQrToken]]", { name: error instanceof Error ? error.name : typeof error });
     return NextResponse.json({ error: "Internal server error", code: "INTERNAL_ERROR" }, { status: 500 });

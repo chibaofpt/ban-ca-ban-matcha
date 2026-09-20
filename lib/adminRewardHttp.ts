@@ -1,18 +1,25 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import type {
+  AdminRewardCampaignAction,
+  AdminRewardCampaignCreateInput,
+  AdminRewardPoolInput,
+  AdminRewardPoolReplaceInput,
+  AdminWelcomeRewardSettingsInput,
+} from "@/contracts/admin/reward";
 import { getSession } from "@/lib/auth";
 import { AdminRewardError, validateRewardPoolItems } from "@/lib/adminRewardCampaign";
 import { RewardBoxImageError } from "@/lib/rewardBoxImage";
 
 const uuid = z.string().uuid();
-export const campaignCreateSchema = z.object({ name: z.string().trim().min(1).max(100) }).strict();
+export const campaignCreateSchema = z.object({ name: z.string().trim().min(1).max(100) }).strict() satisfies z.ZodType<AdminRewardCampaignCreateInput>;
 export const campaignActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("RENAME"), name: z.string().trim().min(1).max(100), revision: z.number().int().min(0) }).strict(),
   z.object({ action: z.literal("ACTIVATE"), revision: z.number().int().min(0) }).strict(),
   z.object({ action: z.literal("PAUSE"), revision: z.number().int().min(0) }).strict(),
   z.object({ action: z.literal("RESUME"), revision: z.number().int().min(0) }).strict(),
   z.object({ action: z.literal("END"), revision: z.number().int().min(0) }).strict(),
-]);
+]) satisfies z.ZodType<AdminRewardCampaignAction>;
 export const poolSchema = z.object({
   revision: z.number().int().min(0),
   items: z.array(z.object({
@@ -25,7 +32,7 @@ export const poolSchema = z.object({
   const total = value.items.reduce((sum, item) => sum + item.quantity, 0);
   if (total > 100_000) context.addIssue({ code: "custom", message: "Total allocation too large" });
   if (value.items.some((item) => item.unlock_after_draws >= total)) context.addIssue({ code: "custom", message: "Unlock threshold exceeds allocation" });
-});
+}) satisfies z.ZodType<AdminRewardPoolReplaceInput>;
 export const settingsSchema = z.object({
   mode: z.enum(["POINTS", "FIXED_VOUCHER", "GACHA"]),
   fixed_package_id: uuid.nullish(), active_campaign_id: uuid.nullish(), revision: z.number().int().min(0),
@@ -36,7 +43,7 @@ export const settingsSchema = z.object({
     : value.mode === "FIXED_VOUCHER" ? fixed !== null && campaign === null
       : campaign !== null && fixed === null;
   if (!valid) context.addIssue({ code: "custom", message: "Mode references are invalid" });
-});
+}) satisfies z.ZodType<AdminWelcomeRewardSettingsInput>;
 export const revisionSchema = z.object({ revision: z.number().int().min(0) }).strict();
 
 /** Return a validation response when any dynamic reward route id is not a UUID. */
@@ -113,6 +120,6 @@ export function adminRewardErrorResponse(error: unknown): NextResponse {
 }
 
 /** Validate pool reachability after structural request parsing. */
-export function validatePoolReachability(items: z.infer<typeof poolSchema>["items"]): void {
+export function validatePoolReachability(items: AdminRewardPoolInput[]): void {
   validateRewardPoolItems(items);
 }

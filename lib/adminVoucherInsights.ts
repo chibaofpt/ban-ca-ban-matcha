@@ -1,24 +1,13 @@
 import type { VoucherStatus } from "@prisma/client";
+import type { VoucherPackageStats } from "@/contracts/admin/voucher";
+
+export type { VoucherPackageStats } from "@/contracts/admin/voucher";
+export type AdminVoucherStats = VoucherPackageStats;
 
 export type EffectiveVoucherStatus = VoucherStatus;
 type VoucherSnapshot = { status: VoucherStatus; expires_at: Date | null };
 export type VoucherStatusAggregate = { package_id: string; status: VoucherStatus; _count: { _all: number } };
 export type VoucherExpiredAggregate = { package_id: string; _count: { _all: number } };
-
-export interface AdminVoucherStats {
-  issued_count: number;
-  quota_issued_count: number;
-  active_count: number;
-  reserved_count: number;
-  redeemed_count: number;
-  expired_count: number;
-  refunded_count: number;
-  remaining_quantity: number | null;
-  /** Number of vouchers acquired by customers through the package's own mode. */
-  self_acquisition_count?: number;
-  /** Number of self-acquired vouchers that have been redeemed. */
-  self_acquisition_used_count?: number;
-}
 
 /** Resolves display expiry without mutating a voucher row. */
 export function effectiveVoucherStatus(voucher: VoucherSnapshot, now = new Date()): EffectiveVoucherStatus {
@@ -32,7 +21,7 @@ export function buildAdminVoucherStats(
   pkg: { id: string; quantity: number | null; issued_count: number; quota_issued_count: number },
   statusAggregates: VoucherStatusAggregate[],
   expiredActiveAggregates: VoucherExpiredAggregate[],
-): AdminVoucherStats {
+): VoucherPackageStats {
   const counts: Record<VoucherStatus, number> = { ACTIVE: 0, RESERVED: 0, REDEEMED: 0, EXPIRED: 0, REFUNDED: 0 };
   for (const row of statusAggregates) if (row.package_id === pkg.id) counts[row.status] = row._count._all;
   const expiredActive = expiredActiveAggregates.find((row) => row.package_id === pkg.id)?._count._all ?? 0;

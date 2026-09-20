@@ -7,6 +7,7 @@ const staticContractTests = [
   "lib/__tests__/addon-opt-in-migration.test.ts",
   "lib/__tests__/admin-menu-delete-surface.test.ts",
   "lib/__tests__/bundle-promotion-migration.test.ts",
+  "lib/__tests__/contracts-architecture.test.ts",
   "lib/__tests__/extras-migration-contract.test.ts",
   "lib/__tests__/product-discount-scope-migration.test.ts",
   "lib/__tests__/multi-choice-voucher-scope-migration.test.ts",

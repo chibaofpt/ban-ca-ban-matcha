@@ -1,60 +1,25 @@
 import { apiClient } from "@/src/lib/api/client";
 import type { ApiError, ApiResponse } from "@/src/lib/types/api";
-import type { MyVoucher } from "@/src/services/customerVoucherService";
-import { ApiServiceError } from "@/src/services/orderService";
+import type { OpenWelcomeRewardPayload, WelcomeReward } from "@/contracts/reward";
+import { ApiServiceError } from "@/src/lib/api/serviceError";
+
+export type {
+  OpenWelcomeRewardPayload,
+  RewardCampaignStatus,
+  WelcomeReward,
+  WelcomeRewardBox,
+  WelcomeRewardCampaign,
+  WelcomeRewardMode,
+  WelcomeRewardOutcome,
+  WelcomeRewardOutcomeKind,
+  WelcomeRewardStatus,
+  WelcomeRewardSummary,
+} from "@/contracts/reward";
 
 const URL = {
   welcome: "/api/customer/rewards/welcome",
   open: "/api/customer/rewards/welcome/open",
 } as const;
-
-export type WelcomeRewardMode = "POINTS" | "FIXED_VOUCHER" | "GACHA";
-export type WelcomeRewardStatus = "PENDING" | "COMPLETED";
-export type WelcomeRewardOutcomeKind = "VOUCHER" | "POINTS";
-
-export interface WelcomeRewardSummary {
-  id: string;
-  mode: WelcomeRewardMode;
-  status: WelcomeRewardStatus;
-  outcome_kind: WelcomeRewardOutcomeKind | null;
-}
-
-export interface WelcomeRewardBox {
-  id: string;
-  name: string;
-  closed_image_url: string;
-  open_image_url: string;
-  mouth_anchor_x: number;
-  mouth_anchor_y: number;
-  sort_order: number;
-}
-
-export interface WelcomeRewardCampaign {
-  id: string;
-  name: string;
-  status: string;
-  boxes: WelcomeRewardBox[];
-}
-
-export type WelcomeRewardOutcome =
-  | { kind: "POINTS"; points: 5 }
-  | { kind: "VOUCHER"; voucher: MyVoucher };
-
-export interface WelcomeReward {
-  id: string;
-  mode: WelcomeRewardMode;
-  status: WelcomeRewardStatus;
-  can_open: boolean;
-  unavailable_reason: string | null;
-  campaign: WelcomeRewardCampaign | null;
-  outcome: WelcomeRewardOutcome | null;
-}
-
-export interface OpenWelcomeRewardPayload {
-  reward_id: string;
-  box_id: string;
-  request_id: string;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

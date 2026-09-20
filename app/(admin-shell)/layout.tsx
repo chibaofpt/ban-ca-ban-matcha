@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import AdminTabBar from "@/src/components/admin/AdminTabBar";
-import type { Role } from "@/src/lib/types/user";
+import type { Role } from "@/contracts/auth";
 import { getSessionFromHeaders } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";

@@ -1,5 +1,9 @@
 import type { CartBundleApplication, ProjectedCartLine } from "@/src/lib/types/cart";
 import type { Size } from "@/src/lib/types/menu";
+import type {
+  BundleApplicationPayload,
+  BundleSelectionAllocation,
+} from "@/contracts/order";
 import {
   bundleAvailableProductQuantity,
   type BundleCartItem,
@@ -8,6 +12,7 @@ import {
 import { autofillBundleSelection, planBundleSelection } from "@/src/utils/bundleSelection";
 
 export type BundleBenefitScaling = "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM";
+export type { BundleApplicationPayload, BundleSelectionAllocation } from "@/contracts/order";
 
 export interface BundleVoucherSummary {
   qr_token: string;
@@ -57,18 +62,6 @@ export interface BundleCartSummaryItem {
   product_discount_vnd?: number;
   personal_voucher_quantity?: number;
   addons: BundleCartAddonSummary[];
-}
-
-export interface BundleSelectionAllocation {
-  client_line_id: string;
-  quantity: number;
-  addon_option_id?: string;
-}
-
-export interface BundleApplicationPayload {
-  voucher_qr_token: string;
-  qualifier_allocations: BundleSelectionAllocation[];
-  reward_allocations: BundleSelectionAllocation[];
 }
 
 export interface BundleAllocationConstraintApplication {

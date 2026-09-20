@@ -1,6 +1,6 @@
 import { apiClient } from "@/src/lib/api/client";
-import type { ApiResponse } from "@/src/lib/types/api";
-import type { CustomerPointsData } from "@/src/lib/types/points";
+import type { ApiResponse } from "@/contracts/api";
+import type { CustomerPointsData } from "@/contracts/points";
 
 const URL = { profilePoints: "/api/profile/points" } as const;
 

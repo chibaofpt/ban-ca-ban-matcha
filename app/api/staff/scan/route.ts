@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Category } from "@/contracts/menu";
+import type { QrScanResult } from "@/contracts/staff";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import {
@@ -41,16 +43,17 @@ export async function GET(request: NextRequest) {
     });
 
     if (user) {
-      return NextResponse.json({
+      const result = {
+        type: "user",
         data: {
-          type: "user",
-          data: {
-            qr_token: token,
-            name: user.name,
-            phone_number: user.phone_number,
-            points_balance: user.points_balance,
-          },
+          qr_token: token,
+          name: user.name,
+          phone_number: user.phone_number,
+          points_balance: user.points_balance,
         },
+      } satisfies QrScanResult;
+      return NextResponse.json({
+        data: result,
       });
     }
 
@@ -81,8 +84,7 @@ export async function GET(request: NextRequest) {
         scopedVoucher = retainUsableVoucherTargetScopes(voucher, resolved);
       }
 
-      return NextResponse.json({
-        data: {
+      const result = {
           type: "voucher",
           data: {
             qr_token: voucher.qr_token,
@@ -98,7 +100,7 @@ export async function GET(request: NextRequest) {
             eligible_menu_items: scopedVoucher.menuItemScopes.map((scope) => ({
               menu_item_id: scope.menu_item_id,
               name: scope.menuItem.name,
-              category: scope.menuItem.category,
+              category: scope.menuItem.category as Category,
               is_available: scope.menuItem.is_available,
               is_seasonal: scope.menuItem.is_seasonal,
               size: scope.size,
@@ -109,8 +111,8 @@ export async function GET(request: NextRequest) {
             status: effectiveStatus,
             expires_at: voucher.expires_at ? voucher.expires_at.toISOString() : null,
           },
-        },
-      });
+      } satisfies QrScanResult;
+      return NextResponse.json({ data: result });
     }
 
     // 3. Not found

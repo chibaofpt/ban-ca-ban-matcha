@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import type { OpenWelcomeRewardPayload } from "@/contracts/reward";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { openWelcomeReward, WelcomeRewardError } from "@/lib/welcomeReward";
@@ -9,7 +10,7 @@ const openWelcomeRewardSchema = z.object({
   reward_id: z.string().uuid(),
   box_id: z.string().uuid(),
   request_id: z.string().uuid(),
-}).strict();
+}).strict() satisfies z.ZodType<OpenWelcomeRewardPayload>;
 
 /** Opens one pending welcome reward for the authenticated customer. */
 export async function POST(req: Request) {

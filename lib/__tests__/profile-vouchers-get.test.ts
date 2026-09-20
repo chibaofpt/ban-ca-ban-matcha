@@ -23,6 +23,7 @@ vi.mock("@/lib/voucherPublicDto", async (importOriginal) => ({
     qr_token: voucher.qr_token,
     status: voucher.status,
   }),
+  serializePublicVoucherDto: (voucher: unknown) => voucher,
 }));
 
 import { GET } from "@/app/api/profile/vouchers/route";

@@ -1,4 +1,4 @@
-import type { AdminAddonGroup } from "@/src/lib/types/addonGroup";
+import type { AdminAddonGroup } from "@/contracts/admin/catalog";
 
 export const ADMIN_ADDON_OPTION_ORDER_BY = [
   { sort_order: "asc" as const },

@@ -1,7 +1,50 @@
 import { describe, expect, it } from "vitest";
-import { toPublicVoucherDto } from "@/lib/voucherPublicDto";
+import { serializePublicVoucherDto, toPublicVoucherDto } from "@/lib/voucherPublicDto";
 
 describe("Voucher public DTO", () => {
+  it("serializes internal Date values to the shared wire format without mutating the mapper result", () => {
+    const internal = toPublicVoucherDto({
+      qr_token: "public-voucher-token",
+      voucher_type: "DISCOUNT",
+      discount_type: "FIXED",
+      discount_value: 10_000,
+      menu_item_id: null,
+      size: null,
+      matcha_powder_id: null,
+      milk_type_id: null,
+      included_addon_option_ids: [],
+      addon_option_id: null,
+      covered_price_vnd: null,
+      covered_delivery_fee_vnd: null,
+      min_order_vnd: null,
+      max_discount_vnd: null,
+      status: "ACTIVE",
+      used_channel: null,
+      expires_at: new Date("2026-01-02T00:00:00.000Z"),
+      redeemed_at: null,
+      created_at: new Date("2026-01-01T00:00:00.000Z"),
+      package: {
+        name: "Giảm 10k",
+        description: null,
+        points_cost: 10,
+        ends_at: new Date("2026-02-01T00:00:00.000Z"),
+      },
+      menuItem: null,
+      addonOption: null,
+      staff: null,
+    });
+
+    const wire = serializePublicVoucherDto(internal);
+
+    expect(internal.created_at).toBeInstanceOf(Date);
+    expect(wire).toMatchObject({
+      expires_at: "2026-01-02T00:00:00.000Z",
+      redeemed_at: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      package: { ends_at: "2026-02-01T00:00:00.000Z" },
+    });
+  });
+
   it("serialize nguồn ADMIN và từ chối issued_via NONE vi phạm invariant", () => {
     const voucher = {
       qr_token: "public-voucher-token",

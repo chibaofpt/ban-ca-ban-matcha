@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
+import type {
+  CustomerHistoryOrder,
+  CustomerHistoryOrderItem,
+} from "@/contracts/order";
 import { prisma } from "@/lib/prisma";
+import { serializeOrderDate, toOrderItemDetail } from "@/lib/orderPublicDto";
 import { buildVietQRUrl } from "@/lib/vietqr";
 
 const ORDER_REWARD_REASONS = [
@@ -88,7 +93,7 @@ export async function getCustomerOrderHistory(
     }),
   ]);
 
-  const data = orders.map((order) => {
+  const data: CustomerHistoryOrder[] = orders.map((order) => {
     let paymentQrUrl: string | null = null;
     if (order.status === "PENDING" && order.order_code && order.order_type !== "COUNTER") {
       try {
@@ -116,6 +121,10 @@ export async function getCustomerOrderHistory(
     void freeshipVoucherIdToRemove;
     return {
       ...publicOrder,
+      pickup_time: serializeOrderDate(order.pickup_time),
+      created_at: serializeOrderDate(order.created_at),
+      updated_at: serializeOrderDate(order.updated_at),
+      auto_cancel_at: serializeOrderDate(order.auto_cancel_at),
       points_earned: calculateOrderPointsAwarded(
         pointsLogs,
         order.status === "COMPLETED" ? order.points_earned ?? 0 : 0,
@@ -123,28 +132,24 @@ export async function getCustomerOrderHistory(
       discountVouchers: (discountVouchers ?? []).map(({ voucher }) => ({
         voucher: { package: voucher.package },
       })),
-      items: (items ?? []).map((item) => {
-        const {
-          product_voucher_id: productVoucherIdToRemove,
-          item_voucher_id: itemVoucherIdToRemove,
-          addonVouchers,
-          ...publicItem
-        } = item;
-        void productVoucherIdToRemove;
-        void itemVoucherIdToRemove;
+      items: (items ?? []).map((item): CustomerHistoryOrderItem => {
+        const publicItem = toOrderItemDetail(item);
         return {
           ...publicItem,
-          productVoucher: (item.productVoucher ?? item.itemVoucher)
-            ? { package: (item.productVoucher ?? item.itemVoucher)!.package }
+          menu_item_id: item.menu_item_id,
+          selected_powder_id: item.selected_powder_id,
+          selected_milk_type_id: item.selected_milk_type_id,
+          selectedPowder: item.selectedPowder
+            ? {
+                name: item.selectedPowder.name,
+                price_per_gram: item.selectedPowder.price_per_gram.toString(),
+              }
             : null,
-          addonVouchers: (addonVouchers ?? []).map(({ voucher, discount_applied_vnd }) => ({
-            discount_applied_vnd,
-            voucher: { package: voucher.package },
-          })),
+          productVoucher: publicItem.productVoucher ?? publicItem.itemVoucher ?? null,
         };
       }),
       payment_qr_url: paymentQrUrl,
-    };
+    } satisfies CustomerHistoryOrder;
   });
 
   return NextResponse.json({

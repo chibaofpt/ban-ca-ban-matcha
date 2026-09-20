@@ -48,8 +48,8 @@ there, not a blanket ban on every entity's ID.
   remote server state; it still never performs HTTP directly and handles stale response/cancellation.
 - Preserve current client refresh/interceptor behavior. Do not introduce a default base URL or
   global `Content-Type`; multipart headers are request-specific.
-- `ApiError<TDetails>` in `src/lib/types/api.ts` is a payload type, not a runtime error class.
-  The existing `ApiServiceError` exported by `src/services/orderService.ts` uses the server's
+- `ApiError<TDetails>` in `contracts/api.ts` is a payload type, not a runtime error class.
+  The canonical `ApiServiceError` in `src/lib/api/serviceError.ts` uses the server's
   `error` as standard `Error.message`, and retains HTTP `status`, `code` and optional `details`.
   Preserve `details.reason`, including `422 BUSINESS_RULE_VIOLATION`; keep transport failures
   distinct when no server response exists. Do not create a second shared runtime error class.

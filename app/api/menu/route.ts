@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import type { MenuData, MenuItem, MenuItemSize, MilkTypeOption, AddonGroup, AddonOption, MenuItemPowder } from "@/src/lib/types/menu";
+import type { MenuData, MenuItem, MenuItemSize, MilkTypeOption, AddonGroup, AddonOption, MenuItemPowder } from "@/contracts/menu";
 import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
 import {
   resolveDefaultBaseLiquidId,

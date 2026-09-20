@@ -8,7 +8,11 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Prisma, VoucherStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { PUBLIC_VOUCHER_PACKAGE_SELECT, toPublicVoucherDto } from "@/lib/voucherPublicDto";
+import {
+  PUBLIC_VOUCHER_PACKAGE_SELECT,
+  serializePublicVoucherDto,
+  toPublicVoucherDto,
+} from "@/lib/voucherPublicDto";
 import { attachBundleRewardBaselines } from "@/lib/voucherBundleDto";
 import {
   attachOwnedVoucherAvailability,
@@ -105,9 +109,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       data: withBaselines.map((voucher) => {
         const dto = toPublicVoucherDto(voucher);
-        return voucher.status === "ACTIVE" && voucher.expires_at && voucher.expires_at <= now
+        const effectiveDto = voucher.status === "ACTIVE" && voucher.expires_at && voucher.expires_at <= now
           ? { ...dto, status: "EXPIRED" as const }
           : dto;
+        return serializePublicVoucherDto(effectiveDto);
       }),
       meta: { limit, has_more: hasMore, next_cursor: nextCursor },
     });

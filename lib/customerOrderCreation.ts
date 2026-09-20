@@ -1,4 +1,5 @@
 import { after, NextResponse } from "next/server";
+import type { CreateOrderResult } from "@/contracts/order";
 import { calculateCustomerOrderDiscounts } from "@/lib/customerOrderDiscounts";
 import { resolveCustomerFulfillment } from "@/lib/customerOrderDelivery";
 import { resolveCustomerItemVouchers } from "@/lib/customerOrderItemVouchers";
@@ -136,26 +137,29 @@ export async function createCustomerOrder(
   );
   skippedVouchers.push(...bundles.skipped_qr_tokens.filter((token) => !skippedVouchers.includes(token)));
 
+  if (!order.order_code || !order.auto_cancel_at) {
+    throw new Error("Customer order payment metadata invariant violated");
+  }
+  const result = {
+    id: order.id,
+    order_code: order.order_code,
+    status: order.status,
+    order_type: order.order_type,
+    payment_method: order.payment_method,
+    subtotal_vnd: order.subtotal_vnd,
+    total_voucher_discount_vnd: order.total_voucher_discount_vnd,
+    total_vnd: order.total_vnd,
+    shipping_fee_vnd: order.shipping_fee_vnd,
+    freeship_discount_vnd: order.freeship_discount_vnd,
+    grand_total_vnd: order.grand_total_vnd,
+    pickup_time: order.pickup_time?.toISOString() ?? null,
+    auto_cancel_at: order.auto_cancel_at.toISOString(),
+    payment_qr_url: paymentQrUrl,
+    skipped_vouchers: skippedVouchers,
+  } satisfies CreateOrderResult;
+
   return NextResponse.json(
-    {
-      data: {
-        id: order.id,
-        order_code: order.order_code,
-        status: order.status,
-        order_type: order.order_type,
-        payment_method: order.payment_method,
-        subtotal_vnd: order.subtotal_vnd,
-        total_voucher_discount_vnd: order.total_voucher_discount_vnd,
-        total_vnd: order.total_vnd,
-        shipping_fee_vnd: order.shipping_fee_vnd,
-        freeship_discount_vnd: order.freeship_discount_vnd,
-        grand_total_vnd: order.grand_total_vnd,
-        pickup_time: order.pickup_time,
-        auto_cancel_at: order.auto_cancel_at,
-        payment_qr_url: paymentQrUrl,
-        skipped_vouchers: skippedVouchers,
-      },
-    },
+    { data: result },
     { status: 201 },
   );
   }, { timeoutMs: 30_000 });

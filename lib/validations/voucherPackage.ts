@@ -247,4 +247,4 @@ export const createVoucherPackageSchema = rawVoucherPackageSchema.superRefine((d
   }
 });
 
-export type CreateVoucherPackageInput = z.infer<typeof createVoucherPackageSchema>;
+export type { CreateVoucherPackageInput } from "@/contracts/admin/voucher";

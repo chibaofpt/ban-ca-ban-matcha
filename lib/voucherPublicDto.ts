@@ -10,8 +10,9 @@ import type {
   ProductDiscountMode,
   Prisma,
 } from "@prisma/client";
+import type { MyVoucher, VoucherAvailability } from "@/contracts/voucher";
+import type { Category } from "@/contracts/menu";
 import { toBundleRuleDto, type BundleRuleDtoSource } from "@/lib/voucherBundleDto";
-import type { VoucherAvailability } from "@/lib/voucherAvailability";
 
 type VoucherIssuedVia = Exclude<VoucherAcquisitionMode, "NONE">;
 
@@ -110,6 +111,7 @@ interface VoucherDtoSource {
 /** Map a database voucher to the only voucher shape allowed across API/UI boundaries. */
 export function toPublicVoucherDto(voucher: VoucherDtoSource) {
   const issuedVia = narrowVoucherIssuedVia(voucher.issued_via);
+  const { bundleRule, ...voucherPackage } = voucher.package;
   return {
     ...(typeof voucher.package_id === "string" ? { package_id: voucher.package_id } : {}),
     qr_token: voucher.qr_token,
@@ -136,16 +138,16 @@ export function toPublicVoucherDto(voucher: VoucherDtoSource) {
     redeemed_at: voucher.redeemed_at,
     created_at: voucher.created_at,
     package: {
-      ...voucher.package,
-      ...(voucher.package.bundleRule === undefined
+      ...voucherPackage,
+      ...(bundleRule === undefined
         ? {}
-        : { bundleRule: voucher.package.bundleRule ? toBundleRuleDto(voucher.package.bundleRule) : null }),
+        : { bundleRule: bundleRule ? toBundleRuleDto(bundleRule) : null }),
     },
     menuItem: voucher.menuItem,
     eligible_menu_items: (voucher.menuItemScopes ?? []).map((scope) => ({
       menu_item_id: scope.menu_item_id,
       name: scope.menuItem.name,
-      category: scope.menuItem.category,
+      category: scope.menuItem.category as Category,
       is_available: scope.menuItem.is_available,
       is_seasonal: scope.menuItem.is_seasonal,
       size: scope.size ?? null,
@@ -163,5 +165,24 @@ export function toPublicVoucherDto(voucher: VoucherDtoSource) {
     addonOption: voucher.addonOption,
     staff: voucher.staff,
     ...(voucher.availability ? { availability: voucher.availability } : {}),
+  };
+}
+
+/** Serialize internal voucher dates explicitly at an HTTP response boundary. */
+export function serializePublicVoucherDto(
+  voucher: ReturnType<typeof toPublicVoucherDto>,
+): Omit<MyVoucher, "availability"> & { availability?: VoucherAvailability } {
+  const { ends_at: packageEndsAt, ...voucherPackage } = voucher.package;
+  return {
+    ...voucher,
+    expires_at: voucher.expires_at?.toISOString() ?? null,
+    redeemed_at: voucher.redeemed_at?.toISOString() ?? null,
+    created_at: voucher.created_at.toISOString(),
+    package: {
+      ...voucherPackage,
+      ...(packageEndsAt === undefined
+        ? {}
+        : { ends_at: packageEndsAt?.toISOString() ?? null }),
+    },
   };
 }

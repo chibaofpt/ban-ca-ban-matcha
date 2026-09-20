@@ -1,7 +1,7 @@
 import type { Category, MenuItem, Size, SweetnessLevel } from "./menu";
-import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
+import type { BundleSelectionAllocation, IceOption } from "@/contracts/order";
 
-export type IceOption = "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
+export type { IceOption } from "@/contracts/order";
 
 export type CartLineConfiguration =
   | { size: null; note: string }

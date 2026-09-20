@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import type { OrderType, Prisma } from "@prisma/client";
-import { toPublicOrderDto } from "@/lib/orderPublicDto";
+import { toAdminOrderListItemDto } from "@/lib/orderPublicDto";
 import { resolveStaffIdentifier } from "@/lib/publicIdentifiers";
 
 export const dynamic = "force-dynamic";
@@ -145,7 +145,7 @@ export async function GET(req: NextRequest) {
     const totalPages = Math.ceil(total / limit);
 
     return NextResponse.json({
-      data: orders.map((order) => toPublicOrderDto(order)),
+      data: orders.map(toAdminOrderListItemDto),
       meta: { total, page, totalPages }
     });
   } catch (err) {

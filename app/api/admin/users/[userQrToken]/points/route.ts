@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import type { AdminUserPointsResult } from "@/contracts/admin/user";
 
 import { getSession } from "@/lib/auth";
 import { captureServerException } from "@/lib/observability";
@@ -17,7 +18,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validation failed", code: "VALIDATION_ERROR" }, { status: 400 });
   try {
     const pointsBalance = await giftAdminUserPoints(userQrToken, parsed.data.points, session.id);
-    return NextResponse.json({ data: { points_balance: pointsBalance } });
+    const data = { points_balance: pointsBalance } satisfies AdminUserPointsResult;
+    return NextResponse.json({ data });
   } catch (error) {
     if (error instanceof AdminUserWorkflowError) {
       const status = error.reason === "NOT_FOUND" ? 404 : 422;

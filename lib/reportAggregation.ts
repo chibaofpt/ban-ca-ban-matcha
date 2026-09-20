@@ -1,5 +1,18 @@
 // Pure aggregation logic for daily reports — no DB or Prisma deps
 
+import type {
+  AddonPowderBreakdown,
+  AddonUsage,
+  AdminReport,
+  DailyReport,
+  ItemSales as ContractItemSales,
+  MilkUsage as ContractMilkUsage,
+  PowderUsage as ContractPowderUsage,
+  ReportSummary as ContractReportSummary,
+  RevenueByType,
+  TopProduct,
+} from "@/contracts/report";
+
 // ---------------------------------------------------------------------------
 // Input types (data fetched from Prisma, Decimal already converted to number)
 // ---------------------------------------------------------------------------
@@ -65,39 +78,14 @@ export interface MilkConfig {
 // Output types (matches DailyReport in src/lib/types/report.ts)
 // ---------------------------------------------------------------------------
 
-export interface ReportSummary {
-  total_orders: number;
-  total_cups: number;
-  /** Breakdown tổng ly theo size (SMALL/MEDIUM/LARGE) */
-  cups_by_size: { SMALL: number; MEDIUM: number; LARGE: number };
-  total_extras_units: number;
-  total_revenue_vnd: number;
-}
-
-export interface PowderUsage {
-  powder_name: string;
-  total_grams: number;
-}
-
-export interface MilkUsage {
-  milk_name: string;
-  total_ml: number;
-}
-
-export interface ItemSales {
-  name: string;
-  sizes: { SMALL: number; MEDIUM: number; LARGE: number };
-  total_cups: number;
-}
-
-export interface DailyReportResult {
-  summary: ReportSummary;
-  powder_usage: PowderUsage[];
-  milk_usage: MilkUsage[];
-  latte_sales: ItemSales[];
-  fusion_sales: ItemSales[];
-  extras_sales: ItemSales[];
-}
+export type ReportSummary = ContractReportSummary;
+export type PowderUsage = ContractPowderUsage;
+export type MilkUsage = ContractMilkUsage;
+export type ItemSales = ContractItemSales;
+export type DailyReportResult = Omit<DailyReport, "summary" | "extras_sales"> & {
+  summary: Omit<ContractReportSummary, "total_extras_units"> & { total_extras_units: number };
+  extras_sales: ContractItemSales[];
+};
 
 // ---------------------------------------------------------------------------
 // resolveEffectiveGram — 3-level COALESCE (pure, no DB deps)
@@ -313,36 +301,11 @@ export interface RawAdminOrder extends Omit<RawOrder, "items"> {
 // AddonUsage / RevenueByType / TopProduct output types
 // ---------------------------------------------------------------------------
 
-export interface AddonUsageResult {
-  addon_option_id: string;
-  addon_label: string;
-  group_name: string;
-  total_count: number;
-  powder_breakdown: AddonPowderBreakdownResult[];
-}
-
-export interface AddonPowderBreakdownResult {
-  powder_name: string;
-  total_grams: number;
-}
-
-export interface RevenueByTypeResult {
-  order_type: "COUNTER" | "PICKUP" | "DELIVERY";
-  total_revenue_vnd: number;
-  order_count: number;
-}
-
-export interface TopProductResult {
-  name: string;
-  category: string;
-  total_cups: number;
-}
-
-export interface AdminReportResult extends DailyReportResult {
-  addon_usage: AddonUsageResult[];
-  revenue_by_type: RevenueByTypeResult[];
-  top_products: TopProductResult[];
-}
+export type AddonUsageResult = AddonUsage;
+export type AddonPowderBreakdownResult = AddonPowderBreakdown;
+export type RevenueByTypeResult = RevenueByType;
+export type TopProductResult = TopProduct;
+export type AdminReportResult = Omit<AdminReport, keyof DailyReport> & DailyReportResult;
 
 // ---------------------------------------------------------------------------
 // buildAdminReport — extends buildReport with admin-only extras

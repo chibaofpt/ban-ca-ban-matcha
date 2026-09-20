@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { StaffOrderResult, StaffOrderStatusPayload } from "@/contracts/order";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import type { Prisma } from "@prisma/client";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
-import { toPublicOrderDto } from "@/lib/orderPublicDto";
+import { serializeOrderDate, toPublicOrderDto } from "@/lib/orderPublicDto";
 import { redeemOrderVouchers, VoucherRedeemError } from "@/lib/redeemVouchers";
 import { validateStaffOrderTransition } from "@/lib/staffOrderTransition";
 import {
@@ -20,7 +21,7 @@ import { runSerializableTransaction } from "@/lib/serializableTransaction";
 
 export const dynamic = "force-dynamic";
 
-const orderStatusPatchSchema = z.object({
+const orderStatusPatchSchema: z.ZodType<StaffOrderStatusPayload> = z.object({
   status: z.enum(["ADMIN_CONFIRMED", "STAFF_DONE", "COMPLETED", "CANCELLED"]),
 });
 
@@ -300,16 +301,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
     const updatedOrder = transactionResult.order;
 
-    return NextResponse.json({
-      data: {
-        ...toPublicOrderDto(updatedOrder),
-        payment_qr_url: getPendingPaymentQrUrl(updatedOrder),
-        skipped_vouchers: [],
-        ...(transactionResult.cancellationAdjustment
-          ? { cancellation_adjustment: transactionResult.cancellationAdjustment }
-          : {}),
-      },
-    });
+    const data = {
+      ...toPublicOrderDto(updatedOrder),
+      id: updatedOrder.id,
+      status: updatedOrder.status,
+      order_type: updatedOrder.order_type,
+      payment_method: updatedOrder.payment_method,
+      order_code: updatedOrder.order_code,
+      auto_cancel_at: serializeOrderDate(updatedOrder.auto_cancel_at),
+      payment_qr_url: getPendingPaymentQrUrl(updatedOrder),
+      subtotal_vnd: updatedOrder.subtotal_vnd,
+      total_voucher_discount_vnd: updatedOrder.total_voucher_discount_vnd,
+      total_vnd: updatedOrder.total_vnd,
+      shipping_fee_vnd: updatedOrder.shipping_fee_vnd,
+      freeship_discount_vnd: updatedOrder.freeship_discount_vnd,
+      grand_total_vnd: updatedOrder.grand_total_vnd,
+      points_earned: updatedOrder.points_earned,
+      skipped_vouchers: [],
+      created_at: serializeOrderDate(updatedOrder.created_at),
+      ...(transactionResult.cancellationAdjustment
+        ? { cancellation_adjustment: transactionResult.cancellationAdjustment }
+        : {}),
+    } satisfies StaffOrderResult & Record<string, unknown>;
+    return NextResponse.json({ data });
 
   } catch (err: unknown) {
     if (err instanceof Error) {

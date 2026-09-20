@@ -41,7 +41,7 @@ function ownedVoucher(overrides: Record<string, unknown> = {}) {
 function expectedPublicItemVoucher(input: {
   menuItemId: string;
   status: "ACTIVE" | "EXPIRED";
-  expiresAt: Date | null;
+  expiresAt: string | null;
   availability: { status: "USABLE" | "TARGET_UNAVAILABLE"; can_apply: boolean; can_refund: false; refund_points: 0 };
   eligibleMenuItems: Array<{
     menu_item_id: string; name: string; category: string; is_available: boolean; is_seasonal: boolean;
@@ -72,7 +72,7 @@ function expectedPublicItemVoucher(input: {
     used_channel: null,
     expires_at: input.expiresAt,
     redeemed_at: null,
-    created_at: new Date("2026-01-01"),
+    created_at: "2026-01-01T00:00:00.000Z",
     package: {
       name: "Quà", description: null, points_cost: 0, acquisition_mode: "NONE", ends_at: null, bundleRule: null,
     },
@@ -166,7 +166,7 @@ describe("DTO công khai của welcome reward", () => {
         covered_price_vnd: null, menuItem: { name: "Phạm vi còn bán", category: "extras", is_available: true, is_seasonal: false } }],
       expectedVoucher: expectedPublicItemVoucher({
         menuItemId: "menu-on",
-        status: "EXPIRED", expiresAt: new Date("2026-01-01"),
+        status: "EXPIRED", expiresAt: "2026-01-01T00:00:00.000Z",
         availability: { status: "USABLE", can_apply: false, can_refund: false, refund_points: 0 },
         eligibleMenuItems: [{ menu_item_id: "menu-on", name: "Phạm vi còn bán", category: "extras",
           is_available: true, is_seasonal: false, size: null, matcha_powder_id: null,
@@ -218,7 +218,7 @@ describe("DTO công khai của welcome reward", () => {
         eligible_sizes: [], reference_size: null, size: null, matcha_powder_id: null, milk_type_id: null,
         included_addon_option_ids: [], addon_option_id: null, covered_price_vnd: null,
         covered_delivery_fee_vnd: null, min_order_vnd: null, max_discount_vnd: null, status: "ACTIVE",
-        used_channel: null, expires_at: null, redeemed_at: null, created_at: new Date("2026-01-01"),
+        used_channel: null, expires_at: null, redeemed_at: null, created_at: "2026-01-01T00:00:00.000Z",
         package: {
           name: "Combo", description: "Mua một tặng một", points_cost: 0, acquisition_mode: "NONE", ends_at: null,
           bundleRule: {

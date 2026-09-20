@@ -1,104 +1,17 @@
 import { apiClient } from "@/src/lib/api/client";
 import type { ApiResponse } from "@/src/lib/types/api";
-import type { SweetnessLevel } from "@/src/lib/types/menu";
-import type { PaymentMethod, StaffOrderResult } from "@/src/lib/types/order";
+import type { CreateStaffOrderPayload, StaffOrderResult } from "@/contracts/order";
+import type { CustomerSearchResult, QrScanResult } from "@/contracts/staff";
 import { normalizeCustomerSearch } from "@/src/utils/display";
-import type { BundleApplicationPayload } from "@/src/lib/utils/bundleVoucher";
+
+export type { CreateStaffOrderPayload, StaffOrderResult } from "@/contracts/order";
+export type {
+  CustomerSearchResult,
+  QrScanResult,
+  ScannedVoucherMenuTarget,
+} from "@/contracts/staff";
 
 // ── Types ───────────────────────────────────────────────────────────────────
-
-export interface CreateStaffOrderPayload {
-  /** Optional — omit entirely for anonymous (walk-in, no loyalty) orders. */
-  phone_number?: string;
-  customer_name?: string;
-  /** Defaults to CASH on both client and server for backward compatibility. */
-  payment_method?: PaymentMethod;
-  items: {
-    client_line_id?: string;
-    menu_item_id: string;
-    quantity: number;
-    /** Required for drinks; null for fixed-price Add-on items. */
-    size: "SMALL" | "MEDIUM" | "LARGE" | null;
-    sweetness: SweetnessLevel;
-    /** Defaults to NORMAL on server if omitted; explicit here for correctness. */
-    ice_option: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
-    coldwhisk: boolean;
-    note?: string;
-    addon_option_ids: string[];
-    product_voucher_id?: string;
-    item_voucher_id?: string;
-    /** ADDON vouchers per item — each targets a specific addon_option_id. */
-    addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
-    /** Fusion only — server validates against item's allowed powder list. */
-    selected_powder_id?: string;
-    /** Latte only — server defaults to is_default milk if omitted. */
-    selected_milk_type_id?: string;
-    /** Base Liquid selection for Latte or Fusion. */
-    selected_base_liquid_id?: string;
-    /**
-     * Client-computed final unit price. Required.
-     * Server recomputes and rejects with PRICE_CHANGED on mismatch.
-     */
-    client_price_vnd: number;
-  }[];
-  /** DISCOUNT voucher IDs (multiple allowed, max 1 PERCENT). Omit for anonymous orders. */
-  discount_voucher_ids?: string[];
-  bundle_applications?: BundleApplicationPayload[];
-  /**
-   * Customer QR token (‘qr_token’ from users table). Required for STAFF when any voucher is used.
-   * Admin auto-bypasses QR verification — omit for admin orders.
-   */
-  customer_qr_token?: string;
-}
-
-/** A single customer result returned by the search endpoint. */
-export interface CustomerSearchResult {
-  qr_token: string;
-  name: string;
-  phone_number: string;
-  points_balance: number;
-}
-
-export interface ScannedVoucherMenuTarget {
-  menu_item_id: string;
-  name: string;
-  category: string;
-  is_available: boolean;
-  is_seasonal: boolean;
-  size: "SMALL" | "MEDIUM" | "LARGE" | null;
-  matcha_powder_id: string | null;
-  milk_type_id: string | null;
-  covered_price_vnd: number | null;
-}
-
-export type QrScanResult =
-  | {
-      type: "user";
-      data: {
-        qr_token: string;
-        name: string;
-        phone_number: string;
-        points_balance: number;
-      };
-    }
-  | {
-      type: "voucher";
-      data: {
-        qr_token: string;
-        voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE";
-        discount_type: "PERCENT" | "FIXED" | null;
-        discount_value: number | null;
-        menu_item_id: string | null;
-        size: "SMALL" | "MEDIUM" | "LARGE" | null;
-        matcha_powder_id: string | null;
-        milk_type_id: string | null;
-        covered_price_vnd: number | null;
-        has_normalized_targets: boolean;
-        eligible_menu_items: ScannedVoucherMenuTarget[];
-        status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED";
-        expires_at: string | null;
-      };
-    };
 
 // ── Service ─────────────────────────────────────────────────────────────────
 

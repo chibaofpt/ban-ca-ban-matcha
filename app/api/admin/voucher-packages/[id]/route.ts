@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import type { UpdateVoucherPackageInput } from "@/contracts/admin/voucher";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { invalidateVoucherCaches } from "@/lib/cacheInvalidation";
@@ -45,6 +46,7 @@ export async function PUT(
   }
 
   try {
+    const update: UpdateVoucherPackageInput = parsed.data;
     const existing = await prisma.voucherPackage.findUnique({ where: { id } });
     if (!existing) {
       return NextResponse.json(
@@ -53,7 +55,7 @@ export async function PUT(
       );
     }
 
-    if (parsed.data.is_active === true) {
+    if (update.is_active === true) {
       const target = await prisma.voucherPackage.findUnique({
         where: { id },
         select: {
@@ -107,9 +109,9 @@ export async function PUT(
     const updated = await prisma.voucherPackage.update({
       where: { id },
       data: {
-        ...(parsed.data.name !== undefined && { name: parsed.data.name }),
-        ...(parsed.data.description !== undefined && { description: parsed.data.description }),
-        ...(parsed.data.is_active !== undefined && { is_active: parsed.data.is_active }),
+        ...(update.name !== undefined && { name: update.name }),
+        ...(update.description !== undefined && { description: update.description }),
+        ...(update.is_active !== undefined && { is_active: update.is_active }),
       },
     });
 

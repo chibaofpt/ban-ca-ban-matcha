@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { Prisma, User } from "@prisma/client";
+import type { RegisterResult } from "@/contracts/auth";
 import { RegisterSchemaWithInstagram } from "@/lib/validations/auth";
 import { prisma } from "@/lib/prisma";
 import { normalizePhone, signJwt, setAuthCookies } from "@/lib/auth";
@@ -161,16 +162,15 @@ export async function POST(req: Request) {
       });
     }
 
+    const result = {
+      name: user.name,
+      phone_number: user.phone_number,
+      insta_name: user.insta_name,
+      role: user.role,
+      welcome_reward: welcomeReward,
+    } satisfies RegisterResult;
     return NextResponse.json(
-      {
-        data: {
-          name: user.name,
-          phone_number: user.phone_number,
-          insta_name: user.insta_name,
-          role: user.role,
-          welcome_reward: welcomeReward,
-        },
-      },
+      { data: result },
       { status: 201 }
     );
   } catch (err: unknown) {

@@ -5,6 +5,7 @@ import {
   getTodaySchedule,
 } from "@/lib/storeSchedule";
 import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
+import type { StoreStatusResponse } from "@/contracts/store";
 
 /** GET /api/store-status — Public. Returns current store open/closed status. */
 export async function GET() {
@@ -20,7 +21,7 @@ export async function GET() {
 }
 
 /** Fetches store status from DB. Called by withCache on cache miss. */
-async function fetchStoreStatusData() {
+async function fetchStoreStatusData(): Promise<StoreStatusResponse> {
   const [storeStatus, todaySlots, weeklySchedule] = await Promise.all([
     checkStoreOpen(),
     getTodaySchedule(),

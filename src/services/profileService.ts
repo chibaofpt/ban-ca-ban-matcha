@@ -1,12 +1,12 @@
 import { apiClient } from "@/src/lib/api/client";
-import type { ApiError, ApiResponse } from "@/src/lib/types/api";
+import type { ApiError, ApiResponse } from "@/contracts/api";
 import type {
   ChangePasswordPayload,
   ChangePasswordResult,
   CustomerProfile,
   UpdateProfilePayload,
-} from "@/src/lib/types/user";
-import { ApiServiceError } from "@/src/services/orderService";
+} from "@/contracts/profile";
+import { ApiServiceError } from "@/src/lib/api/serviceError";
 
 const URL = {
   profile: "/api/profile",

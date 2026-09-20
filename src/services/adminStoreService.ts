@@ -1,21 +1,16 @@
 import { apiClient } from "@/src/lib/api/client";
+import type {
+  DaySchedule,
+  OpenStoreResponse,
+  StoreClosureStatus,
+  UpdateStoreScheduleRequest,
+} from "@/contracts/admin/store";
 
-export interface ScheduleSlot {
-  slot: number;
-  open_time: string;
-  close_time: string;
-}
-
-export interface DaySchedule {
-  day_of_week: number;
-  slots: ScheduleSlot[];
-}
-
-export interface StoreClosureStatus {
-  is_active: boolean;
-  note: string | null;
-  closed_at?: string;
-}
+export type {
+  DaySchedule,
+  ScheduleSlot,
+  StoreClosureStatus,
+} from "@/contracts/admin/store";
 
 /** GET /api/admin/store-schedule — Fetch full weekly schedule. */
 export async function getStoreSchedule(): Promise<DaySchedule[]> {
@@ -27,7 +22,7 @@ export async function getStoreSchedule(): Promise<DaySchedule[]> {
 
 /** PUT /api/admin/store-schedule — Replace entire schedule. */
 export async function updateStoreSchedule(
-  schedules: { day_of_week: number; slots: { open_time: string; close_time: string }[] }[],
+  schedules: UpdateStoreScheduleRequest["schedules"],
 ): Promise<DaySchedule[]> {
   const res = await apiClient.put<{ data: DaySchedule[] }>(
     "/api/admin/store-schedule",
@@ -46,8 +41,8 @@ export async function closeStore(note?: string): Promise<StoreClosureStatus> {
 }
 
 /** POST /api/admin/store-closure — Reopen the store. */
-export async function openStore(): Promise<{ is_active: boolean }> {
-  const res = await apiClient.post<{ data: { is_active: boolean } }>(
+export async function openStore(): Promise<OpenStoreResponse> {
+  const res = await apiClient.post<{ data: OpenStoreResponse }>(
     "/api/admin/store-closure",
     { action: "open" },
   );

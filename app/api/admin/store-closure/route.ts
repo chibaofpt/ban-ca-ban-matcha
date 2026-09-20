@@ -3,6 +3,11 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { toggleStoreClosureSchema } from "@/lib/validations/storeSchedule";
 import { invalidateStoreCaches } from "@/lib/cacheInvalidation";
+import type {
+  OpenStoreResponse,
+  StoreClosureRequest,
+  StoreClosureStatus,
+} from "@/contracts/admin/store";
 
 /** POST /api/admin/store-closure — ADMIN only. Opens or temporarily closes the store. */
 export async function POST(req: NextRequest) {
@@ -42,7 +47,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { action, note } = parsed.data;
+  const request: StoreClosureRequest = parsed.data;
+  const { action, note } = request;
 
   try {
     if (action === "close") {
@@ -62,13 +68,12 @@ export async function POST(req: NextRequest) {
       });
 
       await invalidateStoreCaches();
-      return NextResponse.json({
-        data: {
+      const data: StoreClosureStatus = {
           is_active: closure.is_active,
           note: closure.note,
           closed_at: closure.closed_at.toISOString(),
-        },
-      });
+      };
+      return NextResponse.json({ data });
     } else {
       // action === "open"
       const existing = await prisma.storeTemporaryClosure.findFirst({
@@ -88,7 +93,8 @@ export async function POST(req: NextRequest) {
       });
 
       await invalidateStoreCaches();
-      return NextResponse.json({ data: { is_active: false } });
+      const data: OpenStoreResponse = { is_active: false };
+      return NextResponse.json({ data });
     }
   } catch {
     return NextResponse.json(

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import type { VoucherOwnerPage } from "@/contracts/admin/voucher";
+import type { VoucherIssuedVia } from "@/contracts/voucher";
 
 import { getSession } from "@/lib/auth";
 import { effectiveVoucherStatus } from "@/lib/adminVoucherInsights";
@@ -67,10 +69,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
     const hasMore = users.length > 20;
     const page = users.slice(0, 20);
-    return NextResponse.json({ data: {
-      users: page.map((user) => ({ ...user, vouchers: user.vouchers.map((voucher) => ({ ...voucher, effective_status: effectiveVoucherStatus(voucher, now) })) })),
+    const data: VoucherOwnerPage = {
+      users: page.map((user) => ({
+        ...user,
+        vouchers: user.vouchers.map((voucher) => ({
+          qr_token: voucher.qr_token,
+          status: voucher.status,
+          effective_status: effectiveVoucherStatus(voucher, now),
+          issued_via: voucher.issued_via as VoucherIssuedVia,
+          created_at: voucher.created_at.toISOString(),
+          expires_at: voucher.expires_at?.toISOString() ?? null,
+          redeemed_at: voucher.redeemed_at?.toISOString() ?? null,
+          used_channel: voucher.used_channel,
+        })),
+      })),
       next_cursor: hasMore ? page.at(-1)?.qr_token ?? null : null,
-    } });
+    };
+    return NextResponse.json({ data });
   } catch (error) {
     console.error("[GET /api/admin/voucher-packages/[id]/owners]", error);
     return NextResponse.json({ error: "Internal server error", code: "INTERNAL_ERROR" }, { status: 500 });

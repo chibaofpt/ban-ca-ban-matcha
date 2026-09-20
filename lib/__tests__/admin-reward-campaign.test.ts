@@ -98,13 +98,32 @@ function campaignRecord(status: "DRAFT" | "ACTIVE" | "PAUSED" | "ENDED" = "DRAFT
 describe("Workflow quản trị reward campaign", () => {
   beforeEach(() => vi.clearAllMocks());
   it("tách draw đã commit và weight còn đủ điều kiện", async () => {
+    const record = campaignRecord();
+    const campaign = {
+      ...record,
+      poolItems: [{
+        ...record.poolItems[0],
+        voucherPackage: {
+          ...record.poolItems[0].voucherPackage,
+          ends_at: new Date("2026-12-31T00:00:00.000Z"),
+        },
+      }],
+    };
     const db = withCatalog({
-      rewardCampaign: { findUnique: vi.fn().mockResolvedValue(campaignRecord()) },
+      rewardCampaign: { findUnique: vi.fn().mockResolvedValue(campaign) },
       rewardOutcome: { groupBy: vi.fn().mockResolvedValue([{ campaign_id: "campaign", pool_item_id: "pool", _count: { _all: 3 } }]) },
     }) as unknown as AdminRewardDatabase;
     const detail = await getAdminRewardCampaign(db, "campaign", new Date("2026-01-03"));
-    expect(detail).toMatchObject({ draw_count: 3, total_allocated: 5, total_remaining: 2, box_count: 3 });
+    expect(detail).toMatchObject({
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-02T00:00:00.000Z",
+      draw_count: 3,
+      total_allocated: 5,
+      total_remaining: 2,
+      box_count: 3,
+    });
     expect(detail.pool_items[0]).toMatchObject({ issued_count: 3, remaining_quantity: 2, unlocked: true, current_weight: 2, eligible_weight_total: 2 });
+    expect(detail.pool_items[0].voucher_package.ends_at).toBe("2026-12-31T00:00:00.000Z");
   });
 
   it("đặt weight 0 cho target unavailable và denominator chỉ gồm target usable", async () => {

@@ -6,8 +6,8 @@ import type {
 } from "@/lib/orderCalculator";
 import { OrderValidationError, type ProcessedOrderItem } from "@/lib/orders";
 import type { CustomerOrderInput } from "@/lib/validations/order";
-import type { IceOption } from "@/src/lib/types/cart";
-import type { SweetnessLevel } from "@/src/lib/types/menu";
+import type { IceOption } from "@/contracts/order";
+import type { SweetnessLevel } from "@/contracts/menu";
 import type { Prisma } from "@prisma/client";
 import type { ResolvedOrderBundles } from "@/lib/orderBundle";
 import { persistOrderBundles } from "@/lib/orderBundleWrite";

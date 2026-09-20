@@ -1,19 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { CustomerOrderDetail } from "@/contracts/order";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { toOrderItemDetail } from "@/lib/orderPublicDto";
 import { buildVietQRUrl } from "@/lib/vietqr";
 import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
 
 export const dynamic = "force-dynamic";
-
-function toPublicOrderItems<T extends { product_voucher_id: string | null; item_voucher_id: string | null }>(items: T[]) {
-  return items.map((item) => {
-    const { product_voucher_id: _productVoucherId, item_voucher_id: _itemVoucherId, ...publicItem } = item;
-    void _productVoucherId;
-    void _itemVoucherId;
-    return publicItem;
-  });
-}
 
 /** GET /api/orders/[id] — Customer polls own order status for tracking. */
 export async function GET(
@@ -80,8 +73,7 @@ export async function GET(
       }
     }
 
-    return NextResponse.json({
-      data: {
+    const data = {
         id: order.id,
         order_code: order.order_code,
         status: order.status,
@@ -93,10 +85,10 @@ export async function GET(
         shipping_fee_vnd: order.shipping_fee_vnd,
         freeship_discount_vnd: order.freeship_discount_vnd,
         grand_total_vnd: order.grand_total_vnd,
-        pickup_time: order.pickup_time,
-        auto_cancel_at: order.auto_cancel_at,
+        pickup_time: order.pickup_time?.toISOString() ?? null,
+        auto_cancel_at: order.auto_cancel_at?.toISOString() ?? null,
         payment_qr_url,
-        created_at: order.created_at,
+        created_at: order.created_at.toISOString(),
         address_id: order.address_id,
         delivery_address: order.delivery_address,
         delivery_lat: order.delivery_lat,
@@ -104,9 +96,9 @@ export async function GET(
         delivery_distance_km: order.delivery_distance_km,
         delivery_receiver_name: order.delivery_receiver_name,
         delivery_receiver_phone: order.delivery_receiver_phone,
-        items: toPublicOrderItems(order.items),
-      },
-    });
+        items: order.items.map(toOrderItemDetail),
+    } satisfies CustomerOrderDetail;
+    return NextResponse.json({ data });
   } catch (err) {
     console.error("[GET /api/orders/[id]]", err);
     return NextResponse.json(

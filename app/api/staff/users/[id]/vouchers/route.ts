@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { resolveCustomerIdentifier } from "@/lib/publicIdentifiers";
-import { toPublicVoucherDto } from "@/lib/voucherPublicDto";
+import { serializePublicVoucherDto, toPublicVoucherDto } from "@/lib/voucherPublicDto";
 import { attachBundleRewardBaselines } from "@/lib/voucherBundleDto";
 import {
   attachOwnedVoucherAvailability,
@@ -95,7 +95,9 @@ export async function GET(
     const catalog = await loadVoucherAvailabilityCatalog(prisma as unknown as VoucherAvailabilityDatabase);
     const withAvailability = attachOwnedVoucherAvailability(vouchers, catalog);
     const withBaselines = await attachBundleRewardBaselines(prisma, withAvailability);
-    return NextResponse.json({ data: withBaselines.map(toPublicVoucherDto) });
+    return NextResponse.json({
+      data: withBaselines.map((voucher) => serializePublicVoucherDto(toPublicVoucherDto(voucher))),
+    });
   } catch (err) {
     console.error("[GET /api/staff/users/[id]/vouchers]", {
       name: err instanceof Error ? err.name : typeof err,

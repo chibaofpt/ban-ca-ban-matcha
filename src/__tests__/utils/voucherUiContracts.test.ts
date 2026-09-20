@@ -8,11 +8,15 @@ const readSource = (path: string): string => readFileSync(new URL(path, import.m
 
 describe("multi-choice voucher UI contracts", () => {
   it("khai báo và hiển thị hai nguồn phát hành reward hệ thống", () => {
+    const canonicalVoucher = readSource("../../../contracts/voucher.ts");
     const service = readSource("../../services/adminVoucherService.ts");
     const detail = readSource("../../components/admin/AdminVoucherPackageDetail.tsx");
 
-    expect(service).toContain('| "WELCOME_GIFT"');
-    expect(service).toContain('| "GACHA_REWARD"');
+    expect(canonicalVoucher).toMatch(/export type VoucherPackageAcquisitionMode = [^;]*\| "WELCOME_GIFT"/);
+    expect(canonicalVoucher).toMatch(/export type VoucherPackageAcquisitionMode = [^;]*\| "GACHA_REWARD"/);
+    expect(service).toMatch(
+      /export type \{[\s\S]*?\bVoucherIssuedVia\b[\s\S]*?\} from "@\/contracts\/admin\/voucher";/,
+    );
     expect(detail).toContain('WELCOME_GIFT: "Quà chào mừng"');
     expect(detail).toContain('GACHA_REWARD: "Phần thưởng gacha"');
   });

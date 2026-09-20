@@ -13,6 +13,7 @@ Không duy trì cây thư mục thủ công trong tài liệu này. Dùng `rg --
 |---|---|
 | `app/**/page.tsx` | Route entry, metadata và server composition nhỏ |
 | `app/api/**/route.ts` | HTTP boundary: auth, Zod validation, gọi server logic, chuẩn hóa response |
+| `contracts/` | Type/schema của API wire contract dùng chung cho frontend và backend; không sở hữu runtime logic |
 | `src/views/` | Page composition và orchestration phía client; gọi service, không sở hữu URL/HTTP client |
 | `src/components/ui/` | Shared UI primitives và managed overlay stack; không gọi API hoặc chứa nghiệp vụ |
 | `src/components/<domain>/` | Leaf UI và feature containers của domain |
@@ -63,6 +64,9 @@ Chỉ đọc mapping liên quan feature; behavior nằm ở link owner, không �
 
 ## Import boundaries
 
+- Frontend và backend được import trực tiếp contract theo domain từ `contracts/`; không tạo barrel chung.
+- `contracts/` không import `app/`, `lib/`, `src/`, Prisma, React, Next hoặc Axios. State/form/UI
+  chỉ dùng phía client vẫn ở `src/`; Prisma payload, transaction và domain intermediate vẫn ở `lib/`.
 - Client code không import `lib/` server-only.
 - `src/services` dùng duy nhất `src/lib/api/client.ts`; không tạo Axios instance khác.
 - API URL chỉ được khai báo trong `src/services`, trừ legacy exception đã ghi trong `SPECIFICATION.md`.

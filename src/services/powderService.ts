@@ -1,5 +1,5 @@
 import { apiClient } from "@/src/lib/api/client";
-import type { PowderApiResponse } from "@/src/lib/types/powder";
+import type { PowderApiResponse } from "@/contracts/catalog";
 
 /**
  * Fetches the full powder catalog and system-level gram defaults from the server.

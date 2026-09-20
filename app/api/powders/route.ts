@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import type { PowderApiResponse } from "@/src/lib/types/powder";
+import type { PowderApiResponse } from "@/contracts/catalog";
 import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
 
 /** GET /api/powders — public, no auth required. */

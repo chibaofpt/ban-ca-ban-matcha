@@ -1,11 +1,16 @@
 import type { Prisma } from "@prisma/client";
+import type { WelcomeReward, WelcomeRewardSummary } from "@/contracts/reward";
 import { attachBundleRewardBaselines } from "@/lib/voucherBundleDto";
 import {
   attachOwnedVoucherAvailability,
   loadVoucherAvailabilityCatalog,
   type VoucherAvailabilityDatabase,
 } from "@/lib/voucherAvailability";
-import { PUBLIC_VOUCHER_PACKAGE_SELECT, toPublicVoucherDto } from "@/lib/voucherPublicDto";
+import {
+  PUBLIC_VOUCHER_PACKAGE_SELECT,
+  serializePublicVoucherDto,
+  toPublicVoucherDto,
+} from "@/lib/voucherPublicDto";
 
 export const WELCOME_REWARD_INCLUDE = {
   campaign: {
@@ -42,12 +47,7 @@ export type WelcomeRewardRecord = Prisma.WelcomeRewardGetPayload<{ include: type
 export type WelcomeRewardProjectionDatabase = VoucherAvailabilityDatabase &
   Parameters<typeof attachBundleRewardBaselines>[0];
 
-export interface WelcomeRewardSummary {
-  id: string;
-  mode: "POINTS" | "FIXED_VOUCHER" | "GACHA";
-  status: "PENDING" | "COMPLETED";
-  outcome_kind: "VOUCHER" | "POINTS" | null;
-}
+export type { WelcomeRewardSummary } from "@/contracts/reward";
 
 /** Maps one welcome reward to its registration response summary. */
 export function toWelcomeRewardSummary(reward: Pick<WelcomeRewardRecord, "id" | "mode" | "outcome">): WelcomeRewardSummary {
@@ -64,14 +64,11 @@ export async function toWelcomeRewardDto(
   db: WelcomeRewardProjectionDatabase,
   reward: WelcomeRewardRecord,
   now = new Date(),
-) {
+): Promise<WelcomeReward> {
   const unavailableReason = reward.mode === "GACHA" && !reward.outcome && reward.campaign?.status === "PAUSED"
     ? "REWARD_PAUSED"
     : null;
-  let outcome: { kind: "POINTS"; points: 5 } | {
-    kind: "VOUCHER";
-    voucher: ReturnType<typeof toPublicVoucherDto>;
-  } | null = null;
+  let outcome: WelcomeReward["outcome"] = null;
   if (reward.outcome?.kind === "POINTS") {
     outcome = { kind: "POINTS", points: 5 };
   } else if (reward.outcome?.voucher) {
@@ -79,11 +76,19 @@ export async function toWelcomeRewardDto(
     const [withAvailability] = attachOwnedVoucherAvailability([reward.outcome.voucher], catalog, now);
     const [withBaseline] = await attachBundleRewardBaselines(db, [withAvailability]);
     const voucher = toPublicVoucherDto(withBaseline);
+    const effectiveVoucher = withBaseline.status === "ACTIVE" && withBaseline.expires_at && withBaseline.expires_at <= now
+      ? { ...voucher, status: "EXPIRED" as const }
+      : voucher;
+    const serializedVoucher = serializePublicVoucherDto(effectiveVoucher);
+    if (!serializedVoucher.availability) {
+      throw new Error("Welcome reward voucher availability is required");
+    }
     outcome = {
       kind: "VOUCHER",
-      voucher: withBaseline.status === "ACTIVE" && withBaseline.expires_at && withBaseline.expires_at <= now
-        ? { ...voucher, status: "EXPIRED" }
-        : voucher,
+      voucher: {
+        ...serializedVoucher,
+        availability: serializedVoucher.availability,
+      },
     };
   }
   return {

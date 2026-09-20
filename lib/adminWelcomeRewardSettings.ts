@@ -1,24 +1,31 @@
+import type {
+  AdminRewardMode,
+  AdminWelcomeRewardSettings,
+} from "@/contracts/admin/reward";
 import { AdminRewardError, type AdminRewardDatabase, type AdminRewardTransaction } from "@/lib/adminRewardCampaign";
 
-export type WelcomeSettingsMode = "POINTS" | "FIXED_VOUCHER" | "GACHA";
-export interface WelcomeSettingsInput {
-  mode: WelcomeSettingsMode;
-  fixed_package_id: string | null;
-  active_campaign_id: string | null;
-  revision: number;
-}
+export type WelcomeSettingsMode = AdminRewardMode;
+export type WelcomeSettingsInput = AdminWelcomeRewardSettings;
 
-function project(settings: Awaited<ReturnType<AdminRewardTransaction["welcomeRewardSettings"]["findUnique"]>>) {
+function project(
+  settings: Awaited<ReturnType<AdminRewardTransaction["welcomeRewardSettings"]["findUnique"]>>,
+): AdminWelcomeRewardSettings {
   return settings ?? { mode: "POINTS" as const, fixed_package_id: null, active_campaign_id: null, revision: 0 };
 }
 
 /** Read the singleton welcome-reward settings with the POINTS default projection. */
-export async function getAdminWelcomeRewardSettings(db: AdminRewardTransaction) {
+export async function getAdminWelcomeRewardSettings(
+  db: AdminRewardTransaction,
+): Promise<AdminWelcomeRewardSettings> {
   return project(await db.welcomeRewardSettings.findUnique({ where: { id: 1 } }));
 }
 
 /** Conditionally update singleton welcome-reward settings after reference validation. */
-export async function updateAdminWelcomeRewardSettings(db: AdminRewardDatabase, input: WelcomeSettingsInput, now = new Date()) {
+export async function updateAdminWelcomeRewardSettings(
+  db: AdminRewardDatabase,
+  input: WelcomeSettingsInput,
+  now = new Date(),
+): Promise<AdminWelcomeRewardSettings> {
   try {
     return await db.$transaction(async (tx) => {
       if (input.mode === "FIXED_VOUCHER") {

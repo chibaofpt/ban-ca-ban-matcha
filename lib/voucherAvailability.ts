@@ -1,19 +1,8 @@
 import type { Prisma, Size } from "@prisma/client";
+import type { VoucherAvailability, VoucherAvailabilityStatus } from "@/contracts/voucher";
 import { resolveDefaultBaseLiquidId, resolveFusionDefaultPowderId } from "@/src/utils/menuConfiguration";
 
-export type VoucherAvailabilityStatus =
-  | "USABLE"
-  | "TARGET_UNAVAILABLE"
-  | "NO_ACTIVE_QUALIFIER"
-  | "NO_ACTIVE_REWARD"
-  | "NO_ACTIVE_CONFIGURATION";
-
-export interface VoucherAvailability {
-  status: VoucherAvailabilityStatus;
-  can_apply: boolean;
-  can_refund: boolean;
-  refund_points: number;
-}
+export type { VoucherAvailability, VoucherAvailabilityStatus } from "@/contracts/voucher";
 
 export interface VoucherBundleScopeSource {
   role: "QUALIFIER" | "REWARD";

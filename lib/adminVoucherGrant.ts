@@ -1,3 +1,8 @@
+import type {
+  AdminVoucherGrantWarning,
+  AdminVoucherRecipientSummary as AdminVoucherRecipientWireSummary,
+} from "@/contracts/admin/voucher";
+import type { VoucherType } from "@/contracts/voucher";
 import { previewVoucherExpiry } from "@/lib/voucherIssuance";
 import {
   issueVoucherInTransaction,
@@ -9,9 +14,7 @@ import {
   type VoucherIssuanceTransaction,
 } from "@/lib/voucherIssuance";
 
-export type AdminVoucherGrantWarning =
-  | "ACTIVE_OR_RESERVED_VOUCHER_EXISTS"
-  | "SELF_ACQUISITION_LIMIT_REACHED";
+export type { AdminVoucherGrantWarning } from "@/contracts/admin/voucher";
 
 interface PackageSummaryRecord {
   id: string;
@@ -30,7 +33,7 @@ export interface ManualVoucherRecord {
   package_id: string;
   issuing_admin_id: string | null;
   manual_request_id: string | null;
-  voucher_type: string;
+  voucher_type: VoucherType;
   status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED";
   expires_at: Date | null;
   redeemed_at: Date | null;
@@ -46,17 +49,12 @@ export interface AdminVoucherGrantDatabase {
   };
 }
 
-export interface AdminVoucherRecipientSummary {
-  self_acquisition_count: number;
-  self_acquisition_limit: number | null;
-  self_acquisition_remaining: number | null;
-  current_count: number;
-  used_count: number;
-  global_remaining: number | null;
-  grant_eligible: boolean;
-  warning_reasons: AdminVoucherGrantWarning[];
+export type AdminVoucherRecipientSummary = Omit<
+  AdminVoucherRecipientWireSummary,
+  "expiry_preview"
+> & {
   expiry_preview: Date | null;
-}
+};
 
 export interface AdminVoucherGrantInput {
   user_id: string;

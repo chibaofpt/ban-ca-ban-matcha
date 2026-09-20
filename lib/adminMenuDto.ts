@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import type { AdminMenuItem } from "@/contracts/admin/catalog";
 
 /** Shared Prisma relations required by admin menu responses. */
 export const ADMIN_MENU_INCLUDE = {
@@ -28,20 +29,20 @@ const SIZE_ORDER: Record<string, number> = { SMALL: 0, MEDIUM: 1, LARGE: 2 };
 export function formatAdminMenuItem(
   item: AdminMenuItemRecord,
   milkMlMap: Record<string, number>,
-) {
+): AdminMenuItem {
   return {
     id: item.id,
     name: item.name,
     description: item.description ?? null,
-    category: item.category,
+    category: item.category as AdminMenuItem["category"],
     unit_price_vnd: item.unit_price_vnd ?? null,
     is_seasonal: item.is_seasonal,
     image_url: item.image_url ?? null,
     is_available: item.is_available,
     sort_order: item.sort_order,
     base_liquid_note: item.base_liquid_note ?? null,
-    custom_powder_grams: item.custom_powder_grams ?? null,
-    updated_at: item.updated_at,
+    custom_powder_grams: item.custom_powder_grams as AdminMenuItem["custom_powder_grams"],
+    updated_at: item.updated_at.toISOString(),
     matcha_powder_id: item.matcha_powder_id ?? null,
     powder: item.matchaPowder ?? null,
     default_powder_id: item.default_powder_id ?? null,

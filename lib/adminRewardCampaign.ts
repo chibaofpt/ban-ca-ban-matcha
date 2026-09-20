@@ -1,4 +1,12 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import type {
+  AdminRewardBox,
+  AdminRewardCampaign,
+  AdminRewardCampaignAction,
+  AdminRewardCampaignStatus,
+  AdminRewardCampaignSummary,
+  AdminRewardPoolInput,
+} from "@/contracts/admin/reward";
 import {
   loadVoucherAvailabilityCatalog,
   resolveVoucherTargetAvailability,
@@ -8,8 +16,8 @@ import {
   type VoucherTargetAvailabilitySource,
 } from "@/lib/voucherAvailability";
 
-export type CampaignStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "ENDED";
-export type CampaignAction = "RENAME" | "ACTIVATE" | "PAUSE" | "RESUME" | "END";
+export type CampaignStatus = AdminRewardCampaignStatus;
+export type CampaignAction = AdminRewardCampaignAction["action"];
 
 export type AdminRewardReason =
   | "CAMPAIGN_NOT_DRAFT"
@@ -26,11 +34,7 @@ export class AdminRewardError extends Error {
   }
 }
 
-export interface RewardPoolInput {
-  voucher_package_id: string;
-  quantity: number;
-  unlock_after_draws: number;
-}
+export type RewardPoolInput = AdminRewardPoolInput;
 
 interface PackageRecord {
   id: string; name: string; is_active: boolean; ends_at: Date | null;
@@ -111,7 +115,7 @@ function packageEligible(pkg: PackageRecord, catalog: VoucherAvailabilityCatalog
 }
 
 /** Project one persisted reward box into the numeric-anchor admin API contract. */
-export function toAdminRewardBoxDto(box: AdminRewardBoxRecord) {
+export function toAdminRewardBoxDto(box: AdminRewardBoxRecord): AdminRewardBox {
   return {
     id: box.id, name: box.name, closed_image_url: box.closed_image_url, open_image_url: box.open_image_url,
     mouth_anchor_x: Number(box.mouth_anchor_x), mouth_anchor_y: Number(box.mouth_anchor_y), sort_order: box.sort_order,
@@ -154,7 +158,12 @@ async function assertReady(db: AdminRewardTransaction, campaign: CampaignRecord,
   return catalog;
 }
 
-function mapCampaign(campaign: CampaignRecord, counts: CountRow[], catalog: VoucherAvailabilityCatalog, now: Date) {
+function mapCampaign(
+  campaign: CampaignRecord,
+  counts: CountRow[],
+  catalog: VoucherAvailabilityCatalog,
+  now: Date,
+): AdminRewardCampaign {
   const issuedByPool = new Map(counts.filter((row) => row.campaign_id === campaign.id)
     .map((row) => [row.pool_item_id, row._count._all]));
   const drawCount = [...issuedByPool.values()].reduce((sum, count) => sum + count, 0);
@@ -167,7 +176,7 @@ function mapCampaign(campaign: CampaignRecord, counts: CountRow[], catalog: Vouc
   const eligibleWeightTotal = weights.reduce((sum, row) => sum + row.weight, 0);
   const summary = {
     id: campaign.id, name: campaign.name, status: campaign.status, revision: campaign.revision,
-    created_at: campaign.created_at, updated_at: campaign.updated_at, draw_count: drawCount,
+    created_at: campaign.created_at.toISOString(), updated_at: campaign.updated_at.toISOString(), draw_count: drawCount,
     total_allocated: campaign.poolItems.reduce((sum, item) => sum + item.quantity, 0),
     total_remaining: weights.reduce((sum, row) => sum + row.remaining, 0), box_count: campaign.boxes.length,
   };
@@ -175,7 +184,11 @@ function mapCampaign(campaign: CampaignRecord, counts: CountRow[], catalog: Vouc
     ...summary,
     pool_items: weights.sort((a, b) => a.item.created_at.getTime() - b.item.created_at.getTime() || a.item.id.localeCompare(b.item.id)).map(({ item, issued, remaining, unlocked, weight }) => ({
       id: item.id, voucher_package_id: item.voucher_package_id,
-      voucher_package: { name: item.voucherPackage.name, is_active: item.voucherPackage.is_active, ends_at: item.voucherPackage.ends_at },
+      voucher_package: {
+        name: item.voucherPackage.name,
+        is_active: item.voucherPackage.is_active,
+        ends_at: item.voucherPackage.ends_at?.toISOString() ?? null,
+      },
       quantity: item.quantity, unlock_after_draws: item.unlock_after_draws, issued_count: issued,
       remaining_quantity: remaining, unlocked, current_weight: weight, eligible_weight_total: eligibleWeightTotal,
     })),
@@ -193,7 +206,7 @@ export async function getAdminRewardCampaign(
   id: string,
   now = new Date(),
   catalog?: VoucherAvailabilityCatalog,
-) {
+): Promise<AdminRewardCampaign> {
   const campaign = await db.rewardCampaign.findUnique({ where: { id }, ...CAMPAIGN_QUERY });
   if (!campaign) throw new AdminRewardError("NOT_FOUND");
   const counts = await db.rewardOutcome.groupBy({ by: ["campaign_id", "pool_item_id"], where: { campaign_id: id, kind: "VOUCHER" }, _count: { _all: true } });
@@ -201,7 +214,10 @@ export async function getAdminRewardCampaign(
 }
 
 /** List campaign summaries newest first with committed voucher draw statistics. */
-export async function listAdminRewardCampaigns(db: AdminRewardTransaction, now = new Date()) {
+export async function listAdminRewardCampaigns(
+  db: AdminRewardTransaction,
+  now = new Date(),
+): Promise<AdminRewardCampaignSummary[]> {
   const campaigns = await db.rewardCampaign.findMany({ orderBy: { created_at: "desc" }, ...CAMPAIGN_QUERY });
   const counts = await db.rewardOutcome.groupBy({ by: ["campaign_id", "pool_item_id"], where: { kind: "VOUCHER" }, _count: { _all: true } });
   const catalog = await loadVoucherAvailabilityCatalog(db);
@@ -237,7 +253,12 @@ export async function replaceAdminRewardPool(db: AdminRewardDatabase, id: string
 }
 
 /** Rename or transition a campaign with conditional revision protection. */
-export async function mutateAdminRewardCampaign(db: AdminRewardDatabase, id: string, input: { action: CampaignAction; revision: number; name?: string }, now = new Date()) {
+export async function mutateAdminRewardCampaign(
+  db: AdminRewardDatabase,
+  id: string,
+  input: AdminRewardCampaignAction,
+  now = new Date(),
+): Promise<AdminRewardCampaign> {
   return db.$transaction(async (tx) => {
     const campaign = await tx.rewardCampaign.findUnique({ where: { id }, ...CAMPAIGN_QUERY });
     if (!campaign) throw new AdminRewardError("NOT_FOUND");
@@ -251,7 +272,11 @@ export async function mutateAdminRewardCampaign(db: AdminRewardDatabase, id: str
     const nextStatus = input.action === "RENAME" ? campaign.status : resolveCampaignTransition(campaign.status, input.action);
     const updated = await tx.rewardCampaign.updateMany({
       where: { id, status: campaign.status, revision: input.revision },
-      data: { status: nextStatus, ...(input.name !== undefined && { name: input.name }), revision: { increment: 1 } },
+      data: {
+        status: nextStatus,
+        ...(input.action === "RENAME" ? { name: input.name } : {}),
+        revision: { increment: 1 },
+      },
     });
     if (updated.count !== 1) throw new AdminRewardError("CONFLICT");
     return getAdminRewardCampaign(tx, id, now, readinessCatalog);

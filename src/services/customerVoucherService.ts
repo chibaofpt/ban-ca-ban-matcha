@@ -18,161 +18,31 @@
 
 import { apiClient } from "@/src/lib/api/client";
 import type { ApiResponse } from "@/src/lib/types/api";
+import type {
+  AcquiredVoucher,
+  ExchangedVoucher,
+  MyVoucher,
+  MyVoucherPage,
+  RefundedVoucher,
+  VoucherPackage,
+} from "@/contracts/voucher";
 
-export interface VoucherEligibleMenuItem {
-  menu_item_id: string;
-  name: string;
-  category: "latte" | "fusion" | "extras";
-  is_available: boolean;
-  is_seasonal: boolean;
-  size?: "SMALL" | "MEDIUM" | "LARGE" | null;
-  matcha_powder_id?: string | null;
-  milk_type_id?: string | null;
-  covered_price_vnd?: number | null;
-}
-
-export interface VoucherEligibleAddonOption {
-  addon_option_id: string;
-  label: string;
-  price_vnd: number;
-  is_active: boolean;
-  is_dynamic_gram: boolean;
-}
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-export interface VoucherPackage {
-  id: string;
-  name: string;
-  description: string | null;
-  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE";
-  acquisition_mode: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
-  points_cost: number;
-  ends_at?: string | null;
-  discount_type: "PERCENT" | "FIXED" | null;
-  discount_value: number | null;
-  product_discount_mode?: "FIXED_AMOUNT" | "PAY_AS_SIZE" | null;
-  menu_item_id: string | null;
-  eligible_menu_items?: VoucherEligibleMenuItem[];
-  eligible_addon_options?: VoucherEligibleAddonOption[];
-  eligible_sizes?: Array<"SMALL" | "MEDIUM" | "LARGE">;
-  reference_size?: "SMALL" | "MEDIUM" | "LARGE" | null;
-  size: "SMALL" | "MEDIUM" | "LARGE" | null;
-  matcha_powder_id: string | null;
-  milk_type_id: string | null;
-  included_addon_option_ids: string[];
-  addon_option_id: string | null;
-  covered_price_vnd: number | null;
-  /** Max shipping fee covered. FREESHIP vouchers only. */
-  covered_delivery_fee_vnd: number | null;
-  /** Minimum order total required. FREESHIP vouchers only. NULL = no minimum. */
-  min_order_vnd: number | null;
-  is_active: boolean;
-  expires_after_days: number | null;
-  quantity: number | null;
-  remaining_quantity?: number | null;
-  max_per_user: number;
-  created_at: string;
-  user_redeemed_count?: number;
-  menuItem?: { name: string; is_available: boolean } | null;
-  addonOption?: { label: string } | null;
-  bundleRule?: BundleVoucherRule | null;
-}
-
-export interface BundleVoucherRule {
-  buy_quantity: number;
-  reward_quantity: number;
-  reward_kind: "PRODUCT" | "ADDON";
-  reward_mode: "SAME_CONFIG" | "FIXED_CONFIG" | "ALLOWED_SCOPE";
-  benefit_scaling: "PER_BUNDLE" | "ONCE_PER_ORDER" | "PER_QUALIFYING_ITEM";
-  max_applications_per_order: number;
-  max_reward_units_per_order: number | null;
-  qualifier_products: BundleVoucherProduct[];
-  reward_products: BundleVoucherProduct[];
-  reward_addon_option_ids: string[];
-}
-
-export interface BundleVoucherProduct {
-    menu_item_id: string;
-    default_powder_id: string | null;
-    default_base_liquid_id: string | null;
-    allowed_sizes: Array<"SMALL" | "MEDIUM" | "LARGE">;
-    /** Dynamic checkout baseline for FIXED_CONFIG / ALLOWED_SCOPE rewards only. */
-    baseline_prices_vnd?: Partial<Record<"SMALL" | "MEDIUM" | "LARGE", number>>;
-    /** Dynamic fixed price for extras rewards only. */
-    baseline_price_vnd?: number;
-    menu_item: { name: string; category: "latte" | "fusion" | "extras"; is_available: boolean };
-}
-
-export type VoucherAvailabilityStatus =
-  | "USABLE"
-  | "TARGET_UNAVAILABLE"
-  | "NO_ACTIVE_QUALIFIER"
-  | "NO_ACTIVE_REWARD"
-  | "NO_ACTIVE_CONFIGURATION";
-
-export interface VoucherAvailability {
-  status: VoucherAvailabilityStatus;
-  can_apply: boolean;
-  can_refund: boolean;
-  refund_points: number;
-}
-
-export interface MyVoucher {
-  /** Optional catalog package reference; older wallet responses may omit it. */
-  package_id?: string;
-  qr_token: string;
-  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE";
-  discount_type: "PERCENT" | "FIXED" | null;
-  discount_value: number | null;
-  product_discount_mode?: "FIXED_AMOUNT" | "PAY_AS_SIZE" | null;
-  menu_item_id: string | null;
-  eligible_menu_items?: VoucherEligibleMenuItem[];
-  eligible_addon_options?: VoucherEligibleAddonOption[];
-  eligible_sizes?: Array<"SMALL" | "MEDIUM" | "LARGE">;
-  reference_size?: "SMALL" | "MEDIUM" | "LARGE" | null;
-  size: "SMALL" | "MEDIUM" | "LARGE" | null;
-  /** For PRODUCT vouchers — the powder used in the snapshot config. */
-  matcha_powder_id: string | null;
-  /** For PRODUCT vouchers — the milk type used in the snapshot config. */
-  milk_type_id: string | null;
-  /** For PRODUCT vouchers — addon option ids included in the snapshot config. */
-  included_addon_option_ids: string[];
-  addon_option_id: string | null;
-  covered_price_vnd: number | null;
-  /** Max shipping fee covered. FREESHIP vouchers only. */
-  covered_delivery_fee_vnd: number | null;
-  /** Minimum order total required. FREESHIP vouchers only. NULL = no minimum. */
-  min_order_vnd: number | null;
-  /** Maximum discount amount. PERCENT vouchers only. NULL = no limit. */
-  max_discount_vnd: number | null;
-  status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED";
-  used_channel: "ONLINE" | "OFFLINE" | null;
-  expires_at: string | null;
-  redeemed_at: string | null;
-  created_at: string;
-  package: {
-    name: string;
-    description: string | null;
-    points_cost: number;
-    acquisition_mode?: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT";
-    ends_at?: string | null;
-    bundleRule?: BundleVoucherRule | null;
-  };
-  menuItem: { name: string; is_available: boolean } | null;
-  addonOption: { label: string } | null;
-  /** Staff/admin who redeemed this voucher offline. null = user redeemed themselves online. */
-  staff: { name: string; role: "STAFF" | "ADMIN" | "CUSTOMER" } | null;
-  /** Server-authoritative live eligibility and voluntary refund capability. */
-  availability: VoucherAvailability;
-}
-
-export interface ExchangedVoucher {
-  qr_token: string;
-  voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE";
-  status: "ACTIVE";
-  expires_at: string | null;
-}
+export type {
+  AcquiredVoucher,
+  BundleVoucherProduct,
+  BundleVoucherRule,
+  ExchangedVoucher,
+  MyVoucher,
+  MyVoucherPage,
+  RefundedVoucher,
+  VoucherAvailability,
+  VoucherAvailabilityStatus,
+  VoucherEligibleAddonOption,
+  VoucherEligibleMenuItem,
+  VoucherIssuedVia,
+  VoucherPackage,
+  VoucherPackageAcquisitionMode,
+} from "@/contracts/voucher";
 
 // ── API Calls ─────────────────────────────────────────────────────────────────
 
@@ -183,12 +53,6 @@ export interface ExchangedVoucher {
 export async function listActiveVoucherPackages(): Promise<VoucherPackage[]> {
   const res = await apiClient.get<ApiResponse<VoucherPackage[]>>("/api/voucher-packages");
   return res.data.data;
-}
-
-export interface MyVoucherPage {
-  data: MyVoucher[];
-  /** Older, unpaginated responses may omit metadata. */
-  meta?: { limit: number; has_more: boolean; next_cursor: string | null };
 }
 
 const WALLET_URL = "/api/profile/vouchers";
@@ -238,16 +102,6 @@ export async function exchangeVoucher(packageId: string): Promise<ExchangedVouch
     { package_id: packageId }
   );
   return res.data.data;
-}
-
-export interface AcquiredVoucher extends ExchangedVoucher {
-  already_granted: boolean;
-}
-
-export interface RefundedVoucher {
-  qr_token: string;
-  status: "REFUNDED";
-  points_refunded: number;
 }
 
 /** Claim a FREE_CLAIM package without points; repeated calls are idempotent. */

@@ -7,10 +7,10 @@
 
 import { apiClient } from "@/src/lib/api/client";
 import type { ApiResponse } from "@/src/lib/types/api";
-import type { MyVoucher, ExchangedVoucher } from "./customerVoucherService";
+import type { ExchangedVoucher, MyVoucher } from "@/contracts/voucher";
 
 // Re-export for convenience
-export type { MyVoucher, ExchangedVoucher } from "./customerVoucherService";
+export type { ExchangedVoucher, MyVoucher } from "@/contracts/voucher";
 
 // ── API Calls ─────────────────────────────────────────────────────────────────
 

@@ -11,8 +11,8 @@ import {
   resolveOrderItemPremiumLatte,
   type PricingContext,
 } from "@/lib/pricing";
-import type { Size, SweetnessLevel } from "@/src/lib/types/menu";
-import type { IceOption } from "@/src/lib/types/cart";
+import type { Size, SweetnessLevel } from "@/contracts/menu";
+import type { IceOption } from "@/contracts/order";
 import type { Prisma, PrismaClient } from "@prisma/client";
 import {
   resolveDefaultBaseLiquidId,
