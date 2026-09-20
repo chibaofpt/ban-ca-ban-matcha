@@ -34,6 +34,7 @@ interface CartDiscountPickerProps {
   availableVoucherPackages: VoucherPackage[];
   pointsBalance: number;
   isLoading: boolean;
+  loadError: boolean;
   selectedVoucherIds: string[];
   selectedDiscountVouchers: MyVoucher[];
   selectedFreeshipVouchers: MyVoucher[];
@@ -79,6 +80,7 @@ export const CartDiscountPicker = ({
   availableVoucherPackages,
   pointsBalance,
   isLoading,
+  loadError,
   selectedVoucherIds,
   selectedDiscountVouchers,
   selectedFreeshipVouchers,
@@ -121,7 +123,10 @@ export const CartDiscountPicker = ({
   const myVouchers = [
     ...discountVouchers, ...freeshipVouchers, ...productDiscountVouchers,
     ...bundleVouchers, ...productVouchers, ...addonVouchers,
-  ].filter((voucher) => voucher.status === "ACTIVE");
+  ];
+  const hasAppliedNonBundleVoucher = selectedVoucherIds.length > 0 || cart.some((item) =>
+    Boolean(item.lineVoucher) || item.addonVouchers.length > 0,
+  );
 
   const productTargets = (voucher: MyVoucher) => cart.flatMap((item) => {
     const matchesProduct = (voucher.eligible_menu_items?.length ?? 0) > 0
@@ -224,6 +229,28 @@ export const CartDiscountPicker = ({
     setActiveView({ kind: "list" });
     onClose();
   };
+
+  const handleRetryWalletLoad = async () => {
+    if (isRetryingWallet) return;
+    setIsRetryingWallet(true);
+    try {
+      await onRefreshVouchers();
+    } catch {
+      toast.error("Chưa thể tải ví voucher. Vui lòng thử lại.");
+    } finally {
+      setIsRetryingWallet(false);
+    }
+  };
+
+  const clearAppliedNonBundleVouchers = () => {
+    onUpdateSelectedVouchers([]);
+    for (const item of cart) {
+      if (item.lineVoucher) onRemoveProductVoucher(item.cartId);
+      for (const addonVoucher of item.addonVouchers) {
+        onRemoveAddonVoucher(item.cartId, addonVoucher.token);
+      }
+    }
+  };
   const detailProductItem = detailVoucher?.voucher_type === "PRODUCT_DISCOUNT"
     ? cart.find((item) => item.lineVoucher?.token === detailVoucher.qr_token)
     : undefined;
@@ -259,10 +286,10 @@ export const CartDiscountPicker = ({
         onChange={setActiveTab}
         onClose={closePicker}
         detailOpen={detailVoucher !== null}
-        headerAction={activeTab === "my_vouchers" && selectedVoucherIds.length > 0 ? (
+        headerAction={activeTab === "my_vouchers" && !isLoading && !loadError && hasAppliedNonBundleVoucher ? (
           <button
             type="button"
-            onClick={() => onUpdateSelectedVouchers([])}
+            onClick={clearAppliedNonBundleVouchers}
             className="min-h-11 shrink-0 rounded-full bg-red-50 px-3 text-xs font-bold text-red-500 transition-colors hover:bg-red-100 focus-visible:ring-2 focus-visible:ring-ring"
           >
             Bỏ tất cả
@@ -287,7 +314,7 @@ export const CartDiscountPicker = ({
                   voucher={detailVoucher}
                   cartItems={cart}
                   subtotalVnd={subtotalPrice}
-                  myVouchers={detailVoucher.status === "ACTIVE" ? myVouchers : [...myVouchers, detailVoucher]}
+                  myVouchers={myVouchers}
                   orderType={orderType}
                   shippingFee={shippingFee}
                   menuData={menuData}
@@ -322,7 +349,20 @@ export const CartDiscountPicker = ({
       >
         {activeTab === "my_vouchers" && <section>
           {acquisitionReceiptView}
-          {isLoading ? (
+          {loadError ? (
+            <div role="alert" className="flex min-h-40 flex-col items-center justify-center gap-3 rounded-2xl border border-red-200 bg-red-50 p-5 text-center">
+              <p className="text-sm font-bold text-red-900">Không thể tải ví voucher</p>
+              <button
+                type="button"
+                onClick={() => void handleRetryWalletLoad()}
+                disabled={isRetryingWallet}
+                className="min-h-11 rounded-xl border border-red-300 bg-white px-4 text-xs font-bold text-red-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700 disabled:opacity-60"
+              >
+                {isRetryingWallet ? <Loader2 className="mr-1 inline size-4 animate-spin" aria-hidden="true" /> : null}
+                Thử lại
+              </button>
+            </div>
+          ) : isLoading ? (
             <div
               role="status"
               aria-label="Đang tải voucher"

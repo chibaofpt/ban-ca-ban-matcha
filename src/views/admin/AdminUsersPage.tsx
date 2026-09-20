@@ -1,11 +1,11 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Loader2, Receipt, Search, Ticket } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { ArrowLeft, Copy, Loader2, Receipt, Search, Ticket } from "lucide-react";
+import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 import { AdminUserActions } from "@/src/components/admin/AdminUserActions";
-import { AdminUserOrderTotals } from "@/src/components/admin/AdminUserOrderTotals";
+import { AdminUserOrderDetail } from "@/src/components/admin/AdminUserOrderDetail";
 import { AdminUserOrders } from "@/src/components/admin/AdminUserOrders";
 import { AdminUserPagination } from "@/src/components/admin/AdminUserPagination";
 import { AdminUserPointsGift } from "@/src/components/admin/AdminUserPointsGift";
@@ -24,10 +24,19 @@ import {
 } from "@/src/services/adminUserService";
 
 type AccountIntent = { action: AdminUserPatch; title: string; message: string; confirmLabel: string; destructive?: boolean };
-type GiftPanel = "points" | "voucher" | null;
+type DetailTab = "orders" | "vouchers";
+type DetailView =
+  | { kind: "customer" }
+  | { kind: "gift-points" }
+  | { kind: "gift-voucher" }
+  | { kind: "order"; orderId: string };
 
 function errorText(error: unknown): string {
   return error instanceof ApiServiceError || error instanceof Error ? error.message : "Thao tác thất bại";
+}
+
+function DetailBackButton({ onClick, disabled = false }: { onClick: () => void; disabled?: boolean }) {
+  return <Button type="button" variant="ghost" disabled={disabled} onClick={onClick} className="min-h-11 gap-2 px-2 focus-visible:ring-2 focus-visible:ring-ring"><ArrowLeft className="h-4 w-4" />Quay lại khách hàng</Button>;
 }
 
 /** Composes the searchable admin customer list and managed detail surfaces. */
@@ -37,9 +46,13 @@ export default function AdminUsersPage() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<AdminUserSummaryDto | null>(null);
-  const [giftPanel, setGiftPanel] = useState<GiftPanel>(null);
+  const [detailView, setDetailView] = useState<DetailView>({ kind: "customer" });
+  const [activeTab, setActiveTab] = useState<DetailTab>("orders");
+  const [ordersPage, setOrdersPage] = useState(1);
+  const [vouchersPage, setVouchersPage] = useState(1);
+  const ordersTabRef = useRef<HTMLButtonElement>(null);
+  const vouchersTabRef = useRef<HTMLButtonElement>(null);
   const [intent, setIntent] = useState<AccountIntent | null>(null);
-  const [orderId, setOrderId] = useState<string | null>(null);
   const [voucherBusy, setVoucherBusy] = useState(false);
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
 
@@ -49,10 +62,11 @@ export default function AdminUsersPage() {
     queryFn: () => fetchAdminUser(selected!.qr_token),
     enabled: Boolean(selected),
   });
+  const selectedOrderId = detailView.kind === "order" ? detailView.orderId : null;
   const orderQuery = useQuery({
-    queryKey: adminUserKeys.order(selected?.qr_token ?? "", orderId ?? ""),
-    queryFn: () => fetchAdminUserOrder(selected!.qr_token, orderId!),
-    enabled: Boolean(selected && orderId),
+    queryKey: adminUserKeys.order(selected?.qr_token ?? "", selectedOrderId ?? ""),
+    queryFn: () => fetchAdminUserOrder(selected!.qr_token, selectedOrderId!),
+    enabled: Boolean(selected && selectedOrderId),
   });
   const refreshCustomer = async () => {
     await queryClient.invalidateQueries({ queryKey: adminUserKeys.all });
@@ -63,20 +77,40 @@ export default function AdminUsersPage() {
   });
   const pointsMutation = useMutation({
     mutationFn: ({ token, points }: { token: string; points: number }) => giftAdminUserPoints(token, points),
-    onSuccess: async () => { await refreshCustomer(); setGiftPanel(null); toast.success("Đã tặng điểm"); },
+    onSuccess: async () => { await refreshCustomer(); setDetailView({ kind: "customer" }); toast.success("Đã tặng điểm"); },
     onError: (error) => toast.error(errorText(error)),
   });
   const user = detailQuery.data ?? selected;
   const busy = accountMutation.isPending || pointsMutation.isPending || voucherBusy;
+  const sheetTitle = detailView.kind === "gift-points" ? "Tặng điểm"
+    : detailView.kind === "gift-voucher" ? "Tặng voucher"
+      : detailView.kind === "order" ? orderQuery.data?.code ?? "Chi tiết đơn hàng"
+        : user?.name ?? "Chi tiết khách hàng";
+  const sheetDescription = detailView.kind === "order"
+    ? "Các giá trị đã lưu tại thời điểm đặt đơn."
+    : user ? `${user.phone_number} · ${user.current_voucher_count} voucher hiện có` : "Đang tải thông tin khách hàng";
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPage(1);
     setQuery(input.trim());
   }
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, currentTab: DetailTab) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const nextTab = currentTab === "orders" ? "vouchers" : "orders";
+    setActiveTab(nextTab);
+    (nextTab === "orders" ? ordersTabRef : vouchersTabRef).current?.focus();
+  }
   function closeCustomer() {
     if (busy) return;
-    setSelected(null); setGiftPanel(null); setOrderId(null); setIntent(null); setTemporaryPassword(null);
+    setSelected(null);
+    setDetailView({ kind: "customer" });
+    setActiveTab("orders");
+    setOrdersPage(1);
+    setVouchersPage(1);
+    setIntent(null);
+    setTemporaryPassword(null);
   }
   function accountIntent(action: AdminUserPatch): AccountIntent {
     if (action.action === "reset_password") return { action, title: "Reset mật khẩu", message: "Tạo mật khẩu tạm thời mới cho khách hàng này?", confirmLabel: "Reset mật khẩu" };
@@ -108,19 +142,26 @@ export default function AdminUsersPage() {
     </form>
     {listQuery.isPending ? <p role="status" className="flex justify-center gap-2 py-12 text-muted-foreground"><Loader2 className="animate-spin" />Đang tải khách hàng…</p> : listQuery.isError ? <div className="space-y-3 rounded-2xl bg-destructive/10 p-5 text-destructive"><p role="alert">Không tải được danh sách khách hàng.</p><Button variant="outline" onClick={() => void listQuery.refetch()}>Thử lại</Button></div> : listQuery.data.items.length === 0 ? <p className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">Không tìm thấy khách hàng phù hợp.</p> : <section className="space-y-3" aria-label="Danh sách khách hàng">{listQuery.data.items.map((item) => <AdminUserSummary key={item.qr_token} user={item} interactive onClick={() => setSelected(item)} />)}<AdminUserPagination page={listQuery.data.page} totalPages={listQuery.data.total_pages} disabled={listQuery.isFetching} onPageChange={setPage} /></section>}
 
-    <ResponsiveOverlay open={Boolean(selected)} title={user?.name ?? "Chi tiết khách hàng"} description={user ? `${user.phone_number} · ${user.current_voucher_count} voucher hiện có` : "Đang tải thông tin khách hàng"} size="lg" dismissPolicy="locked-while-busy" busy={busy} onOpenChange={(open) => { if (!open) closeCustomer(); }}>
-      {detailQuery.isPending || !user ? <p role="status" className="flex justify-center gap-2 py-10 text-muted-foreground"><Loader2 className="animate-spin" />Đang tải chi tiết…</p> : detailQuery.isError ? <div className="space-y-3"><p role="alert" className="text-destructive">Không tải được chi tiết khách hàng.</p><Button variant="outline" onClick={() => void detailQuery.refetch()}>Thử lại</Button></div> : <div className="space-y-6">
+    <ResponsiveOverlay open={Boolean(selected)} title={sheetTitle} description={sheetDescription} size="lg" dismissPolicy="locked-while-busy" busy={busy} onOpenChange={(open) => { if (!open) closeCustomer(); }}>
+      {detailQuery.isPending || !user ? <p role="status" className="flex justify-center gap-2 py-10 text-muted-foreground"><Loader2 className="animate-spin" />Đang tải chi tiết…</p> : detailQuery.isError ? <div className="space-y-3"><p role="alert" className="text-destructive">Không tải được chi tiết khách hàng.</p><Button variant="outline" onClick={() => void detailQuery.refetch()}>Thử lại</Button></div> : detailView.kind === "customer" ? <div className="space-y-6">
         <section className="rounded-2xl border bg-card p-4"><AdminUserSummary user={user} /></section>
-        <AdminUserActions user={user} busy={busy} onShowPoints={() => setGiftPanel(giftPanel === "points" ? null : "points")} onShowVouchers={() => setGiftPanel(giftPanel === "voucher" ? null : "voucher")} onResetPassword={() => setIntent(accountIntent({ action: "reset_password" }))} onBlockToggle={() => setIntent(accountIntent({ action: "block", is_blocked: !user.is_blocked }))} onVerify={() => setIntent(accountIntent({ action: "verify", is_verified: !user.is_verified }))} />
-        {giftPanel === "points" ? <AdminUserPointsGift currentBalance={user.points_balance} pending={pointsMutation.isPending} onSubmit={async (points) => { try { await pointsMutation.mutateAsync({ token: user.qr_token, points }); } catch { /* Mutation feedback is handled by onError. */ } }} /> : null}
-        {giftPanel === "voucher" ? <AdminUserVoucherGift userQrToken={user.qr_token} onBusyChange={setVoucherBusy} onGifted={refreshCustomer} /> : null}
-        <section className="space-y-3"><h3 className="flex items-center gap-2 font-bold"><Receipt className="h-5 w-5" />Đơn hàng</h3><AdminUserOrders userQrToken={user.qr_token} onSelectOrder={setOrderId} /></section>
-        <section className="space-y-3"><h3 className="flex items-center gap-2 font-bold"><Ticket className="h-5 w-5" />Voucher trong ví</h3><AdminUserVouchers userQrToken={user.qr_token} /></section>
+        <AdminUserActions user={user} busy={busy} onShowPoints={() => setDetailView({ kind: "gift-points" })} onShowVouchers={() => setDetailView({ kind: "gift-voucher" })} onResetPassword={() => setIntent(accountIntent({ action: "reset_password" }))} onBlockToggle={() => setIntent(accountIntent({ action: "block", is_blocked: !user.is_blocked }))} onVerify={() => setIntent(accountIntent({ action: "verify", is_verified: !user.is_verified }))} />
+        <div className="grid grid-cols-2 rounded-xl bg-muted p-1" role="tablist" aria-label="Thông tin khách hàng">
+          <button ref={ordersTabRef} id="admin-user-orders-tab" type="button" role="tab" tabIndex={activeTab === "orders" ? 0 : -1} aria-selected={activeTab === "orders"} aria-controls="admin-user-orders-panel" onKeyDown={(event) => handleTabKeyDown(event, "orders")} onClick={() => setActiveTab("orders")} className={activeTab === "orders" ? "flex min-h-11 items-center justify-center gap-2 rounded-lg bg-background px-3 text-sm font-semibold text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" : "flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"}><Receipt className="h-4 w-4" />Orders</button>
+          <button ref={vouchersTabRef} id="admin-user-vouchers-tab" type="button" role="tab" tabIndex={activeTab === "vouchers" ? 0 : -1} aria-selected={activeTab === "vouchers"} aria-controls="admin-user-vouchers-panel" onKeyDown={(event) => handleTabKeyDown(event, "vouchers")} onClick={() => setActiveTab("vouchers")} className={activeTab === "vouchers" ? "flex min-h-11 items-center justify-center gap-2 rounded-lg bg-background px-3 text-sm font-semibold text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" : "flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"}><Ticket className="h-4 w-4" />Vouchers</button>
+        </div>
+        <section id="admin-user-orders-panel" role="tabpanel" aria-labelledby="admin-user-orders-tab" hidden={activeTab !== "orders"}>{activeTab === "orders" ? <AdminUserOrders userQrToken={user.qr_token} page={ordersPage} onPageChange={setOrdersPage} onSelectOrder={(orderId) => setDetailView({ kind: "order", orderId })} /> : null}</section>
+        <section id="admin-user-vouchers-panel" role="tabpanel" aria-labelledby="admin-user-vouchers-tab" hidden={activeTab !== "vouchers"}>{activeTab === "vouchers" ? <AdminUserVouchers userQrToken={user.qr_token} page={vouchersPage} onPageChange={setVouchersPage} /> : null}</section>
+      </div> : detailView.kind === "gift-points" ? <div className="space-y-4">
+        <DetailBackButton onClick={() => setDetailView({ kind: "customer" })} />
+        <AdminUserPointsGift currentBalance={user.points_balance} pending={pointsMutation.isPending} onSubmit={async (points) => { try { await pointsMutation.mutateAsync({ token: user.qr_token, points }); } catch { /* Mutation feedback is handled by onError. */ } }} />
+      </div> : detailView.kind === "gift-voucher" ? <div className="space-y-4">
+        <DetailBackButton disabled={voucherBusy} onClick={() => { if (voucherBusy) return; setDetailView({ kind: "customer" }); }} />
+        <AdminUserVoucherGift userQrToken={user.qr_token} onBusyChange={setVoucherBusy} onGifted={async () => { await refreshCustomer(); setVoucherBusy(false); setDetailView({ kind: "customer" }); }} />
+      </div> : <div className="space-y-4">
+        <DetailBackButton onClick={() => setDetailView({ kind: "customer" })} />
+        {orderQuery.isPending ? <p role="status" className="flex gap-2 text-muted-foreground"><Loader2 className="animate-spin" />Đang tải đơn hàng…</p> : orderQuery.isError ? <div className="space-y-3"><p role="alert" className="text-destructive">Không tải được đơn hàng.</p><Button variant="outline" onClick={() => void orderQuery.refetch()}>Thử lại</Button></div> : orderQuery.data ? <AdminUserOrderDetail order={orderQuery.data} /> : null}
       </div>}
-    </ResponsiveOverlay>
-
-    <ResponsiveOverlay open={Boolean(orderId)} title={orderQuery.data?.code ?? "Chi tiết đơn hàng"} description="Các giá trị đã lưu tại thời điểm đặt đơn." size="md" layer="nested" nested onOpenChange={(open) => { if (!open) setOrderId(null); }}>
-      {orderQuery.isPending ? <p role="status" className="flex gap-2 text-muted-foreground"><Loader2 className="animate-spin" />Đang tải đơn hàng…</p> : orderQuery.isError ? <div className="space-y-3"><p role="alert" className="text-destructive">Không tải được đơn hàng.</p><Button variant="outline" onClick={() => void orderQuery.refetch()}>Thử lại</Button></div> : orderQuery.data ? <div className="space-y-4"><ul className="space-y-3">{orderQuery.data.items.map((item) => <li key={item.id} className="rounded-xl border p-3"><p className="font-medium">{item.quantity} × {item.menu_item.name}</p>{item.addons.length ? <p className="mt-1 text-sm text-muted-foreground">{item.addons.map((addon) => `${addon.quantity} × ${addon.label}`).join(" · ")}</p> : null}</li>)}</ul><AdminUserOrderTotals order={orderQuery.data} /></div> : null}
     </ResponsiveOverlay>
 
     <ConfirmModal isOpen={intent !== null} title={intent?.title ?? "Xác nhận"} message={intent?.message ?? ""} confirmLabel={intent?.confirmLabel} isDestructive={intent?.destructive} isLoading={accountMutation.isPending} onCancel={() => setIntent(null)} onConfirm={() => void confirmAccountAction()} />

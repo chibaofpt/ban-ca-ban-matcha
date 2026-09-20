@@ -17,6 +17,7 @@ Tài liệu này mô tả hệ thống đang được hỗ trợ, không phải 
 | Wallet, voucher detail/claim, admin wizard | [Voucher UI](docs/specs/voucher-ui.md) |
 | Quà đăng ký, hộp matcha, admin reward campaign | [Reward UI](docs/specs/reward-ui.md) |
 | Cart source model, BUNDLE setup, POS recovery | [Cart và POS](docs/specs/cart.md) |
+| Admin Users, customer detail/actions/orders/wallet | [Admin customer management](docs/specs/admin-customer-management.md) |
 | Cách duy trì spec/harness | [Spec registry](docs/specs/README.md) |
 
 ## Voucher nhiều lựa chọn

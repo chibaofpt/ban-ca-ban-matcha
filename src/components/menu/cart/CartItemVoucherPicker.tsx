@@ -68,8 +68,10 @@ export const CartItemVoucherPicker = ({
       {/* Overlay header */}
       <div className="flex items-center gap-3 px-5 py-4 border-b border-border/40 shrink-0 bg-white">
         <button
+          type="button"
           onClick={onClose}
-          className="w-8 h-8 rounded-full bg-primary/5 flex items-center justify-center hover:bg-primary/10 transition-colors"
+          aria-label="Quay lại giỏ hàng"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/5 transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ArrowLeft className="w-4 h-4 text-primary" />
         </button>

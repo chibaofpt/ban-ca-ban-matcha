@@ -56,6 +56,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     return NextResponse.json({ data: { success: true } });
   } catch (error) {
     if (error instanceof AdminUserWorkflowError && error.reason === "NOT_FOUND") return notFound();
+    if (error instanceof AdminUserWorkflowError && error.reason === "RESET_NOT_ALLOWED") {
+      return NextResponse.json({
+        error: "Password reset is not available for an unregistered customer",
+        code: "CONFLICT",
+        details: { reason: "RESET_NOT_ALLOWED" },
+      }, { status: 409 });
+    }
     captureServerException(error, { operation: "update_admin_user" });
     return NextResponse.json({ error: "Internal server error", code: "INTERNAL_ERROR" }, { status: 500 });
   }

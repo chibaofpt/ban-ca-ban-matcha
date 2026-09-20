@@ -50,6 +50,23 @@ describe("Admin customer routes", () => {
     expect(mocks.capture).not.toHaveBeenCalled();
   });
 
+  it("maps ghost password reset to the frozen 409 conflict envelope", async () => {
+    mocks.session.mockResolvedValue({ id: "admin", role: "ADMIN" });
+    mocks.resetPassword.mockRejectedValue(new AdminUserWorkflowError("RESET_NOT_ALLOWED"));
+
+    const response = await PATCH(new NextRequest(`http://localhost/api/admin/users/${token}`, {
+      method: "PATCH", body: JSON.stringify({ action: "reset_password" }),
+    }), { params: Promise.resolve({ userQrToken: token }) });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "Password reset is not available for an unregistered customer",
+      code: "CONFLICT",
+      details: { reason: "RESET_NOT_ALLOWED" },
+    });
+    expect(mocks.capture).not.toHaveBeenCalled();
+  });
+
   it("passes the public customer token, points and Admin ID to the real points route", async () => {
     mocks.session.mockResolvedValue({ id: "admin-id", role: "ADMIN" });
     mocks.giftPoints.mockResolvedValue(72);

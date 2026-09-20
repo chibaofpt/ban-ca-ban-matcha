@@ -1,13 +1,17 @@
-import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
+import bcrypt from "bcryptjs";
 
 import { prisma } from "@/lib/prisma";
 
 const MAX_INT = 2_147_483_647;
 
 export class AdminUserWorkflowError extends Error {
-  constructor(public readonly reason: "NOT_FOUND" | "BUSINESS_RULE_VIOLATION") {
-    super(reason === "NOT_FOUND" ? "Customer not found" : "Points balance would overflow");
+  constructor(public readonly reason: "NOT_FOUND" | "BUSINESS_RULE_VIOLATION" | "RESET_NOT_ALLOWED") {
+    super(reason === "NOT_FOUND"
+      ? "Customer not found"
+      : reason === "RESET_NOT_ALLOWED"
+        ? "Password reset is not available for an unregistered customer"
+        : "Points balance would overflow");
   }
 }
 
@@ -37,12 +41,19 @@ export async function setAdminUserBlocked(userQrToken: string, isBlocked: boolea
 
 /** Replaces a CUSTOMER password and revokes all sessions, returning the one-time password. */
 export async function resetAdminUserPassword(userQrToken: string): Promise<string> {
-  const temporaryPassword = randomBytes(12).toString("base64url");
+  const temporaryPassword = randomBytes(18).toString("base64url");
   const passwordHash = await bcrypt.hash(temporaryPassword, 12);
   await prisma.$transaction(async (tx) => {
-    const userId = await requireCustomerId(tx as typeof prisma, userQrToken);
-    await tx.user.update({ where: { id: userId }, data: { password_hash: passwordHash } });
-    await tx.session.deleteMany({ where: { user_id: userId } });
+    const user = await tx.user.findFirst({
+      where: { qr_token: userQrToken, role: "CUSTOMER" },
+      select: { id: true, password_hash: true },
+    });
+    if (!user) throw new AdminUserWorkflowError("NOT_FOUND");
+    if (user.password_hash === "GHOST_USER_NO_PASSWORD") {
+      throw new AdminUserWorkflowError("RESET_NOT_ALLOWED");
+    }
+    await tx.user.update({ where: { id: user.id }, data: { password_hash: passwordHash } });
+    await tx.session.deleteMany({ where: { user_id: user.id } });
   });
   return temporaryPassword;
 }

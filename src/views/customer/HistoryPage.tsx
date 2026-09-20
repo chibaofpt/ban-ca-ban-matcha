@@ -50,7 +50,7 @@ export default function HistoryPage() {
     () => fetchCustomerOrders({ page: orderPage, limit: 10, statusFilter: orderFilter }),
     [orderPage, orderFilter],
   );
-  const { data: ordersData, isLoading: ordersLoading } = useQuery({
+  const { data: ordersData, isLoading: ordersLoading, isError: ordersError, refetch: refetchOrders } = useQuery({
     queryKey: ["customer", "orders", { page: orderPage, filter: orderFilter }],
     queryFn: fetchOrders,
     refetchInterval: 15_000,
@@ -172,6 +172,8 @@ export default function HistoryPage() {
             <OrderHistoryTab
               orders={orders}
               isLoading={ordersLoading}
+              isError={ordersError}
+              onRetry={() => void refetchOrders()}
               page={orderPage}
               totalPages={totalOrderPages}
               filter={orderFilter}

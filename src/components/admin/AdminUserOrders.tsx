@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Loader2, Receipt } from 'lucide-react';
@@ -34,10 +33,12 @@ function summarizeItems(items: AdminUserOrderItem[]): string[] {
 }
 
 /** Lists a customer's orders with compact item groups and stored receipt totals. */
-export function AdminUserOrders({ userQrToken, onSelectOrder }: {
-  userQrToken: string; onSelectOrder: (orderId: string) => void;
+export function AdminUserOrders({ userQrToken, page, onPageChange, onSelectOrder }: {
+  userQrToken: string;
+  page: number;
+  onPageChange: (page: number) => void;
+  onSelectOrder: (orderId: string) => void;
 }) {
-  const [page, setPage] = useState(1);
   const query = useQuery({ queryKey: adminUserKeys.orders(userQrToken, page),
     queryFn: () => fetchAdminUserOrders(userQrToken, page) });
   if (query.isPending) return <p className="flex items-center gap-2 py-8 text-sm text-muted-foreground" role="status"><Loader2 className="h-4 w-4 animate-spin" />Đang tải đơn hàng…</p>;
@@ -63,7 +64,7 @@ export function AdminUserOrders({ userQrToken, onSelectOrder }: {
           <AdminUserOrderTotals order={order} compact />
         </motion.button>
       ))}
-      <AdminUserPagination page={page} totalPages={query.data.total_pages} onPageChange={setPage} disabled={query.isFetching} />
+      <AdminUserPagination page={page} totalPages={query.data.total_pages} onPageChange={onPageChange} disabled={query.isFetching} />
     </div>
   );
 }

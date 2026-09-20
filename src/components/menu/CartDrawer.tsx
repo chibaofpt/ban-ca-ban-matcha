@@ -21,7 +21,11 @@ import { useCustomerVouchers } from "@/src/hooks/useCustomerVouchers";
 import { useVoucherPackages } from "@/src/hooks/useVoucherPackages";
 import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
 import { buildAddonVoucherMap, buildProductVoucherMap } from "@/src/utils/voucherMatchUtils";
-import { filterActiveMainCartVouchers } from "@/src/utils/customerVoucherSelection";
+import {
+  filterActiveMainCartVouchers,
+  filterMainCartVouchers,
+  getCartLineVoucherKind,
+} from "@/src/utils/customerVoucherSelection";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { SizeLabel } from "@/src/components/ui/SizeLabel";
 import { DeliverySection } from "@/src/components/delivery/DeliverySection";
@@ -153,6 +157,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
   const [checkout, setCheckout] = useState<CheckoutState>({ status: "idle" });
   const [pickupTime, setPickupTime] = useState<string>("");
   const [minTimeStr, setMinTimeStr] = useState<string>("");
+  const [pickupTimeUnavailableToday, setPickupTimeUnavailableToday] = useState(false);
   const [isTimeCustom, setIsTimeCustom] = useState<boolean>(false);
 
   // ── Voucher state ──
@@ -216,7 +221,15 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
     if (!walletVerified) return { ok: false, code: "VOUCHER_CONFLICT", message: walletReadOnlyReason };
     const item = projectedItems.find((candidate) => candidate.cartId === cartId);
     if (!item) return { ok: false, code: "ITEM_NOT_FOUND", message: "Không tìm thấy món trong giỏ" };
-    return applyProductVoucher(cartId, voucher.qr_token, getItemVoucherBenefit(item, voucher), voucher.voucher_type === "PRODUCT_DISCOUNT" ? "PRODUCT_DISCOUNT" : "PRODUCT");
+    if (voucher.voucher_type !== "ITEM" && voucher.voucher_type !== "PRODUCT" && voucher.voucher_type !== "PRODUCT_DISCOUNT") {
+      return { ok: false, code: "VOUCHER_CONFLICT", message: "Voucher không áp dụng cho món này" };
+    }
+    return applyProductVoucher(
+      cartId,
+      voucher.qr_token,
+      getItemVoucherBenefit(item, voucher),
+      getCartLineVoucherKind({ voucher_type: voucher.voucher_type }),
+    );
   }, [applyProductVoucher, getItemVoucherBenefit, projectedItems, walletReadOnlyReason, walletVerified]);
   const removeProductVoucherIfVerified = useCallback((cartId: string): CartMutationResult => walletVerified
     ? removeProductVoucher(cartId)
@@ -261,7 +274,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
   }, [openLoginWithIntent]);
 
   // ── Delivery state ──
-  const [orderType, setOrderType] = useState<"PICKUP" | "DELIVERY">("DELIVERY");
+  const [orderType, setOrderType] = useState<"PICKUP" | "DELIVERY">("PICKUP");
   const [deliveryAddress, setDeliveryAddress] = useState<Address | null>(null);
   const [shippingFee, setShippingFee] = useState<number | null>(null);
   const [deliveryDistanceKm, setDeliveryDistanceKm] = useState<number | null>(null);
@@ -290,17 +303,17 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
 
   // Derived voucher lists
   const editableWalletVouchers = walletVerified ? visibleWalletVouchers : [];
-  const discountVouchers = filterActiveMainCartVouchers(editableWalletVouchers, "DISCOUNT");
-  const freeshipVouchers = filterActiveMainCartVouchers(editableWalletVouchers, "FREESHIP");
-  const productDiscountVouchers = filterActiveMainCartVouchers(editableWalletVouchers, "PRODUCT_DISCOUNT");
+  const discountVouchers = filterMainCartVouchers(editableWalletVouchers, "DISCOUNT");
+  const freeshipVouchers = filterMainCartVouchers(editableWalletVouchers, "FREESHIP");
+  const productDiscountVouchers = filterMainCartVouchers(editableWalletVouchers, "PRODUCT_DISCOUNT");
   const applicableAddonVouchersMap = buildAddonVoucherMap(editableWalletVouchers, projectedItems);
   const applicableProductVouchers = buildProductVoucherMap(editableWalletVouchers, projectedItems);
   const bundleVouchers = filterActiveMainCartVouchers(visibleWalletVouchers, "BUNDLE").filter(
     (voucher) => voucher.package.bundleRule,
   );
-  const cartProductVouchers = filterActiveMainCartVouchers(editableWalletVouchers, "PRODUCT");
-  const cartItemVouchers = filterActiveMainCartVouchers(editableWalletVouchers, "ITEM");
-  const cartAddonVouchers = filterActiveMainCartVouchers(editableWalletVouchers, "ADDON");
+  const cartProductVouchers = filterMainCartVouchers(editableWalletVouchers, "PRODUCT");
+  const cartItemVouchers = filterMainCartVouchers(editableWalletVouchers, "ITEM");
+  const cartAddonVouchers = filterMainCartVouchers(editableWalletVouchers, "ADDON");
   const bundleCartSummary = useMemo(() => summarizeBundleCart(projectedItems), [projectedItems]);
   const bundleSelectionStates = useMemo(() => bundleApplications.map((application) => {
     const voucher = bundleVouchers.find((candidate) => candidate.qr_token === application.voucher_qr_token);
@@ -497,9 +510,19 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
 
   useEffect(() => {
     const updateTimes = () => {
-      const minD = new Date(Date.now() + 10 * 60000);
-      const defD = new Date(Date.now() + 12 * 60000);
+      const now = new Date();
+      const minD = new Date(now.getTime() + 10 * 60000);
+      const defD = new Date(now.getTime() + 12 * 60000);
       const pad = (n: number) => n.toString().padStart(2, '0');
+
+      const crossedDay = minD.getFullYear() !== now.getFullYear() ||
+        minD.getMonth() !== now.getMonth() || minD.getDate() !== now.getDate();
+      setPickupTimeUnavailableToday(crossedDay);
+      if (crossedDay) {
+        setMinTimeStr("");
+        if (!isTimeCustom) setPickupTime("");
+        return;
+      }
 
       const newMinStr = `${pad(minD.getHours())}:${pad(minD.getMinutes())}`;
       const newDefStr = `${pad(defD.getHours())}:${pad(defD.getMinutes())}`;
@@ -663,6 +686,10 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
       let finalPickupTime: string | undefined = undefined;
       const minAllowedTime = Date.now() + 10 * 60 * 1000;
 
+      if (pickupTimeUnavailableToday) {
+        setCheckout({ status: "error", message: "Hôm nay không còn khung giờ nhận món hợp lệ." });
+        return;
+      }
       if (pickupTime) {
         const [hours, minutes] = pickupTime.split(':');
         const selectedDate = new Date();
@@ -768,6 +795,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
     setCartOpen,
     resetCheckout,
     pickupTime,
+    pickupTimeUnavailableToday,
     selectedDiscountVouchers,
     bundleApplications,
     bundleApplicationsWithRuntime,
@@ -1041,7 +1069,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
               </AnimatePresence>
             </div>
 
-            <CartFooter
+            {(checkout.status === "idle" || checkout.status === "loading") && <CartFooter
               itemsLength={items.length}
               isLoggedIn={isLoggedIn}
               openLogin={openLogin}
@@ -1053,6 +1081,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
               pickupTime={pickupTime}
               setPickupTime={setPickupTime}
               minTimeStr={minTimeStr}
+              pickupTimeUnavailableToday={pickupTimeUnavailableToday}
               setIsTimeCustom={setIsTimeCustom}
               handleToggleDragEnd={handleToggleDragEnd}
               isFetchingAddress={isFetchingAddress}
@@ -1077,7 +1106,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
               checkout={checkout}
               handleCheckout={handleCheckout}
               setShowClearConfirm={setShowClearConfirm}
-            />
+            />}
           </div>
 
           {/* ── Overlay: Item Voucher Picker ─────────────────────────────── */}
@@ -1109,7 +1138,8 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
                 productDiscountVouchers={productDiscountVouchers}
                 availableVoucherPackages={availableVoucherPackages}
                 pointsBalance={pointsBalance}
-                isLoading={voucherLoadState !== "loaded"}
+                isLoading={voucherLoadState === "idle" || voucherLoadState === "loading"}
+                loadError={voucherLoadState === "error"}
                 selectedVoucherIds={selectedVoucherIds}
                 selectedDiscountVouchers={selectedDiscountVouchers}
                 selectedFreeshipVouchers={selectedFreeshipVouchers}
@@ -1152,8 +1182,10 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
               >
                 <div className="flex items-center gap-3 px-5 py-4 border-b border-border/40 shrink-0 bg-white shadow-sm z-10">
                   <button
+                    type="button"
                     onClick={() => setIsAddressPickerOpen(false)}
-                    className="w-8 h-8 rounded-full bg-primary/5 flex items-center justify-center hover:bg-primary/10 transition-colors"
+                    aria-label="Quay lại giỏ hàng"
+                    className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/5 transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <ArrowLeft className="w-4 h-4 text-primary" />
                   </button>

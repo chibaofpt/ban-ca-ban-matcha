@@ -933,8 +933,11 @@ describe("GET /api/orders", () => {
 
   it("returns customer orders ordered by created_at desc", async () => {
     const mockOrders = [
-      { id: "o1", user_id: USER_ID, created_at: "2026-05-01" },
-      { id: "o2", user_id: USER_ID, created_at: "2026-05-02" },
+      { id: "o1", user_id: USER_ID, created_at: "2026-05-01", pointsLogs: [
+        { reason: "order_complete", delta: 5 },
+        { reason: "voucher_surplus", delta: 2 },
+      ] },
+      { id: "o2", user_id: USER_ID, created_at: "2026-05-02", pointsLogs: [] },
     ];
     Object.assign(prisma.order, { findMany: vi.fn().mockResolvedValue(mockOrders) });
 
@@ -942,9 +945,10 @@ describe("GET /api/orders", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.data).toEqual(
-      mockOrders.map(({ id, created_at }) => ({
+      mockOrders.map(({ id, created_at, pointsLogs }) => ({
         id,
         created_at,
+        points_earned: pointsLogs.reduce((total, log) => total + log.delta, 0),
         discountVouchers: [],
         items: [],
         payment_qr_url: null,

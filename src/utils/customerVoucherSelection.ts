@@ -76,6 +76,10 @@ interface MainCartVoucherDescriptor {
   status: string;
 }
 
+interface CartLineVoucherDescriptor {
+  voucher_type: "ITEM" | "PRODUCT" | "PRODUCT_DISCOUNT";
+}
+
 interface OrderVoucherDescriptor {
   qr_token: string;
   voucher_type: string;
@@ -88,6 +92,24 @@ export function filterActiveMainCartVouchers<T extends MainCartVoucherDescriptor
   voucherType: "DISCOUNT" | "FREESHIP" | "BUNDLE" | "PRODUCT_DISCOUNT" | "PRODUCT" | "ITEM" | "ADDON",
 ): T[] {
   return vouchers.filter((voucher) => voucher.voucher_type === voucherType && voucher.status === "ACTIVE");
+}
+
+/** Keeps selectable and reserved vouchers visible so the cart can explain their state. */
+export function filterMainCartVouchers<T extends MainCartVoucherDescriptor>(
+  vouchers: T[],
+  voucherType: "DISCOUNT" | "FREESHIP" | "PRODUCT_DISCOUNT" | "PRODUCT" | "ITEM" | "ADDON",
+): T[] {
+  return vouchers.filter((voucher) =>
+    voucher.voucher_type === voucherType &&
+    (voucher.status === "ACTIVE" || voucher.status === "RESERVED"),
+  );
+}
+
+/** Preserves the owned voucher type when attaching it to a cart line. */
+export function getCartLineVoucherKind(
+  voucher: CartLineVoucherDescriptor,
+): CartLineVoucherDescriptor["voucher_type"] {
+  return voucher.voucher_type;
 }
 
 /** Selects an order voucher while replacing the mutually exclusive token of the same class. */
@@ -111,10 +133,9 @@ export function selectOrderVoucherToken<T extends OrderVoucherDescriptor>(
 /** Resolves wallet action routing without coupling card content to its action. */
 export function resolveWalletUseNowIntent(_input: {
   voucherType: string;
-  productDiscountTargets?: ProductDiscountTarget[];
   canApplyOrder?: boolean;
 }): WalletUseNowIntent {
-  const { voucherType, productDiscountTargets = [], canApplyOrder = false } = _input;
+  const { voucherType, canApplyOrder = false } = _input;
   if (voucherType === "PRODUCT" || voucherType === "ITEM") return { kind: "apply-product" };
   if (voucherType === "PRODUCT_DISCOUNT") {
     // Always open detail so customer can pick item + customize via ProductModal

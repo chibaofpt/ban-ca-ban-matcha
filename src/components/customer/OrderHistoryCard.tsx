@@ -103,7 +103,7 @@ export function OrderHistoryCard({
               <p className="text-xs font-semibold">
                 Nhận được{" "}
                 <span className="text-primary">
-                  +{Math.floor(order.total_vnd / 10_000)} điểm 🐟
+                  +{order.points_earned} điểm 🐟
                 </span>
               </p>
               <p className="mt-0.5 text-[11px] text-muted-foreground">

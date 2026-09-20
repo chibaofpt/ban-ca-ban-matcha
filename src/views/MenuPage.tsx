@@ -48,6 +48,7 @@ export default function MenuPage() {
   const isLoggedInSynced = useIsLoggedInSynced();
   const openVoucherModal = useVoucherModalStore((state) => state.openModal);
   const cartItems = useCartStore((state) => state.items);
+  const selectedOrderVoucherTokens = useCartStore((state) => state.selectedOrderVoucherTokens);
   const bundleApplications = useCartStore((state) => state.bundleApplications);
   const updateQuantity = useCartStore((state) => state.updateQuantity);
   const removeItem = useCartStore((state) => state.removeItem);
@@ -72,7 +73,7 @@ export default function MenuPage() {
     enabled: Boolean(packagesRes) && isLoggedInSynced,
   });
   const visibleVouchers = isLoggedInSynced ? vouchersData ?? [] : [];
-  const projectedCartItems = useMemo(() => projectCart({
+  const projectedCart = useMemo(() => projectCart({
     items: cartItems,
     menuData: catalogUnavailable ? null : menuRes,
     powderData: catalogUnavailable ? null : powderRes,
@@ -81,10 +82,11 @@ export default function MenuPage() {
       isLoggedInSynced && vouchersLoaded && !vouchersFetching,
       vouchersData,
     ),
-    selectedOrderVoucherTokens: [],
+    selectedOrderVoucherTokens,
     bundleApplications,
     shippingFeeVnd: 0,
-  }).lines, [bundleApplications, cartItems, catalogUnavailable, isLoggedIn, isLoggedInSynced, menuRes, powderRes, vouchersData, vouchersLoaded, vouchersFetching]);
+  }), [bundleApplications, cartItems, catalogUnavailable, isLoggedIn, isLoggedInSynced, menuRes, powderRes, selectedOrderVoucherTokens, vouchersData, vouchersLoaded, vouchersFetching]);
+  const projectedCartItems = projectedCart.lines;
 
   const handleRetryCatalog = useCallback(() => {
     if (menuError) void refetchMenu();
@@ -266,7 +268,7 @@ export default function MenuPage() {
         }}
       />}
       <VoucherModal />
-      <CartButton />
+      <CartButton totalPriceVnd={projectedCart.totals.grand_total_vnd} />
       {data && powderRes && <CartDrawer menuData={data} powderData={powderRes} catalogUnavailable={catalogUnavailable} />}
     </main>
   );

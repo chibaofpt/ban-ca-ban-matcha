@@ -26,6 +26,7 @@ interface CartFooterProps {
   pickupTime: string;
   setPickupTime: (time: string) => void;
   minTimeStr: string;
+  pickupTimeUnavailableToday: boolean;
   setIsTimeCustom: (custom: boolean) => void;
   handleToggleDragEnd: (
     event: MouseEvent | TouchEvent | PointerEvent,
@@ -72,6 +73,7 @@ export const CartFooter = memo(function CartFooter({
   pickupTime,
   setPickupTime,
   minTimeStr,
+  pickupTimeUnavailableToday,
   setIsTimeCustom,
   handleToggleDragEnd,
   isFetchingAddress,
@@ -137,7 +139,9 @@ export const CartFooter = memo(function CartFooter({
             style={{ transform: orderType === "PICKUP" ? "translateX(0)" : "translateX(100%)" }}
           />
           <button
+            type="button"
             onClick={() => setOrderType("PICKUP")}
+            aria-pressed={orderType === "PICKUP"}
             className={cn(
               "relative z-10 flex-1 py-1.5 text-xs font-bold transition-colors duration-300",
               orderType === "PICKUP" ? "text-white" : "text-primary/50 hover:text-primary/70"
@@ -146,7 +150,9 @@ export const CartFooter = memo(function CartFooter({
             Đến lấy
           </button>
           <button
+            type="button"
             onClick={() => setOrderType("DELIVERY")}
+            aria-pressed={orderType === "DELIVERY"}
             className={cn(
               "relative z-10 flex-1 py-1.5 text-xs font-bold transition-colors duration-300",
               orderType === "DELIVERY" ? "text-white" : "text-primary/50 hover:text-primary/70"
@@ -159,9 +165,10 @@ export const CartFooter = memo(function CartFooter({
         <div className="flex flex-col gap-0.5" style={{ width: "33.33%" }}>
           <div className="flex items-center justify-between bg-secondary/10 rounded-xl px-2 py-1.5 h-full">
             <div className="flex items-center gap-1">
-              <p className="text-[10px] font-bold text-primary leading-tight">Giờ</p>
+              <label htmlFor="cart-pickup-time" className="text-[10px] font-bold text-primary leading-tight">Giờ</label>
             </div>
             <input
+              id="cart-pickup-time"
               type="time"
               min={minTimeStr}
               value={pickupTime}
@@ -178,13 +185,14 @@ export const CartFooter = memo(function CartFooter({
               onBlur={() => window.scrollTo(0, 0)}
               className={cn(
                 "bg-transparent text-xs font-bold focus:outline-none w-16 text-right cursor-pointer",
-                pickupTime && pickupTime < minTimeStr ? "text-red-500" : "text-primary"
+                pickupTimeUnavailableToday || (pickupTime && pickupTime < minTimeStr) ? "text-red-500" : "text-primary"
               )}
+              disabled={pickupTimeUnavailableToday}
             />
           </div>
-          {pickupTime && pickupTime < minTimeStr && (
+          {(pickupTimeUnavailableToday || (pickupTime && pickupTime < minTimeStr)) && (
             <span className="text-[10px] text-red-600 font-semibold text-right leading-tight">
-              Vui lòng đặt trước ít nhất 10 phút
+              {pickupTimeUnavailableToday ? "Hôm nay đã hết giờ nhận món" : "Vui lòng đặt trước ít nhất 10 phút"}
             </span>
           )}
         </div>
@@ -326,7 +334,9 @@ export const CartFooter = memo(function CartFooter({
       {/* DIV 2: Action row */}
       <div className="flex gap-2 mt-2">
         <button
+          type="button"
           onClick={() => setShowClearConfirm(true)}
+          aria-label="Xóa toàn bộ giỏ hàng"
           disabled={checkout.status === "loading"}
           className={cn(
             "flex-[1] py-3.5 rounded-xl font-bold text-xs border transition-all flex items-center justify-center",
@@ -344,6 +354,7 @@ export const CartFooter = memo(function CartFooter({
           disabled={
             checkout.status === "loading" || 
             itemsLength === 0 || 
+            pickupTimeUnavailableToday ||
             (!!pickupTime && pickupTime < minTimeStr) ||
             hasUnavailableItems ||
             checkoutBlocked ||
@@ -352,7 +363,7 @@ export const CartFooter = memo(function CartFooter({
           }
           className={cn(
             "flex-[3] py-3.5 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center justify-center gap-1.5",
-            checkout.status === "loading" || (!!pickupTime && pickupTime < minTimeStr) || hasUnavailableItems || checkoutBlocked || isStoreClosed || (orderType === "DELIVERY" && (!deliveryAddress || shippingFee === null || !!deliveryError))
+            checkout.status === "loading" || pickupTimeUnavailableToday || (!!pickupTime && pickupTime < minTimeStr) || hasUnavailableItems || checkoutBlocked || isStoreClosed || (orderType === "DELIVERY" && (!deliveryAddress || shippingFee === null || !!deliveryError))
               ? "bg-primary/60 text-white cursor-not-allowed"
               : "bg-primary text-white hover:scale-[1.01] active:scale-[0.99]"
           )}

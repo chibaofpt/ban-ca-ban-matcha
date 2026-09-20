@@ -7,7 +7,7 @@ import { deliveryService } from "@/src/services/deliveryService";
 import type { Address, AddressPayload } from "@/src/lib/types/address";
 import { AddressCard } from "@/src/components/address/AddressCard";
 import { AddressForm } from "@/src/components/address/AddressForm";
-import { MapPin, Plus, Loader2 } from "lucide-react";
+import { MapPin, Plus, Loader2, RefreshCcw } from "lucide-react";
 import { DELIVERY_CONFIG } from "@/src/constants/delivery";
 
 interface Props {
@@ -17,7 +17,7 @@ interface Props {
 }
 
 export function DeliverySection({ selectedAddressId, onAddressSelect, onError }: Props) {
-  const { data: addresses = [], isLoading: loading } = useCustomerAddresses();
+  const { data: addresses = [], isLoading: loading, isError, refetch } = useCustomerAddresses();
   const createAddressMutation = useCreateAddress();
   const [isFormOpen, setIsFormOpen] = useState(false);
 
@@ -97,7 +97,19 @@ export function DeliverySection({ selectedAddressId, onAddressSelect, onError }:
         )}
       </div>
 
-      {isFormOpen ? (
+      {isError ? (
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-6 text-center">
+          <p className="text-sm font-bold text-red-900">Không thể tải địa chỉ giao hàng</p>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            className="mx-auto mt-3 flex min-h-11 items-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-bold text-red-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700"
+          >
+            <RefreshCcw className="size-4" aria-hidden="true" />
+            Thử lại
+          </button>
+        </div>
+      ) : isFormOpen ? (
         <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
           <AddressForm
             onSubmit={handleSaveNew}

@@ -982,9 +982,9 @@ const ExtrasModal: React.FC<ProductModalProps> = ({
       )}
       {itemVouchers.length > 0 && (
         <div className="mt-5">
-          <p className="text-sm font-bold text-primary">Voucher Add-on</p>
+          <p className="text-sm font-bold text-primary">Voucher món lẻ</p>
           <button type="button" disabled={voucherControlsReadOnly} onClick={() => setVoucherId((current) => current ? null : itemVouchers[0]?.qr_token ?? null)} className={cn("mt-2 flex min-h-12 w-full items-center justify-between rounded-2xl border-2 px-4 text-left", hasVoucher ? "border-green-500 bg-green-50" : "border-border bg-white", voucherControlsReadOnly && "cursor-not-allowed opacity-60") }>
-            <span className="text-sm font-medium">{hasVoucher ? "Miễn phí 1 Add-on" : "Áp dụng voucher"}</span>
+            <span className="text-sm font-medium">{hasVoucher ? "Miễn phí 1 món" : "Áp dụng voucher"}</span>
             {hasVoucher && <CheckCircle2 className="h-5 w-5 text-green-600" />}
           </button>
         </div>

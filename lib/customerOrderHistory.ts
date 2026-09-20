@@ -2,6 +2,26 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { buildVietQRUrl } from "@/lib/vietqr";
 
+const ORDER_REWARD_REASONS = [
+  "order_complete",
+  "voucher_surplus",
+  "order_complete_reversed",
+  "voucher_surplus_reversed",
+] as const;
+const ORDER_REWARD_REASON_SET = new Set<string>(ORDER_REWARD_REASONS);
+
+/** Calculate the net customer-visible points awarded by one order. */
+export function calculateOrderPointsAwarded(
+  logs: ReadonlyArray<{ reason: string; delta: number }> = [],
+  completedOrderPointsFallback = 0,
+): number {
+  const hasOrderCompleteLog = logs.some((log) => log.reason === "order_complete");
+  return Math.max(0, logs.reduce(
+    (total, log) => ORDER_REWARD_REASON_SET.has(log.reason) ? total + log.delta : total,
+    hasOrderCompleteLog ? 0 : Math.max(0, completedOrderPointsFallback),
+  ));
+}
+
 /** Fetches and maps one read-only page of customer order history. */
 export async function getCustomerOrderHistory(
   userId: string,
@@ -29,6 +49,10 @@ export async function getCustomerOrderHistory(
       include: {
         discountVouchers: {
           include: { voucher: { include: { package: { select: { name: true } } } } },
+        },
+        pointsLogs: {
+          where: { reason: { in: [...ORDER_REWARD_REASONS] } },
+          select: { reason: true, delta: true },
         },
         items: {
           include: {
@@ -82,6 +106,7 @@ export async function getCustomerOrderHistory(
       payment_confirmed_by: confirmedByToRemove,
       freeship_voucher_id: freeshipVoucherIdToRemove,
       discountVouchers,
+      pointsLogs,
       items,
       ...publicOrder
     } = order;
@@ -91,6 +116,10 @@ export async function getCustomerOrderHistory(
     void freeshipVoucherIdToRemove;
     return {
       ...publicOrder,
+      points_earned: calculateOrderPointsAwarded(
+        pointsLogs,
+        order.status === "COMPLETED" ? order.points_earned ?? 0 : 0,
+      ),
       discountVouchers: (discountVouchers ?? []).map(({ voucher }) => ({
         voucher: { package: voucher.package },
       })),

@@ -3,7 +3,6 @@
 import React, { memo } from "react";
 import Image from "next/image";
 import { AlertTriangle, Minus, Plus, Trash2, X, Ticket } from "lucide-react";
-import { cn } from "@/src/utils/cn";
 import type { ProjectedCartLine } from "@/src/lib/types/cart";
 import type { MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
@@ -102,14 +101,7 @@ const CartItemCard = ({
 
   return (
     <div
-      onClick={() => {
-        if (!editBlocked) onEdit(item);
-      }}
-      className={cn(
-        "p-3.5 rounded-[1.25rem] bg-white border border-transparent shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] transition-colors flex gap-3.5",
-        editBlocked ? "cursor-not-allowed" : "cursor-pointer hover:border-border/60",
-      )}
-      aria-disabled={editBlocked}
+      className="flex gap-3.5 rounded-[1.25rem] border border-transparent bg-white p-3.5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]"
     >
       {/* Thumbnail & Stepper */}
       <div className="flex flex-col items-center gap-2 shrink-0">
@@ -123,13 +115,13 @@ const CartItemCard = ({
         
         {!hasAnyVoucher && (
           <div 
-            className="flex items-center gap-2.5 bg-white border border-border shadow-sm rounded-full px-1.5 py-1 w-full justify-between"
+            className="flex w-[7.5rem] items-center justify-between gap-1 rounded-full border border-border bg-white px-1 py-1 shadow-sm"
             onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={() => item.quantity <= 1 ? onRemove(item.cartId) : onUpdateQuantity(item.cartId, item.quantity - 1)}
               aria-label="Giảm số lượng"
-              className="w-6 h-6 rounded-full flex items-center justify-center text-primary hover:bg-primary/10 transition-colors"
+              className="flex h-11 w-11 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Minus className="w-3.5 h-3.5" />
             </button>
@@ -139,7 +131,7 @@ const CartItemCard = ({
             <button
               onClick={() => onUpdateQuantity(item.cartId, item.quantity + 1)}
               aria-label="Tăng số lượng"
-              className="w-6 h-6 rounded-full flex items-center justify-center text-primary hover:bg-primary/10 transition-colors"
+              className="flex h-11 w-11 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
@@ -151,9 +143,21 @@ const CartItemCard = ({
       <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
         {/* Title + Delete */}
         <div className="flex items-start justify-between w-full">
-          <h4 className="font-bold text-sm text-primary leading-tight truncate w-4/5 pr-2">
-            {item.name} {item.category === "fusion" && powderName ? `- ${powderName}` : ""}
-          </h4>
+          <button
+            type="button"
+            disabled={editBlocked}
+            onClick={() => onEdit(item)}
+            title={editBlocked ? voucherReadOnlyReason : undefined}
+            aria-label={`Chỉnh món ${item.name}`}
+            className="group min-h-11 min-w-0 w-4/5 rounded-lg pr-2 text-left transition-colors hover:bg-secondary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <span className="block truncate text-sm font-bold leading-tight text-primary">
+              {item.name} {item.category === "fusion" && powderName ? `- ${powderName}` : ""}
+            </span>
+            <span className="mt-1 block text-[11px] font-semibold text-primary/55 group-hover:text-primary/75">
+              Chỉnh món
+            </span>
+          </button>
           <div className="w-1/5 flex justify-end">
             <button
               onClick={(e) => {

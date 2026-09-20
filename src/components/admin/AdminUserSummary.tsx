@@ -18,15 +18,16 @@ export function AdminUserSummary({ user, interactive = false, onClick }: AdminUs
         <p className="truncate font-semibold text-foreground">{user.name}</p>
         <p className="truncate text-sm text-muted-foreground">{user.phone_number}{user.insta_name ? ` · @${user.insta_name.replace(/^@/, "")}` : ""}</p>
         <div className="mt-2 flex flex-wrap gap-2 text-xs">
-          <span className={cn("rounded-full px-2 py-1", user.is_verified ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive")}>{user.is_verified ? "Đã xác minh" : "Chưa xác minh"}</span>
+          {!user.is_registered ? <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">Chưa đăng ký</span> : null}
+          <span className={cn("rounded-full px-2 py-1", user.is_verified ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive")}>{user.is_verified ? "Đã xác thực" : "Chưa xác thực"}</span>
           {user.is_blocked ? <span className="rounded-full bg-destructive/10 px-2 py-1 text-destructive">Đã chặn</span> : null}
         </div>
       </div>
-      <div className="shrink-0 text-right">
+      <div className="max-w-[48%] shrink-0 text-right">
         <p className="font-bold text-primary">{money.format(user.annual_spend_vnd)}</p>
         <p className="text-xs text-muted-foreground">Chi tiêu matcha {user.spending_year}</p>
-        <p className="mt-1 text-sm font-medium">{user.points_balance.toLocaleString("vi-VN")} điểm</p>
-        <p className="max-w-48 text-xs text-muted-foreground">Đã dùng {user.points_spent.toLocaleString("vi-VN")} điểm · đổi {user.vouchers_exchanged.toLocaleString("vi-VN")} voucher</p>
+        <p className="mt-1 text-sm font-medium text-foreground">{user.points_balance.toLocaleString("vi-VN")} điểm</p>
+        <p className="max-w-48 text-xs text-muted-foreground">Đã sử dụng {user.points_spent.toLocaleString("vi-VN")} điểm đổi {user.vouchers_exchanged.toLocaleString("vi-VN")} vouchers</p>
       </div>
     </div>
   );

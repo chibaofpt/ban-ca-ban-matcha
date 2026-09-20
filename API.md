@@ -408,6 +408,12 @@ Registration creates or resolves exactly one welcome entitlement in the user/ses
 `PENDING`. Detailed selection, fallback and campaign rules belong to
 [voucher-flow lifecycle](.agents/skills/voucher-flow/references/lifecycle.md#welcome-reward-and-gacha).
 
+An unblocked CUSTOMER ghost row is claimed with a guarded update in that same transaction: the
+submitted name, password hash and Instagram alias replace the placeholder credentials while its
+existing customer history and balances remain attached. A blocked ghost returns `403 FORBIDDEN`.
+An existing registered phone, a non-CUSTOMER row, or losing the concurrent ghost-claim race returns
+`409 CONFLICT`; a create race re-reads the phone and may claim the ghost only if it is still eligible.
+
 ### Customer welcome reward
 
 Both routes are CUSTOMER-only. `GET /api/customer/rewards/welcome` is read-only and returns
@@ -562,10 +568,13 @@ Every route in this section requires an authenticated `ADMIN`. Missing authentic
 `users.qr_token` UUIDs. A missing token, a non-CUSTOMER account, or a malformed token is reported as
 `404 NOT_FOUND` without exposing `users.id`.
 
-- `GET /api/admin/users?page=1&q?=` returns a 10-row page ordered by latest order, then customers
-  without orders. Search matches name, phone, or Instagram alias. Each summary contains
-  `qr_token`, identity fields, `is_verified`, `is_blocked`, `points_balance`, current-year spend,
-  spent/exchanged/current-voucher counts, and `latest_order_at`.
+- `GET /api/admin/users?page=1&q?=` returns a 10-row page. Customers with at least one `COMPLETED`
+  order are ordered by the maximum `orders.updated_at` across their full history; customers without
+  a completed order form a stable tail. Search matches name, phone, or Instagram alias. Each summary
+  contains `qr_token`, identity fields, `is_registered`, `is_verified`, `is_blocked`,
+  `points_balance`, `spending_year`, `annual_spend_vnd`, spent/exchanged/current-voucher counts,
+  `latest_order_at`, and `latest_completed_order_at`. Annual spend sums stored `grand_total_vnd`
+  only for `COMPLETED` orders whose `created_at` falls in the current Vietnam calendar year.
 - `GET /api/admin/users/[userQrToken]` returns the same summary for one customer.
 - `PATCH /api/admin/users/[userQrToken]` accepts exactly one strict action:
 
@@ -576,9 +585,11 @@ Every route in this section requires an authenticated `ADMIN`. Missing authentic
 ```
 
 Verify and block return `{ data: { success: true } }`. Blocking revokes all active sessions in the
-same transaction. Reset replaces the password with a cryptographically random bcrypt credential,
-revokes all sessions, and returns the plaintext once as
+same transaction. Reset is available only to registered customers, replaces the password with the
+unique 24-character URL-safe credential generated from 144 bits of Node CSPRNG entropy and stored
+only as a cost-12 bcrypt hash, revokes all sessions, and returns the plaintext once as
 `{ data: { success: true, temporary_password: string } }`; clients must not persist or log it.
+Resetting a ghost returns `409 CONFLICT` with `details.reason = "RESET_NOT_ALLOWED"`.
 
 - `POST /api/admin/users/[userQrToken]/points` accepts strict JSON `{ points: number }`, where
   `points` is an integer from 1 through 100. The server atomically increments the balance and appends
@@ -587,11 +598,20 @@ revokes all sessions, and returns the plaintext once as
 - `GET /api/admin/users/[userQrToken]/orders?page=1` returns 10 stored order snapshots; the nested
   detail route additionally requires the order UUID and resolves it together with the selected
   customer ID. Responses expose stored totals, items, voucher package names and BUNDLE allocations,
-  but not user or voucher database IDs. `points_earned` is `number | null` until completion.
+  but not user or voucher database IDs. Each item exposes `line_total_vnd`, stored discount and
+  derived non-negative `line_payable_vnd`; an addon BUNDLE reward exposes
+  `parent_order_item_id` so consumers can attach it to its parent line. `points_breakdown` reports
+  order award, voucher-surplus award, reversal and non-negative net received; it is `null` for
+  unfinished orders and for cancelled legacy orders without lifecycle logs. `points_earned` remains
+  `number | null` until completion.
 - `GET /api/admin/users/[userQrToken]/vouchers?page=1` returns 10 wallet entries using voucher
-  `qr_token`, effective status, issuance source and remaining days.
+  `qr_token`, issuance source, `created_at`, `redeemed_at`, `expires_at`, and `days_remaining`.
+  Effective status is `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, or `REFUNDED`; an elapsed expiry
+  projects an otherwise active voucher as `EXPIRED` without mutating it during this read.
 - `GET /api/admin/users/voucher-packages?page=1&category=ALL|DISCOUNT|GIFT|SHIPPING` returns 10 active,
-  unended packages for the picker. Granting still uses the idempotent
+  unended packages for the picker. `DISCOUNT` maps to `DISCOUNT|PRODUCT_DISCOUNT`, `GIFT` maps to
+  `ITEM|PRODUCT|ADDON|BUNDLE`, `SHIPPING` maps to `FREESHIP`, and `ALL` applies no type filter.
+  Granting still uses the idempotent
   `POST /api/admin/voucher-packages/[id]/grants` contract and its additional-gift acknowledgement.
 
 ### `POST /api/auth/login`
@@ -1229,6 +1249,14 @@ without a configured default Base Liquid. Any full edit still requires a valid a
   }
 }
 ```
+
+### `GET /api/orders?page=1&limit=10&status=active|cancelled` — Customer history
+
+- Returns the authenticated customer's paginated order snapshots in `{ data, meta }`.
+- Each order includes `points_earned: number`, the net customer-visible sum of order purchase points
+  and PRODUCT surplus points after any reversal logs. It is `0` before completion or after a full
+  cancellation reversal.
+- `status=active` excludes cancelled orders; `status=cancelled` returns only cancelled orders.
 
 ### `POST /api/staff/orders` — Staff
 ```ts

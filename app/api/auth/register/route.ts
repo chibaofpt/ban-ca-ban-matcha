@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Prisma, User } from "@prisma/client";
 import { RegisterSchemaWithInstagram } from "@/lib/validations/auth";
 import { prisma } from "@/lib/prisma";
 import { normalizePhone, signJwt, setAuthCookies } from "@/lib/auth";
@@ -11,6 +12,12 @@ import {
 import { createWelcomeRewardInTransaction } from "@/lib/welcomeReward";
 
 class GhostRegistrationConflictError extends Error {}
+class BlockedGhostRegistrationError extends Error {}
+class RegistrationCreateUniqueError extends Error {
+  constructor(readonly databaseError: unknown) {
+    super("Registration create unique conflict");
+  }
+}
 
 /**
  * Handle POST request for user registration.
@@ -54,12 +61,21 @@ export async function POST(req: Request) {
     const MAX_ACTIVE_SESSIONS = 5;
 
     // Create or convert the user, persist the welcome reward, and open a session atomically.
-    const { user, session, welcomeReward } = await prisma.$transaction(async (tx) => {
-      let finalUser;
+    const registerInTransaction = (candidate: User | null) => prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      let finalUser: User;
 
-      if (existingUser && existingUser.password_hash === "GHOST_USER_NO_PASSWORD") {
+      if (candidate) {
+        if (candidate.role !== "CUSTOMER" || candidate.password_hash !== "GHOST_USER_NO_PASSWORD") {
+          throw new GhostRegistrationConflictError();
+        }
+        if (candidate.is_blocked) throw new BlockedGhostRegistrationError();
         const converted = await tx.user.updateMany({
-          where: { id: existingUser.id, password_hash: "GHOST_USER_NO_PASSWORD" },
+          where: {
+            id: candidate.id,
+            role: "CUSTOMER",
+            is_blocked: false,
+            password_hash: "GHOST_USER_NO_PASSWORD",
+          },
           data: {
             name,
             password_hash: passwordHash,
@@ -67,18 +83,24 @@ export async function POST(req: Request) {
           },
         });
         if (converted.count !== 1) throw new GhostRegistrationConflictError();
-        finalUser = await tx.user.findUnique({ where: { id: existingUser.id } });
-        if (!finalUser) throw new GhostRegistrationConflictError();
+        const convertedUser = await tx.user.findUnique({ where: { id: candidate.id } });
+        if (!convertedUser) throw new GhostRegistrationConflictError();
+        finalUser = convertedUser;
       } else {
-        finalUser = await tx.user.create({
-          data: {
-            name,
-            phone_number: normalizedPhone,
-            password_hash: passwordHash,
-            insta_name,
-            points_balance: 0,
-          },
-        });
+        try {
+          finalUser = await tx.user.create({
+            data: {
+              name,
+              phone_number: normalizedPhone,
+              password_hash: passwordHash,
+              insta_name,
+              points_balance: 0,
+            },
+          });
+        } catch (error: unknown) {
+          if (isUniqueConstraintError(error)) throw new RegistrationCreateUniqueError(error);
+          throw error;
+        }
       }
 
       const welcomeReward = await createWelcomeRewardInTransaction(tx, finalUser.id);
@@ -106,6 +128,23 @@ export async function POST(req: Request) {
 
       return { user: finalUser, session, welcomeReward };
     });
+
+    let registration: Awaited<ReturnType<typeof registerInTransaction>>;
+    try {
+      registration = await registerInTransaction(existingUser);
+    } catch (error: unknown) {
+      if (existingUser || !(error instanceof RegistrationCreateUniqueError)) throw error;
+      const concurrentUser = await prisma.user.findUnique({
+        where: { phone_number: normalizedPhone },
+      });
+      if (!concurrentUser) throw error.databaseError;
+      if (concurrentUser.role !== "CUSTOMER" || concurrentUser.password_hash !== "GHOST_USER_NO_PASSWORD") {
+        throw new GhostRegistrationConflictError();
+      }
+      if (concurrentUser.is_blocked) throw new BlockedGhostRegistrationError();
+      registration = await registerInTransaction(concurrentUser);
+    }
+    const { user, session, welcomeReward } = registration;
 
     // Create access token
     const accessToken = await signJwt({ id: user.id, role: user.role, phone_number: user.phone_number, sid: session.id });
@@ -135,6 +174,12 @@ export async function POST(req: Request) {
       { status: 201 }
     );
   } catch (err: unknown) {
+    if (err instanceof BlockedGhostRegistrationError) {
+      return NextResponse.json(
+        { error: "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.", code: "FORBIDDEN" },
+        { status: 403 },
+      );
+    }
     if (err instanceof GhostRegistrationConflictError) {
       return NextResponse.json(
         { error: "Số điện thoại đã được đăng ký", code: "CONFLICT" },

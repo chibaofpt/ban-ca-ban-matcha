@@ -29,6 +29,7 @@ import { ScopedMenuVoucherPicker } from "./ScopedMenuVoucherPicker";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { MenuData } from "@/src/lib/types/menu";
 import type { MyVoucher, VoucherPackage } from "@/src/services/customerVoucherService";
+import { selectOrderVoucherToken } from "@/src/utils/customerVoucherSelection";
 
 
 interface OwnedVoucherDetailSheetProps {
@@ -308,11 +309,12 @@ const OwnedVoucherDetailSheet = ({
     if (!canApply) disabledReason = `Thiếu ${(deficit / 1000).toLocaleString("vi-VN")}K để sử dụng`;
   } else if (canApply && voucher.voucher_type === "FREESHIP") {
     const res = canApplyFreeship(orderType, totalAfterDiscountVnd ?? subtotalVnd, voucher.min_order_vnd, shippingFee);
-    canApply = true;
+    canApply = res.canApply;
     deficit = res.deficitVnd;
     if (deficit > 0) {
-      canApply = false;
       disabledReason = `Thiếu ${(deficit / 1000).toLocaleString("vi-VN")}K để sử dụng`;
+    } else if (!canApply) {
+      disabledReason = res.reason ?? "Voucher giao hàng chưa thể sử dụng";
     }
   }
   if (!canEdit) {
@@ -367,15 +369,7 @@ const OwnedVoucherDetailSheet = ({
 
     if (vType === "DISCOUNT" || vType === "FREESHIP") {
       if (canApply) {
-        if (!selectedVoucherIds.includes(voucher.qr_token)) {
-          const filteredIds = voucher.discount_type === "PERCENT"
-            ? selectedVoucherIds.filter(id => {
-                const existing = myVouchers.find(v => v.qr_token === id);
-                return existing?.discount_type !== "PERCENT";
-              })
-            : selectedVoucherIds;
-          setSelectedVoucherIds([...filteredIds, voucher.qr_token]);
-        }
+        setSelectedVoucherIds(selectOrderVoucherToken(selectedVoucherIds, voucher, myVouchers));
         setCartOpen(true);
         onUseNowSuccess();
       }

@@ -30,6 +30,7 @@ cùng owner. Khi một loại thông tin đổi, sửa owner và liên kết t�
 | [Voucher UI](voucher-ui.md) | Wallet/detail/target, nhận/đổi, auth intent, admin wizard |
 | [Reward UI](reward-ui.md) | Quà đăng ký, hộp matcha, resume points và admin campaign |
 | [Cart và POS](cart.md) | Source state/persistence, BUNDLE setup, nhóm giỏ, khôi phục chuyển khoản |
+| [Admin customer management](admin-customer-management.md) | Users tab, customer overlay, account actions, gifts, orders và wallet |
 
 Đây là yêu cầu đang được tài liệu dự án mô tả, không phải bằng chứng implementation hoặc UI đã
 nghiệm thu. Phần API/schema/nghiệp vụ liên kết owner, không suy lại từ UI.

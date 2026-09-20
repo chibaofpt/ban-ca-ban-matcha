@@ -142,6 +142,7 @@ export interface CustomerHistoryOrder {
   grand_total_vnd: number;
   subtotal_vnd: number;
   total_voucher_discount_vnd: number;
+  points_earned: number;
   created_at: string;
   auto_cancel_at: string | null;
   payment_qr_url: string | null;

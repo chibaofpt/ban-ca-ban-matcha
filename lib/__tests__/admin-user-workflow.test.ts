@@ -27,6 +27,9 @@ describe("Admin customer mutation workflow", () => {
     mocks.userFindFirst.mockResolvedValue({ id: "customer-id" });
     mocks.userUpdate.mockResolvedValue({});
     mocks.sessionDeleteMany.mockResolvedValue({ count: 2 });
+    mocks.randomBytes.mockReturnValue(Buffer.from([
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+    ]));
   });
 
   it("revokes sessions in the same transaction only when blocking", async () => {
@@ -44,19 +47,36 @@ describe("Admin customer mutation workflow", () => {
     expect(mocks.sessionDeleteMany).not.toHaveBeenCalled();
   });
 
-  it("creates a one-time random password, hashes at cost 12 and revokes sessions without logging it", async () => {
+  it("tạo mật khẩu tạm từ 144-bit CSPRNG, băm cost 12 và thu hồi session trong cùng transaction", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    mocks.randomBytes.mockReturnValue(Buffer.from("abcdefghijkl"));
     mocks.hash.mockResolvedValue("bcrypt-hash");
+    mocks.userFindFirst.mockResolvedValue({ id: "customer-id", password_hash: "old-bcrypt-hash" });
 
     const password = await resetAdminUserPassword("550e8400-e29b-41d4-a716-446655440000");
 
-    expect(password).toHaveLength(16);
-    expect(mocks.hash).toHaveBeenCalledWith(password, 12);
+    expect(mocks.randomBytes).toHaveBeenCalledWith(18);
+    expect(password).toBe("AAECAwQFBgcICQoLDA0ODxAR");
+    expect(password).toMatch(/^[A-Za-z0-9_-]{24}$/);
+    expect(mocks.hash).toHaveBeenCalledWith("AAECAwQFBgcICQoLDA0ODxAR", 12);
+    expect(mocks.transaction).toHaveBeenCalledOnce();
     expect(mocks.userUpdate).toHaveBeenCalledWith({ where: { id: "customer-id" }, data: { password_hash: "bcrypt-hash" } });
+    expect(mocks.userUpdate).not.toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ temporary_password: expect.anything() }),
+    }));
     expect(mocks.sessionDeleteMany).toHaveBeenCalledWith({ where: { user_id: "customer-id" } });
     expect(log).not.toHaveBeenCalled();
     log.mockRestore();
+  });
+
+  it("từ chối reset ghost bằng conflict và không ghi user hay session", async () => {
+    mocks.hash.mockResolvedValue("unused-bcrypt-hash");
+    mocks.userFindFirst.mockResolvedValue({ id: "ghost-id", password_hash: "GHOST_USER_NO_PASSWORD" });
+
+    await expect(resetAdminUserPassword("550e8400-e29b-41d4-a716-446655440000"))
+      .rejects.toMatchObject({ reason: "RESET_NOT_ALLOWED" });
+
+    expect(mocks.userUpdate).not.toHaveBeenCalled();
+    expect(mocks.sessionDeleteMany).not.toHaveBeenCalled();
   });
 
   it("uses an atomic guarded increment and appends the immutable audit row transactionally", async () => {

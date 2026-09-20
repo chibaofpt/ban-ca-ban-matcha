@@ -41,11 +41,23 @@ export function AddressCard({
         isSelected
           ? "border-green-500 shadow-sm ring-1 ring-green-500"
           : isSelectable
-          ? "border-gray-200 hover:border-green-400 hover:shadow-md cursor-pointer"
+          ? "border-gray-200 hover:border-green-400 hover:shadow-md"
           : "border-gray-200"
+      } ${
+        isSelectable
+          ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          : ""
       } p-4 md:p-5`}
       onClick={() => {
         if (isSelectable && onSelect) onSelect();
+      }}
+      role={isSelectable ? "button" : undefined}
+      tabIndex={isSelectable ? 0 : undefined}
+      aria-pressed={isSelectable ? isSelected : undefined}
+      onKeyDown={(event) => {
+        if (!isSelectable || !onSelect || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        onSelect();
       }}
     >
       <div className="flex justify-between items-start mb-3">

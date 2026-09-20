@@ -35,8 +35,7 @@ import { canApplyDiscount } from "@/src/lib/utils/voucherUseNowHelpers";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
-import { useCartTotalPrice } from "@/src/lib/store/cartStore";
-import { estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
+import { projectCart, resolveCartProjectionVouchers } from "@/src/lib/utils/cartProjection";
 import type { BundleCartDraftResult, BundleCartDraftValidation } from "@/src/lib/utils/bundleCartDraft";
 import { validateBundleCartDraft } from "@/src/lib/utils/bundleCartDraft";
 import { getBundleVoucherSummary } from "@/src/components/menu/cart/CartBundleVoucherPanel";
@@ -115,7 +114,6 @@ export default function VoucherModal() {
     () => getBundleAllocatedQuantities(bundleApplications),
     [bundleApplications],
   );
-  const subtotalVnd = useCartTotalPrice();
   const selectedVoucherIds = useCartStore((s) => s.selectedVoucherIds);
   const setSelectedVoucherIds = useCartStore((s) => s.setSelectedVoucherIds);
   const powders = usePowderStore((s) => s.data);
@@ -156,10 +154,7 @@ export default function VoucherModal() {
   }, []);
 
   const activeVouchers = filterModalVouchers(vouchers);
-  const selectedDiscountVouchers = activeVouchers.filter(v => selectedVoucherIds.includes(v.qr_token) && v.voucher_type === "DISCOUNT");
-  const totalAfterDiscountVnd = Math.max(0, subtotalVnd - estimateMultiDiscountSavings(selectedDiscountVouchers, subtotalVnd));
-
-  const needsMenuData = Boolean(detailVoucher || detailPackage || bundleSetupVoucher);
+  const needsMenuData = Boolean(detailVoucher || detailPackage || bundleSetupVoucher || (open && cartItems.length > 0));
 
   const { data: menuData } = useQuery({
     queryKey: ["menu"],
@@ -168,11 +163,30 @@ export default function VoucherModal() {
     staleTime: Infinity,
   });
 
+  const { data: powderData } = useQuery({
+    queryKey: ["powders"],
+    queryFn: fetchPowders,
+    enabled: needsMenuData,
+    staleTime: Infinity,
+  });
+
+  const cartProjection = useMemo(() => projectCart({
+    items: cartItems,
+    menuData,
+    powderData,
+    vouchers: resolveCartProjectionVouchers(isLoggedIn ? "authenticated" : "anonymous", walletVerified, vouchers),
+    selectedOrderVoucherTokens: selectedVoucherIds,
+    bundleApplications,
+    shippingFeeVnd: 0,
+  }), [bundleApplications, cartItems, isLoggedIn, menuData, powderData, selectedVoucherIds, vouchers, walletVerified]);
+  const subtotalVnd = cartProjection.totals.discountable_subtotal_vnd;
+  const totalAfterDiscountVnd = cartProjection.totals.total_vnd;
+
   useEffect(() => {
-    if (needsMenuData && !powdersLoaded) {
-      void fetchPowders().then(setPowderData).catch(console.error);
+    if (powderData && !powdersLoaded) {
+      setPowderData(powderData);
     }
-  }, [needsMenuData, powdersLoaded, setPowderData]);
+  }, [powderData, powdersLoaded, setPowderData]);
 
   const refundMutation = useMutation({
     mutationFn: (token: string) => refundVoucher(token),
@@ -211,7 +225,7 @@ export default function VoucherModal() {
     }
     const intent = resolveWalletUseNowIntent({
       voucherType: voucher.voucher_type,
-      canApplyOrder: (voucher.voucher_type === "DISCOUNT" || voucher.voucher_type === "FREESHIP") &&
+      canApplyOrder: voucher.voucher_type === "DISCOUNT" &&
         canApplyDiscount(voucher, subtotalVnd).canApply,
     });
     if (intent.kind === "open-detail") return void setDetailVoucher(voucher);

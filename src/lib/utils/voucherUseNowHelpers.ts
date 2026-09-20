@@ -35,6 +35,11 @@ export interface CanApplyFreeshipResult {
   deficitVnd: number;
 }
 
+/** Returns the canonical order-option defaults for a drink created from voucher use-now. */
+export function getVoucherCartDefaults(): Pick<BundleItemConfig, "sweetness" | "iceOption" | "coldwhisk"> {
+  return { sweetness: "FULL", iceOption: "NORMAL", coldwhisk: false };
+}
+
 /**
  * Return the first available grouped BUNDLE product; callers resolve current prices separately.
  */

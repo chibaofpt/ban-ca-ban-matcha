@@ -10,6 +10,7 @@ export type AdminUserSummary = {
   name: string;
   phone_number: string;
   insta_name: string | null;
+  is_registered: boolean;
   is_verified: boolean;
   is_blocked: boolean;
   points_balance: number;
@@ -19,6 +20,7 @@ export type AdminUserSummary = {
   vouchers_exchanged: number;
   current_voucher_count: number;
   latest_order_at: string | null;
+  latest_completed_order_at: string | null;
 };
 
 export type AdminUserOrderItem = {
@@ -28,6 +30,7 @@ export type AdminUserOrderItem = {
   unit_price_vnd: number;
   addons_price_vnd: number;
   line_total_vnd: number;
+  line_payable_vnd: number;
   total_discount_vnd: number;
   menu_item: {
     id: string;
@@ -70,6 +73,12 @@ export type AdminUserOrder = {
   freeship_discount_vnd: number;
   grand_total_vnd: number;
   points_earned: number | null;
+  points_breakdown: {
+    order_points: number;
+    surplus_points: number;
+    reversed_points: number;
+    total_received: number;
+  } | null;
   items: AdminUserOrderItem[];
   order_vouchers: { name: string; type: string }[];
   bundle_applications: {
@@ -79,6 +88,7 @@ export type AdminUserOrder = {
     qualifiers: { order_item_id: string; quantity: number }[];
     rewards: {
       order_item_id: string | null;
+      parent_order_item_id: string | null;
       addon_label: string | null;
       quantity: number;
       discount_vnd: number;

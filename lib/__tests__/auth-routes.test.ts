@@ -637,8 +637,8 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
     expect(mockTxPointsLogCreate).not.toHaveBeenCalled();
   });
 
-  it("trả 409 CONFLICT khi số điện thoại đã đăng ký (không phải ghost)", async () => {
-    mockUserFindUnique.mockResolvedValueOnce(REAL_USER);
+  it("trả 409 CONFLICT cho tài khoản đã đăng ký dù đang bị chặn", async () => {
+    mockUserFindUnique.mockResolvedValueOnce({ ...REAL_USER, is_blocked: true });
     mockBcryptCompare.mockResolvedValueOnce(false); // timing-safe
 
     const res = await registerPOST(
@@ -686,7 +686,12 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
     expect(res.status).toBe(201);
     expect(mockTxUserUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: GHOST_USER.id, password_hash: "GHOST_USER_NO_PASSWORD" },
+        where: {
+          id: GHOST_USER.id,
+          role: "CUSTOMER",
+          is_blocked: false,
+          password_hash: "GHOST_USER_NO_PASSWORD",
+        },
         data: expect.objectContaining({ name: "Real Name", password_hash: "$2a$12$hashed" }),
       })
     );
@@ -746,6 +751,188 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
 
     expect(response.status).toBe(409);
     expect((await response.json()).code).toBe("CONFLICT");
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
+    expect(sessionCreate).not.toHaveBeenCalled();
+  });
+
+  it("khôi phục đúng ghost được chèn đồng thời sau P2002 thay vì báo trùng Instagram", async () => {
+    mockUserFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(GHOST_USER);
+    const p2002 = Object.assign(new Error("Unique constraint"), { code: "P2002" });
+    const convertedUser = { ...GHOST_USER, name: "Real Name", password_hash: "$2a$12$hashed" };
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const sessionCreate = vi.fn().mockResolvedValue({ id: "registered-session-id", refresh_token: "new-token" });
+
+    mockTransaction
+      .mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+        user: { create: vi.fn().mockRejectedValue(p2002), updateMany: vi.fn(), findUnique: vi.fn() },
+        session: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
+      }))
+      .mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+        user: { create: vi.fn(), updateMany, findUnique: vi.fn().mockResolvedValue(convertedUser) },
+        session: { findMany: vi.fn().mockResolvedValue([]), create: sessionCreate, deleteMany: vi.fn() },
+      }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Real Name", phone_number: "0912345678", password: "newpassword",
+    }));
+
+    expect(response.status).toBe(201);
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: GHOST_USER.id,
+        role: "CUSTOMER",
+        is_blocked: false,
+        password_hash: "GHOST_USER_NO_PASSWORD",
+      },
+    }));
+    expect(mockCreateWelcomeReward).toHaveBeenCalledOnce();
+    expect(sessionCreate).toHaveBeenCalledOnce();
+  });
+
+  it("P2002 có concurrent winner đã đăng ký trả phone conflict mà không tạo artifact", async () => {
+    mockUserFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(REAL_USER);
+    const p2002 = Object.assign(new Error("Unique constraint"), { code: "P2002" });
+    mockTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { create: vi.fn().mockRejectedValue(p2002), updateMany: vi.fn(), findUnique: vi.fn() },
+      session: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
+    }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Second", phone_number: "0912345678", password: "newpassword",
+    }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Số điện thoại đã được đăng ký", code: "CONFLICT" });
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
+  });
+
+  it("P2002 gặp concurrent winner đã đăng ký và bị chặn vẫn trả conflict", async () => {
+    mockUserFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...REAL_USER, is_blocked: true });
+    const p2002 = Object.assign(new Error("Unique constraint"), { code: "P2002" });
+    mockTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { create: vi.fn().mockRejectedValue(p2002), updateMany: vi.fn(), findUnique: vi.fn() },
+      session: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
+    }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Blocked Winner", phone_number: "0912345678", password: "newpassword",
+    }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Số điện thoại đã được đăng ký", code: "CONFLICT" });
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
+  });
+
+  it("P2002 gặp non-CUSTOMER ghost bị chặn vẫn trả conflict", async () => {
+    mockUserFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...GHOST_USER, role: "STAFF", is_blocked: true });
+    const p2002 = Object.assign(new Error("Unique constraint"), { code: "P2002" });
+    mockTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { create: vi.fn().mockRejectedValue(p2002), updateMany: vi.fn(), findUnique: vi.fn() },
+      session: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
+    }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Blocked Staff", phone_number: "0912345678", password: "newpassword",
+    }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Số điện thoại đã được đăng ký", code: "CONFLICT" });
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
+  });
+
+  it("P2002 gặp ghost bị chặn trả forbidden và không convert", async () => {
+    mockUserFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...GHOST_USER, is_blocked: true });
+    const p2002 = Object.assign(new Error("Unique constraint"), { code: "P2002" });
+    mockTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { create: vi.fn().mockRejectedValue(p2002), updateMany: vi.fn(), findUnique: vi.fn() },
+      session: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
+    }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Blocked", phone_number: "0912345678", password: "newpassword",
+    }));
+
+    expect(response.status).toBe(403);
+    expect((await response.json()).code).toBe("FORBIDDEN");
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
+  });
+
+  it("P2002 nhưng không tìm thấy phone trả đúng conflict Instagram", async () => {
+    mockUserFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    const p2002 = Object.assign(new Error("Unique constraint"), { code: "P2002" });
+    const sessionCreate = vi.fn();
+    mockTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { create: vi.fn().mockRejectedValue(p2002), updateMany: vi.fn(), findUnique: vi.fn() },
+      session: { findMany: vi.fn(), create: sessionCreate, deleteMany: vi.fn() },
+    }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Instagram Conflict", phone_number: "0912345678", password: "newpassword",
+      insta_name: "taken.handle",
+    }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Tên Instagram này đã được sử dụng", code: "CONFLICT" });
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
+    expect(sessionCreate).not.toHaveBeenCalled();
+  });
+
+  it("ghost bị chặn từ lookup đầu trả forbidden và không tạo artifact", async () => {
+    mockUserFindUnique.mockResolvedValueOnce({ ...GHOST_USER, is_blocked: true });
+    const updateMany = vi.fn();
+    const sessionCreate = vi.fn();
+    mockTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { create: vi.fn(), updateMany, findUnique: vi.fn() },
+      session: { findMany: vi.fn(), create: sessionCreate, deleteMany: vi.fn() },
+    }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Blocked Ghost", phone_number: "0912345678", password: "newpassword",
+    }));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.",
+      code: "FORBIDDEN",
+    });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
+    expect(sessionCreate).not.toHaveBeenCalled();
+  });
+
+  it("non-CUSTOMER ghost bị chặn từ lookup đầu trả conflict", async () => {
+    mockUserFindUnique.mockResolvedValueOnce({ ...GHOST_USER, role: "STAFF", is_blocked: true });
+    const updateMany = vi.fn();
+    const sessionCreate = vi.fn();
+    mockTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { create: vi.fn(), updateMany, findUnique: vi.fn() },
+      session: { findMany: vi.fn(), create: sessionCreate, deleteMany: vi.fn() },
+    }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Blocked Staff", phone_number: "0912345678", password: "newpassword",
+    }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Số điện thoại đã được đăng ký", code: "CONFLICT" });
+    expect(updateMany).not.toHaveBeenCalled();
     expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
     expect(sessionCreate).not.toHaveBeenCalled();
   });
