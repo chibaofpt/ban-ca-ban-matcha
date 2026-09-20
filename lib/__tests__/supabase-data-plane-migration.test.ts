@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -69,6 +69,17 @@ const welcomeRewardsMigration = readFileSync(
   join(process.cwd(), "prisma", "migrations", "20260912160000_welcome_rewards", "migration.sql"),
   "utf8",
 );
+const allMigrationSql = readdirSync(join(process.cwd(), "prisma", "migrations"), {
+  withFileTypes: true,
+})
+  .filter((entry) => entry.isDirectory())
+  .map((entry) =>
+    readFileSync(
+      join(process.cwd(), "prisma", "migrations", entry.name, "migration.sql"),
+      "utf8",
+    ),
+  )
+  .join("\n");
 
 function prismaTableNames(): string[] {
   return [...schema.matchAll(/@@map\("([^"]+)"\)/g)]
@@ -106,6 +117,12 @@ describe("static SQL contract — Supabase Data API (không thực thi migration
     );
     expect(migration).toMatch(/GRANT USAGE ON SCHEMA public TO service_role;/);
     expect(migration).not.toMatch(/GRANT\s+ALL/i);
+  });
+
+  it("cấp quyền đọc trạng thái khóa cho middleware session", () => {
+    expect(allMigrationSql).toMatch(
+      /GRANT SELECT \(is_blocked\) ON TABLE public\.users TO service_role;/,
+    );
   });
 
   it("khóa function và default privileges trong public nhưng không đụng storage", () => {
