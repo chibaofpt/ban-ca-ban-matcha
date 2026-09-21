@@ -39,6 +39,7 @@ const LoginForm = () => {
 
   const login = useAuthStore((s) => s.login);
   const close = useAuthModalStore((s) => s.close);
+  const dismiss = useAuthModalStore((s) => s.dismiss);
   const switchTo = useAuthModalStore((s) => s.switchTo);
 
   const onSubmit = async (data: LoginInput) => {
@@ -59,9 +60,8 @@ const LoginForm = () => {
       login(user.phone_number, user.name);
       resetForceLogout(); // Allow force-logout to fire again after re-login (BUG-3)
       if (isStaffUser) {
-        // Replace (not push) so user can't navigate back to customer menu.
-        // Skip close() — modal stays visible during navigation to avoid
-        // briefly flashing the menu page. It unmounts when admin-shell renders.
+        // Release focus and scroll lock before the admin shell navigation starts.
+        dismiss();
         router.replace("/staff/orders");
         router.refresh();
       } else {

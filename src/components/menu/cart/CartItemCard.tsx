@@ -101,7 +101,11 @@ const CartItemCard = ({
 
   return (
     <div
-      className="flex gap-3.5 rounded-[1.25rem] border border-transparent bg-white p-3.5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]"
+      onClick={(event) => {
+        if ((event.target as HTMLElement).closest("button") || editBlocked) return;
+        onEdit(item);
+      }}
+      className="flex cursor-pointer gap-3.5 rounded-[1.25rem] border border-transparent bg-white p-3.5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] transition-colors hover:border-primary/15 hover:bg-primary/[0.02]"
     >
       {/* Thumbnail & Stepper */}
       <div className="flex flex-col items-center gap-2 shrink-0">

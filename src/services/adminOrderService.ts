@@ -31,6 +31,7 @@ export async function fetchAdminOrders(filters: AdminOrderFilters = {}): Promise
   if (filters.staffId) params.append('staffId', filters.staffId);
   if (filters.staffName) params.append('staffName', filters.staffName);
   if (filters.order_type) params.append('order_type', filters.order_type);
+  if (filters.payment_method) params.append('payment_method', filters.payment_method);
   if (filters.status) params.append('status', filters.status);
   if (filters.exclude_cancelled) params.append('exclude_cancelled', 'true');
   if (filters.page) params.append('page', filters.page.toString());

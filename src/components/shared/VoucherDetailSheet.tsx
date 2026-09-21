@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React from "react";
+import { motion } from "framer-motion";
 import { ArrowLeft, Loader2, LogIn } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCartStore } from "@/src/lib/store/cartStore";
@@ -291,10 +291,7 @@ const OwnedVoucherDetailSheet = ({
 }: OwnedVoucherDetailSheetProps) => {
   const router = useRouter();
   const { addToCart, loading } = useAddVoucherToCart();
-  const { setCartOpen, setSelectedVoucherIds, setPendingAddonVoucher, selectedVoucherIds } = useCartStore();
-  const [showAddonPicker, setShowAddonPicker] = useState(false);
-  const [showProductDiscountPicker, setShowProductDiscountPicker] = useState(false);
-  const [showScopedMenuPicker, setShowScopedMenuPicker] = useState(false);
+  const { setSelectedVoucherIds, selectedVoucherIds } = useCartStore();
   const productDiscountReady = voucher.voucher_type !== "PRODUCT_DISCOUNT" || menuData !== undefined;
 
   // Checks based on voucher type
@@ -323,6 +320,8 @@ const OwnedVoucherDetailSheet = ({
   }
 
   const vType = voucher.voucher_type;
+  const hasInlineTargets = !onSelectProductDiscountTarget && !onUseProductVoucher &&
+    (vType === "PRODUCT" || vType === "PRODUCT_DISCOUNT" || vType === "ITEM" || vType === "ADDON");
   const config = VOUCHER_TYPE_CONFIG[vType] || { label: "Voucher", badgeCls: "bg-gray-100 text-gray-800" };
   const highlight = getTicketHighlightText(vType, voucher.discount_type, voucher.discount_value, voucher.reference_size);
 
@@ -337,16 +336,10 @@ const OwnedVoucherDetailSheet = ({
 
     if (vType === "PRODUCT_DISCOUNT") {
       if (!productDiscountReady) return;
-      // Open item picker so customer can select item + customize via ProductModal
-      setShowProductDiscountPicker(true);
       return;
     }
 
     if (vType === "PRODUCT" || vType === "ITEM") {
-      if ((voucher.eligible_menu_items?.length ?? 0) > 1) {
-        setShowScopedMenuPicker(true);
-        return;
-      }
       if (onUseProductVoucher) { onUseProductVoucher(voucher); return; }
       const res = await addToCart(voucher);
       if (res.ok) {
@@ -362,15 +355,11 @@ const OwnedVoucherDetailSheet = ({
       return;
     }
 
-    if (vType === "ADDON") {
-      setShowAddonPicker(true);
-      return;
-    }
+    if (vType === "ADDON") return;
 
     if (vType === "DISCOUNT" || vType === "FREESHIP") {
       if (canApply) {
         setSelectedVoucherIds(selectOrderVoucherToken(selectedVoucherIds, voucher, myVouchers));
-        setCartOpen(true);
         onUseNowSuccess();
       }
       return;
@@ -441,6 +430,32 @@ const OwnedVoucherDetailSheet = ({
             </div>
           )}
         </div>
+
+        {hasInlineTargets && !menuData ? (
+          <p className="rounded-xl border border-border bg-secondary/20 p-4 text-center text-sm text-muted-foreground">Đang tải danh sách món phù hợp…</p>
+        ) : null}
+        {hasInlineTargets && menuData && vType === "PRODUCT_DISCOUNT" ? (
+          <ProductDiscountItemPicker voucher={voucher} menuData={menuData} canEdit={canEdit && canApply} onSuccess={onUseNowSuccess} />
+        ) : null}
+        {hasInlineTargets && menuData && (vType === "PRODUCT" || vType === "ITEM") ? (
+          <ScopedMenuVoucherPicker voucher={voucher} menuData={menuData} canEdit={canEdit && canApply} onSuccess={onUseNowSuccess} />
+        ) : null}
+        {hasInlineTargets && menuData && vType === "ADDON" ? (
+          <AddonItemPicker
+            voucher={voucher}
+            cartItems={cartItems}
+            bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}
+            menuData={menuData}
+            canEdit={canEdit && canApply}
+            embedded
+            onSuccess={onUseNowSuccess}
+            onPending={() => {
+              if (onPendingAddon) onPendingAddon();
+              else onBack();
+              router.push("/menu");
+            }}
+          />
+        ) : null}
       </div>
 
       <div className="p-5 bg-card border-t border-border/40 pb-[max(1.25rem,env(safe-area-inset-bottom))] shrink-0">
@@ -461,7 +476,7 @@ const OwnedVoucherDetailSheet = ({
                 >
                   Hủy voucher
                 </button>
-              ) : (
+              ) : !hasInlineTargets ? (
                 <button
                   type="button"
                   onClick={handleUseNow}
@@ -476,7 +491,7 @@ const OwnedVoucherDetailSheet = ({
                     "Dùng ngay"
                   )}
                 </button>
-              )}
+              ) : null}
               {voucher.availability.can_refund ? (
                 <button
                   type="button"
@@ -491,44 +506,6 @@ const OwnedVoucherDetailSheet = ({
         </>
       </div>
 
-      <AnimatePresence>
-        {showAddonPicker && menuData && (
-          <AddonItemPicker
-            voucher={voucher}
-            cartItems={cartItems}
-            bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}
-            menuData={menuData}
-            canEdit={canEdit}
-            onBack={() => setShowAddonPicker(false)}
-            onSuccess={() => {
-              setShowAddonPicker(false);
-              onUseNowSuccess();
-            }}
-            onPending={(intent) => {
-              setPendingAddonVoucher(intent);
-              setShowAddonPicker(false);
-              if (onPendingAddon) onPendingAddon();
-              else onBack();
-              router.push("/menu");
-            }}
-          />
-        )}
-        {showProductDiscountPicker && menuData && (
-          <ProductDiscountItemPicker
-            voucher={voucher}
-            menuData={menuData}
-            canEdit={canEdit}
-            onBack={() => setShowProductDiscountPicker(false)}
-            onSuccess={() => {
-              setShowProductDiscountPicker(false);
-              onUseNowSuccess();
-            }}
-          />
-        )}
-        {showScopedMenuPicker && menuData && (
-          <ScopedMenuVoucherPicker voucher={voucher} menuData={menuData} canEdit={canEdit} onBack={() => setShowScopedMenuPicker(false)} onSuccess={() => { setShowScopedMenuPicker(false); onUseNowSuccess(); }} />
-        )}
-      </AnimatePresence>
     </VoucherDetailPanel>
   );
 };

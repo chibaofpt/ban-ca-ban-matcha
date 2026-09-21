@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import type { OrderType, Prisma } from "@prisma/client";
+import type { OrderType, PaymentMethod, Prisma } from "@prisma/client";
 import { toAdminOrderListItemDto } from "@/lib/orderPublicDto";
 import { resolveStaffIdentifier } from "@/lib/publicIdentifiers";
 
@@ -25,7 +25,15 @@ export async function GET(req: NextRequest) {
   const staffName = searchParams.get("staffName");
   const status = searchParams.get("status");
   const orderType = searchParams.get("order_type");
+  const paymentMethod = searchParams.get("payment_method");
   const excludeCancelled = searchParams.get("exclude_cancelled") === "true";
+
+  if (paymentMethod && paymentMethod !== "CASH" && paymentMethod !== "BANK_TRANSFER") {
+    return NextResponse.json(
+      { error: "Invalid payment method", code: "VALIDATION_ERROR" },
+      { status: 400 },
+    );
+  }
   
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
   const limit = Math.max(1, Math.min(100, parseInt(searchParams.get("limit") || "10", 10)));
@@ -89,6 +97,10 @@ export async function GET(req: NextRequest) {
     if (orderType) {
       const types = orderType.split(",").map((t) => t.trim());
       where.order_type = { in: types as OrderType[] };
+    }
+
+    if (paymentMethod) {
+      where.payment_method = paymentMethod as PaymentMethod;
     }
 
 

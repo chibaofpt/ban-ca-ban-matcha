@@ -8,7 +8,7 @@ vi.mock("@/src/lib/api/client", () => ({
 }));
 
 import { apiClient } from "@/src/lib/api/client";
-import { adminCancelOrder, confirmPayment } from "@/src/services/adminOrderService";
+import { adminCancelOrder, confirmPayment, fetchAdminOrders } from "@/src/services/adminOrderService";
 
 describe("adminOrderService — xác nhận phương thức thanh toán", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -68,6 +68,16 @@ describe("adminOrderService — xác nhận phương thức thanh toán", () => 
 
     expect(apiClient.patch).toHaveBeenCalledWith(
       "/api/admin/orders/legacy-order-1/confirm-payment",
+    );
+  });
+
+  it("gửi phương thức thanh toán khi Admin lọc danh sách đơn", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { data: [], meta: { total: 0, page: 1, totalPages: 0 } } });
+
+    await fetchAdminOrders({ payment_method: "BANK_TRANSFER" });
+
+    expect(apiClient.get).toHaveBeenCalledWith(
+      "/api/admin/orders?payment_method=BANK_TRANSFER",
     );
   });
 });

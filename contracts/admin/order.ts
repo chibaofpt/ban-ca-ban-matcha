@@ -1,6 +1,7 @@
 import type {
   OrderListItem,
   PaginatedResponse,
+  PaymentMethod,
 } from "../order";
 
 export interface AdminOrderListItem extends OrderListItem {
@@ -14,6 +15,7 @@ export interface AdminOrderFilters {
   staffId?: string;
   staffName?: string;
   order_type?: string;
+  payment_method?: PaymentMethod;
   status?: string;
   exclude_cancelled?: boolean;
   page?: number;

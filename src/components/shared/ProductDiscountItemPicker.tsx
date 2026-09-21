@@ -1,10 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { motion } from "framer-motion";
-import { ArrowLeft, Leaf, Sparkles } from "lucide-react";
-import Image from "next/image";
 import { toast } from "sonner";
+import MenuCard from "@/src/components/menu/MenuCard";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import {
@@ -27,7 +25,6 @@ interface ProductDiscountItemPickerProps {
   menuData: MenuData;
   /** Lock voucher edits while the wallet query is loading or revalidating. */
   canEdit?: boolean;
-  onBack: () => void;
   onSuccess: () => void;
 }
 
@@ -42,10 +39,9 @@ export const ProductDiscountItemPicker = ({
   voucher,
   menuData,
   canEdit = true,
-  onBack,
   onSuccess,
 }: ProductDiscountItemPickerProps) => {
-  const { addItem, setCartOpen } = useCartStore();
+  const addItem = useCartStore((state) => state.addItem);
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGram = usePowderStore((s) => s.defaultPowderGram);
 
@@ -142,8 +138,7 @@ export const ProductDiscountItemPicker = ({
         return;
       }
 
-      setCartOpen(true);
-      onSuccess();
+      queueMicrotask(onSuccess);
   };
 
   // When an item is picked, open ProductModal for customization
@@ -165,26 +160,11 @@ export const ProductDiscountItemPicker = ({
   }
 
   return (
-    <motion.div
-      initial={{ x: "100%" }}
-      animate={{ x: 0 }}
-      exit={{ x: "100%" }}
-      transition={{ type: "spring", damping: 25, stiffness: 300 }}
-      className="absolute inset-0 z-20 flex flex-col bg-background"
-    >
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-border/40 shrink-0 bg-card">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label="Quay lại chi tiết voucher"
-          className="w-11 h-11 rounded-full bg-primary/5 flex items-center justify-center hover:bg-primary/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          <ArrowLeft className="w-5 h-5 text-primary" />
-        </button>
+    <section className="space-y-3" aria-labelledby="product-discount-targets">
         <div>
-          <h3 className="font-bold text-primary">Chọn món áp dụng</h3>
+          <h5 id="product-discount-targets" className="text-xs font-bold uppercase tracking-widest text-primary/50">Chọn món áp dụng</h5>
           {voucherSizes.length > 0 && (
-            <p className="text-xs text-primary/50">
+            <p className="mt-1 text-xs text-primary/60">
               Size được giảm: {voucherSizes.map((size, index) => (
                 <React.Fragment key={size}>
                   {index > 0 ? " / " : null}<SizeLabel size={size} />
@@ -193,9 +173,6 @@ export const ProductDiscountItemPicker = ({
             </p>
           )}
         </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none p-5 space-y-3 overscroll-contain pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         {eligibleItems.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-12 text-center">
             <p className="text-sm font-semibold text-primary/50">
@@ -204,44 +181,18 @@ export const ProductDiscountItemPicker = ({
           </div>
         ) : (
           eligibleItems.map(({ item, allowedSizes }) => (
-            <motion.button
-              key={item.id}
-              type="button"
-              whileTap={{ scale: 0.96 }}
-              onClick={() => setPickedItem({ item, allowedSizes })}
-              disabled={!canEdit}
-              className="w-full flex items-center gap-4 p-3.5 bg-card border border-border/40 rounded-2xl text-left hover:border-primary/30 hover:shadow-sm transition-all disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <div className="w-14 h-14 shrink-0 rounded-xl overflow-hidden relative bg-primary/5">
-                {item.image_url ? (
-                  <Image
-                    src={item.image_url}
-                    alt={item.name}
-                    fill
-                    sizes="56px"
-                    className="object-cover"
-                  />
-                ) : (
-                  <Leaf className="absolute inset-0 m-auto size-6 text-primary/50" aria-hidden="true" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-sm text-primary truncate">{item.name}</p>
-                {item.description && (
-                  <p className="text-xs text-primary/55 mt-0.5 line-clamp-1">{item.description}</p>
-                )}
-                <p className="text-xs text-primary/40 mt-1">
-                  <span className="inline-flex items-center gap-1">
-                    {item.category === "latte" ? <Leaf className="size-3" /> : <Sparkles className="size-3" />}
-                    {item.category === "latte" ? "Latte Premium" : "Fusion Special"}
-                  </span>
-                </p>
-              </div>
-              <ArrowLeft className="w-4 h-4 text-primary/30 rotate-180 shrink-0" aria-hidden="true" />
-            </motion.button>
+            <div key={item.id} className={!canEdit ? "opacity-50" : undefined}>
+              <MenuCard
+                item={item}
+                milkTypes={menuData.milk_types}
+                compact
+                disabled={!canEdit}
+                allowedSizes={allowedSizes}
+                onItemClick={() => setPickedItem({ item, allowedSizes })}
+              />
+            </div>
           ))
         )}
-      </div>
-    </motion.div>
+    </section>
   );
 };

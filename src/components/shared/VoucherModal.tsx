@@ -30,7 +30,6 @@ import { VoucherPackageCatalog } from "./VoucherPackageCatalog";
 import { VoucherDetailSheet } from "./VoucherDetailSheet";
 import { BundleVoucherSetupSheet } from "./BundleVoucherSetupSheet";
 import { buildVoucherActionModel, resolveWalletUseNowIntent, selectOrderVoucherToken } from "@/src/utils/customerVoucherSelection";
-import { useAddVoucherToCart } from "@/src/hooks/useAddVoucherToCart";
 import { canApplyDiscount } from "@/src/lib/utils/voucherUseNowHelpers";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { fetchMenu } from "@/src/services/menuService";
@@ -121,8 +120,8 @@ export default function VoucherModal() {
   const powdersLoaded = usePowderStore((s) => s.isLoaded);
   const setPowderData = usePowderStore((s) => s.setPowderData);
   const defaultPowderGram = usePowderStore((s) => s.defaultPowderGram);
-  const { addToCart, loading: isUsingVoucher } = useAddVoucherToCart();
   const consumedIntentRef = useRef<object | null>(null);
+  const openCartAfterCloseRef = useRef(false);
   const consumingUseNowVersionRef = useRef<number | null>(null);
   const resolvedDetailPackageRef = useRef<string | null>(null);
   const detailPackage = detailPackageId
@@ -209,9 +208,9 @@ export default function VoucherModal() {
   });
 
   const handleUseNowSuccess = useCallback(() => {
+    openCartAfterCloseRef.current = true;
     closeVoucherSurface();
-    setCartOpen(true);
-  }, [closeVoucherSurface, setCartOpen]);
+  }, [closeVoucherSurface]);
 
   const handleWalletUseNow = useCallback(async (voucher: MyVoucher, canCommit: () => boolean = () => true) => {
     if (!canCommit()) return;
@@ -219,7 +218,12 @@ export default function VoucherModal() {
       toast.error(walletVerificationMessage);
       return;
     }
-    if ((voucher.voucher_type === "PRODUCT" || voucher.voucher_type === "ITEM") && (voucher.eligible_menu_items?.length ?? 0) > 1) {
+    if (
+      voucher.voucher_type === "PRODUCT" ||
+      voucher.voucher_type === "PRODUCT_DISCOUNT" ||
+      voucher.voucher_type === "ITEM" ||
+      voucher.voucher_type === "ADDON"
+    ) {
       setDetailVoucher(voucher);
       return;
     }
@@ -235,11 +239,7 @@ export default function VoucherModal() {
       handleUseNowSuccess();
       return;
     }
-    const result = await addToCart(voucher, undefined, canCommit);
-    if (!canCommit()) return;
-    if (result.ok) handleUseNowSuccess();
-    else setDetailVoucher(voucher);
-  }, [activeVouchers, addToCart, handleUseNowSuccess, setSelectedVoucherIds, subtotalVnd, walletVerificationMessage, walletVerified]);
+  }, [activeVouchers, handleUseNowSuccess, setSelectedVoucherIds, subtotalVnd, walletVerificationMessage, walletVerified]);
 
   useEffect(() => {
     const token = requestedUseNowVoucherToken;
@@ -288,9 +288,16 @@ export default function VoucherModal() {
   }, [authModalOpen, claimUseNowVoucherRequest, clearIntent, handleWalletUseNow, isLoggedIn, open, pendingIntent, refetchVouchers, requestedUseNowVoucherToken, useNowRequestVersion, walletVerified]);
 
   const handleBundleSuccess = useCallback(() => {
+    openCartAfterCloseRef.current = true;
     closeVoucherSurface();
+  }, [closeVoucherSurface]);
+
+  const handleVoucherSurfaceClosed = useCallback(() => {
+    resetVoucherSurface();
+    if (!openCartAfterCloseRef.current) return;
+    openCartAfterCloseRef.current = false;
     setCartOpen(true);
-  }, [closeVoucherSurface, setCartOpen]);
+  }, [resetVoucherSurface, setCartOpen]);
 
   const handleRefund = useCallback(() => {
     if (!refundCandidate || refundMutation.isPending) return;
@@ -544,7 +551,7 @@ export default function VoucherModal() {
               onAction={() => void handleWalletUseNow(voucher)}
               actionModel={buildVoucherActionModel({
                 context: "wallet",
-                busy: isUsingVoucher,
+                busy: false,
                 selectable: walletVerified && voucher.status === "ACTIVE" && voucher.availability.can_apply,
                 disabledReason: !walletVerified
                   ? walletVerificationMessage
@@ -570,7 +577,7 @@ export default function VoucherModal() {
       presentation="bare"
       className="w-full md:max-w-2xl"
       onOpenChange={(nextOpen) => { if (!nextOpen) closeVoucherSurface(); }}
-      onAfterClose={resetVoucherSurface}
+      onAfterClose={handleVoucherSurfaceClosed}
     >
       {content}
     </ResponsiveOverlay>

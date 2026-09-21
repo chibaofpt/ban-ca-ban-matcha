@@ -103,17 +103,24 @@ describe("multi-choice voucher UI contracts", () => {
     );
   });
 
-  it("giữ chi tiết voucher trong cùng frame và không animate layout từng thẻ", () => {
+  it("giữ target dùng ngay trong detail và chỉ mở cart sau khi wallet đã đóng", () => {
     const modal = readSource("../../components/shared/VoucherModal.tsx");
     const cartDiscount = readSource("../../components/menu/cart/CartDiscountPicker.tsx");
     const detail = readSource("../../components/shared/VoucherDetailSheet.tsx");
+    const menuCard = readSource("../../components/menu/MenuCard.tsx");
     const cards = readSource("../../components/shared/VoucherCards.tsx");
     const overlay = readSource("../../components/ui/ResponsiveOverlay.tsx");
 
     expect(modal).toContain("<VoucherModalDetailTransition>");
-    expect(modal).toContain("onAfterClose={resetVoucherSurface}");
+    expect(modal).toContain("onAfterClose={handleVoucherSurfaceClosed}");
+    expect(modal).toContain("openCartAfterCloseRef.current = true");
     expect(cartDiscount).toContain("<VoucherModalDetailTransition>");
     expect(detail).toContain('className="absolute inset-0 z-20');
+    expect(detail).toContain("<ProductDiscountItemPicker");
+    expect(detail).toContain("<ScopedMenuVoucherPicker");
+    expect(detail).toContain("embedded");
+    expect(menuCard).toContain("allowedSizes");
+    expect(menuCard).toContain("compact");
     expect(cards).not.toMatch(/<motion\.div\s+layout/);
     expect(cartDiscount).toContain("nested\n      title=\"Mã ưu đãi\"");
     expect(overlay).toContain("Drawer.NestedRoot");

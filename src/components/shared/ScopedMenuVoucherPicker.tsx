@@ -1,28 +1,25 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft } from "lucide-react";
-import { motion } from "framer-motion";
 import { toast } from "sonner";
 import ProductModal from "@/src/components/shared/ProductModal";
+import MenuCard from "@/src/components/menu/MenuCard";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { MenuData, MenuItem, Size } from "@/src/lib/types/menu";
 import type { MyVoucher, VoucherEligibleMenuItem } from "@/src/services/customerVoucherService";
-import { SizeLabel } from "@/src/components/ui/SizeLabel";
 
 interface ScopedMenuVoucherPickerProps {
   voucher: MyVoucher;
   menuData: MenuData;
   /** Lock voucher edits while the wallet query is loading or revalidating. */
   canEdit?: boolean;
-  onBack: () => void;
   onSuccess: () => void;
 }
 
 /** Lets a customer choose and configure exactly one scoped PRODUCT or ITEM reward. */
-export function ScopedMenuVoucherPicker({ voucher, menuData, canEdit = true, onBack, onSuccess }: ScopedMenuVoucherPickerProps) {
-  const { addItem, setCartOpen } = useCartStore();
+export function ScopedMenuVoucherPicker({ voucher, menuData, canEdit = true, onSuccess }: ScopedMenuVoucherPickerProps) {
+  const addItem = useCartStore((state) => state.addItem);
   const [picked, setPicked] = useState<{ item: MenuItem; target: VoucherEligibleMenuItem } | null>(null);
   const menuItems = useMemo(
     () => [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])],
@@ -36,8 +33,7 @@ export function ScopedMenuVoucherPicker({ voucher, menuData, canEdit = true, onB
     void _cartId;
     const result = addItem(withoutId);
     if (!result.ok) { toast.error(result.message); return; }
-    setCartOpen(true);
-    onSuccess();
+    queueMicrotask(onSuccess);
   };
 
   const pickTarget = (target: VoucherEligibleMenuItem) => {
@@ -60,8 +56,7 @@ export function ScopedMenuVoucherPicker({ voucher, menuData, canEdit = true, onB
         addonVouchers: [],
       });
       if (!result.ok) { toast.error(result.message); return; }
-      setCartOpen(true);
-      onSuccess();
+      queueMicrotask(onSuccess);
       return;
     }
     setPicked({ item, target });
@@ -88,8 +83,29 @@ export function ScopedMenuVoucherPicker({ voucher, menuData, canEdit = true, onB
     />;
   }
 
-  return <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} className="absolute inset-0 z-20 flex flex-col bg-background">
-    <div className="flex items-center gap-3 border-b px-5 py-4"><button type="button" onClick={onBack} aria-label="Quay lại" className="grid h-11 w-11 place-items-center rounded-full bg-primary/5"><ArrowLeft className="h-5 w-5" /></button><h3 className="font-bold">Chọn một món được tặng</h3></div>
-    <div className="flex-1 space-y-2 overflow-y-auto p-5">{targets.map((target) => <button key={target.menu_item_id} type="button" disabled={!canEdit} onClick={() => pickTarget(target)} className="min-h-14 w-full rounded-xl border bg-card px-4 text-left disabled:cursor-not-allowed disabled:opacity-50"><span className="block font-semibold">{target.name}</span>{target.size ? <span className="text-xs text-muted-foreground">Size <SizeLabel size={target.size} /></span> : <span className="text-xs text-muted-foreground">Món lẻ</span>}</button>)}</div>
-  </motion.div>;
+  return (
+    <section className="space-y-3" aria-labelledby="voucher-menu-targets">
+      <div>
+        <h5 id="voucher-menu-targets" className="text-xs font-bold uppercase tracking-widest text-primary/50">Chọn món áp dụng</h5>
+        <p className="mt-1 text-xs text-muted-foreground">Chạm vào món để tùy chỉnh rồi thêm thẳng vào giỏ.</p>
+      </div>
+      {targets.map((target) => {
+        const item = menuItems.find((candidate) => candidate.id === target.menu_item_id);
+        if (!item) return null;
+        const allowedSizes = target.size ? [target.size as Size] : undefined;
+        return (
+          <div key={target.menu_item_id} className={!canEdit ? "opacity-50" : undefined}>
+            <MenuCard
+              item={item}
+              milkTypes={menuData.milk_types}
+              compact
+              disabled={!canEdit}
+              allowedSizes={allowedSizes}
+              onItemClick={() => pickTarget(target)}
+            />
+          </div>
+        );
+      })}
+    </section>
+  );
 }

@@ -392,6 +392,38 @@ export function StaffCartDrawer({
               </button>
             )}
           </div>
+          {customerInfo?.type === "existing" ? (
+            <div className="mt-3 rounded-2xl border border-border/70 bg-background p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-bold text-primary">Voucher của khách</p>
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+                  {voucherRevalidating ? "Đang tải…" : customerVouchers.length}
+                </span>
+              </div>
+              {voucherRevalidating ? (
+                <p className="text-xs text-muted-foreground">Đang xác minh ví voucher…</p>
+              ) : customerVouchers.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Khách chưa có voucher khả dụng.</p>
+              ) : (
+                <div className="max-h-32 space-y-1.5 overflow-y-auto overscroll-contain pr-1">
+                  {customerVouchers.map((voucher) => (
+                    <div key={voucher.qr_token} className="flex min-h-10 items-center justify-between gap-3 rounded-xl bg-secondary/25 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold text-foreground">{voucher.package.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{voucher.voucher_type.replaceAll("_", " ")}</p>
+                      </div>
+                      <span className={cn(
+                        "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold",
+                        voucher.status === "ACTIVE" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700",
+                      )}>
+                        {voucher.status === "ACTIVE" ? "Có thể dùng" : "Đang giữ"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
 
         {/* Item list */}

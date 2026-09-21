@@ -17,9 +17,12 @@ ADDON chỉ nhận option fixed-price. Customer chọn đúng một reward trư�
 unit; staff áp dụng cùng rule trên cart item đã chọn. Customer và staff giữ payload order hiện có
 và dùng chung server calculator.
 
-Với PRODUCT nhiều target, bottom sheet hiển thị danh sách món rồi mở `ProductModal` với size,
-bột và Base Liquid snapshot của target làm cấu hình ban đầu; người dùng vẫn customize và trả phần
-vượt credit của target đó. ITEM nhiều target mở danh sách extras rồi thêm đúng một unit miễn phí.
+Với PRODUCT, PRODUCT_DISCOUNT và ITEM, chi tiết voucher hiển thị trực tiếp danh sách target bằng
+`MenuCard` compact; card chỉ render các size thuộc scope mà admin đã cấu hình. Chạm target đồ uống
+mở `ProductModal` với size, bột và Base Liquid snapshot làm cấu hình ban đầu; người dùng vẫn customize
+và trả phần vượt credit của PRODUCT. ITEM thêm đúng một unit miễn phí. Không mở thêm sheet chỉ để
+chọn target. Sau khi cấu hình thành công, đóng ProductModal và toàn bộ surface voucher trước rồi mới
+mở cart để shared overlay primitive giải phóng scroll lock.
 ADDON nhiều target chọn addon trước, sau đó gắn vào một ly chưa bị BUNDLE chiếm; khi chưa có ly thì
 lưu pending intent trong memory và chuyển về menu. Món mới số lượng lớn được tách đúng một unit.
 Nếu group addon đã đầy, dùng `ConfirmModal` để hỏi trước khi thay; giữ nguyên món sẽ giữ pending

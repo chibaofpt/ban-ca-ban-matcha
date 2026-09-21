@@ -18,6 +18,10 @@ Projection join cart với catalog/wallet hiện hành, khóa checkout trong lú
 nếu dữ liệu chưa sẵn sàng. Đổi owner/logout giữ paid line nhưng tháo personal/order voucher và chỉ
 xóa reward line/addon được ghi trong `created_reward_effects`.
 
+Customer có thể chạm phần nội dung của một cart line để mở `ProductModal` sửa cấu hình; các nút số
+lượng, xóa và voucher vẫn giữ action riêng và không kích hoạt edit. Với POS, sau khi chọn khách hiện
+có, cart hiển thị ngay danh sách voucher của khách cùng trạng thái tải/khả dụng/đang giữ.
+
 ## BUNDLE setup và cart
 
 BUNDLE dùng một planner thuần và shared evaluator cho ví, customer cart và staff cart. Setup giữ

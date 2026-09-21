@@ -64,6 +64,7 @@ export default function AdminOrdersPage() {
   const [activeFilters, setActiveFilters] = useState({
     search: "",
     staffName: "",
+    paymentMethod: "" as "" | "CASH" | "BANK_TRANSFER",
     startDate: getTodayStr(),
     endDate: "",
   });
@@ -92,6 +93,7 @@ export default function AdminOrdersPage() {
       startDate: activeTab !== "pending" ? startIso : undefined,
       endDate: activeTab !== "pending" ? endIso : undefined,
       order_type: orderTypeParam || undefined,
+      payment_method: activeFilters.paymentMethod || undefined,
       status: statusParam || undefined,
       exclude_cancelled: activeTab === "all" || undefined,
       page,
@@ -138,7 +140,7 @@ export default function AdminOrdersPage() {
   };
 
   const clearFilters = () => {
-    const defaultFilters = { search: "", staffName: "", startDate: getTodayStr(), endDate: "" };
+    const defaultFilters = { search: "", staffName: "", paymentMethod: "" as const, startDate: getTodayStr(), endDate: "" };
     setDraftFilters(defaultFilters);
     setPage(1);
     setActiveFilters(defaultFilters);
@@ -148,6 +150,7 @@ export default function AdminOrdersPage() {
   const activeFilterCount = 
     (activeFilters.search ? 1 : 0) +
     (activeFilters.staffName ? 1 : 0) +
+    (activeFilters.paymentMethod ? 1 : 0) +
     (activeFilters.startDate && activeFilters.startDate !== getTodayStr() ? 1 : 0) +
     (activeFilters.endDate ? 1 : 0);
 
@@ -623,6 +626,20 @@ export default function AdminOrdersPage() {
                   onChange={(e) => setDraftFilters({ ...draftFilters, staffName: e.target.value })}
                   className="w-full h-11 px-4 rounded-xl border bg-background text-sm focus:ring-2 focus:ring-primary outline-none"
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="admin-order-payment-method" className="text-xs font-medium text-foreground">Phương thức thanh toán</label>
+                <select
+                  id="admin-order-payment-method"
+                  value={draftFilters.paymentMethod}
+                  onChange={(e) => setDraftFilters({ ...draftFilters, paymentMethod: e.target.value as "" | "CASH" | "BANK_TRANSFER" })}
+                  className="h-11 w-full rounded-xl border bg-background px-4 text-sm outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">Tất cả</option>
+                  <option value="CASH">Tiền mặt</option>
+                  <option value="BANK_TRANSFER">Chuyển khoản</option>
+                </select>
               </div>
 
               <div className="space-y-1.5">

@@ -1,17 +1,15 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import React, { useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import Image from "next/image";
 import { useCartStore } from "@/src/lib/store/cartStore";
+import MenuCard from "@/src/components/menu/MenuCard";
 import type { CartItem, ProjectedCartLine } from "@/src/lib/types/cart";
 import type { MenuData } from "@/src/lib/types/menu";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { ceilTo1000 } from "@/src/utils/pricing";
 import type { PendingAddonVoucherIntent } from "@/src/lib/store/cartStore";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
-import { SizeLabel } from "@/src/components/ui/SizeLabel";
 import { hasAddonVoucherForOption, resolveAddonVoucherOptionId } from "@/src/utils/voucherMatchUtils";
 
 interface AddonItemPickerProps {
@@ -21,7 +19,8 @@ interface AddonItemPickerProps {
   menuData: MenuData;
   /** Lock voucher edits while the wallet query is loading or revalidating. */
   canEdit?: boolean;
-  onBack: () => void;
+  onBack?: () => void;
+  embedded?: boolean;
   onSuccess: () => void;
   onPending?: (intent: PendingAddonVoucherIntent) => void;
 }
@@ -33,6 +32,7 @@ export const AddonItemPicker = ({
   menuData,
   canEdit = true,
   onBack,
+  embedded = false,
   onSuccess,
   onPending,
 }: AddonItemPickerProps) => {
@@ -42,7 +42,6 @@ export const AddonItemPicker = ({
     resolveAddonVoucherOptionId(voucher) ?? "",
   );
   const [conflict, setConflict] = useState<{ item: ProjectedCartLine; replaceOptionId: string; intent: PendingAddonVoucherIntent } | null>(null);
-  const attemptedSingletonApply = useRef(false);
   const projectedItems = cartItems.flatMap((item): ProjectedCartLine[] => {
     if ("grossUnitPriceVnd" in item) return [item];
     const menuItem = [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])].find((candidate) => candidate.id === item.menuItemId);
@@ -143,7 +142,6 @@ export const AddonItemPicker = ({
       void import("sonner").then(({ toast }) => toast.error(result.message));
       return;
     }
-    setCartOpen(true);
     onSuccess();
   };
 
@@ -168,65 +166,40 @@ export const AddonItemPicker = ({
       return;
     }
     setConflict(null);
-    setCartOpen(true);
     onSuccess();
   };
 
-  useEffect(() => {
-    if (
-      attemptedSingletonApply.current ||
-      !canEdit ||
-      addonTargets.length > 1 ||
-      eligibleDrinkItems.length !== 1 ||
-      !selectedAddonOptionId
-    ) return;
-    attemptedSingletonApply.current = true;
-    handleSelectItem(eligibleDrinkItems[0]);
-    // Singleton ADDON keeps the legacy one-drink auto-apply behavior; conflict handling stays in the picker.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [addonTargets.length, canEdit, eligibleDrinkItems.length, selectedAddonOptionId]);
-
   return (
-    <motion.div
-      initial={{ x: "100%" }}
-      animate={{ x: 0 }}
-      exit={{ x: "100%" }}
-      transition={{ type: "spring", damping: 25, stiffness: 300 }}
-      className="absolute inset-0 z-20 bg-[#fdfcf7] flex flex-col"
+    <section
+      className={embedded ? "space-y-3" : "absolute inset-0 z-20 flex flex-col space-y-3 overflow-y-auto bg-background p-5"}
+      aria-labelledby="addon-voucher-targets"
     >
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-border/40 shrink-0 bg-white">
-        <button
-          onClick={onBack}
-          className="w-11 h-11 rounded-full bg-primary/5 flex items-center justify-center hover:bg-primary/10 transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5 text-primary" />
-        </button>
-        <h3 className="font-bold text-primary">Chọn món áp dụng</h3>
-      </div>
-      <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none p-5 space-y-3 overscroll-contain">
+        {!embedded && onBack ? (
+          <button type="button" onClick={onBack} className="flex min-h-11 items-center gap-2 self-start rounded-xl px-2 font-semibold text-primary focus-visible:ring-2 focus-visible:ring-ring">
+            <ArrowLeft className="size-5" /> Quay lại
+          </button>
+        ) : null}
+        <div>
+          <h5 id="addon-voucher-targets" className="text-xs font-bold uppercase tracking-widest text-primary/50">Chọn món áp dụng</h5>
+          <p className="mt-1 text-xs text-muted-foreground">Chọn topping của voucher, sau đó chọn ly trong giỏ.</p>
+        </div>
         {addonTargets.length > 1 ? <div className="space-y-2"><p className="text-sm font-semibold">Chọn addon được tặng</p>{addonTargets.map((option) => <button type="button" key={option.addon_option_id} disabled={!canEdit} onClick={() => setSelectedAddonOptionId(option.addon_option_id)} className={`min-h-11 w-full rounded-xl border px-3 text-left disabled:cursor-not-allowed disabled:opacity-50 ${selectedAddonOptionId === option.addon_option_id ? "border-primary bg-primary/10" : "border-input"}`}>{option.label}</button>)}</div> : null}
         {eligibleDrinkItems.length === 0 && selectedAddonOptionId ? <button type="button" disabled={!canEdit} onClick={() => { const intent = resolveIntent(selectedAddonOptionId); if (intent) savePendingAndExit(intent); }} className="min-h-11 w-full rounded-xl bg-primary px-4 font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">Chọn món mới</button> : null}
         {eligibleDrinkItems.map(item => (
-          <button
-            key={item.cartId}
-            type="button"
-            disabled={!canEdit}
-            onClick={() => handleSelectItem(item)}
-            className="w-full flex items-center gap-3 p-3 bg-white border border-border/40 rounded-xl text-left hover:border-primary/20 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <div className="w-12 h-12 shrink-0 rounded-lg overflow-hidden relative bg-secondary/10">
-              {item.imageUrl && (
-                <Image src={item.imageUrl} alt={item.name} fill sizes="48px" className="object-cover" />
-              )}
+          item.menuItem ? (
+            <div key={item.cartId} className={!canEdit ? "opacity-50" : undefined}>
+              <MenuCard
+                item={item.menuItem}
+                milkTypes={menuData.milk_types}
+                compact
+                disabled={!canEdit}
+                allowedSizes={item.configuration.size ? [item.configuration.size] : undefined}
+                onItemClick={() => handleSelectItem(item)}
+              />
             </div>
-            <div>
-              <p className="font-bold text-sm text-primary">{item.name}</p>
-              <p className="text-xs text-primary/60">Size <SizeLabel size={item.configuration.size} /> • {(item.grossUnitPriceVnd / 1000).toLocaleString("vi-VN")}K</p>
-            </div>
-          </button>
+          ) : null
         ))}
-      </div>
       <ConfirmModal isOpen={conflict !== null} title="Nhóm addon đã đủ" message="Thay addon đang chọn bằng addon của voucher? Chọn giữ nguyên sẽ lưu voucher để áp dụng cho món mới tiếp theo." confirmLabel="Thay addon" cancelLabel="Giữ nguyên" onConfirm={replaceAndApply} onCancel={() => { if (conflict) savePendingAndExit(conflict.intent); setConflict(null); }} />
-    </motion.div>
+    </section>
   );
 };

@@ -254,7 +254,8 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/store-status` | GET |
 | `/api/voucher-packages` | GET |
 
-`GET /api/admin/orders` accepts `exclude_cancelled=true` for the Admin “All” tab. Results remain
+`GET /api/admin/orders` accepts `exclude_cancelled=true` for the Admin “All” tab and
+`payment_method=CASH|BANK_TRANSFER` for the payment-method filter. Results remain
 ordered by `created_at DESC`; each non-null `handler` includes `name` and `role` so the Admin UI can
 distinguish orders received by an Admin from those received by Staff.
 
