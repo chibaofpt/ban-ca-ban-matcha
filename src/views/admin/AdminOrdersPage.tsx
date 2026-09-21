@@ -290,7 +290,7 @@ export default function AdminOrdersPage() {
   return (
     <div className="px-2 md:px-0 py-4 space-y-4 pb-24 md:pb-8 max-w-7xl mx-auto">
       <div className="flex items-baseline justify-between">
-        <h1 className="font-serif text-2xl font-semibold text-foreground">Quản lý Đơn hàng</h1>
+        <h1 className="font-serif text-2xl font-semibold text-foreground">Đơn hàng</h1>
         <div className="flex gap-3 items-center">
           <button
             onClick={() => setShowReportModal(true)}

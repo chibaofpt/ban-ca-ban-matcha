@@ -173,9 +173,14 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
 
   let voucherLoadState: "idle" | "loading" | "loaded" | "error" = "idle";
   if (isCartOpen && isLoggedInSynced) {
-    if (vouchersQuery.isError) voucherLoadState = "error";
-    else if (vouchersQuery.isLoading || vouchersQuery.isFetching) voucherLoadState = "loading";
-    else if (vouchersQuery.isSuccess) voucherLoadState = "loaded";
+    // Silent revalidation: show "loaded" when data exists, even during refetch
+    if (vouchersQuery.isSuccess || (vouchersQuery.isFetching && vouchersQuery.data !== undefined)) {
+      voucherLoadState = "loaded";
+    } else if (vouchersQuery.isError) {
+      voucherLoadState = vouchersQuery.data !== undefined ? "loaded" : "error";
+    } else if (vouchersQuery.isLoading) {
+      voucherLoadState = "loading";
+    }
   }
   const walletVerified = voucherLoadState === "loaded";
   const walletVerifiedForPersonalVoucherControls = !isLoggedIn || (isLoggedInSynced && walletVerified);

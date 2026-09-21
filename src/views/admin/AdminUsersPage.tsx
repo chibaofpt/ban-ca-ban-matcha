@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Copy, Loader2, Receipt, Search, Ticket } from "lucide-react";
-import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 import { AdminUserActions } from "@/src/components/admin/AdminUserActions";
 import { AdminUserOrderDetail } from "@/src/components/admin/AdminUserOrderDetail";
@@ -16,6 +16,7 @@ import { Button } from "@/src/components/ui/button";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { OverlayStackProvider } from "@/src/components/ui/OverlayStackProvider";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
+import { useDebounce } from "@/src/hooks/useDebounce";
 import type { AdminUserPatch, AdminUserSummary as AdminUserSummaryDto } from "@/src/lib/types/adminUser";
 import { ApiServiceError } from "@/src/services/orderService";
 import {
@@ -43,7 +44,7 @@ function DetailBackButton({ onClick, disabled = false }: { onClick: () => void; 
 export default function AdminUsersPage() {
   const queryClient = useQueryClient();
   const [input, setInput] = useState("");
-  const [query, setQuery] = useState("");
+  const debouncedQuery = useDebounce(input.trim(), 400);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<AdminUserSummaryDto | null>(null);
   const [detailView, setDetailView] = useState<DetailView>({ kind: "customer" });
@@ -56,7 +57,7 @@ export default function AdminUsersPage() {
   const [voucherBusy, setVoucherBusy] = useState(false);
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
 
-  const listQuery = useQuery({ queryKey: adminUserKeys.list(page, query), queryFn: () => fetchAdminUsers(page, query) });
+  const listQuery = useQuery({ queryKey: adminUserKeys.list(page, debouncedQuery), queryFn: () => fetchAdminUsers(page, debouncedQuery) });
   const detailQuery = useQuery({
     queryKey: adminUserKeys.detail(selected?.qr_token ?? ""),
     queryFn: () => fetchAdminUser(selected!.qr_token),
@@ -90,10 +91,9 @@ export default function AdminUsersPage() {
     ? "Các giá trị đã lưu tại thời điểm đặt đơn."
     : user ? `${user.phone_number} · ${user.current_voucher_count} voucher hiện có` : "Đang tải thông tin khách hàng";
 
-  function submitSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function handleInputChange(value: string) {
+    setInput(value);
     setPage(1);
-    setQuery(input.trim());
   }
   function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, currentTab: DetailTab) {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -135,11 +135,8 @@ export default function AdminUsersPage() {
   }
 
   return <OverlayStackProvider><main className="mx-auto w-full max-w-5xl space-y-5 overflow-x-hidden px-3 py-6 pb-28 md:px-8">
-    <header><p className="text-sm font-semibold text-primary">Khách hàng</p><h1 className="text-2xl font-bold">Quản lý khách hàng</h1><p className="mt-1 text-sm text-muted-foreground">Tìm theo tên, số điện thoại hoặc Instagram.</p></header>
-    <form onSubmit={submitSearch} className="space-y-2 rounded-2xl border bg-card p-4">
-      <label htmlFor="admin-user-search" className="block text-sm font-medium">Tìm khách hàng</label>
-      <div className="flex gap-2"><div className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl border bg-background px-3"><Search className="h-4 w-4 shrink-0 text-muted-foreground" /><input id="admin-user-search" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Tên, số điện thoại, @instagram" className="min-w-0 flex-1 bg-transparent text-sm outline-none" /></div><Button type="submit" disabled={listQuery.isFetching}>Tìm</Button></div>
-    </form>
+    <header><h1 className="text-2xl font-bold">Quản lý khách hàng</h1><p className="mt-1 text-sm text-muted-foreground">Tìm theo tên, số điện thoại hoặc Instagram.</p></header>
+    <div className="flex min-h-11 min-w-0 items-center gap-2 rounded-xl border bg-background px-3"><Search className="h-4 w-4 shrink-0 text-muted-foreground" /><input id="admin-user-search" value={input} onChange={(event) => handleInputChange(event.target.value)} placeholder="Tìm theo tên, số điện thoại, @instagram" className="min-w-0 flex-1 bg-transparent text-sm outline-none" /></div>
     {listQuery.isPending ? <p role="status" className="flex justify-center gap-2 py-12 text-muted-foreground"><Loader2 className="animate-spin" />Đang tải khách hàng…</p> : listQuery.isError ? <div className="space-y-3 rounded-2xl bg-destructive/10 p-5 text-destructive"><p role="alert">Không tải được danh sách khách hàng.</p><Button variant="outline" onClick={() => void listQuery.refetch()}>Thử lại</Button></div> : listQuery.data.items.length === 0 ? <p className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">Không tìm thấy khách hàng phù hợp.</p> : <section className="space-y-3" aria-label="Danh sách khách hàng">{listQuery.data.items.map((item) => <AdminUserSummary key={item.qr_token} user={item} interactive onClick={() => setSelected(item)} />)}<AdminUserPagination page={listQuery.data.page} totalPages={listQuery.data.total_pages} disabled={listQuery.isFetching} onPageChange={setPage} /></section>}
 
     <ResponsiveOverlay open={Boolean(selected)} title={sheetTitle} description={sheetDescription} size="lg" dismissPolicy="locked-while-busy" busy={busy} onOpenChange={(open) => { if (!open) closeCustomer(); }}>

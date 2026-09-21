@@ -134,6 +134,7 @@ export interface OrderItemDetail {
   note: string | null;
   selected_powder_id?: string | null;
   selected_milk_type_id?: string | null;
+  base_liquid_ml: number | null;
   selectedPowder: { name: string; price_per_gram?: string } | null;
   milkType: { name: string; is_default: boolean } | null;
   addons: OrderItemAddonDetail[];

@@ -21,6 +21,7 @@ describe("order public DTO", () => {
       note: null,
       selected_powder_id: null,
       selected_milk_type_id: null,
+      base_liquid_ml: 150,
       menuItem: { name: "Matcha latte", category: "latte" },
       selectedPowder: null,
       milkType: null,
@@ -58,6 +59,7 @@ describe("order public DTO", () => {
 
     expect(item).toEqual(expect.objectContaining({
       menu_item_id: "menu-1",
+      base_liquid_ml: 150,
       productVoucher: { package: { name: "Free matcha" } },
       addonVouchers: [{
         discount_applied_vnd: 8_000,

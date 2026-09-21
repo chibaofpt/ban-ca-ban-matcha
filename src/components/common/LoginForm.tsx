@@ -54,15 +54,23 @@ const LoginForm = () => {
 
       const isStaffUser = user.role === "ADMIN" || user.role === "STAFF";
       const isOnMenu = pathname === "/" || pathname === "/menu";
-      if (isStaffUser || !isOnMenu) {
-        router.push(isStaffUser ? "/staff/orders" : "/menu");
-        router.refresh();
-      }
 
-      // Auth state enables customer TanStack queries without remounting the menu/cart.
+      // Set auth state first so queries/UI update immediately.
       login(user.phone_number, user.name);
       resetForceLogout(); // Allow force-logout to fire again after re-login (BUG-3)
-      close();
+      if (isStaffUser) {
+        // Replace (not push) so user can't navigate back to customer menu.
+        // Skip close() — modal stays visible during navigation to avoid
+        // briefly flashing the menu page. It unmounts when admin-shell renders.
+        router.replace("/staff/orders");
+        router.refresh();
+      } else {
+        if (!isOnMenu) {
+          router.push("/menu");
+          router.refresh();
+        }
+        close();
+      }
     } catch (error) {
       const axiosError = error as { response?: { data?: { error?: string } } };
       setServerError(

@@ -196,11 +196,7 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
 
       {/* Bottom tab bar */}
       <nav aria-label="Điều hướng quản trị" className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_12px_rgba(0,0,0,0.05)] md:hidden">
-        <div
-          className={cn(
-            "flex max-w-full gap-2 overflow-x-auto overscroll-x-contain scroll-px-2 snap-x snap-mandatory px-2 py-1 touch-pan-x",
-          )}
-        >
+        <div className="flex w-full gap-1 px-1 py-1">
           {tabs.map(({ to, label, icon: Icon }) => {
             const isActive = selectedPath === to || selectedPath.startsWith(to + "/");
             return (
@@ -210,8 +206,7 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
                 aria-current={isActive ? "page" : undefined}
                 onClick={(event) => handleTabClick(event, to)}
                 className={cn(
-                  "relative flex min-h-14 snap-start flex-col items-center justify-center rounded-xl py-2 text-xs transition-colors",
-                  tabs.length <= 4 ? "min-w-0 flex-1" : "w-20 shrink-0",
+                  "relative flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center rounded-xl py-2 text-xs transition-colors",
                   isActive ? "text-primary font-medium" : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -234,7 +229,7 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
                       </span>
                     )}
                   </div>
-                  <span className="leading-none text-[11px]">{label}</span>
+                  <span className="leading-none text-[10px] truncate max-w-full">{label}</span>
                 </motion.div>
               </Link>
             );

@@ -56,6 +56,14 @@ describe("Content Security Policy dùng nonce", () => {
     expect(policy).toContain("worker-src 'self' blob:");
   });
 
+  it("chỉ cho phép Google Maps làm nguồn iframe", () => {
+    const policy = buildContentSecurityPolicy("fixed-nonce");
+    const frameDirective = policy.split(";").find((part) => part.trim().startsWith("frame-src"));
+
+    expect(frameDirective?.trim()).toBe("frame-src https://www.google.com");
+    expect(frameDirective).not.toContain("*");
+  });
+
   it("mặc định report-only và truyền cùng nonce vào request lẫn response", () => {
     const headers = buildPageSecurityHeaders("/menu", "fixed-nonce", {});
 

@@ -54,6 +54,7 @@ interface OrderListItemSource {
     note: string | null;
     selected_powder_id?: string | null;
     selected_milk_type_id?: string | null;
+    base_liquid_ml: number | null;
     menuItem: { name: string; category: string };
     selectedPowder: { name: string; price_per_gram?: DecimalLike } | null;
     milkType: { name: string; is_default: boolean } | null;
@@ -156,6 +157,7 @@ export function toOrderItemDetail<T extends OrderListItemSource["items"][number]
     note: item.note,
     selected_powder_id: item.selected_powder_id,
     selected_milk_type_id: item.selected_milk_type_id,
+    base_liquid_ml: item.base_liquid_ml,
     selectedPowder: item.selectedPowder ? {
       name: item.selectedPowder.name,
       ...(item.selectedPowder.price_per_gram === undefined
