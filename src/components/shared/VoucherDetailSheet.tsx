@@ -4,7 +4,7 @@ import React from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, Loader2, LogIn } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCartStore } from "@/src/lib/store/cartStore";
+import { useCartStore, type PendingAddonVoucherIntent } from "@/src/lib/store/cartStore";
 import { useAddVoucherToCart } from "@/src/hooks/useAddVoucherToCart";
 import {
   canApplyDiscount,
@@ -27,6 +27,7 @@ import { AddonItemPicker } from "./AddonItemPicker";
 import { ProductDiscountItemPicker } from "./ProductDiscountItemPicker";
 import { ScopedMenuVoucherPicker } from "./ScopedMenuVoucherPicker";
 import type { CartItem } from "@/src/lib/types/cart";
+import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import type { MenuData } from "@/src/lib/types/menu";
 import type { MyVoucher, VoucherPackage } from "@/src/services/customerVoucherService";
 import { selectOrderVoucherToken } from "@/src/utils/customerVoucherSelection";
@@ -55,6 +56,21 @@ interface OwnedVoucherDetailSheetProps {
   onRemoveAppliedVoucher?: () => void;
   /** Cart context: delegate PRODUCT/ITEM "Dùng ngay" to parent. */
   onUseProductVoucher?: (voucher: MyVoucher) => void;
+  /** Cart context: keep order-level selection in the caller-owned cart store. */
+  onSelectOrderVoucher?: (voucher: MyVoucher) => void;
+  /** Cart context: keep ADDON mutations in the caller-owned cart store. */
+  onApplyAddonVoucher?: (
+    cartId: string,
+    voucherId: string,
+    addonOptionId: string,
+    context: {
+      groupOptionIds: string[];
+      maxSelect: number;
+      isExtraMatcha: boolean;
+      replaceOptionId?: string;
+    },
+  ) => CartMutationResult;
+  onSavePendingAddonVoucher?: (intent: PendingAddonVoucherIntent) => void;
   /** Close the owning wallet overlay before routing to select a new drink. */
   onPendingAddon?: () => void;
   packageData?: never;
@@ -285,6 +301,9 @@ const OwnedVoucherDetailSheet = ({
   onSelectProductDiscountTarget,
   onRemoveAppliedVoucher,
   onUseProductVoucher,
+  onSelectOrderVoucher,
+  onApplyAddonVoucher,
+  onSavePendingAddonVoucher,
   onPendingAddon,
   canEdit = true,
   editDisabledReason,
@@ -320,8 +339,10 @@ const OwnedVoucherDetailSheet = ({
   }
 
   const vType = voucher.voucher_type;
-  const hasInlineTargets = !onSelectProductDiscountTarget && !onUseProductVoucher &&
-    (vType === "PRODUCT" || vType === "PRODUCT_DISCOUNT" || vType === "ITEM" || vType === "ADDON");
+  const hasInlineTargets = vType === "ADDON" || (
+    !onSelectProductDiscountTarget && !onUseProductVoucher &&
+    (vType === "PRODUCT" || vType === "PRODUCT_DISCOUNT" || vType === "ITEM")
+  );
   const config = VOUCHER_TYPE_CONFIG[vType] || { label: "Voucher", badgeCls: "bg-gray-100 text-gray-800" };
   const highlight = getTicketHighlightText(vType, voucher.discount_type, voucher.discount_value, voucher.reference_size);
 
@@ -359,7 +380,8 @@ const OwnedVoucherDetailSheet = ({
 
     if (vType === "DISCOUNT" || vType === "FREESHIP") {
       if (canApply) {
-        setSelectedVoucherIds(selectOrderVoucherToken(selectedVoucherIds, voucher, myVouchers));
+        if (onSelectOrderVoucher) onSelectOrderVoucher(voucher);
+        else setSelectedVoucherIds(selectOrderVoucherToken(selectedVoucherIds, voucher, myVouchers));
         onUseNowSuccess();
       }
       return;
@@ -449,10 +471,14 @@ const OwnedVoucherDetailSheet = ({
             canEdit={canEdit && canApply}
             embedded
             onSuccess={onUseNowSuccess}
+            onApplyVoucher={onApplyAddonVoucher}
+            onSavePendingVoucher={onSavePendingAddonVoucher}
             onPending={() => {
               if (onPendingAddon) onPendingAddon();
-              else onBack();
-              router.push("/menu");
+              else {
+                onBack();
+                router.push("/menu");
+              }
             }}
           />
         ) : null}

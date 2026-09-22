@@ -10,7 +10,13 @@ import type { StaffOrderResult } from "@/src/lib/types/order";
 
 type CounterTransferPayment = Pick<
   StaffOrderResult,
-  "id" | "order_code" | "auto_cancel_at" | "payment_qr_url" | "grand_total_vnd"
+  | "id"
+  | "order_code"
+  | "auto_cancel_at"
+  | "payment_qr_url"
+  | "subtotal_vnd"
+  | "total_vnd"
+  | "grand_total_vnd"
 >;
 
 interface CounterTransferPaymentModalProps {
@@ -33,6 +39,7 @@ export function CounterTransferPaymentModal({
   if (!payment || !payment.payment_qr_url || !payment.order_code || !payment.auto_cancel_at) {
     return null;
   }
+  const voucherSavingsVnd = Math.max(0, payment.subtotal_vnd - payment.total_vnd);
 
   return (
     <>
@@ -68,6 +75,13 @@ export function CounterTransferPaymentModal({
             orderCode={payment.order_code}
             amountVnd={payment.grand_total_vnd}
           />
+
+          {voucherSavingsVnd > 0 ? (
+            <div className="mt-3 flex items-center justify-between rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
+              <span className="font-semibold text-muted-foreground">Voucher đã áp</span>
+              <span className="font-bold text-primary">-{voucherSavingsVnd.toLocaleString("vi-VN")}đ</span>
+            </div>
+          ) : null}
 
           <p className="mt-3 text-center text-xs text-muted-foreground">
             Chỉ xác nhận sau khi đã kiểm tra tiền vào tài khoản.

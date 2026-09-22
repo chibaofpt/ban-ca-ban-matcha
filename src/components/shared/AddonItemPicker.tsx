@@ -11,6 +11,7 @@ import { ceilTo1000 } from "@/src/utils/pricing";
 import type { PendingAddonVoucherIntent } from "@/src/lib/store/cartStore";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { hasAddonVoucherForOption, resolveAddonVoucherOptionId } from "@/src/utils/voucherMatchUtils";
+import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 
 interface AddonItemPickerProps {
   voucher: MyVoucher;
@@ -23,6 +24,18 @@ interface AddonItemPickerProps {
   embedded?: boolean;
   onSuccess: () => void;
   onPending?: (intent: PendingAddonVoucherIntent) => void;
+  onApplyVoucher?: (
+    cartId: string,
+    voucherId: string,
+    addonOptionId: string,
+    context: {
+      groupOptionIds: string[];
+      maxSelect: number;
+      isExtraMatcha: boolean;
+      replaceOptionId?: string;
+    },
+  ) => CartMutationResult;
+  onSavePendingVoucher?: (intent: PendingAddonVoucherIntent) => void;
 }
 
 export const AddonItemPicker = ({
@@ -35,8 +48,11 @@ export const AddonItemPicker = ({
   embedded = false,
   onSuccess,
   onPending,
+  onApplyVoucher,
+  onSavePendingVoucher,
 }: AddonItemPickerProps) => {
   const { applyAddonVoucher, setCartOpen, setPendingAddonVoucher } = useCartStore();
+  const applyVoucher = onApplyVoucher ?? applyAddonVoucher;
   const addonTargets = voucher.eligible_addon_options?.filter((option) => option.is_active && !option.is_dynamic_gram) ?? [];
   const [selectedAddonOptionId, setSelectedAddonOptionId] = useState(
     resolveAddonVoucherOptionId(voucher) ?? "",
@@ -86,8 +102,11 @@ export const AddonItemPicker = ({
 
   const savePendingAndExit = (intent: PendingAddonVoucherIntent) => {
     if (!canEdit) return;
-    setPendingAddonVoucher(intent);
-    setCartOpen(false);
+    if (onSavePendingVoucher) onSavePendingVoucher(intent);
+    else {
+      setPendingAddonVoucher(intent);
+      setCartOpen(false);
+    }
     onPending?.(intent);
   };
 
@@ -133,7 +152,7 @@ export const AddonItemPicker = ({
     }
     const intent = resolveIntent(addonOptionId);
     if (!intent) return;
-    const result = applyAddonVoucher(item.cartId, voucher.qr_token, addonOptionId, {
+    const result = applyVoucher(item.cartId, voucher.qr_token, addonOptionId, {
       groupOptionIds: targetGroupOptionIds,
       maxSelect: targetMaxSelect,
       isExtraMatcha,
@@ -154,7 +173,7 @@ export const AddonItemPicker = ({
       return;
     }
     const groupOptionIds = menuData.addon_groups.find((group) => group.id === intent.addonGroupId)?.options.map((option) => option.id) ?? [];
-    const result = applyAddonVoucher(item.cartId, voucher.qr_token, intent.addonOptionId, {
+    const result = applyVoucher(item.cartId, voucher.qr_token, intent.addonOptionId, {
       groupOptionIds,
       maxSelect: intent.maxSelect,
       isExtraMatcha: false,

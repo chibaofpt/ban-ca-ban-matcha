@@ -3,7 +3,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
 import { type MyVoucher, type VoucherPackage } from "@/src/services/customerVoucherService";
-import { useVoucherAcquisition } from "@/src/hooks/useVoucherAcquisition";
+import { useVoucherAcquisition, type VoucherAcquisitionOptions } from "@/src/hooks/useVoucherAcquisition";
 import { VoucherCard } from "@/src/components/shared/VoucherCards";
 import { VoucherModalDetailTransition, VoucherModalFrame } from "@/src/components/shared/VoucherModalSections";
 import { CustomerVoucherHistory } from "@/src/components/shared/CustomerVoucherHistory";
@@ -18,7 +18,7 @@ import type { Powder } from "@/src/lib/types/powder";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 import { VoucherDetailSheet } from "@/src/components/shared/VoucherDetailSheet";
 import { AddonItemPicker } from "@/src/components/shared/AddonItemPicker";
-import { buildVoucherActionModel, getProductDiscountSelection } from "@/src/utils/customerVoucherSelection";
+import { buildVoucherActionModel, getProductDiscountSelection, selectOrderVoucherToken } from "@/src/utils/customerVoucherSelection";
 import { getVoucherAvailabilityMessage, type VoucherModalTab } from "@/src/lib/utils/voucherModalHelpers";
 import { BundleVoucherSetupSheet } from "@/src/components/shared/BundleVoucherSetupSheet";
 import { getBundleVoucherSummary } from "@/src/components/menu/cart/CartBundleVoucherPanel";
@@ -26,6 +26,7 @@ import { validateBundleCartDraft } from "@/src/lib/utils/bundleCartDraft";
 import { SizeLabel } from "@/src/components/ui/SizeLabel";
 import { resolveBundleSelectionSiblings } from "@/src/lib/utils/bundleVoucher";
 import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
+import type { PendingAddonVoucherIntent } from "@/src/lib/store/cartStore";
 
 interface CartDiscountPickerProps {
   discountVouchers: MyVoucher[];
@@ -64,6 +65,27 @@ interface CartDiscountPickerProps {
   addonVouchers: MyVoucher[];
   /** Callback when PRODUCT/ITEM voucher "Dùng ngay" is pressed. */
   onUseProductVoucher: (voucher: MyVoucher) => void;
+  /** Optional adapters let staff reuse this picker without mutating the customer cart store. */
+  onApplyAddonVoucher?: (
+    cartId: string,
+    voucherId: string,
+    addonOptionId: string,
+    context: {
+      groupOptionIds: string[];
+      maxSelect: number;
+      isExtraMatcha: boolean;
+      replaceOptionId?: string;
+    },
+  ) => CartMutationResult;
+  onSavePendingAddonVoucher?: (intent: PendingAddonVoucherIntent) => void;
+  acquisitionOptions?: VoucherAcquisitionOptions;
+  onAcquired?: (voucherPackage: VoucherPackage) => void;
+  isSelectionContextCurrent?: () => boolean;
+  tabs?: VoucherModalTab[];
+  title?: string;
+  pointsLabel?: string;
+  voucherTabLabel?: string;
+  emptyWalletLabel?: string;
 }
 
 type VoucherPickerView =
@@ -107,9 +129,22 @@ export const CartDiscountPicker = ({
   productVouchers,
   addonVouchers,
   onUseProductVoucher,
+  onApplyAddonVoucher,
+  onSavePendingAddonVoucher,
+  acquisitionOptions,
+  onAcquired,
+  isSelectionContextCurrent,
+  tabs,
+  title,
+  pointsLabel,
+  voucherTabLabel,
+  emptyWalletLabel = "Bạn chưa có mã ưu đãi nào",
 }: CartDiscountPickerProps) => {
   const router = useRouter();
-  const { acquire, retryRefresh, receipt, isPending } = useVoucherAcquisition({ refreshWallet: onRefreshVouchers });
+  const { acquire, retryRefresh, receipt, isPending } = useVoucherAcquisition({
+    ...acquisitionOptions,
+    refreshWallet: onRefreshVouchers,
+  });
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
   const [isRetryingWallet, setIsRetryingWallet] = useState(false);
   const [confirmPackage, setConfirmPackage] = useState<VoucherPackage | null>(null);
@@ -119,6 +154,7 @@ export const CartDiscountPicker = ({
   const targetVoucher = activeView.kind === "product-target" ? activeView.voucher : null;
   const addonTargetVoucher = activeView.kind === "addon-target" ? activeView.voucher : null;
   const bundleSetupVoucher = activeView.kind === "bundle-setup" ? activeView.voucher : null;
+  const selectionContextIsCurrent = () => isSelectionContextCurrent?.() ?? true;
 
   const myVouchers = [
     ...discountVouchers, ...freeshipVouchers, ...productDiscountVouchers,
@@ -144,7 +180,9 @@ export const CartDiscountPicker = ({
     try {
       setRedeemingId(pkg.id);
       const result = await acquire(pkg);
+      if (!selectionContextIsCurrent()) return;
       setConfirmPackage(null);
+      onAcquired?.(pkg);
       const newVoucher = result.acquired;
       const refreshedVoucher = result.wallet?.find((voucher) => voucher.qr_token === newVoucher.qr_token);
       if (!result.refreshError && newVoucher.voucher_type === "BUNDLE") {
@@ -167,7 +205,7 @@ export const CartDiscountPicker = ({
     setIsRetryingWallet(true);
     try {
       const result = await retryRefresh();
-      if (result) {
+      if (result && selectionContextIsCurrent()) {
         const refreshedVoucher = result.wallet?.find((voucher) => voucher.qr_token === result.acquired.qr_token);
         if (refreshedVoucher?.voucher_type === "BUNDLE") {
           setActiveView({ kind: "bundle-setup", voucher: refreshedVoucher });
@@ -283,6 +321,10 @@ export const CartDiscountPicker = ({
         isLoggedIn
         voucherCount={myVouchers.length}
         pointsBalance={pointsBalance}
+        title={title}
+        pointsLabel={pointsLabel}
+        tabs={tabs}
+        voucherTabLabel={voucherTabLabel}
         onChange={setActiveTab}
         onClose={closePicker}
         detailOpen={detailVoucher !== null}
@@ -326,6 +368,17 @@ export const CartDiscountPicker = ({
                   onRequestRefund={() => undefined}
                   isRefunding={false}
                   onRemoveAppliedVoucher={removeAppliedDetailVoucher}
+                  onSelectOrderVoucher={(voucher) => {
+                    if (!selectionContextIsCurrent()) return;
+                    onUpdateSelectedVouchers((previous) =>
+                      selectOrderVoucherToken(previous, voucher, myVouchers));
+                  }}
+                  onApplyAddonVoucher={onApplyAddonVoucher}
+                  onSavePendingAddonVoucher={onSavePendingAddonVoucher}
+                  onPendingAddon={() => {
+                    setActiveView({ kind: "list" });
+                    onClose();
+                  }}
                   onSelectProductDiscountTarget={(voucher) => {
                     const selection = getProductDiscountSelection(productTargets(voucher), null);
                     if (selection.kind === "single") {
@@ -373,7 +426,7 @@ export const CartDiscountPicker = ({
             </div>
           ) : myVouchers.length === 0 ? (
             <div className="text-center py-6 bg-white rounded-2xl border border-dashed border-border/60">
-              <p className="text-xs text-primary/40 font-medium">Bạn chưa có mã ưu đãi nào</p>
+              <p className="text-xs text-primary/40 font-medium">{emptyWalletLabel}</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3">
@@ -449,6 +502,7 @@ export const CartDiscountPicker = ({
                 }
 
                 const handleSelection = () => {
+                  if (!selectionContextIsCurrent()) return;
                   setActiveView({ kind: "list" });
                   switch (v.voucher_type) {
                     case "BUNDLE":
@@ -592,17 +646,19 @@ export const CartDiscountPicker = ({
       >
         {addonTargetVoucher ? (
           <AddonItemPicker
-                  voucher={addonTargetVoucher}
-                  cartItems={cart}
-                  bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}
-                  menuData={menuData}
-                  canEdit={!isLoading}
-                  onBack={() => setActiveView({ kind: "list" })}
+            voucher={addonTargetVoucher}
+            cartItems={cart}
+            bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}
+            menuData={menuData}
+            canEdit={!isLoading}
+            onBack={() => setActiveView({ kind: "list" })}
             onSuccess={() => setActiveView({ kind: "list" })}
+            onApplyVoucher={onApplyAddonVoucher}
+            onSavePendingVoucher={onSavePendingAddonVoucher}
             onPending={() => {
               setActiveView({ kind: "list" });
               onClose();
-              router.push("/menu");
+              if (!onSavePendingAddonVoucher) router.push("/menu");
             }}
           />
         ) : null}

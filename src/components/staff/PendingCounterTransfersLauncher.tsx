@@ -87,34 +87,42 @@ export function PendingCounterTransfersLauncher({
               </button>
             </div>
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-              {payments.map((payment) => (
-                <motion.button
-                  key={payment.id}
-                  type="button"
-                  whileTap={{ scale: 0.96 }}
-                  transition={{ duration: 0.18 }}
-                  onClick={() => handleSelect(payment)}
-                  className="flex min-h-16 w-full items-center justify-between gap-3 rounded-2xl border border-border bg-card p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-mono text-sm font-bold text-foreground">
-                      {payment.order_code}
-                    </p>
-                    {payment.auto_cancel_at && (
-                      <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                        <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
-                        <CountdownTimer targetTime={payment.auto_cancel_at} />
-                      </div>
-                    )}
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="text-sm font-bold text-primary">
-                      {formatKa(payment.grand_total_vnd, "ceil")}
-                    </p>
-                    <p className="mt-1 text-[11px] font-semibold text-muted-foreground">Mở QR</p>
-                  </div>
-                </motion.button>
-              ))}
+              {payments.map((payment) => {
+                const voucherSavingsVnd = Math.max(0, payment.subtotal_vnd - payment.total_vnd);
+                return (
+                  <motion.button
+                    key={payment.id}
+                    type="button"
+                    whileTap={{ scale: 0.96 }}
+                    transition={{ duration: 0.18 }}
+                    onClick={() => handleSelect(payment)}
+                    className="flex min-h-16 w-full items-center justify-between gap-3 rounded-2xl border border-border bg-card p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-mono text-sm font-bold text-foreground">
+                        {payment.order_code}
+                      </p>
+                      {voucherSavingsVnd > 0 ? (
+                        <p className="mt-1 text-xs font-semibold text-primary">
+                          Voucher -{voucherSavingsVnd.toLocaleString("vi-VN")}đ
+                        </p>
+                      ) : null}
+                      {payment.auto_cancel_at && (
+                        <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                          <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
+                          <CountdownTimer targetTime={payment.auto_cancel_at} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-sm font-bold text-primary">
+                        {formatKa(payment.grand_total_vnd, "ceil")}
+                      </p>
+                      <p className="mt-1 text-[11px] font-semibold text-muted-foreground">Mở QR</p>
+                    </div>
+                  </motion.button>
+                );
+              })}
             </div>
           </Drawer.Content>
         </Drawer.Portal>

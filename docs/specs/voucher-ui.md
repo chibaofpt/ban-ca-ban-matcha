@@ -52,6 +52,15 @@ Wallet và cart dùng chung voucher frame edge-to-edge với một lớp padding
 trong cùng frame thay vì mở sheet lồng. Cart voucher sheet dùng layer `nested`; target/setup mở
 từ sheet này dùng layer `critical`.
 
+Staff/Admin POS chọn khách hàng rồi dùng lại chính cart voucher picker này với adapter của staff
+cart; không dựng danh sách ví hoặc order-discount picker riêng. Entry point theo từng món có thể giữ
+context của dòng cart nhưng danh sách tổng, detail và target flow thuộc shared picker. Surface phải được key và
+commit theo `user.qr_token` đang chọn: đổi hoặc bỏ khách đóng surface, gỡ toàn bộ voucher owner cũ
+và kết quả async của khách cũ không được ghi sang cart khách mới. Đơn `COUNTER + BANK_TRANSFER`
+đã tạo là snapshot server độc lập: voucher được giữ theo lifecycle của order, còn stack **Chờ CK**
+chỉ đọc lại server state và hiển thị phần giảm voucher từ `subtotal_vnd - total_vnd`; không giữ một
+queue voucher song song trong client.
+
 ## Admin BUNDLE wizard
 
 Admin BUNDLE giữ wizard ba bước. Bước quyền lợi đặt Mua X/Tặng Y cùng hàng, rồi loại quà và mode

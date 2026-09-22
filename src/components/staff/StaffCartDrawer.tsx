@@ -13,14 +13,12 @@ import { SizeLabel } from "@/src/components/ui/SizeLabel";
 import {
   buildProductVoucherMap,
   buildAddonVoucherMap,
-  filterUsableVouchers,
   getAddonVoucherTargetChoices,
 } from "@/src/utils/voucherMatchUtils";
 import { motion, AnimatePresence } from "framer-motion";
 import { Drawer } from "vaul";
 import StaffCartItemCard from "./cart/StaffCartItemCard";
-import { VoucherCard, PackageCard } from "@/src/components/shared/VoucherCards";
-import type { VoucherPackage } from "@/src/services/customerVoucherService";
+import { VoucherCard } from "@/src/components/shared/VoucherCards";
 import type { BundleCartDraftResult, BundleCartDraftValidation } from "@/src/lib/utils/bundleCartDraft";
 import type { DiscountVoucher } from "@/src/lib/store/staffCartStore";
 import Image from "next/image";
@@ -31,7 +29,6 @@ import { deriveBundleAllocationConstraints, summarizeBundleCart, type BundleSele
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { projectCartTotals, type VoucherProjectionSource } from "@/src/lib/utils/bundleVoucherProjection";
 import { BundleVoucherSetupSheet } from "@/src/components/shared/BundleVoucherSetupSheet";
-import type { VoucherAcquisitionReceipt } from "@/src/lib/utils/voucherAcquisitionState";
 import { getBundleAllocatedQuantities, getBundleOutsideAddonQuantity, getBundleOutsideQuantity } from "@/src/lib/utils/bundleCartSummary";
 import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 
@@ -80,18 +77,13 @@ interface StaffCartDrawerProps {
 
   customerVouchers?: MyVoucher[];
   selectedDiscountIds?: string[];
-  onToggleDiscount?: (voucherId: string) => void;
+  onOpenVoucherPicker?: () => void;
   onApplyProduct?: (cartId: string, voucher: MyVoucher) => CartMutationResult;
   onRemoveProduct?: (cartId: string) => CartMutationResult;
   onApplyAddon?: (cartId: string, voucher: MyVoucher, addonOptionId: string) => CartMutationResult;
   onRemoveAddon?: (cartId: string, voucherId: string) => CartMutationResult;
   productModalNode?: React.ReactNode;
   onClearCart?: () => void;
-  availableVoucherPackages?: VoucherPackage[];
-  onExchangeVoucher?: (packageId: string) => void;
-  isExchanging?: boolean;
-  acquisitionReceipt?: VoucherAcquisitionReceipt | null;
-  onRetryVoucherRefresh?: () => void;
   preventCloseOutside?: boolean;
   checkoutBlocked?: boolean;
   voucherRevalidating?: boolean;
@@ -130,18 +122,13 @@ export function StaffCartDrawer({
   onBundleSetupSuccess,
   customerVouchers = [],
   selectedDiscountIds = [],
-  onToggleDiscount,
+  onOpenVoucherPicker,
   onApplyProduct,
   onRemoveProduct,
   onApplyAddon,
   onRemoveAddon,
   productModalNode,
   onClearCart,
-  availableVoucherPackages = [],
-  onExchangeVoucher,
-  isExchanging = false,
-  acquisitionReceipt,
-  onRetryVoucherRefresh,
   preventCloseOutside = false,
   checkoutBlocked = false,
   voucherRevalidating = false,
@@ -150,7 +137,6 @@ export function StaffCartDrawer({
   const menuItems = menuData ? [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])] : [];
 
   const [activeItemForVoucher, setActiveItemForVoucher] = useState<string | null>(null);
-  const [isDiscountPickerOpen, setIsDiscountPickerOpen] = useState(false);
   const [bundleTokenToRemove, setBundleTokenToRemove] = useState<string | null>(null);
   const [addonChoiceVoucherId, setAddonChoiceVoucherId] = useState<string | null>(null);
   const closeVoucherPickerAfter = (result: CartMutationResult) => {
@@ -166,7 +152,6 @@ export function StaffCartDrawer({
 
 
   // Vouchers
-  const discountVouchers = useMemo(() => filterUsableVouchers(customerVouchers, "DISCOUNT"), [customerVouchers]);
   const applicableProductVouchers = useMemo(() => buildProductVoucherMap(customerVouchers, cart), [customerVouchers, cart]);
   const applicableAddonVouchersMap = useMemo(() => buildAddonVoucherMap(customerVouchers, cart), [customerVouchers, cart]);
   const bundleVouchers = useMemo(
@@ -265,6 +250,14 @@ export function StaffCartDrawer({
   const hasVoucherSelection = selectedDiscountIds.length > 0 || bundleApplications.length > 0 || cart.some((item) =>
     Boolean(item.lineVoucher) || item.addonVouchers.length > 0,
   );
+  const appliedVoucherCount = new Set([
+    ...selectedDiscountIds,
+    ...bundleApplications.map((application) => application.voucher_qr_token),
+    ...cart.flatMap((item) => [
+      ...(item.lineVoucher ? [item.lineVoucher.token] : []),
+      ...item.addonVouchers.map((voucher) => voucher.token),
+    ]),
+  ]).size;
 
   const activeItem = cart.find(i => i.cartId === activeItemForVoucher);
   const addonChoicesFor = useCallback((voucher: MyVoucher, item: ProjectedCartLine) => {
@@ -298,10 +291,9 @@ export function StaffCartDrawer({
     // Reset sub-overlay state after close animation
     setTimeout(() => {
       setActiveItemForVoucher(null);
-      setIsDiscountPickerOpen(false);
       setAddonChoiceVoucherId(null);
     }, 300);
-  }, [onClose, setActiveItemForVoucher, setIsDiscountPickerOpen]);
+  }, [onClose, setActiveItemForVoucher]);
 
   return (
     <Drawer.Root 
@@ -392,38 +384,6 @@ export function StaffCartDrawer({
               </button>
             )}
           </div>
-          {customerInfo?.type === "existing" ? (
-            <div className="mt-3 rounded-2xl border border-border/70 bg-background p-3">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <p className="text-xs font-bold text-primary">Voucher của khách</p>
-                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
-                  {voucherRevalidating ? "Đang tải…" : customerVouchers.length}
-                </span>
-              </div>
-              {voucherRevalidating ? (
-                <p className="text-xs text-muted-foreground">Đang xác minh ví voucher…</p>
-              ) : customerVouchers.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Khách chưa có voucher khả dụng.</p>
-              ) : (
-                <div className="max-h-32 space-y-1.5 overflow-y-auto overscroll-contain pr-1">
-                  {customerVouchers.map((voucher) => (
-                    <div key={voucher.qr_token} className="flex min-h-10 items-center justify-between gap-3 rounded-xl bg-secondary/25 px-3 py-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-semibold text-foreground">{voucher.package.name}</p>
-                        <p className="text-[10px] text-muted-foreground">{voucher.voucher_type.replaceAll("_", " ")}</p>
-                      </div>
-                      <span className={cn(
-                        "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold",
-                        voucher.status === "ACTIVE" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700",
-                      )}>
-                        {voucher.status === "ACTIVE" ? "Có thể dùng" : "Đang giữ"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : null}
         </div>
 
         {/* Item list */}
@@ -467,7 +427,6 @@ export function StaffCartDrawer({
                   onRemoveAddon={onRemoveAddon}
                   onOpenVoucherPicker={(cartId) => {
                     setActiveItemForVoucher(cartId);
-                    setIsDiscountPickerOpen(false);
                   }}
                 />
               );
@@ -500,9 +459,10 @@ export function StaffCartDrawer({
             <div className="flex gap-4">
               {/* Left Column - Vouchers & Points */}
               <div className="flex-1 space-y-3">
-                {customerInfo && discountVouchers.length > 0 && !!onToggleDiscount && (
+                {customerInfo?.type === "existing" && onOpenVoucherPicker && (
                   <button
-                    onClick={() => setIsDiscountPickerOpen(true)}
+                    type="button"
+                    onClick={onOpenVoucherPicker}
                     className="w-full flex items-center justify-between bg-orange-50 border border-orange-100 hover:bg-orange-100/80 transition-colors rounded-xl px-3 py-2.5 text-left"
                   >
                     <div className="flex items-center gap-2">
@@ -510,9 +470,15 @@ export function StaffCartDrawer({
                         <Ticket size={14} />
                       </div>
                       <div>
-                        <p className="text-[11px] font-bold text-orange-800 leading-tight">Mã giảm đơn</p>
+                        <p className="text-[11px] font-bold text-orange-800 leading-tight">Ưu đãi của khách</p>
                         <p className="text-[10px] text-orange-600/80 leading-tight">
-                          {selectedDiscountIds.length > 0 ? `${selectedDiscountIds.length} mã đang áp` : "Chọn mã"}
+                          {voucherRevalidating
+                            ? "Đang xác minh ví…"
+                            : appliedVoucherCount > 0
+                              ? `${appliedVoucherCount} voucher đang áp`
+                              : customerVouchers.length > 0
+                                ? `Chọn trong ${customerVouchers.length} voucher`
+                                : "Xem ví voucher"}
                         </p>
                       </div>
                     </div>
@@ -725,111 +691,6 @@ export function StaffCartDrawer({
           )}
         </AnimatePresence>
 
-        {/* ── Overlay: Discount Voucher Picker ─────────────────────────────── */}
-        <AnimatePresence>
-          {isDiscountPickerOpen && !!onToggleDiscount && (
-            <motion.div
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="absolute inset-0 z-20 bg-background flex flex-col"
-            >
-              <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40 shrink-0 bg-card">
-                <button
-                  onClick={() => setIsDiscountPickerOpen(false)}
-                  className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center hover:bg-secondary/80 transition-colors"
-                >
-                  <ArrowLeft size={16} className="text-primary" />
-                </button>
-                <h3 className="font-bold text-primary">Mã giảm giá đơn hàng</h3>
-              </div>
-
-              <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain p-4 space-y-3">
-                {discountVouchers.length === 0 && (
-                  <p className="text-center text-sm text-muted-foreground mt-10">Không có mã giảm giá nào</p>
-                )}
-                {discountVouchers.map(v => {
-                  const isSelected = selectedDiscountIds?.includes(v.qr_token) ?? false;
-                  const hasPercent = (discountVoucher?.discount_type === "PERCENT") || (selectedDiscountIds?.some(id => {
-                    const found = discountVouchers.find(dv => dv.qr_token === id);
-                    return found?.discount_type === "PERCENT";
-                  }) ?? false);
-                  // Disable if trying to add a second PERCENT voucher
-                  const isDisabled = !isSelected && v.discount_type === "PERCENT" && hasPercent;
-
-                  return (
-                    <VoucherCard 
-                      key={v.qr_token}
-                      voucher={v}
-                      isDisabled={isDisabled}
-                      disabledReason={isDisabled ? "Đã chọn 1 mã giảm %" : undefined}
-                      onClick={() => !isDisabled && onToggleDiscount && onToggleDiscount(v.qr_token)}
-                      actionNode={
-                        isSelected ? (
-                          <CheckCircle2 className="w-5 h-5 text-orange-500 shrink-0 ml-2" />
-                        ) : (
-                          <div className="w-5 h-5 rounded-full border border-border/60 shrink-0 ml-2" />
-                        )
-                      }
-                    />
-                  );
-                })}
-
-                {/* Section 2: Đổi điểm lấy ưu đãi (only for Admin) */}
-                {acquisitionReceipt ? (
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900" role="status">
-                    <p className="font-bold">Đã nhận voucher</p>
-                    <p className="mt-1 break-all">Mã: {acquisitionReceipt.acquired.qr_token}</p>
-                    {acquisitionReceipt.refreshError ? (
-                      <div className="mt-2 flex items-center justify-between gap-2">
-                        <span>Chưa làm mới được ví.</span>
-                        <button
-                          type="button"
-                          className="min-h-11 rounded-lg bg-emerald-700 px-3 font-bold text-white"
-                          onClick={onRetryVoucherRefresh}
-                        >
-                          Làm mới ví
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {availableVoucherPackages.length > 0 && customerInfo?.type === "existing" && (
-                  <div className="mt-6">
-                    <div className="flex items-center gap-2 mb-3">
-                      <h4 className="font-bold text-primary text-sm">Đổi điểm lấy ưu đãi</h4>
-                      <span className="bg-yellow-100 text-yellow-800 text-[9px] px-1.5 py-0.5 rounded-sm font-bold uppercase tracking-wider">Cho khách</span>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 gap-3">
-                      {availableVoucherPackages.map((p) => (
-                        <PackageCard 
-                          key={p.id}
-                          pkg={p}
-                          userBalance={customerInfo.data.points_balance}
-                          onExchange={() => onExchangeVoucher && onExchangeVoucher(p.id)}
-                          isExchanging={isExchanging}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="p-4 border-t border-border shrink-0 bg-card">
-                <button
-                  onClick={() => setIsDiscountPickerOpen(false)}
-                  className="w-full bg-primary text-primary-foreground rounded-2xl h-12 font-bold text-sm"
-                >
-                  Xác nhận
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-        
         {/* Product Modal Node for Staff */}
         {productModalNode}
         {bundleSetupVoucher && menuData && onCloseBundleSetup && onValidateBundleDraft && onCommitBundleDraft && onBundleSetupSuccess ? (
@@ -869,7 +730,6 @@ export function StaffCartDrawer({
           confirmLabel="Gỡ ưu đãi"
           isDestructive={true}
         />
-        
         </>
         </Drawer.Content>
       </Drawer.Portal>

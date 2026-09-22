@@ -33,7 +33,8 @@ describe("multi-choice voucher UI contracts", () => {
     expect(cartDiscount).toContain("bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}");
     expect(cartDiscount).toMatch(/<VoucherDetailSheet[\s\S]*?bundleAllocatedQuantitiesByCartId=\{bundleAllocatedQuantitiesByCartId\}/);
     expect(addonPicker).toContain("bundleAllocatedQuantitiesByCartId: ReadonlyMap<string, number>");
-    expect(addonPicker).toContain("const result = applyAddonVoucher(");
+    expect(addonPicker).toContain("const applyVoucher = onApplyVoucher ?? applyAddonVoucher;");
+    expect(addonPicker.match(/const result = applyVoucher\(/g)).toHaveLength(2);
     expect(addonPicker).not.toContain("updateItem(");
     expect(detail).toContain("Lựa chọn còn dùng được");
     expect(detail).toContain("target.covered_price_vnd");
