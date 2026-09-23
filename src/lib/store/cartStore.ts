@@ -23,8 +23,8 @@ export interface PendingAddonVoucherIntent {
   priceVnd: number;
   addonGroupId: string;
   maxSelect: number;
-  groupOptionIds?: string[];
-  isExtraMatcha?: boolean;
+  groupOptionIds: string[];
+  isExtraMatcha: boolean;
 }
 
 interface FixedAddonConfiguration {
@@ -173,9 +173,9 @@ export const useCartStore = create<CartState>()(persist((set, get) => ({
       line,
       voucherToken: pending.voucherId,
       addonOptionId: pending.addonOptionId,
-      groupOptionIds: pending.groupOptionIds ?? [pending.addonOptionId],
+      groupOptionIds: pending.groupOptionIds,
       maxSelect: pending.maxSelect,
-      isExtraMatcha: pending.isExtraMatcha ?? false,
+      isExtraMatcha: pending.isExtraMatcha,
     } : { type: "ADD_LINE", line });
     if (result.ok) {
       if (pending && line.configuration.size !== null) set({ pendingAddonVoucher: null });

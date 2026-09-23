@@ -14,6 +14,7 @@ const staticContractTests = [
   "lib/__tests__/security-logging.test.ts",
   "lib/__tests__/supabase-data-plane-migration.test.ts",
   "lib/__tests__/voucher-architecture-migration.test.ts",
+  "src/__tests__/contracts/staff-voucher-flow.test.ts",
 ];
 
 export default defineConfig({

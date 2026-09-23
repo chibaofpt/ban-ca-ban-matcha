@@ -85,6 +85,7 @@ const POWDER_ID  = "550e8400-e29b-41d4-a716-446655440002";
 const USER_ID    = "550e8400-e29b-41d4-a716-446655440003";
 const OTHER_USER_ID = "550e8400-e29b-41d4-a716-446655440004";
 const VOUCHER_ID = "550e8400-e29b-41d4-a716-446655440011";
+const VOUCHER_ID_2 = "550e8400-e29b-41d4-a716-446655440012";
 const QR_TOKEN   = "550e8400-e29b-41d4-a716-446655440020"; // customer's qr_token
 const STAFF_SESSION = { id: "550e8400-e29b-41d4-a716-446655440030", role: "STAFF" };
 const ADMIN_SESSION = { id: "550e8400-e29b-41d4-a716-446655440031", role: "ADMIN" };
@@ -353,6 +354,39 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
 
     const res = await POST(makeReq(payload));
     expect(res.status).toBe(201);
+  });
+
+  it("từ chối hai voucher PERCENT trước khi tạo đơn staff", async () => {
+    setupTx();
+    mockUserFindUnique.mockResolvedValue(existingCustomer);
+    mockVoucherFindUnique
+      .mockResolvedValueOnce({
+        ...discountVoucher,
+        id: VOUCHER_ID,
+        qr_token: "percent-one",
+        discount_type: "PERCENT",
+        discount_value: 10,
+        min_order_vnd: null,
+        max_discount_vnd: null,
+      })
+      .mockResolvedValueOnce({
+        ...discountVoucher,
+        id: VOUCHER_ID_2,
+        qr_token: "percent-two",
+        discount_type: "PERCENT",
+        discount_value: 20,
+        min_order_vnd: null,
+        max_discount_vnd: null,
+      });
+    mockGetSession.mockResolvedValue(ADMIN_SESSION);
+
+    const res = await POST(makeReq(makePayload({
+      discount_voucher_ids: [VOUCHER_ID, VOUCHER_ID_2],
+    })));
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(mockOrderCreate).not.toHaveBeenCalled();
   });
 
   it("đơn không có voucher, không cần qr_token → 201", async () => {

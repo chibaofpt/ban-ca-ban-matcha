@@ -115,6 +115,9 @@ export function applyCartCommand<T = undefined>(
     if (line.configuration.size === null || command.isExtraMatcha) {
       return failure(state, "ADDON_NOT_SELECTED", "Topping không hợp lệ cho voucher") as CartTransition<T>;
     }
+    if (!command.groupOptionIds.includes(command.addonOptionId) || command.maxSelect < 1) {
+      return failure(state, "ADDON_NOT_SELECTED", "Thiếu thông tin nhóm topping của voucher") as CartTransition<T>;
+    }
     const selected = line.configuration.addonOptionIds;
     const selectedInGroup = selected.filter((id) => command.groupOptionIds.includes(id));
     if (!selected.includes(command.addonOptionId) && selectedInGroup.length >= command.maxSelect &&

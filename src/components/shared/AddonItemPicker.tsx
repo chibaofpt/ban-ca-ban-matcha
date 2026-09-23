@@ -95,6 +95,8 @@ export const AddonItemPicker = ({
         priceVnd: ceilTo1000(option.price_vnd ?? 0),
         addonGroupId: group.id,
         maxSelect: group.max_select,
+        groupOptionIds: group.options.map((candidate) => candidate.id),
+        isExtraMatcha: group.is_dynamic_gram || option.gram_value !== null,
       };
     }
     return null;

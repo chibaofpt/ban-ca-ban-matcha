@@ -10,7 +10,7 @@ import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { filterUsableVouchers, getAddonVoucherTargetChoices, getCartAddonVoucherTargets, isVoucherUsable, resolveAddonVoucherOptionId } from "@/src/utils/voucherMatchUtils";
 import type { AddonGroup, MenuItem, MilkTypeOption, SweetnessLevel, Size } from "@/src/lib/types/menu";
 import type { IceOption, CartItem, ProjectedCartLine } from "@/src/lib/types/cart";
-import { useCartStore } from "@/src/lib/store/cartStore";
+import { useCartStore, type PendingAddonVoucherIntent } from "@/src/lib/store/cartStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { cn } from "@/src/utils/cn";
 import { ceilTo1000 } from "@/src/utils/pricing";
@@ -37,7 +37,13 @@ interface ProductModalProps {
   // ── Edit mode ──
   editingItem?: ProjectedCartLine;
   // ── Staff mode ──
-  onConfirm?: (item: CartItem, projection?: ProjectedCartLine) => CartMutationResult<unknown> | void;
+  onConfirm?: (
+    item: CartItem,
+    projection?: ProjectedCartLine,
+    options?: { consumePendingAddon?: boolean },
+  ) => CartMutationResult<unknown> | void;
+  pendingAddonVoucherIntent?: PendingAddonVoucherIntent | null;
+  onPendingAddonVoucherChange?: (intent: PendingAddonVoucherIntent | null) => void;
   freeVoucherId?: string;
   freeVoucherCoveredPriceVnd?: number;
   availableVouchers?: MyVoucher[];
@@ -81,14 +87,19 @@ const BaseModal: React.FC<ProductModalProps> = ({
   freeVoucherCoveredPriceVnd, availableVouchers, nested = false, currentCartItems,
   allowedSizes, disableVoucherApplication, ctaLabel, initialSize, initialPowderId, initialBaseLiquidId,
   walletVerified = true, walletReadOnlyReason = "Ví voucher đang được xác minh. Vui lòng thử lại sau một chút.",
+  pendingAddonVoucherIntent, onPendingAddonVoucherChange,
 }) => {
   const editingConfig = editingItem?.configuration;
   const [isOpen, setIsOpen] = useState(true);
   // Global state
   const addItem = useCartStore(s => s.addItem);
   const updateItem = useCartStore(s => s.updateItem);
-  const pendingAddonVoucher = useCartStore(s => s.pendingAddonVoucher);
-  const setPendingAddonVoucher = useCartStore(s => s.setPendingAddonVoucher);
+  const customerPendingAddonVoucher = useCartStore(s => s.pendingAddonVoucher);
+  const setCustomerPendingAddonVoucher = useCartStore(s => s.setPendingAddonVoucher);
+  const pendingAddonVoucher = pendingAddonVoucherIntent === undefined
+    ? customerPendingAddonVoucher
+    : pendingAddonVoucherIntent;
+  const setPendingAddonVoucher = onPendingAddonVoucherChange ?? setCustomerPendingAddonVoucher;
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
 
@@ -307,6 +318,28 @@ const BaseModal: React.FC<ProductModalProps> = ({
       } : {}),
     };
 
+    if (!editingItem && pendingAddonVoucher && item.category !== "extras") {
+      const pendingVoucher = availableVouchers?.find((voucher) => voucher.qr_token === pendingAddonVoucher.voucherId);
+      const targetValid = pendingVoucher
+        ? resolveAddonVoucherOptionId(pendingVoucher, [pendingAddonVoucher.addonOptionId]) !== null
+        : false;
+      if (!pendingVoucher || !isVoucherUsable(pendingVoucher) || !targetValid) {
+        setPendingAddonVoucher(null);
+        void import("sonner").then(({ toast }) => toast.info("Voucher addon chờ áp dụng không còn khả dụng"));
+      } else {
+        const groupOptionIds = new Set(pendingAddonVoucher.groupOptionIds);
+        const selectedInGroup = cartItemData.configuration.size === null
+          ? []
+          : cartItemData.configuration.addonOptionIds.filter((optionId) => groupOptionIds.has(optionId));
+        if (cartItemData.configuration.size !== null &&
+          !cartItemData.configuration.addonOptionIds.includes(pendingAddonVoucher.addonOptionId) &&
+          selectedInGroup.length >= pendingAddonVoucher.maxSelect) {
+          setPendingAddonConflict({ item: cartItemData, replaceOptionId: selectedInGroup[0]! });
+          return;
+        }
+      }
+    }
+
     if (onConfirm) {
       // Staff mode
       const cartItem = {
@@ -354,30 +387,6 @@ const BaseModal: React.FC<ProductModalProps> = ({
       // Customer Edit mode
       const result = updateItem(editingItem.cartId, cartItemData);
       if (!result.ok) { void import("sonner").then(({ toast }) => toast.error(result.message)); return; }
-    } else if (pendingAddonVoucher && item.category !== "extras") {
-      const pendingVoucher = availableVouchers?.find((voucher) => voucher.qr_token === pendingAddonVoucher.voucherId);
-      const targetValid = pendingVoucher
-        ? resolveAddonVoucherOptionId(pendingVoucher, [pendingAddonVoucher.addonOptionId]) !== null
-        : false;
-      if (!pendingVoucher || !isVoucherUsable(pendingVoucher) || !targetValid) {
-        setPendingAddonVoucher(null);
-        const result = addItem(cartItemData, { consumePendingAddon: false });
-        if (!result.ok) {
-          void import("sonner").then(({ toast }) => toast.error(result.message));
-          return;
-        }
-        void import("sonner").then(({ toast }) => toast.info("Voucher addon chờ áp dụng không còn khả dụng"));
-        handleClose();
-        return;
-      }
-      const groupOptionIds = new Set(addonGroups.find((group) => group.id === pendingAddonVoucher.addonGroupId)?.options.map((option) => option.id) ?? []);
-      const selectedInGroup = cartItemData.configuration.size === null ? [] : cartItemData.configuration.addonOptionIds.filter((optionId) => groupOptionIds.has(optionId));
-      if (cartItemData.configuration.size !== null && !cartItemData.configuration.addonOptionIds.includes(pendingAddonVoucher.addonOptionId) && selectedInGroup.length >= pendingAddonVoucher.maxSelect) {
-        setPendingAddonConflict({ item: cartItemData, replaceOptionId: selectedInGroup[0] });
-        return;
-      }
-      const result = addItem(cartItemData);
-      if (!result.ok) { void import("sonner").then(({ toast }) => toast.error(result.message)); return; }
     } else {
       // Customer Add mode
       const result = addItem(cartItemData);
@@ -408,11 +417,13 @@ const BaseModal: React.FC<ProductModalProps> = ({
           },
         }
       : source;
-    const result = addItem(replacement, { consumePendingAddon: replace });
-    if (!result.ok) { void import("sonner").then(({ toast }) => toast.error(result.message)); return; }
+    const result = onConfirm
+      ? onConfirm({ ...replacement, cartId: crypto.randomUUID() }, undefined, { consumePendingAddon: replace })
+      : addItem(replacement, { consumePendingAddon: replace });
+    if (result && !result.ok) { void import("sonner").then(({ toast }) => toast.error(result.message)); return; }
     setPendingAddonConflict(null);
     handleClose();
-  }, [addItem, handleClose, pendingAddonConflict, pendingAddonVoucher]);
+  }, [addItem, handleClose, onConfirm, pendingAddonConflict, pendingAddonVoucher]);
 
   const sweetnessIdx = useMemo(() => SWEETNESS_OPTIONS.findIndex((o) => o.value === sweetness), [sweetness]);
 

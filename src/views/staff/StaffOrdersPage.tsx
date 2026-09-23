@@ -57,7 +57,7 @@ import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import { normalizeStaffBundleApplications } from "@/src/lib/utils/staffBundlePayload";
 import { getVoucherAvailabilityMessage } from "@/src/lib/utils/voucherModalHelpers";
 import { computeProductDiscountBenefit, computeVoucherItemPrice } from "@/src/hooks/useAddVoucherToCart";
-import { filterActiveMainCartVouchers } from "@/src/utils/customerVoucherSelection";
+import { filterActiveMainCartVouchers, selectOrderVoucherToken } from "@/src/utils/customerVoucherSelection";
 import { getBundleAllocatedQuantities } from "@/src/lib/utils/bundleCartSummary";
 import { validateBundleCartDraft, type BundleCartDraftResult, type BundleCartDraftValidation } from "@/src/lib/utils/bundleCartDraft";
 import {
@@ -246,6 +246,7 @@ export default function StaffOrdersPage({
   const applyAddonVoucher = useStaffCartStore((s) => s.applyAddonVoucher);
   const removeAddonVoucher = useStaffCartStore((s) => s.removeAddonVoucher);
   const setPendingAddonVoucher = useStaffCartStore((s) => s.setPendingAddonVoucher);
+  const pendingAddonVoucher = useStaffCartStore((s) => s.pendingAddonVoucher);
   const removeVoucherEffects = useStaffCartStore((s) => s.removeVoucherEffects);
   const bundleApplications = useStaffCartStore((s) => s.bundleApplications);
   const commitBundleCartDraft = useStaffCartStore((s) => s.commitBundleCartDraft);
@@ -493,11 +494,17 @@ export default function StaffOrdersPage({
     const scannedToken = useStaffCartStore.getState().discountVoucher?.qr_token;
     const walletTokens = current.filter((token) => token !== scannedToken);
     const nextWalletTokens = typeof next === "function" ? next(walletTokens) : next;
+    const scannedVoucher = scannedToken
+      ? projectionVouchers.find((voucher) => voucher.qr_token === scannedToken)
+      : undefined;
+    const reconciledTokens = scannedVoucher
+      ? selectOrderVoucherToken(nextWalletTokens, scannedVoucher, projectionVouchers)
+      : nextWalletTokens;
     const result = setSelectedDiscountIds(scannedToken
-      ? [scannedToken, ...nextWalletTokens.filter((token) => token !== scannedToken)]
+      ? [scannedToken, ...reconciledTokens.filter((token) => token !== scannedToken)]
       : nextWalletTokens);
     if (!result.ok) toast.error(result.message);
-  }, [setSelectedDiscountIds]);
+  }, [projectionVouchers, setSelectedDiscountIds]);
   const subtotal = useStaffCartTotalPrice();
   useEffect(() => {
     setProjectedTotalVnd(cartProjection.totals.grand_total_vnd);
@@ -514,9 +521,10 @@ export default function StaffOrdersPage({
         ...item.addonVouchers.map((voucher) => voucher.token),
       ]),
       ...bundleApplications.map((application) => application.voucher_qr_token),
+      ...(pendingAddonVoucher ? [pendingAddonVoucher.voucherId] : []),
     ]);
     for (const token of attachedTokens) if (!validTokens.has(token)) removeVoucherEffects(token);
-  }, [bundleApplications, cart, customerWalletQuery.isError, projectionVouchers, removeVoucherEffects, selectedDiscountIds, walletRevalidating]);
+  }, [bundleApplications, cart, customerWalletQuery.isError, pendingAddonVoucher, projectionVouchers, removeVoucherEffects, selectedDiscountIds, walletRevalidating]);
   const bundleCartSummary = useMemo(() => summarizeBundleCart(projectedCart), [projectedCart]);
   const staffBundleOwnerKey = customerInfo?.type === "existing"
     ? `staff:${customerInfo.data.qr_token}`
@@ -639,13 +647,17 @@ export default function StaffOrdersPage({
 
   // ── Cart handlers ─────────────────────────────────────────────────────
 
-  const handleAddToCart = (item: CartItem) => {
+  const handleAddToCart = (
+    item: CartItem,
+    _projection?: ProjectedCartLine,
+    options?: { consumePendingAddon?: boolean },
+  ) => {
     const reopenVoucherCart = !editingCartItem && scannedProductVoucher !== null;
     const { cartId, ...line } = item;
     void cartId;
     const result = editingCartItem
       ? updateItem(editingCartItem.cartId, line)
-      : addItem(line);
+      : addItem(line, options);
     if (!result.ok) return result;
     setSelectedItem(null);
     setEditingCartItem(null);
@@ -925,7 +937,27 @@ export default function StaffOrdersPage({
     discount_type: "PERCENT" | "FIXED";
     discount_value: number;
   }) => {
-    setDiscountVoucher(data);
+    const state = useStaffCartStore.getState();
+    const previousScannedToken = state.discountVoucher?.qr_token;
+    const walletTokens = state.selectedOrderVoucherTokens.filter((token) => token !== previousScannedToken);
+    const nextProjectionVouchers = mergeScannedDiscountVoucher(customerVouchers, data);
+    const scannedVoucher = nextProjectionVouchers.find((voucher) => voucher.qr_token === data.qr_token);
+    const nextTokens = scannedVoucher
+      ? selectOrderVoucherToken(walletTokens, scannedVoucher, nextProjectionVouchers)
+      : walletTokens;
+    const voucherResult = setDiscountVoucher(data);
+    if (!voucherResult.ok) {
+      toast.error(voucherResult.message);
+      return;
+    }
+    const selectionResult = setSelectedDiscountIds([
+      data.qr_token,
+      ...nextTokens.filter((token) => token !== data.qr_token),
+    ]);
+    if (!selectionResult.ok) {
+      toast.error(selectionResult.message);
+      return;
+    }
     setScanOpen(false);
   };
 
@@ -1238,6 +1270,8 @@ export default function StaffOrdersPage({
               initialPowderId={scannedProductVoucher?.matcha_powder_id}
               initialBaseLiquidId={scannedProductVoucher?.milk_type_id}
               availableVouchers={customerVouchers}
+              pendingAddonVoucherIntent={pendingAddonVoucher}
+              onPendingAddonVoucherChange={setPendingAddonVoucher}
               allowedSizes={editingAllowedSizes}
               onClose={() => {
                 setSelectedItem(null);
@@ -1334,6 +1368,8 @@ export default function StaffOrdersPage({
           initialPowderId={scannedProductVoucher?.matcha_powder_id}
           initialBaseLiquidId={scannedProductVoucher?.milk_type_id}
           availableVouchers={customerVouchers}
+          pendingAddonVoucherIntent={pendingAddonVoucher}
+          onPendingAddonVoucherChange={setPendingAddonVoucher}
           onClose={() => {
             setSelectedItem(null);
             setScannedProductVoucher(null);

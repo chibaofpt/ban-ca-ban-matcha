@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { attachPendingAddonVoucher, configureFixedAddon, useCartStore } from "@/src/lib/store/cartStore";
 import { useStaffCartStore } from "@/src/lib/store/staffCartStore";
 import type { CartItem } from "@/src/lib/types/cart";
+import { applyCartCommand } from "@/src/lib/utils/cartTransitions";
 import { projectedCartLine } from "@/src/__tests__/fixtures/cart";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import {
@@ -16,6 +17,7 @@ import {
   resolveAddonVoucherOptionId,
   resolveAddonVoucherOptionForCartItem,
 } from "@/src/utils/voucherMatchUtils";
+import { selectOrderVoucherToken } from "@/src/utils/customerVoucherSelection";
 
 const baseVoucher = (patch: Partial<MyVoucher>): MyVoucher => ({
   qr_token: "voucher-token",
@@ -88,6 +90,18 @@ describe("multi-choice voucher client contracts", () => {
     ] });
     expect(matchProductVouchers([voucher], "drink-b")).toEqual([voucher]);
     expect(estimateProductSavings(voucher, 65_000, "drink-b")).toBe(58_000);
+  });
+
+  it("giữ tối đa một voucher PERCENT khi voucher quét được khóa vào selection staff", () => {
+    const scannedPercent = { qr_token: "scanned-percent", voucher_type: "DISCOUNT", discount_type: "PERCENT" };
+    const walletPercent = { qr_token: "wallet-percent", voucher_type: "DISCOUNT", discount_type: "PERCENT" };
+    const walletFixed = { qr_token: "wallet-fixed", voucher_type: "DISCOUNT", discount_type: "FIXED" };
+
+    expect(selectOrderVoucherToken(
+      [walletFixed.qr_token, walletPercent.qr_token],
+      scannedPercent,
+      [walletFixed, walletPercent, scannedPercent],
+    )).toEqual([walletFixed.qr_token, scannedPercent.qr_token]);
   });
 
   it("matches ADDON by the selected scoped option instead of only the legacy anchor", () => {
@@ -227,6 +241,8 @@ describe("multi-choice voucher client contracts", () => {
       priceVnd: 15_000,
       addonGroupId: "topping",
       maxSelect: 1,
+      groupOptionIds: ["addon-a", "addon-b"],
+      isExtraMatcha: false,
     }, "addon-a");
 
     expect(result.configuration.size === null ? [] : result.configuration.addonOptionIds).toEqual(["addon-b"]);
@@ -239,7 +255,7 @@ describe("multi-choice voucher client contracts", () => {
     ["customer", useCartStore],
     ["staff", useStaffCartStore],
   ] as const)("attaches one pending ADDON voucher unit and preserves the remaining quantity in %s cart", (_label, store) => {
-    store.getState().setPendingAddonVoucher({ voucherId: "addon-voucher", addonOptionId: "addon-b", priceVnd: 10_000, addonGroupId: "topping", maxSelect: 1 });
+    store.getState().setPendingAddonVoucher({ voucherId: "addon-voucher", addonOptionId: "addon-b", priceVnd: 10_000, addonGroupId: "topping", maxSelect: 1, groupOptionIds: ["addon-a", "addon-b"], isExtraMatcha: false });
     store.getState().addItem(drink({ quantity: 2 }));
     const items = store.getState().items;
     expect(items).toHaveLength(2);
@@ -254,7 +270,7 @@ describe("multi-choice voucher client contracts", () => {
     ["customer", useCartStore],
     ["staff", useStaffCartStore],
   ] as const)("preserves another addon voucher when pending ADDON attaches in %s cart", (_label, store) => {
-    store.getState().setPendingAddonVoucher({ voucherId: "pending-voucher", addonOptionId: "addon-b", priceVnd: 10_000, addonGroupId: "topping-b", maxSelect: 1 });
+    store.getState().setPendingAddonVoucher({ voucherId: "pending-voucher", addonOptionId: "addon-b", priceVnd: 10_000, addonGroupId: "topping-b", maxSelect: 1, groupOptionIds: ["addon-b"], isExtraMatcha: false });
     store.getState().addItem(drink({
       unitPrice: 70_000,
       selectedOptionIds: ["addon-a"],
@@ -335,7 +351,7 @@ describe("multi-choice voucher client contracts", () => {
   });
 
   it("does not consume a pending ADDON voucher when the next added item is extras", () => {
-    useCartStore.getState().setPendingAddonVoucher({ voucherId: "addon-voucher", addonOptionId: "addon-b", priceVnd: 10_000, addonGroupId: "topping", maxSelect: 1 });
+    useCartStore.getState().setPendingAddonVoucher({ voucherId: "addon-voucher", addonOptionId: "addon-b", priceVnd: 10_000, addonGroupId: "topping", maxSelect: 1, groupOptionIds: ["addon-a", "addon-b"], isExtraMatcha: false });
     useCartStore.getState().addItem(drink({ category: "extras", size: null, unitPrice: 20_000, clientPriceVnd: 20_000, originalClientPriceVnd: 20_000 }));
     expect(useCartStore.getState().pendingAddonVoucher?.voucherId).toBe("addon-voucher");
     expect(useCartStore.getState().items[0]?.addonVouchers).toEqual([]);
@@ -390,6 +406,8 @@ describe("multi-choice voucher client contracts", () => {
       priceVnd: 10_000,
       addonGroupId: "topping",
       maxSelect: 1,
+      groupOptionIds: ["addon-a", "addon-b"],
+      isExtraMatcha: false,
     });
     const secondResult = store.getState().addItem(drink());
 
@@ -402,5 +420,67 @@ describe("multi-choice voucher client contracts", () => {
     expect(second?.addonVouchers).toEqual([
       { token: "addon-voucher", addonOptionId: "addon-b" },
     ]);
+  });
+
+  it("từ chối pending ADDON thiếu context nhóm thay vì âm thầm vượt max_select", () => {
+    const transition = applyCartCommand({
+      items: [],
+      selectedOrderVoucherTokens: [],
+      bundleApplications: [],
+    }, {
+      type: "ADD_LINE_WITH_ADDON",
+      line: drink(),
+      voucherToken: "addon-voucher",
+      addonOptionId: "addon-b",
+      groupOptionIds: [],
+      maxSelect: 1,
+      isExtraMatcha: false,
+    });
+
+    expect(transition.result).toMatchObject({ ok: false, code: "ADDON_NOT_SELECTED" });
+    expect(transition.state.items).toEqual([]);
+  });
+
+  it.each([
+    ["customer", useCartStore],
+    ["staff", useStaffCartStore],
+  ] as const)("giữ pending ADDON khi nhóm cùng topping đã đủ trong %s cart", (_label, store) => {
+    const pending = {
+      voucherId: "pending-voucher",
+      addonOptionId: "addon-b",
+      priceVnd: 10_000,
+      addonGroupId: "topping",
+      maxSelect: 1,
+      groupOptionIds: ["addon-a", "addon-b"],
+      isExtraMatcha: false,
+    };
+    store.getState().setPendingAddonVoucher(pending);
+
+    const result = store.getState().addItem(drink({
+      selectedOptionIds: ["addon-a"],
+      addonPrices: { "addon-a": 5_000 },
+      addonsPrice: 5_000,
+      originalClientPriceVnd: 70_000,
+      clientPriceVnd: 70_000,
+    }));
+
+    expect(result).toMatchObject({ ok: false, code: "ADDON_GROUP_FULL" });
+    expect(store.getState().items).toEqual([]);
+    expect(store.getState().pendingAddonVoucher).toEqual(pending);
+  });
+
+  it("xóa pending ADDON khi voucher không còn hợp lệ", () => {
+    useStaffCartStore.getState().setPendingAddonVoucher({
+      voucherId: "expired-addon",
+      addonOptionId: "addon-b",
+      priceVnd: 10_000,
+      addonGroupId: "topping",
+      maxSelect: 1,
+      groupOptionIds: ["addon-a", "addon-b"],
+      isExtraMatcha: false,
+    });
+
+    expect(useStaffCartStore.getState().removeVoucherEffects("expired-addon").ok).toBe(true);
+    expect(useStaffCartStore.getState().pendingAddonVoucher).toBeNull();
   });
 });

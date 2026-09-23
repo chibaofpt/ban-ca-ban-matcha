@@ -185,10 +185,16 @@ export const CartDiscountPicker = ({
       onAcquired?.(pkg);
       const newVoucher = result.acquired;
       const refreshedVoucher = result.wallet?.find((voucher) => voucher.qr_token === newVoucher.qr_token);
+      const acquiredSelection = refreshedVoucher ?? {
+        qr_token: newVoucher.qr_token,
+        voucher_type: newVoucher.voucher_type,
+        discount_type: pkg.discount_type,
+      };
       if (!result.refreshError && newVoucher.voucher_type === "BUNDLE") {
         if (refreshedVoucher) setActiveView({ kind: "bundle-setup", voucher: refreshedVoucher });
       } else if (!result.refreshError) {
-        onUpdateSelectedVouchers((previous) => [...previous, newVoucher.qr_token]);
+        onUpdateSelectedVouchers((previous) =>
+          selectOrderVoucherToken(previous, acquiredSelection, [...myVouchers, acquiredSelection]));
       }
       if (result.refreshError) toast.warning("Đã nhận voucher. Hãy làm mới ví để xem chi tiết.");
       toast.success(pkg.acquisition_mode === "FREE_CLAIM" ? "Đã nhận voucher" : "Đổi voucher thành công");
@@ -210,7 +216,8 @@ export const CartDiscountPicker = ({
         if (refreshedVoucher?.voucher_type === "BUNDLE") {
           setActiveView({ kind: "bundle-setup", voucher: refreshedVoucher });
         } else if (refreshedVoucher) {
-          onUpdateSelectedVouchers((previous) => previous.includes(refreshedVoucher.qr_token) ? previous : [...previous, refreshedVoucher.qr_token]);
+          onUpdateSelectedVouchers((previous) =>
+            selectOrderVoucherToken(previous, refreshedVoucher, [...myVouchers, refreshedVoucher]));
         }
         toast.success("Đã cập nhật ví voucher.");
       }
