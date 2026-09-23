@@ -62,7 +62,7 @@ const Navbar = () => {
     },
   });
 
-  if (pathname.startsWith("/admin") || pathname.startsWith("/staff")) {
+  if (pathname.startsWith("/admin") || pathname.startsWith("/staff") || pathname === "/test-sms") {
     return null;
   }
 

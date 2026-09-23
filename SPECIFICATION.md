@@ -117,6 +117,11 @@ Redis rate-limit counters dùng namespace riêng và policy trong `API.md`. Lega
 evict; PostgreSQL session state vẫn là authorization authority. Không thêm cache cho route khác hoặc
 đặt business correctness phụ thuộc Redis nếu chưa có task kiến trúc duyệt scope và invalidation.
 
+Trang `/test-sms` trên staging preview dùng Redis trong namespace riêng `sms-test` để giữ OTP
+challenge ngắn hạn, request idempotency, cooldown và quota. Đây là state tạm của công cụ thử
+ABENLA, không phải cache cho public read hoặc nguồn xác thực session. Send/verify fail closed
+khi Redis không sẵn sàng; không fallback vào bộ nhớ Vercel Function hay database production.
+
 ## Business consistency boundaries
 
 - Customer và staff order phải dùng chung calculator về pricing/voucher.

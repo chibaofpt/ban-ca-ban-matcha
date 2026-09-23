@@ -195,6 +195,10 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/admin/reward-campaigns/[id]/pool` | PUT |
 | `/api/admin/reward-campaigns/[id]/boxes` | POST |
 | `/api/admin/reward-campaigns/[id]/boxes/[boxId]` | PATCH, DELETE |
+| `/api/admin/sms-test/connection` | POST |
+| `/api/admin/sms-test/balance` | POST |
+| `/api/admin/sms-test/send-otp` | POST |
+| `/api/admin/sms-test/verify-otp` | POST |
 | `/api/admin/staff` | GET |
 | `/api/admin/store-closure` | POST |
 | `/api/admin/store-schedule` | GET, PUT |
@@ -260,6 +264,35 @@ ordered by `created_at DESC`; each non-null `handler` includes `name` and `role`
 distinguish orders received by an Admin from those received by Staff.
 
 Auth mutations are rate-limited by hashed IP. Authorization details are defined by each contract and middleware.
+
+### Staging SMS test — ADMIN only
+
+`/test-sms` and these four API routes operate only when `NEXT_PUBLIC_APP_ENV=staging`,
+`VERCEL_ENV=preview`, and `ABENLA_SMS_TEST_ENABLED=true`. When disabled, the page is unavailable
+and an authenticated ADMIN request reaching these API handlers receives 404 before provider work;
+the shared middleware may return its usual 401/403 first for other callers. API handlers recheck
+the live ADMIN session. Responses use `Cache-Control: no-store`.
+
+| Route | Request | `{ data }` response |
+|---|---|---|
+| `POST /api/admin/sms-test/connection` | Empty body | `{ connected, provider_code, checked_at }` |
+| `POST /api/admin/sms-test/balance` | Empty body | `{ balance, checked_at }` |
+| `POST /api/admin/sms-test/send-otp` | `{ phone_number, request_id }` | `{ challenge_id, masked_phone, expires_at, resend_at, delivery_status, provider_code, sms_per_message }` |
+| `POST /api/admin/sms-test/verify-otp` | `{ challenge_id, otp }` | `{ verified: true }` |
+
+`delivery_status` is `accepted`, `pending`, or `unknown`. `accepted` means the provider accepted
+the request, not that the handset received it. The server generates and verifies a six-digit OTP;
+the ABENLA SendOTP API only delivers the content. Challenges expire after five minutes, permit at
+most five incorrect attempts, and are consumed once. Resend has a 60-second admin/phone cooldown.
+Send is capped at five attempts per 10 minutes per admin and 20 attempts per day globally;
+connection and balance together are capped at 10 calls per minute per admin. The SMS test counters
+and challenge fail closed when Redis is unavailable; this is separate from the existing fail-open
+security rate-limit policy. Repeating a `request_id` within 10 minutes never dispatches another
+SMS and returns the same challenge with the latest recorded outcome; it can remain `unknown` if
+the initial dispatch is still running or the outcome could not be persisted. Errors retain the
+standard error envelope, with machine-readable `details.reason` for OTP, cooldown, limit, and
+provider-unavailable outcomes. An explicit ABENLA rejection may include the numeric
+`details.provider_code`, never its free-text message. No OTP or full phone number appears in the response.
 
 ### Payload and value ceilings
 

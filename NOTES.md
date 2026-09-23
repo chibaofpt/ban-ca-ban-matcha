@@ -55,7 +55,9 @@ Không implement nội dung trong file này nếu task hiện tại chưa đư�
 
 ### Phase 5+
 
-- OTP và order-ready SMS/Zalo ZNS qua ESMS.
+- OTP khách hàng và order-ready SMS/Zalo ZNS qua ESMS vẫn thuộc Phase 5. Trang `/test-sms`
+  chỉ thử tài khoản ABENLA trên staging; kết quả xác minh ở đó không xác thực khách hàng và
+  chưa quyết định provider cho luồng vận hành sau này.
 - Mở rộng Redis cache-aside ngoài menu, powders, store status và voucher packages cần task kiến trúc
   xác định freshness, invalidation và failure behavior.
 - Chưa có ADR ghi lý do hoặc thời điểm duyệt phạm vi Redis cache-aside hiện tại; SPECIFICATION phản

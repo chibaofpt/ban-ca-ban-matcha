@@ -47,7 +47,7 @@ function getBannerConfig(
 
 export default function StoreStatusBanner() {
   const pathname = usePathname();
-  const isCustomerRoute = !pathname.startsWith("/admin") && !pathname.startsWith("/staff");
+  const isCustomerRoute = !pathname.startsWith("/admin") && !pathname.startsWith("/staff") && pathname !== "/test-sms";
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
   // TanStack Query is the single source of truth for public store status.
@@ -63,7 +63,7 @@ export default function StoreStatusBanner() {
   }, [storeData?.today_schedule]);
 
   // Hide banner on admin or staff routes
-  if (pathname.startsWith("/admin") || pathname.startsWith("/staff")) {
+  if (pathname.startsWith("/admin") || pathname.startsWith("/staff") || pathname === "/test-sms") {
     return null;
   }
 

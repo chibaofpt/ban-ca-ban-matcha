@@ -13,7 +13,7 @@ const MAP_URL = "https://www.google.com/maps/search/?api=1&query=10.993230789169
 
 const Footer: React.FC = () => {
   const pathname = usePathname();
-  const hideFooter = pathname.startsWith("/admin") || pathname.startsWith("/staff") || pathname.startsWith("/profile");
+  const hideFooter = pathname.startsWith("/admin") || pathname.startsWith("/staff") || pathname.startsWith("/profile") || pathname === "/test-sms";
   const { data: storeStatus, isLoading, isError } = useStoreStatus({ enabled: !hideFooter });
   const [now, setNow] = useState(() => new Date());
 
