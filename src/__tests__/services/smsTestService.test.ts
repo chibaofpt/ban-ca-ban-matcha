@@ -31,7 +31,10 @@ describe("hợp đồng service thử SMS", () => {
   });
 
   it("gửi số điện thoại và request_id rồi trả challenge", async () => {
-    const request = { phone_number: "0912345678", request_id: "550e8400-e29b-41d4-a716-446655440000" };
+    const request = {
+      phone_number: "0912345678", request_id: "550e8400-e29b-41d4-a716-446655440000",
+      message_template: "Mã kiểm tra {otp}",
+    };
     const data = {
       challenge_id: "challenge-1", masked_phone: "******5678",
       expires_at: "2026-09-23T09:05:00Z", resend_at: "2026-09-23T09:01:00Z",

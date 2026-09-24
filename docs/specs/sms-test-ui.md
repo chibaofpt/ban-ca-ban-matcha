@@ -13,10 +13,11 @@ Trang chỉ xuất hiện trên staging preview khi cờ test được bật, v�
 ## Tương tác
 
 - ADMIN chủ động bấm **Kiểm tra kết nối** và **Cập nhật số dư**. Không gọi hai endpoint này tự động khi mở trang. Hiển thị thời điểm kiểm tra; nếu lần làm mới số dư lỗi, giữ số dư cuối cùng và đánh dấu chưa cập nhật được.
-- ADMIN nhập một số di động Việt Nam và bấm **Gửi OTP**. Nêu rõ hành động này có thể trừ số dư ABENLA. Không tự gửi, tự thử lại hoặc gửi cho số khác. Sau phản hồi, hiển thị số đã che, trạng thái gửi (`accepted`, `pending`, `unknown`) và thời gian mã còn hiệu lực; số dư được làm mới một lần.
+- ADMIN nhập một số di động Việt Nam, chỉnh **Nội dung SMS** và bấm **Gửi OTP**. Nội dung phải có đúng một `{otp}`; server thay placeholder bằng mã sinh ngẫu nhiên trước khi gọi ABENLA. Nêu rõ hành động này có thể trừ số dư ABENLA. Không tự gửi, tự thử lại hoặc gửi cho số khác. Sau phản hồi, hiển thị số đã che, trạng thái gửi (`accepted`, `pending`, `unknown`) và thời gian mã còn hiệu lực; số dư được làm mới một lần.
 - ADMIN đọc SMS trên điện thoại rồi nhập tay 6 chữ số để **Xác minh**. Trang chỉ báo kết quả đối chiếu của challenge test, không tạo session đăng nhập hay thay đổi người dùng/đơn hàng.
 - Cho phép gửi lại sau thời gian chờ do API trả về, đổi số hoặc thử lại sau khi xác minh. Đổi số xoá challenge và OTP hiện trên UI. Không tự động gửi lại sau timeout/lỗi mạng; `request_id` ổn định cho cùng một lần bấm gửi để backend khử trùng lặp.
 - Lỗi validation, giới hạn tần suất, provider và OTP phải hiển thị bên cạnh thao tác tương ứng. OTP không xuất hiện trong response, URL, log hay analytics.
+- Template chỉ sống trong request gửi hiện tại và không được lưu nguyên văn trong Redis/idempotency record; không đặt secret hoặc OTP vào nội dung ngoài placeholder.
 
 ## Kiểm chứng
 

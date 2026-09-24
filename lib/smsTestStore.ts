@@ -9,7 +9,7 @@ const RESERVE = `
 local old = redis.call('GET', KEYS[1])
 if old then
   local record = cjson.decode(old)
-  if record.phone_digest ~= ARGV[1] or record.session_scope ~= ARGV[6] then return {'CONFLICT'} end
+  if record.phone_digest ~= ARGV[1] or record.session_scope ~= ARGV[6] or record.message_digest ~= ARGV[7] then return {'CONFLICT'} end
   return {'REPLAY', old}
 end
 if redis.call('EXISTS', KEYS[4]) == 1 then return {'COOLDOWN'} end
@@ -92,6 +92,7 @@ export interface SmsTestOutcome {
 interface IdempotencyRecord {
   challenge_id: string;
   phone_digest: string;
+  message_digest: string;
   session_scope: string;
   dispatch_state: "in_flight" | "final";
   outcome: SmsTestOutcome;
@@ -107,6 +108,7 @@ export async function reserveSmsTestSend(input: {
   globalLimitKey: string;
   challengeId: string;
   phoneDigest: string;
+  messageDigest: string;
   sessionScope: string;
   otpHash: string;
   initialData: SmsTestSendOtpData;
@@ -115,6 +117,7 @@ export async function reserveSmsTestSend(input: {
   const record: IdempotencyRecord = {
     challenge_id: input.challengeId,
     phone_digest: input.phoneDigest,
+    message_digest: input.messageDigest,
     session_scope: input.sessionScope,
     dispatch_state: "in_flight",
     outcome: { data: input.initialData },
@@ -122,7 +125,7 @@ export async function reserveSmsTestSend(input: {
   const result = await evalScript(RESERVE, [
     input.idempotencyKey, input.activeKey, input.markerKey, input.cooldownKey,
     input.adminLimitKey, input.globalLimitKey,
-  ], [input.phoneDigest, input.challengeId, input.otpHash, JSON.stringify(record), input.globalTtlSeconds, input.sessionScope]);
+  ], [input.phoneDigest, input.challengeId, input.otpHash, JSON.stringify(record), input.globalTtlSeconds, input.sessionScope, input.messageDigest]);
   if (!Array.isArray(result) || typeof result[0] !== "string") throw new SmsTestStoreUnavailable();
   if (result[0] === "NEW") return { kind: "new" };
   if (result[0] === "REPLAY") {

@@ -1,4 +1,5 @@
 import type { SmsTestDeliveryStatus } from "@/contracts/smsTest";
+import { smsTestMessageTemplateSchema } from "@/lib/validations/smsTest";
 
 const BASE_URL = "https://api.abenla.com/api";
 const MAX_RESPONSE_BYTES = 64 * 1024;
@@ -33,13 +34,11 @@ function credentials(): AbenlaCredentials {
   return { loginName, sign };
 }
 
-function sendSettings(): { serviceTypeId: number; brandName: string; template: string } {
+function sendSettings(): { serviceTypeId: number; brandName: string } {
   const serviceTypeId = Number(process.env.ABENLA_SERVICE_TYPE_ID);
   const brandName = process.env.ABENLA_BRAND_NAME;
-  const template = process.env.ABENLA_OTP_TEMPLATE;
-  if (!Number.isInteger(serviceTypeId) || serviceTypeId <= 0 || !brandName || !template ||
-      template.split("{otp}").length !== 2) throw new AbenlaConfigError();
-  return { serviceTypeId, brandName, template };
+  if (!Number.isInteger(serviceTypeId) || serviceTypeId <= 0 || !brandName) throw new AbenlaConfigError();
+  return { serviceTypeId, brandName };
 }
 
 async function boundedJson(response: Response): Promise<AbenlaResponse> {
@@ -106,19 +105,21 @@ export async function getAbenlaBalance(): Promise<number> {
 }
 
 /** Dispatch one fixed-template OTP; uncertain transport outcomes remain unknown. */
-export async function sendAbenlaOtp(phoneNumber: string, otp: string, smsGuid: string): Promise<{
+export async function sendAbenlaOtp(phoneNumber: string, otp: string, smsGuid: string, messageTemplate: string): Promise<{
   deliveryStatus: SmsTestDeliveryStatus;
   providerCode: number | null;
   smsPerMessage: number | null;
 }> {
   const { loginName, sign } = credentials();
-  const { serviceTypeId, brandName, template } = sendSettings();
+  const { serviceTypeId, brandName } = sendSettings();
+  const parsedTemplate = smsTestMessageTemplateSchema.safeParse(messageTemplate);
+  if (!parsedTemplate.success) throw new AbenlaConfigError();
   const body = {
     LoginName: loginName,
     Sign: sign,
     ServiceTypeId: serviceTypeId,
     PhoneNumber: phoneNumber.replace(/^\+84/, "84"),
-    Message: template.replace("{otp}", otp),
+    Message: parsedTemplate.data.replace("{otp}", otp),
     BrandName: brandName,
     DetectCode: false,
     CallBack: false,

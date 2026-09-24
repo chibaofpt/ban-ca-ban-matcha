@@ -277,12 +277,14 @@ the live ADMIN session. Responses use `Cache-Control: no-store`.
 |---|---|---|
 | `POST /api/admin/sms-test/connection` | Empty body | `{ connected, provider_code, checked_at }` |
 | `POST /api/admin/sms-test/balance` | Empty body | `{ balance, checked_at }` |
-| `POST /api/admin/sms-test/send-otp` | `{ phone_number, request_id }` | `{ challenge_id, masked_phone, expires_at, resend_at, delivery_status, provider_code, sms_per_message }` |
+| `POST /api/admin/sms-test/send-otp` | `{ phone_number, request_id, message_template }` | `{ challenge_id, masked_phone, expires_at, resend_at, delivery_status, provider_code, sms_per_message }` |
 | `POST /api/admin/sms-test/verify-otp` | `{ challenge_id, otp }` | `{ verified: true }` |
 
 `delivery_status` is `accepted`, `pending`, or `unknown`. `accepted` means the provider accepted
 the request, not that the handset received it. The server generates and verifies a six-digit OTP;
-the ABENLA SendOTP API only delivers the content. Challenges expire after five minutes, permit at
+the `message_template` is supplied by the ADMIN for that send and must contain exactly one `{otp}`
+placeholder, with a maximum of 480 characters; the server substitutes the generated OTP before
+calling ABENLA SendOTP. Challenges expire after five minutes, permit at
 most five incorrect attempts, and are consumed once. Resend has a 60-second admin/phone cooldown.
 Send is capped at five attempts per 10 minutes per admin and 20 attempts per day globally;
 connection and balance together are capped at 10 calls per minute per admin. The SMS test counters
@@ -293,6 +295,8 @@ the initial dispatch is still running or the outcome could not be persisted. Err
 standard error envelope, with machine-readable `details.reason` for OTP, cooldown, limit, and
 provider-unavailable outcomes. An explicit ABENLA rejection may include the numeric
 `details.provider_code`, never its free-text message. No OTP or full phone number appears in the response.
+Template validation failures return `400 VALIDATION_ERROR` with `details.reason=INVALID_MESSAGE_TEMPLATE`;
+the template is not persisted in Redis or returned by the API.
 
 ### Payload and value ceilings
 

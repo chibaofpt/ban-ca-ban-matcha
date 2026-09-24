@@ -16,7 +16,8 @@ const data: SmsTestSendOtpData = {
 const input = {
   idempotencyKey: "idem", activeKey: "active", markerKey: "marker",
   cooldownKey: "cooldown", adminLimitKey: "admin-limit", globalLimitKey: "global-limit",
-  challengeId: "challenge-new", phoneDigest: "phone-digest", sessionScope: "session-scope", otpHash: "otp-hash",
+  challengeId: "challenge-new", phoneDigest: "phone-digest", messageDigest: "message-digest",
+  sessionScope: "session-scope", otpHash: "otp-hash",
   initialData: data, globalTtlSeconds: 3600,
 };
 
@@ -28,7 +29,7 @@ describe("Kho lưu trạng thái SMS", () => {
 
   it("đọc lại kết quả gốc khi SDK tự giải mã JSON từ Redis", async () => {
     mockEval.mockResolvedValue(["REPLAY", {
-      challenge_id: "challenge-original", phone_digest: "phone-digest", session_scope: "session-scope",
+      challenge_id: "challenge-original", phone_digest: "phone-digest", message_digest: "message-digest", session_scope: "session-scope",
       dispatch_state: "final", outcome: { data },
     }]);
     expect(await reserveSmsTestSend(input)).toEqual({ kind: "replay", outcome: { data } });
@@ -36,7 +37,7 @@ describe("Kho lưu trạng thái SMS", () => {
 
   it("chỉ trả trạng thái chưa rõ khi lần gửi đầu còn đang chạy", async () => {
     mockEval.mockResolvedValue(["REPLAY", {
-      challenge_id: "challenge-original", phone_digest: "phone-digest", session_scope: "session-scope",
+      challenge_id: "challenge-original", phone_digest: "phone-digest", message_digest: "message-digest", session_scope: "session-scope",
       dispatch_state: "in_flight", outcome: { data },
     }]);
     expect(await reserveSmsTestSend(input)).toEqual({ kind: "replay", outcome: { data: {

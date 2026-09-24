@@ -94,13 +94,24 @@ describe("API kiểm thử SMS", () => {
     const bad = await sendOtp(request("send-otp", { phone_number: "123", request_id: requestId }));
     expect(bad.status).toBe(400);
     expect(mockSend).not.toHaveBeenCalled();
-    const response = await sendOtp(request("send-otp", { phone_number: "0912 345 678", request_id: requestId }));
+    const response = await sendOtp(request("send-otp", {
+      phone_number: "0912 345 678", request_id: requestId, message_template: "Mã kiểm tra {otp}",
+    }));
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.data).toMatchObject({ delivery_status: "accepted", provider_code: 203, sms_per_message: 1 });
     expect(body.data.masked_phone).not.toContain("912345678");
     expect(JSON.stringify(body)).not.toContain("0912345678");
-    expect(mockSend).toHaveBeenCalledWith("+84912345678", expect.stringMatching(/^\d{6}$/), expect.any(String));
+    expect(mockSend).toHaveBeenCalledWith("+84912345678", expect.stringMatching(/^\d{6}$/), expect.any(String), "Mã kiểm tra {otp}");
+  });
+
+  it("từ chối template không có đúng một placeholder OTP", async () => {
+    const response = await sendOtp(request("send-otp", {
+      phone_number: "0912345678", request_id: requestId, message_template: "Mã kiểm tra",
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ details: { reason: "INVALID_MESSAGE_TEMPLATE" } });
+    expect(mockSend).not.toHaveBeenCalled();
   });
 
   it("trả trạng thái xác minh hoặc lỗi OTP theo kết quả lưu trữ", async () => {
@@ -119,7 +130,9 @@ describe("API kiểm thử SMS", () => {
       delivery_status: "pending", provider_code: 212, sms_per_message: 1,
     };
     mockReserveSend.mockResolvedValueOnce({ kind: "replay", outcome: { data } });
-    const response = await sendOtp(request("send-otp", { phone_number: "0912345678", request_id: requestId }));
+    const response = await sendOtp(request("send-otp", {
+      phone_number: "0912345678", request_id: requestId, message_template: "Mã kiểm tra {otp}",
+    }));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ data });
     expect(mockSend).not.toHaveBeenCalled();
@@ -127,7 +140,9 @@ describe("API kiểm thử SMS", () => {
 
   it("thất bại an toàn khi Redis không sẵn sàng", async () => {
     mockReserveSend.mockRejectedValueOnce(new SmsTestStoreUnavailable());
-    const response = await sendOtp(request("send-otp", { phone_number: "0912345678", request_id: requestId }));
+    const response = await sendOtp(request("send-otp", {
+      phone_number: "0912345678", request_id: requestId, message_template: "Mã kiểm tra {otp}",
+    }));
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({ details: { reason: "SMS_TEST_UNAVAILABLE" } });
     expect(mockSend).not.toHaveBeenCalled();
@@ -135,7 +150,9 @@ describe("API kiểm thử SMS", () => {
 
   it("trả mã số nhà cung cấp khi Abenla từ chối, không trả nội dung nhạy cảm", async () => {
     mockSend.mockRejectedValueOnce(new AbenlaRejectedError(204));
-    const response = await sendOtp(request("send-otp", { phone_number: "0912345678", request_id: requestId }));
+    const response = await sendOtp(request("send-otp", {
+      phone_number: "0912345678", request_id: requestId, message_template: "Mã kiểm tra {otp}",
+    }));
     expect(response.status).toBe(502);
     const body = await response.json();
     expect(body).toMatchObject({
@@ -160,9 +177,13 @@ describe("API kiểm thử SMS", () => {
     }).mockImplementationOnce(async () => ({ kind: "replay", outcome: { data: initialData } }));
     mockSend.mockImplementationOnce(() => { sendStarted(); return providerPending; });
 
-    const first = sendOtp(request("send-otp", { phone_number: "0912345678", request_id: requestId }));
+    const first = sendOtp(request("send-otp", {
+      phone_number: "0912345678", request_id: requestId, message_template: "Mã kiểm tra {otp}",
+    }));
     await started;
-    const replay = await sendOtp(request("send-otp", { phone_number: "0912345678", request_id: requestId }));
+    const replay = await sendOtp(request("send-otp", {
+      phone_number: "0912345678", request_id: requestId, message_template: "Mã kiểm tra {otp}",
+    }));
     expect(await replay.json()).toMatchObject({ data: {
       challenge_id: initialData.challenge_id, delivery_status: "unknown", provider_code: null,
     } });
@@ -178,9 +199,13 @@ describe("API kiểm thử SMS", () => {
       return { kind: "new" };
     }).mockImplementationOnce(async () => ({ kind: "replay", outcome: { data: initialData } }));
     mockFinalize.mockRejectedValueOnce(new SmsTestStoreUnavailable());
-    const first = await sendOtp(request("send-otp", { phone_number: "0912345678", request_id: requestId }));
+    const first = await sendOtp(request("send-otp", {
+      phone_number: "0912345678", request_id: requestId, message_template: "Mã kiểm tra {otp}",
+    }));
     expect(first.status).toBe(503);
-    const replay = await sendOtp(request("send-otp", { phone_number: "0912345678", request_id: requestId }));
+    const replay = await sendOtp(request("send-otp", {
+      phone_number: "0912345678", request_id: requestId, message_template: "Mã kiểm tra {otp}",
+    }));
     expect(await replay.json()).toMatchObject({ data: {
       challenge_id: initialData.challenge_id, delivery_status: "unknown", provider_code: null,
     } });

@@ -86,6 +86,7 @@ export async function smsTestSendOtp(adminId: string, sessionId: string, input: 
   const scope = adminScope(adminId, sessionId);
   const phone = normalizeMobile(input.phone_number);
   const phoneDigest = digest("phone", phone);
+  const messageDigest = digest("message", input.message_template);
   const challengeId = randomUUID();
   const otp = randomInt(0, 1_000_000).toString().padStart(6, "0");
   const now = Date.now();
@@ -105,7 +106,7 @@ export async function smsTestSendOtp(adminId: string, sessionId: string, input: 
     cooldownKey: `sms-test:cooldown:${digest("admin-phone", `${adminId}:${phone}`)}`,
     adminLimitKey: `sms-test:send-limit:${digest("admin", adminId)}`,
     globalLimitKey: global.key,
-    challengeId, phoneDigest, sessionScope: scope, otpHash: digest("otp", `${challengeId}:${otp}`),
+    challengeId, phoneDigest, messageDigest, sessionScope: scope, otpHash: digest("otp", `${challengeId}:${otp}`),
     initialData, globalTtlSeconds: global.ttl,
   });
   if (reservation.kind === "replay") return errorForOutcome(reservation.outcome);
@@ -117,7 +118,7 @@ export async function smsTestSendOtp(adminId: string, sessionId: string, input: 
   }
   let outcome: SmsTestOutcome;
   try {
-    const provider = await sendAbenlaOtp(phone, otp, randomUUID());
+    const provider = await sendAbenlaOtp(phone, otp, randomUUID(), input.message_template);
     outcome = { data: {
       ...initialData, delivery_status: provider.deliveryStatus,
       provider_code: provider.providerCode, sms_per_message: provider.smsPerMessage,

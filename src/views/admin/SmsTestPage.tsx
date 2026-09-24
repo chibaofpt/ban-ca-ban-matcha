@@ -19,10 +19,15 @@ const phoneSchema = z.object({
     /^(?:0|84|\+84)[35789]\d{8}$/,
     "Nhập số di động Việt Nam hợp lệ, ví dụ 0912345678.",
   ),
+  message_template: z.string().trim().min(1, "Nhập nội dung SMS.").max(480, "Nội dung tối đa 480 ký tự.").refine(
+    (value) => value.split("{otp}").length === 2,
+    "Nội dung phải có đúng một placeholder {otp}.",
+  ),
 });
 const otpSchema = z.object({ otp: z.string().regex(/^\d{6}$/, "Nhập đúng 6 chữ số trong SMS.") });
 type PhoneForm = z.infer<typeof phoneSchema>;
 type OtpForm = z.infer<typeof otpSchema>;
+const DEFAULT_MESSAGE_TEMPLATE = "Bạn Cá Bán Matcha: Mã OTP của bạn là {otp}. Có hiệu lực trong 5 phút. Không chia sẻ mã này.";
 
 function errorDetails(error: ApiServiceError): { reason: string | null; providerCode: number | null } {
   const details = error.details;
@@ -42,6 +47,7 @@ function friendlyError(error: unknown): string {
       REQUEST_ID_CONFLICT: "Yêu cầu gửi bị trùng với một số khác. Vui lòng thử lại.",
       SMS_TEST_COOLDOWN: "Vui lòng chờ trước khi gửi lại OTP đến số này.",
       SMS_TEST_LIMIT: "Đã đạt giới hạn thử nghiệm SMS. Vui lòng thử lại sau.",
+      INVALID_MESSAGE_TEMPLATE: "Nội dung SMS phải có đúng một placeholder {otp} và không quá 480 ký tự.",
       OTP_INVALID: "Mã OTP chưa đúng.",
       OTP_EXPIRED: "Mã OTP đã hết hạn. Vui lòng gửi mã mới.",
       OTP_LOCKED: "Đã nhập sai quá số lần cho phép. Vui lòng gửi mã mới.",
@@ -75,7 +81,10 @@ export default function SmsTestPage() {
   const requestId = useRef<string | null>(null);
   const otpInput = useRef<HTMLInputElement | null>(null);
 
-  const phoneForm = useForm<PhoneForm>({ resolver: zodResolver(phoneSchema), mode: "onBlur", defaultValues: { phone_number: "" } });
+  const phoneForm = useForm<PhoneForm>({
+    resolver: zodResolver(phoneSchema), mode: "onBlur",
+    defaultValues: { phone_number: "", message_template: DEFAULT_MESSAGE_TEMPLATE },
+  });
   const otpForm = useForm<OtpForm>({ resolver: zodResolver(otpSchema), mode: "onBlur", defaultValues: { otp: "" } });
   const otpField = otpForm.register("otp", { onChange: () => setVerifyError(null) });
 
@@ -90,11 +99,11 @@ export default function SmsTestPage() {
     return () => window.clearInterval(interval);
   }, [challenge]);
 
-  const submitPhone = phoneForm.handleSubmit(async ({ phone_number }) => {
+  const submitPhone = phoneForm.handleSubmit(async ({ phone_number, message_template }) => {
     setSendError(null);
     requestId.current ??= crypto.randomUUID();
     try {
-      const result = await send.mutateAsync({ phone_number, request_id: requestId.current });
+      const result = await send.mutateAsync({ phone_number, request_id: requestId.current, message_template });
       setChallenge(result);
       setNow(Date.now());
       setVerified(false);
@@ -180,6 +189,10 @@ export default function SmsTestPage() {
           <label htmlFor="sms-test-phone" className="block text-sm font-medium">Số điện thoại nhận OTP</label>
           <input id="sms-test-phone" type="tel" inputMode="tel" autoComplete="tel" className={inputClass} disabled={send.isPending || Boolean(challenge)} aria-invalid={Boolean(phoneForm.formState.errors.phone_number)} aria-describedby={phoneForm.formState.errors.phone_number ? "sms-test-phone-error" : undefined} {...phoneForm.register("phone_number", { onChange: () => { requestId.current = null; setSendError(null); } })} />
           {phoneForm.formState.errors.phone_number && <p id="sms-test-phone-error" className="text-sm text-destructive" role="alert">{phoneForm.formState.errors.phone_number.message}</p>}
+          <label htmlFor="sms-test-message" className="block pt-2 text-sm font-medium">Nội dung SMS</label>
+          <textarea id="sms-test-message" rows={4} maxLength={480} spellCheck={false} className={`${inputClass} min-h-28 resize-y py-3`} disabled={send.isPending || Boolean(challenge)} aria-invalid={Boolean(phoneForm.formState.errors.message_template)} aria-describedby={phoneForm.formState.errors.message_template ? "sms-test-message-error" : "sms-test-message-help"} {...phoneForm.register("message_template", { onChange: () => { requestId.current = null; setSendError(null); } })} />
+          <p id="sms-test-message-help" className="text-xs text-muted-foreground">Dùng đúng một <code>{"{otp}"}</code> tại vị trí muốn chèn mã. Nội dung này sẽ gửi trực tiếp qua ABENLA.</p>
+          {phoneForm.formState.errors.message_template && <p id="sms-test-message-error" className="text-sm text-destructive" role="alert">{phoneForm.formState.errors.message_template.message}</p>}
           {sendError && <p className="text-sm text-destructive" role="alert">{sendError}</p>}
           {!challenge && <Button type="submit" disabled={send.isPending}>
             {send.isPending ? <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" /> : <Send className="mr-2 size-4" aria-hidden="true" />}

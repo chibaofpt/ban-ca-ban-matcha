@@ -14,6 +14,7 @@ export interface SmsTestBalanceData {
 export interface SmsTestSendOtpRequest {
   phone_number: string;
   request_id: string;
+  message_template: string;
 }
 
 export interface SmsTestSendOtpData {
