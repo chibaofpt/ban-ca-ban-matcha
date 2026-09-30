@@ -3,8 +3,8 @@ import { z } from "zod";
 import type { OpenWelcomeRewardPayload } from "@/contracts/reward";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { openWelcomeReward, WelcomeRewardError } from "@/lib/welcomeReward";
-import { toWelcomeRewardDto } from "@/lib/welcomeRewardDto";
+import { openWelcomeReward, WelcomeRewardError } from "@/lib/rewards/welcomeReward";
+import { toWelcomeRewardDto } from "@/lib/rewards/welcomeRewardDto";
 
 const openWelcomeRewardSchema = z.object({
   reward_id: z.string().uuid(),

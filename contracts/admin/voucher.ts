@@ -208,6 +208,7 @@ export type CreateVoucherPackageInput = VoucherPackageCommonInput & (
       eligible_sizes: Size[];
       discount_value?: number;
       reference_size?: Size;
+      milk_type_id?: string | null;
     }
   | {
       voucher_type: "FREESHIP";

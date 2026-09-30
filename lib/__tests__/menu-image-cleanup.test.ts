@@ -34,7 +34,7 @@ vi.mock("@/lib/observability", () => ({
   captureServerException: (...args: unknown[]) => mockCaptureServerException(...args),
 }));
 
-import { runMenuImageCleanup } from "@/lib/menuImageCleanup";
+import { runMenuImageCleanup } from "@/lib/catalog/menuImageCleanup";
 import { GET } from "@/app/api/cron/cleanup-menu-images/route";
 
 const baseUrl = "https://project.supabase.co/storage/v1/object/public/menu-images/";

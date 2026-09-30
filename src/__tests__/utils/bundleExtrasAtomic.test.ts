@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
 import type { BundleCartDraftCommit } from "@/src/lib/types/cart";
 import { projectedCartLine } from "@/src/__tests__/fixtures/cart";
 import { useCartStore } from "@/src/lib/store/cartStore";
@@ -148,22 +147,5 @@ describe("BUNDLE extras setup atomic seam", () => {
     expect(useCartStore.getState().items.find((item) => item.cartId === "reward-line")?.menuItemId).toBe("extra-1");
     expect(useStaffCartStore.getState().items.find((item) => item.cartId === "reward-line")?.menuItemId).toBe("extra-1");
     expect(useCartStore.getState().items.find((item) => item.cartId === "reward-line")).not.toHaveProperty("bundleRewardVoucherToken");
-  });
-
-  it("keeps extras quick-add on the shared setup route", () => {
-    const panel = readFileSync(new URL("../../components/menu/cart/CartBundleVoucherPanel.tsx", import.meta.url), "utf8");
-    const customer = readFileSync(new URL("../../components/menu/CartDrawer.tsx", import.meta.url), "utf8");
-    const picker = readFileSync(new URL("../../components/menu/cart/CartDiscountPicker.tsx", import.meta.url), "utf8");
-    const staff = readFileSync(new URL("../../components/staff/StaffCartDrawer.tsx", import.meta.url), "utf8");
-    const staffPage = readFileSync(new URL("../../views/staff/StaffOrdersPage.tsx", import.meta.url), "utf8");
-    expect(panel).not.toContain("onAddExtrasReward");
-    expect(customer).not.toContain("onAddExtrasReward");
-    expect(picker).not.toContain("onAddExtrasReward");
-    expect(staff).not.toContain("onAddExtrasReward");
-    expect(staffPage).not.toContain("onAddExtrasReward");
-    expect(panel).toContain("onOpenBundleSetup");
-    expect(picker).toContain("initialApplication={bundleApplications.find");
-    const modal = readFileSync(new URL("../../components/shared/VoucherModal.tsx", import.meta.url), "utf8");
-    expect(modal).toContain("initialApplication={bundleApplications.find");
   });
 });

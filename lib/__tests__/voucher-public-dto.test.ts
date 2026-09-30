@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { serializePublicVoucherDto, toPublicVoucherDto } from "@/lib/voucherPublicDto";
+import { serializePublicVoucherDto, toPublicVoucherDto } from "@/lib/vouchers/voucherPublicDto";
 
 describe("Voucher public DTO", () => {
   it("serializes internal Date values to the shared wire format without mutating the mapper result", () => {

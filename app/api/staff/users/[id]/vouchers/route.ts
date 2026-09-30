@@ -8,13 +8,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { resolveCustomerIdentifier } from "@/lib/publicIdentifiers";
-import { serializePublicVoucherDto, toPublicVoucherDto } from "@/lib/voucherPublicDto";
-import { attachBundleRewardBaselines } from "@/lib/voucherBundleDto";
+import { serializePublicVoucherDto, toPublicVoucherDto } from "@/lib/vouchers/voucherPublicDto";
+import { attachBundleRewardBaselines } from "@/lib/vouchers/voucherBundleDto";
+import { attachOwnedVoucherAvailability } from "@/lib/vouchers/ownedVoucherAvailability";
 import {
-  attachOwnedVoucherAvailability,
   loadVoucherAvailabilityCatalog,
   type VoucherAvailabilityDatabase,
-} from "@/lib/voucherAvailability";
+} from "@/lib/vouchers/voucherAvailability";
 
 export const dynamic = "force-dynamic";
 

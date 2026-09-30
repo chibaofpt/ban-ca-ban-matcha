@@ -40,9 +40,7 @@ describe("Validation tên file SEO cho ảnh menu", () => {
     if (result.success) expect(result.data.image_filename).toBe("matcha-latte");
   });
 
-  it("từ chối slash, backslash và dot-dot", () => {
-    for (const imageFilename of ["../secret", "folder/name", "folder\\name"]) {
-      expect(updateMenuSchema.safeParse({ image_filename: imageFilename }).success).toBe(false);
-    }
+  it.each(["../secret", "folder/name", "folder\\name"])("từ chối image_filename %s", (imageFilename) => {
+    expect(updateMenuSchema.safeParse({ image_filename: imageFilename }).success).toBe(false);
   });
 });

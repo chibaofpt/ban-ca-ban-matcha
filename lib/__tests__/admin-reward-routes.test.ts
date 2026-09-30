@@ -8,19 +8,19 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth", () => ({ getSession: (...args: unknown[]) => mocks.getSession(...args) }));
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
-vi.mock("@/lib/adminWelcomeRewardSettings", () => ({
+vi.mock("@/lib/rewards/adminWelcomeRewardSettings", () => ({
   getAdminWelcomeRewardSettings: (...args: unknown[]) => mocks.getSettings(...args),
   updateAdminWelcomeRewardSettings: (...args: unknown[]) => mocks.updateSettings(...args),
 }));
-vi.mock("@/lib/adminRewardCampaign", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@/lib/adminRewardCampaign")>(),
+vi.mock("@/lib/rewards/adminRewardCampaign", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/rewards/adminRewardCampaign")>(),
   listAdminRewardCampaigns: (...args: unknown[]) => mocks.listCampaigns(...args),
   createAdminRewardCampaign: (...args: unknown[]) => mocks.createCampaign(...args),
   getAdminRewardCampaign: (...args: unknown[]) => mocks.getCampaign(...args),
   mutateAdminRewardCampaign: (...args: unknown[]) => mocks.mutateCampaign(...args),
   replaceAdminRewardPool: (...args: unknown[]) => mocks.replacePool(...args),
 }));
-vi.mock("@/lib/adminRewardBox", () => ({
+vi.mock("@/lib/rewards/adminRewardBox", () => ({
   createAdminRewardBox: (...args: unknown[]) => mocks.createBox(...args),
   updateAdminRewardBox: (...args: unknown[]) => mocks.updateBox(...args),
   deleteAdminRewardBox: (...args: unknown[]) => mocks.deleteBox(...args),

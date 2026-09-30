@@ -2,7 +2,7 @@
  * Unit tests for GET /api/staff/users/[id]/vouchers.
  *
  * Strategy: mock lib/prisma and lib/auth.
- * The route file doesn't exist yet — tests will fail to compile until it's implemented.
+ * Executes the route against controlled database and session results.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";

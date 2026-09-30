@@ -11,18 +11,18 @@ const mockToDto = vi.fn((db: unknown, reward: unknown, now?: Date) => {
 
 vi.mock("@/lib/auth", () => ({ getSession: () => mockGetSession() }));
 vi.mock("@/lib/prisma", () => ({ prisma: { $transaction: vi.fn(), welcomeReward: {} } }));
-vi.mock("@/lib/welcomeReward", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@/lib/welcomeReward")>(),
+vi.mock("@/lib/rewards/welcomeReward", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/rewards/welcomeReward")>(),
   getWelcomeReward: (...args: unknown[]) => mockGetReward(...args),
   openWelcomeReward: (...args: unknown[]) => mockOpenReward(...args),
 }));
-vi.mock("@/lib/welcomeRewardDto", () => ({
+vi.mock("@/lib/rewards/welcomeRewardDto", () => ({
   toWelcomeRewardDto: (db: unknown, reward: unknown, now?: Date) => mockToDto(db, reward, now),
 }));
 
 import { GET } from "@/app/api/customer/rewards/welcome/route";
 import { POST } from "@/app/api/customer/rewards/welcome/open/route";
-import { WelcomeRewardError } from "@/lib/welcomeReward";
+import { WelcomeRewardError } from "@/lib/rewards/welcomeReward";
 
 const ids = {
   reward_id: "11111111-1111-4111-8111-111111111111",

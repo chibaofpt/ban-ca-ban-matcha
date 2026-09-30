@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getWeeklySchedule } from "@/lib/storeSchedule";
+import { getWeeklySchedule } from "@/lib/store/storeSchedule";
 import { updateStoreScheduleSchema } from "@/lib/validations/storeSchedule";
 import { invalidateStoreCaches } from "@/lib/cacheInvalidation";
 import type { UpdateStoreScheduleRequest } from "@/contracts/admin/store";

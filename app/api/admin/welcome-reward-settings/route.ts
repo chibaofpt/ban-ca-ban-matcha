@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { adminRewardErrorResponse, requireRewardAdmin, settingsSchema } from "@/lib/adminRewardHttp";
-import { getAdminWelcomeRewardSettings, updateAdminWelcomeRewardSettings } from "@/lib/adminWelcomeRewardSettings";
+import { adminRewardErrorResponse, requireRewardAdmin, settingsSchema } from "@/lib/rewards/adminRewardHttp";
+import { getAdminWelcomeRewardSettings, updateAdminWelcomeRewardSettings } from "@/lib/rewards/adminWelcomeRewardSettings";
 
 export const dynamic = "force-dynamic";
 const db = prisma;

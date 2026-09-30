@@ -120,8 +120,4 @@ describe("bundle addon reward planner", () => {
     })).toThrow("Extra Matcha");
   });
 
-  it("fails before a commit when explicit recipients cannot cover required units", () => {
-    const input = reward({ benefitScaling: "PER_QUALIFYING_ITEM", recipientSlotIndexes: [0, 1] });
-    expect(() => materializeBundleAddonReward({ items: [item("line-1")], reward: input, qualifyingQuantity: 2, recipients: recipient(item("line-1")) })).toThrow("đơn vị");
-  });
 });

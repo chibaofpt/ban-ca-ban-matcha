@@ -4,14 +4,16 @@ import { prisma } from "@/lib/prisma";
 import { reportQuerySchema } from "@/lib/validations/report";
 import { resolveStaffIdentifier } from "@/lib/publicIdentifiers";
 import {
+  type PowderSizeEntry,
+  type DefaultSizeEntry,
+} from "@/lib/reports/reportAggregation";
+import {
   buildAdminReport,
   type RawAdminOrder,
   type RawAdminOrderItem,
-  type PowderSizeEntry,
-  type DefaultSizeEntry,
-} from "@/lib/reportAggregation";
+} from "@/lib/reports/adminReportAggregation";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { collectReportPages, ReportRangeTooLargeError } from "@/lib/reportPagination";
+import { collectReportPages, ReportRangeTooLargeError } from "@/lib/reports/reportPagination";
 
 /** GET /api/admin/report — Generate full admin report with addon usage, revenue by type, and top products */
 export async function GET(req: NextRequest) {

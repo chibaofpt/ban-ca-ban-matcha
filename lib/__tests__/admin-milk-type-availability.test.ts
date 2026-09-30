@@ -39,7 +39,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 vi.mock("@/lib/cacheInvalidation", () => ({ invalidateMenuCaches: vi.fn() }));
-vi.mock("@/lib/catalogImage", () => ({
+vi.mock("@/lib/catalog/catalogImage", () => ({
   catalogImageValidationMessage: () => null,
   prepareCatalogImage: vi.fn(),
 }));

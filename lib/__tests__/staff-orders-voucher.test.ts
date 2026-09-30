@@ -30,7 +30,7 @@ vi.mock("@/lib/auth", async (importOriginal) => {
   return { ...(await importOriginal<typeof import("@/lib/auth")>()), getSession: () => mockGetSession() };
 });
 
-vi.mock("@/lib/storeSchedule", () => ({
+vi.mock("@/lib/store/storeSchedule", () => ({
   checkStoreOpen: () => mockCheckStoreOpen(),
   validatePickupTime: vi.fn().mockResolvedValue({ isValid: true }),
 }));

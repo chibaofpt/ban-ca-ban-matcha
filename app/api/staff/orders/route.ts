@@ -4,24 +4,23 @@ import { prisma } from "@/lib/prisma";
 import { runSerializableTransaction } from "@/lib/serializableTransaction";
 import { getSession, normalizePhone } from "@/lib/auth";
 import { staffOrderSchema } from "@/lib/validations/order";
-import { processOrderItems, OrderValidationError, PriceChangedError } from "@/lib/orders";
-import type { ProductVoucherInfo } from "@/lib/orders";
+import { processOrderItems } from "@/lib/orders/orderProcessing";
+import { OrderValidationError, PriceChangedError } from "@/lib/orders/orderProcessingErrors";
+import type { ProductVoucherInfo } from "@/lib/orders/orderVoucherTargets";
 import {
   assertVoucherUsable,
   VoucherError,
-} from "@/lib/vouchers";
-import { calcOrderTotals } from "@/lib/orderCalculator";
-import type { CalcDiscountVoucher } from "@/lib/orderCalculator";
-import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
+} from "@/lib/vouchers/voucherRules";
+import { calcOrderTotals } from "@/lib/orders/orderCalculator";
+import type { CalcDiscountVoucher } from "@/lib/orders/orderCalculator";
+import { lazyExpireVouchers } from "@/lib/vouchers/lazyExpireVouchers";
 import type { SweetnessLevel } from "@/contracts/menu";
 import type { IceOption } from "@/contracts/order";
-import { BundlePromotionError } from "@/lib/promotionBundle";
-import { resolveOrderBundles, type OrderBundleDatabase } from "@/lib/orderBundle";
-import { persistOrderBundles } from "@/lib/orderBundleWrite";
-import {
-  ensureAutoGrantedVouchers,
-  type VoucherIssuanceDatabase,
-} from "@/lib/voucherIssuance";
+import { BundlePromotionError } from "@/lib/orders/promotionBundle";
+import { resolveOrderBundles, type OrderBundleDatabase } from "@/lib/orders/orderBundle";
+import { persistOrderBundles } from "@/lib/orders/orderBundleWrite";
+import { ensureAutoGrantedVouchers } from "@/lib/vouchers/autoGrantVouchers";
+import type { VoucherIssuanceDatabase } from "@/lib/vouchers/voucherIssuance";
 
 import { logSystemEvent } from "@/lib/logger";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -29,16 +28,18 @@ import {
   resolveCustomerIdentifier,
   resolveOwnedVoucherIdentifier,
 } from "@/lib/publicIdentifiers";
-import { toOrderListItemDto } from "@/lib/orderPublicDto";
-import { getOrderValueViolation } from "@/lib/orderLimits";
+import { toOrderListItemDto } from "@/lib/orders/orderPublicDto";
+import { getOrderValueViolation } from "@/lib/orders/orderLimits";
 import {
   claimCounterVoucher,
-  getPendingPaymentQrUrl,
-  getPendingPaymentWhere,
   prepareCounterPayment,
   StaffPaymentBusinessError,
   toStaffOrderPaymentResult,
-} from "@/lib/staffOrderPayment";
+} from "@/lib/orders/staffOrderPayment";
+import {
+  getPendingPaymentQrUrl,
+  getPendingPaymentWhere,
+} from "@/lib/orders/staffOrderPaymentRead";
 
 export const dynamic = "force-dynamic";
 
@@ -244,6 +245,7 @@ export async function POST(req: NextRequest) {
             eligible_sizes: pv!.eligible_sizes,
             reference_size: pv!.reference_size,
             discount_value: pv!.discount_value,
+            milk_type_id: menuScope?.milk_type_id ?? pv!.milk_type_id ?? null,
           });
           if (item.item_voucher_id) item.item_voucher_id = pv!.id;
           else item.product_voucher_id = pv!.id;

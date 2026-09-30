@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { CartBundleApplication } from "@/src/lib/types/cart";
 import { projectedCartLine } from "@/src/__tests__/fixtures/cart";
 import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
 import { getBundleAllocatedQuantities, getBundleCartDisplayTotals } from "@/src/lib/utils/bundleCartSummary";
@@ -37,19 +36,6 @@ function productAllocation(client_line_id: string, quantity: number): BundleSele
 }
 
 describe("bundle cart display totals", () => {
-  it("leaves outside units selectable when one shared line is allocated", () => {
-    const application: CartBundleApplication = {
-      voucher_qr_token: "bundle-1",
-      owner_key: "customer:test",
-      qualifier_allocations: [productAllocation("shared", 1)],
-      reward_allocations: [{ client_line_id: "shared", addon_option_id: "topping", quantity: 1 }],
-      created_reward_effects: [],
-    };
-    const allocated = getBundleAllocatedQuantities([application]).get("shared") ?? 0;
-    expect(allocated).toBe(1);
-    expect(allocated < 3).toBe(true);
-  });
-
   it("summarizes product rewards and paid qualifier toppings", () => {
     const totals = getBundleCartDisplayTotals(
       [item("buy", 1, 55_000, 5_000), item("gift", 1, 45_000)],

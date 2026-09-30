@@ -86,6 +86,7 @@ export function buildVoucherInput(draft: VoucherDraft): CreateVoucherPackageInpu
     ...base, voucher_type: "PRODUCT_DISCOUNT", menu_item_id: draft.menuItemId,
     eligible_menu_item_ids: (draft.eligibleMenuItemIds?.length ?? 0) > 0 ? draft.eligibleMenuItemIds! : [draft.menuItemId],
     product_discount_mode: draft.productDiscountMode, eligible_sizes: draft.eligibleSizes,
+    milk_type_id: draft.milkTypeId || null,
     ...(draft.productDiscountMode === "FIXED_AMOUNT"
       ? { discount_value: draft.discountValue }
       : { reference_size: draft.referenceSize }),
@@ -239,6 +240,8 @@ export function suggestVoucherCopy(draft: VoucherDraft, labels: VoucherCopyLabel
     const targets = limitedLabels(ids.filter(Boolean), labels.menuLabels);
     const targetName = targets ? ` cho ${targets}` : " theo món";
     const sizes = draft.eligibleSizes.map(formatSizeLabel).join(", ");
+    const milk = draft.milkTypeId ? labels.milkLabels.get(draft.milkTypeId) ?? "Base Liquid đã chọn" : "";
+    const milkDescription = milk ? ` dùng ${milk}` : "";
     if (draft.productDiscountMode === "PAY_AS_SIZE") {
       const targetSize = draft.eligibleSizes[0];
       const targetSizeLabel = targetSize ? PRODUCT_DISCOUNT_SIZE_LABELS[targetSize] : "";
@@ -246,11 +249,11 @@ export function suggestVoucherCopy(draft: VoucherDraft, labels: VoucherCopyLabel
       const targetLabels = names(ids.filter(Boolean), labels.menuLabels);
       return {
         name: targetFishLabel ? `Free upsize lên ${targetFishLabel}` : "Free upsize",
-        description: `Free up size cho ${targetLabels || "các món đã chọn"}${targetSizeLabel ? ` lên size ${targetSizeLabel}` : ""}.`,
+        description: `Free up size cho ${targetLabels || "các món đã chọn"}${targetSizeLabel ? ` lên size ${targetSizeLabel}` : ""}${milkDescription}.`,
       };
     }
     const name = `Giảm ${compactVnd(draft.discountValue)}${targetName}`;
-    return { name, description: `Giảm ${fullVnd(draft.discountValue)} cho ${targets || "các món đã chọn"}${sizes ? ` ở size ${sizes}` : ""}.` };
+    return { name, description: `Giảm ${fullVnd(draft.discountValue)} cho ${targets || "các món đã chọn"}${sizes ? ` ở size ${sizes}` : ""}${milkDescription}.` };
   }
   const qualifiers = limitedLabels(draft.qualifierScopes.map((scope) => scope.menuItemId), labels.menuLabels);
   const rewardIds = draft.rewardKind === "PRODUCT"

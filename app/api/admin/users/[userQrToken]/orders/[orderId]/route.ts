@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { getSession } from "@/lib/auth";
 import { captureServerException } from "@/lib/observability";
-import { getAdminUserOrder } from "@/lib/adminUserQueries";
+import { getAdminUserOrder } from "@/lib/users/adminUserQueries";
 
 /** Returns one order only when it belongs to the selected CUSTOMER. */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ userQrToken: string; orderId: string }> }) {

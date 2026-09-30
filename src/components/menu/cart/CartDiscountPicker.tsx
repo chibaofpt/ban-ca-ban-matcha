@@ -18,7 +18,12 @@ import type { Powder } from "@/src/lib/types/powder";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 import { VoucherDetailSheet } from "@/src/components/shared/VoucherDetailSheet";
 import { AddonItemPicker } from "@/src/components/shared/AddonItemPicker";
-import { buildVoucherActionModel, getProductDiscountSelection, selectOrderVoucherToken } from "@/src/utils/customerVoucherSelection";
+import {
+  buildVoucherActionModel,
+  getProductDiscountSelection,
+  productDiscountMatchesBaseLiquid,
+  selectOrderVoucherToken,
+} from "@/src/utils/customerVoucherSelection";
 import { getVoucherAvailabilityMessage, type VoucherModalTab } from "@/src/lib/utils/voucherModalHelpers";
 import { BundleVoucherSetupSheet } from "@/src/components/shared/BundleVoucherSetupSheet";
 import { getBundleVoucherSummary } from "@/src/components/menu/cart/CartBundleVoucherPanel";
@@ -170,7 +175,13 @@ export const CartDiscountPicker = ({
       : voucher.menu_item_id === item.menuItemId;
     const benefit = getProductVoucherBenefit(item, voucher);
     const size = item.configuration.size;
-    return matchesProduct && size !== null && (voucher.eligible_sizes ?? []).includes(size) &&
+    const matchesBaseLiquid = item.configuration.size !== null &&
+      productDiscountMatchesBaseLiquid(
+        voucher,
+        item.menuItemId,
+        item.configuration.baseLiquidId ?? item.menuItem?.default_base_liquid_id,
+      );
+    return matchesProduct && matchesBaseLiquid && size !== null && (voucher.eligible_sizes ?? []).includes(size) &&
       (bundleAllocatedQuantitiesByCartId.get(item.cartId) ?? 0) < item.quantity && benefit > 0
       ? [{ cartId: item.cartId, menuItemId: item.menuItemId, size, estimatedBenefitVnd: benefit }]
       : [];

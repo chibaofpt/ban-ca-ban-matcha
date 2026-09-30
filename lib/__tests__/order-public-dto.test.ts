@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toOrderItemDetail } from "@/lib/orderPublicDto";
+import { toOrderItemDetail } from "@/lib/orders/orderPublicDto";
 
 describe("order public DTO", () => {
   it("allowlists nested order-item fields and removes persisted IDs", () => {

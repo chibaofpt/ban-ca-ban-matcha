@@ -22,6 +22,8 @@ const mockMenuItemFindUnique = vi.fn();
 const mockMenuItemFindMany = vi.fn();
 const mockPowderFindMany = vi.fn();
 const mockMilkTypeFindMany = vi.fn();
+const mockMilkTypeFindUnique = vi.fn();
+const mockMilkTypeFindFirst = vi.fn();
 const mockVoucherGroupBy = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
@@ -41,7 +43,11 @@ vi.mock("@/lib/prisma", () => ({
       findMany: (...a: unknown[]) => mockMenuItemFindMany(...a),
     },
     matchaPowder: { findMany: (...a: unknown[]) => mockPowderFindMany(...a) },
-    milkType: { findMany: (...a: unknown[]) => mockMilkTypeFindMany(...a) },
+    milkType: {
+      findMany: (...a: unknown[]) => mockMilkTypeFindMany(...a),
+      findUnique: (...a: unknown[]) => mockMilkTypeFindUnique(...a),
+      findFirst: (...a: unknown[]) => mockMilkTypeFindFirst(...a),
+    },
     voucher: { groupBy: (...a: unknown[]) => mockVoucherGroupBy(...a) },
   },
 }));
@@ -269,6 +275,42 @@ describe("POST /api/admin/voucher-packages", () => {
         data: expect.objectContaining({ covered_price_vnd: 65000 }),
       })
     );
+  });
+
+  it("lưu Base Liquid restriction vào package và từng scope PRODUCT_DISCOUNT", async () => {
+    mockMenuItemFindMany.mockResolvedValue([{
+      ...latteMenuItem,
+      allowedBaseLiquids: [{
+        base_liquid_id: BASE_LIQUID_ID,
+        baseLiquid: { is_active: true },
+      }],
+    }]);
+    mockMilkTypeFindUnique.mockResolvedValue({ id: BASE_LIQUID_ID, is_active: true });
+    mockMilkTypeFindFirst.mockResolvedValue({ id: BASE_LIQUID_ID });
+    mockPkgCreate.mockResolvedValue({ id: PKG_ID, voucher_type: "PRODUCT_DISCOUNT" });
+
+    const res = await POST(makeReq({
+      voucher_type: "PRODUCT_DISCOUNT",
+      name: "Giảm 10k món dùng sữa bò",
+      points_cost: 5,
+      menu_item_id: MENU_ITEM_ID,
+      eligible_menu_item_ids: [MENU_ITEM_ID],
+      product_discount_mode: "FIXED_AMOUNT",
+      eligible_sizes: ["MEDIUM"],
+      discount_value: 10_000,
+      milk_type_id: BASE_LIQUID_ID,
+    }));
+
+    expect(res.status).toBe(201);
+    expect(mockPkgCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        voucher_type: "PRODUCT_DISCOUNT",
+        milk_type_id: BASE_LIQUID_ID,
+        menuItemScopes: {
+          create: [{ menu_item_id: MENU_ITEM_ID, milk_type_id: BASE_LIQUID_ID }],
+        },
+      }),
+    }));
   });
 
   it("từ chối publish PRODUCT Latte khi bột cố định inactive", async () => {

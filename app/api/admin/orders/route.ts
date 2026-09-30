@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import type { OrderType, PaymentMethod, Prisma } from "@prisma/client";
-import { toAdminOrderListItemDto } from "@/lib/orderPublicDto";
+import { toAdminOrderListItemDto } from "@/lib/orders/orderPublicDto";
 import { resolveStaffIdentifier } from "@/lib/publicIdentifiers";
 
 export const dynamic = "force-dynamic";

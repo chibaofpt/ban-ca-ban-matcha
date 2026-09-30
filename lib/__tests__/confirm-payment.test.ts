@@ -52,7 +52,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-vi.mock("@/lib/cancelOrder", () => ({
+vi.mock("@/lib/orders/cancelOrder", () => ({
   restoreVouchersOnCancel: vi.fn(),
 }));
 
@@ -378,9 +378,8 @@ describe("PATCH /api/admin/orders/[id]/confirm-payment — voucher lifecycle", (
       params: Promise.resolve({ id: ORDER_ID }),
     });
 
-    // Should rollback/error because count mismatch
-    // Exact status code depends on implementation — likely 422 or 500
-    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBe(409);
+    expect((await res.json()).code).toBe("VOUCHER_MISMATCH");
   });
 
   it("Gọi lặp lại khi đã ADMIN_CONFIRMED → trả INVALID_STATUS, không redeem lần hai", async () => {

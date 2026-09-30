@@ -13,15 +13,15 @@ import {
 } from "@/lib/storage";
 import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
 import { captureServerException } from "@/lib/observability";
-import { ADMIN_MENU_INCLUDE, formatAdminMenuItem } from "@/lib/adminMenuDto";
-import { parseAdminMenuUpdate } from "@/lib/adminMenuRequest";
+import { ADMIN_MENU_INCLUDE, formatAdminMenuItem } from "@/lib/catalog/adminMenuDto";
+import { parseAdminMenuUpdate } from "@/lib/catalog/adminMenuRequest";
 import {
   asMenuStorageCategory,
   buildMenuItemSizeUpdate,
   isAvailabilityOnlyMenuUpdate,
   validateMenuImageFile,
   validateUniqueLattePowder,
-} from "@/lib/adminMenuUpdate";
+} from "@/lib/catalog/adminMenuUpdate";
 
 export const dynamic = "force-dynamic";
 

@@ -4,7 +4,7 @@ import {
   adminVoucherDaysRemaining,
   effectiveAdminVoucherStatus,
   vietnamYearBounds,
-} from "@/lib/adminUserTime";
+} from "@/lib/users/adminUserTime";
 
 describe("thời gian quản lý khách hàng Admin", () => {
   it("tính ranh giới năm Việt Nam qua thời điểm giao năm UTC", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcOrderTotals } from "@/lib/orderCalculator";
+import { calcOrderTotals } from "@/lib/orders/orderCalculator";
 
 describe("thứ tự tính giá BUNDLE → PRODUCT → ADDON → DISCOUNT", () => {
   it("trừ quà BUNDLE trước khi áp dụng DISCOUNT cho phần còn lại", () => {

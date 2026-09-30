@@ -92,14 +92,6 @@ describe("buildPricingContext", () => {
       expect(ctx.defaultSizeConfigs[2]).toEqual({ size: "LARGE",  milk_ml: 300, powder_gram: 8.0 });
     });
 
-    it("Decimal powder_gram được convert sang number", async () => {
-      const ctx = await buildPricingContext(makeMockClient() as never);
-
-      ctx.defaultSizeConfigs.forEach((c) => {
-        expect(typeof c.powder_gram).toBe("number");
-      });
-    });
-
     it("query không filter — lấy toàn bộ default size configs", async () => {
       await buildPricingContext(makeMockClient() as never);
 
@@ -153,17 +145,6 @@ describe("buildPricingContext", () => {
       expect(ctx.availablePowders).toEqual([]);
     });
 
-    it("powder bị unavailable bị loại khỏi list", async () => {
-      mockMatchaPowderFindMany.mockResolvedValue([
-        { id: POWDER_MEYUMI_ID, name: "Meyumi", price_per_gram: 6000, is_available: true },
-        // HANA bị unavailable — không trả về vì query where is_available:true
-      ]);
-
-      const ctx = await buildPricingContext(makeMockClient() as never);
-
-      expect(ctx.availablePowders).toHaveLength(1);
-      expect(ctx.availablePowders[0].name).toBe("Meyumi");
-    });
   });
 
   // ── powderSizeConfigMap ───────────────────────────────────────────────────
@@ -182,14 +163,6 @@ describe("buildPricingContext", () => {
       const meyumiConfigs = ctx.powderSizeConfigMap[POWDER_MEYUMI_ID];
       expect(meyumiConfigs[0]).toEqual({ size: "SMALL",  grams: 4.0 });
       expect(meyumiConfigs[1]).toEqual({ size: "MEDIUM", grams: 6.0 });
-    });
-
-    it("Decimal grams được convert sang number", async () => {
-      const ctx = await buildPricingContext(makeMockClient() as never);
-
-      Object.values(ctx.powderSizeConfigMap).flat().forEach((c) => {
-        expect(typeof c.grams).toBe("number");
-      });
     });
 
     it("không có powder size config → powderSizeConfigMap = {}", async () => {

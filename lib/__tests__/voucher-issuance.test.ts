@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  ensureAutoGrantedVouchers,
   issueVoucherInTransaction,
   type VoucherIssuanceDatabase,
   type VoucherIssuanceTransaction,
-} from "@/lib/voucherIssuance";
+} from "@/lib/vouchers/voucherIssuance";
+import { ensureAutoGrantedVouchers } from "@/lib/vouchers/autoGrantVouchers";
 import {
   NOW,
   PACKAGE_ID,

@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  ensureAutoGrantedVouchers,
   issueVoucher,
+  VoucherIssuanceError,
   type VoucherIssuanceDatabase,
   type VoucherIssuanceTransaction,
-} from "@/lib/voucherIssuance";
+} from "@/lib/vouchers/voucherIssuance";
+import { ensureAutoGrantedVouchers } from "@/lib/vouchers/autoGrantVouchers";
 import {
   NOW,
   PACKAGE_ID,
@@ -83,6 +84,92 @@ describe("Serializable transaction và lazy AUTO_GRANT", () => {
         orderBy: { id: "asc" },
       }),
     );
+  });
+
+  it("lazy AUTO_GRANT không mở transaction khi không có package", async () => {
+    mockPackageFindMany.mockResolvedValue([]);
+    const transaction = vi.fn();
+    const db = {
+      voucherPackage: { findMany: (...args: unknown[]) => mockPackageFindMany(...args) },
+      $transaction: transaction,
+    } as unknown as VoucherIssuanceDatabase;
+
+    await expect(ensureAutoGrantedVouchers(db, USER_ID, NOW)).resolves.toEqual({
+      granted: 0,
+      already_granted: 0,
+    });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it.each(["P2034", "P2002"])(
+    "lazy AUTO_GRANT retry đúng ba lần cho %s rồi ném lại cùng lỗi terminal",
+    async (code) => {
+      mockPackageFindMany.mockResolvedValue([{ id: PACKAGE_ID }]);
+      const terminalError = { code };
+      const transaction = vi.fn().mockRejectedValue(terminalError);
+      const db = {
+        voucherPackage: { findMany: (...args: unknown[]) => mockPackageFindMany(...args) },
+        $transaction: transaction,
+      } as unknown as VoucherIssuanceDatabase;
+
+      await expect(ensureAutoGrantedVouchers(db, USER_ID, NOW)).rejects.toBe(terminalError);
+      expect(transaction).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it("lazy AUTO_GRANT ném nguyên lỗi bất ngờ và không retry", async () => {
+    mockPackageFindMany.mockResolvedValue([{ id: PACKAGE_ID }]);
+    const unexpectedError = new Error("unexpected");
+    const transaction = vi.fn().mockRejectedValue(unexpectedError);
+    const db = {
+      voucherPackage: { findMany: (...args: unknown[]) => mockPackageFindMany(...args) },
+      $transaction: transaction,
+    } as unknown as VoucherIssuanceDatabase;
+
+    await expect(ensureAutoGrantedVouchers(db, USER_ID, NOW)).rejects.toBe(unexpectedError);
+    expect(transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    "VOUCHER_SOLD_OUT",
+    "VOUCHER_LIMIT_REACHED",
+    "VOUCHER_PACKAGE_EXPIRED",
+    "NOT_FOUND",
+    "TARGET_UNAVAILABLE",
+    "NO_ACTIVE_QUALIFIER",
+    "NO_ACTIVE_REWARD",
+    "NO_ACTIVE_CONFIGURATION",
+  ])("lazy AUTO_GRANT bỏ qua đúng lỗi allowlist %s", async (reason) => {
+    mockPackageFindMany.mockResolvedValue([{ id: PACKAGE_ID }]);
+    mockPackageFindUnique.mockRejectedValue(new VoucherIssuanceError(reason, "skip"));
+    const transaction = vi.fn().mockImplementation(
+      async (callback: (tx: VoucherIssuanceTransaction) => Promise<unknown>) => callback(makeTx()),
+    );
+    const db = {
+      voucherPackage: { findMany: (...args: unknown[]) => mockPackageFindMany(...args) },
+      $transaction: transaction,
+    } as unknown as VoucherIssuanceDatabase;
+
+    await expect(ensureAutoGrantedVouchers(db, USER_ID, NOW)).resolves.toEqual({
+      granted: 0,
+      already_granted: 0,
+    });
+  });
+
+  it("lazy AUTO_GRANT fail-fast với VoucherIssuanceError ngoài allowlist", async () => {
+    mockPackageFindMany.mockResolvedValue([{ id: PACKAGE_ID }]);
+    const terminalError = new VoucherIssuanceError("INSUFFICIENT_POINTS", "terminal");
+    mockPackageFindUnique.mockRejectedValue(terminalError);
+    const transaction = vi.fn().mockImplementation(
+      async (callback: (tx: VoucherIssuanceTransaction) => Promise<unknown>) => callback(makeTx()),
+    );
+    const db = {
+      voucherPackage: { findMany: (...args: unknown[]) => mockPackageFindMany(...args) },
+      $transaction: transaction,
+    } as unknown as VoucherIssuanceDatabase;
+
+    await expect(ensureAutoGrantedVouchers(db, USER_ID, NOW)).rejects.toBe(terminalError);
+    expect(transaction).toHaveBeenCalledTimes(1);
   });
 
   it("FREE_CLAIM đồng thời bị unique race vẫn trả idempotent", async () => {

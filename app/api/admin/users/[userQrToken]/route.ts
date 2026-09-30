@@ -4,10 +4,10 @@ import type { AdminUserMutationResult, AdminUserPasswordResetResult } from "@/co
 
 import { getSession } from "@/lib/auth";
 import { captureServerException } from "@/lib/observability";
-import { getAdminUser } from "@/lib/adminUserQueries";
+import { getAdminUser } from "@/lib/users/adminUserQueries";
 import {
   AdminUserWorkflowError, resetAdminUserPassword, setAdminUserBlocked, setAdminUserVerified,
-} from "@/lib/adminUserWorkflow";
+} from "@/lib/users/adminUserWorkflow";
 import { adminUserPatchSchema } from "@/lib/validations/adminUser";
 
 export const dynamic = "force-dynamic";

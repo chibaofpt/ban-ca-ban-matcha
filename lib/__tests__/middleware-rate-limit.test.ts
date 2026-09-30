@@ -53,15 +53,11 @@ describe("Middleware rate limit auth mutation", () => {
     expect(mockCheckRateLimit).toHaveBeenCalledWith("authMutationIp", "203.0.113.7");
   });
 
-  it("không dùng Redis cho GET me", async () => {
-    const response = await middleware(makeRequest("/api/auth/me", "GET"));
-
-    expect(response.status).toBe(200);
-    expect(mockCheckRateLimit).not.toHaveBeenCalled();
-  });
-
-  it("không dùng Redis cho POST logout", async () => {
-    const response = await middleware(makeRequest("/api/auth/logout", "POST"));
+  it.each([
+    ["GET", "/api/auth/me"],
+    ["POST", "/api/auth/logout"],
+  ])("không dùng Redis cho %s %s", async (method, path) => {
+    const response = await middleware(makeRequest(path, method));
 
     expect(response.status).toBe(200);
     expect(mockCheckRateLimit).not.toHaveBeenCalled();

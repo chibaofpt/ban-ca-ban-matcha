@@ -266,11 +266,16 @@ describe("calcShippingFee", () => {
 
   it("trong base distance (≤ 2km) → base fee × 0.85 ceiled", () => {
     // 15000 × 0.85 = 12750 → ceil to 13000
+    expect(calcShippingFee(0.5)).toBe(13000);
     expect(calcShippingFee(1)).toBe(13000);
     expect(calcShippingFee(2)).toBe(13000);
   });
 
   it("vượt base distance → base + extra × per_km, rồi × 0.85", () => {
+    // 3km: (15000 + 5700) × 0.85 = 17595 → ceil to 18000
+    expect(calcShippingFee(3)).toBe(18000);
+    // 3.5km: (15000 + 1.5 × 5700) × 0.85 = 20017.5 → ceil to 21000
+    expect(calcShippingFee(3.5)).toBe(21000);
     // 5km: 15000 + 3 * 5700 = 15000 + 17100 = 32100
     // 32100 * 0.85 = 27285 → ceil to 28000
     expect(calcShippingFee(5)).toBe(28000);
@@ -288,6 +293,7 @@ describe("calcShippingFee", () => {
 describe("calcFreeshipDiscount", () => {
   it("covered ≥ shipping → trả shipping (toàn bộ)", () => {
     expect(calcFreeshipDiscount(20000, 30000)).toBe(20000);
+    expect(calcFreeshipDiscount(15000, 15000)).toBe(15000);
   });
 
   it("covered < shipping → trả covered (bù một phần)", () => {

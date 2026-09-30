@@ -3,11 +3,11 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { updateMilkTypeSchema } from "@/lib/validations/milkType";
 import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
-import { parseCatalogRequest } from "@/lib/catalogRequest";
+import { parseCatalogRequest } from "@/lib/catalog/catalogRequest";
 import {
   catalogImageValidationMessage,
   prepareCatalogImage,
-} from "@/lib/catalogImage";
+} from "@/lib/catalog/catalogImage";
 import { removeMenuImages, parseMenuImagePath } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";

@@ -25,6 +25,7 @@ describe("Validation PRODUCT_DISCOUNT", () => {
     menu_item_id: UUID.menu,
     eligible_menu_item_ids: [UUID.menu],
     eligible_sizes: ["MEDIUM", "LARGE"] as const,
+    milk_type_id: UUID.milk,
   };
 
   it("nhận legacy menu_item_id và chuẩn hóa danh sách mục tiêu mới", () => {

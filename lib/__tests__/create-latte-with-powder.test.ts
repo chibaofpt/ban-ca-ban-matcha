@@ -202,15 +202,11 @@ describe("POST /api/admin/menu/create-latte-with-powder", () => {
     expect((await res.json()).code).toBe("UNAUTHORIZED");
   });
 
-  it("tráº£ 403 khi role lÃ  STAFF", async () => {
-    mockGetSession.mockResolvedValue(STAFF_SESSION);
-    const res = await POST(makeFormDataReq(validFormData()));
-    expect(res.status).toBe(403);
-    expect((await res.json()).code).toBe("FORBIDDEN");
-  });
-
-  it("tráº£ 403 khi role lÃ  CUSTOMER", async () => {
-    mockGetSession.mockResolvedValue({ id: "c-001", role: "CUSTOMER" });
+  it.each([
+    ["STAFF", STAFF_SESSION],
+    ["CUSTOMER", { id: "c-001", role: "CUSTOMER" }],
+  ])("trả 403 khi role là %s", async (_role, session) => {
+    mockGetSession.mockResolvedValue(session);
     const res = await POST(makeFormDataReq(validFormData()));
     expect(res.status).toBe(403);
     expect((await res.json()).code).toBe("FORBIDDEN");

@@ -5,7 +5,7 @@ const mockEval = vi.fn();
 const mockGetRedisClient = vi.fn();
 vi.mock("@/lib/redis", () => ({ getRedisClient: () => mockGetRedisClient() }));
 
-import { reserveSmsTestSend, SmsTestStoreUnavailable } from "@/lib/smsTestStore";
+import { reserveSmsTestSend, SmsTestStoreUnavailable } from "@/lib/sms/smsTestStore";
 
 const data: SmsTestSendOtpData = {
   challenge_id: "challenge-original", masked_phone: "+8491***678",

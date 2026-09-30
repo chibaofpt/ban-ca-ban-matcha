@@ -3,7 +3,7 @@ import {
   checkStoreOpen,
   getWeeklySchedule,
   getTodaySchedule,
-} from "@/lib/storeSchedule";
+} from "@/lib/store/storeSchedule";
 import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
 import type { StoreStatusResponse } from "@/contracts/store";
 

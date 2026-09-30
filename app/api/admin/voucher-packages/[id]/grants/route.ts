@@ -8,12 +8,12 @@ import { invalidateVoucherCaches } from "@/lib/cacheInvalidation";
 import {
   AdminVoucherGrantConfirmationRequiredError,
   grantVoucherWithWarning,
-} from "@/lib/adminVoucherGrant";
+} from "@/lib/vouchers/adminVoucherGrant";
 import {
   VoucherIssuanceError,
   type IssuedVoucherResult,
   type VoucherIssuanceDatabase,
-} from "@/lib/voucherIssuance";
+} from "@/lib/vouchers/voucherIssuance";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";

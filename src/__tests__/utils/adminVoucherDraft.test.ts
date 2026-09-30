@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { adminVoucherDraftSchema, getAdminVoucherStep2FieldPaths } from "@/src/lib/validations/adminVoucher";
-import { buildVoucherInput, createEmptyVoucherDraft, estimateVoucherLiabilityVnd } from "@/src/lib/utils/adminVoucherForm";
+import {
+  buildVoucherInput,
+  createEmptyVoucherDraft,
+  estimateVoucherLiabilityVnd,
+  suggestVoucherCopy,
+} from "@/src/lib/utils/adminVoucherForm";
 
 describe("Kiểm tra bản nháp voucher quản trị", () => {
   const issuePaths = (draft: Parameters<typeof adminVoucherDraftSchema.parse>[0]): Array<Array<string | number>> => {
@@ -13,7 +18,7 @@ describe("Kiểm tra bản nháp voucher quản trị", () => {
       "buyQuantity", "rewardQuantity", "qualifierScopes", "rewardProductScopes", "rewardAddonOptionIds",
     ]));
     expect(getAdminVoucherStep2FieldPaths("PRODUCT_DISCOUNT")).toEqual(expect.arrayContaining([
-      "eligibleMenuItemIds", "eligibleSizes", "referenceSize",
+      "eligibleMenuItemIds", "eligibleSizes", "referenceSize", "milkTypeId",
     ]));
     expect(getAdminVoucherStep2FieldPaths("FREESHIP")).toEqual(expect.arrayContaining(["coveredDeliveryFeeVnd", "minOrderVnd"]));
   });
@@ -61,9 +66,29 @@ describe("Kiểm tra bản nháp voucher quản trị", () => {
 
   it("serialize cùng multi-select contract cho PRODUCT_DISCOUNT, ITEM và ADDON", () => {
     const base = { ...createEmptyVoucherDraft(), name: "Multi" };
-    expect(buildVoucherInput({ ...base, voucherType: "PRODUCT_DISCOUNT", menuItemId: "menu-a", eligibleMenuItemIds: ["menu-a", "menu-b"] })).toMatchObject({ eligible_menu_item_ids: ["menu-a", "menu-b"] });
+    expect(buildVoucherInput({ ...base, voucherType: "PRODUCT_DISCOUNT", menuItemId: "menu-a", eligibleMenuItemIds: ["menu-a", "menu-b"], milkTypeId: "milk-cow" })).toMatchObject({ eligible_menu_item_ids: ["menu-a", "menu-b"], milk_type_id: "milk-cow" });
     expect(buildVoucherInput({ ...base, voucherType: "ITEM", menuItemId: "extra-a", eligibleMenuItemIds: ["extra-a", "extra-b"] })).toMatchObject({ eligible_menu_item_ids: ["extra-a", "extra-b"] });
     expect(buildVoucherInput({ ...base, voucherType: "ADDON", addonOptionId: "addon-a", eligibleAddonOptionIds: ["addon-a", "addon-b"] })).toMatchObject({ eligible_addon_option_ids: ["addon-a", "addon-b"] });
+  });
+
+  it("đưa Base Liquid restriction vào mô tả gợi ý của PRODUCT_DISCOUNT", () => {
+    const suggestion = suggestVoucherCopy({
+      ...createEmptyVoucherDraft(),
+      voucherType: "PRODUCT_DISCOUNT",
+      menuItemId: "menu-a",
+      eligibleMenuItemIds: ["menu-a"],
+      milkTypeId: "milk-cow",
+      discountValue: 10_000,
+    }, {
+      menuLabels: new Map([["menu-a", "Matcha Latte"]]),
+      addonLabels: new Map(),
+      powderLabels: new Map(),
+      milkLabels: new Map([["milk-cow", "Sữa bò"]]),
+      defaultPowderByMenuId: new Map(),
+      defaultMilkByMenuId: new Map(),
+    });
+
+    expect(suggestion.description).toContain("Sữa bò");
   });
 
   it("ước tính liability ITEM và ADDON theo target đắt nhất trong multi-select", () => {

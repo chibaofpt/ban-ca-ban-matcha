@@ -21,18 +21,18 @@ vi.mock("@/lib/prisma", () => ({
     },
   },
 }));
-vi.mock("@/lib/voucherIssuance", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/voucherIssuance")>("@/lib/voucherIssuance");
+vi.mock("@/lib/vouchers/voucherIssuance", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/vouchers/voucherIssuance")>("@/lib/vouchers/voucherIssuance");
   return { ...actual };
 });
-vi.mock("@/lib/adminVoucherGrant", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/adminVoucherGrant")>("@/lib/adminVoucherGrant");
+vi.mock("@/lib/vouchers/adminVoucherGrant", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/vouchers/adminVoucherGrant")>("@/lib/vouchers/adminVoucherGrant");
   return { ...actual, grantVoucherWithWarning: (db: unknown, input: unknown) => mockGrantVoucherWithWarning(db, input) };
 });
 
 import { POST } from "@/app/api/admin/voucher-packages/[id]/grants/route";
-import { VoucherIssuanceError } from "@/lib/voucherIssuance";
-import { AdminVoucherGrantConfirmationRequiredError } from "@/lib/adminVoucherGrant";
+import { VoucherIssuanceError } from "@/lib/vouchers/voucherIssuance";
+import { AdminVoucherGrantConfirmationRequiredError } from "@/lib/vouchers/adminVoucherGrant";
 
 const PACKAGE_ID = "22222222-2222-4222-8222-222222222222";
 const USER_ID = "11111111-1111-4111-8111-111111111111";

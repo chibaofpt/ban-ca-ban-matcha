@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { adminRewardErrorResponse, campaignActionSchema, invalidRewardRouteIds, requireRewardAdmin } from "@/lib/adminRewardHttp";
-import { getAdminRewardCampaign, mutateAdminRewardCampaign } from "@/lib/adminRewardCampaign";
+import { adminRewardErrorResponse, campaignActionSchema, invalidRewardRouteIds, requireRewardAdmin } from "@/lib/rewards/adminRewardHttp";
+import { getAdminRewardCampaign, mutateAdminRewardCampaign } from "@/lib/rewards/adminRewardCampaign";
 
 export const dynamic = "force-dynamic";
 const db = prisma;

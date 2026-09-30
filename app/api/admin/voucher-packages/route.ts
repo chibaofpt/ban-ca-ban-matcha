@@ -18,19 +18,19 @@ import {
   createBundleVoucherPackage,
   VoucherBundleReferenceError,
   type AdminVoucherBundleTransaction,
-} from "@/lib/adminVoucherBundle";
+} from "@/lib/vouchers/adminVoucherBundle";
 import {
   createAddonVoucherPackage,
   VoucherAddonReferenceError,
   type AdminVoucherAddonDatabase,
-} from "@/lib/adminVoucherAddon";
-import { toVoucherPackageBundleDto } from "@/lib/voucherBundleDto";
+} from "@/lib/vouchers/adminVoucherAddon";
+import { toVoucherPackageBundleDto } from "@/lib/vouchers/voucherBundleDto";
 import {
   resolveDefaultBaseLiquidId,
   resolveFusionDefaultPowderId,
 } from "@/src/utils/menuConfiguration";
-import { buildAdminVoucherStats } from "@/lib/adminVoucherInsights";
-import { LEGACY_PACKAGE_QUOTA_SOURCES, SELF_ACQUISITION_SOURCES } from "@/lib/voucherIssuance";
+import { buildAdminVoucherStats } from "@/lib/vouchers/adminVoucherInsights";
+import { LEGACY_PACKAGE_QUOTA_SOURCES, SELF_ACQUISITION_SOURCES } from "@/lib/vouchers/voucherIssuance";
 
 export const dynamic = "force-dynamic";
 
@@ -410,7 +410,10 @@ export async function POST(req: NextRequest) {
       const targetIds = data.eligible_menu_item_ids ?? [data.menu_item_id];
       const menuItems = await prisma.menuItem.findMany({
         where: { id: { in: targetIds } },
-        include: { sizes: true },
+        include: {
+          sizes: true,
+          allowedBaseLiquids: { select: { base_liquid_id: true, baseLiquid: { select: { is_active: true } } } },
+        },
       });
       if (menuItems.length !== targetIds.length || menuItems.some((item) =>
         !item.is_available || (item.category !== "latte" && item.category !== "fusion"))) {
@@ -424,6 +427,23 @@ export async function POST(req: NextRequest) {
       if (!supportsSharedSizes) {
         return NextResponse.json({ error: "Voucher size configuration is unavailable", code: "BUSINESS_RULE_VIOLATION" }, { status: 422 });
       }
+      const requestedMilkTypeId = data.milk_type_id ?? null;
+      if (requestedMilkTypeId) {
+        const [requestedMilk, defaultLatteMilk] = await Promise.all([
+          prisma.milkType.findUnique({ where: { id: requestedMilkTypeId }, select: { id: true, is_active: true } }),
+          prisma.milkType.findFirst({ where: { is_default: true, is_active: true }, select: { id: true } }),
+        ]);
+        const requestedMilkAllowed = Boolean(requestedMilk?.is_active) && menuItems.every((item) => {
+          const defaultMilkId = item.category === "latte" ? defaultLatteMilk?.id ?? null : item.default_base_liquid_id;
+          const allowedMilkIds = item.allowedBaseLiquids
+            .filter((entry) => entry.baseLiquid.is_active)
+            .map((entry) => entry.base_liquid_id);
+          return requestedMilkTypeId === defaultMilkId || allowedMilkIds.includes(requestedMilkTypeId);
+        });
+        if (!requestedMilkAllowed) {
+          return NextResponse.json({ error: "Base Liquid này không được phép cho toàn bộ món đã chọn", code: "BUSINESS_RULE_VIOLATION" }, { status: 422 });
+        }
+      }
       const pkg = await prisma.voucherPackage.create({
         data: {
           name: data.name, description: data.description ?? null, voucher_type: "PRODUCT_DISCOUNT",
@@ -432,7 +452,8 @@ export async function POST(req: NextRequest) {
           ends_at: data.ends_at ? new Date(data.ends_at) : null, is_active: true,
           expires_after_days: data.expires_after_days ?? null, quantity: data.quantity ?? null,
           max_per_user: data.max_per_user ?? 1, menu_item_id: targetIds[0],
-          menuItemScopes: { create: targetIds.map((menu_item_id) => ({ menu_item_id })) },
+          milk_type_id: requestedMilkTypeId,
+          menuItemScopes: { create: targetIds.map((menu_item_id) => ({ menu_item_id, milk_type_id: requestedMilkTypeId })) },
           product_discount_mode: data.product_discount_mode, eligible_sizes: [...data.eligible_sizes],
           reference_size: data.product_discount_mode === "PAY_AS_SIZE" ? data.reference_size : null,
           discount_type: data.product_discount_mode === "FIXED_AMOUNT" ? "FIXED" : null,

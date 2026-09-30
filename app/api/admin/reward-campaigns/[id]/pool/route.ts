@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { adminRewardErrorResponse, invalidRewardRouteIds, poolSchema, requireRewardAdmin, validatePoolReachability } from "@/lib/adminRewardHttp";
-import { replaceAdminRewardPool } from "@/lib/adminRewardCampaign";
+import { adminRewardErrorResponse, invalidRewardRouteIds, poolSchema, requireRewardAdmin, validatePoolReachability } from "@/lib/rewards/adminRewardHttp";
+import { replaceAdminRewardPool } from "@/lib/rewards/adminRewardCampaign";
 
 const db = prisma;
 

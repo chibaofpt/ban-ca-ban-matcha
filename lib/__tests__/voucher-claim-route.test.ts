@@ -13,8 +13,8 @@ vi.mock("@/lib/rateLimit", () => ({ checkRateLimit: mocks.checkRateLimit }));
 vi.mock("@/lib/prisma", () => ({
   prisma: { voucher: { findFirst: mocks.findExistingVoucher } },
 }));
-vi.mock("@/lib/voucherIssuance", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@/lib/voucherIssuance")>();
+vi.mock("@/lib/vouchers/voucherIssuance", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/vouchers/voucherIssuance")>();
   return { ...original, issueVoucher: mocks.issueVoucher };
 });
 

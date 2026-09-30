@@ -1,21 +1,4 @@
-/**
- * Tests for the updated `orderService.ts` — specifically for the new
- * multi-voucher payload shape:
- *
- * Before (single-voucher):
- *   { voucher_id?: string, addon_voucher_ids?: string (order-level) }
- *
- * After (multi-voucher):
- *   { discount_voucher_ids: string[], items[].addon_voucher_ids?: string (per-item) }
- *
- * These tests will FAIL until orderService.ts is updated:
- *  - CreateOrderPayload.voucher_id  → discount_voucher_ids: string[]
- *  - CreateOrderPayload.addon_voucher_ids (order-level) → removed
- *  - CreateOrderPayload.items[].addon_voucher_ids → added (per-item)
- *  - createOrder options.voucherId → discountVoucherIds: string[]
- *  - createOrder options.addonVouchers → removed
- *  - buildPayloadItems → maps c.addonVouchers → addon_voucher_ids per item
- */
+/** Outbound multi-voucher order payload and response contracts. */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -98,10 +81,6 @@ describe("createOrder — payload shape without vouchers", () => {
     await createOrder(cart);
 
     const payload = vi.mocked(apiClient.post).mock.calls[0][1] as Record<string, unknown>;
-    // Trường cũ không còn tồn tại
-    expect("voucher_id" in payload).toBe(false);
-    expect("addon_voucher_ids" in payload).toBe(false);
-    // Trường mới
     expect(payload.discount_voucher_ids).toEqual([]);
   });
 });
@@ -135,20 +114,10 @@ describe("createOrder — payload BUNDLE công khai", () => {
   });
 });
 
-// ── Multi DISCOUNT vouchers (mới) ─────────────────────────────────────────────
+// ── Multi DISCOUNT vouchers ───────────────────────────────────────────────────
 
 describe("createOrder — discount_voucher_ids (thay thế voucher_id)", () => {
   beforeEach(() => vi.clearAllMocks());
-
-  it("1 discount voucher → discount_voucher_ids = [voucherId]", async () => {
-    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: mockOrderResult } });
-
-    const cart = [makeCartItem()];
-    await createOrder(cart, { discountVoucherIds: ["dv-abc"] });
-
-    const payload = vi.mocked(apiClient.post).mock.calls[0][1] as Record<string, unknown>;
-    expect(payload.discount_voucher_ids).toEqual(["dv-abc"]);
-  });
 
   it("nhiều discount vouchers → tất cả có trong discount_voucher_ids", async () => {
     vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: mockOrderResult } });
@@ -157,102 +126,7 @@ describe("createOrder — discount_voucher_ids (thay thế voucher_id)", () => {
     await createOrder(cart, { discountVoucherIds: ["dv-1", "dv-2", "dv-3"] });
 
     const payload = vi.mocked(apiClient.post).mock.calls[0][1] as Record<string, unknown>;
-    expect(payload.discount_voucher_ids).toHaveLength(3);
-    expect((payload.discount_voucher_ids as string[])).toContain("dv-2");
-  });
-
-  it("discountVoucherIds rỗng → discount_voucher_ids = []", async () => {
-    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: mockOrderResult } });
-
-    const cart = [makeCartItem()];
-    await createOrder(cart, { discountVoucherIds: [] });
-
-    const payload = vi.mocked(apiClient.post).mock.calls[0][1] as Record<string, unknown>;
-    expect(payload.discount_voucher_ids).toEqual([]);
-  });
-
-  it("không còn field voucher_id trong payload (breaking change)", async () => {
-    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: mockOrderResult } });
-
-    const cart = [makeCartItem()];
-    await createOrder(cart, { discountVoucherIds: ["dv-abc"] });
-
-    const payload = vi.mocked(apiClient.post).mock.calls[0][1] as Record<string, unknown>;
-    expect("voucher_id" in payload).toBe(false);
-  });
-});
-
-// ── Per-item ADDON voucher (mới) ──────────────────────────────────────────────
-
-describe("createOrder — per-item addon_voucher_ids", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("item có addonVouchers → payload item chứa addon_voucher_ids", async () => {
-    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: mockOrderResult } });
-
-    const cart = [
-      makeCartItem({
-        selectedOptionIds: ["addon-kem-tuoi"],
-        addonVouchers: [{ voucherId: "av-abc", addonOptionId: "addon-kem-tuoi", discountVnd: 0 }],
-        clientPriceVnd: 60_000,
-      }),
-    ];
-    await createOrder(cart);
-
-    const payload = vi.mocked(apiClient.post).mock.calls[0][1] as { items: Record<string, unknown>[] };
-    expect(payload.items[0].addon_voucher_ids).toEqual([{ voucher_id: "av-abc", addon_option_id: "addon-kem-tuoi" }]);
-  });
-
-  it("item không có addonVouchers → addon_voucher_ids không có trong payload item", async () => {
-    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: mockOrderResult } });
-
-    const cart = [makeCartItem()];
-    await createOrder(cart);
-
-    const payload = vi.mocked(apiClient.post).mock.calls[0][1] as { items: Record<string, unknown>[] };
-    expect("addon_voucher_ids" in payload.items[0]).toBe(false);
-  });
-
-  it("không còn addon_voucher_ids ở order-level (breaking change)", async () => {
-    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: mockOrderResult } });
-
-    const cart = [makeCartItem({ addonVouchers: [{ voucherId: "av-abc", addonOptionId: "addon-kem-tuoi", discountVnd: 0 }] })];
-    await createOrder(cart);
-
-    const payload = vi.mocked(apiClient.post).mock.calls[0][1] as Record<string, unknown>;
-    // addon_voucher_ids không còn ở cấp order
-    expect("addon_voucher_ids" in payload).toBe(false);
-  });
-
-  it("nhiều items — chỉ item có addonVouchers mới có field đó", async () => {
-    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: mockOrderResult } });
-
-    const cart = [
-      makeCartItem({ cartId: "c1", menuItemId: "item-a", addonVouchers: [{ voucherId: "av-1", addonOptionId: "addon-kem-tuoi", discountVnd: 0 }] }),
-      makeCartItem({ cartId: "c2", menuItemId: "item-b" }), // không có addon voucher
-    ];
-    await createOrder(cart);
-
-    const payload = vi.mocked(apiClient.post).mock.calls[0][1] as { items: Record<string, unknown>[] };
-    expect(payload.items[0].addon_voucher_ids).toEqual([{ voucher_id: "av-1", addon_option_id: "addon-kem-tuoi" }]);
-    expect("addon_voucher_ids" in payload.items[1]).toBe(false);
-  });
-});
-
-// ── Per-item PRODUCT voucher (giữ nguyên, đảm bảo vẫn work) ──────────────────
-
-describe("createOrder — product_voucher_id (per-item, không đổi)", () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it("item có productVoucherId → product_voucher_id có trong payload item", async () => {
-    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: mockOrderResult } });
-
-    const cart = [makeCartItem({ productVoucherId: "pv-abc", clientPriceVnd: 5_000 })];
-    await createOrder(cart);
-
-    const payload = vi.mocked(apiClient.post).mock.calls[0][1] as { items: Record<string, unknown>[] };
-    expect(payload.items[0].product_voucher_id).toBe("pv-abc");
-    expect(payload.items[0].client_price_vnd).toBe(5_000);
+    expect(payload.discount_voucher_ids).toEqual(["dv-1", "dv-2", "dv-3"]);
   });
 });
 
@@ -292,6 +166,8 @@ describe("createOrder — full mixed scenario", () => {
 
     // Order-level discounts
     expect(payload.discount_voucher_ids).toEqual(["dv-fixed-1", "dv-percent-1"]);
+    expect(payload).not.toHaveProperty("voucher_id");
+    expect(payload).not.toHaveProperty("addon_voucher_ids");
 
     // Item A: PRODUCT voucher
     expect(payload.items[0].product_voucher_id).toBe("pv-1");

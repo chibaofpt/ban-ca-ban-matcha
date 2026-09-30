@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { WELCOME_REWARD_INCLUDE, toWelcomeRewardDto, toWelcomeRewardSummary } from "@/lib/welcomeRewardDto";
+import { WELCOME_REWARD_INCLUDE, toWelcomeRewardDto, toWelcomeRewardSummary } from "@/lib/rewards/welcomeRewardDto";
 
 function menuRow(id: string, isAvailable: boolean, unitPriceVnd: number) {
   return {

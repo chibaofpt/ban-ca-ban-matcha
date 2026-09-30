@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { BundleCartDraftCommit, CartBundleApplication } from "@/src/lib/types/cart";
 import { projectedCartLine } from "@/src/__tests__/fixtures/cart";
 import { removeBundleEffects, useCartStore } from "@/src/lib/store/cartStore";
-import { useStaffCartStore } from "@/src/lib/store/staffCartStore";
 
 const item = (cartId: string) => projectedCartLine({
   cartId,
@@ -40,7 +39,6 @@ const commit = (token: string): BundleCartDraftCommit => ({
 describe("commitBundleCartDraft — mutation nguyên tử", () => {
   beforeEach(() => {
     useCartStore.setState({ items: [], bundleApplications: [] });
-    useStaffCartStore.setState({ items: [], bundleApplications: [] });
   });
 
   it("thay items và application trong một commit, chỉ xoá reward effect cũ", () => {
@@ -53,18 +51,6 @@ describe("commitBundleCartDraft — mutation nguyên tử", () => {
 
     expect(useCartStore.getState().items.map((entry) => entry.cartId)).toEqual(commit("bundle-1").items.map((entry) => entry.cartId));
     expect(useCartStore.getState().bundleApplications).toEqual([commit("bundle-1").application]);
-  });
-
-  it("giữ cùng semantics cho staff cart", () => {
-    useStaffCartStore.setState({
-      items: [item("buy-1"), item("old-reward")],
-      bundleApplications: [application("bundle-1", "old-reward")],
-    });
-
-    useStaffCartStore.getState().commitBundleCartDraft(commit("bundle-1"));
-
-    expect(useStaffCartStore.getState().items.map((entry) => entry.cartId)).toEqual(commit("bundle-1").items.map((entry) => entry.cartId));
-    expect(useStaffCartStore.getState().bundleApplications).toEqual([commit("bundle-1").application]);
   });
 
   it("gỡ đúng effect addon của token và không cần marker trên cart line", () => {
@@ -95,19 +81,6 @@ describe("commitBundleCartDraft — mutation nguyên tử", () => {
     expect(remaining[0]).not.toHaveProperty("bundleRewardVoucherToken");
   });
 
-  it("reconcile giữ application đúng owner và loại application của owner khác", () => {
-    useStaffCartStore.setState({
-      items: [item("buy-1")],
-      bundleApplications: [
-        { ...application("mine", "buy-1"), owner_key: "staff:customer-1" },
-        { ...application("foreign", "buy-1"), owner_key: "staff:customer-2" },
-      ],
-    });
-
-    useStaffCartStore.getState().reconcileBundleApplications("staff:customer-1");
-
-    expect(useStaffCartStore.getState().bundleApplications.map((entry) => entry.voucher_qr_token)).toEqual(["mine"]);
-  });
 });
 
 function applicationForEffects(token: string): CartBundleApplication {

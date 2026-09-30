@@ -12,13 +12,13 @@ import {
   PUBLIC_VOUCHER_PACKAGE_SELECT,
   serializePublicVoucherDto,
   toPublicVoucherDto,
-} from "@/lib/voucherPublicDto";
-import { attachBundleRewardBaselines } from "@/lib/voucherBundleDto";
+} from "@/lib/vouchers/voucherPublicDto";
+import { attachBundleRewardBaselines } from "@/lib/vouchers/voucherBundleDto";
+import { attachOwnedVoucherAvailability } from "@/lib/vouchers/ownedVoucherAvailability";
 import {
-  attachOwnedVoucherAvailability,
   loadVoucherAvailabilityCatalog,
   type VoucherAvailabilityDatabase,
-} from "@/lib/voucherAvailability";
+} from "@/lib/vouchers/voucherAvailability";
 
 export const dynamic = "force-dynamic";
 

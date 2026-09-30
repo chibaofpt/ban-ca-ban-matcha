@@ -307,4 +307,93 @@ describe("projection giỏ hàng theo trạng thái ví", () => {
     expect(result.checkoutBlocked).toBe(false);
     expect(result.lines[0]?.personalVoucherDiscountVnd).toBe(10_000);
   });
+
+  it("gỡ hiệu lực PRODUCT_DISCOUNT khi cart line đổi sang Base Liquid khác", () => {
+    const voucher = activeVoucher({
+      voucher_type: "PRODUCT_DISCOUNT",
+      product_discount_mode: "FIXED_AMOUNT",
+      discount_value: 10_000,
+      menu_item_id: "latte-1",
+      milk_type_id: "milk-1",
+      eligible_sizes: ["MEDIUM"],
+      eligible_menu_items: [{
+        menu_item_id: "latte-1",
+        name: "Matcha latte",
+        category: "latte",
+        is_available: true,
+        is_seasonal: false,
+        milk_type_id: "milk-1",
+      }],
+    });
+    const alternateMilk = { id: "milk-2", name: "Sữa yến mạch", price_per_ml: 2, is_default: false, display_order: 2 };
+    const menuWithAlternateMilk: MenuData = {
+      ...menuData,
+      latte: menuData.latte.map((item) => ({
+        ...item,
+        allowed_base_liquid_ids: ["milk-1", "milk-2"],
+      })),
+      milk_types: [...menuData.milk_types, alternateMilk],
+      base_liquids: [...(menuData.base_liquids ?? []), alternateMilk],
+    };
+    const result = projectCart({
+      items: [{
+        ...cartItem,
+        configuration: {
+          size: "MEDIUM",
+          sweetness: "FULL",
+          iceOption: "NORMAL",
+          coldwhisk: false,
+          note: "",
+          baseLiquidId: "milk-2",
+          addonOptionIds: [],
+        },
+        lineVoucher: { token: voucher.qr_token, kind: "PRODUCT_DISCOUNT" },
+      }],
+      menuData: menuWithAlternateMilk,
+      powderData,
+      vouchers: [voucher],
+      selectedOrderVoucherTokens: [],
+      bundleApplications: [],
+      shippingFeeVnd: 0,
+    });
+
+    expect(result.checkoutBlocked).toBe(true);
+    expect(result.errors).toContain("Voucher món không còn hợp lệ");
+    expect(result.lines[0]?.personalVoucherDiscountVnd).toBe(0);
+  });
+
+  it("coi Base Liquid mặc định là cấu hình hiệu lực khi cart legacy chưa lưu ID", () => {
+    const voucher = activeVoucher({
+      voucher_type: "PRODUCT_DISCOUNT",
+      product_discount_mode: "FIXED_AMOUNT",
+      discount_value: 10_000,
+      menu_item_id: "latte-1",
+      milk_type_id: "milk-1",
+      eligible_sizes: ["MEDIUM"],
+      eligible_menu_items: [{
+        menu_item_id: "latte-1",
+        name: "Matcha latte",
+        category: "latte",
+        is_available: true,
+        is_seasonal: false,
+        milk_type_id: "milk-1",
+      }],
+    });
+    const result = projectCart({
+      items: [{
+        ...cartItem,
+        lineVoucher: { token: voucher.qr_token, kind: "PRODUCT_DISCOUNT" },
+      }],
+      menuData,
+      powderData,
+      vouchers: [voucher],
+      selectedOrderVoucherTokens: [],
+      bundleApplications: [],
+      shippingFeeVnd: 0,
+    });
+
+    expect(result.checkoutBlocked).toBe(false);
+    expect(result.errors).toEqual([]);
+    expect(result.lines[0]?.personalVoucherDiscountVnd).toBe(10_000);
+  });
 });

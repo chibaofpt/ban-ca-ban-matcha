@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
-import { withSmsTestAdmin } from "@/lib/smsTestHttp";
-import { smsTestSendOtp, SmsTestError } from "@/lib/smsTest";
+import { withSmsTestAdmin } from "@/lib/sms/smsTestHttp";
+import { smsTestSendOtp, SmsTestError } from "@/lib/sms/smsTest";
 import { smsTestSendSchema } from "@/lib/validations/smsTest";
 
 /** Create and dispatch one rate-limited staging SMS challenge. */

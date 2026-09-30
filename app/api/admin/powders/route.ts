@@ -4,11 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { createPowderSchema } from "@/lib/validations/powder";
 import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
 import { Prisma } from "@prisma/client";
-import { parseCatalogRequest } from "@/lib/catalogRequest";
+import { parseCatalogRequest } from "@/lib/catalog/catalogRequest";
 import {
   catalogImageValidationMessage,
   prepareCatalogImage,
-} from "@/lib/catalogImage";
+} from "@/lib/catalog/catalogImage";
 import { removeMenuImages } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";

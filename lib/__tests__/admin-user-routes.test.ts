@@ -6,8 +6,8 @@ const mocks = vi.hoisted(() => ({
   giftPoints: vi.fn(), capture: vi.fn(),
 }));
 vi.mock("@/lib/auth", () => ({ getSession: mocks.session }));
-vi.mock("@/lib/adminUserQueries", () => ({ listAdminUsers: mocks.listUsers, getAdminUser: mocks.getUser }));
-vi.mock("@/lib/adminUserWorkflow", () => ({
+vi.mock("@/lib/users/adminUserQueries", () => ({ listAdminUsers: mocks.listUsers, getAdminUser: mocks.getUser }));
+vi.mock("@/lib/users/adminUserWorkflow", () => ({
   AdminUserWorkflowError: class extends Error { constructor(public reason: string) { super(reason); } },
   resetAdminUserPassword: mocks.resetPassword, giftAdminUserPoints: mocks.giftPoints,
   setAdminUserBlocked: vi.fn(), setAdminUserVerified: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock("@/lib/observability", () => ({ captureServerException: mocks.capture })
 import { GET as listUsers } from "@/app/api/admin/users/route";
 import { PATCH } from "@/app/api/admin/users/[userQrToken]/route";
 import { POST as giftPoints } from "@/app/api/admin/users/[userQrToken]/points/route";
-import { AdminUserWorkflowError } from "@/lib/adminUserWorkflow";
+import { AdminUserWorkflowError } from "@/lib/users/adminUserWorkflow";
 
 const token = "550e8400-e29b-41d4-a716-446655440000";
 

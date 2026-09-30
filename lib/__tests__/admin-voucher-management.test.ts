@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildAdminVoucherStats, effectiveVoucherStatus } from "@/lib/adminVoucherInsights";
+import { buildAdminVoucherStats, effectiveVoucherStatus } from "@/lib/vouchers/adminVoucherInsights";
 
 describe("Thống kê quản trị voucher", () => {
   it("tính trạng thái hết hạn hiệu lực mà không ghi dữ liệu", () => {

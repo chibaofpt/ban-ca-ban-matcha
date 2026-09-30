@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { reverseCancellationPoints } from "@/lib/cancellationPoints";
-import { CancellationPointsError, recoverCancellationPoints } from "@/lib/cancellationVoucherRecovery";
+import { reverseCancellationPoints } from "@/lib/orders/cancellationPoints";
+import { CancellationPointsError, recoverCancellationPoints } from "@/lib/orders/cancellationVoucherRecovery";
 
 type RecoveryTx = Parameters<typeof recoverCancellationPoints>[0];
 type CancellationTx = Parameters<typeof reverseCancellationPoints>[0];

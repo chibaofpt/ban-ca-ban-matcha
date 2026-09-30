@@ -11,15 +11,15 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
-import { toVoucherPackageBundleDto } from "@/lib/voucherBundleDto";
-import { LEGACY_PACKAGE_QUOTA_SOURCES, SELF_ACQUISITION_SOURCES } from "@/lib/voucherIssuance";
+import { toVoucherPackageBundleDto } from "@/lib/vouchers/voucherBundleDto";
+import { LEGACY_PACKAGE_QUOTA_SOURCES, SELF_ACQUISITION_SOURCES } from "@/lib/vouchers/voucherIssuance";
 import {
   loadVoucherAvailabilityCatalog,
   retainUsableVoucherTargetScopes,
   resolveVoucherTargetAvailability,
   type VoucherAvailabilityDatabase,
   type VoucherBundleRuleSource,
-} from "@/lib/voucherAvailability";
+} from "@/lib/vouchers/voucherAvailability";
 
 export async function GET() {
   try {

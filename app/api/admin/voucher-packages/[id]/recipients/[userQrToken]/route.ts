@@ -9,7 +9,7 @@ import {
   effectiveAdminGrantStatus,
   getAdminVoucherRecipientSummary,
   type AdminVoucherGrantDatabase,
-} from "@/lib/adminVoucherGrant";
+} from "@/lib/vouchers/adminVoucherGrant";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";

@@ -59,7 +59,7 @@ remains valid through processing and retry; `expires_at <= acceptanceDate` is re
 1. **Parse + Validate**: `req.json()` → Zod validate body
 2. **Auth**: `getSession(req)` — customer routes require CUSTOMER role, staff routes require STAFF/ADMIN
 3. **Store hours check** (skip for COUNTER):
-   - Call `checkStoreOpen()` from `lib/storeSchedule.ts`
+   - Call `checkStoreOpen()` from `lib/store/storeSchedule.ts`
    - PICKUP/DELIVERY rejected with `STORE_CLOSED` (HTTP 503) when closed
 4. **Inside the retryable Serializable `prisma.$transaction()` for both customer and staff**:
    - a. Re-fetch all item prices from DB (never trust client)

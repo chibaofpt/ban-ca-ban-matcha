@@ -41,8 +41,8 @@ vi.mock("@/lib/auth", () => ({
   normalizePhone: (p: string) => p,
 }));
 
-// Mock lib/storeSchedule
-vi.mock("@/lib/storeSchedule", () => ({
+// Mock lib/store/storeSchedule
+vi.mock("@/lib/store/storeSchedule", () => ({
   checkStoreOpen: () => mockCheckStoreOpen(),
   validatePickupTime: (pt: Date, now?: Date) => mockValidatePickupTime(pt, now),
 }));

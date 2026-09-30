@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 
 vi.mock("@/lib/auth", () => ({ getSession: vi.fn() }));
 vi.mock("@/lib/publicIdentifiers", () => ({ resolveStaffIdentifier: vi.fn() }));
-vi.mock("@/lib/orderPublicDto", () => ({ toAdminOrderListItemDto: vi.fn((order) => order) }));
+vi.mock("@/lib/orders/orderPublicDto", () => ({ toAdminOrderListItemDto: vi.fn((order) => order) }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     order: { count: vi.fn(), findMany: vi.fn() },

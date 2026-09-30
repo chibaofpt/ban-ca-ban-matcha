@@ -6,7 +6,7 @@ import {
   ADMIN_ADDON_GROUP_ORDER_BY,
   ADMIN_ADDON_OPTION_ORDER_BY,
   mapAdminAddonGroup,
-} from "@/lib/adminAddonGroup";
+} from "@/lib/catalog/adminAddonGroup";
 import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
 import { runSerializableTransaction } from "@/lib/serializableTransaction";
 

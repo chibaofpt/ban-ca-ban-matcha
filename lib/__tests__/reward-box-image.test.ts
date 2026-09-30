@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { prepareRewardBoxImages, RewardBoxImageError } from "@/lib/rewardBoxImage";
+import { prepareRewardBoxImages, RewardBoxImageError } from "@/lib/rewards/rewardBoxImage";
 
 function image(name: string, size = 10, type = "image/png") {
   return new File([new Uint8Array(size)], name, { type });

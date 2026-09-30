@@ -4,6 +4,7 @@ import {
   filterMainCartVouchers,
   getCartLineVoucherKind,
   getEligibleProductDiscountItems,
+  productDiscountMatchesBaseLiquid,
 } from "@/src/utils/customerVoucherSelection";
 import { getVoucherCartDefaults } from "@/src/lib/utils/voucherUseNowHelpers";
 
@@ -78,6 +79,21 @@ describe("getEligibleProductDiscountItems", () => {
 });
 
 describe("customer voucher cart selection", () => {
+  it("chỉ nhận cart line có đúng Base Liquid mà PRODUCT_DISCOUNT yêu cầu", () => {
+    const voucher = {
+      voucher_type: "PRODUCT_DISCOUNT",
+      menu_item_id: "latte-a",
+      milk_type_id: "cow-milk",
+      eligible_menu_items: [
+        { menu_item_id: "latte-a", milk_type_id: null },
+      ],
+    };
+
+    expect(productDiscountMatchesBaseLiquid(voucher, "latte-a", "cow-milk")).toBe(true);
+    expect(productDiscountMatchesBaseLiquid(voucher, "latte-a", "oat-milk")).toBe(false);
+    expect(productDiscountMatchesBaseLiquid({ ...voucher, milk_type_id: null }, "latte-a", "oat-milk")).toBe(true);
+  });
+
   it("giữ voucher RESERVED hiển thị trong picker nhưng loại trạng thái kết thúc", () => {
     const vouchers = [
       { qr_token: "active", voucher_type: "ITEM", status: "ACTIVE" },

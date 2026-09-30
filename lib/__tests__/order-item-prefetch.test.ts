@@ -9,7 +9,7 @@ vi.mock("@/lib/pricing", () => ({
   resolveOrderItemBaseLiquidMl: () => 200,
 }));
 
-import { processOrderItems } from "@/lib/orders";
+import { processOrderItems } from "@/lib/orders/orderProcessing";
 
 function menu(id: string) {
   return {

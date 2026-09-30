@@ -10,15 +10,17 @@ vi.mock("@/lib/auth", () => ({ getSession: mocks.getSession }));
 vi.mock("@/lib/prisma", () => ({
   prisma: { voucher: { findMany: mocks.findMany } },
 }));
-vi.mock("@/lib/voucherAvailability", () => ({
+vi.mock("@/lib/vouchers/voucherAvailability", () => ({
   loadVoucherAvailabilityCatalog: vi.fn().mockResolvedValue({}),
+}));
+vi.mock("@/lib/vouchers/ownedVoucherAvailability", () => ({
   attachOwnedVoucherAvailability: (vouchers: unknown[]) => vouchers,
 }));
-vi.mock("@/lib/voucherBundleDto", () => ({
+vi.mock("@/lib/vouchers/voucherBundleDto", () => ({
   attachBundleRewardBaselines: (_db: unknown, vouchers: unknown[]) => Promise.resolve(vouchers),
 }));
-vi.mock("@/lib/voucherPublicDto", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@/lib/voucherPublicDto")>(),
+vi.mock("@/lib/vouchers/voucherPublicDto", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/vouchers/voucherPublicDto")>(),
   toPublicVoucherDto: (voucher: { qr_token: string; status: string }) => ({
     qr_token: voucher.qr_token,
     status: voucher.status,

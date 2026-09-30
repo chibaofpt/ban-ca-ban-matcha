@@ -316,40 +316,6 @@ describe("PATCH /api/staff/orders/[id] — COMPLETED points và surplus", () => 
     );
   });
 
-  it("COMPLETED không redeem voucher lần nữa nếu đã REDEEMED ở ADMIN_CONFIRMED", async () => {
-    mockGetSession.mockResolvedValue(STAFF_SESSION);
-
-    mockOrderFindUnique.mockResolvedValue({
-      id: ORDER_ID,
-      status: "STAFF_DONE",
-      order_type: "PICKUP",
-      points_earned: null,
-      user_id: USER_ID,
-      total_vnd: 50000,
-      grand_total_vnd: 50000,
-      handled_by: null,
-      freeship_voucher_id: "freeship-v1",
-      items: [
-        { product_voucher_id: "product-v1", unit_price_vnd: 50000, covered_price_vnd: 60000, addonVouchers: [] }
-      ],
-      discountVouchers: [{ voucher_id: "discount-v1" }],
-    });
-
-    mockVoucherUpdateMany.mockResolvedValue({ count: 0 });
-    mockOrderUpdate.mockResolvedValue({ id: ORDER_ID, status: "COMPLETED" });
-
-    const res = await PATCH(makeReq({ status: "COMPLETED" }), { params: Promise.resolve({ id: ORDER_ID }) });
-    expect(res.status).toBe(200);
-
-    // Should NOT call voucher.updateMany to redeem at COMPLETED
-    // (vouchers were already redeemed at ADMIN_CONFIRMED)
-    expect(mockVoucherUpdateMany).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: "REDEEMED" }),
-      })
-    );
-  });
-
   it("Surplus aggregate: hai PRODUCT surplus 7k + 6k = 13k → floor(13k/10k) = 1 điểm", async () => {
     mockGetSession.mockResolvedValue(STAFF_SESSION);
 

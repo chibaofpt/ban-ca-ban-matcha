@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
+import { attachOwnedVoucherAvailability } from "@/lib/vouchers/ownedVoucherAvailability";
 import {
-  attachOwnedVoucherAvailability,
   loadVoucherAvailabilityCatalog,
   resolveBundleRuleAvailability,
   type VoucherAvailabilityCatalog,
   type VoucherBundleRuleSource,
-} from "@/lib/voucherAvailability";
+} from "@/lib/vouchers/voucherAvailability";
 import { resolveDefaultBaseLiquidId, resolveFusionDefaultPowderId } from "@/src/utils/menuConfiguration";
 
 const catalog: VoucherAvailabilityCatalog = {
@@ -113,6 +113,41 @@ describe("Live eligibility của BUNDLE", () => {
 });
 
 describe("Availability của voucher đã sở hữu", () => {
+  it.each([
+    ["RESERVED", "RESERVED", null],
+    ["REDEEMED", "REDEEMED", null],
+    ["expires_at đúng bằng now", "ACTIVE", new Date("2026-09-28T00:00:00.000Z")],
+    ["expires_at trước now", "ACTIVE", new Date("2026-09-27T23:59:59.999Z")],
+  ])("voucher %s không được apply hoặc refund bất kể target availability", (_label, status, expiresAt) => {
+    const now = new Date("2026-09-28T00:00:00.000Z");
+    const vouchers = attachOwnedVoucherAvailability([
+      {
+        id: "target-usable", qr_token: "target-usable-token", voucher_type: "DISCOUNT",
+        issued_via: "POINTS_EXCHANGE", status, expires_at: expiresAt,
+        menu_item_id: null, size: null, matcha_powder_id: null,
+        milk_type_id: null, addon_option_id: null,
+        pointsLogs: [{ delta: -7, reason: "voucher_purchase" }],
+        package: { bundleRule: null },
+      },
+      {
+        id: "target-unavailable", qr_token: "target-unavailable-token", voucher_type: "PRODUCT",
+        issued_via: "POINTS_EXCHANGE", status, expires_at: expiresAt,
+        menu_item_id: "missing", size: "SMALL", matcha_powder_id: null,
+        milk_type_id: null, addon_option_id: null,
+        pointsLogs: [{ delta: -7, reason: "voucher_purchase" }],
+        package: { bundleRule: null },
+      },
+    ], catalog, now);
+
+    expect(vouchers.map((voucher) => voucher.id)).toEqual(["target-usable", "target-unavailable"]);
+    expect(vouchers[0]?.availability).toEqual({
+      status: "USABLE", can_apply: false, can_refund: false, refund_points: 0,
+    });
+    expect(vouchers[1]?.availability).toEqual({
+      status: "TARGET_UNAVAILABLE", can_apply: false, can_refund: false, refund_points: 0,
+    });
+  });
+
   it("PRODUCT_DISCOUNT không coi Latte có fixed powder inactive là target usable", () => {
     const [voucher] = attachOwnedVoucherAvailability([{
       id: "bad-latte", qr_token: "bad-latte-token", voucher_type: "PRODUCT_DISCOUNT",
@@ -140,6 +175,44 @@ describe("Availability của voucher đã sở hữu", () => {
       matcha_powder_id: null, milk_type_id: null, addon_option_id: null,
       pointsLogs: [{ delta: -7, reason: "voucher_purchase" }], package: { bundleRule: null },
     }], invalidCatalog);
+    expect(voucher?.availability).toMatchObject({ can_apply: false, can_refund: true });
+  });
+
+  it("PRODUCT_DISCOUNT chỉ usable với Base Liquid được chỉ định và còn được phép", () => {
+    const restrictedCatalog: VoucherAvailabilityCatalog = {
+      ...catalog,
+      menuItems: catalog.menuItems.map((item) => item.id === "fusion"
+        ? { ...item, allowed_base_liquid_ids: ["liquid-late"] }
+        : item),
+    };
+    const createVoucher = (milkTypeId: string) => ({
+      id: `milk-${milkTypeId}`, qr_token: `milk-${milkTypeId}-token`, voucher_type: "PRODUCT_DISCOUNT" as const,
+      issued_via: "POINTS_EXCHANGE" as const, status: "ACTIVE" as const, expires_at: null,
+      menu_item_id: "fusion", menuItemScopes: [{ menu_item_id: "fusion", milk_type_id: milkTypeId }],
+      size: null, eligible_sizes: ["SMALL" as const], reference_size: null, product_discount_mode: "FIXED_AMOUNT" as const,
+      matcha_powder_id: null, milk_type_id: milkTypeId, addon_option_id: null,
+      pointsLogs: [{ delta: -7, reason: "voucher_purchase" }], package: { bundleRule: null },
+    });
+
+    const [usable, blocked] = attachOwnedVoucherAvailability([
+      createVoucher("liquid-late"),
+      createVoucher("inactive-liquid"),
+    ], restrictedCatalog);
+
+    expect(usable?.availability).toMatchObject({ can_apply: true, can_refund: false });
+    expect(blocked?.availability).toMatchObject({ can_apply: false, can_refund: true });
+  });
+
+  it("PRODUCT_DISCOUNT dùng restriction top-level khi scope normalized chưa có Base Liquid", () => {
+    const [voucher] = attachOwnedVoucherAvailability([{
+      id: "fallback-liquid", qr_token: "fallback-liquid-token", voucher_type: "PRODUCT_DISCOUNT",
+      issued_via: "POINTS_EXCHANGE", status: "ACTIVE", expires_at: null,
+      menu_item_id: "fusion", menuItemScopes: [{ menu_item_id: "fusion", milk_type_id: null }],
+      size: null, eligible_sizes: ["SMALL"], reference_size: null, product_discount_mode: "FIXED_AMOUNT",
+      matcha_powder_id: null, milk_type_id: "inactive-liquid", addon_option_id: null,
+      pointsLogs: [{ delta: -7, reason: "voucher_purchase" }], package: { bundleRule: null },
+    }], catalog);
+
     expect(voucher?.availability).toMatchObject({ can_apply: false, can_refund: true });
   });
 

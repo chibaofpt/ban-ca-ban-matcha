@@ -4,7 +4,7 @@ import {
   type CalcOrderInput,
   type CalcOrderItem,
   type CalcOrderResult,
-} from "@/lib/orderCalculator";
+} from "@/lib/orders/orderCalculator";
 
 const EXTRA_ITEM_ID = "extra-dessert-1";
 

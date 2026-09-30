@@ -45,7 +45,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-vi.mock("@/lib/catalogImage", () => ({
+vi.mock("@/lib/catalog/catalogImage", () => ({
   prepareCatalogImage: (...args: unknown[]) => mockPrepareCatalogImage(...args),
   catalogImageValidationMessage: () => null,
 }));

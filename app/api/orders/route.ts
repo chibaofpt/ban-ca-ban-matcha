@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { createCustomerOrder } from "@/lib/customerOrderCreation";
-import { getCustomerOrderHistory } from "@/lib/customerOrderHistory";
+import { createCustomerOrder } from "@/lib/orders/customerOrderCreation";
+import { getCustomerOrderHistory } from "@/lib/orders/customerOrderHistory";
 import { logSystemEvent } from "@/lib/logger";
-import { OrderValidationError, PriceChangedError } from "@/lib/orders";
+import { OrderValidationError, PriceChangedError } from "@/lib/orders/orderProcessingErrors";
 import { checkRateLimits, getClientIp } from "@/lib/rateLimit";
 import { customerOrderSchema } from "@/lib/validations/order";
-import { BundlePromotionError } from "@/lib/promotionBundle";
+import { BundlePromotionError } from "@/lib/orders/promotionBundle";
 
 export const dynamic = "force-dynamic";
 
@@ -130,7 +130,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const statusFilter =
     rawStatus === "active" || rawStatus === "cancelled" ? rawStatus : undefined;
   try {
-    return await getCustomerOrderHistory(session.id, page, limit, statusFilter);
+    const result = await getCustomerOrderHistory(session.id, page, limit, statusFilter);
+    return NextResponse.json(result);
   } catch (error) {
     console.error("[GET /api/orders]", error);
     return NextResponse.json(

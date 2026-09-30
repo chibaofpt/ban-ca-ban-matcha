@@ -99,11 +99,11 @@ vi.mock("bcryptjs", () => ({
   },
 }));
 
-vi.mock("@/lib/voucherIssuance", () => ({
+vi.mock("@/lib/vouchers/autoGrantVouchers", () => ({
   ensureAutoGrantedVouchers: (...args: unknown[]) => mockEnsureAutoGrantedVouchers(...args),
 }));
 
-vi.mock("@/lib/welcomeReward", () => ({
+vi.mock("@/lib/rewards/welcomeReward", () => ({
   createWelcomeRewardInTransaction: (...args: unknown[]) => mockCreateWelcomeReward(...args),
 }));
 

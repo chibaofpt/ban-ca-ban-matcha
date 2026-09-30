@@ -55,7 +55,7 @@ vi.mock("@/lib/logger", () => ({
   logSystemEvent: vi.fn(),
 }));
 
-vi.mock("@/lib/cancelOrder", () => ({
+vi.mock("@/lib/orders/cancelOrder", () => ({
   restoreVouchersOnCancel: vi.fn(),
 }));
 
@@ -388,10 +388,8 @@ describe("POST /api/staff/orders — COUNTER integration", () => {
     );
     expect(res.status).toBe(201);
 
-    // After migration: orderDiscountVoucher.create should NOT include discount_applied_vnd
-    if (mockOrderDiscountVoucherCreate.mock.calls.length > 0) {
-      const createData = mockOrderDiscountVoucherCreate.mock.calls[0][0].data;
-      expect(createData).not.toHaveProperty("discount_applied_vnd");
-    }
+    expect(mockOrderDiscountVoucherCreate).toHaveBeenCalled();
+    const createData = mockOrderDiscountVoucherCreate.mock.calls[0][0].data;
+    expect(createData).not.toHaveProperty("discount_applied_vnd");
   });
 });

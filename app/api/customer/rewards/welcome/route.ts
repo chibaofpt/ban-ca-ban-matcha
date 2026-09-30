@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getWelcomeReward } from "@/lib/welcomeReward";
-import { toWelcomeRewardDto } from "@/lib/welcomeRewardDto";
+import { getWelcomeReward } from "@/lib/rewards/welcomeReward";
+import { toWelcomeRewardDto } from "@/lib/rewards/welcomeRewardDto";
 
 /** Returns the authenticated customer's durable welcome reward. */
 export async function GET() {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateBundleApplications, evaluateBundlePromotion } from "@/lib/promotionBundle";
+import { evaluateBundleApplications, evaluateBundlePromotion } from "@/lib/orders/promotionBundle";
 import { ADDON_ID, expectReason, makeItem, makeRule } from "@/lib/__tests__/promotion-bundle.fixtures";
 import { bundleProductUnitUsage } from "@/src/utils/bundlePromotion";
 

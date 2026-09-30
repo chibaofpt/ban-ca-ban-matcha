@@ -15,7 +15,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {},
 }));
 
-import { redeemOrderVouchers, VoucherRedeemError } from "@/lib/redeemVouchers";
+import { redeemOrderVouchers, VoucherRedeemError } from "@/lib/vouchers/redeemVouchers";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -36,14 +36,16 @@ describe("redeemOrderVouchers — batch redeem helper", () => {
     vi.clearAllMocks();
   });
 
-  it("batch updateMany RESERVED → REDEEMED với đúng channel ONLINE", async () => {
-    const voucherIds = ["v1", "v2", "v3"];
-    mockVoucherUpdateMany.mockResolvedValue({ count: 3 });
+  it.each([
+    { channel: "ONLINE" as const, voucherIds: ["v1", "v2", "v3"], count: 3 },
+    { channel: "OFFLINE" as const, voucherIds: ["v1"], count: 1 },
+  ])("batch updateMany RESERVED → REDEEMED với channel $channel", async ({ channel, voucherIds, count }) => {
+    mockVoucherUpdateMany.mockResolvedValue({ count });
 
     await redeemOrderVouchers(
       makeTx() as never,
       voucherIds,
-      "ONLINE",
+      channel,
       STAFF_ID
     );
 
@@ -54,31 +56,8 @@ describe("redeemOrderVouchers — batch redeem helper", () => {
       },
       data: expect.objectContaining({
         status: "REDEEMED",
-        used_channel: "ONLINE",
+        used_channel: channel,
         redeemed_by: STAFF_ID,
-      }),
-    });
-  });
-
-  it("batch updateMany RESERVED → REDEEMED với channel OFFLINE", async () => {
-    const voucherIds = ["v1"];
-    mockVoucherUpdateMany.mockResolvedValue({ count: 1 });
-
-    await redeemOrderVouchers(
-      makeTx() as never,
-      voucherIds,
-      "OFFLINE",
-      STAFF_ID
-    );
-
-    expect(mockVoucherUpdateMany).toHaveBeenCalledWith({
-      where: {
-        id: { in: voucherIds },
-        status: "RESERVED",
-      },
-      data: expect.objectContaining({
-        status: "REDEEMED",
-        used_channel: "OFFLINE",
       }),
     });
   });

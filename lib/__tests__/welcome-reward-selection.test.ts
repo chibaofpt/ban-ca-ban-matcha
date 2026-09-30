@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { selectWeightedReward } from "@/lib/welcomeRewardSelection";
+import { selectWeightedReward } from "@/lib/rewards/welcomeRewardSelection";
 
 describe("Chọn phần thưởng theo tồn kho", () => {
   it.each([

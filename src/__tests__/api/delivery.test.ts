@@ -10,7 +10,7 @@ vi.mock("@/lib/goong", () => ({
   goongDistanceMatrix: vi.fn(),
   getStoreLocation: vi.fn().mockReturnValue({ lat: 10, lng: 106 }),
 }));
-vi.mock("@/lib/storeSchedule", () => ({
+vi.mock("@/lib/store/storeSchedule", () => ({
   checkStoreOpen: vi.fn().mockResolvedValue({ is_open: true }),
   validatePickupTime: vi.fn().mockResolvedValue({ isValid: true }),
 }));

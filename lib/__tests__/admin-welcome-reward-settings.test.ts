@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { AdminRewardError, type AdminRewardDatabase } from "@/lib/adminRewardCampaign";
-import { getAdminWelcomeRewardSettings, updateAdminWelcomeRewardSettings } from "@/lib/adminWelcomeRewardSettings";
+import { AdminRewardError, type AdminRewardDatabase } from "@/lib/rewards/adminRewardCampaign";
+import { getAdminWelcomeRewardSettings, updateAdminWelcomeRewardSettings } from "@/lib/rewards/adminWelcomeRewardSettings";
 
 describe("Workflow settings welcome reward", () => {
   it("project POINTS revision 0 khi singleton chưa tồn tại", async () => {

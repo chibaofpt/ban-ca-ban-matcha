@@ -1560,7 +1560,8 @@ any mismatch rejects the whole order with `details.conflicts[]` as defined above
 ### Vouchers
 - Apply vouchers strictly in this order: `BUNDLE → ITEM/PRODUCT/PRODUCT_DISCOUNT → ADDON → DISCOUNT → FREESHIP`.
 - `product_voucher_id` accepts a PRODUCT or PRODUCT_DISCOUNT public token. PRODUCT_DISCOUNT
-  matches `menu_item_id` plus `eligible_sizes`; FIXED_AMOUNT uses `discount_value`, while
+  matches `menu_item_id` plus `eligible_sizes`, and when `milk_type_id` is non-null also requires
+  the order item's selected Base Liquid to match that active milk row; FIXED_AMOUNT uses `discount_value`, while
   PAY_AS_SIZE charges the canonical current reference-size price for the same powder/Base Liquid.
   It excludes addons, has null `covered_price_vnd`, and never creates surplus.
 - For PRODUCT_DISCOUNT and ITEM package creation, new clients send `eligible_menu_item_ids` (1–100 unique

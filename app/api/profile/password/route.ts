@@ -6,7 +6,7 @@ import {
   ChangePasswordConflictError,
   CurrentPasswordMismatchError,
   PasswordReuseError,
-} from "@/lib/changePassword";
+} from "@/lib/auth/changePassword";
 import { checkRateLimits, getClientIp } from "@/lib/rateLimit";
 
 function validationError(message: string, field: string) {

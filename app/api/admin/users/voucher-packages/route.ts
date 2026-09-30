@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getSession } from "@/lib/auth";
 import { captureServerException } from "@/lib/observability";
-import { listAdminUserVoucherPackages } from "@/lib/adminUserQueries";
+import { listAdminUserVoucherPackages } from "@/lib/users/adminUserQueries";
 import { adminUserVoucherPackageQuerySchema } from "@/lib/validations/adminUser";
 
 /** Lists active voucher packages for the Admin customer gift picker. */

@@ -3,11 +3,22 @@ import type { MenuItem, Size } from "@/src/lib/types/menu";
 interface VoucherEligibleMenuItemDescriptor {
   menu_item_id: string;
   is_available: boolean;
+  milk_type_id?: string | null;
+}
+
+interface ProductDiscountBaseLiquidDescriptor {
+  voucher_type: string;
+  milk_type_id?: string | null;
+  eligible_menu_items?: Array<{
+    menu_item_id: string;
+    milk_type_id?: string | null;
+  }>;
 }
 
 export interface EligibleProductDiscountItem {
   item: MenuItem;
   allowedSizes: Size[];
+  milkTypeId?: string;
 }
 
 /** Intersects a product-discount voucher scope with currently sellable menu-item sizes. */
@@ -32,8 +43,23 @@ export function getEligibleProductDiscountItems(
     if (!eligibleIds.has(item.id)) return [];
     const sellableSizes = new Set(item.sizes.map((row) => row.size));
     const allowedSizes = voucherSizes.filter((size) => sellableSizes.has(size));
-    return allowedSizes.length > 0 ? [{ item, allowedSizes }] : [];
+    const target = eligibleMenuItems?.find((candidate) => candidate.menu_item_id === item.id);
+    if (allowedSizes.length === 0) return [];
+    const milkTypeId = target?.milk_type_id ?? null;
+    return [{ item, allowedSizes, ...(milkTypeId ? { milkTypeId } : {}) }];
   });
+}
+
+/** Match the selected Base Liquid against a PRODUCT_DISCOUNT target, with legacy-anchor fallback. */
+export function productDiscountMatchesBaseLiquid(
+  voucher: ProductDiscountBaseLiquidDescriptor,
+  menuItemId: string,
+  selectedBaseLiquidId: string | null | undefined,
+): boolean {
+  if (voucher.voucher_type !== "PRODUCT_DISCOUNT") return true;
+  const target = voucher.eligible_menu_items?.find((item) => item.menu_item_id === menuItemId);
+  const requiredBaseLiquidId = target?.milk_type_id ?? voucher.milk_type_id ?? null;
+  return requiredBaseLiquidId === null || requiredBaseLiquidId === selectedBaseLiquidId;
 }
 
 export type VoucherActionModel =

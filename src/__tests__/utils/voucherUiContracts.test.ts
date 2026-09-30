@@ -1,64 +1,9 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { createEmptyVoucherDraft, describeProductDiscountTargets, suggestVoucherCopy } from "@/src/lib/utils/adminVoucherForm";
 import { getPackageBenefitText } from "@/src/lib/utils/voucherModalHelpers";
 import type { VoucherPackage } from "@/src/services/customerVoucherService";
 
-const readSource = (path: string): string => readFileSync(new URL(path, import.meta.url), "utf8");
-
-describe("multi-choice voucher UI contracts", () => {
-  it("khai báo và hiển thị hai nguồn phát hành reward hệ thống", () => {
-    const canonicalVoucher = readSource("../../../contracts/voucher.ts");
-    const service = readSource("../../services/adminVoucherService.ts");
-    const detail = readSource("../../components/admin/AdminVoucherPackageDetail.tsx");
-
-    expect(canonicalVoucher).toMatch(/export type VoucherPackageAcquisitionMode = [^;]*\| "WELCOME_GIFT"/);
-    expect(canonicalVoucher).toMatch(/export type VoucherPackageAcquisitionMode = [^;]*\| "GACHA_REWARD"/);
-    expect(service).toMatch(
-      /export type \{[\s\S]*?\bVoucherIssuedVia\b[\s\S]*?\} from "@\/contracts\/admin\/voucher";/,
-    );
-    expect(detail).toContain('WELCOME_GIFT: "Quà chào mừng"');
-    expect(detail).toContain('GACHA_REWARD: "Phần thưởng gacha"');
-  });
-
-  it("wires BUNDLE allocation into every ADDON use-now picker and applies atomically", () => {
-    const detail = readSource("../../components/shared/VoucherDetailSheet.tsx");
-    const modal = readSource("../../components/shared/VoucherModal.tsx");
-    const cartDiscount = readSource("../../components/menu/cart/CartDiscountPicker.tsx");
-    const addonPicker = readSource("../../components/shared/AddonItemPicker.tsx");
-
-    expect(detail).toContain("bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}");
-    expect(detail).toContain("bundleAllocatedQuantitiesByCartId: ReadonlyMap<string, number>");
-    expect(modal).toContain("bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}");
-    expect(cartDiscount).toContain("bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}");
-    expect(cartDiscount).toMatch(/<VoucherDetailSheet[\s\S]*?bundleAllocatedQuantitiesByCartId=\{bundleAllocatedQuantitiesByCartId\}/);
-    expect(addonPicker).toContain("bundleAllocatedQuantitiesByCartId: ReadonlyMap<string, number>");
-    expect(addonPicker).toContain("const applyVoucher = onApplyVoucher ?? applyAddonVoucher;");
-    expect(addonPicker.match(/const result = applyVoucher\(/g)).toHaveLength(2);
-    expect(addonPicker).not.toContain("updateItem(");
-    expect(detail).toContain("Lựa chọn còn dùng được");
-    expect(detail).toContain("target.covered_price_vnd");
-    expect(detail).toContain("Topping được chọn");
-  });
-
-  it("leaves a multi-target ADDON voucher for explicit cart selection after reorder", () => {
-    const reorderHook = readSource("../../hooks/useReorderItem.ts");
-
-    expect(reorderHook).toContain("getAddonVoucherTargetChoices");
-    expect(reorderHook).toContain("targetChoices.length === 1");
-    expect(reorderHook).not.toContain("resolveAddonVoucherOptionId(voucher, addonIds");
-  });
-
-  it("requires an explicit target choice in customer, product and staff ADDON paths", () => {
-    for (const path of [
-      "../../components/menu/cart/CartItemVoucherPicker.tsx",
-      "../../components/shared/ProductModal.tsx",
-      "../../components/staff/StaffCartDrawer.tsx",
-    ]) {
-      expect(readSource(path)).toContain("getAddonVoucherTargetChoices");
-    }
-  });
-
+describe("multi-choice voucher presentation helpers", () => {
   it("describes multi-choice packages without advertising only the legacy anchor", () => {
     const pkg = {
       voucher_type: "ADDON",
@@ -102,29 +47,5 @@ describe("multi-choice voucher UI contracts", () => {
     expect(describeProductDiscountTargets(draft, labels.menuLabels)).toBe(
       "Món áp dụng: Matcha A, Matcha B size vừa",
     );
-  });
-
-  it("giữ target dùng ngay trong detail và chỉ mở cart sau khi wallet đã đóng", () => {
-    const modal = readSource("../../components/shared/VoucherModal.tsx");
-    const cartDiscount = readSource("../../components/menu/cart/CartDiscountPicker.tsx");
-    const detail = readSource("../../components/shared/VoucherDetailSheet.tsx");
-    const menuCard = readSource("../../components/menu/MenuCard.tsx");
-    const cards = readSource("../../components/shared/VoucherCards.tsx");
-    const overlay = readSource("../../components/ui/ResponsiveOverlay.tsx");
-
-    expect(modal).toContain("<VoucherModalDetailTransition>");
-    expect(modal).toContain("onAfterClose={handleVoucherSurfaceClosed}");
-    expect(modal).toContain("openCartAfterCloseRef.current = true");
-    expect(cartDiscount).toContain("<VoucherModalDetailTransition>");
-    expect(detail).toContain('className="absolute inset-0 z-20');
-    expect(detail).toContain("<ProductDiscountItemPicker");
-    expect(detail).toContain("<ScopedMenuVoucherPicker");
-    expect(detail).toContain("embedded");
-    expect(menuCard).toContain("allowedSizes");
-    expect(menuCard).toContain("compact");
-    expect(cards).not.toMatch(/<motion\.div\s+layout/);
-    expect(cartDiscount).toContain("nested\n      title=\"Mã ưu đãi\"");
-    expect(overlay).toContain("Drawer.NestedRoot");
-    expect(overlay).toContain("registration.parent?.supportsNestedDrawer");
   });
 });

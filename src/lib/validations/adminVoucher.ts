@@ -21,7 +21,7 @@ const STEP2_FIELDS: Record<AdminVoucherType, readonly string[]> = {
   ITEM: ["name", "menuItemId"],
   DISCOUNT: ["name", "discountType", "discountValue", "maxDiscountVnd", "minOrderVnd"],
   PRODUCT: ["name", "productTargets"],
-  PRODUCT_DISCOUNT: ["name", "menuItemId", "eligibleMenuItemIds", "productDiscountMode", "eligibleSizes", "discountValue", "referenceSize"],
+  PRODUCT_DISCOUNT: ["name", "menuItemId", "eligibleMenuItemIds", "productDiscountMode", "eligibleSizes", "discountValue", "referenceSize", "milkTypeId"],
   ADDON: ["name", "addonOptionId"],
   FREESHIP: ["name", "coveredDeliveryFeeVnd", "minOrderVnd"],
   BUNDLE: ["name", "buyQuantity", "rewardQuantity", "rewardKind", "rewardMode", "benefitScaling", "maxApplications", "minOrderVnd", "qualifierScopes", "rewardProductScopes", "rewardAddonOptionIds"],

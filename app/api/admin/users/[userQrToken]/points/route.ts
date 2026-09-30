@@ -4,7 +4,7 @@ import type { AdminUserPointsResult } from "@/contracts/admin/user";
 
 import { getSession } from "@/lib/auth";
 import { captureServerException } from "@/lib/observability";
-import { AdminUserWorkflowError, giftAdminUserPoints } from "@/lib/adminUserWorkflow";
+import { AdminUserWorkflowError, giftAdminUserPoints } from "@/lib/users/adminUserWorkflow";
 import { adminUserPointsSchema } from "@/lib/validations/adminUser";
 
 /** Gifts an audited, atomic points adjustment to one CUSTOMER. */

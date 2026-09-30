@@ -10,7 +10,7 @@ import {
 } from "@/lib/storage";
 import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
 import { captureServerException } from "@/lib/observability";
-import { ADMIN_MENU_INCLUDE, formatAdminMenuItem } from "@/lib/adminMenuDto";
+import { ADMIN_MENU_INCLUDE, formatAdminMenuItem } from "@/lib/catalog/adminMenuDto";
 
 export const dynamic = "force-dynamic";
 

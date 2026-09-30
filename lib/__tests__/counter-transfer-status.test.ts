@@ -14,7 +14,7 @@ const mockDirectOrderFindUnique = vi.fn();
 const mockBuildVietQRUrl = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ getSession: () => mockGetSession() }));
-vi.mock("@/lib/cancelOrder", () => ({
+vi.mock("@/lib/orders/cancelOrder", () => ({
   restoreVouchersOnCancel: (...args: unknown[]) => mockRestoreVouchersOnCancel(...args),
 }));
 vi.mock("@/lib/vietqr", () => ({

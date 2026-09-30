@@ -18,8 +18,8 @@ vi.mock("@/lib/rateLimit", () => ({
   checkRateLimits: boundary.checkRateLimits,
   getClientIp: boundary.getClientIp,
 }));
-vi.mock("@/lib/changePassword", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/changePassword")>();
+vi.mock("@/lib/auth/changePassword", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/auth/changePassword")>();
   return { ...actual, changePassword: boundary.changePassword };
 });
 
@@ -28,7 +28,7 @@ import {
   ChangePasswordConflictError,
   CurrentPasswordMismatchError,
   PasswordReuseError,
-} from "@/lib/changePassword";
+} from "@/lib/auth/changePassword";
 
 const CUSTOMER_SESSION = {
   id: "user-1",

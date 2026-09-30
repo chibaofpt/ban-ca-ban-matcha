@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getOrderValueViolation } from "@/lib/orderLimits";
+import { getOrderValueViolation } from "@/lib/orders/orderLimits";
 import {
   autocompleteQuerySchema,
   geocodeQuerySchema,

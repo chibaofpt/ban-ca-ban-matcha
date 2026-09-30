@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
 
-import { processOrderItems, type OrderItemInput, type ProductVoucherInfo } from "@/lib/orders";
+import { processOrderItems } from "@/lib/orders/orderProcessing";
+import type { OrderItemInput } from "@/lib/orders/orderProcessingTypes";
+import type { ProductVoucherInfo } from "@/lib/orders/orderVoucherTargets";
 
 function catalog(options: { selectedMedium?: number | null; reference?: string | null } = {}) {
   const powders = [

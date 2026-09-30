@@ -25,7 +25,7 @@ import {
   ChangePasswordConflictError,
   CurrentPasswordMismatchError,
   PasswordReuseError,
-} from "@/lib/changePassword";
+} from "@/lib/auth/changePassword";
 
 const OLD_HASH = "$2b$04$vIExhIg4xG56Su0Y/lWyduQ1hXETCqaKrjnlufmE2BQoxddv4Sn4u";
 const CURRENT_SESSION = {

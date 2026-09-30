@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { getSession } from "@/lib/auth";
 import { captureServerException } from "@/lib/observability";
-import { listAdminUserVouchers } from "@/lib/adminUserQueries";
+import { listAdminUserVouchers } from "@/lib/users/adminUserQueries";
 import { adminUserPageQuerySchema } from "@/lib/validations/adminUser";
 
 /** Lists one CUSTOMER voucher wallet for Admin inspection. */

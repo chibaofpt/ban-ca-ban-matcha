@@ -22,7 +22,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { getAdminUser, listAdminUsers, listAdminUserVoucherPackages } from "@/lib/adminUserQueries";
+import { getAdminUser, listAdminUsers, listAdminUserVoucherPackages } from "@/lib/users/adminUserQueries";
 
 const now = new Date("2026-09-19T05:00:00.000Z");
 const completedAt = new Date("2026-09-18T04:00:00.000Z");

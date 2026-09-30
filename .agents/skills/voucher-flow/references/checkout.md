@@ -43,6 +43,9 @@ legacy-field constraints belong to [SCHEMA — points_log](../../../../SCHEMA.md
 - Keep other item-level `PRODUCT`, `ITEM`, and `ADDON` vouchers in their per-item selection flows.
 - Match an exact configured `menu_item_id` and an allowed current size. Also require `ACTIVE`,
   `availability.can_apply`, no conflicting BUNDLE allocation, and a positive incremental benefit.
+- When `milk_type_id` is non-null, require the server-resolved effective Base Liquid to match it
+  exactly. Copy the shared restriction to each normalized target scope; use the scalar field as
+  the compatibility fallback. A null restriction keeps legacy all-Base-Liquid behavior.
 - `FIXED_AMOUNT` benefit:
 
 ```text

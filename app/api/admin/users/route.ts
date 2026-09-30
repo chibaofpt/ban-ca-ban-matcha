@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getSession } from "@/lib/auth";
 import { captureServerException } from "@/lib/observability";
-import { listAdminUsers } from "@/lib/adminUserQueries";
+import { listAdminUsers } from "@/lib/users/adminUserQueries";
 import { adminUserListQuerySchema } from "@/lib/validations/adminUser";
 
 export const dynamic = "force-dynamic";

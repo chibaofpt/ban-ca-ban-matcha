@@ -40,8 +40,9 @@ This section owns the persisted scope/snapshot interpretation.
 
 `voucher_package_menu_item_scopes` and `voucher_menu_item_scopes` normalize the explicit 1–100
 targets of PRODUCT, ITEM, and PRODUCT_DISCOUNT. PRODUCT rows also snapshot size, powder,
-Base Liquid, and immutable drink-only `covered_price_vnd`; ITEM and PRODUCT_DISCOUNT keep those
-snapshot columns null. Both use `(parent_id, menu_item_id)` composite primary keys;
+Base Liquid, and immutable drink-only `covered_price_vnd`; ITEM rows keep those snapshot columns
+null. PRODUCT_DISCOUNT rows keep size, powder, and covered-price columns null, but may store
+`milk_type_id` as an optional Base Liquid eligibility restriction. Both use `(parent_id, menu_item_id)` composite primary keys;
 package/voucher deletion cascades while menu-item deletion is `NO ACTION`. The legacy
 `menu_item_id` remains the deterministic compatibility anchor. Issuance copies package scope rows
 to immutable voucher scope rows.
@@ -464,7 +465,7 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `menu_item_id` uuid FK nullable → menu_items — PRODUCT or ITEM target
 - `size` Size nullable — PRODUCT type only
 - `matcha_powder_id` uuid FK nullable → matcha_powder — PRODUCT type only
-- `milk_type_id` uuid FK nullable → milk_type — PRODUCT type only
+- `milk_type_id` uuid FK nullable → milk_type — PRODUCT snapshot or PRODUCT_DISCOUNT eligibility restriction
 - `included_addon_option_ids` string[] — array of uuid (or jsonb) for PRODUCT type only
 - `addon_option_id` uuid FK nullable → addon_options — ADDON type only
 - `covered_price_vnd` int nullable — snapshot price for PRODUCT and ADDON; ITEM uses current price
@@ -485,6 +486,10 @@ packages to use `NONE` and restricts PUBLIC packages to `POINTS_EXCHANGE`, `FREE
 > package display and issuance. At order application time, PRODUCT eligibility matches
 > `menu_item_id` only and its credit applies to drink components only. Compute
 > `covered_price_vnd` from the selected drink configuration without addon prices.
+>
+> PRODUCT_DISCOUNT may set `milk_type_id` to require the order's selected Base Liquid to match
+> that active milk row. A null value preserves the legacy all-Base-Liquid behavior. The fixed
+> reduction still applies only to the drink component and excludes addons.
 >
 > ITEM packages target `extras` only. Their drink-configuration and covered-price fields are null.
 > Applying one makes one matching unit free at the current server price, with no surplus.

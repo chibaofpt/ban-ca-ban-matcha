@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { adminRewardErrorResponse, invalidRewardRouteIds, parseRewardBoxForm, requireRewardAdmin, revisionSchema } from "@/lib/adminRewardHttp";
-import { deleteAdminRewardBox, updateAdminRewardBox } from "@/lib/adminRewardBox";
+import { adminRewardErrorResponse, invalidRewardRouteIds, parseRewardBoxForm, requireRewardAdmin, revisionSchema } from "@/lib/rewards/adminRewardHttp";
+import { deleteAdminRewardBox, updateAdminRewardBox } from "@/lib/rewards/adminRewardBox";
 
 const db = prisma;
 type Context = { params: Promise<{ id: string; boxId: string }> };

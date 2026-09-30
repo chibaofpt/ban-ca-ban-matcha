@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { groupPointsHistory } from "@/lib/pointsHistory";
+import { groupPointsHistory } from "@/lib/points/pointsHistory";
 import { pointsHistoryQuerySchema } from "@/lib/validations/points";
 
 export const dynamic = "force-dynamic";

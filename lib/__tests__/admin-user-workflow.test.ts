@@ -18,7 +18,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: {
 vi.mock("bcryptjs", () => ({ default: { hash: mocks.hash } }));
 vi.mock("node:crypto", () => ({ randomBytes: mocks.randomBytes }));
 
-import { giftAdminUserPoints, resetAdminUserPassword, setAdminUserBlocked } from "@/lib/adminUserWorkflow";
+import { giftAdminUserPoints, resetAdminUserPassword, setAdminUserBlocked } from "@/lib/users/adminUserWorkflow";
 
 describe("Admin customer mutation workflow", () => {
   beforeEach(() => {

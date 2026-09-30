@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateBundlePromotion, type BundleCartItem } from "@/lib/promotionBundle";
+import { evaluateBundlePromotion, type BundleCartItem } from "@/lib/orders/promotionBundle";
 import { expectReason, makeItem, makeRule } from "./promotion-bundle.fixtures";
 
 const DRINK_ID = "11111111-1111-4111-8111-111111111111";

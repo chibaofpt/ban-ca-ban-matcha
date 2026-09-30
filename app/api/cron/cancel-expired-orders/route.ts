@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runCancelExpiredOrders } from "@/lib/cancelExpiredOrders";
+import { runCancelExpiredOrders } from "@/lib/orders/cancelExpiredOrders";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { captureServerException, withAutoCancelMonitor } from "@/lib/observability";
 

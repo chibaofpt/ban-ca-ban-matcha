@@ -3,6 +3,7 @@ import type { MenuData, MenuItem, Size } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { calcBaseLiquidDelta, calcFusionPrice, calcLattePrice, ceilTo1000, resolveGram } from "@/src/utils/pricing";
+import { productDiscountMatchesBaseLiquid } from "@/src/utils/customerVoucherSelection";
 import { projectCartTotals } from "@/src/lib/utils/bundleVoucherProjection";
 
 export interface CartProjectionInput {
@@ -95,13 +96,19 @@ function voucherCanApply(voucher: MyVoucher | undefined): voucher is MyVoucher {
   return Boolean(voucher && voucher.status === "ACTIVE" && voucher.availability.can_apply);
 }
 
-function lineVoucherMatches(voucher: MyVoucher, raw: CartItem): boolean {
+function lineVoucherMatches(voucher: MyVoucher, raw: CartItem, item: MenuItem | undefined): boolean {
   if (!raw.lineVoucher || voucher.voucher_type !== raw.lineVoucher.kind) return false;
   const eligibleMenuIds = voucher.eligible_menu_items?.map((target) => target.menu_item_id) ?? [];
   const matchesMenuTarget = eligibleMenuIds.length > 0
     ? eligibleMenuIds.includes(raw.menuItemId)
     : !voucher.menu_item_id || voucher.menu_item_id === raw.menuItemId;
   if (!matchesMenuTarget) return false;
+  if (raw.configuration.size !== null &&
+    !productDiscountMatchesBaseLiquid(
+      voucher,
+      raw.menuItemId,
+      raw.configuration.baseLiquidId ?? item?.default_base_liquid_id,
+    )) return false;
   return raw.configuration.size === null
     || !voucher.eligible_sizes?.length
     || voucher.eligible_sizes.includes(raw.configuration.size);
@@ -145,7 +152,7 @@ function resolveLine(
   let personal = 0;
   if (raw.lineVoucher) {
     const voucher = vouchers.find((candidate) => candidate.qr_token === raw.lineVoucher?.token);
-    if (raw.quantity !== 1 || !voucherCanApply(voucher) || !lineVoucherMatches(voucher, raw)) errors.push("Voucher món không còn hợp lệ");
+    if (raw.quantity !== 1 || !voucherCanApply(voucher) || !lineVoucherMatches(voucher, raw, item)) errors.push("Voucher món không còn hợp lệ");
     else if (raw.lineVoucher.kind === "ITEM") personal += grossUnitPriceVnd;
     else if (raw.lineVoucher.kind === "PRODUCT") {
       const credit = voucher.eligible_menu_items?.find((target) => target.menu_item_id === raw.menuItemId)?.covered_price_vnd

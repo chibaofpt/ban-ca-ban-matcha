@@ -71,12 +71,17 @@ export const ProductDiscountItemPicker = ({
         return;
       }
       const menuItem = target.item;
+      const requiredMilkTypeId = target.milkTypeId ?? voucher.milk_type_id ?? null;
 
       const resolvedBaseLiquidId = resolveVoucherBaseLiquidId(
         menuItem,
         configuration.baseLiquidId ?? null,
         menuData.base_liquids ?? menuData.milk_types,
       );
+      if (requiredMilkTypeId && resolvedBaseLiquidId !== requiredMilkTypeId) {
+        toast.error("Voucher này chỉ áp dụng khi dùng đúng Base Liquid đã chọn.");
+        return;
+      }
 
       const { drinkPrice } = computeVoucherItemPrice(
         menuItem,
@@ -150,6 +155,7 @@ export const ProductDiscountItemPicker = ({
         milkTypes={menuData.milk_types}
         addonGroups={menuData.addon_groups}
         allowedSizes={pickedItem.allowedSizes}
+        lockedBaseLiquidId={pickedItem.milkTypeId ?? voucher.milk_type_id ?? null}
         disableVoucherApplication
         nested
         ctaLabel="Thêm vào giỏ"
@@ -180,7 +186,7 @@ export const ProductDiscountItemPicker = ({
             </p>
           </div>
         ) : (
-          eligibleItems.map(({ item, allowedSizes }) => (
+          eligibleItems.map(({ item, allowedSizes, milkTypeId }) => (
             <div key={item.id} className={!canEdit ? "opacity-50" : undefined}>
               <MenuCard
                 item={item}
@@ -188,7 +194,7 @@ export const ProductDiscountItemPicker = ({
                 compact
                 disabled={!canEdit}
                 allowedSizes={allowedSizes}
-                onItemClick={() => setPickedItem({ item, allowedSizes })}
+                onItemClick={() => setPickedItem({ item, allowedSizes, milkTypeId })}
               />
             </div>
           ))

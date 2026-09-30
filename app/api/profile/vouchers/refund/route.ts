@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { attachOwnedVoucherAvailability } from "@/lib/vouchers/ownedVoucherAvailability";
 import {
-  attachOwnedVoucherAvailability,
   loadVoucherAvailabilityCatalog,
   type VoucherAvailabilityDatabase,
-} from "@/lib/voucherAvailability";
+} from "@/lib/vouchers/voucherAvailability";
 
 export const dynamic = "force-dynamic";
 const refundSchema = z.object({ qr_token: z.string().min(1) });

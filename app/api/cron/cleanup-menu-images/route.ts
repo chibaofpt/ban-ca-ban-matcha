@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyCronRequest } from "@/lib/cronAuth";
-import { runMenuImageCleanup } from "@/lib/menuImageCleanup";
+import { runMenuImageCleanup } from "@/lib/catalog/menuImageCleanup";
 import { captureServerException } from "@/lib/observability";
 
 export const dynamic = "force-dynamic";

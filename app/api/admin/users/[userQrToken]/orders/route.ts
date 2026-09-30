@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { getSession } from "@/lib/auth";
 import { captureServerException } from "@/lib/observability";
-import { listAdminUserOrders } from "@/lib/adminUserQueries";
+import { listAdminUserOrders } from "@/lib/users/adminUserQueries";
 import { adminUserPageQuerySchema } from "@/lib/validations/adminUser";
 
 /** Lists ten orders belonging to one CUSTOMER. */

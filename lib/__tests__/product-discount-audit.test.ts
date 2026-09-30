@@ -1,5 +1,5 @@
 import { describe, it } from "vitest";
-import { evaluateBundlePromotion } from "@/lib/promotionBundle";
+import { evaluateBundlePromotion } from "@/lib/orders/promotionBundle";
 import { expectReason, makeItem, makeRule } from "@/lib/__tests__/promotion-bundle.fixtures";
 
 const LINE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";

@@ -12,7 +12,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-vi.mock("@/lib/cancelOrder", () => ({
+vi.mock("@/lib/orders/cancelOrder", () => ({
   restoreVouchersOnCancel: (...args: unknown[]) => mockRestoreVouchersOnCancel(...args),
 }));
 
@@ -20,7 +20,7 @@ vi.mock("@/lib/observability", () => ({
   captureServerException: (...args: unknown[]) => mockCaptureServerException(...args),
 }));
 
-import { runCancelExpiredOrders } from "@/lib/cancelExpiredOrders";
+import { runCancelExpiredOrders } from "@/lib/orders/cancelExpiredOrders";
 
 describe("Job auto-cancel order hết hạn", () => {
   beforeEach(() => {

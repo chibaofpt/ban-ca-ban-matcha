@@ -6,8 +6,8 @@ const { resolveBundleBaselineProducts } = vi.hoisted(() => ({
 
 vi.mock("@/lib/pricing", () => ({ resolveBundleBaselineProducts }));
 
-import { attachBundleRewardBaselines, toVoucherPackageBundleDto } from "@/lib/voucherBundleDto";
-import type { BundleRuleDtoSource } from "@/lib/voucherBundleDto";
+import { attachBundleRewardBaselines, toVoucherPackageBundleDto } from "@/lib/vouchers/voucherBundleDto";
+import type { BundleRuleDtoSource } from "@/lib/vouchers/voucherBundleDto";
 
 function voucher(token: string, status: "ACTIVE" | "EXPIRED") {
   return {

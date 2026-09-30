@@ -11,7 +11,7 @@ const mockBalance = vi.fn();
 const mockSend = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ getSession: (...args: unknown[]) => mockGetSession(...args) }));
-vi.mock("@/lib/smsTestStore", () => ({
+vi.mock("@/lib/sms/smsTestStore", () => ({
   SmsTestStoreUnavailable: class SmsTestStoreUnavailable extends Error {},
   reserveSmsTestProbe: (...args: unknown[]) => mockReserveProbe(...args),
   reserveSmsTestSend: (...args: unknown[]) => mockReserveSend(...args),
@@ -33,7 +33,7 @@ import { POST as connection } from "@/app/api/admin/sms-test/connection/route";
 import { POST as balance } from "@/app/api/admin/sms-test/balance/route";
 import { POST as sendOtp } from "@/app/api/admin/sms-test/send-otp/route";
 import { POST as verifyOtp } from "@/app/api/admin/sms-test/verify-otp/route";
-import { SmsTestStoreUnavailable } from "@/lib/smsTestStore";
+import { SmsTestStoreUnavailable } from "@/lib/sms/smsTestStore";
 import { AbenlaRejectedError } from "@/lib/sms/abenla";
 
 const requestId = "ec3a144b-7bda-4272-95b4-fcd67ac93cda";

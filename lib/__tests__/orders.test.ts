@@ -1,5 +1,5 @@
 /**
- * Unit tests for lib/orders.ts â€” processOrderItems core logic.
+ * Unit tests for lib/orders/orderProcessing.ts â€” processOrderItems core logic.
  *
  * Strategy: mock lib/pricing vÃ  lib/prisma Ä‘á»ƒ test thuáº§n JS,
  * khÃ´ng cáº§n káº¿t ná»‘i DB tháº­t.
@@ -32,11 +32,11 @@ vi.mock("@/lib/pricing", () => ({
 
 // â”€â”€ Import after mocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 import {
-  processOrderItems,
   OrderValidationError,
   PriceChangedError,
-  type OrderItemInput,
-} from "@/lib/orders";
+} from "@/lib/orders/orderProcessingErrors";
+import { processOrderItems } from "@/lib/orders/orderProcessing";
+import type { OrderItemInput } from "@/lib/orders/orderProcessingTypes";
 
 // â”€â”€ Shared fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -67,7 +67,7 @@ const basePricingCtx = {
   defaultMilkPricePerMl: 40,
   defaultBaseLiquidId: MILK_ID,
   milkPriceMap: { [MILK_ID]: 40 },
-  // Required by fusion fallback logic in lib/orders.ts L219
+  // Required by fusion fallback logic in lib/orders/orderProcessing.ts.
   availablePowders: [
     { id: POWDER_ID, name: "Meyumi" },
     { id: FUSION_DEFAULT_POWDER, name: "Fusion Default" },
@@ -134,7 +134,7 @@ const fusionMenuItem = {
   custom_powder_grams: null,
   default_base_liquid_id: null,
   allowedBaseLiquids: [],
-  // matchaPowder.is_available required by fusion powder filter in lib/orders.ts L238
+  // matchaPowder.is_available is required by the fusion powder filter in lib/orders/orderProcessing.ts.
   fusionAllowedPowders: [
     { powder_id: FUSION_ALLOWED_POWDER, matchaPowder: { is_available: true } },
   ],
@@ -462,6 +462,50 @@ describe("processOrderItems", () => {
     expect(result[0].product_voucher_discount_vnd).toBe(69000);
     expect(result[0].total_discount_vnd).toBe(69000);
     expect(result[0].line_total).toBe(90000);
+  });
+
+  it("PRODUCT_DISCOUNT voucher â†’ chỉ giảm khi đúng Base Liquid đã khóa", async () => {
+    mockResolveOrderItemPrice.mockReturnValue(69_000);
+    const cowMilkId = "milk-cow";
+    const oatMilkId = "milk-oat";
+    const tx = makeTx({
+      menuItemResult: {
+        ...latteMenuItem,
+        allowedBaseLiquids: [
+          { base_liquid_id: cowMilkId, baseLiquid: { is_active: true } },
+          { base_liquid_id: oatMilkId, baseLiquid: { is_active: true } },
+        ],
+      },
+    });
+    mockBuildPricingContext.mockResolvedValue({
+      ...basePricingCtx,
+      milkPriceMap: { ...basePricingCtx.milkPriceMap, [cowMilkId]: 40, [oatMilkId]: 40 },
+      availableBaseLiquids: [
+        { id: MILK_ID, is_active: true, is_default: true, display_order: 0 },
+        { id: cowMilkId, is_active: true, is_default: false, display_order: 1 },
+        { id: oatMilkId, is_active: true, is_default: false, display_order: 2 },
+      ],
+    });
+    const voucher = new Map([
+      ["voucher-cow", {
+        menu_item_id: MENU_ITEM_ID, covered_price_vnd: 0, voucher_type: "PRODUCT_DISCOUNT" as const,
+        product_discount_mode: "FIXED_AMOUNT" as const, eligible_sizes: ["MEDIUM" as const],
+        discount_value: 10_000, milk_type_id: cowMilkId,
+      }],
+    ]);
+
+    const matching = await processOrderItems([{
+      menu_item_id: MENU_ITEM_ID, quantity: 1, size: "MEDIUM", sweetness: "FULL",
+      selected_milk_type_id: cowMilkId, addon_option_ids: [], product_voucher_id: "voucher-cow",
+      client_price_vnd: 59_000,
+    }], tx as never, voucher);
+    expect(matching[0].product_voucher_discount_vnd).toBe(10_000);
+
+    await expect(processOrderItems([{
+      menu_item_id: MENU_ITEM_ID, quantity: 1, size: "MEDIUM", sweetness: "FULL",
+      selected_milk_type_id: oatMilkId, addon_option_ids: [], product_voucher_id: "voucher-cow",
+      client_price_vnd: 69_000,
+    }], tx as never, voucher)).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
   });
 
 

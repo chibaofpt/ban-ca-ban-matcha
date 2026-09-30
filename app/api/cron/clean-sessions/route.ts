@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runCleanExpiredSessions } from "@/lib/cleanExpiredSessions";
+import { runCleanExpiredSessions } from "@/lib/auth/cleanExpiredSessions";
 import { verifyCronRequest } from "@/lib/cronAuth";
 import { captureServerException } from "@/lib/observability";
 

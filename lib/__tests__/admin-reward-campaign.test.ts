@@ -9,8 +9,8 @@ import {
   toAdminRewardBoxDto,
   validateRewardPoolItems,
   type AdminRewardDatabase,
-} from "@/lib/adminRewardCampaign";
-import type { VoucherAvailabilityCatalog } from "@/lib/voucherAvailability";
+} from "@/lib/rewards/adminRewardCampaign";
+import type { VoucherAvailabilityCatalog } from "@/lib/vouchers/voucherAvailability";
 
 const liveCatalog: VoucherAvailabilityCatalog = {
   powders: [], baseLiquids: [], addonOptions: [],

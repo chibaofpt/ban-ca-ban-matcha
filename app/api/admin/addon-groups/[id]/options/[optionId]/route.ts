@@ -5,15 +5,15 @@ import {
   toggleAddonOptionSchema,
   updateAddonOptionDetailsSchema,
 } from "@/lib/validations/addonGroup";
-import { parseCatalogRequest } from "@/lib/catalogRequest";
-import { catalogImageValidationMessage, prepareCatalogImage } from "@/lib/catalogImage";
+import { parseCatalogRequest } from "@/lib/catalog/catalogRequest";
+import { catalogImageValidationMessage, prepareCatalogImage } from "@/lib/catalog/catalogImage";
 import { removeMenuImages } from "@/lib/storage";
 import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
 import {
   ADMIN_ADDON_OPTION_ORDER_BY,
   mapAdminAddonGroup,
   validateAddonOptionPricing,
-} from "@/lib/adminAddonGroup";
+} from "@/lib/catalog/adminAddonGroup";
 import { runSerializableTransaction } from "@/lib/serializableTransaction";
 
 export const dynamic = "force-dynamic";

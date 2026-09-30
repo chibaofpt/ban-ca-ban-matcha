@@ -4,7 +4,7 @@ import type { VoucherOwnerPage } from "@/contracts/admin/voucher";
 import type { VoucherIssuedVia } from "@/contracts/voucher";
 
 import { getSession } from "@/lib/auth";
-import { effectiveVoucherStatus } from "@/lib/adminVoucherInsights";
+import { effectiveVoucherStatus } from "@/lib/vouchers/adminVoucherInsights";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";

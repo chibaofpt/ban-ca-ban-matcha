@@ -20,8 +20,8 @@ vi.mock("@/lib/rateLimit", () => ({
 }));
 
 vi.mock("@/lib/logger", () => ({ logSystemEvent: vi.fn() }));
-vi.mock("@/lib/cancelOrder", () => ({ restoreVouchersOnCancel: vi.fn() }));
-vi.mock("@/lib/orderCode", () => ({
+vi.mock("@/lib/orders/cancelOrder", () => ({ restoreVouchersOnCancel: vi.fn() }));
+vi.mock("@/lib/orders/orderCode", () => ({
   generateOrderCode: (...args: unknown[]) => mockGenerateOrderCode(...args),
 }));
 vi.mock("@/lib/vietqr", () => ({

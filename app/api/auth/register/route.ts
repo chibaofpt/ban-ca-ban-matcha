@@ -6,11 +6,9 @@ import { prisma } from "@/lib/prisma";
 import { normalizePhone, signJwt, setAuthCookies } from "@/lib/auth";
 import { isUniqueConstraintError } from "@/lib/prisma-errors";
 import bcrypt from "bcryptjs";
-import {
-  ensureAutoGrantedVouchers,
-  type VoucherIssuanceDatabase,
-} from "@/lib/voucherIssuance";
-import { createWelcomeRewardInTransaction } from "@/lib/welcomeReward";
+import { ensureAutoGrantedVouchers } from "@/lib/vouchers/autoGrantVouchers";
+import type { VoucherIssuanceDatabase } from "@/lib/vouchers/voucherIssuance";
+import { createWelcomeRewardInTransaction } from "@/lib/rewards/welcomeReward";
 
 class GhostRegistrationConflictError extends Error {}
 class BlockedGhostRegistrationError extends Error {}

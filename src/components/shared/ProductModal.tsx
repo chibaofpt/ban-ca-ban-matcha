@@ -62,6 +62,8 @@ interface ProductModalProps {
   initialSize?: Size | null;
   initialPowderId?: string | null;
   initialBaseLiquidId?: string | null;
+  /** Restrict the Base Liquid while configuring a targeted product voucher. */
+  lockedBaseLiquidId?: string | null;
 }
 
 const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
@@ -85,7 +87,7 @@ export function resolveAddonOptionImage(
 const BaseModal: React.FC<ProductModalProps> = ({ 
   item, latteItems, milkTypes, addonGroups, onClose, editingItem, onConfirm, freeVoucherId,
   freeVoucherCoveredPriceVnd, availableVouchers, nested = false, currentCartItems,
-  allowedSizes, disableVoucherApplication, ctaLabel, initialSize, initialPowderId, initialBaseLiquidId,
+  allowedSizes, disableVoucherApplication, ctaLabel, initialSize, initialPowderId, initialBaseLiquidId, lockedBaseLiquidId,
   walletVerified = true, walletReadOnlyReason = "Ví voucher đang được xác minh. Vui lòng thử lại sau một chút.",
   pendingAddonVoucherIntent, onPendingAddonVoucherChange,
 }) => {
@@ -124,7 +126,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const [selectedPowderId, setSelectedPowderId] = useState<string>(() => editingConfig?.size !== null ? editingConfig?.powderId ?? initialPowderId ?? item.resolved_default_powder_id ?? "" : initialPowderId ?? item.resolved_default_powder_id ?? "");
   const [selectedMilkId, setSelectedMilkId] = useState<string>(() => {
     if (editingConfig?.size !== null && editingConfig?.baseLiquidId) return editingConfig.baseLiquidId;
-    return initialBaseLiquidId ?? item.default_base_liquid_id ?? "";
+    return lockedBaseLiquidId ?? initialBaseLiquidId ?? item.default_base_liquid_id ?? "";
   });
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>(() => {
     const validOptionIds = new Set(
@@ -226,8 +228,8 @@ const BaseModal: React.FC<ProductModalProps> = ({
     [addonGroups],
   );
   const baseLiquidOptions = useMemo(
-    () => getBaseLiquidOptionsForItem(item, milkTypes),
-    [item, milkTypes],
+    () => getBaseLiquidOptionsForItem(item, milkTypes).filter((option) => !lockedBaseLiquidId || option.id === lockedBaseLiquidId),
+    [item, milkTypes, lockedBaseLiquidId],
   );
   const defaultMilkId = item.default_base_liquid_id ?? "";
   const selectedBaseLiquidName = baseLiquidOptions.find((option) => option.id === selectedMilkId)?.name

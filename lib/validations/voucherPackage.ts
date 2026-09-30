@@ -80,6 +80,7 @@ const rawVoucherPackageSchema = z.discriminatedUnion("voucher_type", [
     eligible_sizes: z.array(sizeSchema).min(1).max(3),
     discount_value: z.number().int().positive().optional(),
     reference_size: sizeSchema.optional(),
+    milk_type_id: nullableUuid,
   }),
   z.object({
     ...commonFields,

@@ -1,5 +1,5 @@
 /**
- * Unit tests for lib/vouchers.ts — pure voucher business logic.
+ * Unit tests for lib/vouchers/voucherRules.ts — pure voucher business logic.
  * No DB, no Prisma — all pure functions.
  */
 
@@ -12,7 +12,7 @@ import {
   findAddonVoucherDiscount,
   calcPointsEarned,
   type ResolvedOrderItem,
-} from "@/lib/vouchers";
+} from "@/lib/vouchers/voucherRules";
 import type { Voucher } from "@prisma/client";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────

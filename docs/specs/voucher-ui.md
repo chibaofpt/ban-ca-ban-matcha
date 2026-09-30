@@ -88,7 +88,9 @@ của mọi món đã chọn; size được up chỉ nhận một size lớn hơ
 Tên gợi ý dùng mẫu `Free upsize lên cá vừa`; mô tả nêu các món và size đích theo mẫu
 `Free up size cho A, B lên size vừa.`. Bên dưới mô tả hiển thị dòng tóm tắt
 `Món áp dụng: A, B size vừa`. Chế độ giảm số tiền định dạng phân cách hàng nghìn trong input và
-khởi tạo mức giảm ở 10.000 VND.
+khởi tạo mức giảm ở 10.000 VND. Wizard có thêm Base Liquid áp dụng với lựa chọn `Mọi Base Liquid`
+hoặc một Base Liquid chung mà toàn bộ món đã chọn cho phép; khi đã chọn một Base Liquid, customer
+được mở ProductModal với lựa chọn đó bị khóa và server đối chiếu lại cấu hình lúc checkout.
 
 ## Nhận, đổi và auth intent
 

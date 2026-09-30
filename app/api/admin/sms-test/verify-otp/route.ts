@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
-import { withSmsTestAdmin } from "@/lib/smsTestHttp";
-import { smsTestVerifyOtp, SmsTestError } from "@/lib/smsTest";
+import { withSmsTestAdmin } from "@/lib/sms/smsTestHttp";
+import { smsTestVerifyOtp, SmsTestError } from "@/lib/sms/smsTest";
 import { smsTestVerifySchema } from "@/lib/validations/smsTest";
 
 /** Verify a staging SMS challenge for the initiating admin session. */

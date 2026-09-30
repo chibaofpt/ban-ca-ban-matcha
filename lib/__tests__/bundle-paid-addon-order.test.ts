@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { calcOrderTotals } from "@/lib/orderCalculator";
-import { resolveOrderBundles, type OrderBundleDatabase } from "@/lib/orderBundle";
-import { processOrderItems, type OrderItemInput } from "@/lib/orders";
+import { calcOrderTotals } from "@/lib/orders/orderCalculator";
+import { resolveOrderBundles, type OrderBundleDatabase } from "@/lib/orders/orderBundle";
+import { processOrderItems } from "@/lib/orders/orderProcessing";
+import type { OrderItemInput } from "@/lib/orders/orderProcessingTypes";
 
 const POWDER_ID = "11111111-1111-4111-8111-111111111111";
 const MILK_ID = "22222222-2222-4222-8222-222222222222";

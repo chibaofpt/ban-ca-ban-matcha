@@ -9,7 +9,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: {
   voucher: { findMany: mocks.voucherFindMany },
 } }));
 
-import { getAdminUserOrder, listAdminUserOrders } from "@/lib/adminUserQueries";
+import { getAdminUserOrder, listAdminUserOrders } from "@/lib/users/adminUserQueries";
 
 function orderRow(overrides: Record<string, unknown> = {}) {
   return {

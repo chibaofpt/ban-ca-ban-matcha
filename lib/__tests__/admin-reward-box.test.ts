@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { createAdminRewardBox, updateAdminRewardBox } from "@/lib/adminRewardBox";
-import type { AdminRewardDatabase } from "@/lib/adminRewardCampaign";
+import { createAdminRewardBox, updateAdminRewardBox } from "@/lib/rewards/adminRewardBox";
+import type { AdminRewardDatabase } from "@/lib/rewards/adminRewardCampaign";
 
-vi.mock("@/lib/voucherAvailability", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@/lib/voucherAvailability")>(),
+vi.mock("@/lib/vouchers/voucherAvailability", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/vouchers/voucherAvailability")>(),
   loadVoucherAvailabilityCatalog: vi.fn().mockResolvedValue({}),
 }));
 

@@ -8,7 +8,7 @@ import {
   retainUsableVoucherTargetScopes,
   resolveVoucherTargetAvailability,
   type VoucherAvailabilityDatabase,
-} from "@/lib/voucherAvailability";
+} from "@/lib/vouchers/voucherAvailability";
 
 export const dynamic = "force-dynamic";
 

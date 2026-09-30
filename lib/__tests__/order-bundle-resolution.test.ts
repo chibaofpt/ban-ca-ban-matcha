@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 const resolveBundleBaselineProducts = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/pricing", () => ({ resolveBundleBaselineProducts }));
-import { resolveOrderBundles, type OrderBundleDatabase } from "@/lib/orderBundle";
+import { resolveOrderBundles, type OrderBundleDatabase } from "@/lib/orders/orderBundle";
 import type { BundleBaselineProductInput, ResolvedBundleBaselineProduct } from "@/lib/pricing";
 
 const now = new Date("2026-08-12T00:00:00.000Z");
