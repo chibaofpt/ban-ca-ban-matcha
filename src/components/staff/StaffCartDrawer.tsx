@@ -16,7 +16,7 @@ import {
   getAddonVoucherTargetChoices,
 } from "@/src/utils/voucherMatchUtils";
 import { motion, AnimatePresence } from "framer-motion";
-import { Drawer } from "vaul";
+import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 import StaffCartItemCard from "./cart/StaffCartItemCard";
 import { VoucherCard } from "@/src/components/shared/VoucherCards";
 import type { BundleCartDraftResult, BundleCartDraftValidation } from "@/src/lib/utils/bundleCartDraft";
@@ -47,6 +47,9 @@ void SWEETNESS_LABEL;
 // ── Props ────────────────────────────────────────────────────────────────────
 
 interface StaffCartDrawerProps {
+  layoutVariant?: "admin-mobile" | "staff";
+  voucherPickerNode?: React.ReactNode;
+  onAfterClose?: () => void;
   menuData?: MenuData;
   powderData?: PowderApiResponse;
   isOpen: boolean;
@@ -94,6 +97,9 @@ interface StaffCartDrawerProps {
 
 export function StaffCartDrawer({
   menuData,
+  layoutVariant = "staff",
+  voucherPickerNode,
+  onAfterClose,
   powderData,
   isOpen,
   cart,
@@ -286,46 +292,10 @@ export function StaffCartDrawer({
       })
     : [];
 
-  const handleClose = useCallback(() => {
-    onClose();
-    // Reset sub-overlay state after close animation
-    setTimeout(() => {
-      setActiveItemForVoucher(null);
-      setAddonChoiceVoucherId(null);
-    }, 300);
-  }, [onClose, setActiveItemForVoucher]);
+  const handleClose = useCallback(() => { if (!preventCloseOutside) onClose(); }, [onClose, preventCloseOutside]);
 
   return (
-    <Drawer.Root 
-      open={isOpen} 
-      dismissible={!preventCloseOutside}
-      repositionInputs={false}
-      onOpenChange={(open) => {
-        if (!open) handleClose();
-      }}
-    >
-      <Drawer.Portal>
-        <Drawer.Overlay className="fixed inset-0 z-50 bg-black/40" />
-        <Drawer.Content 
-          data-testid="staff-cart-sheet"
-          onInteractOutside={(e) => {
-            const target = e.target as HTMLElement;
-            // Prevent closing if the clicked element was removed from the DOM (e.g. clicking a button inside a modal that unmounts)
-            if (target && !document.contains(target)) {
-              e.preventDefault();
-              return;
-            }
-
-            if (
-              preventCloseOutside ||
-              document.querySelector('[data-confirm-modal="true"]') ||
-              document.querySelector('[data-prevent-drawer-close="true"]')
-            ) {
-              e.preventDefault();
-            }
-          }}
-          className="fixed bottom-0 left-0 right-0 z-50 flex h-auto max-h-[100dvh] flex-col rounded-t-3xl bg-card shadow-2xl outline-none after:absolute after:inset-x-0 after:top-full after:h-[50vh] after:bg-inherit after:content-['']"
-        >
+    <ResponsiveOverlay open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }} title="Giỏ hàng" presentation="bare" dismissPolicy={preventCloseOutside ? "explicit-only" : "default"} onAfterClose={() => { setActiveItemForVoucher(null); setAddonChoiceVoucherId(null); onAfterClose?.(); }} className="flex max-h-[100dvh] flex-col rounded-t-3xl bg-card shadow-2xl md:max-h-[90dvh] md:max-w-2xl">
           <div className="flex justify-center pt-3 pb-1 w-full shrink-0">
             <div className="w-12 h-1.5 bg-border rounded-full" />
           </div>
@@ -345,7 +315,7 @@ export function StaffCartDrawer({
             </button>
           </div>
           {persistenceWarning ? (
-            <div className="mx-4 mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800" role="status">
+            <div className="mx-4 mt-3 rounded-xl border border-border bg-muted/50 px-3 py-2 text-xs font-semibold text-primary" role="status">
               {persistenceWarning}
             </div>
           ) : null}
@@ -408,6 +378,7 @@ export function StaffCartDrawer({
 
               return (
                 <StaffCartItemCard
+                  layoutVariant={layoutVariant}
                   key={c.cartId}
                   item={c}
                   menuItem={menuItem}
@@ -614,7 +585,7 @@ export function StaffCartDrawer({
                             }}
                             actionNode={
                               isSelected ? (
-                                <CheckCircle2 className="w-5 h-5 text-orange-500 shrink-0 ml-2" />
+                                <CheckCircle2 className="w-5 h-5 text-primary shrink-0 ml-2" />
                               ) : (
                                 <div className="w-5 h-5 rounded-full border border-border/60 shrink-0 ml-2" />
                               )
@@ -654,14 +625,14 @@ export function StaffCartDrawer({
                             }}
                             actionNode={
                               isSelected ? (
-                                <CheckCircle2 className="w-5 h-5 text-orange-500 shrink-0 ml-2" />
+                                <CheckCircle2 className="w-5 h-5 text-primary shrink-0 ml-2" />
                               ) : (
                                 <div className="w-5 h-5 rounded-full border border-border/60 shrink-0 ml-2" />
                               )
                             }
                           />
                           {!isSelected && addonChoiceVoucherId === v.qr_token ? (
-                            <div className="space-y-2 rounded-xl border border-green-200 bg-green-50/60 p-2" role="group" aria-label="Chọn topping được giảm">
+                            <div className="space-y-2 rounded-xl border border-border bg-muted/50 p-2" role="group" aria-label="Chọn topping được giảm">
                               {choices.map((choice) => (
                                 <button
                                   type="button"
@@ -672,10 +643,10 @@ export function StaffCartDrawer({
                                     if (result.ok) setAddonChoiceVoucherId(null);
                                     closeVoucherPickerAfter(result);
                                   }}
-                                  className="flex min-h-11 w-full items-center justify-between rounded-lg bg-white px-3 text-left text-sm font-semibold"
+                                  className="flex min-h-11 w-full items-center justify-between rounded-lg bg-card px-3 text-left text-sm font-semibold"
                                 >
                                   <span>{choice.label}</span>
-                                  <span className="text-green-700">Giảm {choice.discountVnd.toLocaleString("vi-VN")}đ</span>
+                                  <span className="text-primary">Giảm {choice.discountVnd.toLocaleString("vi-VN")}đ</span>
                                 </button>
                               ))}
                             </div>
@@ -693,6 +664,7 @@ export function StaffCartDrawer({
 
         {/* Product Modal Node for Staff */}
         {productModalNode}
+        {voucherPickerNode}
         {bundleSetupVoucher && menuData && onCloseBundleSetup && onValidateBundleDraft && onCommitBundleDraft && onBundleSetupSuccess ? (
           <BundleVoucherSetupSheet
             key={bundleSetupVoucher.qr_token}
@@ -731,8 +703,6 @@ export function StaffCartDrawer({
           isDestructive={true}
         />
         </>
-        </Drawer.Content>
-      </Drawer.Portal>
-    </Drawer.Root>
+    </ResponsiveOverlay>
   );
 }

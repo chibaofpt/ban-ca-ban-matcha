@@ -17,6 +17,9 @@ interface DecimalLike {
 }
 
 interface OrderListItemSource {
+  delivery_receiver_name?: string | null;
+  delivery_receiver_phone?: string | null;
+  delivery_address?: string | null;
   id: string;
   status: OrderStatus;
   order_type: OrderType;
@@ -200,6 +203,9 @@ export function toOrderListItemDto(
   return {
     ...publicOrder,
     id: order.id,
+    delivery_receiver_name: order.delivery_receiver_name ?? null,
+    delivery_receiver_phone: order.delivery_receiver_phone ?? null,
+    delivery_address: order.delivery_address ?? null,
     status: order.status,
     order_type: order.order_type,
     payment_method: order.payment_method,

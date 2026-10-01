@@ -25,6 +25,7 @@ import {
 } from "@/src/lib/store/staffCartStore";
 import { retainBundleRewardEffects } from "@/src/lib/store/cartStore";
 import ProductModal from "@/src/components/shared/ProductModal";
+import { OverlayStackProvider } from "@/src/components/ui/OverlayStackProvider";
 import { StaffCartDrawer } from "@/src/components/staff/StaffCartDrawer";
 import { CartDiscountPicker } from "@/src/components/menu/cart/CartDiscountPicker";
 import { CustomerSelectModal } from "@/src/components/staff/CustomerSelectModal";
@@ -55,9 +56,10 @@ import { projectCart } from "@/src/lib/utils/cartProjection";
 import { serializeCartOrderItems } from "@/src/lib/utils/cartOrderPayload";
 import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import { normalizeStaffBundleApplications } from "@/src/lib/utils/staffBundlePayload";
+import { isVoucherUsable } from "@/src/utils/voucherMatchUtils";
 import { getVoucherAvailabilityMessage } from "@/src/lib/utils/voucherModalHelpers";
 import { computeProductDiscountBenefit, computeVoucherItemPrice } from "@/src/hooks/useAddVoucherToCart";
-import { filterActiveMainCartVouchers, selectOrderVoucherToken } from "@/src/utils/customerVoucherSelection";
+import { filterMainCartVouchers, selectOrderVoucherToken } from "@/src/utils/customerVoucherSelection";
 import { getBundleAllocatedQuantities } from "@/src/lib/utils/bundleCartSummary";
 import { validateBundleCartDraft, type BundleCartDraftResult, type BundleCartDraftValidation } from "@/src/lib/utils/bundleCartDraft";
 import {
@@ -270,7 +272,10 @@ export default function StaffOrdersPage({
     setBundleSetupCustomerQrToken(null);
     setVoucherPickerOpen(false);
   }, []);
+  const pendingOwnerChange = useRef<(() => void) | null>(null);
+  const closeCartAfterWallet = useRef(false);
   const transitionCustomer = useCallback((info: Parameters<typeof setCustomerInfo>[0]) => {
+    const commitOwnerChange = () => {
     const previousQrToken = useStaffCartStore.getState().customerQrToken;
     const nextQrToken = info?.type === "existing" ? info.data.qr_token : null;
     if (previousQrToken && previousQrToken !== nextQrToken) {
@@ -283,7 +288,10 @@ export default function StaffOrdersPage({
     if (info?.type === "existing") {
       queryClient.setQueryData(["staff", "cart-customer", info.data.qr_token], { type: "user", data: info.data });
     }
-  }, [queryClient, resetCustomerVoucherState, setCustomerInfo]);
+    };
+    if (voucherPickerOpen) { pendingOwnerChange.current = commitOwnerChange; setVoucherPickerOpen(false); return; }
+    commitOwnerChange();
+  }, [queryClient, resetCustomerVoucherState, setCustomerInfo, voucherPickerOpen]);
 
   // ── Category filter ───────────────────────────────────────────────────
 
@@ -316,6 +324,40 @@ export default function StaffOrdersPage({
     retry: false,
   });
   const customerVouchers = useMemo(() => customerWalletQuery.data ?? [], [customerWalletQuery.data]);
+  const canMutateStaffWallet = (voucherToken?: string) => {
+    const owner = useStaffCartStore.getState().customerQrToken;
+    const profile = queryClient.getQueryState(["staff", "cart-customer", staffCustomerQrToken]);
+    const wallet = queryClient.getQueryState<MyVoucher[]>(["staff", "cart-customer-vouchers", staffCustomerQrToken]);
+    return Boolean(staffCustomerQrToken && owner === staffCustomerQrToken && !pendingOwnerChange.current &&
+      profile?.status === "success" && profile.fetchStatus === "idle" &&
+      wallet?.status === "success" && wallet.fetchStatus === "idle" && wallet.data !== undefined && (!voucherToken || wallet.data.some((voucher) => voucher.qr_token === voucherToken && isVoucherUsable(voucher))));
+  };
+
+  const canRemoveStaffVoucher = () => {
+    const hasWalletOwner = Boolean(staffCustomerQrToken ||
+      useStaffCartStore.getState().customerQrToken || pendingOwnerChange.current);
+    return !hasWalletOwner || canMutateStaffWallet();
+  };
+  const removeStaffProductVoucherIfVerified = (cartId: string): CartMutationResult => {
+    if (!canRemoveStaffVoucher()) {
+      const message = "Ví voucher đang được xác minh lại.";
+      toast.error(message);
+      return { ok: false, code: "VOUCHER_CONFLICT", message };
+    }
+    const result = removeProductVoucher(cartId);
+    if (!result.ok) toast.error(result.message);
+    return result;
+  };
+  const removeStaffAddonVoucherIfVerified = (cartId: string, voucherToken: string): CartMutationResult => {
+    if (!canRemoveStaffVoucher()) {
+      const message = "Ví voucher đang được xác minh lại.";
+      toast.error(message);
+      return { ok: false, code: "VOUCHER_CONFLICT", message };
+    }
+    const result = removeAddonVoucher(cartId, voucherToken);
+    if (!result.ok) toast.error(result.message);
+    return result;
+  };
 
   useEffect(() => {
     if (selectedCustomerQuery.data?.type !== "user") return;
@@ -417,26 +459,26 @@ export default function StaffOrdersPage({
     [customerVouchers, discountVoucher],
   );
   const pickerDiscountVouchers = useMemo(
-    () => filterActiveMainCartVouchers(customerVouchers, "DISCOUNT"),
+    () => filterMainCartVouchers(customerVouchers, "DISCOUNT"),
     [customerVouchers],
   );
   const pickerProductDiscountVouchers = useMemo(
-    () => filterActiveMainCartVouchers(customerVouchers, "PRODUCT_DISCOUNT"),
+    () => filterMainCartVouchers(customerVouchers, "PRODUCT_DISCOUNT"),
     [customerVouchers],
   );
   const pickerBundleVouchers = useMemo(
-    () => filterActiveMainCartVouchers(customerVouchers, "BUNDLE"),
+    () => customerVouchers.filter((voucher) => voucher.voucher_type === "BUNDLE" && (voucher.status === "ACTIVE" || voucher.status === "RESERVED")),
     [customerVouchers],
   );
   const pickerProductVouchers = useMemo(
     () => [
-      ...filterActiveMainCartVouchers(customerVouchers, "PRODUCT"),
-      ...filterActiveMainCartVouchers(customerVouchers, "ITEM"),
+      ...filterMainCartVouchers(customerVouchers, "PRODUCT"),
+      ...filterMainCartVouchers(customerVouchers, "ITEM"),
     ],
     [customerVouchers],
   );
   const pickerAddonVouchers = useMemo(
-    () => filterActiveMainCartVouchers(customerVouchers, "ADDON"),
+    () => filterMainCartVouchers(customerVouchers, "ADDON"),
     [customerVouchers],
   );
   const selectedOrderDiscountVouchers = useMemo(
@@ -1093,7 +1135,7 @@ export default function StaffOrdersPage({
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <>
+    <OverlayStackProvider>
       <div className="px-4 md:px-0 py-4 space-y-4">
         {/* QR scan button */}
         <button
@@ -1199,6 +1241,74 @@ export default function StaffOrdersPage({
 
       {/* StaffCartDrawer */}
       <StaffCartDrawer
+        layoutVariant={userRole === "ADMIN" ? "admin-mobile" : "staff"}
+        voucherPickerNode={customerInfo?.type === "existing" && menuData && pData && staffBundleOwnerKey ? (
+        <CartDiscountPicker
+          open={voucherPickerOpen}
+          onAfterClose={() => {
+            const commit = pendingOwnerChange.current; pendingOwnerChange.current = null; commit?.();
+            if (closeCartAfterWallet.current) { closeCartAfterWallet.current = false; setCartOpen(false); }
+          }}
+          onAddVoucherItem={(item) => {
+            if (!canMutateStaffWallet()) return { ok: false, code: "BUNDLE_STALE", message: "Ví voucher đang được xác minh lại." };
+            return addItem(item);
+          }}
+          key={customerInfo.data.qr_token}
+          discountVouchers={pickerDiscountVouchers}
+          freeshipVouchers={[]}
+          productDiscountVouchers={pickerProductDiscountVouchers}
+          availableVoucherPackages={availableVoucherPackages}
+          pointsBalance={customerInfo.data.points_balance}
+          isLoading={walletRevalidating || customerWalletQuery.isLoading}
+          loadError={customerWalletQuery.isError}
+          selectedVoucherIds={pickerSelectedVoucherIds}
+          selectedDiscountVouchers={selectedOrderDiscountVouchers}
+          selectedFreeshipVouchers={[]}
+          subtotalPrice={cartProjection.totals.discountable_subtotal_vnd}
+          orderType="PICKUP"
+          shippingFee={0}
+          onClose={() => setVoucherPickerOpen(false)}
+          onUpdateSelectedVouchers={updateSelectedStaffVouchers}
+          onRefreshVouchers={refreshStaffWallet}
+          bundleVouchers={pickerBundleVouchers}
+          cart={projectedCart}
+          menuData={menuData}
+          powders={pData.data}
+          defaultPowderGram={pData.default_powder_gram}
+          getProductVoucherBenefit={getStaffVoucherBenefit}
+          onApplyProductVoucher={(cartId, voucher) => {
+            const result = handleApplyProduct(cartId, voucher);
+            if (!result.ok) toast.error(result.message);
+          }}
+          onRemoveProductVoucher={removeStaffProductVoucherIfVerified}
+          onRemoveAddonVoucher={removeStaffAddonVoucherIfVerified}
+          onApplyAddonVoucher={applyAddonVoucher}
+          onSavePendingAddonVoucher={(intent) => {
+            if (!canMutateStaffWallet()) return;
+            setPendingAddonVoucher(intent);
+            closeCartAfterWallet.current = true;
+          }}
+          bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}
+          bundleApplications={bundleApplications}
+          bundleOwnerKey={staffBundleOwnerKey}
+          onCommitBundleCartDraft={commitBundleCartDraft}
+          onRequestRemoveBundle={(voucherToken) => {
+            const result = removeBundleApplication(voucherToken);
+            if (!result.ok) toast.error(result.message);
+          }}
+          productVouchers={pickerProductVouchers}
+          addonVouchers={pickerAddonVouchers}
+          onUseProductVoucher={handleUseStaffProductVoucher}
+          acquisitionOptions={voucherAcquisitionOptions}
+          onAcquired={handleStaffVoucherAcquired}
+          isSelectionContextCurrent={canMutateStaffWallet}
+          tabs={userRole === "ADMIN" ? ["my_vouchers", "packages"] : ["my_vouchers"]}
+          title={`Ưu đãi của ${customerInfo.data.name}`}
+          pointsLabel="Điểm khách"
+          voucherTabLabel="Voucher của khách"
+          emptyWalletLabel="Khách chưa có voucher khả dụng"
+        />
+      ) : null}
         menuData={menuData}
         powderData={pData}
         isOpen={cartOpen}
@@ -1248,9 +1358,9 @@ export default function StaffOrdersPage({
           !!scopedBundleSetupVoucher
         }
         onApplyProduct={handleApplyProduct}
-        onRemoveProduct={removeProductVoucher}
+        onRemoveProduct={removeStaffProductVoucherIfVerified}
         onApplyAddon={handleApplyAddon}
-        onRemoveAddon={removeAddonVoucher}
+        onRemoveAddon={removeStaffAddonVoucherIfVerified}
         onClearCart={() => setClearCartConfirmOpen(true)}
         productModalNode={
           selectedItem &&
@@ -1286,65 +1396,6 @@ export default function StaffOrdersPage({
           )
         }
       />
-
-      {voucherPickerOpen && customerInfo?.type === "existing" && menuData && pData && staffBundleOwnerKey ? (
-        <CartDiscountPicker
-          key={customerInfo.data.qr_token}
-          discountVouchers={pickerDiscountVouchers}
-          freeshipVouchers={[]}
-          productDiscountVouchers={pickerProductDiscountVouchers}
-          availableVoucherPackages={availableVoucherPackages}
-          pointsBalance={customerInfo.data.points_balance}
-          isLoading={walletRevalidating || customerWalletQuery.isLoading}
-          loadError={customerWalletQuery.isError}
-          selectedVoucherIds={pickerSelectedVoucherIds}
-          selectedDiscountVouchers={selectedOrderDiscountVouchers}
-          selectedFreeshipVouchers={[]}
-          subtotalPrice={cartProjection.totals.discountable_subtotal_vnd}
-          orderType="PICKUP"
-          shippingFee={0}
-          onClose={() => setVoucherPickerOpen(false)}
-          onUpdateSelectedVouchers={updateSelectedStaffVouchers}
-          onRefreshVouchers={refreshStaffWallet}
-          bundleVouchers={pickerBundleVouchers}
-          cart={projectedCart}
-          menuData={menuData}
-          powders={pData.data}
-          defaultPowderGram={pData.default_powder_gram}
-          getProductVoucherBenefit={getStaffVoucherBenefit}
-          onApplyProductVoucher={(cartId, voucher) => {
-            const result = handleApplyProduct(cartId, voucher);
-            if (!result.ok) toast.error(result.message);
-          }}
-          onRemoveProductVoucher={removeProductVoucher}
-          onRemoveAddonVoucher={removeAddonVoucher}
-          onApplyAddonVoucher={applyAddonVoucher}
-          onSavePendingAddonVoucher={(intent) => {
-            setPendingAddonVoucher(intent);
-            setCartOpen(false);
-          }}
-          bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}
-          bundleApplications={bundleApplications}
-          bundleOwnerKey={staffBundleOwnerKey}
-          onCommitBundleCartDraft={commitBundleCartDraft}
-          onRequestRemoveBundle={(voucherToken) => {
-            const result = removeBundleApplication(voucherToken);
-            if (!result.ok) toast.error(result.message);
-          }}
-          productVouchers={pickerProductVouchers}
-          addonVouchers={pickerAddonVouchers}
-          onUseProductVoucher={handleUseStaffProductVoucher}
-          acquisitionOptions={voucherAcquisitionOptions}
-          onAcquired={handleStaffVoucherAcquired}
-          isSelectionContextCurrent={() =>
-            useStaffCartStore.getState().customerQrToken === customerInfo.data.qr_token}
-          tabs={userRole === "ADMIN" ? ["my_vouchers", "packages"] : ["my_vouchers"]}
-          title={`Ưu đãi của ${customerInfo.data.name}`}
-          pointsLabel="Điểm khách"
-          voucherTabLabel="Voucher của khách"
-          emptyWalletLabel="Khách chưa có voucher khả dụng"
-        />
-      ) : null}
 
       <CounterTransferPaymentModal
         payment={pendingTransfers.activePayment}
@@ -1485,6 +1536,6 @@ export default function StaffOrdersPage({
           ))}
         </div>
       </ResponsiveOverlay>
-    </>
+    </OverlayStackProvider>
   );
 }

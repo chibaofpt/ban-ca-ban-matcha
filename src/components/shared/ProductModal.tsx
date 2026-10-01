@@ -25,10 +25,13 @@ import { useModalHistory } from "./product-modal/useModalHistory";
 import { SectionLabel } from "./product-modal/SectionLabel";
 import OptionCard from "./product-modal/OptionCard";
 import { getBaseLiquidOptionsForItem } from "@/src/utils/baseLiquid";
+import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 
 interface ProductModalProps {
+  managed?: boolean;
+  open?: boolean;
   item: MenuItem;
   latteItems: MenuItem[];
   milkTypes: MilkTypeOption[];
@@ -89,7 +92,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
   freeVoucherCoveredPriceVnd, availableVouchers, nested = false, currentCartItems,
   allowedSizes, disableVoucherApplication, ctaLabel, initialSize, initialPowderId, initialBaseLiquidId, lockedBaseLiquidId,
   walletVerified = true, walletReadOnlyReason = "Ví voucher đang được xác minh. Vui lòng thử lại sau một chút.",
-  pendingAddonVoucherIntent, onPendingAddonVoucherChange,
+  pendingAddonVoucherIntent, onPendingAddonVoucherChange, managed = false, open = true,
 }) => {
   const editingConfig = editingItem?.configuration;
   const [isOpen, setIsOpen] = useState(true);
@@ -259,7 +262,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const defaultPowderPriceCtx = getPriceForContext(selectedSize, item.resolved_default_powder_id ?? "");
 
   // ── Browser back button support ───────────────────────────────────────────
-  const closeWithHistory = useModalHistory(onClose);
+  const closeWithHistory = useModalHistory(onClose, !managed);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleOptionToggle = useCallback((groupId: string, optionId: string) => {
@@ -289,8 +292,8 @@ const BaseModal: React.FC<ProductModalProps> = ({
 
   const handleClose = useCallback(() => {
     setIsOpen(false);
-    closeWithHistory();
-  }, [closeWithHistory]);
+    if (!managed) closeWithHistory();
+  }, [closeWithHistory, managed]);
 
   const handleAddToCart = useCallback(() => {
     if (saveBlockedByWallet) {
@@ -847,6 +850,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
     </>
   );
 
+  if (managed) return <><ConfirmModal isOpen={pendingAddonConflict !== null} title="Nhóm addon đã đủ" message="Thay addon đang chọn bằng addon của voucher? Nếu giữ nguyên, món vẫn được thêm và voucher sẽ chờ món mới tiếp theo." confirmLabel="Thay addon" cancelLabel="Giữ nguyên" onConfirm={() => finishPendingAddonConflict(true)} onCancel={() => finishPendingAddonConflict(false)} /><ResponsiveOverlay open={open && isOpen} onOpenChange={(next) => { if (!next) handleClose(); }} onAfterClose={onClose} title={item.name} layer="critical" presentation="bare" className="mx-auto flex h-[100dvh] w-full flex-col overflow-hidden bg-background md:grid md:h-[80vh] md:max-w-4xl md:grid-cols-2 md:rounded-3xl">{modalContent}</ResponsiveOverlay></>;
   return (
     <Profiler id="ProductModal" onRender={onRenderCallback}>
       <ConfirmModal isOpen={pendingAddonConflict !== null} title="Nhóm addon đã đủ" message="Thay addon đang chọn bằng addon của voucher? Nếu giữ nguyên, món vẫn được thêm và voucher sẽ chờ món mới tiếp theo." confirmLabel="Thay addon" cancelLabel="Giữ nguyên" onConfirm={() => finishPendingAddonConflict(true)} onCancel={() => finishPendingAddonConflict(false)} />
@@ -894,7 +898,7 @@ const ExtrasModal: React.FC<ProductModalProps> = ({
   availableVouchers,
   currentCartItems,
   nested = false,
-  ctaLabel,
+  ctaLabel, managed = false, open = true,
   walletVerified = true,
   walletReadOnlyReason = "Ví voucher đang được xác minh. Vui lòng thử lại sau một chút.",
 }) => {
@@ -931,11 +935,11 @@ const ExtrasModal: React.FC<ProductModalProps> = ({
   );
   const ctaText = ctaLabel ?? (editingItem ? "Cập nhật" : "Bỏ vào giỏ cá");
   const isDesktop = useSyncExternalStore(subscribeToDesktopViewport, getDesktopSnapshot, getDesktopServerSnapshot);
-  const closeWithHistory = useModalHistory(onClose);
+  const closeWithHistory = useModalHistory(onClose, !managed);
 
   const close = () => {
     setIsOpen(false);
-    closeWithHistory();
+    if (!managed) closeWithHistory();
   };
 
   const save = () => {
@@ -1014,6 +1018,7 @@ const ExtrasModal: React.FC<ProductModalProps> = ({
     </>
   );
 
+  if (managed) return <ResponsiveOverlay open={open && isOpen} onOpenChange={(next) => { if (!next) close(); }} onAfterClose={onClose} title={item.name} layer="critical" presentation="bare" className="mx-auto flex max-h-[92dvh] w-full max-w-lg flex-col overflow-y-auto rounded-t-3xl bg-background p-6 md:rounded-3xl">{formContent}</ResponsiveOverlay>;
   if (!isDesktop) return (
     <Drawer.Root open={isOpen} onOpenChange={(open) => !open && close()} nested={nested} repositionInputs={false}>
       <Drawer.Portal>

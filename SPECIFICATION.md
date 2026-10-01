@@ -17,6 +17,7 @@ Tài liệu này mô tả hệ thống đang được hỗ trợ, không phải 
 | Wallet, voucher detail/claim, admin wizard | [Voucher UI](docs/specs/voucher-ui.md) |
 | Quà đăng ký, hộp matcha, admin reward campaign | [Reward UI](docs/specs/reward-ui.md) |
 | Cart source model, BUNDLE setup, POS recovery | [Cart và POS](docs/specs/cart.md) |
+| Order cards/detail, delivery recipient và address form | [Order UI](docs/specs/order-ui.md) |
 | Admin Users, customer detail/actions/orders/wallet | [Admin customer management](docs/specs/admin-customer-management.md) |
 | Cách duy trì spec/harness | [Spec registry](docs/specs/README.md) |
 
@@ -197,6 +198,8 @@ Authentication dùng centered Radix dialog ở layer `critical` trên mọi brea
 Khi đăng ký tạo `GACHA PENDING`, auth dialog giữ layer `critical` và chuyển nội dung sang
 [Reward UI](docs/specs/reward-ui.md). Reward mở lại từ wallet dùng nested overlay trong cùng stack;
 profile mở standalone critical overlay. Cả hai dùng shared focus/dismiss policy bên trên.
+
+Cart/voucher composition dùng parent scope thực qua content slot; controlled child giữ mounted tới onAfterClose. Khi đóng owner có managed product child, child đóng trước, parent chỉ đóng sau lifecycle child. Managed product child không thêm Browser History entry; legacy product paths giữ behavior hiện có.
 
 Overlay layer chỉ có `base`, `nested`, `critical`. Không tạo z-index tùy ý cho overlay mới.
 

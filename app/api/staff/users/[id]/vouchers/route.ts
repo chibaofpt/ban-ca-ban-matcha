@@ -1,5 +1,5 @@
 /**
- * GET /api/staff/users/[id]/vouchers — List ACTIVE vouchers of a customer.
+ * GET /api/staff/users/[id]/vouchers — List ACTIVE and RESERVED vouchers of a customer.
  * Auth: STAFF or ADMIN only.
  * Returns empty array for unknown user_id (no 404 — prevents info leak).
  */
@@ -18,7 +18,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/staff/users/[id]/vouchers — Returns all ACTIVE vouchers for the given customer. */
+/** GET /api/staff/users/[id]/vouchers — Returns ACTIVE and RESERVED vouchers for the given customer. */
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -42,7 +42,7 @@ export async function GET(
     const vouchers = await prisma.voucher.findMany({
       where: {
         user_id: userId,
-        status: "ACTIVE",
+        status: { in: ["ACTIVE", "RESERVED"] },
         OR: [{ expires_at: null }, { expires_at: { gt: new Date() } }],
       },
       orderBy: { created_at: "desc" },

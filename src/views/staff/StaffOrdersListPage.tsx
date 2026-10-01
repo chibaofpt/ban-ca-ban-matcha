@@ -7,6 +7,8 @@ import { formatKa, formatOrderSize, formatVietnamPhone } from "@/src/utils/displ
 import { fetchOrdersList, type OrderRes } from "@/src/services/staffOrdersListService";
 import { apiClient } from "@/src/lib/api/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { DeliveryRecipientDetails } from "@/src/components/shared/DeliveryRecipientDetails";
+import { OrderReadOnlyDetail } from "@/src/components/shared/OrderReadOnlyDetail";
 import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
 import { OrderTabs, type OrderTabKey } from "@/src/components/staff/OrderTabs";
 import { OrderProgressBar } from "@/src/components/shared/OrderProgressBar";
@@ -38,6 +40,7 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<OrderTabKey>("counter");
   const [page, setPage] = useState(1);
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [showReportModal, setShowReportModal] = useState(false);
 
@@ -242,7 +245,7 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
                         {order.order_code ?? `#${order.id.slice(0, 8)}`}
                       </div>
                       {order.pickup_time && (
-                        <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-md w-fit">
+                        <span className="inline-flex items-center gap-1 bg-muted/50 text-foreground text-xs font-bold px-2 py-0.5 rounded-md w-fit">
                           <Clock size={10} />
                           Nhận lúc: {formatTimeOnly(order.pickup_time)}
                         </span>
@@ -260,9 +263,9 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
                   {/* Row 2: Tên khách + SĐT */}
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <span className="text-sm font-medium text-foreground">
-                      {order.user?.name ?? "Khách vãng lai"}
+                      {order.order_type === "DELIVERY" ? "Đơn giao hàng" : order.user?.name ?? "Khách vãng lai"}
                     </span>
-                    <span className="inline-flex items-center gap-1">
+                    <span className={order.order_type === "DELIVERY" ? "hidden" : "inline-flex items-center gap-1"}>
                       <Phone size={11} />
                       {order.user?.phone_number
                         ? formatVietnamPhone(order.user.phone_number)
@@ -270,6 +273,8 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
                     </span>
                   </div>
 
+                  <DeliveryRecipientDetails {...order} />
+                  <button type="button" className="min-h-11 w-full rounded-xl border border-border bg-muted/40 px-3 text-sm font-semibold" onClick={() => setDetailOrderId(order.id)}>Chi tiết đơn</button>
                   {/* Progress Bar */}
                   {!isTerminal && (
                     <div className="pt-1">
@@ -314,7 +319,7 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
                         </li>
                       ))}
                       {order.discountVouchers && order.discountVouchers.length > 0 && (
-                        <li className="text-xs text-green-600 pt-1 flex flex-col gap-0.5">
+                        <li className="text-xs text-primary pt-1 flex flex-col gap-0.5">
                           {order.discountVouchers.map((dv, idx) => {
                             const v = dv.voucher;
                             let discountText = "";
@@ -354,7 +359,7 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
                       const totalDiscount = (order.total_voucher_discount_vnd || 0) + (order.freeship_discount_vnd || 0) + itemDiscount;
                       if (totalDiscount <= 0) return null;
                       return (
-                        <div className="flex justify-between items-center gap-2 text-[13px] text-green-600">
+                        <div className="flex justify-between items-center gap-2 text-[13px] text-primary">
                           <span>Voucher giảm:</span>
                           <span>-{formatKa(totalDiscount, "floor")}</span>
                         </div>
@@ -370,7 +375,7 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
                       {isTerminal ? (
                         <span className={cn(
                           "text-xs font-semibold flex items-center gap-1",
-                          order.status === "COMPLETED" ? "text-primary" : "text-red-500"
+                          order.status === "COMPLETED" ? "text-primary" : "text-destructive"
                         )}>
                           {order.status === "COMPLETED" ? (
                             <>
@@ -379,7 +384,7 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
                             </>
                           ) : (
                             <>
-                              <XCircle size={13} className="text-red-500" />
+                              <XCircle size={13} className="text-destructive" />
                               <span>Đã huỷ</span>
                             </>
                           )}
@@ -420,6 +425,7 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
       )}
     </div>
 
+      {orders.find((order) => order.id === detailOrderId) ? <OrderReadOnlyDetail open={detailOrderId !== null} onOpenChange={(open) => { if (!open) setDetailOrderId(null); }} order={orders.find((order) => order.id === detailOrderId)!} /> : null}
       {/* Report Modal */}
       <DailyReportModal
         isOpen={showReportModal}

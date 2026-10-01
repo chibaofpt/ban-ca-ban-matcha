@@ -34,6 +34,9 @@ import { selectOrderVoucherToken } from "@/src/utils/customerVoucherSelection";
 
 
 interface OwnedVoucherDetailSheetProps {
+  overlayOpen?: boolean;
+  onChildOpenChange?: (open: boolean) => void;
+  onAddVoucherItem?: (item: Omit<CartItem, "cartId">) => CartMutationResult<unknown>;
   voucher: MyVoucher;
   cartItems: CartItem[];
   subtotalVnd: number;
@@ -305,6 +308,9 @@ const OwnedVoucherDetailSheet = ({
   onApplyAddonVoucher,
   onSavePendingAddonVoucher,
   onPendingAddon,
+  onAddVoucherItem,
+  overlayOpen = true,
+  onChildOpenChange,
   canEdit = true,
   editDisabledReason,
 }: OwnedVoucherDetailSheetProps) => {
@@ -339,10 +345,7 @@ const OwnedVoucherDetailSheet = ({
   }
 
   const vType = voucher.voucher_type;
-  const hasInlineTargets = vType === "ADDON" || (
-    !onSelectProductDiscountTarget && !onUseProductVoucher &&
-    (vType === "PRODUCT" || vType === "PRODUCT_DISCOUNT" || vType === "ITEM")
-  );
+  const hasInlineTargets = ["PRODUCT", "PRODUCT_DISCOUNT", "ITEM", "ADDON"].includes(vType);
   const config = VOUCHER_TYPE_CONFIG[vType] || { label: "Voucher", badgeCls: "bg-gray-100 text-gray-800" };
   const highlight = getTicketHighlightText(vType, voucher.discount_type, voucher.discount_value, voucher.reference_size);
 
@@ -457,10 +460,10 @@ const OwnedVoucherDetailSheet = ({
           <p className="rounded-xl border border-border bg-secondary/20 p-4 text-center text-sm text-muted-foreground">Đang tải danh sách món phù hợp…</p>
         ) : null}
         {hasInlineTargets && menuData && vType === "PRODUCT_DISCOUNT" ? (
-          <ProductDiscountItemPicker voucher={voucher} menuData={menuData} canEdit={canEdit && canApply} onSuccess={onUseNowSuccess} />
+          <ProductDiscountItemPicker open={overlayOpen} onChildOpenChange={onChildOpenChange} onAddItem={onAddVoucherItem} voucher={voucher} menuData={menuData} canEdit={canEdit && canApply} onSuccess={onUseNowSuccess} />
         ) : null}
         {hasInlineTargets && menuData && (vType === "PRODUCT" || vType === "ITEM") ? (
-          <ScopedMenuVoucherPicker voucher={voucher} menuData={menuData} canEdit={canEdit && canApply} onSuccess={onUseNowSuccess} />
+          <ScopedMenuVoucherPicker open={overlayOpen} onChildOpenChange={onChildOpenChange} onAddItem={onAddVoucherItem} voucher={voucher} menuData={menuData} canEdit={canEdit && canApply} onSuccess={onUseNowSuccess} />
         ) : null}
         {hasInlineTargets && menuData && vType === "ADDON" ? (
           <AddonItemPicker

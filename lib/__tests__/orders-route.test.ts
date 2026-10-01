@@ -952,6 +952,9 @@ describe("GET /api/orders", () => {
         discountVouchers: [],
         items: [],
         payment_qr_url: null,
+        delivery_receiver_name: null,
+        delivery_receiver_phone: null,
+        delivery_address: null,
       }))
     );
     expect(JSON.stringify(json.data)).not.toContain("user_id");

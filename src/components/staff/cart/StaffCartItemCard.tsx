@@ -10,8 +10,10 @@ import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { MyVoucher } from "@/src/services/staffVoucherService";
 import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
 import Image from "next/image";
+import { AdminMobileCartItemCard } from "./AdminMobileCartItemCard";
 
-interface StaffCartItemCardProps {
+export interface StaffCartItemCardProps {
+  layoutVariant?: "admin-mobile" | "staff";
   item: ProjectedCartLine;
   menuItem?: MenuItem;
   powderData?: PowderApiResponse;
@@ -29,6 +31,7 @@ interface StaffCartItemCardProps {
 }
 
 const StaffCartItemCard = ({
+  layoutVariant = "staff",
   item: c,
   menuItem,
   powderData,
@@ -60,10 +63,13 @@ const StaffCartItemCard = ({
   const noteText = c.configuration.note || null;
 
   return (
+    <>
+    {layoutVariant === "admin-mobile" ? <div className="md:hidden"><AdminMobileCartItemCard item={c} menuItem={menuItem} powderData={powderData} milkTypes={milkTypes} customerVouchers={customerVouchers} applicableProductVouchers={applicableProductVouchers} applicableAddonVouchers={applicableAddonVouchers} onEdit={onEdit} onRemove={onRemove} onChangeQuantity={onChangeQuantity} onRemoveProduct={onRemoveProduct} onRemoveAddon={onRemoveAddon} onOpenVoucherPicker={onOpenVoucherPicker} bundleAllocationBadges={bundleAllocationBadges} /></div> : null}
     <div 
       onClick={() => onEdit?.(c)}
       className={cn(
         "bg-white dark:bg-secondary/20 rounded-2xl p-3.5 flex gap-3 shadow-sm border border-border/50 transition-colors cursor-pointer hover:border-border/80",
+        layoutVariant === "admin-mobile" && "hidden md:flex",
         !menuItem && "opacity-50 pointer-events-none"
       )}
     >
@@ -213,10 +219,12 @@ const StaffCartItemCard = ({
         </div>
       </div>
     </div>
+    </>
   );
 };
 
 export default memo(StaffCartItemCard, (prev, next) => {
+  if (prev.layoutVariant !== next.layoutVariant || prev.customerVouchers !== next.customerVouchers || prev.bundleAllocationBadges !== next.bundleAllocationBadges) return false;
   if (prev.item !== next.item) return false;
   if (prev.applicableProductVouchers.length !== next.applicableProductVouchers.length) return false;
   if (prev.applicableAddonVouchers.length !== next.applicableAddonVouchers.length) return false;

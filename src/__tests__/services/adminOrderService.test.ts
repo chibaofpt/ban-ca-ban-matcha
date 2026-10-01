@@ -8,10 +8,22 @@ vi.mock("@/src/lib/api/client", () => ({
 }));
 
 import { apiClient } from "@/src/lib/api/client";
-import { adminCancelOrder, confirmPayment, fetchAdminOrders } from "@/src/services/adminOrderService";
+import { adminCancelOrder, confirmPayment, fetchAdminOrders, fetchAdminPendingTransferCount } from "@/src/services/adminOrderService";
 
 describe("adminOrderService — xác nhận phương thức thanh toán", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("đếm toàn bộ đơn chuyển khoản chờ xử lý từ meta dù chỉ lấy một dòng", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: {
+      data: [{ id: "pending-1" }], meta: { total: 7, page: 1, totalPages: 7 },
+    } });
+    expect(await fetchAdminPendingTransferCount()).toBe(7);
+    const url = new URL(vi.mocked(apiClient.get).mock.calls[0][0], "https://local.test");
+    expect(url.pathname).toBe("/api/admin/orders");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      status: "PENDING", payment_method: "BANK_TRANSFER", limit: "1",
+    });
+  });
 
   it("trả snapshot điều chỉnh điểm để Admin biết voucher nào bị thu hồi theo số lượng", async () => {
     const result = {

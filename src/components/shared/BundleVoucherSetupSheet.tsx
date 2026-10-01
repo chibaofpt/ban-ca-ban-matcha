@@ -39,6 +39,7 @@ interface BundleVoucherSetupSheetProps {
   powders: Powder[];
   defaultPowderGram: Array<{ size: "SMALL" | "MEDIUM" | "LARGE"; grams: number }>;
   onClose: () => void;
+  onAfterClose?: () => void;
   onValidateDraft: (draft: BundleCartDraftResult) => BundleCartDraftValidation;
   onCommitDraft: (draft: BundleCartDraftCommit) => CartMutationResult;
   onSuccess: () => void;
@@ -72,6 +73,7 @@ export const BundleVoucherSetupSheet = ({
   powders: _powders,
   defaultPowderGram: _defaultPowderGram,
   onClose,
+  onAfterClose,
   onValidateDraft,
   onCommitDraft,
   onSuccess,
@@ -220,6 +222,7 @@ export const BundleVoucherSetupSheet = ({
   const [addonRecipientSlotIndexes, setAddonRecipientSlotIndexes] = useState<number[]>(() => initialAddonRecipientIndexes);
 
   const [subView, setSubView] = useState<SubView>(null);
+  const [customizeClosing, setCustomizeClosing] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
 
   const qualifierFilled = qualifierSlots.filter(Boolean).length;
@@ -318,7 +321,7 @@ export const BundleVoucherSetupSheet = ({
           return next;
         });
       }
-      setSubView(null);
+      setCustomizeClosing(true);
     },
     [subView],
   );
@@ -613,18 +616,19 @@ export const BundleVoucherSetupSheet = ({
       : undefined;
 
     return (
-      <ResponsiveOverlay
-        open={open}
-        onOpenChange={(isOpen) => !isOpen && setSubView(null)}
-        layer={layer}
-        title="Cấu hình món"
-      >
         <ProductModal
           item={menuItem}
           latteItems={menuData.latte}
           milkTypes={milkTypes}
           addonGroups={menuData.addon_groups}
-          onClose={() => setSubView(null)}
+          managed
+          open={open && !customizeClosing}
+          pendingAddonVoucherIntent={null}
+          onClose={() => {
+            setSubView(null);
+            setCustomizeClosing(false);
+            if (!open) onAfterClose?.();
+          }}
           onConfirm={handleProductModalConfirm}
           allowedSizes={scope.allowed_sizes}
           disableVoucherApplication
@@ -632,7 +636,6 @@ export const BundleVoucherSetupSheet = ({
           editingItem={editingItem}
           ctaLabel="Chọn món này"
         />
-      </ResponsiveOverlay>
     );
   }
 
@@ -642,6 +645,7 @@ export const BundleVoucherSetupSheet = ({
       <ResponsiveOverlay
         open={open}
         onOpenChange={(isOpen) => !isOpen && setSubView(null)}
+        onAfterClose={() => { if (!open) onAfterClose?.(); }}
         layer={layer}
         title={subView.role === "qualifier" ? "Chọn món mua" : "Chọn món tặng"}
       >
@@ -666,6 +670,7 @@ export const BundleVoucherSetupSheet = ({
       open={open}
       onOpenChange={(isOpen) => !isOpen && handleClose()}
       layer={layer}
+      onAfterClose={onAfterClose}
       title="Chọn món cho ưu đãi"
     >
       <div className="flex flex-col">

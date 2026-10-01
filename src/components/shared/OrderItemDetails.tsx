@@ -2,7 +2,9 @@ import { SWEETNESS_OPTIONS, ICE_OPTIONS } from "@/src/constants/orderOptions";
 import type { OrderItemRes } from "@/src/services/staffOrdersListService";
 import { Ticket } from "lucide-react";
 
+/** Render configuration and each persisted item voucher exactly once. */
 export function OrderItemDetails({ item }: { item: OrderItemRes }) {
+  const lineVoucher = item.productVoucher ?? item.itemVoucher;
   const line1Chips: string[] = [];
   const line2Chips: string[] = [];
   const addonChips: string[] = [];
@@ -90,17 +92,17 @@ export function OrderItemDetails({ item }: { item: OrderItemRes }) {
       )}
 
       {/* Vouchers applied on this item */}
-      {(item.productVoucher || (item.addonVouchers && item.addonVouchers.length > 0)) && (
+      {(lineVoucher || (item.addonVouchers && item.addonVouchers.length > 0)) && (
         <div className="flex flex-wrap gap-1.5 pt-1">
-          {item.productVoucher && (
-            <div className="text-[10px] font-bold bg-orange-50 border border-orange-200 text-orange-700 dark:bg-orange-900/30 dark:border-orange-500/30 dark:text-orange-400 px-2 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-              <Ticket size={12} className="text-orange-500" /> Free {item.productVoucher.package.name}
+          {lineVoucher && (
+            <div className="text-[10px] font-bold bg-muted/50 border border-border text-primary px-2 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+              <Ticket size={12} className="text-primary" /> {lineVoucher.package.name}
               {item.product_voucher_discount_vnd ? ` (-${(item.product_voucher_discount_vnd / 1000).toLocaleString("vi-VN")}K)` : ""}
             </div>
           )}
           {item.addonVouchers && item.addonVouchers.map((av, idx) => (
-            <div key={idx} className="text-[10px] font-bold bg-green-50 border border-green-200 text-green-700 dark:bg-green-900/30 dark:border-green-500/30 dark:text-green-400 px-2 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-              <Ticket size={12} className="text-green-600" /> Free {av.voucher.package.name}
+            <div key={idx} className="text-[10px] font-bold bg-muted/50 border border-border text-primary px-2 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+              <Ticket size={12} className="text-primary" /> Free {av.voucher.package.name}
               {av.discount_applied_vnd ? ` (-${(av.discount_applied_vnd / 1000).toLocaleString("vi-VN")}K)` : ""}
             </div>
           ))}

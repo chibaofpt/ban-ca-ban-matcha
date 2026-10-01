@@ -6,7 +6,7 @@ const modalStack: string[] = [];
 let nextModalId = 0;
 
 /** Adds one history entry and closes only the topmost modal on browser Back. */
-export function useModalHistory(onClose: () => void) {
+export function useModalHistory(onClose: () => void, enabled = true) {
   const idRef = useRef(`product-modal-${++nextModalId}`);
   const onCloseRef = useRef(onClose);
   const closedRef = useRef(false);
@@ -25,6 +25,7 @@ export function useModalHistory(onClose: () => void) {
   }, [removeFromStack]);
 
   useEffect(() => {
+    if (!enabled) return;
     const id = idRef.current;
     modalStack.push(id);
     if (window.history.state?.productModal !== id) {
@@ -39,12 +40,12 @@ export function useModalHistory(onClose: () => void) {
       window.removeEventListener("popstate", onPopState);
       removeFromStack();
     };
-  }, [finishClose, removeFromStack]);
+  }, [enabled, finishClose, removeFromStack]);
 
   return useCallback(() => {
-    if (closedRef.current) return;
+    if (!enabled || closedRef.current) return;
     const ownsEntry = modalStack.at(-1) === idRef.current && window.history.state?.productModal === idRef.current;
     if (ownsEntry) window.history.back();
     finishClose();
-  }, [finishClose]);
+  }, [enabled, finishClose]);
 }

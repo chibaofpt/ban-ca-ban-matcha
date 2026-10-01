@@ -126,6 +126,9 @@ export async function GET(req: NextRequest) {
               productVoucher: {
                 include: { package: { select: { name: true } } }
               },
+              itemVoucher: {
+                include: { package: { select: { name: true } } }
+              },
               addonVouchers: {
                 include: {
                   voucher: {

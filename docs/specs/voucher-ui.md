@@ -133,3 +133,20 @@ lifecycle `onAfterClose`; không thêm timer hoặc điều hướng Browser Bac
 Trang tổng quan hiển thị ba KPI trên cùng một hàng: tổng cấu hình voucher, tổng voucher đã phát và
 tổng voucher đã sử dụng. Danh sách mặc định lọc `ACTIVE` và `PUBLIC`; hai select này không có lựa
 chọn tất cả. Select thể loại đứng giữa, mặc định **Không có** để không lọc theo voucher type.
+
+## Eligible target display và owning-cart adapters
+
+“Danh sách món được chọn” là toàn bộ món/topping được voucher cho phép, không phải các dòng
+đã chọn trong giỏ. Owned detail luôn hiển thị PRODUCT, PRODUCT_DISCOUNT, ITEM/extras và ADDON
+target, kể cả khi caller truyền cart callbacks. Compact card hiển thị size/cấu hình thuộc scope;
+target ngừng phục vụ vẫn đọc được nhưng không chọn được. RESERVED hoặc ví đang tải/lỗi xác minh
+giữ detail đọc được và khóa mọi mutation.
+
+Shared target pickers nhận add-item adapter của owning cart. POS truyền staff transition cùng
+guard owner; không dùng customer store để thêm món POS. ADDON và BUNDLE giữ adapter/evaluator
+hiện có. Managed configuration child giữ cùng stack và báo after-close trước khi đổi nội dung
+wallet hoặc owner; ordinary ProductModal giữ entry point/history cũ. BUNDLE customization dùng
+trực tiếp managed ProductModal với controlled open, không có visible wrapper thứ hai; giữ draft
+và child mounted tới after-close khi chọn xong, đóng child hoặc đóng owner từ bên ngoài.
+Cache của ví giữ card/detail đọc được trong khi refetch hoặc lỗi; action và commit adapter kiểm tra
+trạng thái xác minh hiện tại của đúng owning cart trước khi ghi, kể cả callback async đã bắt đầu.

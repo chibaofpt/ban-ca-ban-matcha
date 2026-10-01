@@ -14,7 +14,7 @@ export function PaymentMethodBadge({ method }: PaymentMethodBadgeProps) {
     <span
       className={cn(
         "inline-flex w-fit items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold",
-        isTransfer ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700",
+        isTransfer ? "bg-primary/10 text-primary" : "bg-muted text-foreground",
       )}
     >
       <Icon className="h-3 w-3" aria-hidden="true" />

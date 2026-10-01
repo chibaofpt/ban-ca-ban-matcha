@@ -7,7 +7,7 @@ import type {
   CustomerHistoryOrderItem,
 } from "@/src/lib/types/order";
 import { formatKa, formatOrderSize } from "@/src/utils/display";
-import { groupOrderItems } from "@/src/utils/orderHelpers";
+
 
 interface OrderHistoryItemsProps {
   order: CustomerHistoryOrder;
@@ -24,48 +24,18 @@ export function OrderHistoryItems({
   onReorder,
   maxItems,
 }: OrderHistoryItemsProps) {
-  const groupedItems = groupOrderItems(order.items);
+  const groupedItems = order.items;
   const visibleItems =
     maxItems !== undefined ? groupedItems.slice(0, maxItems) : groupedItems;
   const showDiscount = maxItems === undefined || groupedItems.length <= maxItems;
 
-  const itemProductVoucherNames = new Set(
-    order.items
-      .map((item) => item.productVoucher?.package?.name)
-      .filter((name): name is string => Boolean(name)),
-  );
-
-  const orderDiscountVouchers = (order.discountVouchers ?? []).filter((entry) => {
-    const v = entry.voucher as {
-      voucher_type?: string;
-      package?: { name?: string; voucher_type?: string };
-    };
-    if (v.voucher_type === "PRODUCT_DISCOUNT" || v.package?.voucher_type === "PRODUCT_DISCOUNT") {
-      return false;
-    }
-    if (entry.voucher?.package?.name && itemProductVoucherNames.has(entry.voucher.package.name)) {
-      return false;
-    }
-    return true;
-  });
-
-  const hasOrderDiscount =
-    order.total_voucher_discount_vnd > 0 &&
-    (order.discountVouchers && order.discountVouchers.length > 0
-      ? orderDiscountVouchers.length > 0
-      : !order.items.some(
-          (item) =>
-            item.productVoucher &&
-            item.product_voucher_discount_vnd === order.total_voucher_discount_vnd,
-        ));
+  const orderDiscountVouchers = order.discountVouchers ?? [];
+  const hasOrderDiscount = order.total_voucher_discount_vnd > 0;
 
   return (
     <ul className="space-y-4 pb-2 text-sm text-foreground/90">
       {visibleItems.map((item, index) => {
         const itemPrice = item.unit_price_vnd + item.addons_price_vnd;
-        const productVoucherDiscount = item.product_voucher_discount_vnd ?? 0;
-        const hasProductVoucher = !!item.productVoucher;
-        const hasAddonVouchers = (item.addonVouchers ?? []).length > 0;
 
         return (
           <li key={`${item.menu_item_id}-${index}`} className="flex flex-col gap-1">
@@ -104,44 +74,13 @@ export function OrderHistoryItems({
             {/* Row 2: config chips (sweetness, ice, milk, addons, note) */}
             <OrderItemDetails item={item} />
 
-            {/* Row 3: voucher discount badges */}
-            {(hasProductVoucher || hasAddonVouchers) && (
-              <div className="flex flex-wrap gap-1.5 pt-0.5">
-                {hasProductVoucher && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">
-                    🎟 {item.productVoucher!.package.name}
-                    {productVoucherDiscount > 0 && (
-                      <span className="text-orange-600">
-                        -{formatKa(productVoucherDiscount, "floor")}
-                      </span>
-                    )}
-                  </span>
-                )}
-                {(item.addonVouchers ?? []).map((av, avIdx) => {
-                  const disc = av.discount_applied_vnd ?? 0;
-                  return (
-                    <span
-                      key={avIdx}
-                      className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700"
-                    >
-                      🎟 {av.voucher.package.name}
-                      {disc > 0 && (
-                        <span className="text-green-600">
-                          -{formatKa(disc, "floor")}
-                        </span>
-                      )}
-                    </span>
-                  );
-                })}
-              </div>
-            )}
           </li>
         );
       })}
 
       {/* Order-level voucher discount (full list only) */}
       {showDiscount && hasOrderDiscount && (
-        <li className="flex flex-col border-t border-border/30 pt-2 text-[11px] text-green-700">
+        <li className="flex flex-col border-t border-border/30 pt-2 text-[11px] text-primary">
           <span>Giảm giá: -{formatKa(order.total_voucher_discount_vnd, "floor")}</span>
           {orderDiscountVouchers.length > 0 && (
             <span className="mt-0.5 block max-w-full truncate font-medium">

@@ -200,7 +200,13 @@ export interface CustomerHistoryOrderItem extends HistoryOrderItem {
   selectedPowder: { name: string; price_per_gram: string } | null;
 }
 
-export interface CustomerHistoryOrder {
+export interface DeliveryRecipientSnapshot {
+  delivery_receiver_name?: string | null;
+  delivery_receiver_phone?: string | null;
+  delivery_address?: string | null;
+}
+
+export interface CustomerHistoryOrder extends DeliveryRecipientSnapshot {
   id: string;
   order_code: string | null;
   status: OrderStatus;
@@ -222,7 +228,7 @@ export interface CustomerHistoryOrder {
   items: CustomerHistoryOrderItem[];
 }
 
-export interface OrderListItem {
+export interface OrderListItem extends DeliveryRecipientSnapshot {
   id: string;
   status: OrderStatus;
   order_type: OrderType;

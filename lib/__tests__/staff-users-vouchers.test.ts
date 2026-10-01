@@ -160,19 +160,29 @@ describe("GET /api/staff/users/[id]/vouchers", () => {
     expect(json.data).toEqual([]);
   });
 
-  it("chỉ trả voucher status = ACTIVE, bỏ qua REDEEMED/EXPIRED", async () => {
+  it("trả ACTIVE và RESERVED của đúng khách nhưng bỏ trạng thái terminal", async () => {
     mockGetSession.mockResolvedValue(STAFF_SESSION);
-    // findMany is called with where: { status: "ACTIVE" } — mock returns only ACTIVE
-    mockVoucherFindMany.mockResolvedValue([sampleActiveVoucher]);
+    const rows = [
+      sampleActiveVoucher,
+      { ...sampleActiveVoucher, id: "v-reserved", qr_token: "reserved-public-token", status: "RESERVED" },
+      { ...sampleActiveVoucher, status: "REDEEMED" },
+      { ...sampleActiveVoucher, status: "EXPIRED" },
+      { ...sampleActiveVoucher, user_id: "other-customer" },
+    ];
+    mockVoucherFindMany.mockImplementation(async ({ where }: { where: { user_id: string; status: string | { in: string[] } } }) =>
+      rows.filter((row) => row.user_id === where.user_id &&
+        (typeof where.status === "string" ? row.status === where.status : where.status.in.includes(row.status))));
     const res = await GET(makeReq(CUSTOMER_ID), makeParams(CUSTOMER_ID));
     expect(res.status).toBe(200);
-
-    // Verify the query filters by status = ACTIVE
-    expect(mockVoucherFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ status: "ACTIVE" }),
-      })
-    );
+    const json = await res.json();
+    expect(json.data.map((voucher: { qr_token: string; status: string }) => ({ qr_token: voucher.qr_token, status: voucher.status }))).toEqual([
+      { qr_token: "voucher-public-token", status: "ACTIVE" },
+      { qr_token: "reserved-public-token", status: "RESERVED" },
+    ]);
+    for (const voucher of json.data) {
+      expect(voucher).not.toHaveProperty("id");
+      expect(voucher).not.toHaveProperty("user_id");
+    }
     expect(mockVoucherUpdateMany).not.toHaveBeenCalled();
   });
 });

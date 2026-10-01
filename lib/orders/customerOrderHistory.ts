@@ -126,6 +126,9 @@ export async function getCustomerOrderHistory(
     void freeshipVoucherIdToRemove;
     return {
       ...publicOrder,
+      delivery_receiver_name: order.delivery_receiver_name ?? null,
+      delivery_receiver_phone: order.delivery_receiver_phone ?? null,
+      delivery_address: order.delivery_address ?? null,
       pickup_time: serializeOrderDate(order.pickup_time),
       created_at: serializeOrderDate(order.created_at),
       updated_at: serializeOrderDate(order.updated_at),

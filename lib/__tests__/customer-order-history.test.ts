@@ -23,6 +23,18 @@ describe("customer order history points", () => {
     vi.clearAllMocks();
   });
 
+  it("khai báo rõ snapshot người nhận bị thiếu trong đơn giao hàng legacy", async () => {
+    mocks.orderCount.mockResolvedValue(1);
+    mocks.orderFindMany.mockResolvedValue([{
+      id: "legacy-delivery", status: "COMPLETED", order_type: "DELIVERY", order_code: null,
+      points_earned: 0, items: [], discountVouchers: [], pointsLogs: [],
+    }]);
+    const result = await getCustomerOrderHistory("customer-id", 1, 10);
+    expect(result.data[0]).toMatchObject({
+      delivery_receiver_name: null, delivery_receiver_phone: null, delivery_address: null,
+    });
+  });
+
   it("cộng điểm mua hàng và điểm dư voucher thành tổng thực nhận", () => {
     expect(calculateOrderPointsAwarded([
       { reason: "order_complete", delta: 5 },

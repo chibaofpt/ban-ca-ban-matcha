@@ -7,6 +7,8 @@ import { formatKa, formatOrderSize } from "@/src/utils/display";
 import { fetchAdminOrders, confirmPayment, adminCancelOrder, AdminOrderServiceError, type AdminOrderRes } from "@/src/services/adminOrderService";
 import { apiClient } from "@/src/lib/api/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { DeliveryRecipientDetails } from "@/src/components/shared/DeliveryRecipientDetails";
+import { OrderReadOnlyDetail } from "@/src/components/shared/OrderReadOnlyDetail";
 import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
 import { PaymentMethodBadge } from "@/src/components/shared/PaymentMethodBadge";
 import { resolveOrderPaymentMethod } from "@/src/lib/utils/counterTransferOrder";
@@ -16,6 +18,7 @@ import { CountdownTimer } from "@/src/components/customer/CountdownTimer";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { OrderProgressBar } from "@/src/components/shared/OrderProgressBar";
 import { DailyReportModal } from "@/src/components/report/DailyReportModal";
+import { useAdminPendingTransferCount } from "@/src/hooks/useAdminPendingTransferCount";
 
 const formatDateTime = (iso: string): string => {
   const d = new Date(iso);
@@ -42,6 +45,7 @@ export default function AdminOrdersPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<OrderTabKey>("all");
   const [page, setPage] = useState(1);
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -110,19 +114,7 @@ export default function AdminOrdersPage() {
   const orders = queryData?.data || [];
   const totalPages = queryData?.meta.totalPages || 1;
 
-  // Background polling cho pendingCount
-  const fetchPendingCountAPI = useCallback(async () => {
-    const res = await fetchAdminOrders({ status: "PENDING", limit: 1 });
-    return res;
-  }, []);
-
-  const { data: pendingRes } = useQuery({
-    queryKey: ["admin", "orders", "pending-count"],
-    queryFn: fetchPendingCountAPI,
-    refetchInterval: 20000,
-  });
-
-  const pendingCount = pendingRes?.meta.total || 0;
+  const { data: pendingCount = 0 } = useAdminPendingTransferCount();
 
   const refetch = () => queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
 
@@ -376,7 +368,7 @@ export default function AdminOrdersPage() {
                 key={order.id}
                 className={cn(
                   "rounded-2xl border bg-card shadow-sm overflow-hidden transition",
-                  order.status === "PENDING" && "border-yellow-400 border-2 shadow-yellow-100",
+                  order.status === "PENDING" && "border-primary/30 bg-primary/5",
                   order.status === "CANCELLED" && "opacity-60"
                 )}
               >
@@ -388,7 +380,7 @@ export default function AdminOrdersPage() {
                         {order.order_code ?? `#${order.id.slice(0, 8)}`}
                       </div>
                       {order.pickup_time && (
-                        <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-md w-fit">
+                        <span className="inline-flex items-center gap-1 bg-muted/50 text-foreground text-xs font-bold px-2 py-0.5 rounded-md w-fit">
                           <Clock size={10} />
                           Nhận lúc: {formatTimeOnly(order.pickup_time)}
                         </span>
@@ -407,21 +399,23 @@ export default function AdminOrdersPage() {
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span className="text-sm font-medium text-foreground">
-                        {order.user?.name ?? "Khách vãng lai"}
+                        {order.order_type === "DELIVERY" ? "Đơn giao hàng" : order.user?.name ?? "Khách vãng lai"}
                       </span>
-                      <span className="inline-flex items-center gap-1">
+                      <span className={order.order_type === "DELIVERY" ? "hidden" : "inline-flex items-center gap-1"}>
                         <Phone size={11} />
                         {order.user?.phone_number ?? "—"}
                       </span>
                     </div>
                     {order.status === "PENDING" && order.auto_cancel_at && (
-                      <div className="flex items-center gap-1 text-[11px] bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded-lg text-yellow-700">
+                      <div className="flex items-center gap-1 text-[11px] bg-muted/50 border border-border px-2 py-0.5 rounded-lg text-primary">
                         <Clock size={11} />
                         <CountdownTimer targetTime={order.auto_cancel_at} className="text-[11px]" />
                       </div>
                     )}
                   </div>
 
+                  <DeliveryRecipientDetails {...order} />
+                  <button type="button" className="min-h-11 w-full rounded-xl border border-border bg-muted/40 px-3 text-sm font-semibold" onClick={() => setDetailOrderId(order.id)}>Chi tiết đơn</button>
                   {/* Progress Bar — chỉ hiện cho non-terminal states */}
                   {!isTerminal && (
                     <div className="pt-1">
@@ -466,7 +460,7 @@ export default function AdminOrdersPage() {
                         </li>
                       ))}
                       {order.discountVouchers && order.discountVouchers.length > 0 && (
-                        <li className="text-xs text-green-600 pt-1 flex flex-col gap-0.5">
+                        <li className="text-xs text-primary pt-1 flex flex-col gap-0.5">
                           {order.discountVouchers.map((dv, idx) => {
                             const v = dv.voucher;
                             let discountText = "";
@@ -506,7 +500,7 @@ export default function AdminOrdersPage() {
                       const totalDiscount = (order.total_voucher_discount_vnd || 0) + (order.freeship_discount_vnd || 0) + itemDiscount;
                       if (totalDiscount <= 0) return null;
                       return (
-                        <div className="flex justify-between items-center gap-2 text-[13px] text-green-600">
+                        <div className="flex justify-between items-center gap-2 text-[13px] text-primary">
                           <span>Voucher giảm:</span>
                           <span>-{formatKa(totalDiscount, "floor")}</span>
                         </div>
@@ -532,8 +526,8 @@ export default function AdminOrdersPage() {
                       return (
                         <div className="flex items-center justify-between mt-1.5">
                           {order.status === "CANCELLED" ? (
-                            <span className="text-xs font-semibold flex items-center gap-1 text-red-500">
-                              <XCircle size={13} className="text-red-500" />
+                            <span className="text-xs font-semibold flex items-center gap-1 text-destructive">
+                              <XCircle size={13} className="text-destructive" />
                               <span>Đã huỷ</span>
                             </span>
                           ) : order.status === "COMPLETED" && order.order_type !== "COUNTER" ? (
@@ -545,7 +539,7 @@ export default function AdminOrdersPage() {
                             <button
                               disabled={cancelOrderMutation.isPending}
                               onClick={(e) => handleCancelOrder(e, order.id, order.order_type, order.status)}
-                              className="min-h-10 px-2 text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline transition-colors disabled:opacity-50"
+                              className="min-h-10 px-2 text-[11px] font-semibold text-destructive hover:text-destructive hover:underline transition-colors disabled:opacity-50"
                             >
                               Huỷ đơn
                             </button>
@@ -592,6 +586,7 @@ export default function AdminOrdersPage() {
         </div>
       )}
 
+      {orders.find((order) => order.id === detailOrderId) ? <OrderReadOnlyDetail open={detailOrderId !== null} onOpenChange={(open) => { if (!open) setDetailOrderId(null); }} order={orders.find((order) => order.id === detailOrderId)!} /> : null}
       {/* Filter Modal */}
       {showFilterModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">

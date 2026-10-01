@@ -85,9 +85,9 @@ export function OrderProgressBar({ status }: OrderProgressBarProps) {
                 className={cn(
                   "relative z-10 w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all duration-300",
                   isCompleted
-                    ? "bg-primary border-primary text-white"
+                    ? "bg-primary/15 border-primary/30 text-primary"
                     : isActive
-                    ? "bg-primary border-primary text-white"
+                    ? "bg-primary/15 border-primary/30 text-primary"
                     : "bg-background border-border text-muted-foreground"
                 )}
               >

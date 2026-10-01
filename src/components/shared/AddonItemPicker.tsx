@@ -53,7 +53,7 @@ export const AddonItemPicker = ({
 }: AddonItemPickerProps) => {
   const { applyAddonVoucher, setCartOpen, setPendingAddonVoucher } = useCartStore();
   const applyVoucher = onApplyVoucher ?? applyAddonVoucher;
-  const addonTargets = voucher.eligible_addon_options?.filter((option) => option.is_active && !option.is_dynamic_gram) ?? [];
+  const addonTargets = voucher.eligible_addon_options ?? [];
   const [selectedAddonOptionId, setSelectedAddonOptionId] = useState(
     resolveAddonVoucherOptionId(voucher) ?? "",
   );
@@ -115,7 +115,7 @@ export const AddonItemPicker = ({
   const handleSelectItem = (item: ProjectedCartLine) => {
     if (!canEdit) return;
     const addonOptionId = selectedAddonOptionId;
-    if (!addonOptionId || hasAddonVoucherForOption(item, addonOptionId)) return;
+    if (!addonOptionId || hasAddonVoucherForOption(item, addonOptionId) || addonTargets.some((option) => option.addon_option_id === addonOptionId && (!option.is_active || option.is_dynamic_gram))) return;
     if ((bundleAllocatedQuantitiesByCartId.get(item.cartId) ?? 0) >= item.quantity) {
       void import("sonner").then(({ toast }) => toast.error("Món này đang thuộc ưu đãi BUNDLE"));
       return;
@@ -204,7 +204,7 @@ export const AddonItemPicker = ({
           <h5 id="addon-voucher-targets" className="text-xs font-bold uppercase tracking-widest text-primary/50">Chọn món áp dụng</h5>
           <p className="mt-1 text-xs text-muted-foreground">Chọn topping của voucher, sau đó chọn ly trong giỏ.</p>
         </div>
-        {addonTargets.length > 1 ? <div className="space-y-2"><p className="text-sm font-semibold">Chọn addon được tặng</p>{addonTargets.map((option) => <button type="button" key={option.addon_option_id} disabled={!canEdit} onClick={() => setSelectedAddonOptionId(option.addon_option_id)} className={`min-h-11 w-full rounded-xl border px-3 text-left disabled:cursor-not-allowed disabled:opacity-50 ${selectedAddonOptionId === option.addon_option_id ? "border-primary bg-primary/10" : "border-input"}`}>{option.label}</button>)}</div> : null}
+        {addonTargets.length > 0 ? <div className="space-y-2"><p className="text-sm font-semibold">Chọn addon được tặng</p>{addonTargets.map((option) => <button type="button" key={option.addon_option_id} disabled={!canEdit || !option.is_active || option.is_dynamic_gram} onClick={() => setSelectedAddonOptionId(option.addon_option_id)} className={`min-h-11 w-full rounded-xl border px-3 text-left disabled:cursor-not-allowed disabled:opacity-50 ${selectedAddonOptionId === option.addon_option_id ? "border-primary bg-primary/10" : "border-input"}`}>{option.label}{!option.is_active || option.is_dynamic_gram ? " · Không khả dụng" : ""}</button>)}</div> : null}
         {eligibleDrinkItems.length === 0 && selectedAddonOptionId ? <button type="button" disabled={!canEdit} onClick={() => { const intent = resolveIntent(selectedAddonOptionId); if (intent) savePendingAndExit(intent); }} className="min-h-11 w-full rounded-xl bg-primary px-4 font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">Chọn món mới</button> : null}
         {eligibleDrinkItems.map(item => (
           item.menuItem ? (

@@ -63,13 +63,13 @@ const CartItemCard = ({
 
   if (isUnavailable) {
     return (
-      <div className="flex gap-3.5 rounded-[1.25rem] border border-amber-200 bg-amber-50/70 p-3.5">
+      <div className="flex gap-3.5 rounded-[1.25rem] border border-border bg-muted/50 p-3.5">
         <div className="relative h-[5.5rem] w-[5.5rem] shrink-0 overflow-hidden rounded-2xl bg-secondary/10 opacity-60">
           {item.imageUrl ? (
             <Image src={item.imageUrl} alt={item.name} fill sizes="88px" className="object-cover grayscale" />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
-              <AlertTriangle className="h-8 w-8 text-amber-600" />
+              <AlertTriangle className="h-8 w-8 text-primary" />
             </div>
           )}
         </div>
@@ -77,7 +77,7 @@ const CartItemCard = ({
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <h4 className="truncate text-sm font-bold text-primary">{item.name}</h4>
-              <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-amber-700">
+              <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-primary">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 Món không còn phục vụ
               </p>
@@ -89,7 +89,7 @@ const CartItemCard = ({
               type="button"
               onClick={() => onRemove(item.cartId)}
               aria-label={`Xoá ${item.name}`}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-red-500 transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-destructive transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
             >
               <Trash2 className="h-5 w-5" />
             </button>
@@ -105,7 +105,7 @@ const CartItemCard = ({
         if ((event.target as HTMLElement).closest("button") || editBlocked) return;
         onEdit(item);
       }}
-      className="flex cursor-pointer gap-3.5 rounded-[1.25rem] border border-transparent bg-white p-3.5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] transition-colors hover:border-primary/15 hover:bg-primary/[0.02]"
+      className="flex cursor-pointer gap-3.5 rounded-[1.25rem] border border-transparent bg-card p-3.5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] transition-colors hover:border-primary/15 hover:bg-primary/[0.02]"
     >
       {/* Thumbnail & Stepper */}
       <div className="flex flex-col items-center gap-2 shrink-0">
@@ -119,7 +119,7 @@ const CartItemCard = ({
         
         {!hasAnyVoucher && (
           <div 
-            className="flex w-[7.5rem] items-center justify-between gap-1 rounded-full border border-border bg-white px-1 py-1 shadow-sm"
+            className="flex w-[7.5rem] items-center justify-between gap-1 rounded-full border border-border bg-card px-1 py-1 shadow-sm"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -169,7 +169,7 @@ const CartItemCard = ({
                 onRemove(item.cartId);
               }}
               aria-label={`Xoá ${item.name}`}
-              className="shrink-0 w-11 h-11 rounded-full flex items-center justify-center text-primary/40 hover:text-red-500 hover:bg-red-50 transition-colors -mt-2 -mr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+              className="shrink-0 w-11 h-11 rounded-full flex items-center justify-center text-primary/40 hover:text-destructive hover:bg-red-50 transition-colors -mt-2 -mr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -212,15 +212,15 @@ const CartItemCard = ({
             {appliedProductVoucherId && (() => {
               const pv = allVouchers.find(v => v.qr_token === appliedProductVoucherId);
               return (
-                <div className="text-[10px] font-bold bg-orange-50 border border-orange-200 text-orange-700 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-                  <Ticket className="w-3 h-3 text-orange-500" /> {pv?.package?.name || "Free món"}
+                <div className="text-[10px] font-bold bg-muted/50 border border-border text-primary pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                  <Ticket className="w-3 h-3 text-primary" /> {pv?.package?.name || "Free món"}
                   <button
                     type="button"
                     disabled={!walletVerified}
                     onClick={(e) => { e.stopPropagation(); onRemoveProductVoucher(item.cartId); }}
                     aria-label="Bỏ voucher sản phẩm"
                     title={!walletVerified ? voucherReadOnlyReason : undefined}
-                    className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-orange-200 text-orange-500 hover:text-orange-700 transition-colors ml-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-orange-200 text-primary hover:text-primary transition-colors ml-0.5 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <X size={12} strokeWidth={2.5} />
                   </button>
@@ -231,15 +231,15 @@ const CartItemCard = ({
             {item.addonVouchers && item.addonVouchers.map(av => {
               const voucherInfo = allVouchers.find(v => v.qr_token === av.token);
               return (
-                <div key={av.token} className="text-[10px] font-bold bg-green-50 border border-green-200 text-green-700 pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-                  <Ticket className="w-3 h-3 text-green-600" /> Free {voucherInfo?.addonOption?.label || "Topping"}
+                <div key={av.token} className="text-[10px] font-bold bg-muted/50 border border-border text-primary pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                  <Ticket className="w-3 h-3 text-primary" /> Free {voucherInfo?.addonOption?.label || "Topping"}
                   <button
                     type="button"
                     disabled={!walletVerified}
                     onClick={(e) => { e.stopPropagation(); onRemoveAddonVoucher(item.cartId, av.token); }}
                     aria-label="Bỏ voucher topping"
                     title={!walletVerified ? voucherReadOnlyReason : undefined}
-                    className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-green-200 text-green-600 hover:text-green-800 transition-colors ml-0.5 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-green-200 text-primary hover:text-primary transition-colors ml-0.5 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <X size={12} strokeWidth={2.5} />
                   </button>
@@ -253,14 +253,14 @@ const CartItemCard = ({
                 disabled={!walletVerified}
                 onClick={(e) => { e.stopPropagation(); onOpenVoucherPicker(item.cartId); }}
                 title={!walletVerified ? voucherReadOnlyReason : undefined}
-                className="text-[10px] font-bold bg-white border border-dashed border-orange-300 text-orange-600 px-3 py-1.5 rounded-full flex items-center gap-1 hover:bg-orange-50 hover:border-solid transition-all shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                className="text-[10px] font-bold bg-card border border-dashed border-border text-primary px-3 py-1.5 rounded-full flex items-center gap-1 hover:bg-muted/50 hover:border-solid transition-all shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Ticket className="w-3 h-3" />
                 Chọn ưu đãi ({applicableProductVouchers.length + applicableAddonVouchers.length})
               </button>
             )}
             {editBlocked && (
-              <span role="alert" className="basis-full text-[10px] font-medium text-amber-700">
+              <span role="alert" className="basis-full text-[10px] font-medium text-primary">
                 {voucherReadOnlyReason} Chỉnh sửa món này đang tạm khóa để bảo toàn voucher.
               </span>
             )}

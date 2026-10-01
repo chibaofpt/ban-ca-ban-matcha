@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { estimateMultiDiscountSavings } from "@/src/utils/voucherMatchUtils";
+import { estimateMultiDiscountSavings, isVoucherUsable } from "@/src/utils/voucherMatchUtils";
 import { type MyVoucher, type VoucherPackage } from "@/src/services/customerVoucherService";
 import { useVoucherAcquisition, type VoucherAcquisitionOptions } from "@/src/hooks/useVoucherAcquisition";
 import { VoucherCard } from "@/src/components/shared/VoucherCards";
@@ -34,6 +34,9 @@ import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import type { PendingAddonVoucherIntent } from "@/src/lib/store/cartStore";
 
 interface CartDiscountPickerProps {
+  open: boolean;
+  onAfterClose?: () => void;
+  onAddVoucherItem?: (item: Omit<import("@/src/lib/types/cart").CartItem, "cartId">) => CartMutationResult<unknown>;
   discountVouchers: MyVoucher[];
   freeshipVouchers: MyVoucher[];
   productDiscountVouchers: MyVoucher[];
@@ -85,7 +88,7 @@ interface CartDiscountPickerProps {
   onSavePendingAddonVoucher?: (intent: PendingAddonVoucherIntent) => void;
   acquisitionOptions?: VoucherAcquisitionOptions;
   onAcquired?: (voucherPackage: VoucherPackage) => void;
-  isSelectionContextCurrent?: () => boolean;
+  isSelectionContextCurrent?: (voucherToken?: string) => boolean;
   tabs?: VoucherModalTab[];
   title?: string;
   pointsLabel?: string;
@@ -101,6 +104,9 @@ type VoucherPickerView =
   | { kind: "bundle-setup"; voucher: MyVoucher };
 
 export const CartDiscountPicker = ({
+  open,
+  onAfterClose,
+  onAddVoucherItem,
   discountVouchers,
   freeshipVouchers,
   productDiscountVouchers,
@@ -146,6 +152,9 @@ export const CartDiscountPicker = ({
   emptyWalletLabel = "Bạn chưa có mã ưu đãi nào",
 }: CartDiscountPickerProps) => {
   const router = useRouter();
+  const [productChildOpen, setProductChildOpen] = useState(false);
+  const [bundleClosing, setBundleClosing] = useState(false);
+  const [targetClosing, setTargetClosing] = useState(false);
   const { acquire, retryRefresh, receipt, isPending } = useVoucherAcquisition({
     ...acquisitionOptions,
     refreshWallet: onRefreshVouchers,
@@ -155,16 +164,20 @@ export const CartDiscountPicker = ({
   const [confirmPackage, setConfirmPackage] = useState<VoucherPackage | null>(null);
   const [activeView, setActiveView] = useState<VoucherPickerView>({ kind: "list" });
   const [activeTab, setActiveTab] = useState<VoucherModalTab>("my_vouchers");
-  const detailVoucher = activeView.kind === "detail" ? activeView.voucher : null;
-  const targetVoucher = activeView.kind === "product-target" ? activeView.voucher : null;
-  const addonTargetVoucher = activeView.kind === "addon-target" ? activeView.voucher : null;
-  const bundleSetupVoucher = activeView.kind === "bundle-setup" ? activeView.voucher : null;
-  const selectionContextIsCurrent = () => isSelectionContextCurrent?.() ?? true;
 
   const myVouchers = [
     ...discountVouchers, ...freeshipVouchers, ...productDiscountVouchers,
     ...bundleVouchers, ...productVouchers, ...addonVouchers,
   ];
+  const selectedViewVoucher = activeView.kind === "list" ? null
+    : myVouchers.find((voucher) => voucher.qr_token === activeView.voucher.qr_token) ?? activeView.voucher;
+  const detailVoucher = activeView.kind === "detail" ? selectedViewVoucher : null;
+  const targetVoucher = activeView.kind === "product-target" ? selectedViewVoucher : null;
+  const addonTargetVoucher = activeView.kind === "addon-target" ? selectedViewVoucher : null;
+  const bundleSetupVoucher = activeView.kind === "bundle-setup" ? selectedViewVoucher : null;
+  const selectionContextIsCurrent = (voucherToken?: string) => !isLoading && !loadError &&
+    (isSelectionContextCurrent?.(voucherToken) ?? true) && (!voucherToken ||
+      myVouchers.some((voucher) => voucher.qr_token === voucherToken && isVoucherUsable(voucher)));
   const hasAppliedNonBundleVoucher = selectedVoucherIds.length > 0 || cart.some((item) =>
     Boolean(item.lineVoucher) || item.addonVouchers.length > 0,
   );
@@ -201,9 +214,9 @@ export const CartDiscountPicker = ({
         voucher_type: newVoucher.voucher_type,
         discount_type: pkg.discount_type,
       };
-      if (!result.refreshError && newVoucher.voucher_type === "BUNDLE") {
+      if (!result.refreshError && refreshedVoucher && isVoucherUsable(refreshedVoucher) && (isSelectionContextCurrent?.(refreshedVoucher.qr_token) ?? true) && newVoucher.voucher_type === "BUNDLE") {
         if (refreshedVoucher) setActiveView({ kind: "bundle-setup", voucher: refreshedVoucher });
-      } else if (!result.refreshError) {
+      } else if (!result.refreshError && refreshedVoucher && isVoucherUsable(refreshedVoucher) && (isSelectionContextCurrent?.(refreshedVoucher.qr_token) ?? true)) {
         onUpdateSelectedVouchers((previous) =>
           selectOrderVoucherToken(previous, acquiredSelection, [...myVouchers, acquiredSelection]));
       }
@@ -224,9 +237,9 @@ export const CartDiscountPicker = ({
       const result = await retryRefresh();
       if (result && selectionContextIsCurrent()) {
         const refreshedVoucher = result.wallet?.find((voucher) => voucher.qr_token === result.acquired.qr_token);
-        if (refreshedVoucher?.voucher_type === "BUNDLE") {
+        if (refreshedVoucher && isVoucherUsable(refreshedVoucher) && (isSelectionContextCurrent?.(refreshedVoucher.qr_token) ?? true) && refreshedVoucher.voucher_type === "BUNDLE") {
           setActiveView({ kind: "bundle-setup", voucher: refreshedVoucher });
-        } else if (refreshedVoucher) {
+        } else if (refreshedVoucher && isVoucherUsable(refreshedVoucher) && (isSelectionContextCurrent?.(refreshedVoucher.qr_token) ?? true)) {
           onUpdateSelectedVouchers((previous) =>
             selectOrderVoucherToken(previous, refreshedVoucher, [...myVouchers, refreshedVoucher]));
         }
@@ -261,17 +274,17 @@ export const CartDiscountPicker = ({
         )
       : 0;
   const acquisitionReceiptView = receipt ? (
-    <div className="mb-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5" role="status" aria-live="polite">
-      <p className="text-sm font-bold text-emerald-900">Đã nhận voucher</p>
-      <p className="mt-1 break-all text-xs text-emerald-800">Mã: {receipt.acquired.qr_token}</p>
+    <div className="mb-3 rounded-2xl border border-border bg-muted/50 px-3 py-2.5" role="status" aria-live="polite">
+      <p className="text-sm font-bold text-primary">Đã nhận voucher</p>
+      <p className="mt-1 break-all text-xs text-primary">Mã: {receipt.acquired.qr_token}</p>
       {receipt.refreshError ? (
         <div className="mt-2 flex items-center gap-2">
-          <p className="flex-1 text-xs text-amber-800">Ví chưa cập nhật, voucher vẫn đã được ghi nhận.</p>
+          <p className="flex-1 text-xs text-primary">Ví chưa cập nhật, voucher vẫn đã được ghi nhận.</p>
           <button
             type="button"
             onClick={() => void handleRetryWalletRefresh()}
             disabled={isRetryingWallet}
-            className="min-h-11 shrink-0 rounded-xl border border-amber-300 bg-white px-3 text-xs font-bold text-amber-900 disabled:opacity-60"
+            className="min-h-11 shrink-0 rounded-xl border border-border bg-card px-3 text-xs font-bold text-primary disabled:opacity-60"
           >
             {isRetryingWallet ? <Loader2 className="mr-1 inline size-3 animate-spin" /> : null}
             Làm mới ví
@@ -282,7 +295,7 @@ export const CartDiscountPicker = ({
   ) : null;
 
   const closePicker = () => {
-    setActiveView({ kind: "list" });
+    if (activeView.kind === "product-target" || activeView.kind === "addon-target" || activeView.kind === "bundle-setup") { setActiveView({ kind: "list" }); return; }
     onClose();
   };
 
@@ -299,6 +312,7 @@ export const CartDiscountPicker = ({
   };
 
   const clearAppliedNonBundleVouchers = () => {
+    if (!selectionContextIsCurrent()) return;
     onUpdateSelectedVouchers([]);
     for (const item of cart) {
       if (item.lineVoucher) onRemoveProductVoucher(item.cartId);
@@ -318,6 +332,7 @@ export const CartDiscountPicker = ({
     : false;
   const removeAppliedDetailVoucher = detailVoucher && (detailProductItem || detailHasOrderVoucher || detailHasBundle)
     ? () => {
+        if (!selectionContextIsCurrent()) return;
         if (detailProductItem) onRemoveProductVoucher(detailProductItem.cartId);
         else if (detailHasBundle) onRequestRemoveBundle(detailVoucher.qr_token);
         else onUpdateSelectedVouchers((previous) => previous.filter((token) => token !== detailVoucher.qr_token));
@@ -326,10 +341,10 @@ export const CartDiscountPicker = ({
     : undefined;
   return (
     <ResponsiveOverlay
-      open
+      open={open || productChildOpen || bundleSetupVoucher !== null || targetVoucher !== null || addonTargetVoucher !== null}
       onOpenChange={(open) => { if (!open) closePicker(); }}
       layer="nested"
-      nested
+      onAfterClose={() => { setActiveView({ kind: "list" }); setConfirmPackage(null); onAfterClose?.(); }}
       title="Mã ưu đãi"
       presentation="bare"
       className="w-full md:max-w-2xl"
@@ -350,7 +365,7 @@ export const CartDiscountPicker = ({
           <button
             type="button"
             onClick={clearAppliedNonBundleVouchers}
-            className="min-h-11 shrink-0 rounded-full bg-red-50 px-3 text-xs font-bold text-red-500 transition-colors hover:bg-red-100 focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-h-11 shrink-0 rounded-full bg-red-50 px-3 text-xs font-bold text-destructive transition-colors hover:bg-red-100 focus-visible:ring-2 focus-visible:ring-ring"
           >
             Bỏ tất cả
           </button>
@@ -370,6 +385,8 @@ export const CartDiscountPicker = ({
             <VoucherModalDetailTransition>
               {detailVoucher ? (
                 <VoucherDetailSheet
+                  overlayOpen={open}
+                  onChildOpenChange={setProductChildOpen}
                   key="cart-voucher-detail"
                   voucher={detailVoucher}
                   cartItems={cart}
@@ -378,26 +395,28 @@ export const CartDiscountPicker = ({
                   orderType={orderType}
                   shippingFee={shippingFee}
                   menuData={menuData}
-                  canEdit={!isLoading}
+                  canEdit={selectedViewVoucher !== null && selectionContextIsCurrent(selectedViewVoucher.qr_token)}
+                  onAddVoucherItem={onAddVoucherItem ? (item) => selectionContextIsCurrent(detailVoucher.qr_token) ? onAddVoucherItem(item) : { ok: false, code: "BUNDLE_STALE", message: "Ví voucher đang được xác minh lại." } : undefined}
                   bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}
                   onBack={() => setActiveView({ kind: "list" })}
                   onUseNowSuccess={() => setActiveView({ kind: "list" })}
-                  onOpenBundleSetup={(voucher) => setActiveView({ kind: "bundle-setup", voucher })}
+                  onOpenBundleSetup={(voucher) => { if (selectionContextIsCurrent(voucher.qr_token)) setActiveView({ kind: "bundle-setup", voucher }); }}
                   onRequestRefund={() => undefined}
                   isRefunding={false}
                   onRemoveAppliedVoucher={removeAppliedDetailVoucher}
                   onSelectOrderVoucher={(voucher) => {
-                    if (!selectionContextIsCurrent()) return;
+                    if (!selectionContextIsCurrent(voucher.qr_token)) return;
                     onUpdateSelectedVouchers((previous) =>
                       selectOrderVoucherToken(previous, voucher, myVouchers));
                   }}
-                  onApplyAddonVoucher={onApplyAddonVoucher}
-                  onSavePendingAddonVoucher={onSavePendingAddonVoucher}
+                  onApplyAddonVoucher={onApplyAddonVoucher ? (...args) => selectionContextIsCurrent(args[1]) ? onApplyAddonVoucher(...args) : { ok: false, code: "BUNDLE_STALE", message: "Ví voucher đang được xác minh lại." } : undefined}
+                  onSavePendingAddonVoucher={onSavePendingAddonVoucher ? (intent) => { if (selectionContextIsCurrent(intent.voucherId)) onSavePendingAddonVoucher(intent); } : undefined}
                   onPendingAddon={() => {
                     setActiveView({ kind: "list" });
                     onClose();
                   }}
                   onSelectProductDiscountTarget={(voucher) => {
+                    if (!selectionContextIsCurrent(voucher.qr_token)) return;
                     const selection = getProductDiscountSelection(productTargets(voucher), null);
                     if (selection.kind === "single") {
                       onApplyProductVoucher(selection.target.cartId, voucher);
@@ -409,6 +428,7 @@ export const CartDiscountPicker = ({
                     }
                   }}
                   onUseProductVoucher={(voucher) => {
+                    if (!selectionContextIsCurrent(voucher.qr_token)) return;
                     onUseProductVoucher(voucher);
                     setActiveView({ kind: "list" });
                   }}
@@ -427,13 +447,14 @@ export const CartDiscountPicker = ({
                 type="button"
                 onClick={() => void handleRetryWalletLoad()}
                 disabled={isRetryingWallet}
-                className="min-h-11 rounded-xl border border-red-300 bg-white px-4 text-xs font-bold text-red-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700 disabled:opacity-60"
+                className="min-h-11 rounded-xl border border-red-300 bg-card px-4 text-xs font-bold text-red-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700 disabled:opacity-60"
               >
                 {isRetryingWallet ? <Loader2 className="mr-1 inline size-4 animate-spin" aria-hidden="true" /> : null}
                 Thử lại
               </button>
             </div>
-          ) : isLoading ? (
+          ) : null}
+          {isLoading && myVouchers.length === 0 ? (
             <div
               role="status"
               aria-label="Đang tải voucher"
@@ -442,8 +463,8 @@ export const CartDiscountPicker = ({
               <Loader2 className="size-6 animate-spin text-primary" aria-hidden="true" />
               <span className="sr-only">Đang tải voucher</span>
             </div>
-          ) : myVouchers.length === 0 ? (
-            <div className="text-center py-6 bg-white rounded-2xl border border-dashed border-border/60">
+          ) : !loadError && myVouchers.length === 0 ? (
+            <div className="text-center py-6 bg-card rounded-2xl border border-dashed border-border/60">
               <p className="text-xs text-primary/40 font-medium">{emptyWalletLabel}</p>
             </div>
           ) : (
@@ -480,7 +501,7 @@ export const CartDiscountPicker = ({
                   : currentOrderDiscount;
                 const amountBeforeShipping = subtotalPrice - currentOrderDiscount;
 
-                let isDisabled = v.status !== "ACTIVE" || !v.availability.can_apply;
+                let isDisabled = !selectionContextIsCurrent() || v.status !== "ACTIVE" || !v.availability.can_apply;
                 let disabledReason = isDisabled
                   ? getVoucherAvailabilityMessage(v) ?? "Voucher hiện chưa thể áp dụng"
                   : "";
@@ -520,7 +541,7 @@ export const CartDiscountPicker = ({
                 }
 
                 const handleSelection = () => {
-                  if (!selectionContextIsCurrent()) return;
+                  if (!selectionContextIsCurrent() || (!isSelected && !selectionContextIsCurrent(v.qr_token))) return;
                   setActiveView({ kind: "list" });
                   switch (v.voucher_type) {
                     case "BUNDLE":
@@ -565,7 +586,7 @@ export const CartDiscountPicker = ({
                         setActiveView({ kind: "detail", voucher: v });
                         return;
                       }
-                      onUseProductVoucher(v);
+                      setActiveView({ kind: "detail", voucher: v });
                       return;
                     case "ADDON":
                       if (selectedCartItem) {
@@ -628,8 +649,9 @@ export const CartDiscountPicker = ({
         )}
       </VoucherModalFrame>
       <ResponsiveOverlay
-        open={targetVoucher !== null}
-        onOpenChange={(open) => { if (!open) setActiveView({ kind: "list" }); }}
+        open={open && !targetClosing && targetVoucher !== null}
+        onOpenChange={(isOpen) => { if (!isOpen) setTargetClosing(true); }}
+        onAfterClose={() => { setActiveView({ kind: "list" }); setTargetClosing(false); }}
         layer="critical"
         title="Chọn món áp dụng"
       >
@@ -639,10 +661,12 @@ export const CartDiscountPicker = ({
             return (
               <button
                 key={target.cartId}
+                disabled={!selectionContextIsCurrent(targetVoucher.qr_token)}
                 type="button"
                 onClick={() => {
+                  if (!selectionContextIsCurrent(targetVoucher.qr_token)) return;
                   onApplyProductVoucher(target.cartId, targetVoucher);
-                  setActiveView({ kind: "list" });
+                  setTargetClosing(true);
                 }}
                 className="flex min-h-11 w-full items-center justify-between rounded-xl border bg-card p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
@@ -657,8 +681,9 @@ export const CartDiscountPicker = ({
         </div>
       </ResponsiveOverlay>
       <ResponsiveOverlay
-        open={addonTargetVoucher !== null}
-        onOpenChange={(open) => { if (!open) setActiveView({ kind: "list" }); }}
+        open={open && !targetClosing && addonTargetVoucher !== null}
+        onOpenChange={(isOpen) => { if (!isOpen) setTargetClosing(true); }}
+        onAfterClose={() => { setActiveView({ kind: "list" }); setTargetClosing(false); }}
         layer="critical"
         title="Chọn món áp dụng"
       >
@@ -668,13 +693,13 @@ export const CartDiscountPicker = ({
             cartItems={cart}
             bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}
             menuData={menuData}
-            canEdit={!isLoading}
-            onBack={() => setActiveView({ kind: "list" })}
-            onSuccess={() => setActiveView({ kind: "list" })}
-            onApplyVoucher={onApplyAddonVoucher}
-            onSavePendingVoucher={onSavePendingAddonVoucher}
+            canEdit={selectedViewVoucher !== null && selectionContextIsCurrent(selectedViewVoucher.qr_token)}
+            onBack={() => setTargetClosing(true)}
+            onSuccess={() => setTargetClosing(true)}
+            onApplyVoucher={onApplyAddonVoucher ? (...args) => selectionContextIsCurrent(args[1]) ? onApplyAddonVoucher(...args) : { ok: false, code: "BUNDLE_STALE", message: "Ví voucher đang được xác minh lại." } : undefined}
+            onSavePendingVoucher={onSavePendingAddonVoucher ? (intent) => { if (selectionContextIsCurrent(intent.voucherId)) onSavePendingAddonVoucher(intent); } : undefined}
             onPending={() => {
-              setActiveView({ kind: "list" });
+              setTargetClosing(true);
               onClose();
               if (!onSavePendingAddonVoucher) router.push("/menu");
             }}
@@ -683,7 +708,7 @@ export const CartDiscountPicker = ({
       </ResponsiveOverlay>
       {bundleSetupVoucher ? (
         <BundleVoucherSetupSheet
-          open
+          open={open && !bundleClosing}
           layer="critical"
           voucher={bundleSetupVoucher}
           cartItems={cart}
@@ -693,8 +718,10 @@ export const CartDiscountPicker = ({
           milkTypes={menuData.milk_types}
           powders={powders}
           defaultPowderGram={defaultPowderGram}
-          onClose={() => setActiveView({ kind: "list" })}
+          onClose={() => setBundleClosing(true)}
+          onAfterClose={() => { setActiveView({ kind: "list" }); setBundleClosing(false); }}
           onValidateDraft={(candidate: BundleCartDraftResult): BundleCartDraftValidation => {
+            if (!selectionContextIsCurrent(bundleSetupVoucher.qr_token)) return { ok: false, error: "Ví voucher đang được xác minh lại." };
             const summary = getBundleVoucherSummary(bundleSetupVoucher);
             if (!summary) return { ok: false, error: "Voucher BUNDLE không còn khả dụng" };
             const siblingResolution = resolveBundleSelectionSiblings({
@@ -708,8 +735,8 @@ export const CartDiscountPicker = ({
             if (!siblingResolution.ok) return siblingResolution;
             return validateBundleCartDraft({ voucher: summary, candidate, ownerKey: bundleOwnerKey, siblingApplications: siblingResolution.siblings });
           }}
-          onCommitDraft={onCommitBundleCartDraft}
-          onSuccess={() => setActiveView({ kind: "list" })}
+          onCommitDraft={(draft) => selectionContextIsCurrent(bundleSetupVoucher.qr_token) ? onCommitBundleCartDraft(draft) : { ok: false, code: "BUNDLE_STALE", message: "Ví voucher đang được xác minh lại." }}
+          onSuccess={() => setBundleClosing(true)}
         />
       ) : null}
     </ResponsiveOverlay>

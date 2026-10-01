@@ -16,6 +16,7 @@ import {
 } from "@/src/lib/utils/addressBookSheet";
 
 interface AddressBookSheetProps {
+  defaultRecipient?: { name: string; phone: string } | null;
   open: boolean;
   addresses: Address[];
   loading: boolean;
@@ -29,6 +30,7 @@ interface AddressBookSheetProps {
 /** Render address list and add/edit layers inside one mobile bottom sheet. */
 export function AddressBookSheet({
   open,
+  defaultRecipient,
   addresses,
   loading,
   submitting,
@@ -101,6 +103,7 @@ export function AddressBookSheet({
             <div className="min-h-0 flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4">
               {state.view === "form" ? (
                 <AddressForm
+                  defaultRecipient={defaultRecipient}
                   key={editing?.id ?? "new-address"}
                   initialData={editing ?? undefined}
                   onSubmit={saveAddress}

@@ -1,16 +1,22 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import ProductModal from "@/src/components/shared/ProductModal";
 import MenuCard from "@/src/components/menu/MenuCard";
+import { usePowderStore } from "@/src/lib/store/powderStore";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 import { useCartStore } from "@/src/lib/store/cartStore";
+import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { MenuData, MenuItem, Size } from "@/src/lib/types/menu";
 import type { MyVoucher, VoucherEligibleMenuItem } from "@/src/services/customerVoucherService";
 
 interface ScopedMenuVoucherPickerProps {
   voucher: MyVoucher;
+  open?: boolean;
+  onChildOpenChange?: (open: boolean) => void;
+  onAddItem?: (item: Omit<CartItem, "cartId">) => CartMutationResult<unknown>;
   menuData: MenuData;
   /** Lock voucher edits while the wallet query is loading or revalidating. */
   canEdit?: boolean;
@@ -18,14 +24,17 @@ interface ScopedMenuVoucherPickerProps {
 }
 
 /** Lets a customer choose and configure exactly one scoped PRODUCT or ITEM reward. */
-export function ScopedMenuVoucherPicker({ voucher, menuData, canEdit = true, onSuccess }: ScopedMenuVoucherPickerProps) {
-  const addItem = useCartStore((state) => state.addItem);
+export function ScopedMenuVoucherPicker({ voucher, menuData, canEdit = true, onSuccess, onAddItem, open = true, onChildOpenChange }: ScopedMenuVoucherPickerProps) {
+  const powders = usePowderStore((state) => state.data);
+  const pendingSuccess = useRef(false);
+  const customerAddItem = useCartStore((state) => state.addItem);
+  const addItem = onAddItem ?? customerAddItem;
   const [picked, setPicked] = useState<{ item: MenuItem; target: VoucherEligibleMenuItem } | null>(null);
   const menuItems = useMemo(
     () => [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])],
     [menuData],
   );
-  const targets = (voucher.eligible_menu_items ?? []).filter((target) => target.is_available);
+  const targets = voucher.eligible_menu_items ?? [];
 
   const confirm = (cartItem: CartItem) => {
     if (!canEdit || !picked) return;
@@ -33,11 +42,12 @@ export function ScopedMenuVoucherPicker({ voucher, menuData, canEdit = true, onS
     void _cartId;
     const result = addItem(withoutId);
     if (!result.ok) { toast.error(result.message); return; }
-    queueMicrotask(onSuccess);
+    pendingSuccess.current = true;
+    return result;
   };
 
   const pickTarget = (target: VoucherEligibleMenuItem) => {
-    if (!canEdit) return;
+    if (!canEdit || !target.is_available) return;
     const item = menuItems.find((candidate) => candidate.id === target.menu_item_id);
     if (!item) {
       toast.error("Món này không còn khả dụng");
@@ -59,13 +69,14 @@ export function ScopedMenuVoucherPicker({ voucher, menuData, canEdit = true, onS
       queueMicrotask(onSuccess);
       return;
     }
+    onChildOpenChange?.(true);
     setPicked({ item, target });
   };
 
   if (picked) {
     const { item, target } = picked;
     const size = target.size as Size | null | undefined;
-    return <ProductModal
+    return <ProductModal managed open={open}
       item={item}
       latteItems={menuData.latte}
       milkTypes={menuData.milk_types}
@@ -78,7 +89,7 @@ export function ScopedMenuVoucherPicker({ voucher, menuData, canEdit = true, onS
       freeVoucherCoveredPriceVnd={voucher.voucher_type === "PRODUCT" ? target.covered_price_vnd ?? 0 : undefined}
       nested
       ctaLabel="Thêm món được tặng"
-      onClose={() => setPicked(null)}
+      onClose={() => { setPicked(null); onChildOpenChange?.(false); if (pendingSuccess.current) { pendingSuccess.current = false; onSuccess(); } }}
       onConfirm={confirm}
     />;
   }
@@ -91,7 +102,7 @@ export function ScopedMenuVoucherPicker({ voucher, menuData, canEdit = true, onS
       </div>
       {targets.map((target) => {
         const item = menuItems.find((candidate) => candidate.id === target.menu_item_id);
-        if (!item) return null;
+        if (!item) return <div key={target.menu_item_id} className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">{target.name} · Không còn khả dụng</div>;
         const allowedSizes = target.size ? [target.size as Size] : undefined;
         return (
           <div key={target.menu_item_id} className={!canEdit ? "opacity-50" : undefined}>
@@ -99,10 +110,16 @@ export function ScopedMenuVoucherPicker({ voucher, menuData, canEdit = true, onS
               item={item}
               milkTypes={menuData.milk_types}
               compact
-              disabled={!canEdit}
+              disabled={!canEdit || !target.is_available || Boolean(target.size && !item.sizes.some((size) => size.size === target.size))}
               allowedSizes={allowedSizes}
               onItemClick={() => pickTarget(target)}
             />
+            {target.size ? <p className="mt-1 text-xs text-muted-foreground">Size voucher: <SizeLabel size={target.size} /></p> : null}
+            <p className="mt-1 text-xs text-muted-foreground">
+              {target.matcha_powder_id ? "Bột: " + (powders.find((entry) => entry.id === target.matcha_powder_id)?.name ?? "Theo cấu hình voucher") : ""}
+              {target.milk_type_id ? " · Nền: " + (menuData.milk_types.find((entry) => entry.id === target.milk_type_id)?.name ?? "Theo cấu hình voucher") : ""}
+              {!target.is_available ? " · Không còn khả dụng" : ""}
+            </p>
           </div>
         );
       })}

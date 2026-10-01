@@ -11,12 +11,13 @@ import { MapPin, Plus, Loader2, RefreshCcw } from "lucide-react";
 import { DELIVERY_CONFIG } from "@/src/constants/delivery";
 
 interface Props {
+  defaultRecipient?: { name: string; phone: string } | null;
   selectedAddressId: string | null;
   onAddressSelect: (address: Address | null, distanceKm: number | null, shippingFee: number | null) => void;
   onError: (error: string | null) => void;
 }
 
-export function DeliverySection({ selectedAddressId, onAddressSelect, onError }: Props) {
+export function DeliverySection({ selectedAddressId, onAddressSelect, onError, defaultRecipient }: Props) {
   const { data: addresses = [], isLoading: loading, isError, refetch } = useCustomerAddresses();
   const createAddressMutation = useCreateAddress();
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -112,6 +113,7 @@ export function DeliverySection({ selectedAddressId, onAddressSelect, onError }:
       ) : isFormOpen ? (
         <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
           <AddressForm
+            defaultRecipient={defaultRecipient}
             onSubmit={handleSaveNew}
             onCancel={() => setIsFormOpen(false)}
             isLoading={estimating}

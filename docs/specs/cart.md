@@ -54,3 +54,22 @@ mới và setup, không điều hướng bằng DOM id của panel cũ.
   for two or more orders.
 - Closing a QR does not change order status. Confirm moves that order to `COMPLETED`; cancel moves
   it to `CANCELLED`. Both actions refresh the current-user pending list.
+
+## Mobile cart layout và overlay lifecycle
+
+Admin mobile dùng variant riêng của shared POS cart item: khối trên chứa ảnh/số lượng, tên,
+cấu hình, topping, ghi chú và giá. Các voucher nằm bên dưới cấu hình nhưng trong cùng item,
+chiếm toàn chiều rộng; mỗi token có một dòng tên, mức giảm hiện tại và nút gỡ riêng.
+Không dành vùng trống khi chưa có voucher. Staff và customer giữ bố cục hiện có cho tới khi
+người dùng duyệt rollout riêng. Footer customer/POS giữ nguyên nội dung, layout, action và màu.
+
+Cart và shared voucher picker ở cùng OverlayStackProvider; picker POS render trong content
+slot của cart để nhận đúng parent scope. Picker nhận controlled open, giữ mounted qua animation
+và reset sau onAfterClose. Managed ProductModal của target đóng trước wallet; parent giữ mở
+cho tới khi child giải phóng lifecycle. Dismissal chỉ thuộc surface trên cùng. Còn cart mở thì
+trang nền vẫn khóa và content cart cuộn được; đóng hết surface trả lại vị trí cuộn ban đầu.
+Đổi/bỏ khách giữ surface owner cũ qua close, khóa mutation ngay và chỉ commit owner mới sau
+close; callbacks async đối chiếu owner trước khi ghi. Không sửa body style hoặc dùng timer feature
+để sửa scroll lock. Cached wallet data chỉ phục vụ display trong lúc refetch/lỗi; mọi voucher
+mutation dùng verification hiện tại tại owning adapter, giữ nguyên lựa chọn đã lưu. Lifecycle
+BUNDLE customization và wallet detail theo [voucher UI](voucher-ui.md#eligible-target-display-và-owning-cart-adapters).

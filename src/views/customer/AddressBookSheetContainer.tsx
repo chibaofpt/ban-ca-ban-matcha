@@ -1,6 +1,7 @@
 "use client";
 
 import { toast } from "sonner";
+import { useCurrentUser } from "@/src/lib/store/authStore";
 import { AddressBookSheet } from "@/src/components/customer/AddressBookSheet";
 import {
   useCreateAddress,
@@ -21,6 +22,7 @@ export function AddressBookSheetContainer({
   open,
   onOpenChange,
 }: AddressBookSheetContainerProps) {
+  const user = useCurrentUser();
   const { data: addresses = [], isLoading } = useCustomerAddresses();
   const createAddress = useCreateAddress();
   const updateAddress = useUpdateAddress();
@@ -57,6 +59,7 @@ export function AddressBookSheetContainer({
 
   return (
     <AddressBookSheet
+      defaultRecipient={user ? { name: user.name, phone: user.phone } : null}
       open={open}
       addresses={addresses}
       loading={isLoading}

@@ -41,6 +41,12 @@ export async function fetchAdminOrders(filters: AdminOrderFilters = {}): Promise
   return res.data;
 }
 
+/** Read the global number of pending bank transfers independently of list filters. */
+export async function fetchAdminPendingTransferCount(): Promise<number> {
+  const result = await fetchAdminOrders({ status: 'PENDING', payment_method: 'BANK_TRANSFER', limit: 1 });
+  return result.meta.total;
+}
+
 /** Admin confirms online payment or completes a pending counter bank transfer. */
 export async function confirmPayment(
   orderId: string,

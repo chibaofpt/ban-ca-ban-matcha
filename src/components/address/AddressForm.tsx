@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
-import { useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Loader2, MapPin } from "lucide-react";
 import type { AddressPayload } from "@/src/lib/types/address";
 import { useWarmMapPicker } from "@/src/hooks/useWarmMapPicker";
@@ -20,6 +20,7 @@ const MapPicker = dynamic(
 
 interface AddressFormProps {
   initialData?: AddressPayload;
+  defaultRecipient?: { name: string; phone: string } | null;
   onSubmit: (data: AddressPayload) => Promise<void>;
   onCancel: () => void;
   isLoading?: boolean;
@@ -31,18 +32,22 @@ const inputClassName =
 /** Collect and validate a delivery location and receiver details. */
 export function AddressForm({
   initialData,
+  defaultRecipient,
   onSubmit,
   onCancel,
   isLoading = false,
 }: AddressFormProps) {
   const mapTriggerRef = useRef<HTMLButtonElement>(null);
   const mapLifecycle = useWarmMapPicker();
+  const [recipientExpanded, setRecipientExpanded] = useState(Boolean(initialData));
+  const recipientTouched = useRef(false);
   const {
     register,
     handleSubmit,
     control,
     setError,
     setValue,
+    getFieldState,
     formState: { errors, isSubmitting },
   } = useForm<AddressFormInput, unknown, AddressFormValues>({
     resolver: zodResolver(addressFormSchema),
@@ -52,14 +57,30 @@ export function AddressForm({
       label: initialData?.label ?? "",
       lat: initialData?.lat ?? null,
       lng: initialData?.lng ?? null,
-      receiver_name: initialData?.receiver_name ?? "",
-      receiver_phone: initialData?.receiver_phone ?? "",
+      receiver_name: initialData?.receiver_name ?? defaultRecipient?.name ?? "",
+      receiver_phone: initialData?.receiver_phone ?? defaultRecipient?.phone ?? "",
       is_default: initialData?.is_default ?? false,
     },
   });
   const fullAddress = useWatch({ control, name: "full_address" });
   const lat = useWatch({ control, name: "lat" });
   const lng = useWatch({ control, name: "lng" });
+  const receiverName = useWatch({ control, name: "receiver_name" });
+  const receiverPhone = useWatch({ control, name: "receiver_phone" });
+
+  useEffect(() => {
+    if (initialData || recipientTouched.current || getFieldState("receiver_name").isDirty || getFieldState("receiver_phone").isDirty) return;
+    if (!defaultRecipient?.name || !defaultRecipient.phone) return;
+    setValue("receiver_name", defaultRecipient.name);
+    setValue("receiver_phone", defaultRecipient.phone);
+  }, [defaultRecipient?.name, defaultRecipient?.phone, getFieldState, initialData, setValue]);
+
+  const useAccountRecipient = () => {
+    if (!defaultRecipient?.name || !defaultRecipient.phone) return;
+    setValue("receiver_name", defaultRecipient.name, { shouldDirty: true, shouldValidate: true });
+    setValue("receiver_phone", defaultRecipient.phone, { shouldDirty: true, shouldValidate: true });
+    setRecipientExpanded(false);
+  };
 
   const handleMapConfirm = (data: { address: string; lat: number; lng: number }) => {
     setValue("full_address", data.address, { shouldDirty: true, shouldValidate: true });
@@ -144,6 +165,13 @@ export function AddressForm({
           error={errors.label?.message}
           input={<input id="address-label" placeholder="Ví dụ: Nhà, Công ty..." {...register("label")} className={inputClassName} />}
         />
+        {!recipientExpanded && receiverName && receiverPhone && !errors.receiver_name && !errors.receiver_phone ? (
+          <div className="rounded-xl border border-border bg-muted/40 p-3">
+            <p className="text-xs text-muted-foreground">Người nhận</p>
+            <p className="text-sm font-semibold">{receiverName} · {receiverPhone}</p>
+            <button type="button" className="min-h-11 text-sm font-semibold text-primary" onClick={() => { recipientTouched.current = true; setRecipientExpanded(true); }}>Người nhận khác</button>
+          </div>
+        ) : <div className="space-y-4" onChange={() => { recipientTouched.current = true; setRecipientExpanded(true); }}>
         <FormInput
           id="receiver-name"
           label="Tên người nhận"
@@ -158,6 +186,8 @@ export function AddressForm({
           error={errors.receiver_phone?.message}
           input={<input id="receiver-phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="Ví dụ: 0912345678" {...register("receiver_phone")} className={inputClassName} />}
         />
+        {!initialData && defaultRecipient?.name && defaultRecipient.phone ? <button type="button" className="min-h-11 text-sm font-semibold text-primary" onClick={useAccountRecipient}>Dùng thông tin tài khoản</button> : null}
+        </div>}
 
         <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-foreground">
           <input

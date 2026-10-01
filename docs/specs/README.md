@@ -29,6 +29,7 @@ cùng owner. Khi một loại thông tin đổi, sửa owner và liên kết t�
 | [Catalog UI](catalog-ui.md) | Menu/editor, ảnh, ProductModal, admin add-ons |
 | [Voucher UI](voucher-ui.md) | Wallet/detail/target, nhận/đổi, auth intent, admin wizard |
 | [Reward UI](reward-ui.md) | Quà đăng ký, hộp matcha, resume points và admin campaign |
+| [Order UI](order-ui.md) | Customer/admin/staff cards/detail, persisted delivery recipient, address defaults và global orders badge |
 | [Cart và POS](cart.md) | Source state/persistence, BUNDLE setup, nhóm giỏ, khôi phục chuyển khoản |
 | [Admin customer management](admin-customer-management.md) | Users tab, customer overlay, account actions, gifts, orders và wallet |
 | [Staging SMS test UI](sms-test-ui.md) | Trang ADMIN riêng `/test-sms`, trạng thái kết nối/số dư, gửi và nhập tay OTP |

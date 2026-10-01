@@ -11,8 +11,8 @@ import { motion } from "framer-motion";
 import StoreSettingsModal from "@/src/components/admin/StoreSettingsModal";
 import { useAuthStore } from "@/src/lib/store/authStore";
 import { toast } from "sonner";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchAdminOrders } from "@/src/services/adminOrderService";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAdminPendingTransferCount } from "@/src/hooks/useAdminPendingTransferCount";
 import { useStaffCartStore } from "@/src/lib/store/staffCartStore";
 import { clearPrivateQueryCaches } from "@/src/lib/queryClient";
 
@@ -56,16 +56,7 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
   const detachCustomer = useStaffCartStore((s) => s.detachCustomer);
   const queryClient = useQueryClient();
 
-  const { data: pendingRes } = useQuery({
-    queryKey: ["admin", "orders", "pending-count"],
-    queryFn: async () => {
-      const res = await fetchAdminOrders({ status: "PENDING", limit: 1 });
-      return res;
-    },
-    refetchInterval: 20_000,
-    enabled: userRole === "ADMIN",
-  });
-  const pendingCount = pendingRes?.meta?.total ?? 0;
+  const { data: pendingCount = 0 } = useAdminPendingTransferCount(userRole === "ADMIN");
 
   const tabs = TABS.filter((t) => t.roles.includes(userRole));
   const selectedPath = pendingNavigation?.from === pathname ? pendingNavigation.to : pathname;

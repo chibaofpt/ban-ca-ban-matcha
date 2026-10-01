@@ -1290,6 +1290,7 @@ without a configured default Base Liquid. Any full edit still requires a valid a
 
 ### `GET /api/orders?page=1&limit=10&status=active|cancelled` — Customer history
 
+- Order history and staff/admin order-list DTOs explicitly include nullable persisted delivery_receiver_name, delivery_receiver_phone and delivery_address. Missing legacy values serialize as null; clients must not substitute account/address-book data. Existing wire field names and endpoints remain unchanged.
 - Returns the authenticated customer's paginated order snapshots in `{ data, meta }`.
 - Each order includes `points_earned: number`, the net customer-visible sum of order purchase points
   and PRODUCT surplus points after any reversal logs. It is `0` before completion or after a full
@@ -1457,6 +1458,15 @@ restore package quantity or per-user redemption count.
 // GET /api/staff/users?phone=0987654321
 { data: { items: { qr_token: string, name: string, phone_number: string, points_balance: number }[] } }
 ```
+
+### `GET /api/staff/users/[id]/vouchers`
+
+Requires STAFF or ADMIN. The existing customer identifier segment accepts the customer QR token
+with the resolver migration bridge. Returns `{ data: MyVoucher[] }` for owned, unexpired ACTIVE
+and RESERVED vouchers, newest first (at most 50); unknown customers return an empty array.
+RESERVED entries support read-only wallet detail. Application eligibility remains owned by
+[voucher-flow](.agents/skills/voucher-flow/SKILL.md). Public DTOs retain `qr_token` and omit
+internal voucher/user identifiers. This read does not mutate voucher state.
 
 ### `GET /api/staff/scan?token=xxx`
 Read-only: project effective `EXPIRED` status without updating expired voucher rows during a scan.

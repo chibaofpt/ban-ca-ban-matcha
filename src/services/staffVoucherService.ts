@@ -15,7 +15,7 @@ export type { ExchangedVoucher, MyVoucher } from "@/contracts/voucher";
 // ── API Calls ─────────────────────────────────────────────────────────────────
 
 /**
- * Fetches all ACTIVE vouchers belonging to a given customer.
+ * Fetches ACTIVE and RESERVED vouchers belonging to a given customer.
  * Calls GET /api/staff/users/[id]/vouchers (requires STAFF or ADMIN auth).
  */
 export async function fetchCustomerVouchers(userQrToken: string): Promise<MyVoucher[]> {

@@ -107,7 +107,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
       onClick={compact || disabled ? undefined : () => onItemClick(item)}
       whileTap={disabled ? undefined : { scale: 0.96 }}
       className={compact
-        ? "group relative flex h-[108px] w-full flex-row items-center justify-between gap-3 rounded-2xl border border-border/50 bg-card px-3 transition-all duration-200"
+        ? "group relative flex min-h-[108px] w-full flex-row items-center justify-between gap-3 rounded-2xl border border-border/50 bg-card p-3 transition-all duration-200"
         : "group flex flex-row items-center justify-between gap-4 md:gap-5 w-full h-[130px] md:h-[150px] border-b border-dashed border-primary/20 last:border-0 transition-all duration-300 cursor-pointer bg-transparent"}
     >
       {compact ? (
@@ -120,7 +120,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
         />
       ) : null}
       {/* Image Area */}
-      <div className={`${compact ? "h-[72%]" : "h-[80%]"} aspect-square bg-[#eef1eb] relative overflow-hidden flex-shrink-0 rounded-2xl`}>
+      <div className={`${compact ? "h-[76px] w-[76px] self-center" : "h-[80%]"} aspect-square bg-[#eef1eb] relative overflow-hidden flex-shrink-0 rounded-2xl`}>
         {canRenderImage && item.image_url ? (
           <>
             <div
@@ -148,9 +148,9 @@ const MenuCard: React.FC<MenuCardProps> = ({
       </div>
 
       {/* Content Area */}
-      <div className="flex flex-col flex-1 h-[80%] justify-between py-1 text-left items-start min-w-0">
+      <div className={compact ? "flex min-w-0 flex-1 flex-col justify-between gap-2 self-stretch text-left" : "flex flex-col flex-1 h-[80%] justify-between py-1 text-left items-start min-w-0"}>
         <div className="w-full">
-          <h3 className={`font-serif font-medium text-[#2d4a22] leading-tight line-clamp-2 mb-1 ${compact ? "text-base" : "text-lg"}`}>
+          <h3 className={`font-serif font-medium text-[#2d4a22] leading-tight line-clamp-2 mb-1 ${compact ? "break-words text-base" : "text-lg"}`}>
             {item.name}
             {item.is_seasonal && (
               <span className="inline-flex items-center bg-amber-50 text-amber-600 text-[8px] font-sans font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border border-amber-200/50 align-middle ml-2 -translate-y-[1px]">
@@ -159,14 +159,14 @@ const MenuCard: React.FC<MenuCardProps> = ({
             )}
           </h3>
           {item.description && (
-            <p className="text-[11px] text-primary/60 line-clamp-2 leading-relaxed">
+            <p className={`text-[11px] text-primary/60 leading-relaxed ${compact ? "line-clamp-1 break-words" : "line-clamp-2"}`}>
               {item.description}
             </p>
           )}
         </div>
 
         {/* Sizes & Prices + Cart Button — inline row, stepper expands left */}
-        <div className="mt-auto pt-2 flex items-center w-full gap-2">
+        <div className={compact ? "mt-auto flex w-full shrink-0 items-center gap-2" : "mt-auto pt-2 flex items-center w-full gap-2"}>
           {item.category === "extras" ? (
             <div className="flex flex-1 items-center min-w-0">
               <div className="flex flex-col gap-0.5">

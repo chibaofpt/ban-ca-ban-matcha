@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { toast } from "sonner";
 import MenuCard from "@/src/components/menu/MenuCard";
 import { useCartStore } from "@/src/lib/store/cartStore";
@@ -10,6 +10,7 @@ import {
   computeProductDiscountBenefit,
   resolveVoucherBaseLiquidId,
 } from "@/src/hooks/useAddVoucherToCart";
+import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { MenuData, Size } from "@/src/lib/types/menu";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
@@ -22,6 +23,9 @@ import {
 
 interface ProductDiscountItemPickerProps {
   voucher: MyVoucher;
+  open?: boolean;
+  onChildOpenChange?: (open: boolean) => void;
+  onAddItem?: (item: Omit<CartItem, "cartId">) => CartMutationResult<unknown>;
   menuData: MenuData;
   /** Lock voucher edits while the wallet query is loading or revalidating. */
   canEdit?: boolean;
@@ -38,10 +42,15 @@ interface ProductDiscountItemPickerProps {
 export const ProductDiscountItemPicker = ({
   voucher,
   menuData,
+  onAddItem,
+  open = true,
+  onChildOpenChange,
   canEdit = true,
   onSuccess,
 }: ProductDiscountItemPickerProps) => {
-  const addItem = useCartStore((state) => state.addItem);
+  const pendingSuccess = useRef(false);
+  const customerAddItem = useCartStore((state) => state.addItem);
+  const addItem = onAddItem ?? customerAddItem;
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGram = usePowderStore((s) => s.defaultPowderGram);
 
@@ -143,13 +152,14 @@ export const ProductDiscountItemPicker = ({
         return;
       }
 
-      queueMicrotask(onSuccess);
+      pendingSuccess.current = true;
+      return result;
   };
 
   // When an item is picked, open ProductModal for customization
   if (pickedItem) {
     return (
-      <ProductModal
+      <ProductModal managed open={open}
         item={pickedItem.item}
         latteItems={menuData.latte}
         milkTypes={menuData.milk_types}
@@ -159,7 +169,7 @@ export const ProductDiscountItemPicker = ({
         disableVoucherApplication
         nested
         ctaLabel="Thêm vào giỏ"
-        onClose={() => setPickedItem(null)}
+        onClose={() => { setPickedItem(null); onChildOpenChange?.(false); if (pendingSuccess.current) { pendingSuccess.current = false; onSuccess(); } }}
         onConfirm={handleConfirm}
       />
     );
@@ -194,11 +204,12 @@ export const ProductDiscountItemPicker = ({
                 compact
                 disabled={!canEdit}
                 allowedSizes={allowedSizes}
-                onItemClick={() => setPickedItem({ item, allowedSizes, milkTypeId })}
+                onItemClick={() => { if (canEdit) { onChildOpenChange?.(true); setPickedItem({ item, allowedSizes, milkTypeId }); } }}
               />
             </div>
           ))
         )}
+        {(voucher.eligible_menu_items ?? []).filter((target) => !eligibleItems.some(({ item }) => item.id === target.menu_item_id)).map((target) => <div key={target.menu_item_id} className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">{target.name} · Không còn cấu hình khả dụng</div>)}
     </section>
   );
 };
