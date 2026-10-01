@@ -1432,16 +1432,16 @@ export default function StaffOrdersPage({
       )}
 
       {/* CustomerSelectModal */}
-      {customerSelectOpen && (
-        <CustomerSelectModal
-          initialQuery={initialSearchQuery}
-          onClose={() => setCustomerSelectOpen(false)}
-          onSelect={(info) => {
-            transitionCustomer(info);
-            setCustomerSelectOpen(false);
-          }}
-        />
-      )}
+      <CustomerSelectModal
+        key={initialSearchQuery}
+        open={customerSelectOpen}
+        initialQuery={initialSearchQuery}
+        onClose={() => setCustomerSelectOpen(false)}
+        onSelect={(info) => {
+          transitionCustomer(info);
+          setCustomerSelectOpen(false);
+        }}
+      />
 
       {/* Confirm Checkout Modal (no voucher path) */}
       <ConfirmModal

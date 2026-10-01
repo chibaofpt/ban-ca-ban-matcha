@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, User, Phone } from "lucide-react";
-import * as Dialog from "@radix-ui/react-dialog";
+import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 import * as staffOrderService from "@/src/services/staffOrderService";
 import type { CustomerSearchResult } from "@/src/services/staffOrderService";
 import { formatVietnamPhone, normalizeCustomerSearch } from "@/src/utils/display";
@@ -14,6 +14,7 @@ export type CustomerInfo =
   | { type: "new"; phone_number: string; name: string };
 
 interface CustomerSelectModalProps {
+  open: boolean;
   initialQuery?: string;
   onClose: () => void;
   onSelect: (customer: CustomerInfo) => void;
@@ -23,7 +24,9 @@ function isValidPhone(phone: string): boolean {
   return /^(0|\+84)\d{9}$/.test(phone.trim());
 }
 
+/** Selects a customer while retaining the owning cart through overlay dismissal. */
 export function CustomerSelectModal({
+  open,
   initialQuery = "",
   onClose,
   onSelect,
@@ -44,7 +47,7 @@ export function CustomerSelectModal({
   } = useQuery({
     queryKey: ["staff", "customer-search", debouncedQuery],
     queryFn: () => staffOrderService.searchCustomers(debouncedQuery),
-    enabled: debouncedQuery.length >= 2,
+    enabled: open && debouncedQuery.length >= 2,
     staleTime: 30_000,
     retry: false,
   });
@@ -54,11 +57,7 @@ export function CustomerSelectModal({
   const [newName, setNewName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const originalStyle = window.getComputedStyle(document.body).overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = originalStyle; };
-  }, []);
+
 
   const handleSelectCustomer = (customer: CustomerSearchResult) => {
     onSelect({ type: "existing", data: customer });
@@ -95,10 +94,22 @@ export function CustomerSelectModal({
   const hasCurrentResults = rawQuery.length >= 2 && rawQuery === debouncedQuery;
 
   return (
-    <Dialog.Root open={true} onOpenChange={(open) => !open && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay data-prevent-drawer-close="true" className="fixed inset-0 bg-black/40 z-[100]" />
-        <Dialog.Content data-prevent-drawer-close="true" className="fixed z-[101] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card rounded-2xl p-6 w-[90vw] max-w-sm shadow-xl space-y-4 focus:outline-none">
+    <ResponsiveOverlay
+      open={open}
+      onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}
+      onAfterClose={() => {
+        setStep("search");
+        setQuery(initialQuery ? formatVietnamPhone(initialQuery) : "");
+        setNewPhone("");
+        setNewName("");
+        setError(null);
+      }}
+      title={step === "search" ? "Tìm khách hàng" : "Thêm khách mới"}
+      layer="nested"
+      mobileMode="dialog"
+      presentation="bare"
+      className="w-[90vw] max-w-sm rounded-2xl bg-card p-6 shadow-xl space-y-4"
+    >
           <h2 className="font-serif text-lg font-semibold">
           {step === "search" ? "Tìm khách hàng" : "Thêm khách mới"}
         </h2>
@@ -252,8 +263,6 @@ export function CustomerSelectModal({
             </div>
           </>
         )}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    </ResponsiveOverlay>
   );
 }

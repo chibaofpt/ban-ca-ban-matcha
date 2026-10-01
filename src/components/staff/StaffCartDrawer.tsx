@@ -295,7 +295,7 @@ export function StaffCartDrawer({
   const handleClose = useCallback(() => { if (!preventCloseOutside) onClose(); }, [onClose, preventCloseOutside]);
 
   return (
-    <ResponsiveOverlay open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }} title="Giỏ hàng" presentation="bare" dismissPolicy={preventCloseOutside ? "explicit-only" : "default"} onAfterClose={() => { setActiveItemForVoucher(null); setAddonChoiceVoucherId(null); onAfterClose?.(); }} className="flex max-h-[100dvh] flex-col rounded-t-3xl bg-card shadow-2xl md:max-h-[90dvh] md:max-w-2xl">
+    <ResponsiveOverlay open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }} title="Giỏ hàng" presentation="bare" backdropClassName="bg-black/40 backdrop-blur-none" dismissPolicy={preventCloseOutside ? "explicit-only" : "default"} onAfterClose={() => { setActiveItemForVoucher(null); setAddonChoiceVoucherId(null); onAfterClose?.(); }} className="flex max-h-[100dvh] flex-col rounded-t-3xl bg-card shadow-2xl md:max-h-[90dvh] md:max-w-2xl">
           <div className="flex justify-center pt-3 pb-1 w-full shrink-0">
             <div className="w-12 h-1.5 bg-border rounded-full" />
           </div>
@@ -585,7 +585,7 @@ export function StaffCartDrawer({
                             }}
                             actionNode={
                               isSelected ? (
-                                <CheckCircle2 className="w-5 h-5 text-primary shrink-0 ml-2" />
+                                <CheckCircle2 className="w-5 h-5 text-orange-500 shrink-0 ml-2" />
                               ) : (
                                 <div className="w-5 h-5 rounded-full border border-border/60 shrink-0 ml-2" />
                               )
@@ -625,7 +625,7 @@ export function StaffCartDrawer({
                             }}
                             actionNode={
                               isSelected ? (
-                                <CheckCircle2 className="w-5 h-5 text-primary shrink-0 ml-2" />
+                                <CheckCircle2 className="w-5 h-5 text-orange-500 shrink-0 ml-2" />
                               ) : (
                                 <div className="w-5 h-5 rounded-full border border-border/60 shrink-0 ml-2" />
                               )

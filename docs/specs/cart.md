@@ -57,9 +57,9 @@ mới và setup, không điều hướng bằng DOM id của panel cũ.
 
 ## Mobile cart layout và overlay lifecycle
 
-Admin mobile dùng variant riêng của shared POS cart item: khối trên chứa ảnh/số lượng, tên,
-cấu hình, topping, ghi chú và giá. Các voucher nằm bên dưới cấu hình nhưng trong cùng item,
-chiếm toàn chiều rộng; mỗi token có một dòng tên, mức giảm hiện tại và nút gỡ riêng.
+Admin mobile dùng lại bố cục POS cart item cũ: khối trên chứa ảnh/số lượng, tên,
+cấu hình, topping và ghi chú. Vùng dưới tách bằng đường phân cách, trải ngang cả item:
+cột trái chứa mỗi token một dòng tên/mức giảm/nút gỡ và nút chọn voucher; cột phải chứa giá.
 Không dành vùng trống khi chưa có voucher. Staff và customer giữ bố cục hiện có cho tới khi
 người dùng duyệt rollout riêng. Footer customer/POS giữ nguyên nội dung, layout, action và màu.
 

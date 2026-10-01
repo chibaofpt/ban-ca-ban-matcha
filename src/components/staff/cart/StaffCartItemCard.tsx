@@ -61,27 +61,28 @@ const StaffCartItemCard = ({
   const addonChips = addonsDetails(c);
   
   const noteText = c.configuration.note || null;
+  const thumbnail = c.imageUrl ? (
+    <Image src={c.imageUrl} alt={c.name} width={64} height={64} sizes="64px" className={layoutVariant === "admin-mobile" ? "w-16 h-16 rounded-xl object-cover" : "w-full h-full object-cover"} />
+  ) : layoutVariant === "admin-mobile" ? (
+    <span className="flex w-16 h-16 items-center justify-center text-3xl">🍵</span>
+  ) : "🍵";
 
   return (
     <>
-    {layoutVariant === "admin-mobile" ? <div className="md:hidden"><AdminMobileCartItemCard item={c} menuItem={menuItem} powderData={powderData} milkTypes={milkTypes} customerVouchers={customerVouchers} applicableProductVouchers={applicableProductVouchers} applicableAddonVouchers={applicableAddonVouchers} onEdit={onEdit} onRemove={onRemove} onChangeQuantity={onChangeQuantity} onRemoveProduct={onRemoveProduct} onRemoveAddon={onRemoveAddon} onOpenVoucherPicker={onOpenVoucherPicker} bundleAllocationBadges={bundleAllocationBadges} /></div> : null}
+
     <div 
-      onClick={() => onEdit?.(c)}
+      onClick={() => { if (menuItem) onEdit(c); }}
       className={cn(
         "bg-white dark:bg-secondary/20 rounded-2xl p-3.5 flex gap-3 shadow-sm border border-border/50 transition-colors cursor-pointer hover:border-border/80",
-        layoutVariant === "admin-mobile" && "hidden md:flex",
-        !menuItem && "opacity-50 pointer-events-none"
+        layoutVariant === "admin-mobile" && "max-md:grid max-md:grid-cols-[auto_minmax(0,1fr)]",
+        layoutVariant !== "admin-mobile" && !menuItem && "opacity-50 pointer-events-none"
       )}
     >
       {/* Thumbnail & Stepper */}
       <div className="flex flex-col items-center gap-2 shrink-0">
-        <div className="w-16 h-16 rounded-xl overflow-hidden bg-secondary/40 flex items-center justify-center text-3xl">
-          {c.imageUrl ? (
-            <Image src={c.imageUrl} alt={c.name} width={64} height={64} sizes="64px" className="w-full h-full object-cover" />
-          ) : (
-            "🍵"
-          )}
-        </div>
+        {layoutVariant === "admin-mobile" ? thumbnail : (
+          <div className="w-16 h-16 rounded-xl overflow-hidden bg-secondary/40 flex items-center justify-center text-3xl">{thumbnail}</div>
+        )}
         {/* Stepper */}
         <div 
           className="flex items-center gap-1.5 bg-secondary/30 rounded-full px-1.5 py-1"
@@ -90,7 +91,7 @@ const StaffCartItemCard = ({
           <motion.button
             whileTap={{ scale: 0.9 }}
             onClick={() => onChangeQuantity(c.cartId, c.quantity - 1)}
-            disabled={c.quantity <= 1 || !!appliedProductVoucherId}
+            disabled={!menuItem || c.quantity <= 1 || !!appliedProductVoucherId}
             className="w-5 h-5 rounded-full bg-background flex items-center justify-center text-[10px] shadow-sm disabled:opacity-30"
           >
             −
@@ -99,7 +100,7 @@ const StaffCartItemCard = ({
           <motion.button
             whileTap={{ scale: 0.9 }}
             onClick={() => onChangeQuantity(c.cartId, c.quantity + 1)}
-            disabled={!!appliedProductVoucherId}
+            disabled={!menuItem || !!appliedProductVoucherId}
             className="w-5 h-5 rounded-full bg-background flex items-center justify-center text-[10px] shadow-sm disabled:opacity-30"
           >
             +
@@ -111,9 +112,19 @@ const StaffCartItemCard = ({
       <div className="flex-1 min-w-0 flex flex-col">
         <div className="flex items-start justify-between gap-2">
           <h4 className="font-bold text-sm leading-tight text-primary truncate w-4/5 pr-2">
-            {c.name} {c.category === "fusion" && powderName ? `- ${powderName}` : ""}
+            <button
+              type="button"
+              aria-label={"Sửa " + c.name}
+              disabled={!menuItem}
+              onClick={(event) => { event.stopPropagation(); if (menuItem) onEdit(c); }}
+              className="block w-full truncate text-left font-inherit text-inherit focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
+            >
+              {c.name} {c.category === "fusion" && powderName ? "- " + powderName : ""}
+            </button>
           </h4>
           <button 
+            type="button"
+            aria-label={"Xóa " + c.name}
             onClick={(e) => { e.stopPropagation(); onRemove(c.cartId); }} 
             className="text-muted-foreground hover:text-red-500 transition shrink-0 p-1 w-1/5 flex justify-end"
           >
@@ -158,7 +169,7 @@ const StaffCartItemCard = ({
           )}
         </div>
 
-        <div className="mt-2 flex flex-col gap-2">
+        <div className={cn("mt-2 flex flex-col gap-2", layoutVariant === "admin-mobile" && "max-md:hidden")}>
           {/* Vouchers (Separate Line) */}
           {(appliedProductVoucherId || appliedAddonVouchers.length > 0) && (
             <div className="flex flex-col gap-1.5 w-full">
@@ -218,6 +229,11 @@ const StaffCartItemCard = ({
           </div>
         </div>
       </div>
+      {layoutVariant === "admin-mobile" ? (
+        <div className="col-span-2 md:hidden">
+          <AdminMobileCartItemCard item={c} customerVouchers={customerVouchers} applicableProductVouchers={applicableProductVouchers} applicableAddonVouchers={applicableAddonVouchers} onEdit={onEdit} onRemove={onRemove} onChangeQuantity={onChangeQuantity} milkTypes={milkTypes} onRemoveProduct={onRemoveProduct} onRemoveAddon={onRemoveAddon} onOpenVoucherPicker={onOpenVoucherPicker} />
+        </div>
+      ) : null}
     </div>
     </>
   );

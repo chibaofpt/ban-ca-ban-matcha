@@ -185,6 +185,8 @@ khi Redis không sẵn sàng; không fallback vào bộ nhớ Vercel Function ha
 
 Shared overlay sở hữu portal, accessible title/description, focus trap/restore, Escape, scroll lock, backdrop, safe area, dismiss policy và layer. Feature code chỉ cung cấp content và callbacks; không tự viết `fixed inset-0` backdrop.
 
+ResponsiveOverlay cho phép `backdropClassName` để giữ màu backdrop của flow; tùy chọn này chỉ đổi presentation, không đổi layer hoặc dismissal.
+
 Flow cần điều phối nhiều surface có thể opt-in bằng `OverlayStackProvider` tại composition boundary.
 Provider giữ registration ổn định trong lúc surface mở; surface có layer `critical` đứng trên
 `nested`, rồi `base`, và cùng layer ưu tiên registration mở sau cùng. Chỉ surface trên cùng được

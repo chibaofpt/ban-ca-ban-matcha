@@ -35,6 +35,8 @@ interface ResponsiveOverlayProps {
   /** Coordinate this mobile sheet with an owning Vaul drawer. */
   nested?: boolean;
   className?: string;
+  /** Customize backdrop appearance without changing layer or dismissal behavior. */
+  backdropClassName?: string;
   onOpenChange: (open: boolean) => void;
   onAfterClose?: () => void;
 }
@@ -82,6 +84,7 @@ export function ResponsiveOverlay({
   mobileMode = "sheet",
   nested = false,
   className,
+  backdropClassName,
   onOpenChange,
   onAfterClose,
 }: ResponsiveOverlayProps) {
@@ -123,7 +126,7 @@ export function ResponsiveOverlay({
         <Dialog.Portal>
           <Dialog.Overlay
             style={visualZIndex === undefined ? undefined : { zIndex: visualZIndex }}
-            className={cn("fixed inset-0 bg-foreground/40 backdrop-blur-sm", layerClasses[layer].overlay)}
+            className={cn("fixed inset-0 bg-foreground/40 backdrop-blur-sm", layerClasses[layer].overlay, backdropClassName)}
           />
           <Dialog.Content
             onOpenAutoFocus={() => {
@@ -190,7 +193,7 @@ export function ResponsiveOverlay({
       <Drawer.Portal>
         <Drawer.Overlay
           style={visualZIndex === undefined ? undefined : { zIndex: visualZIndex }}
-          className={cn("fixed inset-0 bg-foreground/40 backdrop-blur-sm", layerClasses[layer].overlay)}
+          className={cn("fixed inset-0 bg-foreground/40 backdrop-blur-sm", layerClasses[layer].overlay, backdropClassName)}
         />
         <Drawer.Content
           onOpenAutoFocus={() => {

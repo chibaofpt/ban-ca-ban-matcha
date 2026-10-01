@@ -29,7 +29,7 @@ const CartButton: React.FC<{ totalPriceVnd: number }> = ({ totalPriceVnd }) => {
   if (count === 0) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center lg:hidden">
+    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-30 flex justify-center lg:hidden">
       <motion.button
         onClick={() => setCartOpen(true)}
         animate={controls}

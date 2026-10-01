@@ -1,18 +1,19 @@
 "use client";
 
-import Image from "next/image";
-import { Ticket, Trash2, X } from "lucide-react";
+
+import { Ticket, X } from "lucide-react";
+import { cn } from "@/src/utils/cn";
 import type { StaffCartItemCardProps } from "./StaffCartItemCard";
-import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
+
 import { getAddonVoucherTargetChoices } from "@/src/utils/voucherMatchUtils";
 
-/** Render the staged admin mobile item layout using the existing cart projection and actions. */
+/** Render the voucher selection and price row beneath the legacy admin mobile item content. */
 export function AdminMobileCartItemCard({
-  item, menuItem, powderData, milkTypes, customerVouchers, applicableProductVouchers,
-  applicableAddonVouchers, onEdit, onRemove, onChangeQuantity, onRemoveProduct,
-  onRemoveAddon, onOpenVoucherPicker, bundleAllocationBadges = [],
+  item, customerVouchers, applicableProductVouchers,
+  applicableAddonVouchers, onRemoveProduct,
+  onRemoveAddon, onOpenVoucherPicker,
 }: StaffCartItemCardProps) {
-  const chips = [...line1ItemDetails(item, menuItem, milkTypes, powderData?.data), ...line2ItemDetails(item), ...addonsDetails(item)];
+
   const addonRows = item.addonVouchers.map((applied) => {
     const voucher = customerVouchers.find((entry) => entry.qr_token === applied.token);
     const discount = !item.revalidating && item.errors.length === 0 && item.quantity === 1 && voucher ? getAddonVoucherTargetChoices(voucher, [applied.addonOptionId], [],
@@ -26,37 +27,25 @@ export function AdminMobileCartItemCard({
     ...addonRows.map((row) => ({ ...row, product: false })),
   ];
   const controls = "flex h-11 min-w-11 items-center justify-center rounded-lg text-sm focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40";
-  return <article className="space-y-2 rounded-xl border border-border bg-card p-3">
-    <div className="flex gap-2">
-      <div className="w-[104px] shrink-0 space-y-2">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center overflow-hidden rounded-lg bg-muted text-3xl">
-          {item.imageUrl ? <Image src={item.imageUrl} alt={item.name} width={64} height={64} className="h-full w-full object-cover" /> : "🍵"}
-        </div>
-        <div className="flex items-center justify-between rounded-lg bg-muted/50">
-          <button type="button" className={controls} aria-label="Giảm số lượng" disabled={item.quantity <= 1 || Boolean(item.lineVoucher)} onClick={() => onChangeQuantity(item.cartId, item.quantity - 1)}>−</button>
-          <span className="text-xs font-semibold">{item.quantity}</span>
-          <button type="button" className={controls} aria-label="Tăng số lượng" disabled={Boolean(item.lineVoucher)} onClick={() => onChangeQuantity(item.cartId, item.quantity + 1)}>+</button>
-        </div>
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-start gap-2">
-          <button type="button" disabled={!menuItem} onClick={() => onEdit(item)} className="min-h-11 flex-1 text-left text-sm font-semibold focus-visible:ring-2 focus-visible:ring-ring">{item.name}</button>
-          <button type="button" onClick={() => onRemove(item.cartId)} aria-label={"Xóa " + item.name} className={controls + " text-muted-foreground"}><Trash2 size={16} /></button>
-        </div>
-        <button type="button" disabled={!menuItem} onClick={() => onEdit(item)} className="w-full space-y-2 rounded-lg border border-border bg-muted/40 p-2 text-left focus-visible:ring-2 focus-visible:ring-ring">
-          <div className="flex flex-wrap gap-1">{chips.map((chip, index) => <span key={index} className="text-xs text-muted-foreground">{chip}{index < chips.length - 1 ? " ·" : ""}</span>)}</div>
-          {item.configuration.note ? <p className="text-xs text-muted-foreground">Ghi chú: {item.configuration.note}</p> : null}
-          <p className="text-right text-sm font-semibold">{item.lineTotalVnd.toLocaleString("vi-VN")}đ</p>
+  return <div className="flex items-end gap-3 border-t border-border/50 pt-2">
+    <div className="min-w-0 flex-1 space-y-2">
+      {rows.length > 0 ? <div className="space-y-2">{rows.map((row) => <div key={row.token} className={cn("flex min-h-11 w-full items-center gap-2 rounded-lg border pl-2 text-xs shadow-sm", row.product ? "bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-900/20 dark:border-orange-500/30 dark:text-orange-400" : "bg-green-50 border-green-200 text-green-700 dark:bg-green-900/20 dark:border-green-500/30 dark:text-green-400")}>
+        <Ticket size={14} className={cn("shrink-0", row.product ? "text-orange-500" : "text-green-600")} />
+        <span className="min-w-0 flex-1 truncate">{row.name}</span>
+        <span className="shrink-0 font-semibold">−{row.discount.toLocaleString("vi-VN")}đ</span>
+        <button type="button" disabled={item.revalidating} className={cn(controls, "bg-white/50 transition-colors", row.product ? "text-orange-600 hover:bg-orange-200" : "text-green-700 hover:bg-green-200")} aria-label={"Gỡ " + row.name} onClick={(event) => { event.stopPropagation(); if (row.product) onRemoveProduct?.(item.cartId); else onRemoveAddon?.(item.cartId, row.token); }}><X size={14} /></button>
+      </div>)}</div> : null}
+      {(!item.lineVoucher && applicableProductVouchers.length > 0) || applicableAddonVouchers.length > 0 ? (
+        <button type="button" className="flex min-h-11 items-center gap-1.5 rounded-full border border-dashed border-orange-300 bg-white px-3 text-[10px] font-bold text-orange-600 transition-colors hover:bg-orange-50 hover:border-solid shadow-sm focus-visible:ring-2 focus-visible:ring-ring" onClick={(event) => { event.stopPropagation(); onOpenVoucherPicker(item.cartId); }}>
+          <Ticket size={12} /> Ưu đãi ({applicableProductVouchers.length + applicableAddonVouchers.length})
         </button>
-      </div>
+      ) : null}
     </div>
-    {bundleAllocationBadges.map((badge) => <p key={badge.token} className="rounded-lg bg-muted/50 px-2 py-1 text-xs text-muted-foreground">{badge.label}: {badge.quantity} phần</p>)}
-    {rows.length > 0 ? <div className="space-y-2">{rows.map((row) => <div key={row.token} className="flex min-h-11 w-full items-center gap-2 rounded-lg border border-border bg-muted/40 pl-2 text-xs">
-      <Ticket size={14} className="shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate">{row.name}</span>
-      <span className="shrink-0 font-semibold text-primary">−{row.discount.toLocaleString("vi-VN")}đ</span>
-      <button type="button" disabled={item.revalidating} className={controls} aria-label={"Gỡ " + row.name} onClick={() => row.product ? onRemoveProduct?.(item.cartId) : onRemoveAddon?.(item.cartId, row.token)}><X size={14} /></button>
-    </div>)}</div> : null}
-    {(!item.lineVoucher && applicableProductVouchers.length > 0) || applicableAddonVouchers.length > 0 ? <button type="button" className="min-h-11 w-full rounded-lg border border-dashed border-border text-xs font-semibold text-primary" onClick={() => onOpenVoucherPicker(item.cartId)}>Chọn ưu đãi</button> : null}
-  </article>;
+    <div className="flex shrink-0 flex-col items-end whitespace-nowrap">
+      {item.lineVoucher && item.grossUnitPriceVnd !== item.payableUnitVnd ? (
+        <span className="text-[10px] text-muted-foreground line-through">{(item.grossUnitPriceVnd * item.quantity) / 1000}k</span>
+      ) : null}
+      <span className="text-sm font-bold text-primary">{item.lineTotalVnd / 1000}k</span>
+    </div>
+  </div>;
 }
