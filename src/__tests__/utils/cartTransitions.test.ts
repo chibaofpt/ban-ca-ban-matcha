@@ -24,6 +24,83 @@ const state = (items: CartItem[] = [line()]): CartTransitionState => ({
 });
 
 describe("cartTransitions", () => {
+  it("keeps an automatic addon needed by a retained BUNDLE", () => {
+    const recipient: CartItem = { ...line(2), cartId: "recipient", configuration: { size: "MEDIUM", sweetness: "FULL", iceOption: "NORMAL", coldwhisk: false, note: "", addonOptionIds: ["gift"] } };
+    const initial: CartTransitionState = {
+      ...state([{ ...line(), cartId: "buy" }, recipient]),
+      bundleApplications: [{
+        voucher_qr_token: "remove", owner_key: "owner",
+        qualifier_allocations: [{ client_line_id: "buy", quantity: 1 }],
+        reward_allocations: [{ client_line_id: "recipient", addon_option_id: "gift", quantity: 1 }],
+        created_reward_effects: [{ kind: "ADDON", client_line_id: "recipient", addon_option_id: "gift", quantity: 1 }],
+      }, {
+        voucher_qr_token: "retain", owner_key: "owner",
+        qualifier_allocations: [{ client_line_id: "recipient", quantity: 1 }],
+        reward_allocations: [{ client_line_id: "recipient", addon_option_id: "gift", quantity: 1 }],
+        created_reward_effects: [],
+      }],
+    };
+    const result = applyCartCommand(initial, { type: "REMOVE_LINE", cartId: "buy" });
+    expect(result.result.ok).toBe(true);
+    expect(result.state.items).toEqual([{ ...recipient, quantity: 1 }]);
+    expect(result.state.bundleApplications).toEqual([initial.bundleApplications[1]]);
+  });
+
+  it("xóa nhóm gỡ topping tự thêm trên unit còn lại, giữ topping vốn có", () => {
+    const configured = { ...line(2), cartId: "buy", configuration: { ...line().configuration, size: "MEDIUM" as const, sweetness: "FULL" as const, iceOption: "NORMAL" as const, coldwhisk: false, addonOptionIds: ["existing", "gift"] } };
+    const initial: CartTransitionState = { ...state([configured]), bundleApplications: [{
+      voucher_qr_token: "addon", owner_key: "owner",
+      qualifier_allocations: [{ client_line_id: "buy", quantity: 1 }],
+      reward_allocations: [{ client_line_id: "buy", addon_option_id: "gift", quantity: 1 }],
+      created_reward_effects: [{ kind: "ADDON", client_line_id: "buy", addon_option_id: "gift", quantity: 1 }],
+    }] };
+    const result = applyCartCommand(initial, { type: "REMOVE_LINE", cartId: "buy" });
+    expect(result.result.ok).toBe(true);
+    expect(result.state.items[0]?.quantity).toBe(1);
+    expect(result.state.items[0]?.configuration).toMatchObject({ addonOptionIds: ["existing"] });
+    expect(result.state.bundleApplications).toEqual([]);
+  });
+
+  it.each(["buy", "gift"])("xóa từ %s xóa cả BUNDLE và giữ unit ngoài nhóm", (cartId) => {
+    const initial: CartTransitionState = {
+      items: [{ ...line(3), cartId: "buy" }, { ...line(2), cartId: "gift" }, { ...line(), cartId: "other" }],
+      selectedOrderVoucherTokens: ["order-discount"],
+      bundleApplications: [{
+        voucher_qr_token: "delete", owner_key: "owner",
+        qualifier_allocations: [{ client_line_id: "buy", quantity: 2 }],
+        reward_allocations: [{ client_line_id: "gift", quantity: 1 }], created_reward_effects: [],
+      }, {
+        voucher_qr_token: "keep", owner_key: "owner",
+        qualifier_allocations: [{ client_line_id: "other", quantity: 1 }],
+        reward_allocations: [], created_reward_effects: [],
+      }],
+    };
+    const result = applyCartCommand(initial, { type: "REMOVE_LINE", cartId });
+    expect(result.result.ok).toBe(true);
+    expect(result.state.items.map((item) => [item.cartId, item.quantity])).toEqual([["buy", 1], ["gift", 1], ["other", 1]]);
+    expect(result.state.bundleApplications).toEqual([initial.bundleApplications[1]]);
+    expect(result.state.selectedOrderVoucherTokens).toEqual(["order-discount"]);
+    expect(initial.items[0]?.quantity).toBe(3);
+  });
+
+  it("xóa BUNDLE topping trừ một lần ly vừa mua vừa nhận nhiều topping", () => {
+    const initial: CartTransitionState = {
+      ...state([{ ...line(2), cartId: "buy" }]),
+      bundleApplications: [{
+        voucher_qr_token: "addon", owner_key: "owner",
+        qualifier_allocations: [{ client_line_id: "buy", quantity: 1 }],
+        reward_allocations: [
+          { client_line_id: "buy", addon_option_id: "a", quantity: 1 },
+          { client_line_id: "buy", addon_option_id: "b", quantity: 1 },
+        ], created_reward_effects: [],
+      }],
+    };
+    const result = applyCartCommand(initial, { type: "REMOVE_LINE", cartId: "buy" });
+    expect(result.result.ok).toBe(true);
+    expect(result.state.items.map((item) => [item.cartId, item.quantity])).toEqual([["buy", 1]]);
+    expect(result.state.bundleApplications).toEqual([]);
+  });
+
   it("thêm dòng trả cartId và cùng engine cho state kế tiếp", () => {
     const initial = state([]);
     const transition = applyCartCommand(initial, {

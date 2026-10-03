@@ -2,7 +2,7 @@
 
 import React, { useRef, useState } from "react";
 import { toast } from "sonner";
-import MenuCard from "@/src/components/menu/MenuCard";
+import { VoucherMenuTargetCard, VoucherTargetCard } from "./VoucherTargetCard";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import {
@@ -178,7 +178,7 @@ export const ProductDiscountItemPicker = ({
   return (
     <section className="space-y-3" aria-labelledby="product-discount-targets">
         <div>
-          <h5 id="product-discount-targets" className="text-xs font-bold uppercase tracking-widest text-primary/50">Chọn món áp dụng</h5>
+          <h5 id="product-discount-targets" className="text-xs font-bold uppercase tracking-widest text-primary">Chọn món áp dụng</h5>
           {voucherSizes.length > 0 && (
             <p className="mt-1 text-xs text-primary/60">
               Size được giảm: {voucherSizes.map((size, index) => (
@@ -197,19 +197,19 @@ export const ProductDiscountItemPicker = ({
           </div>
         ) : (
           eligibleItems.map(({ item, allowedSizes, milkTypeId }) => (
-            <div key={item.id} className={!canEdit ? "opacity-50" : undefined}>
-              <MenuCard
+            <div key={item.id}>
+              <VoucherMenuTargetCard
                 item={item}
-                milkTypes={menuData.milk_types}
-                compact
+                menuData={menuData}
+                configuration={{ baseLiquidId: milkTypeId ?? voucher.milk_type_id }}
                 disabled={!canEdit}
                 allowedSizes={allowedSizes}
-                onItemClick={() => { if (canEdit) { onChildOpenChange?.(true); setPickedItem({ item, allowedSizes, milkTypeId }); } }}
+                onClick={() => { if (canEdit) { onChildOpenChange?.(true); setPickedItem({ item, allowedSizes, milkTypeId }); } }}
               />
             </div>
           ))
         )}
-        {(voucher.eligible_menu_items ?? []).filter((target) => !eligibleItems.some(({ item }) => item.id === target.menu_item_id)).map((target) => <div key={target.menu_item_id} className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">{target.name} · Không còn cấu hình khả dụng</div>)}
+        {(voucher.eligible_menu_items ?? []).filter((target) => !eligibleItems.some(({ item }) => item.id === target.menu_item_id)).map((target) => <VoucherTargetCard key={target.menu_item_id} name={target.name} description="Không còn cấu hình khả dụng" disabled />)}
     </section>
   );
 };

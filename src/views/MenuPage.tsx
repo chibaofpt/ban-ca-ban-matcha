@@ -14,16 +14,15 @@ import TabBar, { type TabId } from "@/src/components/menu/TabBar";
 import ProductModal from "@/src/components/shared/ProductModal";
 import VoucherModal from "@/src/components/shared/VoucherModal";
 import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
+import { useCustomerVouchers } from "@/src/hooks/useCustomerVouchers";
 import { useVoucherPackages } from "@/src/hooks/useVoucherPackages";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import { useIsLoggedIn, useIsLoggedInSynced } from "@/src/lib/store/authStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
-import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
 import type { ProjectedCartLine } from "@/src/lib/types/cart";
 import { projectCart, resolveCartProjectionVouchers } from "@/src/lib/utils/cartProjection";
 import type { MenuItem } from "@/src/lib/types/menu";
-import { listMyVouchers } from "@/src/services/customerVoucherService";
 import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
 
@@ -67,9 +66,7 @@ export default function MenuPage() {
   const { data: points } = useCustomerPoints({
     enabled: Boolean(packagesRes) && isLoggedInSynced,
   });
-  const { data: vouchersData, isSuccess: vouchersLoaded, isFetching: vouchersFetching } = useQuery({
-    queryKey: VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS,
-    queryFn: listMyVouchers,
+  const { data: vouchersData } = useCustomerVouchers({
     enabled: Boolean(packagesRes) && isLoggedInSynced,
   });
   const visibleVouchers = isLoggedInSynced ? vouchersData ?? [] : [];
@@ -79,13 +76,13 @@ export default function MenuPage() {
     powderData: catalogUnavailable ? null : powderRes,
     vouchers: resolveCartProjectionVouchers(
       isLoggedIn ? "authenticated" : "anonymous",
-      isLoggedInSynced && vouchersLoaded && !vouchersFetching,
+      isLoggedInSynced && vouchersData !== undefined,
       vouchersData,
     ),
     selectedOrderVoucherTokens,
     bundleApplications,
     shippingFeeVnd: 0,
-  }), [bundleApplications, cartItems, catalogUnavailable, isLoggedIn, isLoggedInSynced, menuRes, powderRes, selectedOrderVoucherTokens, vouchersData, vouchersLoaded, vouchersFetching]);
+  }), [bundleApplications, cartItems, catalogUnavailable, isLoggedIn, isLoggedInSynced, menuRes, powderRes, selectedOrderVoucherTokens, vouchersData]);
   const projectedCartItems = projectedCart.lines;
 
   const handleRetryCatalog = useCallback(() => {

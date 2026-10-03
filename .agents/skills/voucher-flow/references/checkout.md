@@ -38,9 +38,8 @@ legacy-field constraints belong to [SCHEMA — points_log](../../../../SCHEMA.md
 
 ## PRODUCT_DISCOUNT Voucher Details
 
-- Present `PRODUCT_DISCOUNT` in the customer's main cart voucher list, while persisting the
-  applied token on exactly one qualifying drink unit through the existing product-voucher fields.
-- Keep other item-level `PRODUCT`, `ITEM`, and `ADDON` vouchers in their per-item selection flows.
+- Persist a PRODUCT_DISCOUNT token on exactly one qualifying drink unit through the existing product-voucher fields.
+- Entry points, target choice, visibility and removal controls belong to [Voucher UI](../../../../docs/specs/voucher-ui.md).
 - Match an exact configured `menu_item_id` and an allowed current size. Also require `ACTIVE`,
   `availability.can_apply`, no conflicting BUNDLE allocation, and a positive incremental benefit.
 - When `milk_type_id` is non-null, require the server-resolved effective Base Liquid to match it
@@ -61,14 +60,9 @@ product_discount_vnd = max(
 )
 ```
 
-- Keep an ACTIVE but currently ineligible voucher visible in the cart picker. Disable only its
-  selection control, expose a specific reason, and keep voucher details readable.
-- Apply immediately when exactly one cart target qualifies. When multiple targets qualify, require
-  explicit target selection in a nested customer bottom sheet.
 - If the selected cart line has quantity greater than one, split one unit before applying.
 - Replacing a product-level voucher must release only the previous voucher on the selected unit.
 - Removing the selected voucher must restore that unit's normal calculated drink price.
-- A selected voucher remains visible and removable even if later cart changes make it ineligible.
 - Do not allow a PRODUCT_DISCOUNT token and a BUNDLE allocation to overlap on the same cart unit.
 - Server order resolution remains authoritative: re-fetch configuration and prices and reject
   stale or invalid client selections before reserving the voucher.
@@ -143,7 +137,7 @@ Do not consume a voucher whose incremental benefit is zero after earlier voucher
 - Do not link it to the order.
 - Do not move it to `RESERVED` or `REDEEMED`.
 - Keep it available for later use.
-- Let the UI explain that the voucher was removed because it added no benefit.
+- Cart selection state and user feedback belong to [Voucher UI](../../../../docs/specs/voucher-ui.md).
 
 Consume a partially applied voucher because it still creates a benefit. Treat a failed
 `min_order_vnd` check as an eligibility error, not as a no-benefit case.

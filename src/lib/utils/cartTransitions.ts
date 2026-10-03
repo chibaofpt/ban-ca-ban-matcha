@@ -1,3 +1,4 @@
+import { getBundleAllocatedQuantities } from "./bundleCartSummary";
 import type {
   BundleCartDraftCommit,
   CartAddonVoucher,
@@ -212,6 +213,34 @@ export function applyCartCommand<T = undefined>(
   const index = state.items.findIndex((item) => item.cartId === command.cartId);
   if (index < 0) return failure(state, "ITEM_NOT_FOUND", "Không tìm thấy món trong giỏ") as CartTransition<T>;
   const item = state.items[index]!;
+  if (command.type === "REMOVE_LINE") {
+    const removedApplications = state.bundleApplications.filter((application) =>
+      [...application.qualifier_allocations, ...application.reward_allocations]
+        .some((allocation) => allocation.client_line_id === command.cartId));
+    if (removedApplications.length === 0) {
+      return success({ ...state, items: state.items.filter((entry) => entry.cartId !== command.cartId) }, undefined as T);
+    }
+    const quantities = getBundleAllocatedQuantities(removedApplications);
+    const removedTokens = new Set(removedApplications.map((application) => application.voucher_qr_token));
+    const retainedApplications = state.bundleApplications.filter((application) => !removedTokens.has(application.voucher_qr_token));
+    const remainingItems = state.items.flatMap((entry) => {
+      const removedQuantity = quantities.get(entry.cartId) ?? 0;
+      if (removedQuantity === 0) return [entry];
+      const quantity = Math.max(0, entry.quantity - removedQuantity);
+      return quantity > 0 ? [{ ...entry, quantity }] : [];
+    });
+    const items = removedApplications.reduce((remaining, application) => removeBundleEffects(remaining, {
+      ...application,
+      created_reward_effects: application.created_reward_effects.filter((effect) => effect.kind === "ADDON" &&
+        !retainedApplications.some((retained) => retained.reward_allocations.some((allocation) =>
+          allocation.client_line_id === effect.client_line_id && allocation.addon_option_id === effect.addon_option_id))),
+    }), remainingItems);
+    return success({
+      ...state, items,
+      bundleApplications: retainedApplications,
+      selectedOrderVoucherTokens: state.selectedOrderVoucherTokens.filter((token) => !removedTokens.has(token)),
+    }, undefined as T);
+  }
   const allocatedQuantity = allocatedQuantityFor(state, command.cartId);
   const canTargetOutsideBundle = (command.type === "APPLY_LINE_VOUCHER" || command.type === "APPLY_ADDON_VOUCHER")
     && allocatedQuantity < item.quantity;
@@ -224,9 +253,6 @@ export function applyCartCommand<T = undefined>(
     return success({ ...state, items }, undefined as T);
   };
 
-  if (command.type === "REMOVE_LINE") {
-    return success({ ...state, items: state.items.filter((entry) => entry.cartId !== command.cartId) }, undefined as T);
-  }
   if (command.type === "UPDATE_CONFIGURATION") return replace({ ...item, configuration: command.configuration });
   if (command.type === "UPDATE_LINE") {
     if (!Number.isInteger(command.line.quantity) || command.line.quantity < 1) {

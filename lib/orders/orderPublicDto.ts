@@ -83,6 +83,7 @@ interface OrderListItemSource {
 
 interface AdminOrderListItemSource extends OrderListItemSource {
   handler: { name: string; role: string } | null;
+  paymentConfirmer?: { name: string; role: string } | null;
 }
 
 function isRecord(value: unknown): value is UnknownRecord {
@@ -235,12 +236,14 @@ export function toOrderListItemDto(
 
 /** Project one admin management-list row, including its public handler identity. */
 export function toAdminOrderListItemDto(order: AdminOrderListItemSource): AdminOrderListItem {
-  if (order.handler && order.handler.role !== "ADMIN" && order.handler.role !== "STAFF") {
+  const { paymentConfirmer, ...handledOrder } = order;
+  const handler = paymentConfirmer ?? order.handler;
+  if (handler && handler.role !== "ADMIN" && handler.role !== "STAFF") {
     throw new Error("Order handler role invariant violated");
   }
   return {
-    ...toOrderListItemDto(order),
-    handler: order.handler as AdminOrderListItem["handler"],
+    ...toOrderListItemDto(handledOrder),
+    handler: handler as AdminOrderListItem["handler"],
   };
 }
 

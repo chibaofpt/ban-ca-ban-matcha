@@ -107,7 +107,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
       onClick={compact || disabled ? undefined : () => onItemClick(item)}
       whileTap={disabled ? undefined : { scale: 0.96 }}
       className={compact
-        ? "group relative flex min-h-[108px] w-full flex-row items-center justify-between gap-3 rounded-2xl border border-border/50 bg-card p-3 transition-all duration-200"
+        ? "group relative flex min-h-[108px] w-full flex-row items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-secondary text-primary-foreground p-3 transition-all duration-200"
         : "group flex flex-row items-center justify-between gap-4 md:gap-5 w-full h-[130px] md:h-[150px] border-b border-dashed border-primary/20 last:border-0 transition-all duration-300 cursor-pointer bg-transparent"}
     >
       {compact ? (
@@ -150,7 +150,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
       {/* Content Area */}
       <div className={compact ? "flex min-w-0 flex-1 flex-col justify-between gap-2 self-stretch text-left" : "flex flex-col flex-1 h-[80%] justify-between py-1 text-left items-start min-w-0"}>
         <div className="w-full">
-          <h3 className={`font-serif font-medium text-[#2d4a22] leading-tight line-clamp-2 mb-1 ${compact ? "break-words text-base" : "text-lg"}`}>
+          <h3 className={`font-serif font-medium leading-tight line-clamp-2 mb-1 ${compact ? "break-words text-base text-primary-foreground" : "text-lg text-[#2d4a22]"}`}>
             {item.name}
             {item.is_seasonal && (
               <span className="inline-flex items-center bg-amber-50 text-amber-600 text-[8px] font-sans font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border border-amber-200/50 align-middle ml-2 -translate-y-[1px]">
@@ -159,7 +159,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
             )}
           </h3>
           {item.description && (
-            <p className={`text-[11px] text-primary/60 leading-relaxed ${compact ? "line-clamp-1 break-words" : "line-clamp-2"}`}>
+            <p className={`text-[11px] leading-relaxed ${compact ? "line-clamp-1 break-words text-primary-foreground" : "line-clamp-2 text-primary/60"}`}>
               {item.description}
             </p>
           )}
@@ -170,8 +170,8 @@ const MenuCard: React.FC<MenuCardProps> = ({
           {item.category === "extras" ? (
             <div className="flex flex-1 items-center min-w-0">
               <div className="flex flex-col gap-0.5">
-                <span className="text-[10px] font-bold uppercase tracking-wide text-[#446c35]">Đơn giá</span>
-                <span className="text-base font-bold text-[#5b9a2b]">{formatKa(item.unit_price_vnd ?? 0, "ceil")}</span>
+                <span className={`text-[10px] font-bold uppercase tracking-wide ${compact ? "text-primary-foreground" : "text-[#446c35]"}`}>Đơn giá</span>
+                <span className={`text-base font-bold ${compact ? "text-primary-foreground" : "text-[#5b9a2b]"}`}>{formatKa(item.unit_price_vnd ?? 0, "ceil")}</span>
               </div>
             </div>
           ) : (
@@ -187,10 +187,10 @@ const MenuCard: React.FC<MenuCardProps> = ({
                 const price = getDisplayPrice(s);
                 return (
                   <div key={sizeKey} className="flex flex-col items-center gap-0.5">
-                    <span className={`tracking-wide whitespace-nowrap ${isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
+                    <span className={`tracking-wide whitespace-nowrap ${compact ? 'text-[10px] font-bold text-primary-foreground' : isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
                       <SizeLabel size={sizeKey} />
                     </span>
-                    <span className={`${isDefault ? 'text-base font-bold text-[#5b9a2b]' : 'text-sm font-semibold text-primary/50'}`}>
+                    <span className={`${compact ? 'text-base font-bold text-primary-foreground' : isDefault ? 'text-base font-bold text-[#5b9a2b]' : 'text-sm font-semibold text-primary/50'}`}>
                       {formatKa(price, "ceil")}
                     </span>
                   </div>

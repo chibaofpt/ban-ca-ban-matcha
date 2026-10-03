@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { useCartStore } from "@/src/lib/store/cartStore";
-import MenuCard from "@/src/components/menu/MenuCard";
+import { VoucherMenuTargetCard } from "./VoucherTargetCard";
+import OptionCard from "./product-modal/OptionCard";
+import { formatCartMoney } from "@/src/utils/display";
 import type { CartItem, ProjectedCartLine } from "@/src/lib/types/cart";
 import type { MenuData } from "@/src/lib/types/menu";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
@@ -53,11 +55,17 @@ export const AddonItemPicker = ({
 }: AddonItemPickerProps) => {
   const { applyAddonVoucher, setCartOpen, setPendingAddonVoucher } = useCartStore();
   const applyVoucher = onApplyVoucher ?? applyAddonVoucher;
-  const addonTargets = voucher.eligible_addon_options ?? [];
+  const addonTargets = voucher.eligible_addon_options?.length ? voucher.eligible_addon_options : menuData.addon_groups.flatMap((group) =>
+    group.options.filter((option) => option.id === voucher.addon_option_id).map((option) => ({
+      addon_option_id: option.id, label: option.label, price_vnd: option.price_vnd,
+      is_active: true, is_dynamic_gram: group.is_dynamic_gram || option.gram_value !== null,
+    })),
+  );
   const [selectedAddonOptionId, setSelectedAddonOptionId] = useState(
     resolveAddonVoucherOptionId(voucher) ?? "",
   );
   const [conflict, setConflict] = useState<{ item: ProjectedCartLine; replaceOptionId: string; intent: PendingAddonVoucherIntent } | null>(null);
+  const afterConfirmation = useRef<"success" | PendingAddonVoucherIntent | null>(null);
   const projectedItems = cartItems.flatMap((item): ProjectedCartLine[] => {
     if ("grossUnitPriceVnd" in item) return [item];
     const menuItem = [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])].find((candidate) => candidate.id === item.menuItemId);
@@ -85,6 +93,12 @@ export const AddonItemPicker = ({
     !hasAddonVoucherForOption(item, selectedAddonOptionId) &&
     (bundleAllocatedQuantitiesByCartId.get(item.cartId) ?? 0) < item.quantity,
   );
+
+  const addonLabel = addonTargets.find((option) => option.addon_option_id === selectedAddonOptionId)?.label ?? "addon này";
+  const drinkGroups = [
+    { label: `Đã có ${addonLabel}`, items: eligibleDrinkItems.filter((item) => item.configuration.size !== null && item.configuration.addonOptionIds.includes(selectedAddonOptionId)) },
+    { label: `Chưa có ${addonLabel}`, items: eligibleDrinkItems.filter((item) => item.configuration.size !== null && !item.configuration.addonOptionIds.includes(selectedAddonOptionId)) },
+  ];
 
   const resolveIntent = (addonOptionId: string): PendingAddonVoucherIntent | null => {
     for (const group of menuData.addon_groups) {
@@ -186,8 +200,8 @@ export const AddonItemPicker = ({
       setConflict(null);
       return;
     }
+    afterConfirmation.current = "success";
     setConflict(null);
-    onSuccess();
   };
 
   return (
@@ -201,26 +215,46 @@ export const AddonItemPicker = ({
           </button>
         ) : null}
         <div>
-          <h5 id="addon-voucher-targets" className="text-xs font-bold uppercase tracking-widest text-primary/50">Chọn món áp dụng</h5>
+          <h5 id="addon-voucher-targets" className="text-xs font-bold uppercase tracking-widest text-primary">Chọn món áp dụng</h5>
           <p className="mt-1 text-xs text-muted-foreground">Chọn topping của voucher, sau đó chọn ly trong giỏ.</p>
         </div>
-        {addonTargets.length > 0 ? <div className="space-y-2"><p className="text-sm font-semibold">Chọn addon được tặng</p>{addonTargets.map((option) => <button type="button" key={option.addon_option_id} disabled={!canEdit || !option.is_active || option.is_dynamic_gram} onClick={() => setSelectedAddonOptionId(option.addon_option_id)} className={`min-h-11 w-full rounded-xl border px-3 text-left disabled:cursor-not-allowed disabled:opacity-50 ${selectedAddonOptionId === option.addon_option_id ? "border-primary bg-primary/10" : "border-input"}`}>{option.label}{!option.is_active || option.is_dynamic_gram ? " · Không khả dụng" : ""}</button>)}</div> : null}
+        {addonTargets.length > 0 ? <div className="space-y-2">
+          <p className="text-sm font-semibold text-primary">Chọn addon được tặng</p>
+          <div className="grid grid-cols-3 gap-2">
+            {addonTargets.map((option) => {
+              const group = menuData.addon_groups.find((candidate) => candidate.options.some((target) => target.id === option.addon_option_id));
+              const catalogOption = group?.options.find((target) => target.id === option.addon_option_id);
+              return <OptionCard key={option.addon_option_id} label={option.label}
+                imageUrl={catalogOption?.image_url ?? group?.image_url}
+                imageAlt={`Ảnh ${option.label}`}
+                sub={formatCartMoney(catalogOption?.price_vnd ?? option.price_vnd)}
+                layout="stacked"
+                disabled={!canEdit || !option.is_active || option.is_dynamic_gram || !catalogOption}
+                isActive={selectedAddonOptionId === option.addon_option_id}
+                onClick={() => setSelectedAddonOptionId(option.addon_option_id)} />;
+            })}
+          </div>
+        </div> : null}
         {eligibleDrinkItems.length === 0 && selectedAddonOptionId ? <button type="button" disabled={!canEdit} onClick={() => { const intent = resolveIntent(selectedAddonOptionId); if (intent) savePendingAndExit(intent); }} className="min-h-11 w-full rounded-xl bg-primary px-4 font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">Chọn món mới</button> : null}
-        {eligibleDrinkItems.map(item => (
-          item.menuItem ? (
-            <div key={item.cartId} className={!canEdit ? "opacity-50" : undefined}>
-              <MenuCard
-                item={item.menuItem}
-                milkTypes={menuData.milk_types}
-                compact
+        {eligibleDrinkItems.length > 0 ? drinkGroups.filter((group) => group.items.some((item) => item.menuItem)).map((group) => (
+          <div key={group.label} className="space-y-2">
+            <h6 className="text-sm font-semibold text-primary">{group.label}</h6>
+            {group.items.map((item) => item.menuItem ? (
+              <VoucherMenuTargetCard key={item.cartId} item={item.menuItem} menuData={menuData}
+                configuration={item.configuration}
+                priceVnd={item.revalidating ? undefined : item.grossUnitPriceVnd}
                 disabled={!canEdit}
-                allowedSizes={item.configuration.size ? [item.configuration.size] : undefined}
-                onItemClick={() => handleSelectItem(item)}
-              />
-            </div>
-          ) : null
-        ))}
-      <ConfirmModal isOpen={conflict !== null} title="Nhóm addon đã đủ" message="Thay addon đang chọn bằng addon của voucher? Chọn giữ nguyên sẽ lưu voucher để áp dụng cho món mới tiếp theo." confirmLabel="Thay addon" cancelLabel="Giữ nguyên" onConfirm={replaceAndApply} onCancel={() => { if (conflict) savePendingAndExit(conflict.intent); setConflict(null); }} />
+                onClick={() => handleSelectItem(item)} />
+            ) : null)}
+          </div>
+        )) : null}
+      <ConfirmModal isOpen={conflict !== null} title="Nhóm addon đã đủ" message="Thay addon đang chọn bằng addon của voucher? Chọn giữ nguyên sẽ lưu voucher để áp dụng cho món mới tiếp theo." confirmLabel="Thay addon" cancelLabel="Giữ nguyên" onConfirm={replaceAndApply} onCancel={() => { afterConfirmation.current = conflict?.intent ?? null; setConflict(null); }}
+        onAfterClose={() => {
+          const next = afterConfirmation.current;
+          afterConfirmation.current = null;
+          if (next === "success") onSuccess();
+          else if (next) savePendingAndExit(next);
+        }} />
     </section>
   );
 };

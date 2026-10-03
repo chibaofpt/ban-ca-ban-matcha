@@ -22,6 +22,13 @@ Apply these allocation rules with the canonical application order and money term
   application owns explicit qualifier and reward allocations keyed by stable `client_line_id`.
   A token appears once, and product/addon unit quantities cannot overlap across applications.
   The server re-resolves products, configuration, addons, and prices before evaluating them.
+- Deleting a cart item allocated to BUNDLE removes the purchase/reward units of every
+  application referencing that line in one cart transition. Use the canonical product-unit
+  union for addon rewards, so a qualifier cup receiving several toppings is removed once.
+  Preserve units outside those applications and unrelated BUNDLE allocations. Remove addon
+  gifts recorded in `created_reward_effects` from surviving units unless another retained
+  application still requires that addon. Ordinary voucher removal remains distinct: it keeps
+  purchased items and removes only automatically created rewards.
 - Resolve voucher ownership through an explicit `voucher_owner_id`, never by assuming the order
   host owns every line. This boundary is required for future group orders.
 - Product scopes may target drinks or `extras`. Extras have null configuration for all reward modes.

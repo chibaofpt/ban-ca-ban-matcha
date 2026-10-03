@@ -1,24 +1,26 @@
 "use client";
 
 import React, { useState, useMemo, useCallback } from "react";
-import { User, UserX, Ticket, ArrowLeft, CheckCircle2, ChevronRight, X } from "lucide-react";
+import { User, UserX, Ticket, ArrowLeft, ChevronRight, X } from "lucide-react";
 import type { BundleCreatedRewardEffect, BundleCartDraftCommit, CartBundleApplication, ProjectedCartLine } from "@/src/lib/types/cart";
 import type { MenuData, Size, SweetnessLevel } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { CustomerInfo } from "./CustomerSelectModal";
 import type { MyVoucher } from "@/src/services/staffVoucherService";
-import { cn } from "@/src/utils/cn";
 import { formatVietnamPhone } from "@/src/utils/display";
+import { CartMoney } from "@/src/components/shared/CartMoney";
+import { CartPaymentSummary } from "@/src/components/shared/CartPaymentSummary";
 import { SizeLabel } from "@/src/components/ui/SizeLabel";
 import {
   buildProductVoucherMap,
+  getAvailableCartItemVouchers,
   buildAddonVoucherMap,
   getAddonVoucherTargetChoices,
 } from "@/src/utils/voucherMatchUtils";
 import { motion, AnimatePresence } from "framer-motion";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 import StaffCartItemCard from "./cart/StaffCartItemCard";
-import { VoucherCard } from "@/src/components/shared/VoucherCards";
+import { VoucherCard, VoucherSelectionIndicator } from "@/src/components/shared/VoucherCards";
 import type { BundleCartDraftResult, BundleCartDraftValidation } from "@/src/lib/utils/bundleCartDraft";
 import type { DiscountVoucher } from "@/src/lib/store/staffCartStore";
 import Image from "next/image";
@@ -54,6 +56,7 @@ interface StaffCartDrawerProps {
   powderData?: PowderApiResponse;
   isOpen: boolean;
   cart: ProjectedCartLine[];
+  getProductVoucherBenefit: (item: ProjectedCartLine, voucher: MyVoucher) => number;
   discountVoucher: DiscountVoucher | null;
   customerInfo: CustomerInfo | null;
   isSubmitting?: boolean;
@@ -103,6 +106,7 @@ export function StaffCartDrawer({
   powderData,
   isOpen,
   cart,
+  getProductVoucherBenefit,
   discountVoucher,
   customerInfo,
   isSubmitting = false,
@@ -137,7 +141,6 @@ export function StaffCartDrawer({
   onClearCart,
   preventCloseOutside = false,
   checkoutBlocked = false,
-  voucherRevalidating = false,
   persistenceWarning = null,
 }: StaffCartDrawerProps) {
   const menuItems = menuData ? [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])] : [];
@@ -250,12 +253,9 @@ export function StaffCartDrawer({
     selectedVoucherIds: projectionVoucherIds,
     shipping_fee_vnd: 0,
   }), [bundleApplications, cart, customerVouchers, projectionVoucherIds, scannedDiscountForProjection]);
-  const subtotalVnd = cartProjection.totals.subtotal_vnd;
-  const totalDiscountVnd = cartProjection.totals.items_discount_vnd + cartProjection.totals.total_voucher_discount_vnd;
-  const totalVnd = cartProjection.totals.total_vnd;
-  const hasVoucherSelection = selectedDiscountIds.length > 0 || bundleApplications.length > 0 || cart.some((item) =>
-    Boolean(item.lineVoucher) || item.addonVouchers.length > 0,
-  );
+  const totalDiscountVnd = cartProjection.totals.items_discount_vnd + cartProjection.totals.total_voucher_discount_vnd + cartProjection.totals.freeship_discount_vnd;
+  const totalVnd = cartProjection.totals.grand_total_vnd;
+  const earnedPoints = customerInfo ? Math.floor(cartProjection.totals.total_vnd / 10_000) : 0;
   const appliedVoucherCount = new Set([
     ...selectedDiscountIds,
     ...bundleApplications.map((application) => application.voucher_qr_token),
@@ -296,22 +296,32 @@ export function StaffCartDrawer({
 
   return (
     <ResponsiveOverlay open={isOpen} onOpenChange={(open) => { if (!open) handleClose(); }} title="Giỏ hàng" presentation="bare" backdropClassName="bg-black/40 backdrop-blur-none" dismissPolicy={preventCloseOutside ? "explicit-only" : "default"} onAfterClose={() => { setActiveItemForVoucher(null); setAddonChoiceVoucherId(null); onAfterClose?.(); }} className="flex max-h-[100dvh] flex-col rounded-t-3xl bg-card shadow-2xl md:max-h-[90dvh] md:max-w-2xl">
-          <div className="flex justify-center pt-3 pb-1 w-full shrink-0">
-            <div className="w-12 h-1.5 bg-border rounded-full" />
+          <div className="flex justify-center pt-2 pb-1 w-full shrink-0">
+            <div className="w-10 h-1 bg-border rounded-full" />
           </div>
-          <div className="flex items-center justify-between px-4 pt-2 pb-3 shrink-0 border-b border-border/40">
+          <div className="flex items-center justify-between px-4 py-1.5 shrink-0 border-b border-border/40">
             <div className="flex items-center gap-3">
-              <h2 className="font-serif text-lg font-bold flex items-center gap-2">
-                Giỏ hàng <span className="bg-primary/10 text-primary text-xs px-2 py-0.5 rounded-full">{cart.reduce((sum, c) => sum + c.quantity, 0)}</span>
+              <h2 className="font-serif text-base font-bold flex items-center gap-2">
+                Giỏ hàng <span className="bg-primary/10 text-primary text-[10px] px-1.5 py-0.5 rounded-full">{cart.reduce((sum, c) => sum + c.quantity, 0)}</span>
               </h2>
+              {cart.length > 0 && onClearCart ? (
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.98 }}
+                  onClick={onClearCart}
+                  className="flex h-8 shrink-0 items-center justify-center rounded-full border border-red-100 bg-red-50 px-2 text-[10px] font-bold text-red-600 transition hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  Xoá tất cả
+                </motion.button>
+              ) : null}
             </div>
             <button
               type="button"
               onClick={handleClose}
               aria-label="Đóng giỏ hàng"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-secondary/50 transition hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary/50 transition hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              <X size={16} />
+              <X size={14} />
             </button>
           </div>
           {persistenceWarning ? (
@@ -359,7 +369,7 @@ export function StaffCartDrawer({
         {/* Item list */}
         <div
           data-testid="staff-cart-items"
-          className="min-h-0 flex-[0_1_auto] space-y-4 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain p-4"
+          className="min-h-0 flex-[0_1_auto] space-y-2 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain p-3 sm:p-4"
         >
           {cart.length === 0 ? (
              <div className="text-center py-10 text-muted-foreground space-y-3">
@@ -367,7 +377,7 @@ export function StaffCartDrawer({
                <p className="font-medium text-sm">Giỏ hàng đang trống</p>
              </div>
           ) : (
-            [...cart].reverse().map((c) => {
+            [...cart].reverse().map((c, index) => {
               const productVouchersForItem = getBundleOutsideQuantity(c, bundleAllocatedQuantitiesByCartId) > 0
                 ? applicableProductVouchers.get(c.menuItemId) || []
                 : [];
@@ -381,6 +391,9 @@ export function StaffCartDrawer({
                   layoutVariant={layoutVariant}
                   key={c.cartId}
                   item={c}
+                  availableVoucherCount={getAvailableCartItemVouchers({ item: c, cart, vouchers: customerVouchers, bundleApplications, getProductBenefit: getProductVoucherBenefit }).length}
+                  voucherMutationDisabled={checkoutBlocked}
+                  voucherDiscounts={cartProjection.totals.itemResults[cart.length - index - 1]}
                   menuItem={menuItem}
                   powderData={powderData}
                   milkTypes={menuData?.milk_types ?? []}
@@ -415,45 +428,39 @@ export function StaffCartDrawer({
               onRepairBundle={onRepairBundle}
             />
           ) : null}
+          {cart.length > 0 ? (
+            <CartPaymentSummary totals={cartProjection.totals} />
+          ) : null}
         </div>
 
         {/* Footer */}
         {cart.length > 0 && (
-          <div className="px-5 pt-4 pb-6 border-t border-border/50 bg-background/50 backdrop-blur-md shrink-0 shadow-[0_-10px_20px_-15px_rgba(0,0,0,0.1)]">
-            <div className="mb-4">
-              <PaymentMethodSelector
-                value={paymentMethod}
-                bankTransferDisabled={totalVnd <= 0}
-                onChange={onPaymentMethodChange}
-              />
-            </div>
-            <div className="flex gap-4">
+          <div className="px-4 pt-3 pb-3 border-t border-border/50 bg-background/50 backdrop-blur-md shrink-0 shadow-[0_-10px_20px_-15px_rgba(0,0,0,0.1)]">
+            <div className="flex gap-3">
               {/* Left Column - Vouchers & Points */}
-              <div className="flex-1 space-y-3">
+              <div className="min-w-0 flex-1 space-y-2">
                 {customerInfo?.type === "existing" && onOpenVoucherPicker && (
                   <button
                     type="button"
                     onClick={onOpenVoucherPicker}
-                    className="w-full flex items-center justify-between bg-orange-50 border border-orange-100 hover:bg-orange-100/80 transition-colors rounded-xl px-3 py-2.5 text-left"
+                    className="w-full flex items-center justify-between gap-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors rounded-lg px-2.5 py-2 text-left focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <div className="flex items-center gap-2">
-                      <div className="bg-orange-100 p-1.5 rounded-lg text-orange-600 shrink-0">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <div className="bg-primary-foreground/10 p-1 rounded-md shrink-0">
                         <Ticket size={14} />
                       </div>
-                      <div>
-                        <p className="text-[11px] font-bold text-orange-800 leading-tight">Ưu đãi của khách</p>
-                        <p className="text-[10px] text-orange-600/80 leading-tight">
-                          {voucherRevalidating
-                            ? "Đang xác minh ví…"
-                            : appliedVoucherCount > 0
-                              ? `${appliedVoucherCount} voucher đang áp`
-                              : customerVouchers.length > 0
-                                ? `Chọn trong ${customerVouchers.length} voucher`
-                                : "Xem ví voucher"}
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold leading-tight">Ưu đãi của khách</p>
+                        <p className="text-[10px] text-primary-foreground leading-tight">
+                          {appliedVoucherCount > 0
+                            ? `${appliedVoucherCount} voucher đang áp`
+                            : customerVouchers.length > 0
+                              ? `Chọn trong ${customerVouchers.length} voucher`
+                              : "Xem ví voucher"}
                         </p>
                       </div>
                     </div>
-                    <ChevronRight size={14} className="text-orange-400" />
+                    <ChevronRight size={14} className="shrink-0 text-primary-foreground/70" />
                   </button>
                 )}
                 
@@ -464,67 +471,42 @@ export function StaffCartDrawer({
                     <span className="text-xs font-bold text-green-700">Đã tính trong tổng</span>
                   </div>
                 )}
+                <PaymentMethodSelector
+                  value={paymentMethod}
+                  bankTransferDisabled={totalVnd <= 0}
+                  onChange={onPaymentMethodChange}
+                />
               </div>
 
               {/* Right Column - Totals */}
-              <div className="w-[45%] flex flex-col justify-end gap-1 text-right">
-                {voucherRevalidating && hasVoucherSelection ? (
-                  <p className="text-xs font-semibold text-amber-700">Đang xác minh ưu đãi đã chọn…</p>
-                ) : null}
-                <div className="flex justify-between items-center text-xs text-muted-foreground font-medium">
-                  <span>Tạm tính</span>
-                  <span>{subtotalVnd.toLocaleString("vi-VN")}đ</span>
-                </div>
-                {totalDiscountVnd > 0 && (
-                  <div className="flex justify-between items-center text-xs text-orange-600 font-bold">
-                    <span>Giảm</span>
-                    <span>-{totalDiscountVnd.toLocaleString("vi-VN")}đ</span>
-                  </div>
-                )}
-                <div className="border-t border-dashed border-border/60 my-1" />
-                <div className="flex flex-col items-end">
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest leading-none mb-1">Tổng</span>
-                  <span className="font-serif text-2xl font-bold text-primary leading-none flex items-center gap-1">
-                    {totalVnd.toLocaleString("vi-VN")}đ
+              <div className="w-[45%] min-w-0 flex flex-col gap-2 text-left">
+                <div className="flex flex-wrap items-baseline justify-end gap-x-2 gap-y-1">
+                  <span className="text-xs font-semibold text-muted-foreground">Tổng</span>
+                  <span className="inline-flex flex-wrap items-baseline gap-1 font-serif text-xl font-bold text-primary">
+                    <span className="whitespace-nowrap"><CartMoney amountVnd={totalVnd} /></span>
+                    {earnedPoints > 0 ? <span className="whitespace-nowrap font-sans text-[10px]">(+{earnedPoints} điểm)</span> : null}
                   </span>
-                  {customerInfo && totalVnd >= 10_000 && (
-                    <span className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-100 px-1.5 py-0.5 rounded-md mt-1.5">
-                      +{Math.floor(totalVnd / 10_000)} điểm cá
-                    </span>
-                  )}
                 </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3 mt-4">
-              {onClearCart && (
+                {totalDiscountVnd > 0 ? (
+                  <p className="text-right text-[10px] font-semibold text-red-700">Được giảm <CartMoney amountVnd={totalDiscountVnd} /></p>
+                ) : null}
                 <motion.button
+                  type="button"
                   whileTap={{ scale: 0.98 }}
-                  onClick={onClearCart}
-                  className="w-[30%] bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 rounded-2xl h-12 font-bold text-sm shadow-sm transition flex items-center justify-center shrink-0"
+                  onClick={onCheckout}
+                  disabled={isSubmitting || checkoutBlocked}
+                  className="mt-auto flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-2xl bg-primary text-sm font-bold text-primary-foreground shadow-md transition disabled:pointer-events-none disabled:opacity-50"
                 >
-                  Xoá tất cả
+                  {isSubmitting ? (
+                    <>
+                      <div className="h-4 w-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" />
+                      Đang tạo...
+                    </>
+                  ) : (
+                    "Chốt đơn"
+                  )}
                 </motion.button>
-              )}
-              
-              <motion.button
-                whileTap={{ scale: 0.98 }}
-                onClick={onCheckout}
-                disabled={isSubmitting || checkoutBlocked}
-                className={cn(
-                  "bg-primary text-primary-foreground rounded-2xl h-12 font-bold text-sm shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none shrink-0",
-                  onClearCart ? "w-[70%]" : "w-full"
-                )}
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="w-4 h-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" />
-                    Đang tạo...
-                  </>
-                ) : (
-                  "Chốt đơn"
-                )}
-              </motion.button>
+              </div>
             </div>
           </div>
         )}
@@ -583,13 +565,7 @@ export function StaffCartDrawer({
                               if (isSelected && onRemoveProduct) closeVoucherPickerAfter(onRemoveProduct(activeItem.cartId));
                               else if (!isSelected && onApplyProduct) closeVoucherPickerAfter(onApplyProduct(activeItem.cartId, v));
                             }}
-                            actionNode={
-                              isSelected ? (
-                                <CheckCircle2 className="w-5 h-5 text-orange-500 shrink-0 ml-2" />
-                              ) : (
-                                <div className="w-5 h-5 rounded-full border border-border/60 shrink-0 ml-2" />
-                              )
-                            }
+                            actionNode={<VoucherSelectionIndicator selected={isSelected} />}
                           />
                         );
                       })}
@@ -623,13 +599,7 @@ export function StaffCartDrawer({
                                 setAddonChoiceVoucherId(v.qr_token);
                               }
                             }}
-                            actionNode={
-                              isSelected ? (
-                                <CheckCircle2 className="w-5 h-5 text-orange-500 shrink-0 ml-2" />
-                              ) : (
-                                <div className="w-5 h-5 rounded-full border border-border/60 shrink-0 ml-2" />
-                              )
-                            }
+                            actionNode={<VoucherSelectionIndicator selected={isSelected} />}
                           />
                           {!isSelected && addonChoiceVoucherId === v.qr_token ? (
                             <div className="space-y-2 rounded-xl border border-border bg-muted/50 p-2" role="group" aria-label="Chọn topping được giảm">
@@ -646,7 +616,7 @@ export function StaffCartDrawer({
                                   className="flex min-h-11 w-full items-center justify-between rounded-lg bg-card px-3 text-left text-sm font-semibold"
                                 >
                                   <span>{choice.label}</span>
-                                  <span className="text-primary">Giảm {choice.discountVnd.toLocaleString("vi-VN")}đ</span>
+                                  <span className="text-primary">Giảm <CartMoney amountVnd={choice.discountVnd} /></span>
                                 </button>
                               ))}
                             </div>

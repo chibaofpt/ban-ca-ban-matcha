@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { attachPendingAddonVoucher, configureFixedAddon, useCartStore } from "@/src/lib/store/cartStore";
 import { useStaffCartStore } from "@/src/lib/store/staffCartStore";
-import type { CartItem } from "@/src/lib/types/cart";
+import type { CartItem, ProjectedCartLine } from "@/src/lib/types/cart";
 import { applyCartCommand } from "@/src/lib/utils/cartTransitions";
 import { projectedCartLine } from "@/src/__tests__/fixtures/cart";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import {
   buildAddonVoucherMap,
+  getAvailableCartItemVouchers,
   estimateProductSavings,
+  estimateMultiDiscountSavings,
   filterUsableVouchers,
   getAppliedMenuVoucherId,
   getCartAddonVoucherTargets,
@@ -18,6 +20,7 @@ import {
   resolveAddonVoucherOptionForCartItem,
 } from "@/src/utils/voucherMatchUtils";
 import { selectOrderVoucherToken } from "@/src/utils/customerVoucherSelection";
+import { getCartVoucherAvailability, type CartVoucherContext } from "@/src/lib/utils/cartVoucherAvailability";
 
 const baseVoucher = (patch: Partial<MyVoucher>): MyVoucher => ({
   qr_token: "voucher-token",
@@ -78,6 +81,60 @@ const drink = (patch: Parameters<typeof projectedCartLine>[0] = {}): Omit<CartIt
 };
 
 describe("multi-choice voucher client contracts", () => {
+  it("giữ DISCOUNT thiếu minimum nhưng không trừ tiền xét freeship", () => {
+    const selected = baseVoucher({ voucher_type: "DISCOUNT", discount_type: "FIXED", discount_value: 10_000, min_order_vnd: 100_000 });
+    const freeship = baseVoucher({ qr_token: "freeship", voucher_type: "FREESHIP", min_order_vnd: 55_000, covered_delivery_fee_vnd: 15_000 });
+    const context: CartVoucherContext = {
+      menuData: { updated_at: "2026-10-03T00:00:00Z", latte: [], fusion: [], milk_types: [], addon_groups: [] },
+      powders: [], defaultPowderGram: [], selectedDiscountVouchers: [selected],
+      subtotalPrice: 60_000, orderType: "DELIVERY", shippingFee: 15_000,
+    };
+    expect(estimateMultiDiscountSavings(context.selectedDiscountVouchers, 60_000)).toBe(0);
+    expect(getCartVoucherAvailability(freeship, context)).toMatchObject({ canUse: true, reason: "" });
+    expect(context.selectedDiscountVouchers).toEqual([selected]);
+    expect(estimateMultiDiscountSavings(context.selectedDiscountVouchers, 100_000)).toBe(10_000);
+  });
+
+  it.each([[60_000, 10_000], [100_000, 25_000]])("ước tính FIXED trước PERCENT, xét minimum và cap: %i giảm %i", (subtotal, expected) => {
+    const fixed = baseVoucher({ voucher_type: "DISCOUNT", discount_type: "FIXED", discount_value: 10_000, min_order_vnd: 50_000 });
+    const percent = baseVoucher({ qr_token: "percent", voucher_type: "DISCOUNT", discount_type: "PERCENT", discount_value: 20, min_order_vnd: 100_000, max_discount_vnd: 15_000 });
+    expect(estimateMultiDiscountSavings([percent, fixed], subtotal)).toBe(expected);
+  });
+
+  it("DISCOUNT thiếu minimum không che lợi ích của voucher thay thế", () => {
+    const retained = baseVoucher({ voucher_type: "DISCOUNT", discount_type: "FIXED", discount_value: 70_000, min_order_vnd: 100_000 });
+    const candidate = baseVoucher({ qr_token: "candidate", voucher_type: "DISCOUNT", discount_type: "FIXED", discount_value: 5_000 });
+    expect(getCartVoucherAvailability(candidate, {
+      menuData: { updated_at: "2026-10-03T00:00:00Z", latte: [], fusion: [], milk_types: [], addon_groups: [] },
+      powders: [], defaultPowderGram: [], selectedDiscountVouchers: [retained],
+      subtotalPrice: 60_000, orderType: "PICKUP", shippingFee: 0,
+    })).toMatchObject({ canUse: true, reason: "" });
+  });
+  it("đếm voucher khác còn áp được, loại voucher đã dùng và topping đã được phủ", () => {
+    const item = projectedCartLine({ cartId: "current", menuItemId: "drink-b", productVoucherId: "applied", selectedOptionIds: ["a", "b"], addonPrices: { a: 8000, b: 10000 }, addonVouchers: [{ token: "addon-applied", addonOptionId: "a" }] });
+    const elsewhere = projectedCartLine({ cartId: "elsewhere", productVoucherId: "used" });
+    const vouchers = ["applied", "used", "remaining"].map((qr_token) => baseVoucher({ qr_token, menu_item_id: "drink-b" }));
+    vouchers.push(baseVoucher({ qr_token: "reserved", status: "RESERVED", menu_item_id: "drink-b" }));
+    vouchers.push(baseVoucher({ qr_token: "covered", voucher_type: "ADDON", addon_option_id: "a" }));
+    vouchers.push(baseVoucher({ qr_token: "topping", voucher_type: "ADDON", addon_option_id: "b" }));
+    const available = getAvailableCartItemVouchers({ item, cart: [item, elsewhere], vouchers, bundleApplications: [], getProductBenefit: () => 5000 });
+    expect(available.map((voucher) => voucher.qr_token)).toEqual(["remaining", "topping"]);
+  });
+
+  it("ẩn voucher sai size/nền, không có lợi ích hoặc hết unit ngoài BUNDLE", () => {
+    const item = projectedCartLine({ menuItemId: "drink-b", selectedBaseLiquidId: "milk-a" });
+    const vouchers = [
+      baseVoucher({ qr_token: "wrong-size", voucher_type: "PRODUCT_DISCOUNT", menu_item_id: "drink-b", eligible_sizes: ["LARGE"] }),
+      baseVoucher({ qr_token: "wrong-milk", voucher_type: "PRODUCT_DISCOUNT", menu_item_id: "drink-b", eligible_sizes: ["MEDIUM"], milk_type_id: "milk-b" }),
+      baseVoucher({ qr_token: "zero", menu_item_id: "drink-b" }),
+      baseVoucher({ qr_token: "eligible", menu_item_id: "drink-b" }),
+    ];
+    const input = { item, cart: [item], vouchers, bundleApplications: [], getProductBenefit: (_item: ProjectedCartLine, voucher: MyVoucher) => voucher.qr_token === "zero" ? 0 : 5000 };
+    expect(getAvailableCartItemVouchers(input).map((voucher) => voucher.qr_token)).toEqual(["eligible"]);
+    expect(getAvailableCartItemVouchers({ ...input, bundleApplications: [{ voucher_qr_token: "bundle", owner_key: "owner", qualifier_allocations: [{ client_line_id: item.cartId, quantity: 1 }], reward_allocations: [], created_reward_effects: [] }] })).toEqual([]);
+    expect(getAvailableCartItemVouchers({ ...input, item: { ...item, quantity: 2 }, bundleApplications: [{ voucher_qr_token: "bundle", owner_key: "owner", qualifier_allocations: [{ client_line_id: item.cartId, quantity: 1 }], reward_allocations: [], created_reward_effects: [] }] }).map((voucher) => voucher.qr_token)).toEqual(["eligible"]);
+  });
+
   beforeEach(() => {
     useCartStore.setState({ items: [], pendingAddonVoucher: null, selectedVoucherIds: [], bundleApplications: [] });
     useStaffCartStore.setState({ items: [], pendingAddonVoucher: null, selectedDiscountIds: [], bundleApplications: [] });

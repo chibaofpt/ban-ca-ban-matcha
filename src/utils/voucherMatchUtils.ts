@@ -6,7 +6,49 @@
  */
 
 import type { MyVoucher } from "@/src/services/customerVoucherService";
-import type { CartItem, ProjectedCartLine } from "@/src/lib/types/cart";
+import type { CartBundleApplication, CartItem, ProjectedCartLine } from "@/src/lib/types/cart";
+import { getBundleAllocatedQuantities } from "@/src/lib/utils/bundleCartSummary";
+import { productDiscountMatchesBaseLiquid } from "./customerVoucherSelection";
+import { calcOrderTotals } from "./orderCalculator";
+
+/** Return unused vouchers that can currently benefit the selected cart line. */
+export function getAvailableCartItemVouchers(input: {
+  item: ProjectedCartLine;
+  cart: readonly ProjectedCartLine[];
+  vouchers: readonly MyVoucher[];
+  bundleApplications: readonly CartBundleApplication[];
+  getProductBenefit: (item: ProjectedCartLine, voucher: MyVoucher) => number;
+}): MyVoucher[] {
+  const { item, cart, vouchers, bundleApplications, getProductBenefit } = input;
+  if ((getBundleAllocatedQuantities(bundleApplications).get(item.cartId) ?? 0) >= item.quantity) return [];
+  const usedTokens = new Set(cart.flatMap((line) => [
+    ...(line.lineVoucher ? [line.lineVoucher.token] : []),
+    ...line.addonVouchers.map((voucher) => voucher.token),
+  ]));
+  const seen = new Set<string>();
+  return vouchers.filter((voucher) => {
+    if (seen.has(voucher.qr_token) || usedTokens.has(voucher.qr_token) || !isVoucherUsable(voucher)) return false;
+    seen.add(voucher.qr_token);
+    if (voucher.voucher_type === "ADDON") {
+      if (item.configuration.size === null) return false;
+      return getAddonVoucherTargetChoices(voucher, item.configuration.addonOptionIds,
+        item.addonVouchers.map((applied) => applied.addonOptionId),
+        Object.fromEntries(item.resolvedAddons.map((addon) => [addon.id, addon.priceVnd])),
+      ).some((choice) => choice.discountVnd > 0 &&
+        item.resolvedAddons.some((addon) => addon.id === choice.addonOptionId && !addon.isExtraMatcha));
+    }
+    if (voucher.voucher_type !== "PRODUCT" && voucher.voucher_type !== "PRODUCT_DISCOUNT" && voucher.voucher_type !== "ITEM") return false;
+    const target = voucher.eligible_menu_items?.find((scope) => scope.menu_item_id === item.menuItemId);
+    if (voucher.eligible_menu_items?.length ? !target?.is_available : voucher.menu_item_id !== item.menuItemId) return false;
+    if (voucher.voucher_type === "ITEM") return item.category === "extras" && item.grossUnitPriceVnd > 0;
+    if (item.configuration.size === null) return false;
+    if (voucher.voucher_type === "PRODUCT_DISCOUNT" &&
+      (!(voucher.eligible_sizes ?? []).includes(item.configuration.size) ||
+        !productDiscountMatchesBaseLiquid(voucher, item.menuItemId,
+          item.configuration.baseLiquidId ?? item.menuItem?.default_base_liquid_id))) return false;
+    return getProductBenefit(item, voucher) > 0;
+  });
+}
 
 // ── Eligibility filters ───────────────────────────────────────────────────────
 
@@ -220,38 +262,32 @@ export function estimateDiscountSavings(voucher: MyVoucher, subtotal: number): n
   return 0;
 }
 
-/**
- * Estimates total saving from multiple DISCOUNT vouchers — mirrors server calcMultiDiscountVouchers.
- * Rule: all FIXED applied first (sequentially), then at most 1 PERCENT on the remainder.
- * Result is capped so subtotal never goes below 0.
- */
+/** Estimate effective order discounts through the canonical minimum, stacking and rounding rules. */
 export function estimateMultiDiscountSavings(
-  vouchers: Array<Pick<MyVoucher, "discount_type" | "discount_value">>,
+  vouchers: Array<Pick<MyVoucher, "discount_type" | "discount_value"> &
+    Partial<Pick<MyVoucher, "min_order_vnd" | "max_discount_vnd">>>,
   subtotal: number
 ): number {
-  let remaining = subtotal;
-
-  // 1. Apply all FIXED vouchers first
-  for (const v of vouchers) {
-    if (v.discount_type === "FIXED" && (v.discount_value ?? 0) > 0) {
-      remaining = Math.max(0, remaining - (v.discount_value ?? 0));
-    }
-  }
-
-  // 2. Apply the single PERCENT voucher (if any)
-  const percentVoucher = vouchers.find((v) => v.discount_type === "PERCENT");
-  if (percentVoucher && (percentVoucher.discount_value ?? 0) > 0) {
-    const pct = Math.min(percentVoucher.discount_value ?? 0, 100);
-    let discount = Math.floor(((remaining * pct) / 100) / 1000) * 1000;
-    if ("max_discount_vnd" in percentVoucher && percentVoucher.max_discount_vnd != null) {
-      discount = Math.min(discount, percentVoucher.max_discount_vnd as number);
-    }
-    remaining = Math.max(0, remaining - discount);
-  }
-
-  return subtotal - remaining;
+  const discountVouchers = vouchers.flatMap((voucher, index) => {
+    if (voucher.discount_type !== "FIXED" && voucher.discount_type !== "PERCENT") return [];
+    return [{
+      id: String(index),
+      discount_type: voucher.discount_type,
+      discount_value: voucher.discount_type === "PERCENT"
+        ? Math.min(100, Math.max(0, voucher.discount_value ?? 0))
+        : Math.max(0, voucher.discount_value ?? 0),
+      min_order_vnd: voucher.min_order_vnd ?? null,
+      max_discount_vnd: voucher.max_discount_vnd ?? null,
+    }];
+  });
+  return calcOrderTotals({
+    items: [{ menu_item_id: "discount-preview", unit_price_vnd: subtotal,
+      addons_price_vnd: 0, quantity: 1, line_total: subtotal, addon_vouchers: [] }],
+    discountVouchers,
+    freeshipVoucher: null,
+    shipping_fee_vnd: 0,
+  }).total_voucher_discount_vnd;
 }
-
 /**
  * Estimates the ADDON voucher saving: the addon option's price for the first
  * cart item that contains the matching addon_option_id.

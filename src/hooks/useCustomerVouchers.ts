@@ -9,7 +9,9 @@ export function useCustomerVouchers(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS,
     queryFn: listMyVouchers,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 15 * 60 * 1000,
+    refetchInterval: 15 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
     enabled: options?.enabled,
   });
 }

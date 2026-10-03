@@ -16,6 +16,11 @@ delivery_receiver_phone, delivery_address của order; không dùng account/addr
 Legacy thiếu dữ liệu ghi rõ phần thiếu. COMPLETED và CANCELLED giữ card gọn; thông tin giao hàng
 nằm trong detail riêng của order.
 
+Card ADMIN hiển thị sẵn toàn bộ món khi đơn chưa COMPLETED/CANCELLED; hai trạng thái cuối
+ẩn món trên card và vẫn xem đủ trong detail. Tên người tiếp nhận hiển thị trực tiếp, không có
+nhãn “Người nhận”: dùng tên người xác nhận thanh toán đã lưu, fallback người xử lý đã lưu;
+không suy từ khách hàng, role hoặc admin đang đăng nhập.
+
 Mọi card có action “Chi tiết đơn”, kể cả ít món. Shared ResponsiveOverlay detail hiển thị trạng
 thái, phương thức trả tiền, recipient snapshot, items/vouchers và totals; operational actions ở
 list. Customer detail giữ Đặt lại. Mỗi item voucher do shared item renderer sở hữu một lần, kể cả
@@ -33,9 +38,10 @@ Form mới hiển thị tóm tắt và “Người nhận khác”; action mở 
 Hydration chỉ khởi tạo receiver còn pristine; không ghi đè dữ liệu đã gõ. Edit địa chỉ dùng
 receiver đã lưu. Validation, phone normalization, map và default-address payload không đổi.
 
-## Global admin orders badge
+## Admin orders badge theo ngày
 
-Badge tab “Đơn hàng” dùng shared query/service cho tổng PENDING + BANK_TRANSFER ở mọi loại đơn,
-độc lập page/date/search/list filters. Existing endpoint lấy limit=1 nhưng đọc meta.total.
+Badge tab “Đơn hàng” dùng shared query/service cho tổng PENDING + BANK_TRANSFER ở mọi loại đơn
+được tạo trong hôm nay theo UTC+7, độc lập page/search và các bộ lọc tùy chọn của danh sách.
+Service gửi startDate/endDate qua endpoint hiện có, lấy limit=1 nhưng đọc meta.total.
 Poll 20 giây/refocus; create/confirm/cancel invalidate admin orders prefix. Zero ẩn badge; lỗi
 refetch giữ giá trị thành công cuối. POS “Chờ CK” giữ nguồn server riêng hiện có.

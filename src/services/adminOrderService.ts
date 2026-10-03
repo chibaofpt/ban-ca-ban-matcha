@@ -41,9 +41,14 @@ export async function fetchAdminOrders(filters: AdminOrderFilters = {}): Promise
   return res.data;
 }
 
-/** Read the global number of pending bank transfers independently of list filters. */
+/** Read today's pending bank transfers in UTC+7 independently of list filters. */
 export async function fetchAdminPendingTransferCount(): Promise<number> {
-  const result = await fetchAdminOrders({ status: 'PENDING', payment_method: 'BANK_TRANSFER', limit: 1 });
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
+  const result = await fetchAdminOrders({
+    startDate: new Date(`${today}T00:00:00+07:00`).toISOString(),
+    endDate: new Date(`${today}T23:59:59.999+07:00`).toISOString(),
+    status: 'PENDING', payment_method: 'BANK_TRANSFER', limit: 1,
+  });
   return result.meta.total;
 }
 

@@ -8,8 +8,7 @@ const SIZE_DISPLAY: Record<Size, { label: string; volume: string }> = {
   LARGE: { label: "Cá Lớn", volume: "700ml" },
 };
 
-/** Formats integer VND as compact thousands with the ká suffix. */
-export function formatKa(vnd: number, mode: KaRoundingMode = "exact"): string {
+function formatCompactMoney(vnd: number, mode: KaRoundingMode, unit: string): string {
   const thousands = vnd / 1000;
   const displayed =
     mode === "ceil"
@@ -18,7 +17,17 @@ export function formatKa(vnd: number, mode: KaRoundingMode = "exact"): string {
         ? Math.floor(thousands)
         : thousands;
 
-  return `${displayed.toLocaleString("vi-VN", { maximumFractionDigits: 1 })} ká`;
+  return `${displayed.toLocaleString("vi-VN", { maximumFractionDigits: 1 })} ${unit}`;
+}
+
+/** Formats integer VND as compact thousands with the ká suffix. */
+export function formatKa(vnd: number, mode: KaRoundingMode = "exact"): string {
+  return formatCompactMoney(vnd, mode, "ká");
+}
+
+/** Format cart money as ceiling thousands with the ka suffix without changing VND. */
+export function formatCartMoney(vnd: number): string {
+  return formatCompactMoney(vnd, "ceil", "ká");
 }
 
 /** Returns the customer-facing size label used in order views. */

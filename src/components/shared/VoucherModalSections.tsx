@@ -1,6 +1,6 @@
 "use client";
 
-import { History, Star, X } from "lucide-react";
+import { History, X } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { useRef, type ReactNode } from "react";
 import { VoucherCard } from "@/src/components/shared/VoucherCards";
@@ -35,8 +35,8 @@ export function VoucherModalFrame({
   isLoggedIn,
   voucherCount,
   pointsBalance,
-  title = "Ưu đãi",
-  pointsLabel = "Điểm của bạn",
+  title = "Voucher",
+  pointsLabel = "Điểm",
   tabs,
   voucherTabLabel,
   headerAction,
@@ -63,27 +63,22 @@ export function VoucherModalFrame({
   };
 
   return (
-    <div data-slot="voucher-modal-frame" className="relative flex h-[85dvh] w-full flex-col overflow-hidden rounded-t-[2.5rem] bg-background shadow-2xl md:max-h-[85dvh] md:max-w-2xl md:rounded-[2.5rem]">
+    <div data-slot="voucher-modal-frame" className="relative flex h-auto min-h-[85dvh] max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-[2.5rem] bg-background shadow-2xl md:h-[85dvh] md:min-h-0 md:max-h-[85dvh] md:max-w-2xl md:rounded-[2.5rem]">
       {!detailOpen && <>
       <div className="absolute inset-x-0 top-3 z-10 mx-auto h-1.5 w-12 rounded-full bg-border/60 md:hidden" aria-hidden="true" />
-      <header className="z-10 bg-background px-4 pb-3 pt-6 md:pt-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-serif text-lg font-bold text-primary">{title}</h2>
-          <button type="button" onClick={onClose} className="flex size-11 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:ring-ring" aria-label="Đóng">
+      <header className="z-10 shrink-0 bg-background px-4 pb-3 pt-6 md:pt-4">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="shrink-0 font-serif text-lg font-bold text-primary">{title}</h2>
+          {isLoggedIn ? (
+            <p className="ml-auto text-right text-[11px] font-semibold text-primary sm:text-sm">
+              {pointsLabel}: {(pointsBalance ?? 0).toLocaleString("vi-VN")} điểm cá
+            </p>
+          ) : null}
+          <button type="button" onClick={onClose} className="flex size-11 shrink-0 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:ring-ring" aria-label="Đóng">
             <X size={18} />
           </button>
         </div>
-        {(isLoggedIn || headerAction) && (
-          <div className="flex min-h-8 items-center justify-between gap-3">
-            {isLoggedIn ? (
-              <p className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-sm font-bold text-primary">
-                <Star size={14} className="text-amber-500" />
-                {pointsLabel}: {(pointsBalance ?? 0).toLocaleString("vi-VN")} 🐟
-              </p>
-            ) : <span />}
-            {headerAction}
-          </div>
-        )}
+        {headerAction ? <div className="mt-2 flex min-h-8 justify-end">{headerAction}</div> : null}
       </header>
       <VoucherModalTabs
         activeTab={activeTab}
@@ -94,7 +89,7 @@ export function VoucherModalFrame({
         voucherTabLabel={voucherTabLabel}
       />
       <div
-        className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-4 py-4"
+        className="min-h-0 flex-auto overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-4 py-4"
         onTouchStart={(event) => { touchStart.current = { x: event.touches[0].clientX, y: event.touches[0].clientY }; }}
         onTouchEnd={(event) => {
           const dx = event.changedTouches[0].clientX - touchStart.current.x;
@@ -139,7 +134,7 @@ export function VoucherModalTabs({
     );
 
   return (
-    <div className="border-b border-border/50 px-4">
+    <div className="shrink-0 border-b border-border/50 px-4">
       <div className="flex gap-1">
         {visibleTabs.includes("my_vouchers") && (
           <button type="button" onClick={() => onChange("my_vouchers")} className={tabClassName("my_vouchers")}>

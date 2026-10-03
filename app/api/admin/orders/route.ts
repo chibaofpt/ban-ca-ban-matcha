@@ -121,6 +121,7 @@ export async function GET(req: NextRequest) {
           },
           user: { select: { name: true, phone_number: true } },
           handler: { select: { name: true, role: true } },
+          paymentConfirmer: { select: { name: true, role: true } },
           items: {
             include: {
               productVoucher: {

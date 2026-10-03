@@ -53,6 +53,7 @@ import {
 } from "@/src/lib/utils/bundleVoucher";
 import { getBundleVoucherSummary } from "@/src/components/menu/cart/CartBundleVoucherPanel";
 import { projectCart } from "@/src/lib/utils/cartProjection";
+import { resolveStaffCartDisplayProjection } from "@/src/lib/utils/staffCartPresentation";
 import { serializeCartOrderItems } from "@/src/lib/utils/cartOrderPayload";
 import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import { normalizeStaffBundleApplications } from "@/src/lib/utils/staffBundlePayload";
@@ -209,6 +210,8 @@ export default function StaffOrdersPage({
   const [confirmCheckoutOpen, setConfirmCheckoutOpen] = useState(false);
   const [qrVerifyOpen, setQrVerifyOpen] = useState(false);
   const [itemToRemove, setItemToRemove] = useState<string | null>(null);
+  const [itemRemovalIsBundle, setItemRemovalIsBundle] = useState(false);
+  const closeCartAfterItemRemoval = useRef(false);
   const [clearCartConfirmOpen, setClearCartConfirmOpen] = useState(false);
 
   // ── QR scan state ──────────────────────────────────────────
@@ -315,12 +318,18 @@ export default function StaffOrdersPage({
       return result;
     },
     enabled: Boolean(staffCustomerQrToken),
+    staleTime: 15 * 60 * 1000,
+    refetchInterval: 15 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
     retry: false,
   });
   const customerWalletQuery = useQuery({
     queryKey: ["staff", "cart-customer-vouchers", staffCustomerQrToken],
     queryFn: () => fetchCustomerVouchers(staffCustomerQrToken!),
     enabled: Boolean(staffCustomerQrToken && selectedCustomerQuery.data?.type === "user"),
+    staleTime: 15 * 60 * 1000,
+    refetchInterval: 15 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
     retry: false,
   });
   const customerVouchers = useMemo(() => customerWalletQuery.data ?? [], [customerWalletQuery.data]);
@@ -501,7 +510,16 @@ export default function StaffOrdersPage({
     bundleApplications,
     shippingFeeVnd: 0,
   }), [bundleApplications, cart, menuData, pData, projectionVouchers, selectedDiscountIds, walletRevalidating]);
-  const projectedCart = cartProjection.lines;
+  const displayCartProjection = useMemo(() => resolveStaffCartDisplayProjection(cartProjection, {
+    items: cart,
+    menuData,
+    powderData: pData,
+    vouchers: customerWalletQuery.data ? projectionVouchers : null,
+    selectedOrderVoucherTokens: selectedDiscountIds,
+    bundleApplications,
+    shippingFeeVnd: 0,
+  }), [bundleApplications, cart, cartProjection, customerWalletQuery.data, menuData, pData, projectionVouchers, selectedDiscountIds]);
+  const projectedCart = displayCartProjection.lines;
   const bundleAllocatedQuantitiesByCartId = useMemo(
     () => getBundleAllocatedQuantities(bundleApplications),
     [bundleApplications],
@@ -549,8 +567,8 @@ export default function StaffOrdersPage({
   }, [projectionVouchers, setSelectedDiscountIds]);
   const subtotal = useStaffCartTotalPrice();
   useEffect(() => {
-    setProjectedTotalVnd(cartProjection.totals.grand_total_vnd);
-  }, [cartProjection.totals.grand_total_vnd, setProjectedTotalVnd]);
+    setProjectedTotalVnd(displayCartProjection.totals.grand_total_vnd);
+  }, [displayCartProjection.totals.grand_total_vnd, setProjectedTotalVnd]);
   useEffect(() => {
     if (walletRevalidating || customerWalletQuery.isError) return;
     const validTokens = new Set(projectionVouchers
@@ -604,6 +622,9 @@ export default function StaffOrdersPage({
   }, [cart, customerInfo?.type, reconcileBundleApplications, staffBundleOwnerKey, staffCustomerQrToken]);
 
   useEffect(() => {
+    // Preserve the last verified BUNDLE display while the same wallet refreshes.
+    if (walletRevalidating && customerWalletQuery.data !== undefined &&
+      !customerWalletQuery.isError && !selectedCustomerQuery.isError) return;
     for (const bundle of bundleSelectionStates) {
       const token = bundle.application.voucher_qr_token;
       const projectedError = bundleErrorByToken.get(bundle.application.voucher_qr_token);
@@ -629,7 +650,7 @@ export default function StaffOrdersPage({
         setBundleApplicationStatus(token, status, message);
       }
     }
-  }, [bundleErrorByToken, bundleRuntime, bundleSelectionStates, customerWalletQuery.isError, setBundleApplicationStatus, walletRevalidating]);
+  }, [bundleErrorByToken, bundleRuntime, bundleSelectionStates, customerWalletQuery.data, customerWalletQuery.isError, selectedCustomerQuery.isError, setBundleApplicationStatus, walletRevalidating]);
 
   const updateBundleApplication = useCallback((
     voucher: MyVoucher,
@@ -722,6 +743,9 @@ export default function StaffOrdersPage({
   };
 
   const handleRemove = (cartId: string) => {
+    setItemRemovalIsBundle(useStaffCartStore.getState().bundleApplications.some((application) =>
+      [...application.qualifier_allocations, ...application.reward_allocations]
+        .some((allocation) => allocation.client_line_id === cartId)));
     setItemToRemove(cartId);
   };
 
@@ -1241,7 +1265,8 @@ export default function StaffOrdersPage({
 
       {/* StaffCartDrawer */}
       <StaffCartDrawer
-        layoutVariant={userRole === "ADMIN" ? "admin-mobile" : "staff"}
+        layoutVariant="admin-mobile"
+        getProductVoucherBenefit={getStaffVoucherBenefit}
         voucherPickerNode={customerInfo?.type === "existing" && menuData && pData && staffBundleOwnerKey ? (
         <CartDiscountPicker
           open={voucherPickerOpen}
@@ -1259,19 +1284,19 @@ export default function StaffOrdersPage({
           productDiscountVouchers={pickerProductDiscountVouchers}
           availableVoucherPackages={availableVoucherPackages}
           pointsBalance={customerInfo.data.points_balance}
-          isLoading={walletRevalidating || customerWalletQuery.isLoading}
+          isLoading={walletRevalidating && !customerWalletQuery.data}
           loadError={customerWalletQuery.isError}
           selectedVoucherIds={pickerSelectedVoucherIds}
           selectedDiscountVouchers={selectedOrderDiscountVouchers}
           selectedFreeshipVouchers={[]}
-          subtotalPrice={cartProjection.totals.discountable_subtotal_vnd}
+          subtotalPrice={displayCartProjection.totals.discountable_subtotal_vnd}
           orderType="PICKUP"
           shippingFee={0}
           onClose={() => setVoucherPickerOpen(false)}
           onUpdateSelectedVouchers={updateSelectedStaffVouchers}
           onRefreshVouchers={refreshStaffWallet}
           bundleVouchers={pickerBundleVouchers}
-          cart={projectedCart}
+          cart={displayCartProjection.lines}
           menuData={menuData}
           powders={pData.data}
           defaultPowderGram={pData.default_powder_gram}
@@ -1312,7 +1337,7 @@ export default function StaffOrdersPage({
         menuData={menuData}
         powderData={pData}
         isOpen={cartOpen}
-        cart={projectedCart}
+        cart={displayCartProjection.lines}
         discountVoucher={discountVoucher}
         customerInfo={customerInfo}
         isSubmitting={isSubmitting}
@@ -1346,7 +1371,7 @@ export default function StaffOrdersPage({
         selectedDiscountIds={selectedDiscountIds}
         onOpenVoucherPicker={() => setVoucherPickerOpen(true)}
         checkoutBlocked={cartProjection.checkoutBlocked || walletRevalidating}
-        voucherRevalidating={cartProjection.revalidating}
+        voucherRevalidating={displayCartProjection.revalidating}
         persistenceWarning={persistenceWarning}
         preventCloseOutside={
           customerSelectOpen ||
@@ -1468,9 +1493,9 @@ export default function StaffOrdersPage({
       {/* Confirm Remove Item Modal */}
       <ConfirmModal
         isOpen={!!itemToRemove}
-        title="Xoá sản phẩm"
-        message="Bạn có chắc chắn muốn xoá sản phẩm này khỏi giỏ hàng?"
-        confirmLabel="Xoá"
+        title={itemRemovalIsBundle ? "Xóa nhóm BUNDLE" : "Xoá sản phẩm"}
+        message={itemRemovalIsBundle ? "Thao tác này xóa cả món mua và món quà của các BUNDLE gắn với món này. Các món và số lượng ngoài nhóm được giữ lại." : "Bạn có chắc chắn muốn xoá sản phẩm này khỏi giỏ hàng?"}
+        confirmLabel={itemRemovalIsBundle ? "Xóa cả nhóm" : "Xoá"}
         cancelLabel="Huỷ"
         onConfirm={() => {
           if (itemToRemove) {
@@ -1479,13 +1504,15 @@ export default function StaffOrdersPage({
               toast.error(result.message);
               return;
             }
-            if (cart.length <= 1) {
-              setCartOpen(false);
-            }
+            closeCartAfterItemRemoval.current = useStaffCartStore.getState().items.length === 0;
           }
           setItemToRemove(null);
         }}
         onCancel={() => setItemToRemove(null)}
+        onAfterClose={() => {
+          setItemRemovalIsBundle(false);
+          if (closeCartAfterItemRemoval.current) { closeCartAfterItemRemoval.current = false; setCartOpen(false); }
+        }}
       />
 
       {/* Confirm Clear Cart Modal */}

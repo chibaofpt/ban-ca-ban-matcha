@@ -1,10 +1,11 @@
 "use client";
 
 import React from "react";
-import { ShoppingBag } from "lucide-react";
+import { ShoppingCart } from "lucide-react";
 import { motion, useAnimation } from "framer-motion";
 import { useCartStore, useCartTotalItems } from "@/src/lib/store/cartStore";
-import { formatKa } from "@/src/utils/display";
+import { formatCartMoney } from "@/src/utils/display";
+import { CartMoney } from "@/src/components/shared/CartMoney";
 
 /**
  * CartButton is a floating action button that displays the cart total and item count.
@@ -20,7 +21,7 @@ const CartButton: React.FC<{ totalPriceVnd: number }> = ({ totalPriceVnd }) => {
     if (count > prevCount.current) {
       controls.start({
         scale: [1, 1.2, 0.9, 1.1, 1],
-        transition: { duration: 0.5 }
+        transition: { duration: 0.25 }
       });
     }
     prevCount.current = count;
@@ -29,24 +30,17 @@ const CartButton: React.FC<{ totalPriceVnd: number }> = ({ totalPriceVnd }) => {
   if (count === 0) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-30 flex justify-center lg:hidden">
+    <div className="pointer-events-none fixed bottom-20 right-4 z-30 flex max-w-[calc(100vw-2rem)] justify-end md:bottom-6 md:right-6 lg:hidden">
       <motion.button
+        type="button"
         onClick={() => setCartOpen(true)}
         animate={controls}
-        className="group pointer-events-auto flex min-h-14 items-center justify-center gap-2 rounded-full bg-primary/90 px-5 text-primary-foreground shadow-2xl backdrop-blur-sm transition-all hover:scale-105 active:scale-95"
-        aria-label={`Mở giỏ hàng, ${formatKa(totalPriceVnd)} cho ${count} món`}
+        whileTap={{ scale: 0.96 }}
+        className="pointer-events-auto flex min-h-11 min-w-0 items-center gap-2 rounded-full bg-primary px-4 py-3 text-primary-foreground shadow-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={`Mở giỏ hàng, ${formatCartMoney(totalPriceVnd)} cho ${count} món`}
       >
-        <ShoppingBag className="h-5 w-5 shrink-0 transition-transform group-hover:rotate-12" />
-        <span className="flex items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-primary-foreground/80">
-          <span>Giỏ đang có</span>
-          <span className="text-base font-extrabold text-white">
-            {formatKa(totalPriceVnd)}
-          </span>
-          <span>cho</span>
-          <span className="text-base font-extrabold text-white">
-            {count} món
-          </span>
-        </span>
+        <ShoppingCart className="size-[18px] shrink-0" aria-hidden="true" />
+        <span className="truncate text-sm font-medium">{count} món • <CartMoney amountVnd={totalPriceVnd} /></span>
       </motion.button>
     </div>
   );

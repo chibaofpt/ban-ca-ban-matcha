@@ -9,6 +9,7 @@ import type { MyVoucher } from "@/src/services/customerVoucherService";
 import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import { toast } from "sonner";
 import { SizeLabel } from "@/src/components/ui/SizeLabel";
+import { CartMoney } from "@/src/components/shared/CartMoney";
 
 interface CartItemVoucherPickerProps {
   activeItem: ProjectedCartLine;
@@ -135,7 +136,7 @@ export const CartItemVoucherPicker = ({
                       </p>
                       {savings > 0 && !isAlreadyUsed && (
                         <p className="text-xs text-orange-600 mt-1">
-                          Giảm {(savings / 1000).toLocaleString('vi-VN')} ká
+                          Giảm <CartMoney amountVnd={savings} />
                         </p>
                       )}
                       {isAlreadyUsed && (
@@ -214,7 +215,7 @@ export const CartItemVoucherPicker = ({
                           className="flex min-h-11 w-full items-center justify-between rounded-lg bg-white px-3 text-left text-sm font-semibold"
                         >
                           <span>{choice.label}</span>
-                          <span className="text-green-700">Giảm {choice.discountVnd.toLocaleString("vi-VN")}đ</span>
+                          <span className="text-green-700">Giảm <CartMoney amountVnd={choice.discountVnd} /></span>
                         </button>
                       ))}
                     </div>

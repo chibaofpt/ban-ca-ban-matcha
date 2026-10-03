@@ -11,7 +11,7 @@
 
 import { useState, useCallback } from "react";
 import { useCartStore } from "@/src/lib/store/cartStore";
-import type { usePowderStore } from "@/src/lib/store/powderStore";
+import { usePowderStore } from "@/src/lib/store/powderStore";
 import { fetchMenu } from "@/src/services/menuService";
 import {
   calcBaseLiquidDelta,
@@ -23,13 +23,14 @@ import {
 import { getBaseLiquidOptionsForItem } from "@/src/utils/baseLiquid";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import type { CartItem } from "@/src/lib/types/cart";
+import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import type { AddonGroup, MenuItem, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import { getVoucherCartDefaults } from "@/src/lib/utils/voucherUseNowHelpers";
 
 /** Result of attempting to add a PRODUCT voucher item to the cart. */
 export type AddVoucherResult =
   | { ok: true }
-  | { ok: false; reason: "item_unavailable" | "size_unavailable" | "fetch_failed" };
+  | { ok: false; reason: "item_unavailable" | "size_unavailable" | "configuration_unavailable" | "no_benefit" | "fetch_failed" };
 
 /**
  * Resolves the price of a menu item with a given configuration.
@@ -141,14 +142,18 @@ export function resolveVoucherBaseLiquidId(
  * Hook for the "Dùng ngay" flow.
  * Returns addToCart function and loading state.
  */
-export function useAddVoucherToCart() {
-  const { addItem, setCartOpen } = useCartStore();
+export function useAddVoucherToCart({ openCartOnSuccess = true, onAddItem }: {
+  openCartOnSuccess?: boolean;
+  onAddItem?: (item: Omit<CartItem, "cartId">) => CartMutationResult<unknown>;
+} = {}) {
+  const { addItem: customerAddItem, setCartOpen } = useCartStore();
+  const addItem = onAddItem ?? customerAddItem;
   const [loading, setLoading] = useState(false);
 
   const addToCart = useCallback(
     async (
       voucher: MyVoucher,
-      selection?: { menuItemId: string; size: Size },
+      selection?: { menuItemId: string; size?: Size },
       canCommit: () => boolean = () => true,
     ): Promise<AddVoucherResult> => {
       const supportsAddToCart = voucher.voucher_type === "PRODUCT" ||
@@ -183,7 +188,7 @@ export function useAddVoucherToCart() {
             addonVouchers: [],
           });
           if (!result.ok) return { ok: false, reason: "fetch_failed" };
-          setCartOpen(true);
+          if (openCartOnSuccess) setCartOpen(true);
           return { ok: true };
         }
 
@@ -206,7 +211,24 @@ export function useAddVoucherToCart() {
           selectedScope?.milk_type_id ?? voucher.milk_type_id ?? null,
           menuData.base_liquids ?? menuData.milk_types,
         );
-        const effectivePowderId = selectedScope?.matcha_powder_id ?? voucher.matcha_powder_id ?? null;
+        const requestedPowderId = selectedScope?.matcha_powder_id ?? voucher.matcha_powder_id ?? null;
+        const defaultPowderId = menuItem.category === "latte" ? menuItem.powder?.id : menuItem.resolved_default_powder_id;
+        const effectivePowderId = menuItem.category === "fusion" && requestedPowderId && (requestedPowderId === defaultPowderId || menuItem.allowed_powder_ids.includes(requestedPowderId))
+          ? requestedPowderId : defaultPowderId ?? null;
+        if (voucher.voucher_type === "PRODUCT_DISCOUNT") {
+          const requiredLiquidId = selectedScope?.milk_type_id ?? voucher.milk_type_id;
+          const { data: powders, defaultPowderGram } = usePowderStore.getState();
+          if ((requiredLiquidId && requiredLiquidId !== resolvedBaseLiquidId) || !powders.some((powder) => powder.id === effectivePowderId)) {
+            return { ok: false, reason: "configuration_unavailable" };
+          }
+          const priceForSize = (size: Size) => computeVoucherItemPrice(menuItem, size, effectivePowderId, resolvedBaseLiquidId, [], powders, defaultPowderGram, menuData.latte, menuData.base_liquids ?? menuData.milk_types, menuData.addon_groups).drinkPrice;
+          const referenceSize = voucher.reference_size;
+          const referencePrice = voucher.product_discount_mode === "PAY_AS_SIZE" && referenceSize && menuItem.sizes.some((row) => row.size === referenceSize && row.base_price_vnd != null)
+            ? priceForSize(referenceSize) : null;
+          if (computeProductDiscountBenefit(voucher, priceForSize(voucherSize), referencePrice) <= 0) {
+            return { ok: false, reason: "no_benefit" };
+          }
+        }
         // Build addon details for display
         const allAddonOptions = menuData.addon_groups.flatMap((group) => group.options);
         const addonDetails = includedAddonIds
@@ -247,7 +269,7 @@ export function useAddVoucherToCart() {
         const result = addItem(cartItemBase);
         if (!result.ok) return { ok: false, reason: "fetch_failed" };
 
-        setCartOpen(true);
+        if (openCartOnSuccess) setCartOpen(true);
         return { ok: true };
       } catch {
         return { ok: false, reason: "fetch_failed" };
@@ -255,7 +277,7 @@ export function useAddVoucherToCart() {
         setLoading(false);
       }
     },
-    [addItem, setCartOpen]
+    [addItem, setCartOpen, openCartOnSuccess]
   );
 
   return { addToCart, loading };

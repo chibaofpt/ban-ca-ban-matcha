@@ -8,7 +8,8 @@ interface OptionCardProps {
   meta?: string;
   sub?: string;
   isActive: boolean;
-  onClick: () => void;
+  onClick?: () => void;
+  disabled?: boolean;
   imageUrl?: string | null;
   imageAlt?: string;
   /** Use "lg" for larger text (e.g. size selector). */
@@ -17,7 +18,7 @@ interface OptionCardProps {
   layout?: "default" | "stacked" | "inline";
 }
 
-function OptionCard({ label, meta, sub, isActive, onClick, imageUrl, imageAlt, size = "default", layout = "default" }: OptionCardProps) {
+function OptionCard({ label, meta, sub, isActive, onClick, disabled = false, imageUrl, imageAlt, size = "default", layout = "default" }: OptionCardProps) {
   const isPriceAddition = sub?.startsWith("+");
   const isLg = size === "lg";
   const isStacked = layout === "stacked";
@@ -28,10 +29,13 @@ function OptionCard({ label, meta, sub, isActive, onClick, imageUrl, imageAlt, s
       <motion.button
         type="button"
         onClick={onClick}
-        whileTap={{ scale: 0.92 }}
+        disabled={disabled || !onClick}
+        aria-pressed={onClick ? isActive : undefined}
+        whileTap={disabled || !onClick ? undefined : { scale: 0.92 }}
         className={cn(
           "flex w-full h-full min-h-12 min-w-0 items-center justify-between gap-1.5 rounded-2xl border-2 p-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
-          isActive ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-white hover:border-primary/30"
+          isActive ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-white hover:border-primary/30",
+          disabled && "cursor-not-allowed opacity-50"
         )}
       >
         <span className={cn("text-sm font-bold leading-tight", isActive ? "text-primary" : "text-primary/80")}>{label}</span>
@@ -56,10 +60,13 @@ function OptionCard({ label, meta, sub, isActive, onClick, imageUrl, imageAlt, s
       <motion.button
         type="button"
         onClick={onClick}
-        whileTap={{ scale: 0.92 }}
+        disabled={disabled || !onClick}
+        aria-pressed={onClick ? isActive : undefined}
+        whileTap={disabled || !onClick ? undefined : { scale: 0.92 }}
         className={cn(
           "flex w-full h-full min-h-12 min-w-0 flex-col items-center justify-center rounded-2xl border-2 p-2 text-center transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
-          isActive ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-white hover:border-primary/30"
+          isActive ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-white hover:border-primary/30",
+          disabled && "cursor-not-allowed opacity-50"
         )}
       >
         {/* Row 1: label */}
@@ -101,12 +108,15 @@ function OptionCard({ label, meta, sub, isActive, onClick, imageUrl, imageAlt, s
     <motion.button
       type="button"
       onClick={onClick}
-      whileTap={{ scale: 0.92 }}
+      disabled={disabled || !onClick}
+      aria-pressed={onClick ? isActive : undefined}
+      whileTap={disabled || !onClick ? undefined : { scale: 0.92 }}
       className={cn(
         "flex w-full h-full min-h-12 min-w-0 items-center justify-center rounded-2xl border-2 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
         isLg ? "px-3 py-2" : "p-2",
         imageUrl ? "gap-2 text-left" : "flex-col text-center",
-        isActive ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-white hover:border-primary/30"
+        isActive ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-white hover:border-primary/30",
+          disabled && "cursor-not-allowed opacity-50"
       )}
     >
       {imageUrl && (

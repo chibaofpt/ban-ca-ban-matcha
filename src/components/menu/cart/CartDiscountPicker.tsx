@@ -1,4 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { CartMoney } from "@/src/components/shared/CartMoney";
+import { useAddVoucherToCart } from "@/src/hooks/useAddVoucherToCart";
+import { getCartVoucherAvailability, getUsedCartVoucherTokens } from "@/src/lib/utils/cartVoucherAvailability";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { estimateMultiDiscountSavings, isVoucherUsable } from "@/src/utils/voucherMatchUtils";
@@ -20,11 +23,10 @@ import { VoucherDetailSheet } from "@/src/components/shared/VoucherDetailSheet";
 import { AddonItemPicker } from "@/src/components/shared/AddonItemPicker";
 import {
   buildVoucherActionModel,
-  getProductDiscountSelection,
   productDiscountMatchesBaseLiquid,
   selectOrderVoucherToken,
 } from "@/src/utils/customerVoucherSelection";
-import { getVoucherAvailabilityMessage, type VoucherModalTab } from "@/src/lib/utils/voucherModalHelpers";
+import { type VoucherModalTab } from "@/src/lib/utils/voucherModalHelpers";
 import { BundleVoucherSetupSheet } from "@/src/components/shared/BundleVoucherSetupSheet";
 import { getBundleVoucherSummary } from "@/src/components/menu/cart/CartBundleVoucherPanel";
 import { validateBundleCartDraft } from "@/src/lib/utils/bundleCartDraft";
@@ -139,7 +141,6 @@ export const CartDiscountPicker = ({
   onRequestRemoveBundle,
   productVouchers,
   addonVouchers,
-  onUseProductVoucher,
   onApplyAddonVoucher,
   onSavePendingAddonVoucher,
   acquisitionOptions,
@@ -152,6 +153,11 @@ export const CartDiscountPicker = ({
   emptyWalletLabel = "Bạn chưa có mã ưu đãi nào",
 }: CartDiscountPickerProps) => {
   const router = useRouter();
+  const { addToCart, loading: addingVoucherItem } = useAddVoucherToCart({ openCartOnSuccess: false, onAddItem: onAddVoucherItem });
+  const pendingUse = useRef<string | null>(null);
+  const closeAfterChild = useRef(false);
+  const pickerOpen = useRef(open);
+  useEffect(() => { pickerOpen.current = open; pendingUse.current = null; }, [open, bundleOwnerKey]);
   const [productChildOpen, setProductChildOpen] = useState(false);
   const [bundleClosing, setBundleClosing] = useState(false);
   const [targetClosing, setTargetClosing] = useState(false);
@@ -169,6 +175,14 @@ export const CartDiscountPicker = ({
     ...discountVouchers, ...freeshipVouchers, ...productDiscountVouchers,
     ...bundleVouchers, ...productVouchers, ...addonVouchers,
   ];
+  const voucherContext = { menuData, powders, defaultPowderGram, selectedDiscountVouchers, subtotalPrice, orderType, shippingFee };
+  const usedTokens = getUsedCartVoucherTokens(cart, bundleApplications);
+  const typePriority = (voucher: MyVoucher) => voucher.voucher_type === "DISCOUNT" ? 0 : voucher.voucher_type === "FREESHIP" ? 1 : 2;
+  const voucherRows = (open || activeView.kind !== "list" ? myVouchers : [])
+    .filter((voucher) => ["DISCOUNT", "FREESHIP"].includes(voucher.voucher_type) || !usedTokens.has(voucher.qr_token))
+    .map((voucher) => ({ voucher, availability: getCartVoucherAvailability(voucher, voucherContext) }))
+    .sort((left, right) => Number(right.availability.canUse) - Number(left.availability.canUse) ||
+      typePriority(left.voucher) - typePriority(right.voucher));
   const selectedViewVoucher = activeView.kind === "list" ? null
     : myVouchers.find((voucher) => voucher.qr_token === activeView.voucher.qr_token) ?? activeView.voucher;
   const detailVoucher = activeView.kind === "detail" ? selectedViewVoucher : null;
@@ -294,7 +308,24 @@ export const CartDiscountPicker = ({
     </div>
   ) : null;
 
+  const finishVoucherUse = () => { pendingUse.current = null; onClose(); };
+  const handleMenuVoucherUse = async (voucher: MyVoucher) => {
+    if (pendingUse.current || !selectionContextIsCurrent(voucher.qr_token)) return;
+    const availability = getCartVoucherAvailability(voucher, voucherContext);
+    if (!availability.canUse) return;
+    if (availability.targets.length !== 1) { setActiveView({ kind: "detail", voucher }); return; }
+    pendingUse.current = voucher.qr_token;
+    const canCommit = () => pickerOpen.current && pendingUse.current === voucher.qr_token && selectionContextIsCurrent(voucher.qr_token);
+    try {
+      const result = await addToCart(voucher, availability.targets[0], canCommit);
+      if (!canCommit()) return;
+      if (result.ok) finishVoucherUse();
+      else toast.error(result.reason === "no_benefit" ? "Voucher không tạo thêm ưu đãi cho món này"
+        : "Không thể thêm món và áp voucher. Vui lòng kiểm tra lại.");
+    } finally { if (pendingUse.current === voucher.qr_token) pendingUse.current = null; }
+  };
   const closePicker = () => {
+    pendingUse.current = null;
     if (activeView.kind === "product-target" || activeView.kind === "addon-target" || activeView.kind === "bundle-setup") { setActiveView({ kind: "list" }); return; }
     onClose();
   };
@@ -396,10 +427,12 @@ export const CartDiscountPicker = ({
                   shippingFee={shippingFee}
                   menuData={menuData}
                   canEdit={selectedViewVoucher !== null && selectionContextIsCurrent(selectedViewVoucher.qr_token)}
+                  editDisabledReason={loadError ? "Không thể xác minh ví voucher. Hãy thử lại." : ""}
                   onAddVoucherItem={onAddVoucherItem ? (item) => selectionContextIsCurrent(detailVoucher.qr_token) ? onAddVoucherItem(item) : { ok: false, code: "BUNDLE_STALE", message: "Ví voucher đang được xác minh lại." } : undefined}
                   bundleAllocatedQuantitiesByCartId={bundleAllocatedQuantitiesByCartId}
                   onBack={() => setActiveView({ kind: "list" })}
-                  onUseNowSuccess={() => setActiveView({ kind: "list" })}
+                  onUseNowSuccess={finishVoucherUse}
+                  totalAfterDiscountVnd={totalAfterSelectedDiscount}
                   onOpenBundleSetup={(voucher) => { if (selectionContextIsCurrent(voucher.qr_token)) setActiveView({ kind: "bundle-setup", voucher }); }}
                   onRequestRefund={() => undefined}
                   isRefunding={false}
@@ -415,23 +448,8 @@ export const CartDiscountPicker = ({
                     setActiveView({ kind: "list" });
                     onClose();
                   }}
-                  onSelectProductDiscountTarget={(voucher) => {
-                    if (!selectionContextIsCurrent(voucher.qr_token)) return;
-                    const selection = getProductDiscountSelection(productTargets(voucher), null);
-                    if (selection.kind === "single") {
-                      onApplyProductVoucher(selection.target.cartId, voucher);
-                      setActiveView({ kind: "list" });
-                    } else if (selection.kind === "multiple") {
-                      setActiveView({ kind: "product-target", voucher });
-                    } else {
-                      toast.error(selection.reason);
-                    }
-                  }}
-                  onUseProductVoucher={(voucher) => {
-                    if (!selectionContextIsCurrent(voucher.qr_token)) return;
-                    onUseProductVoucher(voucher);
-                    setActiveView({ kind: "list" });
-                  }}
+                  onSelectProductDiscountTarget={(voucher) => void handleMenuVoucherUse(voucher)}
+                  onUseProductVoucher={(voucher) => void handleMenuVoucherUse(voucher)}
                 />
               ) : null}
             </VoucherModalDetailTransition>
@@ -463,167 +481,47 @@ export const CartDiscountPicker = ({
               <Loader2 className="size-6 animate-spin text-primary" aria-hidden="true" />
               <span className="sr-only">Đang tải voucher</span>
             </div>
-          ) : !loadError && myVouchers.length === 0 ? (
+          ) : !loadError && voucherRows.length === 0 ? (
             <div className="text-center py-6 bg-card rounded-2xl border border-dashed border-border/60">
               <p className="text-xs text-primary/40 font-medium">{emptyWalletLabel}</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3">
-              {myVouchers.map((v) => {
-                const selectedCartItem = cart.find((item) =>
-                  item.lineVoucher?.token === v.qr_token ||
-                  item.addonVouchers.some((addonVoucher) => addonVoucher.token === v.qr_token),
-                );
-                const selectedProductItem = v.voucher_type === "PRODUCT_DISCOUNT" && selectedCartItem?.lineVoucher?.token === v.qr_token
-                  ? selectedCartItem
-                  : undefined;
-                const selectedBundle = v.voucher_type === "BUNDLE"
-                  ? bundleApplications.some((application) => application.voucher_qr_token === v.qr_token)
-                  : false;
-                const isSelected = selectedVoucherIds.includes(v.qr_token) || Boolean(selectedCartItem) || selectedBundle;
-                const selectedOrderDiscount = selectedDiscountVouchers;
-                const currentOrderDiscount = estimateMultiDiscountSavings(
-                  selectedOrderDiscount,
-                  subtotalPrice
-                );
-                const candidateOrderDiscount = v.voucher_type === "DISCOUNT"
-                  ? estimateMultiDiscountSavings(
-                      v.discount_type === "PERCENT"
-                        ? [
-                            ...selectedOrderDiscount.filter(
-                              (selected) => selected.discount_type !== "PERCENT"
-                            ),
-                            v,
-                          ]
-                        : [...selectedOrderDiscount, v],
-                      subtotalPrice
-                    )
-                  : currentOrderDiscount;
-                const amountBeforeShipping = subtotalPrice - currentOrderDiscount;
-
-                let isDisabled = !selectionContextIsCurrent() || v.status !== "ACTIVE" || !v.availability.can_apply;
-                let disabledReason = isDisabled
-                  ? getVoucherAvailabilityMessage(v) ?? "Voucher hiện chưa thể áp dụng"
-                  : "";
-                if (!isSelected && !isDisabled && v.voucher_type === "DISCOUNT") {
-                  if (v.min_order_vnd !== null && subtotalPrice < v.min_order_vnd) {
-                    isDisabled = true;
-                    disabledReason = `Cần thêm ${((v.min_order_vnd - subtotalPrice) / 1000).toLocaleString("vi-VN")}K nữa`;
-                  } else if (candidateOrderDiscount <= currentOrderDiscount) {
-                    isDisabled = true;
-                    disabledReason = "Voucher không tạo thêm ưu đãi cho đơn này";
-                  }
-                }
-                if (!isSelected && !isDisabled && v.voucher_type === "FREESHIP") {
-                  if (orderType !== "DELIVERY" || (shippingFee ?? 0) <= 0) {
-                    isDisabled = true;
-                    disabledReason = "Chỉ áp dụng khi đơn giao hàng có phí ship";
-                  } else if (
-                    v.min_order_vnd !== null &&
-                    amountBeforeShipping < v.min_order_vnd
-                  ) {
-                    isDisabled = true;
-                    disabledReason = `Cần thêm ${((v.min_order_vnd - amountBeforeShipping) / 1000).toLocaleString("vi-VN")}K nữa`;
-                  } else if ((v.covered_delivery_fee_vnd ?? 0) <= 0) {
-                    isDisabled = true;
-                    disabledReason = "Voucher không tạo thêm ưu đãi cho đơn này";
-                  }
-                }
-                const productSelection = v.voucher_type === "PRODUCT_DISCOUNT"
-                  ? getProductDiscountSelection(
-                      productTargets(v),
-                      cart.find((item) => item.lineVoucher && item.lineVoucher.token !== v.qr_token)?.lineVoucher?.token ?? null,
-                    )
-                  : null;
-                if (!isSelected && !isDisabled && productSelection?.kind === "none") {
-                  isDisabled = true;
-                  disabledReason = productSelection.reason;
-                }
-
+              {voucherRows.map(({ voucher: v, availability }) => {
+                const isSelected = selectedVoucherIds.includes(v.qr_token);
+                const isOrderVoucher = v.voucher_type === "DISCOUNT" || v.voucher_type === "FREESHIP";
                 const handleSelection = () => {
-                  if (!selectionContextIsCurrent() || (!isSelected && !selectionContextIsCurrent(v.qr_token))) return;
-                  setActiveView({ kind: "list" });
-                  switch (v.voucher_type) {
-                    case "BUNDLE":
-                      if (selectedBundle) onRequestRemoveBundle(v.qr_token);
-                      else setActiveView({ kind: "bundle-setup", voucher: v });
-                      return;
-                    case "PRODUCT_DISCOUNT":
-                      if (selectedProductItem) {
-                        onRemoveProductVoucher(selectedProductItem.cartId);
-                      } else if (productSelection?.kind === "single") {
-                        onApplyProductVoucher(productSelection.target.cartId, v);
-                      } else if (productSelection?.kind === "multiple") {
-                        setActiveView({ kind: "product-target", voucher: v });
-                      }
-                      return;
-                    case "DISCOUNT":
-                    case "FREESHIP":
-                      if (isDisabled) return;
-                      onUpdateSelectedVouchers((previous: string[]) => {
-                        if (isSelected) return previous.filter((id) => id !== v.qr_token);
-                        let nextSelected = [...previous];
-                        if (v.voucher_type === "DISCOUNT" && v.discount_type === "PERCENT") {
-                          nextSelected = nextSelected.filter((id) => {
-                            const existingVoucher = discountVouchers.find((candidate) => candidate.qr_token === id);
-                            return !(existingVoucher && existingVoucher.discount_type === "PERCENT");
-                          });
-                        }
-                        if (v.voucher_type === "FREESHIP") {
-                          nextSelected = nextSelected.filter((id) =>
-                            !freeshipVouchers.some((candidate) => candidate.qr_token === id));
-                        }
-                        return [...nextSelected, v.qr_token];
-                      });
-                      return;
-                    case "PRODUCT":
-                    case "ITEM":
-                      if (selectedCartItem) {
-                        onRemoveProductVoucher(selectedCartItem.cartId);
-                        return;
-                      }
-                      if ((v.eligible_menu_items?.length ?? 0) > 1) {
-                        setActiveView({ kind: "detail", voucher: v });
-                        return;
-                      }
-                      setActiveView({ kind: "detail", voucher: v });
-                      return;
-                    case "ADDON":
-                      if (selectedCartItem) {
-                        onRemoveAddonVoucher(selectedCartItem.cartId, v.qr_token);
-                        return;
-                      }
-                      setActiveView({ kind: "addon-target", voucher: v });
-                      return;
-                    default:
-                      return;
-                  }
-                };
-
-                return (
-                  <VoucherCard 
-                    key={v.qr_token}
-                    voucher={v} 
-                    isDisabled={isDisabled}
-                    disabledReason={disabledReason}
-                    isSelected={isSelected}
-                    onClick={() => {
-                      setActiveView({ kind: "detail", voucher: v });
-                    }}
-                    onAction={handleSelection}
-                    actionModel={
-                      (v.voucher_type === "PRODUCT" || v.voucher_type === "ITEM" || v.voucher_type === "ADDON") && !isSelected
-                        ? buildVoucherActionModel({ context: "wallet", busy: false })
-                        : buildVoucherActionModel({
-                            context: "cart",
-                            selected: isSelected,
-                            selectable: isSelected || !isDisabled,
-                            disabledReason: disabledReason || null,
-                            estimatedBenefitVnd: productSelection?.kind === "single"
-                              ? productSelection.target.estimatedBenefitVnd
-                              : 0,
-                          })
+                  if (!selectionContextIsCurrent()) return;
+                  if (isOrderVoucher) {
+                    if (isSelected) {
+                      onUpdateSelectedVouchers((previous) => previous.filter((token) => token !== v.qr_token));
+                    } else if (availability.canUse && selectionContextIsCurrent(v.qr_token)) {
+                      onUpdateSelectedVouchers((previous) => selectOrderVoucherToken(previous, v, myVouchers));
                     }
+                    return;
+                  }
+                  if (!availability.canUse || !selectionContextIsCurrent(v.qr_token)) return;
+                  if (v.voucher_type === "BUNDLE") setActiveView({ kind: "bundle-setup", voucher: v });
+                  else if (v.voucher_type === "ADDON") setActiveView({ kind: "detail", voucher: v });
+                  else void handleMenuVoucherUse(v);
+                };
+                return (
+                  <VoucherCard key={v.qr_token} voucher={v}
+                    isDisabled={!availability.canUse} disabledReason={availability.reason}
+                    isSelected={isSelected}
+                    onClick={() => setActiveView({ kind: "detail", voucher: v })}
+                    onAction={handleSelection}
+                    actionModel={isOrderVoucher ? buildVoucherActionModel({
+                      context: "cart", selected: isSelected,
+                      selectable: selectionContextIsCurrent() && (isSelected || availability.canUse),
+                      disabledReason: availability.reason || null, estimatedBenefitVnd: 0,
+                    }) : buildVoucherActionModel({
+                      context: "wallet", busy: addingVoucherItem,
+                      label: ["PRODUCT", "PRODUCT_DISCOUNT", "ITEM"].includes(v.voucher_type) && availability.targets.length === 1
+                        ? "Dùng ngay" : "Chọn món",
+                      selectable: !addingVoucherItem && availability.canUse && selectionContextIsCurrent(),
+                      disabledReason: availability.reason || null,
+                    })}
                   />
                 );
               })}
@@ -635,6 +533,7 @@ export const CartDiscountPicker = ({
         {activeTab === "packages" && (
           <VoucherPackageCatalog
             packages={availableVoucherPackages}
+            menuData={menuData}
             pointsBalance={pointsBalance}
             pendingPackageId={isPending ? redeemingId : null}
             onAcquire={handleAcquire}
@@ -651,7 +550,7 @@ export const CartDiscountPicker = ({
       <ResponsiveOverlay
         open={open && !targetClosing && targetVoucher !== null}
         onOpenChange={(isOpen) => { if (!isOpen) setTargetClosing(true); }}
-        onAfterClose={() => { setActiveView({ kind: "list" }); setTargetClosing(false); }}
+        onAfterClose={() => { setActiveView({ kind: "list" }); setTargetClosing(false); if (closeAfterChild.current) { closeAfterChild.current = false; finishVoucherUse(); } }}
         layer="critical"
         title="Chọn món áp dụng"
       >
@@ -674,7 +573,7 @@ export const CartDiscountPicker = ({
                   <span className="block text-sm font-bold">{item?.name}</span>
                   <span className="block text-xs text-muted-foreground">Size <SizeLabel size={target.size} /></span>
                 </span>
-                <span className="text-sm font-bold text-primary">-{target.estimatedBenefitVnd.toLocaleString("vi-VN")}đ</span>
+                <span className="text-sm font-bold text-red-700"><CartMoney amountVnd={target.estimatedBenefitVnd} discount /></span>
               </button>
             );
           }) : null}
@@ -683,7 +582,7 @@ export const CartDiscountPicker = ({
       <ResponsiveOverlay
         open={open && !targetClosing && addonTargetVoucher !== null}
         onOpenChange={(isOpen) => { if (!isOpen) setTargetClosing(true); }}
-        onAfterClose={() => { setActiveView({ kind: "list" }); setTargetClosing(false); }}
+        onAfterClose={() => { setActiveView({ kind: "list" }); setTargetClosing(false); if (closeAfterChild.current) { closeAfterChild.current = false; finishVoucherUse(); } }}
         layer="critical"
         title="Chọn món áp dụng"
       >
@@ -695,7 +594,7 @@ export const CartDiscountPicker = ({
             menuData={menuData}
             canEdit={selectedViewVoucher !== null && selectionContextIsCurrent(selectedViewVoucher.qr_token)}
             onBack={() => setTargetClosing(true)}
-            onSuccess={() => setTargetClosing(true)}
+            onSuccess={() => { closeAfterChild.current = true; setTargetClosing(true); }}
             onApplyVoucher={onApplyAddonVoucher ? (...args) => selectionContextIsCurrent(args[1]) ? onApplyAddonVoucher(...args) : { ok: false, code: "BUNDLE_STALE", message: "Ví voucher đang được xác minh lại." } : undefined}
             onSavePendingVoucher={onSavePendingAddonVoucher ? (intent) => { if (selectionContextIsCurrent(intent.voucherId)) onSavePendingAddonVoucher(intent); } : undefined}
             onPending={() => {
@@ -719,7 +618,7 @@ export const CartDiscountPicker = ({
           powders={powders}
           defaultPowderGram={defaultPowderGram}
           onClose={() => setBundleClosing(true)}
-          onAfterClose={() => { setActiveView({ kind: "list" }); setBundleClosing(false); }}
+          onAfterClose={() => { setActiveView({ kind: "list" }); setBundleClosing(false); if (closeAfterChild.current) { closeAfterChild.current = false; finishVoucherUse(); } }}
           onValidateDraft={(candidate: BundleCartDraftResult): BundleCartDraftValidation => {
             if (!selectionContextIsCurrent(bundleSetupVoucher.qr_token)) return { ok: false, error: "Ví voucher đang được xác minh lại." };
             const summary = getBundleVoucherSummary(bundleSetupVoucher);
@@ -736,7 +635,7 @@ export const CartDiscountPicker = ({
             return validateBundleCartDraft({ voucher: summary, candidate, ownerKey: bundleOwnerKey, siblingApplications: siblingResolution.siblings });
           }}
           onCommitDraft={(draft) => selectionContextIsCurrent(bundleSetupVoucher.qr_token) ? onCommitBundleCartDraft(draft) : { ok: false, code: "BUNDLE_STALE", message: "Ví voucher đang được xác minh lại." }}
-          onSuccess={() => setBundleClosing(true)}
+          onSuccess={() => { closeAfterChild.current = true; setBundleClosing(true); }}
         />
       ) : null}
     </ResponsiveOverlay>

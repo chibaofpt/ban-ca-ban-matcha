@@ -29,7 +29,7 @@ export function CustomerVoucherHistory({ onVoucherClick }: {
     </p>;
   }
 
-  return <div className="space-y-3" aria-busy={history.isFetching}>
+  return <div className="space-y-3" aria-busy={history.isFetchingNextPage}>
     {history.data ? (
       vouchers.length === 0 && history.hasNextPage
         ? <p className="text-center text-sm text-muted-foreground">Chưa thấy voucher lịch sử. Bạn có thể xem thêm bên dưới.</p>
@@ -46,8 +46,8 @@ export function CustomerVoucherHistory({ onVoucherClick }: {
       onClick={() => { void (history.isError && !history.isFetchNextPageError ? history.refetch() : history.fetchNextPage()); }}
       className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-border px-4 text-sm font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
     >
-      {history.isFetching ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
-      {history.isFetching ? "Đang tải…" : history.isError ? "Thử lại" : "Xem thêm"}
+      {history.isFetchingNextPage ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+      {history.isFetchingNextPage ? "Đang tải…" : history.isError ? "Thử lại" : "Xem thêm"}
     </motion.button> : null}
   </div>;
 }

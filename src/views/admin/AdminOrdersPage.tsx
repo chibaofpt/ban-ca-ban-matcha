@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { ChevronDown, ChevronUp, Phone, Clock, Search, FilterX, Filter, CheckCircle2, XCircle, BarChart3 } from "lucide-react";
+import { Phone, Clock, Search, FilterX, Filter, CheckCircle2, XCircle, BarChart3 } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import { formatKa, formatOrderSize } from "@/src/utils/display";
 import { fetchAdminOrders, confirmPayment, adminCancelOrder, AdminOrderServiceError, type AdminOrderRes } from "@/src/services/adminOrderService";
@@ -46,7 +46,6 @@ export default function AdminOrdersPage() {
   const [activeTab, setActiveTab] = useState<OrderTabKey>("all");
   const [page, setPage] = useState(1);
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -118,7 +117,6 @@ export default function AdminOrdersPage() {
 
   const refetch = () => queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
 
-  const toggle = (id: string) => setExpanded((s) => ({ ...s, [id]: !s[id] }));
 
   const openFilterModal = () => {
     setDraftFilters(activeFilters);
@@ -360,7 +358,6 @@ export default function AdminOrdersPage() {
       ) : (
         <div className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6 mt-4">
           {orders.map((order) => {
-            const isOpen = !!expanded[order.id];
             const isTerminal = order.status === "COMPLETED" || order.status === "CANCELLED";
 
             return (
@@ -426,19 +423,8 @@ export default function AdminOrdersPage() {
                   {/* Action buttons (Confirm Payment for PENDING) */}
                   {renderActionButtons(order)}
 
-                  {/* Expand toggle */}
-                  <button
-                    onClick={() => toggle(order.id)}
-                    className="w-full flex items-center justify-between text-sm text-foreground/80 hover:text-foreground bg-secondary/20 p-2 rounded-xl"
-                  >
-                    <span className="font-medium">
-                      {order.items.reduce((s, i) => s + i.quantity, 0)} món
-                    </span>
-                    {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </button>
-
-                  {/* Expanded item list */}
-                  {isOpen && (
+                  {/* Show all items for active orders; terminal cards stay compact. */}
+                  {!isTerminal && (
                     <ul className="space-y-3 text-sm text-foreground/90 pt-1">
                       {order.items.map((it, idx) => (
                         <li key={idx} className="flex justify-between gap-3">
@@ -550,7 +536,7 @@ export default function AdminOrdersPage() {
                             </span>
                           )}
                           <span className="text-[11px] text-muted-foreground ml-auto">
-                            Người nhận: {order.handler?.role === "ADMIN" ? "Admin" : order.handler?.name ?? "Chưa nhận"}
+                            {order.handler?.name ?? "Chưa nhận"}
                           </span>
                         </div>
                       );

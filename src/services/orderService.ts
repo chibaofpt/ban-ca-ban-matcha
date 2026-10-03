@@ -86,6 +86,8 @@ export async function createOrder(
   options?: {
     orderType?: "PICKUP" | "DELIVERY";
     discountVoucherIds?: string[];
+    /** Effective projection tokens; omitted by callers without a cart projection. */
+    appliedOrderVoucherTokens?: readonly string[];
     pickupTime?: string;
     note?: string;
     deliveryAddress?: string;
@@ -101,10 +103,13 @@ export async function createOrder(
     bundleApplications?: BundleApplicationPayload[];
   }
 ): Promise<CreateOrderResult> {
+  const appliedTokens = options?.appliedOrderVoucherTokens === undefined
+    ? null : new Set(options.appliedOrderVoucherTokens);
   const payload: CreateOrderPayload = {
     order_type: options?.orderType ?? "PICKUP",
     items: buildPayloadItems(cart),
-    discount_voucher_ids: options?.discountVoucherIds ?? [],
+    discount_voucher_ids: (options?.discountVoucherIds ?? []).filter((token) =>
+      appliedTokens === null || appliedTokens.has(token)),
     ...(options?.pickupTime ? { pickup_time: options.pickupTime } : {}),
     ...(options?.note ? { note: options.note } : {}),
     ...(options?.deliveryAddress ? { delivery_address: options.deliveryAddress } : {}),
@@ -114,7 +119,8 @@ export async function createOrder(
     ...(options?.deliveryReceiverName ? { delivery_receiver_name: options.deliveryReceiverName } : {}),
     ...(options?.deliveryReceiverPhone ? { delivery_receiver_phone: options.deliveryReceiverPhone } : {}),
     ...(options?.clientShippingFeeVnd !== undefined ? { client_shipping_fee_vnd: options.clientShippingFeeVnd } : {}),
-    ...(options?.freeshipVoucherId ? { freeship_voucher_id: options.freeshipVoucherId } : {}),
+    ...(options?.freeshipVoucherId && (appliedTokens === null || appliedTokens.has(options.freeshipVoucherId))
+      ? { freeship_voucher_id: options.freeshipVoucherId } : {}),
     ...(options?.bundleApplications?.length
       ? {
           bundle_applications: options.bundleApplications,

@@ -260,8 +260,10 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 
 `GET /api/admin/orders` accepts `exclude_cancelled=true` for the Admin “All” tab and
 `payment_method=CASH|BANK_TRANSFER` for the payment-method filter. Results remain
-ordered by `created_at DESC`; each non-null `handler` includes `name` and `role` so the Admin UI can
-distinguish orders received by an Admin from those received by Staff.
+ordered by `created_at DESC`; each non-null `handler` includes `name` and `role`.
+For presentation, `handler` projects the persisted payment confirmer when present, otherwise
+the persisted order handler. No current-session or customer-name fallback is used, and no
+additional actor identifier or response field is exposed.
 
 Auth mutations are rate-limited by hashed IP. Authorization details are defined by each contract and middleware.
 

@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import Image from "next/image";
 import { X, Gift } from "lucide-react";
 import type { ProjectedCartLine } from "@/src/lib/types/cart";
 import type { BundleVoucherRule, BundleVoucherProduct } from "@/src/services/customerVoucherService";
@@ -9,7 +8,7 @@ import type { MenuData, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import type { Powder } from "@/src/lib/types/powder";
 import type { BundleSelectionAllocation } from "@/src/lib/utils/bundleVoucher";
 import { getBundleCartDisplayTotals } from "@/src/lib/utils/bundleCartSummary";
-import { formatSizeLabel } from "@/src/utils/display";
+import { CartMoney } from "@/src/components/shared/CartMoney";
 
 export interface BundleAllocationBadge {
   token: string;
@@ -33,35 +32,13 @@ interface CartBundleSectionProps {
   onEditItem: (item: ProjectedCartLine, allowedSizes: Size[]) => void;
   /** Called when user removes the entire bundle section. */
   onRemoveBundle: () => void;
+  renderItem: (item: ProjectedCartLine, allowedSizes: Size[], editDisabled: boolean) => React.ReactNode;
   onRepairBundle?: () => void;
   /** Cross-voucher size intersection and allocation quantities for one rendered line. */
   allowedSizesByCartId?: ReadonlyMap<string, Size[]>;
   nonEditableCartIds?: ReadonlySet<string>;
   allocationBadgesByCartId?: ReadonlyMap<string, BundleAllocationBadge[]>;
   isVerifying?: boolean;
-}
-
-/** Formats a CartItem configuration as a compact display string. */
-function formatItemConfig(item: ProjectedCartLine, milkTypes: MilkTypeOption[], powders: Powder[]): string {
-  const parts: string[] = [];
-  const config = item.configuration;
-  if (config.size) parts.push(`Size ${formatSizeLabel(config.size)}`);
-  const sweetnessLabel: Record<string, string> = {
-    NONE: "Không đường", QUARTER: "Ít đường", HALF: "Nửa đường",
-    THREE_QUARTER: "Vừa đường", FULL: "Nguyên đường", EXTRA: "Thêm đường",
-  };
-  if (config.size !== null) parts.push(sweetnessLabel[config.sweetness] ?? config.sweetness);
-  const iceLabel: Record<string, string> = {
-    NORMAL: "Đá bình thường", LESS_ICE: "Ít đá", NO_ICE: "Không đá", SEPARATE_ICE: "Đá riêng",
-  };
-  if (config.size !== null) parts.push(iceLabel[config.iceOption] ?? config.iceOption);
-  const milkId = config.size === null ? undefined : config.baseLiquidId;
-  const milk = milkId ? milkTypes.find((candidate) => candidate.id === milkId) : undefined;
-  const powderId = config.size === null ? undefined : config.powderId;
-  const powder = powderId ? powders.find((candidate) => candidate.id === powderId) : undefined;
-  if (milk) parts.push(milk.name);
-  if (powder) parts.push(powder.name);
-  return parts.join(" · ");
 }
 
 /** In-cart grouped display for a BUNDLE voucher — qualifier on top, divider, reward below. */
@@ -75,10 +52,8 @@ export function CartBundleSection({
   rewardAllocations,
   errorMessage,
   menuData,
-  powders,
-  milkTypes,
-  onEditItem,
   onRemoveBundle,
+  renderItem,
   onRepairBundle,
   allowedSizesByCartId,
   nonEditableCartIds,
@@ -132,34 +107,9 @@ export function CartBundleSection({
           )}
         </div>
         {items.map((item) => (
-          <button
-            key={item.cartId}
-            onClick={() => onEditItem(item, allowedSizesForItem(item, role))}
-            disabled={isVerifying || nonEditableCartIds?.has(item.cartId)}
-            className="w-full flex items-center gap-3 p-3 rounded-xl bg-white/80 border border-amber-100 text-left disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <div className="w-12 h-12 bg-amber-50 rounded-lg relative overflow-hidden shrink-0">
-              {item.imageUrl && <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-sm text-primary truncate">{item.name}</p>
-              <p className="text-xs text-primary/50 truncate">{formatItemConfig(item, milkTypes, powders)}</p>
-              <p className="text-xs font-bold text-amber-700 mt-0.5">
-                {role === "REWARD" && effectiveRewardKind !== "ADDON"
-                  ? "Ưu đãi áp dụng khi chốt đơn"
-                  : `${(item.grossUnitPriceVnd / 1000).toLocaleString("vi-VN")}K${role === "REWARD" ? " · nhận topping" : ""}`}
-              </p>
-              {(allocationBadgesByCartId?.get(item.cartId) ?? []).length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-1" aria-label="Phân bổ ưu đãi BUNDLE">
-                  {allocationBadgesByCartId?.get(item.cartId)?.map((badge) => (
-                    <span key={badge.token} className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
-                      {badge.label}: {badge.quantity} phần
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          </button>
+          <React.Fragment key={item.cartId}>
+            {renderItem(item, allowedSizesForItem(item, role), isVerifying || Boolean(nonEditableCartIds?.has(item.cartId)))}
+          </React.Fragment>
         ))}
       </div>
     );
@@ -188,12 +138,12 @@ export function CartBundleSection({
         </div>
 
         <div className="grid grid-cols-3 gap-2 rounded-xl border border-amber-100 bg-white/70 px-3 py-2 text-[11px]">
-          <div><p className="text-amber-700/70">Tạm tính</p><p className="font-bold text-amber-900">{(bundleTotals.grossVnd / 1000).toLocaleString("vi-VN")}K</p></div>
-          <div><p className="text-amber-700/70">Giảm</p><p className="font-bold text-emerald-700">-{(bundleTotals.discountVnd / 1000).toLocaleString("vi-VN")}K</p></div>
-          <div><p className="text-amber-700/70">Còn lại</p><p className="font-bold text-amber-900">{(bundleTotals.netVnd / 1000).toLocaleString("vi-VN")}K</p></div>
+          <div><p className="text-amber-700/70">Tạm tính</p><p className="font-bold text-amber-900"><CartMoney amountVnd={bundleTotals.grossVnd} /></p></div>
+          <div><p className="text-amber-700/70">Giảm</p><p className="font-bold text-red-700"><CartMoney amountVnd={bundleTotals.discountVnd} discount /></p></div>
+          <div><p className="text-amber-700/70">Còn lại</p><p className="font-bold text-amber-900"><CartMoney amountVnd={bundleTotals.netVnd} /></p></div>
         </div>
         {bundleTotals.paidToppingsVnd > 0 ? (
-          <p className="text-[11px] font-semibold text-amber-800/80">Topping trả thêm: {(bundleTotals.paidToppingsVnd / 1000).toLocaleString("vi-VN")}K</p>
+          <p className="text-[11px] font-semibold text-amber-800/80">Topping trả thêm: <CartMoney amountVnd={bundleTotals.paidToppingsVnd} /></p>
         ) : null}
         {errorMessage ? (
           <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 ${isVerifying ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50"}`}>

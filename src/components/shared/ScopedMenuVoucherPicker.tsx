@@ -3,9 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import ProductModal from "@/src/components/shared/ProductModal";
-import MenuCard from "@/src/components/menu/MenuCard";
-import { usePowderStore } from "@/src/lib/store/powderStore";
-import { SizeLabel } from "@/src/components/ui/SizeLabel";
+import { VoucherMenuTargetCard, VoucherTargetCard } from "./VoucherTargetCard";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import type { CartItem } from "@/src/lib/types/cart";
@@ -25,7 +23,6 @@ interface ScopedMenuVoucherPickerProps {
 
 /** Lets a customer choose and configure exactly one scoped PRODUCT or ITEM reward. */
 export function ScopedMenuVoucherPicker({ voucher, menuData, canEdit = true, onSuccess, onAddItem, open = true, onChildOpenChange }: ScopedMenuVoucherPickerProps) {
-  const powders = usePowderStore((state) => state.data);
   const pendingSuccess = useRef(false);
   const customerAddItem = useCartStore((state) => state.addItem);
   const addItem = onAddItem ?? customerAddItem;
@@ -97,29 +94,23 @@ export function ScopedMenuVoucherPicker({ voucher, menuData, canEdit = true, onS
   return (
     <section className="space-y-3" aria-labelledby="voucher-menu-targets">
       <div>
-        <h5 id="voucher-menu-targets" className="text-xs font-bold uppercase tracking-widest text-primary/50">Chọn món áp dụng</h5>
-        <p className="mt-1 text-xs text-muted-foreground">Chạm vào món để tùy chỉnh rồi thêm thẳng vào giỏ.</p>
+        <h5 id="voucher-menu-targets" className="text-xs font-bold uppercase tracking-widest text-primary">Chọn món áp dụng</h5>
       </div>
       {targets.map((target) => {
         const item = menuItems.find((candidate) => candidate.id === target.menu_item_id);
-        if (!item) return <div key={target.menu_item_id} className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">{target.name} · Không còn khả dụng</div>;
+        if (!item) return <VoucherTargetCard key={target.menu_item_id} name={target.name} description="Không còn khả dụng" disabled />;
         const allowedSizes = target.size ? [target.size as Size] : undefined;
         return (
-          <div key={target.menu_item_id} className={!canEdit ? "opacity-50" : undefined}>
-            <MenuCard
+          <div key={target.menu_item_id}>
+            <VoucherMenuTargetCard
               item={item}
-              milkTypes={menuData.milk_types}
-              compact
+              menuData={menuData}
+              configuration={{ size: target.size, powderId: target.matcha_powder_id, baseLiquidId: target.milk_type_id }}
               disabled={!canEdit || !target.is_available || Boolean(target.size && !item.sizes.some((size) => size.size === target.size))}
               allowedSizes={allowedSizes}
-              onItemClick={() => pickTarget(target)}
+              onClick={() => pickTarget(target)}
             />
-            {target.size ? <p className="mt-1 text-xs text-muted-foreground">Size voucher: <SizeLabel size={target.size} /></p> : null}
-            <p className="mt-1 text-xs text-muted-foreground">
-              {target.matcha_powder_id ? "Bột: " + (powders.find((entry) => entry.id === target.matcha_powder_id)?.name ?? "Theo cấu hình voucher") : ""}
-              {target.milk_type_id ? " · Nền: " + (menuData.milk_types.find((entry) => entry.id === target.milk_type_id)?.name ?? "Theo cấu hình voucher") : ""}
-              {!target.is_available ? " · Không còn khả dụng" : ""}
-            </p>
+            {!target.is_available ? <p className="mt-1 text-xs text-muted-foreground">Không còn khả dụng</p> : null}
           </div>
         );
       })}

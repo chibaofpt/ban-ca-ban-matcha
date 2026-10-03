@@ -1,17 +1,21 @@
 "use client";
 
-import React, { memo } from "react";
-import Image from "next/image";
-import { AlertTriangle, Minus, Plus, Trash2, X, Ticket } from "lucide-react";
+import { memo } from "react";
 import type { ProjectedCartLine } from "@/src/lib/types/cart";
 import type { MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
-import { line1ItemDetails, line2ItemDetails, addonsDetails } from "@/src/utils/cartHelpers";
-import { formatKa } from "@/src/utils/display";
+import type { CalcItemVoucherResult } from "@/src/utils/orderCalculator";
+import { SharedCartItemCard } from "@/src/components/shared/SharedCartItemCard";
+import { CartItemVoucherButton, CartItemVoucherPriceRow } from "@/src/components/shared/CartItemVoucherPriceRow";
 
 interface CartItemCardProps {
   item: ProjectedCartLine;
+  availableVoucherCount: number;
+  hideQuantityControls?: boolean;
+  editDisabled?: boolean;
+  bundleAllocationBadges?: Array<{ token: string; label: string; quantity: number }>;
+  voucherDiscounts?: CalcItemVoucherResult;
   menuItem?: MenuItem;
   powderData?: PowderApiResponse;
   milkTypes: MilkTypeOption[];
@@ -28,266 +32,32 @@ interface CartItemCardProps {
   onOpenVoucherPicker: (cartId: string) => void;
 }
 
-const CartItemCard = ({
-  item,
-  menuItem,
-  powderData,
-  milkTypes,
-  allVouchers,
-  applicableProductVouchers,
-  applicableAddonVouchers,
-  onEdit,
-  onRemove,
-  onUpdateQuantity,
-  onRemoveProductVoucher,
-  onRemoveAddonVoucher,
-  onOpenVoucherPicker,
-  walletVerified,
-  voucherReadOnlyReason,
-}: CartItemCardProps) => {
-  const powderId = item.configuration.size === null ? undefined : item.configuration.powderId;
-  const powderName = powderData?.data.find((powder) => powder.id === powderId)?.name;
-  const appliedProductVoucherId = item.lineVoucher?.token;
-  const hasMoreProductVouchers = !appliedProductVoucherId && applicableProductVouchers.length > 0;
-  const hasMoreAddonVouchers = applicableAddonVouchers.length > 0;
-  const hasAvailableVouchers = hasMoreProductVouchers || hasMoreAddonVouchers;
-  const hasAnyVoucher = Boolean(appliedProductVoucherId || (item.addonVouchers && item.addonVouchers.length > 0));
-  const editBlocked = !walletVerified && hasAnyVoucher;
+/** Adapt customer cart permissions and actions to the shared cart item. */
+function CartItemCard(props: CartItemCardProps) {
+  const { item, menuItem, powderData, milkTypes, allVouchers, voucherDiscounts, walletVerified,
+    voucherReadOnlyReason, availableVoucherCount, onEdit, onRemove, onUpdateQuantity,
+    onRemoveProductVoucher, onRemoveAddonVoucher, onOpenVoucherPicker } = props;
+  const hasVoucher = Boolean(item.lineVoucher || item.addonVouchers.length > 0);
+  const editBlocked = props.editDisabled || (!walletVerified && hasVoucher);
+  return <SharedCartItemCard
+    item={item} menuItem={menuItem} powders={powderData?.data} milkTypes={milkTypes}
+    onEdit={() => onEdit(item)} onRemove={() => onRemove(item.cartId)}
+    onDecrease={() => item.quantity <= 1 ? onRemove(item.cartId) : onUpdateQuantity(item.cartId, item.quantity - 1)}
+    onIncrease={() => onUpdateQuantity(item.cartId, item.quantity + 1)}
+    showQuantity={!hasVoucher && !props.hideQuantityControls} editDisabled={editBlocked}
+    bundleAllocationBadges={props.bundleAllocationBadges}
+    readOnlyReason={!walletVerified && hasVoucher ? voucherReadOnlyReason : undefined}
+    priceRow={<CartItemVoucherPriceRow
+      item={item} vouchers={allVouchers} voucherDiscounts={voucherDiscounts}
+      onRemoveProduct={onRemoveProductVoucher} onRemoveAddon={onRemoveAddonVoucher}
+      removeDisabled={!walletVerified} readOnlyReason={voucherReadOnlyReason}
+      showOriginalPrice={item.grossUnitPriceVnd > item.payableUnitVnd} rounding="ceil"
+      voucherPicker={availableVoucherCount > 0 ? <CartItemVoucherButton
+        count={availableVoucherCount} label="Chọn ưu đãi" disabled={!walletVerified}
+        readOnlyReason={voucherReadOnlyReason} onOpen={() => onOpenVoucherPicker(item.cartId)}
+      /> : undefined}
+    />}
+  />;
+}
 
-  const line1Chips = line1ItemDetails(item, menuItem, milkTypes, powderData?.data);
-  const line2Chips = line2ItemDetails(item);
-  const addonChips = addonsDetails(item);
-  
-  const noteText = item.configuration.note || null;
-  const isUnavailable = !menuItem;
-
-  if (isUnavailable) {
-    return (
-      <div className="flex gap-3.5 rounded-[1.25rem] border border-border bg-muted/50 p-3.5">
-        <div className="relative h-[5.5rem] w-[5.5rem] shrink-0 overflow-hidden rounded-2xl bg-secondary/10 opacity-60">
-          {item.imageUrl ? (
-            <Image src={item.imageUrl} alt={item.name} fill sizes="88px" className="object-cover grayscale" />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center">
-              <AlertTriangle className="h-8 w-8 text-primary" />
-            </div>
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h4 className="truncate text-sm font-bold text-primary">{item.name}</h4>
-              <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-primary">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
-                Món không còn phục vụ
-              </p>
-              <p className="mt-2 text-xs leading-relaxed text-primary/65">
-                Vui lòng xoá món này để tiếp tục đặt hàng.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onRemove(item.cartId)}
-              aria-label={`Xoá ${item.name}`}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-destructive transition-colors hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              <Trash2 className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      onClick={(event) => {
-        if ((event.target as HTMLElement).closest("button") || editBlocked) return;
-        onEdit(item);
-      }}
-      className="flex cursor-pointer gap-3.5 rounded-[1.25rem] border border-transparent bg-card p-3.5 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)] transition-colors hover:border-primary/15 hover:bg-primary/[0.02]"
-    >
-      {/* Thumbnail & Stepper */}
-      <div className="flex flex-col items-center gap-2 shrink-0">
-        <div className="w-[5.5rem] h-[5.5rem] rounded-2xl overflow-hidden bg-secondary/10 relative">
-          {item.imageUrl ? (
-            <Image src={item.imageUrl} alt={item.name} fill sizes="88px" className="object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-4xl">🍵</div>
-          )}
-        </div>
-        
-        {!hasAnyVoucher && (
-          <div 
-            className="flex w-[7.5rem] items-center justify-between gap-1 rounded-full border border-border bg-card px-1 py-1 shadow-sm"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => item.quantity <= 1 ? onRemove(item.cartId) : onUpdateQuantity(item.cartId, item.quantity - 1)}
-              aria-label="Giảm số lượng"
-              className="flex h-11 w-11 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <Minus className="w-3.5 h-3.5" />
-            </button>
-            <span className="text-xs font-bold text-primary text-center">
-              {item.quantity}
-            </span>
-            <button
-              onClick={() => onUpdateQuantity(item.cartId, item.quantity + 1)}
-              aria-label="Tăng số lượng"
-              className="flex h-11 w-11 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-        {/* Title + Delete */}
-        <div className="flex items-start justify-between w-full">
-          <button
-            type="button"
-            disabled={editBlocked}
-            onClick={() => onEdit(item)}
-            title={editBlocked ? voucherReadOnlyReason : undefined}
-            aria-label={`Chỉnh món ${item.name}`}
-            className="group min-h-11 min-w-0 w-4/5 rounded-lg pr-2 text-left transition-colors hover:bg-secondary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <span className="block truncate text-sm font-bold leading-tight text-primary">
-              {item.name} {item.category === "fusion" && powderName ? `- ${powderName}` : ""}
-            </span>
-            <span className="mt-1 block text-[11px] font-semibold text-primary/55 group-hover:text-primary/75">
-              Chỉnh món
-            </span>
-          </button>
-          <div className="w-1/5 flex justify-end">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove(item.cartId);
-              }}
-              aria-label={`Xoá ${item.name}`}
-              className="shrink-0 w-11 h-11 rounded-full flex items-center justify-center text-primary/40 hover:text-destructive hover:bg-red-50 transition-colors -mt-2 -mr-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Customize (full line) */}
-        <div className="mt-1.5 flex flex-col gap-1 w-full">
-          {line1Chips.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {line1Chips.map((chip, idx) => (
-                <span key={idx} className="text-[11px] font-medium bg-primary/25 text-primary px-2 py-0.5 rounded-full">{chip}</span>
-              ))}
-            </div>
-          )}
-          {line2Chips.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {line2Chips.map((chip, idx) => (
-                <span key={idx} className="text-[11px] font-medium bg-primary/20 text-primary/[0.95] px-2 py-0.5 rounded-full">{chip}</span>
-              ))}
-            </div>
-          )}
-          {addonChips.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {addonChips.map((chip, idx) => (
-                <span key={idx} className="text-[11px] font-medium bg-primary/15 text-primary/90 px-2 py-0.5 rounded-full">{chip}</span>
-              ))}
-            </div>
-          )}
-          {noteText && (
-            <span className="text-[11px] font-medium bg-primary/5 text-primary/80 px-2 py-0.5 rounded-full italic inline-block">📝 {noteText}</span>
-          )}
-        </div>
-
-        {/* Voucher tags / CTA and Price at the bottom */}
-        <div className="flex items-end justify-between mt-3 gap-2 w-full">
-          {/* Vouchers (Left side) */}
-          <div className="flex flex-wrap gap-1.5 flex-1">
-            {/* Applied: product voucher */}
-            {appliedProductVoucherId && (() => {
-              const pv = allVouchers.find(v => v.qr_token === appliedProductVoucherId);
-              return (
-                <div className="text-[10px] font-bold bg-muted/50 border border-border text-primary pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-                  <Ticket className="w-3 h-3 text-primary" /> {pv?.package?.name || "Free món"}
-                  <button
-                    type="button"
-                    disabled={!walletVerified}
-                    onClick={(e) => { e.stopPropagation(); onRemoveProductVoucher(item.cartId); }}
-                    aria-label="Bỏ voucher sản phẩm"
-                    title={!walletVerified ? voucherReadOnlyReason : undefined}
-                    className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-orange-200 text-primary hover:text-primary transition-colors ml-0.5 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <X size={12} strokeWidth={2.5} />
-                  </button>
-                </div>
-              );
-            })()}
-            {/* Applied: addon vouchers */}
-            {item.addonVouchers && item.addonVouchers.map(av => {
-              const voucherInfo = allVouchers.find(v => v.qr_token === av.token);
-              return (
-                <div key={av.token} className="text-[10px] font-bold bg-muted/50 border border-border text-primary pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-                  <Ticket className="w-3 h-3 text-primary" /> Free {voucherInfo?.addonOption?.label || "Topping"}
-                  <button
-                    type="button"
-                    disabled={!walletVerified}
-                    onClick={(e) => { e.stopPropagation(); onRemoveAddonVoucher(item.cartId, av.token); }}
-                    aria-label="Bỏ voucher topping"
-                    title={!walletVerified ? voucherReadOnlyReason : undefined}
-                    className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-green-200 text-primary hover:text-primary transition-colors ml-0.5 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <X size={12} strokeWidth={2.5} />
-                  </button>
-                </div>
-              );
-            })}
-            {/* Available vouchers CTA */}
-            {hasAvailableVouchers && (
-              <button
-                type="button"
-                disabled={!walletVerified}
-                onClick={(e) => { e.stopPropagation(); onOpenVoucherPicker(item.cartId); }}
-                title={!walletVerified ? voucherReadOnlyReason : undefined}
-                className="text-[10px] font-bold bg-card border border-dashed border-border text-primary px-3 py-1.5 rounded-full flex items-center gap-1 hover:bg-muted/50 hover:border-solid transition-all shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Ticket className="w-3 h-3" />
-                Chọn ưu đãi ({applicableProductVouchers.length + applicableAddonVouchers.length})
-              </button>
-            )}
-            {editBlocked && (
-              <span role="alert" className="basis-full text-[10px] font-medium text-primary">
-                {voucherReadOnlyReason} Chỉnh sửa món này đang tạm khóa để bảo toàn voucher.
-              </span>
-            )}
-          </div>
-
-          {/* Price (Right side) */}
-          <div className="flex items-center gap-1.5 shrink-0 justify-end">
-            {item.grossUnitPriceVnd > item.payableUnitVnd && (
-              <span className="text-[12px] line-through text-primary/30 font-medium">
-                {formatKa(item.grossUnitPriceVnd * item.quantity, "ceil")}
-              </span>
-            )}
-            <span className="font-bold text-[15px] text-primary">
-              {formatKa(item.lineTotalVnd, "ceil")}
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default memo(CartItemCard, (prev, next) => {
-  if (prev.item !== next.item) return false;
-  if (prev.applicableProductVouchers.length !== next.applicableProductVouchers.length) return false;
-  if (prev.applicableAddonVouchers.length !== next.applicableAddonVouchers.length) return false;
-  if (prev.walletVerified !== next.walletVerified) return false;
-  if (prev.voucherReadOnlyReason !== next.voucherReadOnlyReason) return false;
-  return true;
-});
+export default memo(CartItemCard);

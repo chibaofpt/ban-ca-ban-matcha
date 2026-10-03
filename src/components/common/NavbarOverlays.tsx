@@ -30,7 +30,7 @@ export function NavbarOverlays({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 top-16 z-40 bg-black/20 md:hidden"
+            className="fixed inset-0 top-16 z-20 bg-black/20 md:hidden"
             onClick={onCloseDrawer}
           />
         )}

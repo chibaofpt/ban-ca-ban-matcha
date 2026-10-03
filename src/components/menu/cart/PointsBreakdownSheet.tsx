@@ -2,7 +2,7 @@
 
 import { Drawer } from "vaul";
 import { Fish, Info, X } from "lucide-react";
-import { formatKa } from "@/src/utils/display";
+import { CartMoney } from "@/src/components/shared/CartMoney";
 
 interface PointsBreakdownSheetProps {
   open: boolean;
@@ -51,7 +51,7 @@ export function PointsBreakdownSheet({
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className="text-primary/70">Tiền hàng tính điểm</span>
               <span className="font-bold text-primary">
-                {formatKa(eligibleMerchandiseVnd, "floor")}
+                <CartMoney amountVnd={eligibleMerchandiseVnd} />
               </span>
             </div>
             <div className="flex items-center justify-between gap-3 text-sm">

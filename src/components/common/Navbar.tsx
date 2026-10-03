@@ -95,7 +95,7 @@ const Navbar = () => {
         }}
         animate={hidden ? "hidden" : "visible"}
         transition={{ duration: 0.3, ease: "easeInOut" }}
-        className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-border/40"
+        className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-border/40"
       >
         <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-16">
           {/* Brand */}

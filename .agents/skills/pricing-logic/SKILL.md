@@ -54,6 +54,9 @@ Use these separate voucher rounding rules:
 - Round PERCENT DISCOUNT amounts down to the nearest 1,000 VND.
 - Do not apply price-ceiling rules to loyalty point conversion; use `Math.floor(vnd / 10000)`.
 
+Cart money display conversion is owned by [cart UI](../../../docs/specs/cart.md#đơn-vị-tiền-hiển-thị-trong-cart);
+it does not change these VND pricing rules or the loyalty point conversion.
+
 ## Price Component Boundaries for Vouchers
 
 Keep drink and addon prices separate when passing data to the order voucher calculator:

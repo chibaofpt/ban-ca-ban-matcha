@@ -76,7 +76,7 @@ export interface VoucherSelectionModel {
 }
 
 type ActionInput =
-  | ({ context: "wallet"; busy: boolean } & Partial<VoucherSelectionModel>)
+  | ({ context: "wallet"; busy: boolean; label?: string } & Partial<VoucherSelectionModel>)
   | ({ context: "cart"; busy?: boolean } & VoucherSelectionModel);
 
 export interface ProductDiscountTarget {
@@ -177,7 +177,7 @@ export function buildVoucherActionModel(input: ActionInput): VoucherActionModel 
   if (input.context === "wallet") {
     return {
       kind: "use-now",
-      label: "Dùng ngay",
+      label: input.label ?? "Dùng ngay",
       disabled: input.busy || input.selectable === false,
       ...(input.disabledReason ? { reason: input.disabledReason } : {}),
       busy: input.busy,

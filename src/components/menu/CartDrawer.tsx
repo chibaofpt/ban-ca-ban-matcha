@@ -21,7 +21,8 @@ import { listMyVouchers, type MyVoucher } from "@/src/services/customerVoucherSe
 import { useCustomerVouchers } from "@/src/hooks/useCustomerVouchers";
 import { useVoucherPackages } from "@/src/hooks/useVoucherPackages";
 import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
-import { buildAddonVoucherMap, buildProductVoucherMap, isVoucherUsable } from "@/src/utils/voucherMatchUtils";
+import { CartMoney } from "@/src/components/shared/CartMoney";
+import { buildAddonVoucherMap, buildProductVoucherMap, getAvailableCartItemVouchers, isVoucherUsable } from "@/src/utils/voucherMatchUtils";
 import {
   filterActiveMainCartVouchers,
   filterMainCartVouchers,
@@ -36,16 +37,18 @@ import { DELIVERY_CONFIG } from "@/src/constants/delivery";
 import type { Address } from "@/src/lib/types/address";
 import ProductModal from "@/src/components/shared/ProductModal";
 import CartItemCard from "./cart/CartItemCard";
+import { CartPaymentSummary } from "@/src/components/shared/CartPaymentSummary";
 import { CartItemVoucherPicker } from "./cart/CartItemVoucherPicker";
 import { CartDiscountPicker } from "./cart/CartDiscountPicker";
 import { CartBundleSection, type BundleAllocationBadge } from "./cart/CartBundleSection";
 import { CartFooter } from "./cart/CartFooter";
 import { getBundleVoucherSummary } from "./cart/CartBundleVoucherPanel";
 import { useCustomerPoints } from "@/src/hooks/useCustomerPoints";
-import type { MenuData, MenuItem } from "@/src/lib/types/menu";
+import type { MenuData, MenuItem, Size } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { ProjectedCartLine } from "@/src/lib/types/cart";
 import { projectCart, resolveCartProjectionVouchers } from "@/src/lib/utils/cartProjection";
+import { getCartVoucherAvailability, getUsedCartVoucherTokens } from "@/src/lib/utils/cartVoucherAvailability";
 import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import { projectCartTotals } from "@/src/lib/utils/bundleVoucherProjection";
 import { getBundleAllocatedQuantities } from "@/src/lib/utils/bundleCartSummary";
@@ -184,6 +187,9 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
     }
   }
   const walletVerified = isLoggedInSynced && vouchersQuery.isSuccess && !vouchersQuery.isFetching;
+  const walletDisplayReady = isLoggedInSynced && vouchersQuery.data !== undefined;
+  const walletCheckoutBlocked = isLoggedIn && !walletVerified;
+  const walletBackgroundFetching = walletDisplayReady && vouchersQuery.isFetching && !vouchersQuery.isError;
   const canMutateWallet = useCallback((voucherToken?: string) => {
     const state = queryClient.getQueryState<MyVoucher[]>(VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS);
     const user = useAuthStore.getState().user;
@@ -197,10 +203,10 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
     : isLoggedIn && vouchersQuery.isError
       ? "Không thể xác minh ví voucher. Hãy thử tải lại voucher."
       : "Ví voucher đang được xác minh. Vui lòng chờ một chút.";
-  const visibleWalletVouchers = isLoggedInSynced ? allVouchers : [];
+  const visibleWalletVouchers = useMemo(() => isLoggedInSynced ? allVouchers : [], [allVouchers, isLoggedInSynced]);
   const projectionVouchers = resolveCartProjectionVouchers(
     isLoggedIn ? "authenticated" : "anonymous",
-    isLoggedInSynced && walletVerified,
+    walletDisplayReady,
     allVouchers,
   );
   const projectionMenuData = catalogUnavailable ? null : menuData;
@@ -265,6 +271,8 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
   const closeCartAfterPicker = useRef(false);
   const [activeItemForVoucher, setActiveItemForVoucher] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [bundleItemToDelete, setBundleItemToDelete] = useState<string | null>(null);
+  const closeCartAfterItemDeletion = useRef(false);
   const [bundleTokenToRemove, setBundleTokenToRemove] = useState<string | null>(null);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [isAddressPickerOpen, setIsAddressPickerOpen] = useState(false);
@@ -316,7 +324,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Derived voucher lists
-  const editableWalletVouchers = walletVerified ? visibleWalletVouchers : [];
+  const editableWalletVouchers = visibleWalletVouchers;
   const discountVouchers = filterMainCartVouchers(editableWalletVouchers, "DISCOUNT");
   const freeshipVouchers = filterMainCartVouchers(editableWalletVouchers, "FREESHIP");
   const applicableAddonVouchersMap = buildAddonVoucherMap(editableWalletVouchers, projectedItems);
@@ -339,7 +347,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
       application,
       voucher,
       summary,
-      state: !walletVerified
+      state: !walletDisplayReady
         ? voucherLoadState === "error"
           ? { status: "PENDING" as const, message: "Chưa thể kiểm tra voucher. Hãy thử tải lại." }
           : { status: "PENDING" as const, message: "Đang kiểm tra voucher trong ví…" }
@@ -347,7 +355,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
           ? deriveBundleSelectionState({ voucher: summary, cart: bundleCartSummary, allocations: application.reward_allocations })
           : { status: "INELIGIBLE" as const, message: "Voucher BUNDLE không còn khả dụng" }),
     };
-  }), [bundleApplications, bundleCartSummary, bundleRuntime, bundleVouchers, voucherLoadState, walletVerified]);
+  }), [bundleApplications, bundleCartSummary, bundleRuntime, bundleVouchers, voucherLoadState, walletDisplayReady]);
   const bundleConstraints = useMemo(() => deriveBundleAllocationConstraints({
     cart: bundleCartSummary,
     applications: bundleSelectionStates.flatMap((bundle) => bundle.summary ? [{
@@ -383,7 +391,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
         rendered.add(item.cartId);
         return true;
       });
-      const bundleProjection = voucher && walletVerified ? projectCartTotals({
+      const bundleProjection = voucher && walletDisplayReady ? projectCartTotals({
         items: projectedItems, applications: [bundle.application], vouchers: [voucher], selectedVoucherIds: [], shipping_fee_vnd: 0,
       }) : null;
       return [{
@@ -393,7 +401,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
         bundleDiscountVnd: bundleProjection?.bundles.bundle_discount_vnd ?? 0,
       }];
     });
-  }, [bundleSelectionStates, projectedItems, walletVerified]);
+  }, [bundleSelectionStates, projectedItems, walletDisplayReady]);
   const renderedBundleLineIds = useMemo(() => new Set(
     bundleSelectionStates
       .flatMap((bundle) => [
@@ -449,6 +457,63 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
     for (const [token, message] of bundleConstraints.error_by_token) result.set(token, message);
     return result;
   }, [bundleConstraints.error_by_token, cartProjection.bundleErrorsByToken]);
+  const paymentPresentation = useMemo(() => projectCartTotals({
+    items: cartProjection.lines,
+    applications: bundleApplications,
+    vouchers: projectionVouchers ?? [],
+    selectedVoucherIds: isLoggedInSynced ? selectedVoucherIds : [],
+    shipping_fee_vnd: cartProjection.totals.shipping_fee_vnd,
+  }), [bundleApplications, cartProjection.lines, cartProjection.totals.shipping_fee_vnd, isLoggedInSynced, projectionVouchers, selectedVoucherIds]);
+  const voucherDiscountsByCartId = useMemo(() => new Map(
+    cartProjection.lines.map((line, index) => [line.cartId, paymentPresentation.totals.itemResults[index]]),
+  ), [cartProjection.lines, paymentPresentation.totals.itemResults]);
+  const voucherLossSnapshot = useRef<{
+    ownerPhone: string | null; quantity: number; appliedTokens: Set<string>;
+  } | null>(null);
+  useEffect(() => {
+    const previous = voucherLossSnapshot.current;
+    if (!isCartOpen && !previous) return;
+    if (!walletVerified || cartProjection.revalidating) {
+      if (!isCartOpen) voucherLossSnapshot.current = null;
+      return;
+    }
+    const ownerPhone = currentUser?.phone ?? null;
+    const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
+    const appliedTokens = new Set(cartProjection.appliedOrderVoucherTokens);
+    voucherLossSnapshot.current = isCartOpen ? { ownerPhone, quantity, appliedTokens } : null;
+    if (!previous || previous.ownerPhone !== ownerPhone || quantity >= previous.quantity) return;
+    const lostMinimum = [...selectedDiscountVouchers, ...selectedFreeshipVouchers].some((voucher) => {
+      const amount = voucher.voucher_type === "FREESHIP"
+        ? cartProjection.totals.total_vnd : lineBenefitsProjection.totals.discountable_subtotal_vnd;
+      return previous.appliedTokens.has(voucher.qr_token) && !appliedTokens.has(voucher.qr_token) &&
+        isVoucherUsable(voucher) && (voucher.min_order_vnd ?? 0) > amount;
+    });
+    if (!lostMinimum) return;
+    const usedTokens = getUsedCartVoucherTokens(items, bundleApplications);
+    const context = {
+      menuData, powders: powderData.data, defaultPowderGram: powderData.default_powder_gram,
+      selectedDiscountVouchers, subtotalPrice: lineBenefitsProjection.totals.discountable_subtotal_vnd,
+      orderType, shippingFee,
+    };
+    const hasOtherVoucher = visibleWalletVouchers.some((voucher) =>
+      !selectedVoucherIds.includes(voucher.qr_token) && !usedTokens.has(voucher.qr_token) &&
+      getCartVoucherAvailability(voucher, context).canUse);
+    const toastId = "cart-voucher-minimum-lost";
+    toast.warning(hasOtherVoucher ? (
+      <button type="button" className="min-h-11 w-full text-left font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => {
+          toast.dismiss(toastId);
+          if (useAuthStore.getState().user?.phone !== ownerPhone) return;
+          setCartOpen(true);
+          setIsDiscountPickerOpen(true);
+        }}>
+        Voucher bạn đã chọn không thể sử dụng được nữa, bấm vào đây để sử dụng voucher khác
+      </button>
+    ) : "Voucher bạn đã chọn không thể sử dụng được nữa, vui lòng kiểm tra lại đơn", { id: toastId, duration: 5000 });
+  }, [bundleApplications, cartProjection, currentUser?.phone, isCartOpen, items, lineBenefitsProjection,
+    menuData, orderType, powderData, selectedDiscountVouchers, selectedFreeshipVouchers,
+    selectedVoucherIds, setCartOpen, shippingFee, visibleWalletVouchers, walletVerified]);
+
   const totalAfterDiscountVnd = cartProjection.totals.total_vnd;
   const appliedFreeshipId = cartProjection.appliedOrderVoucherTokens.find((token) =>
     selectedFreeshipVouchers.some((voucher) => voucher.qr_token === token),
@@ -458,7 +523,11 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
     surplusPoints: Math.floor(cartProjection.totals.order_surplus_vnd / 10_000),
     totalPoints: Math.floor(cartProjection.totals.total_vnd / 10_000) + Math.floor(cartProjection.totals.order_surplus_vnd / 10_000),
   };
-  const checkoutProjectionMessage = cartProjection.checkoutBlocked
+  const checkoutProjectionMessage = walletBackgroundFetching
+    ? null
+    : walletCheckoutBlocked
+      ? walletReadOnlyReason
+      : cartProjection.checkoutBlocked
     ? cartProjection.revalidating
       ? voucherLoadState === "error"
         ? "Chưa thể xác minh ví voucher. Hãy tải lại voucher rồi thử lại."
@@ -610,7 +679,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
   }, [orderType, deliveryAddress, isLoggedIn, isFetchingAddress, customerAddresses]);
 
   const handleCheckout = () => {
-    if (cartProjection.checkoutBlocked) {
+    if (cartProjection.checkoutBlocked || walletCheckoutBlocked) {
       setCheckout({
         status: "error",
         message: checkoutProjectionMessage ?? "Giỏ hàng cần được kiểm tra lại trước khi đặt hàng.",
@@ -652,7 +721,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
 
   const executeCheckout = useCallback(async () => {
     if (items.length === 0) return;
-    if (cartProjection.checkoutBlocked) {
+    if (cartProjection.checkoutBlocked || walletCheckoutBlocked) {
       setCheckout({
         status: "error",
         message: checkoutProjectionMessage ?? "Giỏ hàng cần được kiểm tra lại trước khi đặt hàng.",
@@ -730,6 +799,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
           orderType,
           pickupTime: finalPickupTime,
           discountVoucherIds: selectedDiscountVouchers.map((voucher) => voucher.qr_token),
+          appliedOrderVoucherTokens: cartProjection.appliedOrderVoucherTokens,
           ...(bundleApplications.length > 0
             ? {
                 bundleApplications: getReadyBundleApplications(bundleApplicationsWithRuntime).map((application) => ({
@@ -817,6 +887,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
     checkoutMutation,
     cartProjection,
     checkoutProjectionMessage,
+    walletCheckoutBlocked,
     setCheckout,
     setPickupTime,
     setIsTimeCustom,
@@ -880,6 +951,39 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
     setShippingFee(null);
   }, [isDiscountPickerOpen, resetCheckout, setCartOpen]);
 
+  /** Request explicit confirmation before deleting a BUNDLE purchase and reward group. */
+  const deleteCartItem = (cartId: string, afterConfirmation = false) => {
+    const current = useCartStore.getState();
+    const belongsToBundle = current.bundleApplications.some((application) =>
+      [...application.qualifier_allocations, ...application.reward_allocations]
+        .some((allocation) => allocation.client_line_id === cartId));
+    if (belongsToBundle && !afterConfirmation) { setBundleItemToDelete(cartId); return; }
+    const result = removeItem(cartId);
+    if (!result.ok) { toast.error(result.message); return; }
+    if (afterConfirmation) {
+      closeCartAfterItemDeletion.current = useCartStore.getState().items.length === 0;
+      setBundleItemToDelete(null);
+    } else if (useCartStore.getState().items.length === 0) setCartOpen(false);
+  };
+
+  const renderCartItem = (item: ProjectedCartLine, allowedSizes?: Size[], editDisabled = false) => (
+    <CartItemCard
+      key={item.cartId} item={item}
+      availableVoucherCount={getAvailableCartItemVouchers({ item, cart: projectedItems, vouchers: editableWalletVouchers, bundleApplications, getProductBenefit: getItemVoucherBenefit }).length}
+      voucherDiscounts={voucherDiscountsByCartId.get(item.cartId)}
+      menuItem={menuItems.find((menuItem) => menuItem.id === item.menuItemId)}
+      powderData={powderData} milkTypes={menuData.milk_types} allVouchers={visibleWalletVouchers}
+      walletVerified={walletVerifiedForPersonalVoucherControls} voucherReadOnlyReason={walletBackgroundFetching ? "" : walletReadOnlyReason}
+      applicableProductVouchers={applicableProductVouchers.get(item.menuItemId) || []}
+      applicableAddonVouchers={applicableAddonVouchersMap.get(item.cartId) || []}
+      onEdit={() => openProjectedItemEdit(item, allowedSizes)} onRemove={deleteCartItem}
+      onUpdateQuantity={updateQuantity} onOpenVoucherPicker={setActiveItemForVoucher}
+      onRemoveProductVoucher={removeProductVoucherIfVerified} onRemoveAddonVoucher={removeAddonVoucherIfVerified}
+      hideQuantityControls={allowedSizes !== undefined} editDisabled={editDisabled}
+      bundleAllocationBadges={bundleAllocationBadgesByCartId.get(item.cartId)}
+    />
+  );
+
   /** The cart item currently being assigned a voucher. */
   const activeItem = projectedItems.find((item) => item.cartId === activeItemForVoucher);
 
@@ -905,19 +1009,32 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
             </div>
 
             {/* Header */}
-            <div className="flex items-center justify-between px-4 pt-0 pb-2 border-b border-border/40 shrink-0 bg-card/80 backdrop-blur-md touch-none">
-              <h2 className="font-serif text-lg font-bold text-primary flex items-center gap-1.5">
-                Giỏ cá <span className="text-2xl">🐟</span>
+            <div className="flex items-center justify-between px-4 py-0.5 border-b border-border/40 shrink-0 bg-card/80 backdrop-blur-md touch-none">
+              <div className="flex min-w-0 items-center gap-2">
+                <h2 className="font-serif text-base font-bold text-primary flex items-center gap-1.5">
+                  Giỏ cá
+                  {items.length > 0 && (
+                    <span className="ml-1 text-[10px] font-bold bg-primary/10 text-primary rounded-full px-1.5 py-0.5">
+                      {items.reduce((s, i) => s + i.quantity, 0)}
+                    </span>
+                  )}
+                </h2>
                 {items.length > 0 && (
-                  <span className="ml-1 text-xs font-bold bg-primary/10 text-primary rounded-full px-1.5 py-0.5">
-                    {items.reduce((s, i) => s + i.quantity, 0)}
-                  </span>
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.92 }}
+                    onClick={() => setShowClearConfirm(true)}
+                    disabled={checkout.status === "loading"}
+                    className="flex min-h-8 shrink-0 items-center justify-center rounded-lg bg-destructive px-2 text-[10px] font-bold text-white transition-colors hover:bg-destructive/90 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Xóa tất cả
+                  </motion.button>
                 )}
-              </h2>
+              </div>
               <button
                 onClick={handleClose}
                 aria-label="Đóng giỏ hàng"
-                className="w-8 h-8 rounded-full bg-primary/5 flex items-center justify-center hover:bg-primary/10 transition-colors"
+                className="w-8 h-8 rounded-full bg-primary/5 flex items-center justify-center hover:bg-primary/10 transition-colors focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <X className="w-4 h-4 text-primary" />
               </button>
@@ -926,7 +1043,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
             {/* Scrollable content */}
             <div 
               ref={contentRef}
-              className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-5 pb-4 min-h-0"
+              className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain p-3 sm:p-4 min-h-0"
             >
               {persistenceWarning ? (
                 <div className="mt-3 flex items-start gap-2 rounded-xl border border-border bg-muted/50 px-3 py-2" role="status">
@@ -959,13 +1076,13 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
                         <div key={`${c.menu_item_id}-${c.size}`} className="bg-card border border-border rounded-xl p-3">
                           <p className="font-bold text-sm text-primary">{c.name} · <SizeLabel size={c.size} /></p>
                           <div className="flex items-center gap-3 mt-1.5">
-                            <span className="text-[13px] line-through text-primary/40">{c.client_price_vnd / 1000} ká</span>
+                            <span className="text-[13px] line-through text-primary/40"><CartMoney amountVnd={c.client_price_vnd} /></span>
                             <span className="text-xs">→</span>
                             <span className={cn(
                               "text-[13px] font-bold",
                               c.server_price_vnd > c.client_price_vnd ? "text-destructive" : "text-primary"
                             )}>
-                              {c.server_price_vnd / 1000} ká
+                              <CartMoney amountVnd={c.server_price_vnd} />
                             </span>
                           </div>
                         </div>
@@ -1008,7 +1125,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
 
                 {/* IDLE / LOADING — Cart items list */}
                 {(checkout.status === "idle" || checkout.status === "loading") && (
-                  <motion.div key="list" className="space-y-4">
+                  <motion.div key="list" className="space-y-2">
                     {items.length === 0 ? (
                       <div className="text-center py-20 text-primary/40 space-y-4">
                         <span className="text-6xl block">😢</span>
@@ -1037,6 +1154,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
                             milkTypes={menuData.milk_types}
                             onEditItem={openProjectedItemEdit}
                             onRemoveBundle={() => requestRemoveBundleIfVerified(application.voucher_qr_token)}
+                            renderItem={renderCartItem}
                             allowedSizesByCartId={bundleConstraints.allowed_sizes_by_line}
                             nonEditableCartIds={bundleConstraints.non_editable_line_ids}
                             allocationBadgesByCartId={bundleAllocationBadgesByCartId}
@@ -1046,29 +1164,8 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
                         {/* Every cart line remains visible once, including BUNDLE allocations. */}
                         {[...projectedItems].reverse()
                           .filter((item) => !renderedBundleLineIds.has(item.cartId))
-                          .map((item) => (
-                          <CartItemCard
-                            key={item.cartId}
-                            item={item}
-                            menuItem={menuItems.find(m => m.id === item.menuItemId)}
-                            powderData={powderData}
-                            milkTypes={menuData.milk_types}
-                            allVouchers={visibleWalletVouchers}
-                             walletVerified={walletVerifiedForPersonalVoucherControls}
-                             voucherReadOnlyReason={walletReadOnlyReason}
-                            applicableProductVouchers={applicableProductVouchers.get(item.menuItemId) || []}
-                            applicableAddonVouchers={applicableAddonVouchersMap.get(item.cartId) || []}
-                            onEdit={() => openProjectedItemEdit(item)}
-                            onRemove={(id) => {
-                              removeItem(id);
-                              if (items.length === 1) setCartOpen(false);
-                            }}
-                            onUpdateQuantity={updateQuantity}
-                            onOpenVoucherPicker={(id) => setActiveItemForVoucher(id)}
-                            onRemoveProductVoucher={removeProductVoucherIfVerified}
-                            onRemoveAddonVoucher={removeAddonVoucherIfVerified}
-                          />
-                        ))}
+                          .map((item) => renderCartItem(item))}
+                        <CartPaymentSummary totals={paymentPresentation.totals} />
                       </>
                     )}
                   </motion.div>
@@ -1106,14 +1203,13 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
               grandTotalVnd={cartProjection.totals.grand_total_vnd}
               totalAfterDiscountVnd={totalAfterDiscountVnd}
               hasUnavailableItems={hasUnavailableItems}
-              checkoutBlocked={cartProjection.checkoutBlocked}
+              checkoutBlocked={cartProjection.checkoutBlocked || walletCheckoutBlocked}
               checkoutBlockMessage={checkoutProjectionMessage}
               orderPoints={checkoutRewards.orderPoints}
               surplusPoints={checkoutRewards.surplusPoints}
               totalPoints={checkoutRewards.totalPoints}
               checkout={checkout}
               handleCheckout={handleCheckout}
-              setShowClearConfirm={setShowClearConfirm}
             />}
           </div>
 
@@ -1154,7 +1250,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
                 productDiscountVouchers={filterMainCartVouchers(visibleWalletVouchers, "PRODUCT_DISCOUNT")}
                 availableVoucherPackages={availableVoucherPackages}
                 pointsBalance={pointsBalance}
-                isLoading={!walletVerified && !vouchersQuery.isError}
+                isLoading={vouchersQuery.isLoading || !isLoggedInSynced}
                 loadError={vouchersQuery.isError}
                 selectedVoucherIds={selectedVoucherIds}
                 selectedDiscountVouchers={selectedDiscountVouchers}
@@ -1225,6 +1321,18 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
             )}
           </AnimatePresence>
 
+          <ConfirmModal
+            isOpen={bundleItemToDelete !== null}
+            title="Xóa nhóm BUNDLE"
+            message="Thao tác này xóa cả món mua và món quà của các BUNDLE gắn với món này. Các món và số lượng ngoài nhóm được giữ lại."
+            confirmLabel="Xóa cả nhóm"
+            isDestructive
+            onCancel={() => setBundleItemToDelete(null)}
+            onConfirm={() => { if (bundleItemToDelete) deleteCartItem(bundleItemToDelete, true); }}
+            onAfterClose={() => {
+              if (closeCartAfterItemDeletion.current) { closeCartAfterItemDeletion.current = false; handleClose(); }
+            }}
+          />
           <ConfirmModal
             isOpen={showClearConfirm}
             onCancel={() => setShowClearConfirm(false)}

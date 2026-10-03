@@ -55,6 +55,32 @@ describe("GET /api/admin/orders — tab All", () => {
     }));
   });
 
+  it.each([
+    { handler: { name: "Nhân viên pha chế", role: "STAFF" }, paymentConfirmer: { name: "Admin đã xác nhận", role: "ADMIN" }, expected: { name: "Admin đã xác nhận", role: "ADMIN" } },
+    { handler: { name: "Nhân viên tại quầy", role: "STAFF" }, paymentConfirmer: null, expected: { name: "Nhân viên tại quầy", role: "STAFF" } },
+    { handler: null, paymentConfirmer: null, expected: null },
+  ])("trả đúng người đã xác nhận hoặc tiếp nhận, không dùng khách hay admin hiện tại: $expected", async ({ handler, paymentConfirmer, expected }) => {
+    mockOrderCount.mockResolvedValue(1);
+    mockOrderFindMany.mockImplementation(async (query: {
+      include: { paymentConfirmer?: unknown };
+    }) => [{
+      id: "received-order", status: "ADMIN_CONFIRMED", order_type: "PICKUP",
+      payment_method: "BANK_TRANSFER", order_code: "ORDER-001",
+      user: { name: "Khách hàng", phone_number: "0900000000" }, handler,
+      paymentConfirmer: query.include.paymentConfirmer ? paymentConfirmer : null,
+      subtotal_vnd: 45000, total_voucher_discount_vnd: 0, total_vnd: 45000,
+      shipping_fee_vnd: 0, freeship_discount_vnd: 0, grand_total_vnd: 45000,
+      discountVouchers: [], items: [],
+    }]);
+
+    const response = await GET(new NextRequest("http://localhost/api/admin/orders"));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data[0].handler).toEqual(expected);
+    expect(body.data[0]).not.toHaveProperty("paymentConfirmer");
+    expect(body.data[0]).not.toHaveProperty("payment_confirmed_by");
+  });
+
   it("trả tên voucher ITEM của món extras trong DTO đơn admin", async () => {
     mockOrderCount.mockResolvedValue(1);
     mockOrderFindMany.mockImplementation(async (query: {

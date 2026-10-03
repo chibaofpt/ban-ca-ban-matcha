@@ -1,6 +1,11 @@
 "use client";
 
 import React from "react";
+import { VoucherMenuTargetCard, VoucherTargetCard } from "./VoucherTargetCard";
+import { VoucherCardFrame } from "./VoucherCardFrame";
+import OptionCard from "./product-modal/OptionCard";
+import { formatCartMoney, formatKa } from "@/src/utils/display";
+import { CartMoney } from "./CartMoney";
 import { motion } from "framer-motion";
 import { ArrowLeft, Loader2, LogIn } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -13,16 +18,10 @@ import {
 import {
   canApplyOwnedVoucher,
   canExchange,
-  getTicketHighlightText,
   getVoucherAvailabilityMessage,
-  getVoucherBenefitText,
-  getPackageBenefitText,
   formatVoucherExpiry,
   formatExpiryLabel,
-  VOUCHER_TYPE_CONFIG,
 } from "@/src/lib/utils/voucherModalHelpers";
-import { cn } from "@/src/utils/cn";
-import { SizeLabel } from "@/src/components/ui/SizeLabel";
 import { AddonItemPicker } from "./AddonItemPicker";
 import { ProductDiscountItemPicker } from "./ProductDiscountItemPicker";
 import { ScopedMenuVoucherPicker } from "./ScopedMenuVoucherPicker";
@@ -150,7 +149,6 @@ function PackageActionFooter({ pkg, isLoggedIn, pointsBalance, isExchanging, onE
 function PackageVoucherDetailSheet({
   packageData,
   menuData,
-  powderLabels,
   pointsBalance,
   isLoggedIn,
   isExchanging,
@@ -158,18 +156,8 @@ function PackageVoucherDetailSheet({
   onExchange,
   onLogin,
 }: PackageVoucherDetailSheetProps) {
-  const config = VOUCHER_TYPE_CONFIG[packageData.voucher_type] ?? VOUCHER_TYPE_CONFIG.DISCOUNT;
-  const highlight = getTicketHighlightText(
-    packageData.voucher_type,
-    packageData.discount_type,
-    packageData.discount_value,
-    packageData.reference_size,
-  );
   const liveMenuTargets = (packageData.eligible_menu_items ?? []).filter((target) => target.is_available);
   const liveAddonTargets = (packageData.eligible_addon_options ?? []).filter((target) => target.is_active && !target.is_dynamic_gram);
-  const liquidLabels = new Map(
-    [...(menuData?.milk_types ?? []), ...(menuData?.base_liquids ?? [])].map((liquid) => [liquid.id, liquid.name]),
-  );
   return (
     <VoucherDetailPanel>
       <div className="flex shrink-0 items-center gap-3 border-b border-border/40 bg-card px-5 py-4">
@@ -181,29 +169,15 @@ function PackageVoucherDetailSheet({
         >
           <ArrowLeft className="size-5 text-primary" />
         </button>
-        <h3 className="font-bold text-primary">Chi tiết ưu đãi</h3>
+        <h3 className="font-bold text-primary">Chi tiết voucher</h3>
       </div>
 
       <div className="flex-1 space-y-6 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain p-5">
-        <div className="flex overflow-hidden rounded-xl border bg-card shadow-sm">
-          <div className="flex w-24 shrink-0 flex-col items-center justify-center border-r border-dashed bg-primary/5 p-3">
-            <span className="text-xl font-bold text-primary">{highlight.text}</span>
-            <span className="text-xs font-medium text-primary/70">{highlight.subtext}</span>
-          </div>
-          <div className="flex-1 p-4">
-            <div className="mb-2 flex items-start justify-between gap-2">
-              <h4 className="line-clamp-2 text-sm font-bold text-primary">{packageData.name}</h4>
-              <span className={cn("whitespace-nowrap rounded px-2 py-0.5 text-[10px] font-bold", config.badgeCls)}>
-                {config.label}
-              </span>
-            </div>
-            <p className="text-xs text-primary/70">{getPackageBenefitText(packageData)}</p>
-          </div>
-        </div>
+        <VoucherCardFrame title={packageData.name} description={packageData.description} expiresAfterDays={packageData.expires_after_days} />
 
         <div className="space-y-4">
           <div className="space-y-1">
-            <h5 className="text-xs font-bold uppercase tracking-widest text-primary/50">Mô tả</h5>
+            <h5 className="text-xs font-bold uppercase tracking-widest text-primary">Mô tả</h5>
             <p className="whitespace-pre-wrap text-sm leading-relaxed text-primary/80">
               {packageData.description || "Không có mô tả chi tiết."}
             </p>
@@ -212,49 +186,35 @@ function PackageVoucherDetailSheet({
             <div className="space-y-2">
               <h5 className="text-xs font-bold uppercase tracking-widest text-primary/50">Lựa chọn còn dùng được</h5>
               <div className="space-y-2">
-                {liveMenuTargets.map((target) => (
-                  <div key={target.menu_item_id} className="rounded-xl border border-border/60 bg-card p-3 text-sm">
-                    <p className="font-bold text-primary">{target.name}</p>
-                    {packageData.voucher_type === "PRODUCT" ? (
-                      <>
-                        <p className="mt-1 text-xs text-primary/65">
-                          Size {target.size ? <SizeLabel size={target.size} /> : "hiện tại"}
-                          {target.matcha_powder_id ? ` · Bột ${powderLabels?.get(target.matcha_powder_id) ?? "mặc định hiện tại"}` : ""}
-                          {target.milk_type_id ? ` · Nền ${liquidLabels.get(target.milk_type_id) ?? "mặc định hiện tại"}` : ""}
-                        </p>
-                        <p className="mt-1 text-xs font-semibold text-green-700">
-                          Giá trị được tặng: {(target.covered_price_vnd ?? 0).toLocaleString("vi-VN")}đ
-                        </p>
-                      </>
-                    ) : packageData.voucher_type === "PRODUCT_DISCOUNT" && (packageData.eligible_sizes?.length ?? 0) > 0 ? (
-                      <p className="mt-1 text-xs text-primary/65">
-                        Size áp dụng: {packageData.eligible_sizes?.map((size, index) => (
-                          <React.Fragment key={size}>
-                            {index > 0 ? ", " : null}<SizeLabel size={size} />
-                          </React.Fragment>
-                        ))}
-                      </p>
-                    ) : null}
-                  </div>
-                ))}
+                {liveMenuTargets.map((target) => {
+                  const item = [...(menuData?.latte ?? []), ...(menuData?.fusion ?? []), ...(menuData?.extras ?? [])].find((candidate) => candidate.id === target.menu_item_id);
+                  return (
+                    <div key={target.menu_item_id} className="space-y-1">
+                      {item && menuData ? <VoucherMenuTargetCard item={item} menuData={menuData}
+                        allowedSizes={packageData.voucher_type === "PRODUCT_DISCOUNT" ? packageData.eligible_sizes : undefined}
+                        configuration={{ size: target.size, powderId: target.matcha_powder_id, baseLiquidId: target.milk_type_id ?? packageData.milk_type_id }} />
+                        : <VoucherTargetCard name={target.name} description={menuData ? "Không còn khả dụng" : "Đang tải cấu hình món…"} disabled />}
+                      {packageData.voucher_type === "PRODUCT" ? <p className="text-right text-xs font-semibold text-primary">Giá trị được tặng: {formatKa(target.covered_price_vnd ?? 0)}</p> : null}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : null}
           {packageData.voucher_type === "ADDON" && liveAddonTargets.length > 0 ? (
             <div className="space-y-2">
-              <h5 className="text-xs font-bold uppercase tracking-widest text-primary/50">Topping được chọn</h5>
-              <div className="space-y-2">
-                {liveAddonTargets.map((target) => (
-                  <div key={target.addon_option_id} className="flex items-center justify-between rounded-xl border border-border/60 bg-card p-3 text-sm">
-                    <span className="font-bold text-primary">{target.label}</span>
-                    <span className="font-semibold text-green-700">Tối đa {target.price_vnd.toLocaleString("vi-VN")}đ</span>
-                  </div>
-                ))}
+              <h5 className="text-xs font-bold uppercase tracking-widest text-primary">Topping được chọn</h5>
+              <div className="grid grid-cols-3 gap-2">
+                {liveAddonTargets.map((target) => {
+                  const group = menuData?.addon_groups.find((candidate) => candidate.options.some((option) => option.id === target.addon_option_id));
+                  const option = group?.options.find((candidate) => candidate.id === target.addon_option_id);
+                  return <OptionCard key={target.addon_option_id} label={target.label} imageUrl={option?.image_url ?? group?.image_url} imageAlt={target.label} sub={formatKa(option?.price_vnd ?? target.price_vnd)} isActive={false} layout="stacked" />;
+                })}
               </div>
             </div>
           ) : null}
           <div className="space-y-1">
-            <h5 className="text-xs font-bold uppercase tracking-widest text-primary/50">Hạn sử dụng</h5>
+            <h5 className="text-xs font-bold uppercase tracking-widest text-primary">Hạn sử dụng</h5>
             <p className="text-sm text-primary/80">
               {packageData.expires_after_days !== null
                 ? `Sau khi nhận: ${formatExpiryLabel(packageData.expires_after_days)}`
@@ -328,13 +288,13 @@ const OwnedVoucherDetailSheet = ({
     const res = canApplyDiscount(voucher, subtotalVnd);
     canApply = res.canApply;
     deficit = res.deficitVnd;
-    if (!canApply) disabledReason = `Thiếu ${(deficit / 1000).toLocaleString("vi-VN")}K để sử dụng`;
+    if (!canApply) disabledReason = `Cần thêm ${formatCartMoney(deficit)} để sử dụng voucher`;
   } else if (canApply && voucher.voucher_type === "FREESHIP") {
     const res = canApplyFreeship(orderType, totalAfterDiscountVnd ?? subtotalVnd, voucher.min_order_vnd, shippingFee);
     canApply = res.canApply;
     deficit = res.deficitVnd;
     if (deficit > 0) {
-      disabledReason = `Thiếu ${(deficit / 1000).toLocaleString("vi-VN")}K để sử dụng`;
+      disabledReason = `Cần thêm ${formatCartMoney(deficit)} để sử dụng voucher`;
     } else if (!canApply) {
       disabledReason = res.reason ?? "Voucher giao hàng chưa thể sử dụng";
     }
@@ -346,8 +306,6 @@ const OwnedVoucherDetailSheet = ({
 
   const vType = voucher.voucher_type;
   const hasInlineTargets = ["PRODUCT", "PRODUCT_DISCOUNT", "ITEM", "ADDON"].includes(vType);
-  const config = VOUCHER_TYPE_CONFIG[vType] || { label: "Voucher", badgeCls: "bg-gray-100 text-gray-800" };
-  const highlight = getTicketHighlightText(vType, voucher.discount_type, voucher.discount_value, voucher.reference_size);
 
   const handleUseNow = async () => {
     if (!canEdit) return;
@@ -407,40 +365,22 @@ const OwnedVoucherDetailSheet = ({
         >
           <ArrowLeft className="w-5 h-5 text-primary" />
         </button>
-        <h3 className="font-bold text-primary">Chi tiết ưu đãi</h3>
+        <h3 className="font-bold text-primary">Chi tiết voucher</h3>
       </div>
 
       <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain p-5 space-y-6">
-        <div className="flex bg-card rounded-xl border shadow-sm overflow-hidden">
-          <div className="w-24 bg-primary/5 flex flex-col items-center justify-center p-3 border-r border-dashed shrink-0">
-            <span className="font-bold text-xl text-primary">{highlight.text}</span>
-            <span className="text-xs font-medium text-primary/70">{highlight.subtext}</span>
-          </div>
-          <div className="p-4 flex-1">
-            <div className="flex justify-between items-start gap-2 mb-2">
-              <h4 className="font-bold text-sm text-primary line-clamp-2">
-                {voucher.package.name}
-              </h4>
-              <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap", config.badgeCls)}>
-                {config.label}
-              </span>
-            </div>
-            <p className="text-xs text-primary/70">
-              {getVoucherBenefitText(voucher)}
-            </p>
-          </div>
-        </div>
+        <VoucherCardFrame title={voucher.package.name} description={voucher.package.description} expiresAt={voucher.expires_at} />
 
         <div className="space-y-4">
           <div className="space-y-1">
-            <h5 className="text-xs font-bold text-primary/50 uppercase tracking-widest">Mô tả</h5>
+            <h5 className="text-xs font-bold text-primary uppercase tracking-widest">Mô tả</h5>
             <p className="text-sm text-primary/80 leading-relaxed whitespace-pre-wrap">
               {voucher.package.description || "Không có mô tả chi tiết."}
             </p>
           </div>
           
           <div className="space-y-1">
-            <h5 className="text-xs font-bold text-primary/50 uppercase tracking-widest">Hạn sử dụng</h5>
+            <h5 className="text-xs font-bold text-primary uppercase tracking-widest">Hạn sử dụng</h5>
             <p className="text-sm text-primary/80">
               {formatVoucherExpiry(voucher.expires_at)}
             </p>
@@ -450,7 +390,7 @@ const OwnedVoucherDetailSheet = ({
             <div className="space-y-1">
               <h5 className="text-xs font-bold text-primary/50 uppercase tracking-widest">Điều kiện</h5>
               <p className="text-sm text-primary/80">
-                Giá trị đơn tối thiểu: {voucher.min_order_vnd.toLocaleString("vi-VN")}đ
+                Giá trị đơn tối thiểu: {onSelectOrderVoucher ? <CartMoney amountVnd={voucher.min_order_vnd} /> : `${voucher.min_order_vnd.toLocaleString("vi-VN")}đ`}
               </p>
             </div>
           )}

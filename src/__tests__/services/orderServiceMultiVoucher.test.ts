@@ -12,6 +12,7 @@ vi.mock("@/src/lib/api/client", () => ({
 
 import { apiClient } from "@/src/lib/api/client";
 import { createOrder } from "@/src/services/orderService";
+import { calcOrderTotals } from "@/src/utils/orderCalculator";
 import { projectedCartLine } from "@/src/__tests__/fixtures/cart";
 
 // ── Fixture helpers ───────────────────────────────────────────────────────────
@@ -127,6 +128,53 @@ describe("createOrder — discount_voucher_ids (thay thế voucher_id)", () => {
 
     const payload = vi.mocked(apiClient.post).mock.calls[0][1] as Record<string, unknown>;
     expect(payload.discount_voucher_ids).toEqual(["dv-1", "dv-2", "dv-3"]);
+  });
+});
+
+describe("createOrder — hiệu lực voucher theo số lượng món", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("bỏ token dưới mức tối thiểu khỏi payload rồi gửi lại khi giỏ đủ điều kiện", async () => {
+    vi.mocked(apiClient.post).mockResolvedValue({ data: { data: mockOrderResult } });
+    const selectedTokens = ["discount-minimum-100k"];
+    const amounts = [110_000, 55_000, 110_000];
+    const expectedTokens = [["discount-minimum-100k"], [], ["discount-minimum-100k"]];
+
+    for (const [index, subtotal] of amounts.entries()) {
+      const quantity = subtotal === 55_000 ? 1 : 2;
+      const totals = calcOrderTotals({
+        items: [{ menu_item_id: "item-meyumi", unit_price_vnd: 55_000,
+          addons_price_vnd: 0, quantity, line_total: subtotal, addon_vouchers: [] }],
+        discountVouchers: [{ id: selectedTokens[0], discount_type: "FIXED",
+          discount_value: 10_000, min_order_vnd: 100_000, max_discount_vnd: null }],
+        freeshipVoucher: null,
+        shipping_fee_vnd: 0,
+      });
+      const options = {
+        discountVoucherIds: selectedTokens,
+        appliedOrderVoucherTokens: totals.appliedVoucherIds,
+      };
+      await createOrder([makeCartItem({ quantity })], options);
+      expect(vi.mocked(apiClient.post).mock.calls[index]?.[1]).toMatchObject({
+        discount_voucher_ids: expectedTokens[index],
+      });
+      expect(vi.mocked(apiClient.post).mock.calls[index]?.[1]).not.toHaveProperty("appliedOrderVoucherTokens");
+    }
+    expect(selectedTokens).toEqual(["discount-minimum-100k"]);
+  });
+});
+
+describe("createOrder — voucher giao hàng có hiệu lực", () => {
+  beforeEach(() => vi.clearAllMocks());
+  it("không gửi freeship đã chọn khi projection không áp dụng voucher", async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: mockOrderResult } });
+    const options = {
+      orderType: "DELIVERY" as const,
+      freeshipVoucherId: "freeship-below-minimum",
+      appliedOrderVoucherTokens: [],
+    };
+    await createOrder([makeCartItem()], options);
+    expect(vi.mocked(apiClient.post).mock.calls[0]?.[1]).not.toHaveProperty("freeship_voucher_id");
   });
 });
 
