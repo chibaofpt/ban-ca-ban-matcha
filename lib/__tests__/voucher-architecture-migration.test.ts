@@ -6,7 +6,6 @@ const migrationPath = join(
   process.cwd(),
   "prisma/migrations/20260812000000_merge_promotions_into_vouchers/migration.sql",
 );
-
 function readMigration(): string {
   return readFileSync(migrationPath, "utf8");
 }

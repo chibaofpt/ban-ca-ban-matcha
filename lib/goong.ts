@@ -1,4 +1,4 @@
-import type { GoongPrediction } from "@/src/lib/types/address";
+import type { GoongPrediction } from "@/contracts/delivery";
 
 const GOONG_BASE = "https://rsapi.goong.io";
 const GOONG_TIMEOUT_MS = 5000;

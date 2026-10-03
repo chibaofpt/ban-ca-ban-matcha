@@ -9,6 +9,12 @@ export const RATE_LIMIT_RULES = {
     prefix: "rl:v1:auth:mutation-ip",
     algorithm: "fixed-window",
   },
+  passwordChangeAccount: {
+    limit: 5,
+    windowSeconds: 15 * 60,
+    prefix: "rl:v1:auth:password-change-account",
+    algorithm: "fixed-window",
+  },
   loginFailedIp: {
     limit: 5,
     windowSeconds: 15 * 60,
@@ -83,7 +89,8 @@ export function resolveAuthRateLimitRule(
   method: string,
   pathname: string,
 ): RateLimitRuleName | null {
-  return method.toUpperCase() === "POST" && AUTH_MUTATION_PATHS.has(pathname)
+  const normalizedMethod = method.toUpperCase();
+  return normalizedMethod === "POST" && AUTH_MUTATION_PATHS.has(pathname)
     ? "authMutationIp"
     : null;
 }

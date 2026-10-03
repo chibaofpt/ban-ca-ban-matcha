@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { getWeeklySchedule } from "@/lib/storeSchedule";
+import { getWeeklySchedule } from "@/lib/store/storeSchedule";
 import { updateStoreScheduleSchema } from "@/lib/validations/storeSchedule";
 import { invalidateStoreCaches } from "@/lib/cacheInvalidation";
+import type { UpdateStoreScheduleRequest } from "@/contracts/admin/store";
 
 /** GET /api/admin/store-schedule — ADMIN only. Returns all schedule rows grouped by day. */
 export async function GET() {
@@ -70,7 +71,8 @@ export async function PUT(req: NextRequest) {
     );
   }
 
-  const { schedules } = parsed.data;
+  const request: UpdateStoreScheduleRequest = parsed.data;
+  const { schedules } = request;
 
   try {
     await prisma.$transaction(async (tx) => {

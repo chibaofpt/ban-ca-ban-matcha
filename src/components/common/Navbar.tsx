@@ -10,8 +10,9 @@ import { useCartStore, useCartTotalItems } from "@/src/lib/store/cartStore";
 import { useAuthStore } from "@/src/lib/store/authStore";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { logout as serverLogout } from "@/src/services/authService";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { clearPrivateQueryCaches } from "@/src/lib/queryClient";
 
 /**
  * Navbar — fixed top bar with desktop links and mobile drawer.
@@ -42,9 +43,26 @@ const Navbar = () => {
 
   // Cart
   const setCartOpen = useCartStore((s) => s.setCartOpen);
+  const detachVoucherOwner = useCartStore((s) => s.detachVoucherOwner);
   const count = useCartTotalItems();
 
-  if (pathname.startsWith("/admin") || pathname.startsWith("/staff")) {
+  const logoutMutation = useMutation({
+    mutationFn: serverLogout,
+    onSuccess: () => {
+      detachVoucherOwner(null);
+      logout();
+      clearPrivateQueryCaches(queryClient, ["customer", "staff", "admin"]);
+      setOpen(false);
+      if (pathname !== "/" && pathname !== "/menu") {
+        router.push("/");
+      }
+    },
+    onError: () => {
+      toast.error("Không thể đăng xuất lúc này. Vui lòng thử lại.");
+    },
+  });
+
+  if (pathname.startsWith("/admin") || pathname.startsWith("/staff") || pathname === "/test-sms") {
     return null;
   }
 
@@ -52,20 +70,9 @@ const Navbar = () => {
     setShowLogoutConfirm(true);
   };
 
-  const handleConfirmLogout = async () => {
+  const handleConfirmLogout = () => {
     setShowLogoutConfirm(false);
-    try {
-      await serverLogout();
-    } catch {
-      toast.error("Không thể đăng xuất lúc này. Vui lòng thử lại.");
-      return;
-    }
-    logout();
-    queryClient.removeQueries({ queryKey: ["customer"] });
-    setOpen(false);
-    if (pathname !== "/" && pathname !== "/menu") {
-      router.push("/");
-    }
+    logoutMutation.mutate();
   };
 
   const close = () => setOpen(false);
@@ -88,7 +95,7 @@ const Navbar = () => {
         }}
         animate={hidden ? "hidden" : "visible"}
         transition={{ duration: 0.3, ease: "easeInOut" }}
-        className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-border/40"
+        className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-border/40"
       >
         <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-16">
           {/* Brand */}

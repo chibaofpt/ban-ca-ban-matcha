@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  ensureAutoGrantedVouchers,
   issueVoucher,
+  VoucherIssuanceError,
   type VoucherIssuanceDatabase,
   type VoucherIssuanceTransaction,
-} from "@/lib/voucherIssuance";
+} from "@/lib/vouchers/voucherIssuance";
+import { ensureAutoGrantedVouchers } from "@/lib/vouchers/autoGrantVouchers";
 import {
   NOW,
   PACKAGE_ID,
@@ -85,6 +86,92 @@ describe("Serializable transaction và lazy AUTO_GRANT", () => {
     );
   });
 
+  it("lazy AUTO_GRANT không mở transaction khi không có package", async () => {
+    mockPackageFindMany.mockResolvedValue([]);
+    const transaction = vi.fn();
+    const db = {
+      voucherPackage: { findMany: (...args: unknown[]) => mockPackageFindMany(...args) },
+      $transaction: transaction,
+    } as unknown as VoucherIssuanceDatabase;
+
+    await expect(ensureAutoGrantedVouchers(db, USER_ID, NOW)).resolves.toEqual({
+      granted: 0,
+      already_granted: 0,
+    });
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it.each(["P2034", "P2002"])(
+    "lazy AUTO_GRANT retry đúng ba lần cho %s rồi ném lại cùng lỗi terminal",
+    async (code) => {
+      mockPackageFindMany.mockResolvedValue([{ id: PACKAGE_ID }]);
+      const terminalError = { code };
+      const transaction = vi.fn().mockRejectedValue(terminalError);
+      const db = {
+        voucherPackage: { findMany: (...args: unknown[]) => mockPackageFindMany(...args) },
+        $transaction: transaction,
+      } as unknown as VoucherIssuanceDatabase;
+
+      await expect(ensureAutoGrantedVouchers(db, USER_ID, NOW)).rejects.toBe(terminalError);
+      expect(transaction).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it("lazy AUTO_GRANT ném nguyên lỗi bất ngờ và không retry", async () => {
+    mockPackageFindMany.mockResolvedValue([{ id: PACKAGE_ID }]);
+    const unexpectedError = new Error("unexpected");
+    const transaction = vi.fn().mockRejectedValue(unexpectedError);
+    const db = {
+      voucherPackage: { findMany: (...args: unknown[]) => mockPackageFindMany(...args) },
+      $transaction: transaction,
+    } as unknown as VoucherIssuanceDatabase;
+
+    await expect(ensureAutoGrantedVouchers(db, USER_ID, NOW)).rejects.toBe(unexpectedError);
+    expect(transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    "VOUCHER_SOLD_OUT",
+    "VOUCHER_LIMIT_REACHED",
+    "VOUCHER_PACKAGE_EXPIRED",
+    "NOT_FOUND",
+    "TARGET_UNAVAILABLE",
+    "NO_ACTIVE_QUALIFIER",
+    "NO_ACTIVE_REWARD",
+    "NO_ACTIVE_CONFIGURATION",
+  ])("lazy AUTO_GRANT bỏ qua đúng lỗi allowlist %s", async (reason) => {
+    mockPackageFindMany.mockResolvedValue([{ id: PACKAGE_ID }]);
+    mockPackageFindUnique.mockRejectedValue(new VoucherIssuanceError(reason, "skip"));
+    const transaction = vi.fn().mockImplementation(
+      async (callback: (tx: VoucherIssuanceTransaction) => Promise<unknown>) => callback(makeTx()),
+    );
+    const db = {
+      voucherPackage: { findMany: (...args: unknown[]) => mockPackageFindMany(...args) },
+      $transaction: transaction,
+    } as unknown as VoucherIssuanceDatabase;
+
+    await expect(ensureAutoGrantedVouchers(db, USER_ID, NOW)).resolves.toEqual({
+      granted: 0,
+      already_granted: 0,
+    });
+  });
+
+  it("lazy AUTO_GRANT fail-fast với VoucherIssuanceError ngoài allowlist", async () => {
+    mockPackageFindMany.mockResolvedValue([{ id: PACKAGE_ID }]);
+    const terminalError = new VoucherIssuanceError("INSUFFICIENT_POINTS", "terminal");
+    mockPackageFindUnique.mockRejectedValue(terminalError);
+    const transaction = vi.fn().mockImplementation(
+      async (callback: (tx: VoucherIssuanceTransaction) => Promise<unknown>) => callback(makeTx()),
+    );
+    const db = {
+      voucherPackage: { findMany: (...args: unknown[]) => mockPackageFindMany(...args) },
+      $transaction: transaction,
+    } as unknown as VoucherIssuanceDatabase;
+
+    await expect(ensureAutoGrantedVouchers(db, USER_ID, NOW)).rejects.toBe(terminalError);
+    expect(transaction).toHaveBeenCalledTimes(1);
+  });
+
   it("FREE_CLAIM đồng thời bị unique race vẫn trả idempotent", async () => {
     const db = {
       $transaction: vi.fn().mockRejectedValue({ code: "P2002" }),
@@ -98,5 +185,37 @@ describe("Serializable transaction và lazy AUTO_GRANT", () => {
         now: NOW,
       }),
     ).resolves.toEqual({ id: "", already_granted: true });
+  });
+
+  it("ADMIN unique race retry đọc request đã commit và trả lại gift hiện có", async () => {
+    const replayTx = makeTx();
+    replayTx.voucher.findUnique = vi.fn().mockResolvedValue({
+      id: VOUCHER_ID,
+      qr_token: "voucher-token",
+      user_id: USER_ID,
+      package_id: PACKAGE_ID,
+      issued_via: "ADMIN",
+      issuing_admin_id: "44444444-4444-4444-8444-444444444444",
+      manual_request_id: "55555555-5555-4555-8555-555555555555",
+      voucher_type: "DISCOUNT",
+      status: "ACTIVE",
+      expires_at: null,
+      redeemed_at: null,
+    });
+    const transaction = vi
+      .fn()
+      .mockRejectedValueOnce({ code: "P2002" })
+      .mockImplementationOnce(async (callback: (tx: VoucherIssuanceTransaction) => Promise<unknown>) => callback(replayTx));
+    const db = { $transaction: transaction } as unknown as VoucherIssuanceDatabase;
+
+    await expect(issueVoucher(db, {
+      user_id: USER_ID,
+      package_id: PACKAGE_ID,
+      source: "ADMIN",
+      performed_by: "44444444-4444-4444-8444-444444444444",
+      request_id: "55555555-5555-4555-8555-555555555555",
+      now: NOW,
+    })).resolves.toMatchObject({ id: VOUCHER_ID, already_granted: true });
+    expect(transaction).toHaveBeenCalledTimes(2);
   });
 });

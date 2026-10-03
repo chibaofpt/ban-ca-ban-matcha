@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCatalogRequest } from "@/lib/catalogRequest";
+import { parseCatalogRequest } from "@/lib/catalog/catalogRequest";
 
 describe("Parser multipart cho addon và bột", () => {
   it("giữ tương thích với request JSON cũ", async () => {

@@ -18,7 +18,7 @@ import type {
   CustomerHistoryOrder,
   CustomerHistoryOrderItem,
 } from "@/src/lib/types/order";
-import { groupOrderItems } from "@/src/utils/orderHelpers";
+import { DeliveryRecipientDetails } from "@/src/components/shared/DeliveryRecipientDetails";
 import { cn } from "@/src/utils/cn";
 import { formatKa } from "@/src/utils/display";
 
@@ -48,15 +48,14 @@ export function OrderHistoryCard({
   const isCancelled = order.status === "CANCELLED";
   const isTerminal = isCompleted || isCancelled;
 
-  const groupedItems = groupOrderItems(order.items);
-  const hasMore = groupedItems.length > MAX_INLINE_ITEMS;
+  const groupedItems = order.items;
   const hiddenCount = groupedItems.length - MAX_INLINE_ITEMS;
 
   return (
     <article
       className={cn(
         "overflow-hidden rounded-2xl border bg-card shadow-sm",
-        isPending && "border-2 border-yellow-400 shadow-yellow-50",
+        isPending && "border-primary/30 bg-primary/5",
         isCancelled && "opacity-60",
       )}
     >
@@ -74,7 +73,7 @@ export function OrderHistoryCard({
 
         {/* Auto-cancel countdown */}
         {isPending && order.auto_cancel_at && (
-          <div className="flex w-fit items-center gap-1.5 rounded-lg border border-yellow-200 bg-yellow-50 px-2.5 py-1 text-[11px] text-yellow-700">
+          <div className="flex w-fit items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-2.5 py-1 text-[11px] text-primary">
             <Clock className="h-3 w-3" aria-hidden="true" />
             <span>QR có hiệu lực trong:</span>
             <CountdownTimer targetTime={order.auto_cancel_at} className="text-[11px] font-semibold" />
@@ -103,7 +102,7 @@ export function OrderHistoryCard({
               <p className="text-xs font-semibold">
                 Nhận được{" "}
                 <span className="text-primary">
-                  +{Math.floor(order.total_vnd / 10_000)} điểm 🐟
+                  +{order.points_earned} điểm 🐟
                 </span>
               </p>
               <p className="mt-0.5 text-[11px] text-muted-foreground">
@@ -113,6 +112,7 @@ export function OrderHistoryCard({
           </div>
         )}
 
+        <DeliveryRecipientDetails {...order} />
         {/* Items preview — always visible, max 3 rows */}
         <div className="border-t border-border/50 pt-2">
           <OrderHistoryItems
@@ -123,7 +123,7 @@ export function OrderHistoryCard({
           />
 
           {/* "Xem thêm" → opens bottom sheet */}
-          {hasMore && (
+          {(
             <motion.button
               type="button"
               whileTap={{ scale: 0.97 }}
@@ -131,7 +131,7 @@ export function OrderHistoryCard({
               onClick={() => setDetailOpen(true)}
               className="mt-1 flex min-h-9 w-full items-center justify-center gap-1 rounded-xl border border-border/60 bg-secondary/30 text-[12px] font-semibold text-primary/70 transition-colors hover:bg-secondary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              Xem thêm {hiddenCount} món khác
+              Chi tiết đơn{hiddenCount > 0 ? ` · +${hiddenCount} món` : ""}
               <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
             </motion.button>
           )}
@@ -145,7 +145,7 @@ export function OrderHistoryCard({
               whileTap={{ scale: 0.92 }}
               transition={{ duration: 0.18 }}
               onClick={() => onCancel(order.id)}
-              className="min-h-11 rounded-lg px-2 text-xs font-semibold text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="min-h-11 rounded-lg px-2 text-xs font-semibold text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Huỷ đơn
             </motion.button>
@@ -153,7 +153,7 @@ export function OrderHistoryCard({
             <span
               className={cn(
                 "flex items-center gap-1 text-[11px] font-semibold",
-                isCompleted ? "text-primary" : "text-red-600",
+                isCompleted ? "text-primary" : "text-destructive",
               )}
             >
               {isCompleted ? (

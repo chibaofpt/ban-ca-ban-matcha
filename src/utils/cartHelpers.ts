@@ -1,123 +1,49 @@
-import { CartItem } from "@/src/lib/types/cart";
-import type { AddonGroup, MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
-import { Powder } from "@/src/lib/types/powder";
-import { SWEETNESS_OPTIONS, ICE_OPTIONS } from "@/src/constants/orderOptions";
-import { ceilTo1000 } from "@/src/utils/pricing";
+import type { CartItem, ProjectedCartLine } from "@/src/lib/types/cart";
+import type { MenuItem, MilkTypeOption } from "@/src/lib/types/menu";
+import type { Powder } from "@/src/lib/types/powder";
+import { ICE_OPTIONS, SWEETNESS_OPTIONS } from "@/src/constants/orderOptions";
 
-/** Build a default standalone cart row for a fixed-price Add-on menu item. */
-export function buildExtrasCartItem(
-  item: MenuItem,
-  bundleRewardVoucherToken?: string,
-): Omit<CartItem, "cartId"> {
-  const unitPrice = item.unit_price_vnd ?? 0;
-  return {
-    menuItemId: item.id, name: item.name, category: "extras", imageUrl: item.image_url,
-    size: null, unitPrice, quantity: 1, sweetness: "FULL", iceOption: "NORMAL",
-    coldwhisk: false, note: "", selectedOptionIds: [], addonsPrice: 0,
-    addonPrices: {}, clientPriceVnd: unitPrice,
-    originalClientPriceVnd: unitPrice, bundleRewardVoucherToken,
-  };
+/** Build a minimal standalone cart row for a fixed-price extras item. */
+export function buildExtrasCartItem(item: MenuItem, _bundleToken?: string): Omit<CartItem, "cartId"> {
+  return { menuItemId: item.id, quantity: 1, configuration: { size: null, note: "" }, addonVouchers: [] };
 }
 
 export function line1ItemDetails(
-  item: CartItem,
+  item: ProjectedCartLine,
   menuItem: MenuItem | undefined,
   milkTypes: MilkTypeOption[],
   powders?: Powder[],
 ): string[] {
+  const config = item.configuration;
   const chips: string[] = [];
-  
-  // Size
-  if (item.size) {
-    const sizeLabel = item.size === "SMALL" ? "cá nhỏ (360ml)" : item.size === "MEDIUM" ? "cá vừa (500ml)" : "cá lớn (700ml)";
-    chips.push(sizeLabel);
-  } else {
-    chips.push("Add-on");
-  }
-
-  if (!menuItem) return chips;
-
-  // Milk / Powder
-  const selectedBaseLiquidId = item.selectedBaseLiquidId ?? item.selectedMilkTypeId;
-  if (selectedBaseLiquidId) {
-    const liquid = milkTypes.find((candidate) => candidate.id === selectedBaseLiquidId);
-    if (liquid) chips.push(liquid.name);
-  }
+  if (config.size) chips.push(config.size === "SMALL" ? "cá nhỏ (360ml)" : config.size === "MEDIUM" ? "cá vừa (500ml)" : "cá lớn (700ml)");
+  else chips.push("Add-on");
+  if (!menuItem || config.size === null) return chips;
+  const liquid = milkTypes.find((candidate) => candidate.id === config.baseLiquidId);
+  if (liquid) chips.push(liquid.name);
   if (item.category === "fusion") {
-    // Fusion
-    const pwd = powders?.find(p => p.id === item.selectedPowderId);
-    if (pwd) {
-      chips.push(pwd.name);
-    }
+    const powder = powders?.find((candidate) => candidate.id === config.powderId);
+    if (powder) chips.push(powder.name);
   }
-
   return chips;
 }
 
-export function line2ItemDetails(item: CartItem): string[] {
-  if (item.category === "extras") return [];
-
+export function line2ItemDetails(item: ProjectedCartLine): string[] {
+  const config = item.configuration;
+  if (config.size === null) return [];
   const chips: string[] = [];
-
-  // Sweetness
-  const sweetnessLabel = SWEETNESS_OPTIONS.find((o) => o.value === item.sweetness)?.label;
-  if (sweetnessLabel) chips.push(`Ngọt ${sweetnessLabel}`);
-
-  // Ice
-  if (item.iceOption !== "NORMAL") {
-    const iceLabel = ICE_OPTIONS.find((o) => o.value === item.iceOption)?.label;
-    if (iceLabel) {
-      chips.push(iceLabel);
-    }
+  const sweetness = SWEETNESS_OPTIONS.find((option) => option.value === config.sweetness)?.label;
+  if (sweetness) chips.push(`Ngọt ${sweetness}`);
+  if (config.iceOption !== "NORMAL") {
+    const ice = ICE_OPTIONS.find((option) => option.value === config.iceOption)?.label;
+    if (ice) chips.push(ice);
   }
-
-  // Coldwhisk
-  if (item.coldwhisk) {
-    chips.push("Coldwhisk");
-  }
-
+  if (config.coldwhisk) chips.push("Coldwhisk");
   return chips;
 }
 
-export function addonsDetails(
-  item: CartItem,
-  menuItem: MenuItem | undefined,
-  addonGroups: AddonGroup[],
-  powders?: Powder[],
-): string[] {
-  const chips: string[] = [];
-  if (!menuItem) return chips;
-
-  for (const g of addonGroups) {
-    for (const opt of g.options) {
-      if (item.selectedOptionIds.includes(opt.id)) {
-        // Extra matcha
-        if (opt.gram_value != null) {
-          if (powders) {
-            const powderId = item.category === "fusion" ? item.selectedPowderId : menuItem.powder?.id;
-            const pwd = powders.find(p => p.id === powderId);
-            if (pwd) {
-              const pwdPricePerGram = pwd.price_per_gram ?? 0;
-              const rawCost = opt.gram_value * pwdPricePerGram;
-              const cost = ceilTo1000(rawCost);
-              const priceSuffix = cost > 0 ? ` (+${cost / 1000}k)` : "";
-              chips.push(`+${opt.gram_value}g ${pwd.name}${priceSuffix}`);
-            } else {
-              chips.push(`+${opt.gram_value}g${opt.price_vnd > 0 ? ` (+${opt.price_vnd / 1000}k)` : ""}`);
-            }
-          } else {
-            chips.push(`+${opt.gram_value}g${opt.price_vnd > 0 ? ` (+${opt.price_vnd / 1000}k)` : ""}`);
-          }
-          continue;
-        }
-
-        // Fixed-price addons
-        const price = opt.price_vnd;
-        const priceSuffix = price > 0 ? ` (+${price / 1000}k)` : "";
-        chips.push(`${opt.label}${priceSuffix}`);
-      }
-    }
-  }
-
-  return chips;
+export function addonsDetails(item: ProjectedCartLine): string[] {
+  return item.resolvedAddons.map((addon) => addon.isExtraMatcha
+    ? `${addon.label}${addon.priceVnd > 0 ? ` (+${addon.priceVnd / 1000}k)` : ""}`
+    : `${addon.label}${addon.priceVnd > 0 ? ` (+${addon.priceVnd / 1000}k)` : ""}`);
 }

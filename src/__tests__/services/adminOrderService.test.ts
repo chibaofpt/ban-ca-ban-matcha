@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/src/lib/api/client", () => ({
   apiClient: {
@@ -8,10 +8,29 @@ vi.mock("@/src/lib/api/client", () => ({
 }));
 
 import { apiClient } from "@/src/lib/api/client";
-import { adminCancelOrder, confirmPayment } from "@/src/services/adminOrderService";
+import { adminCancelOrder, confirmPayment, fetchAdminOrders, fetchAdminPendingTransferCount } from "@/src/services/adminOrderService";
 
 describe("adminOrderService — xác nhận phương thức thanh toán", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-01T17:30:00.000Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it.each([0, 1, 7])("đếm %i đơn chuyển khoản chờ xử lý hôm nay theo UTC+7 từ meta", async (total) => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: {
+      data: total > 0 ? [{ id: "pending-1" }] : [], meta: { total, page: 1, totalPages: total },
+    } });
+    expect(await fetchAdminPendingTransferCount()).toBe(total);
+    const url = new URL(vi.mocked(apiClient.get).mock.calls[0][0], "https://local.test");
+    expect(url.pathname).toBe("/api/admin/orders");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      startDate: "2026-10-01T17:00:00.000Z",
+      endDate: "2026-10-02T16:59:59.999Z",
+      status: "PENDING", payment_method: "BANK_TRANSFER", limit: "1",
+    });
+  });
 
   it("trả snapshot điều chỉnh điểm để Admin biết voucher nào bị thu hồi theo số lượng", async () => {
     const result = {
@@ -68,6 +87,16 @@ describe("adminOrderService — xác nhận phương thức thanh toán", () => 
 
     expect(apiClient.patch).toHaveBeenCalledWith(
       "/api/admin/orders/legacy-order-1/confirm-payment",
+    );
+  });
+
+  it("gửi phương thức thanh toán khi Admin lọc danh sách đơn", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { data: [], meta: { total: 0, page: 1, totalPages: 0 } } });
+
+    await fetchAdminOrders({ payment_method: "BANK_TRANSFER" });
+
+    expect(apiClient.get).toHaveBeenCalledWith(
+      "/api/admin/orders?payment_method=BANK_TRANSFER",
     );
   });
 });

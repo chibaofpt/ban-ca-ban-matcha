@@ -17,11 +17,11 @@ export function PaymentMethodSelector({
   onChange,
 }: PaymentMethodSelectorProps) {
   return (
-    <fieldset aria-label="Phương thức thanh toán">
+    <fieldset className="min-w-0" aria-label="Phương thức thanh toán">
       <div className="grid grid-cols-2 gap-2">
         <label
           className={cn(
-            "flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors focus-within:ring-2 focus-within:ring-ring",
+            "flex min-h-11 cursor-pointer items-center justify-center gap-1 rounded-lg border px-1.5 text-[10px] leading-tight font-semibold transition-colors focus-within:ring-2 focus-within:ring-ring",
             value === "CASH" ? "border-primary bg-primary/10 text-primary" : "border-border bg-card",
           )}
         >
@@ -33,12 +33,12 @@ export function PaymentMethodSelector({
             onChange={() => onChange("CASH")}
             className="sr-only"
           />
-          <Banknote className="h-4 w-4" aria-hidden="true" />
+          <Banknote className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           Tiền mặt
         </label>
         <label
           className={cn(
-            "flex min-h-11 items-center justify-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors focus-within:ring-2 focus-within:ring-ring",
+            "flex min-h-11 items-center justify-center gap-1 rounded-lg border px-1.5 text-[10px] leading-tight font-semibold transition-colors focus-within:ring-2 focus-within:ring-ring",
             bankTransferDisabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
             value === "BANK_TRANSFER"
               ? "border-primary bg-primary/10 text-primary"
@@ -54,7 +54,7 @@ export function PaymentMethodSelector({
             onChange={() => onChange("BANK_TRANSFER")}
             className="sr-only"
           />
-          <QrCode className="h-4 w-4" aria-hidden="true" />
+          <QrCode className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           Chuyển khoản
         </label>
       </div>

@@ -13,15 +13,15 @@ import {
 } from "@/lib/storage";
 import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
 import { captureServerException } from "@/lib/observability";
-import { ADMIN_MENU_INCLUDE, formatAdminMenuItem } from "@/lib/adminMenuDto";
-import { parseAdminMenuUpdate } from "@/lib/adminMenuRequest";
+import { ADMIN_MENU_INCLUDE, formatAdminMenuItem } from "@/lib/catalog/adminMenuDto";
+import { parseAdminMenuUpdate } from "@/lib/catalog/adminMenuRequest";
 import {
   asMenuStorageCategory,
   buildMenuItemSizeUpdate,
   isAvailabilityOnlyMenuUpdate,
   validateMenuImageFile,
   validateUniqueLattePowder,
-} from "@/lib/adminMenuUpdate";
+} from "@/lib/catalog/adminMenuUpdate";
 
 export const dynamic = "force-dynamic";
 
@@ -89,10 +89,17 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       const now = new Date();
       const activeItemVoucherCount = await prisma.voucher.count({
         where: {
-          menu_item_id: id,
           voucher_type: "ITEM",
           status: { in: ["ACTIVE", "RESERVED"] },
-          OR: [{ expires_at: null }, { expires_at: { gt: now } }],
+          AND: [
+            {
+              OR: [
+                { menu_item_id: id },
+                { menuItemScopes: { some: { menu_item_id: id } } },
+              ],
+            },
+            { OR: [{ expires_at: null }, { expires_at: { gt: now } }] },
+          ],
         },
       });
       if (activeItemVoucherCount > 0 && validData.confirm_price_change !== true) {

@@ -1,26 +1,33 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { useCustomerAddresses, useCreateAddress } from "@/src/hooks/useCustomerAddresses";
 import { deliveryService } from "@/src/services/deliveryService";
 import type { Address, AddressPayload } from "@/src/lib/types/address";
 import { AddressCard } from "@/src/components/address/AddressCard";
 import { AddressForm } from "@/src/components/address/AddressForm";
-import { MapPin, Plus, Loader2 } from "lucide-react";
+import { MapPin, Plus, Loader2, RefreshCcw } from "lucide-react";
 import { DELIVERY_CONFIG } from "@/src/constants/delivery";
 
-
 interface Props {
+  defaultRecipient?: { name: string; phone: string } | null;
   selectedAddressId: string | null;
   onAddressSelect: (address: Address | null, distanceKm: number | null, shippingFee: number | null) => void;
   onError: (error: string | null) => void;
 }
 
-export function DeliverySection({ selectedAddressId, onAddressSelect, onError }: Props) {
-  const { data: addresses = [], isLoading: loading } = useCustomerAddresses();
+export function DeliverySection({ selectedAddressId, onAddressSelect, onError, defaultRecipient }: Props) {
+  const { data: addresses = [], isLoading: loading, isError, refetch } = useCustomerAddresses();
   const createAddressMutation = useCreateAddress();
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [estimating, setEstimating] = useState(false);
+
+  const estimateMutation = useMutation({
+    mutationFn: ({ lat, lng }: { lat: number; lng: number }) =>
+      deliveryService.estimateFee(lat, lng),
+  });
+
+  const estimating = estimateMutation.isPending || createAddressMutation.isPending;
 
   useEffect(() => {
     if (!loading && !selectedAddressId && addresses.length > 0) {
@@ -32,46 +39,37 @@ export function DeliverySection({ selectedAddressId, onAddressSelect, onError }:
 
   const handleSelectAddress = async (address: Address) => {
     try {
-      setEstimating(true);
       onError(null);
-      
+
       if (address.distance_km !== null) {
         // Distance is already available from DB
         const distance = address.distance_km;
         if (distance > DELIVERY_CONFIG.MAX_RADIUS_KM) {
           throw new Error(`Ngoài vùng giao hàng (${distance.toFixed(1)}km / tối đa ${DELIVERY_CONFIG.MAX_RADIUS_KM}km)`);
         }
-        import("@/src/utils/pricing").then(({ calcShippingFee }) => {
-          const fee = calcShippingFee(distance);
-          onAddressSelect(address, distance, fee);
-          setEstimating(false);
-        });
+        const { calcShippingFee } = await import("@/src/utils/pricing");
+        onAddressSelect(address, distance, calcShippingFee(distance));
       } else {
         // Fallback for older addresses missing distance_km
         onAddressSelect(address, null, null);
-        const estimate = await deliveryService.estimateFee(address.lat, address.lng);
+        const estimate = await estimateMutation.mutateAsync({ lat: address.lat, lng: address.lng });
         onAddressSelect(address, estimate.distance_km, estimate.shipping_fee_vnd);
-        setEstimating(false);
       }
     } catch (unknownError: unknown) {
       const err = unknownError instanceof Error ? unknownError : new Error();
       onAddressSelect(address, null, null);
       onError(err.message || "Không thể tính phí giao hàng");
-      setEstimating(false);
     }
   };
 
   const handleSaveNew = async (payload: AddressPayload) => {
     try {
-      setEstimating(true); // Treat as estimating state to show spinner
       const newAddr = await createAddressMutation.mutateAsync(payload);
       setIsFormOpen(false);
-      handleSelectAddress(newAddr);
+      await handleSelectAddress(newAddr);
     } catch (unknownError: unknown) {
       const err = unknownError instanceof Error ? unknownError : new Error();
       onError(err.message || "Có lỗi xảy ra khi thêm địa chỉ");
-    } finally {
-      setEstimating(false);
     }
   };
 
@@ -100,9 +98,22 @@ export function DeliverySection({ selectedAddressId, onAddressSelect, onError }:
         )}
       </div>
 
-      {isFormOpen ? (
+      {isError ? (
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-6 text-center">
+          <p className="text-sm font-bold text-red-900">Không thể tải địa chỉ giao hàng</p>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            className="mx-auto mt-3 flex min-h-11 items-center gap-2 rounded-lg border border-red-300 bg-white px-4 text-sm font-bold text-red-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700"
+          >
+            <RefreshCcw className="size-4" aria-hidden="true" />
+            Thử lại
+          </button>
+        </div>
+      ) : isFormOpen ? (
         <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
           <AddressForm
+            defaultRecipient={defaultRecipient}
             onSubmit={handleSaveNew}
             onCancel={() => setIsFormOpen(false)}
             isLoading={estimating}

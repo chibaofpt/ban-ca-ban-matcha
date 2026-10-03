@@ -6,6 +6,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronRight,
   History,
+  Gift,
+  KeyRound,
   MapPin,
   Pencil,
   QrCode,
@@ -16,26 +18,34 @@ import { toast } from "sonner";
 import { AddressBookSheetContainer } from "@/src/views/customer/AddressBookSheetContainer";
 import { ProfileQRSheet } from "@/src/components/customer/ProfileQRSheet";
 import { ProfileEditSheet } from "@/src/components/customer/ProfileEditSheet";
+import { ChangePasswordSheet } from "@/src/components/customer/ChangePasswordSheet";
 import VoucherModal from "@/src/components/shared/VoucherModal";
-import { getProfile, updateProfile } from "@/src/services/profileService";
+import { changePassword, getProfile, updateProfile } from "@/src/services/profileService";
 import { useAuthStore } from "@/src/lib/store/authStore";
 import type {
   CustomerProfile,
+  ChangePasswordPayload,
   UpdateProfilePayload,
 } from "@/src/lib/types/user";
 import { formatVietnamPhone } from "@/src/utils/display";
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
+import { useWelcomeReward } from "@/src/hooks/useWelcomeReward";
+import { WelcomeRewardOverlay } from "@/src/components/rewards/WelcomeRewardOverlay";
 
 const profileQueryKey = ["customer", "profile"] as const;
 
 /** Customer account page with QR, points and editable profile details. */
 export default function ProfilePage() {
   const [editOpen, setEditOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [addressBookOpen, setAddressBookOpen] = useState(false);
+  const [welcomeRewardOpen, setWelcomeRewardOpen] = useState(false);
   const openVoucherModal = useVoucherModalStore((state) => state.openModal);
   const queryClient = useQueryClient();
   const updateName = useAuthStore((state) => state.updateName);
+  const { data: welcomeReward } = useWelcomeReward();
+  const hasPendingWelcomeReward = welcomeReward?.mode === "GACHA" && welcomeReward.status === "PENDING";
   const {
     data: profile,
     isLoading,
@@ -53,6 +63,11 @@ export default function ProfilePage() {
     queryClient.setQueryData<CustomerProfile>(profileQueryKey, updated);
     updateName(updated.name);
     toast.success("Đã cập nhật thông tin", { duration: 3500 });
+  };
+
+  const savePassword = async (payload: ChangePasswordPayload): Promise<void> => {
+    await changePassword(payload);
+    toast.success("Đã đổi mật khẩu. Các thiết bị khác đã được đăng xuất.", { duration: 3500 });
   };
 
   if (isLoading) return <ProfileSkeleton />;
@@ -83,6 +98,19 @@ export default function ProfilePage() {
           Quản lý thông tin và mã QR tích điểm
         </p>
       </header>
+
+      {hasPendingWelcomeReward ? (
+        <motion.button
+          type="button"
+          whileTap={{ scale: 0.96 }}
+          onClick={() => setWelcomeRewardOpen(true)}
+          className="flex min-h-16 w-full items-center gap-3 rounded-2xl border border-primary/25 bg-primary/10 p-4 text-left shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"><Gift className="size-5" /></span>
+          <span className="min-w-0 flex-1"><span className="block font-bold text-primary">Bạn còn một hộp quà chào mừng</span><span className="block text-sm text-muted-foreground">Chạm để chọn hộp matcha và mở quà</span></span>
+          <ChevronRight className="size-5 text-primary" />
+        </motion.button>
+      ) : null}
 
       <section className="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm">
         <div className="flex items-start gap-3 border-b border-border/50 pb-5">
@@ -125,7 +153,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <nav className="space-y-1 pb-2 pt-2" aria-label="Tài khoản">
+        <nav className="space-y-2 pb-2 pt-2" aria-label="Tài khoản">
           <motion.div whileTap={{ scale: 0.98 }} transition={{ duration: 0.18 }}>
             <Link
               href="/history?tab=points"
@@ -148,6 +176,12 @@ export default function ProfilePage() {
             onClick={openVoucherModal}
           />
           <ProfileActionRow
+            label="Đổi mật khẩu"
+            icon={<KeyRound size={20} />}
+            iconClassName="bg-blue-50 text-blue-700"
+            onClick={() => setPasswordOpen(true)}
+          />
+          <ProfileActionRow
             label="Xem mã QR"
             icon={<QrCode size={20} />}
             iconClassName="bg-emerald-50 text-emerald-700"
@@ -168,9 +202,19 @@ export default function ProfilePage() {
         onClose={() => setEditOpen(false)}
         onSubmit={saveProfile}
       />
+      <ChangePasswordSheet
+        open={passwordOpen}
+        onClose={() => setPasswordOpen(false)}
+        onSubmit={savePassword}
+      />
       <ProfileQRSheet open={qrOpen} qrToken={profile.qr_token} onOpenChange={setQrOpen} />
       <AddressBookSheetContainer open={addressBookOpen} onOpenChange={setAddressBookOpen} />
       <VoucherModal />
+      <WelcomeRewardOverlay
+        open={welcomeRewardOpen}
+        onOpenChange={setWelcomeRewardOpen}
+        onViewVoucher={() => { setWelcomeRewardOpen(false); openVoucherModal(); }}
+      />
     </main>
   );
 }

@@ -11,10 +11,10 @@
 
 import { describe, it, expect } from "vitest";
 
-// ── Import the function under test (will be created in lib/orderCalculator.ts) ──
+// ── Import the function under test (will be created in lib/orders/orderCalculator.ts) ──
 import {
   calcOrderTotals,
-} from "@/lib/orderCalculator";
+} from "@/lib/orders/orderCalculator";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -114,13 +114,25 @@ describe("calcOrderTotals — bộ tính tiền thống nhất", () => {
       expect(result.total_vnd).toBe(62_000);
     });
 
-    it("khong consume khi benefit bang 0", () => {
+    it("PRODUCT_DISCOUNT bằng 0 bỏ qua voucher dù covered credit dương", () => {
       const result = calcOrderTotals({
-        items: [makeItem({ product_voucher_id: PRODUCT_VOUCHER_ID, product_voucher_discount_vnd: 0 })],
+        items: [makeItem({
+          unit_price_vnd: 70_000,
+          addons_price_vnd: 9_000,
+          product_voucher_id: PRODUCT_VOUCHER_ID,
+          product_voucher_covered_vnd: 80_000,
+          product_voucher_discount_vnd: 0,
+        })],
         discountVouchers: [], freeshipVoucher: null, shipping_fee_vnd: 0,
       });
+
       expect(result.skippedVoucherIds).toContain(PRODUCT_VOUCHER_ID);
+      expect(result.appliedVoucherIds).not.toContain(PRODUCT_VOUCHER_ID);
+      expect(result.itemResults[0]?.product_voucher_discount_vnd).toBe(0);
+      expect(result.order_surplus_vnd).toBe(0);
+      expect(result.total_vnd).toBe(79_000);
     });
+
   });
 
   // ── PRODUCT credit ──────────────────────────────────────────────────────────
@@ -626,23 +638,6 @@ describe("calcOrderTotals — bộ tính tiền thống nhất", () => {
       // PRODUCT giảm 50k (drink), surplus 10k → has benefit
       expect(result.appliedVoucherIds).toContain(PRODUCT_VOUCHER_ID);
       expect(result.skippedVoucherIds).not.toContain(PRODUCT_VOUCHER_ID);
-    });
-
-    it("PRODUCT voucher không có benefit khi covered = 0 và surplus = 0", () => {
-      const result = calcOrderTotals({
-        items: [
-          makeItem({
-            unit_price_vnd: 70000,
-            product_voucher_id: PRODUCT_VOUCHER_ID,
-            product_voucher_covered_vnd: 0,
-          }),
-        ],
-        discountVouchers: [],
-        freeshipVoucher: null,
-        shipping_fee_vnd: 0,
-      });
-
-      expect(result.skippedVoucherIds).toContain(PRODUCT_VOUCHER_ID);
     });
 
     it("DISCOUNT FIXED áp sau khi total đã = 0 → không có benefit", () => {

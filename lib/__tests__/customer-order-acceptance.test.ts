@@ -32,8 +32,8 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 import { POST } from "@/app/api/orders/route";
-import { calculateCustomerOrderDiscounts } from "@/lib/customerOrderDiscounts";
-import { resolveCustomerItemVouchers } from "@/lib/customerOrderItemVouchers";
+import { calculateCustomerOrderDiscounts } from "@/lib/orders/customerOrderDiscounts";
+import { resolveCustomerItemVouchers } from "@/lib/orders/customerOrderItemVouchers";
 import { customerOrderSchema } from "@/lib/validations/order";
 
 const USER_ID = "550e8400-e29b-41d4-a716-446655440001";
@@ -245,12 +245,12 @@ describe("POST /api/orders — acceptanceDate của voucher ITEM", () => {
     data.items[0].product_voucher_id = VOUCHER_TOKEN;
     const duplicate = await resolveCustomerItemVouchers(data, USER_ID);
     expect(duplicate.ok).toBe(false);
-    if (!duplicate.ok) expect(await duplicate.response.json()).toMatchObject({ error: "Chỉ được gửi một loại voucher cho mỗi món" });
+    if (!duplicate.ok) expect(duplicate.error).toMatchObject({ error: "Chỉ được gửi một loại voucher cho mỗi món" });
     delete data.items[0].product_voucher_id;
     delete data.items[0].item_voucher_id;
     data.items[0].addon_voucher_ids = [{ voucher_id: VOUCHER_TOKEN, addon_option_id: VOUCHER_ID }];
     const absent = await resolveCustomerItemVouchers(data, USER_ID);
     expect(absent.ok).toBe(false);
-    if (!absent.ok) expect(await absent.response.json()).toMatchObject({ error: "Voucher áp dụng cho addon không có trong món nước" });
+    if (!absent.ok) expect(absent.error).toMatchObject({ error: "Voucher áp dụng cho addon không có trong món nước" });
   });
 });

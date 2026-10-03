@@ -4,6 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import type { CreateVoucherPackageInput } from "@/contracts/admin/voucher";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import {
@@ -17,18 +18,19 @@ import {
   createBundleVoucherPackage,
   VoucherBundleReferenceError,
   type AdminVoucherBundleTransaction,
-} from "@/lib/adminVoucherBundle";
+} from "@/lib/vouchers/adminVoucherBundle";
 import {
   createAddonVoucherPackage,
   VoucherAddonReferenceError,
   type AdminVoucherAddonDatabase,
-} from "@/lib/adminVoucherAddon";
-import { toVoucherPackageBundleDto } from "@/lib/voucherBundleDto";
+} from "@/lib/vouchers/adminVoucherAddon";
+import { toVoucherPackageBundleDto } from "@/lib/vouchers/voucherBundleDto";
 import {
   resolveDefaultBaseLiquidId,
   resolveFusionDefaultPowderId,
 } from "@/src/utils/menuConfiguration";
-import { buildAdminVoucherStats } from "@/lib/adminVoucherInsights";
+import { buildAdminVoucherStats } from "@/lib/vouchers/adminVoucherInsights";
+import { LEGACY_PACKAGE_QUOTA_SOURCES, SELF_ACQUISITION_SOURCES } from "@/lib/vouchers/voucherIssuance";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +56,7 @@ export async function GET() {
         menuItem: { select: { name: true, is_available: true } },
         menuItemScopes: { include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } } },
         addonOption: { select: { label: true } },
+        addonOptionScopes: { include: { addonOption: { select: { label: true, price_vnd: true, is_active: true, gram_value: true } } } },
         bundleRule: { include: {
           productScopes: { include: {
             sizes: true,
@@ -67,13 +70,28 @@ export async function GET() {
 
     const now = new Date();
     const packageIds = packages.map((pkg) => pkg.id);
-    const [statusAggregates, expiredActiveAggregates] = packageIds.length === 0 ? [[], []] : await Promise.all([
+    const [statusAggregates, expiredActiveAggregates, selfAggregates, quotaAggregates] = packageIds.length === 0 ? [[], [], [], []] : await Promise.all([
       prisma.voucher.groupBy({ by: ["package_id", "status"], where: { package_id: { in: packageIds } }, _count: { _all: true } }),
       prisma.voucher.groupBy({ by: ["package_id"], where: { package_id: { in: packageIds }, status: "ACTIVE", expires_at: { lte: now } }, _count: { _all: true } }),
+      prisma.voucher.groupBy({ by: ["package_id", "issued_via", "status"], where: { package_id: { in: packageIds, }, issued_via: { in: [...SELF_ACQUISITION_SOURCES] } }, _count: { _all: true } }),
+      prisma.voucher.groupBy({ by: ["package_id"], where: { package_id: { in: packageIds }, issued_via: { in: [...LEGACY_PACKAGE_QUOTA_SOURCES] } }, _count: { _all: true } }),
     ]);
     return NextResponse.json({ data: packages.map((pkg) => ({
       ...toVoucherPackageBundleDto(pkg),
-      stats: buildAdminVoucherStats({ id: pkg.id, quantity: pkg.quantity, issued_count: pkg._count.vouchers }, statusAggregates, expiredActiveAggregates),
+      stats: {
+        ...buildAdminVoucherStats({
+          id: pkg.id,
+          quantity: pkg.quantity,
+          issued_count: pkg._count.vouchers,
+          quota_issued_count: quotaAggregates.find((row) => row.package_id === pkg.id)?._count._all ?? 0,
+        }, statusAggregates, expiredActiveAggregates),
+        self_acquisition_count: selfAggregates
+          .filter((row) => row.package_id === pkg.id)
+          .reduce((sum, row) => sum + row._count._all, 0),
+        self_acquisition_used_count: selfAggregates
+          .filter((row) => row.package_id === pkg.id && row.status === "REDEEMED")
+          .reduce((sum, row) => sum + row._count._all, 0),
+      },
     })) });
   } catch (err) {
     console.error("[GET /api/admin/voucher-packages]", err);
@@ -103,7 +121,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const data = parsed.data;
+    const data = parsed.data satisfies CreateVoucherPackageInput;
 
     if (data.voucher_type === "BUNDLE") {
       try {
@@ -126,14 +144,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (data.voucher_type === "ITEM") {
-      const menuItem = await prisma.menuItem.findUnique({
-        where: { id: data.menu_item_id },
+      const targetIds = data.eligible_menu_item_ids ?? [data.menu_item_id];
+      const menuItems = await prisma.menuItem.findMany({
+        where: { id: { in: targetIds } },
         select: { id: true, category: true, is_available: true, unit_price_vnd: true },
       });
-      if (!menuItem || !menuItem.is_available) {
+      if (menuItems.length !== targetIds.length || menuItems.some((item) => !item.is_available)) {
         return NextResponse.json({ error: "Menu item not found or unavailable", code: "NOT_FOUND" }, { status: 404 });
       }
-      if (menuItem.category !== "extras") {
+      if (menuItems.some((item) => item.category !== "extras")) {
         return NextResponse.json({ error: "ITEM voucher chỉ áp dụng cho món Add-on", code: "VALIDATION_ERROR" }, { status: 400 });
       }
       const pkg = await prisma.voucherPackage.create({
@@ -141,6 +160,7 @@ export async function POST(req: NextRequest) {
           name: data.name,
           description: data.description ?? null,
           voucher_type: "ITEM",
+          visibility: data.visibility,
           acquisition_mode: data.acquisition_mode,
           points_cost: data.points_cost,
           ends_at: data.ends_at ? new Date(data.ends_at) : null,
@@ -149,6 +169,7 @@ export async function POST(req: NextRequest) {
           quantity: data.quantity ?? null,
           max_per_user: data.max_per_user ?? 1,
           menu_item_id: data.menu_item_id,
+          menuItemScopes: { create: targetIds.map((menu_item_id) => ({ menu_item_id })) },
         },
       });
       await invalidateVoucherCaches();
@@ -175,8 +196,24 @@ export async function POST(req: NextRequest) {
 
     // For PRODUCT packages — auto-calculate covered_price_vnd via pricing engine
     if (data.voucher_type === "PRODUCT") {
+      const productTargets = data.product_targets ?? [{
+        menu_item_id: data.menu_item_id,
+        size: data.size,
+        matcha_powder_id: data.matcha_powder_id,
+        milk_type_id: data.milk_type_id,
+      }];
+      const pricingCtx = await buildPricingContext();
+      const targetSnapshots: Array<{
+        menu_item_id: string;
+        size: typeof data.size;
+        matcha_powder_id: string | null;
+        milk_type_id: string | null;
+        covered_price_vnd: number;
+      }> = [];
+
+      for (const target of productTargets) {
       const menuItem = await prisma.menuItem.findUnique({
-        where: { id: data.menu_item_id },
+        where: { id: target.menu_item_id },
         include: {
           sizes: true,
           fusionAllowedPowders: true,
@@ -193,15 +230,14 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const sizeRow = menuItem.sizes.find((s) => s.size === data.size);
+      const sizeRow = menuItem.sizes.find((s) => s.size === target.size);
       if (!sizeRow || sizeRow.base_price_vnd === null) {
         return NextResponse.json(
-          { error: `Size ${data.size} is not available for this menu item`, code: "VALIDATION_ERROR" },
+          { error: `Size ${target.size} is not available for this menu item`, code: "VALIDATION_ERROR" },
           { status: 400 }
         );
       }
 
-      const pricingCtx = await buildPricingContext();
       const activePowders = pricingCtx.availablePowders.map((powder) => ({
         ...powder,
         is_available: true,
@@ -228,7 +264,7 @@ export async function POST(req: NextRequest) {
           menuItem.default_powder_id,
           activePowders,
         );
-        const selected_powder_id = data.matcha_powder_id ?? effectiveDefaultPowderId;
+        const selected_powder_id = target.matcha_powder_id ?? effectiveDefaultPowderId;
 
         if (!selected_powder_id) {
           return NextResponse.json(
@@ -238,12 +274,12 @@ export async function POST(req: NextRequest) {
         }
 
         // Validate the selected powder is allowed for this item
-        if (data.matcha_powder_id && data.matcha_powder_id !== effectiveDefaultPowderId) {
+        if (target.matcha_powder_id && target.matcha_powder_id !== effectiveDefaultPowderId) {
           const activePowderIds = new Set(activePowders.map((powder) => powder.id));
           const allowedIds = menuItem.fusionAllowedPowders
             .map((entry) => entry.powder_id)
             .filter((id) => activePowderIds.has(id));
-          if (!allowedIds.includes(data.matcha_powder_id)) {
+          if (!allowedIds.includes(target.matcha_powder_id)) {
             return NextResponse.json(
               { error: "Selected powder is not allowed or active for this fusion item", code: "BUSINESS_RULE_VIOLATION" },
               { status: 422 }
@@ -252,11 +288,11 @@ export async function POST(req: NextRequest) {
         }
 
         powder_id = selected_powder_id;
-        resolved_matcha_powder_id = data.matcha_powder_id ?? null;
+        resolved_matcha_powder_id = target.matcha_powder_id ?? null;
 
         // Compute Premium_Latte for non-default powder
         if (effectiveDefaultPowderId && powder_id !== effectiveDefaultPowderId) {
-          premium_latte = await resolveOrderItemPremiumLatte(powder_id, effectiveDefaultPowderId, data.size);
+          premium_latte = await resolveOrderItemPremiumLatte(powder_id, effectiveDefaultPowderId, target.size);
         }
       }
 
@@ -278,7 +314,7 @@ export async function POST(req: NextRequest) {
           { status: 422 },
         );
       }
-      resolved_milk_type_id = data.milk_type_id ?? defaultBaseLiquidId;
+      resolved_milk_type_id = target.milk_type_id ?? defaultBaseLiquidId;
       if (
         !pricingCtx.availableBaseLiquids?.some((liquid) => liquid.id === resolved_milk_type_id) ||
         (resolved_milk_type_id !== defaultBaseLiquidId && !allowedBaseLiquidIds.includes(resolved_milk_type_id))
@@ -291,7 +327,7 @@ export async function POST(req: NextRequest) {
       const drink_price = resolveOrderItemPrice(
         {
           category: menuItem.category as "latte" | "fusion",
-          size: data.size,
+          size: target.size,
           base_price_vnd: sizeRow.base_price_vnd,
           custom_powder_grams: menuItem.custom_powder_grams as Record<string, number> | null,
           powder_id,
@@ -329,13 +365,23 @@ export async function POST(req: NextRequest) {
       }
 
       // covered_price_vnd = drink price only (PRODUCT covers drink, not addons)
-      const covered_price_vnd = drink_price;
+      targetSnapshots.push({
+        menu_item_id: target.menu_item_id,
+        size: target.size,
+        matcha_powder_id: resolved_matcha_powder_id,
+        milk_type_id: resolved_milk_type_id,
+        covered_price_vnd: drink_price,
+      });
+      }
+
+      const anchor = targetSnapshots.find((target) => target.menu_item_id === data.menu_item_id)!;
 
       const pkg = await prisma.voucherPackage.create({
         data: {
           name: data.name,
           description: data.description ?? null,
           voucher_type: "PRODUCT",
+          visibility: data.visibility,
           acquisition_mode: data.acquisition_mode,
           points_cost: data.points_cost,
           ends_at: data.ends_at ? new Date(data.ends_at) : null,
@@ -344,11 +390,14 @@ export async function POST(req: NextRequest) {
           quantity: data.quantity ?? null,
           max_per_user: data.max_per_user ?? 1,
           menu_item_id: data.menu_item_id,
-          size: data.size,
-          matcha_powder_id: resolved_matcha_powder_id,
-          milk_type_id: resolved_milk_type_id,
+          size: anchor.size,
+          matcha_powder_id: anchor.matcha_powder_id,
+          milk_type_id: anchor.milk_type_id,
           included_addon_option_ids: data.included_addon_option_ids,
-          covered_price_vnd,
+          covered_price_vnd: anchor.covered_price_vnd,
+          menuItemScopes: {
+            create: targetSnapshots,
+          },
         },
       });
 
@@ -361,7 +410,10 @@ export async function POST(req: NextRequest) {
       const targetIds = data.eligible_menu_item_ids ?? [data.menu_item_id];
       const menuItems = await prisma.menuItem.findMany({
         where: { id: { in: targetIds } },
-        include: { sizes: true },
+        include: {
+          sizes: true,
+          allowedBaseLiquids: { select: { base_liquid_id: true, baseLiquid: { select: { is_active: true } } } },
+        },
       });
       if (menuItems.length !== targetIds.length || menuItems.some((item) =>
         !item.is_available || (item.category !== "latte" && item.category !== "fusion"))) {
@@ -375,14 +427,33 @@ export async function POST(req: NextRequest) {
       if (!supportsSharedSizes) {
         return NextResponse.json({ error: "Voucher size configuration is unavailable", code: "BUSINESS_RULE_VIOLATION" }, { status: 422 });
       }
+      const requestedMilkTypeId = data.milk_type_id ?? null;
+      if (requestedMilkTypeId) {
+        const [requestedMilk, defaultLatteMilk] = await Promise.all([
+          prisma.milkType.findUnique({ where: { id: requestedMilkTypeId }, select: { id: true, is_active: true } }),
+          prisma.milkType.findFirst({ where: { is_default: true, is_active: true }, select: { id: true } }),
+        ]);
+        const requestedMilkAllowed = Boolean(requestedMilk?.is_active) && menuItems.every((item) => {
+          const defaultMilkId = item.category === "latte" ? defaultLatteMilk?.id ?? null : item.default_base_liquid_id;
+          const allowedMilkIds = item.allowedBaseLiquids
+            .filter((entry) => entry.baseLiquid.is_active)
+            .map((entry) => entry.base_liquid_id);
+          return requestedMilkTypeId === defaultMilkId || allowedMilkIds.includes(requestedMilkTypeId);
+        });
+        if (!requestedMilkAllowed) {
+          return NextResponse.json({ error: "Base Liquid này không được phép cho toàn bộ món đã chọn", code: "BUSINESS_RULE_VIOLATION" }, { status: 422 });
+        }
+      }
       const pkg = await prisma.voucherPackage.create({
         data: {
           name: data.name, description: data.description ?? null, voucher_type: "PRODUCT_DISCOUNT",
+          visibility: data.visibility,
           acquisition_mode: data.acquisition_mode, points_cost: data.points_cost,
           ends_at: data.ends_at ? new Date(data.ends_at) : null, is_active: true,
           expires_after_days: data.expires_after_days ?? null, quantity: data.quantity ?? null,
           max_per_user: data.max_per_user ?? 1, menu_item_id: targetIds[0],
-          menuItemScopes: { create: targetIds.map((menu_item_id) => ({ menu_item_id })) },
+          milk_type_id: requestedMilkTypeId,
+          menuItemScopes: { create: targetIds.map((menu_item_id) => ({ menu_item_id, milk_type_id: requestedMilkTypeId })) },
           product_discount_mode: data.product_discount_mode, eligible_sizes: [...data.eligible_sizes],
           reference_size: data.product_discount_mode === "PAY_AS_SIZE" ? data.reference_size : null,
           discount_type: data.product_discount_mode === "FIXED_AMOUNT" ? "FIXED" : null,
@@ -400,6 +471,7 @@ export async function POST(req: NextRequest) {
           name: data.name,
           description: data.description ?? null,
           voucher_type: "FREESHIP",
+          visibility: data.visibility,
           acquisition_mode: data.acquisition_mode,
           points_cost: data.points_cost,
           ends_at: data.ends_at ? new Date(data.ends_at) : null,
@@ -422,6 +494,7 @@ export async function POST(req: NextRequest) {
         name: data.name,
         description: data.description ?? null,
         voucher_type: "DISCOUNT",
+        visibility: data.visibility,
         acquisition_mode: data.acquisition_mode,
         points_cost: data.points_cost,
         ends_at: data.ends_at ? new Date(data.ends_at) : null,

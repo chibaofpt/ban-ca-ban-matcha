@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   groupPointsHistory,
   type PointsHistoryLog,
-} from "@/lib/pointsHistory";
+} from "@/lib/points/pointsHistory";
 
 function makeLog(
   overrides: Partial<PointsHistoryLog> = {},

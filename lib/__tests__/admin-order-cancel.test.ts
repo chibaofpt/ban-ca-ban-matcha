@@ -131,36 +131,15 @@ describe("PATCH /api/staff/orders/[id] — cancel rules", () => {
 
   // ── 5. Staff KHÔNG hủy được ──────────────────────────────────────────────
 
-  it("5a. Staff cố hủy đơn PENDING → 400 INVALID_TRANSITION", async () => {
+  it.each([
+    ["PENDING", "COUNTER"],
+    ["ADMIN_CONFIRMED", "PICKUP"],
+  ])("Staff không được hủy đơn %s (%s) → 400 INVALID_TRANSITION", async (status, orderType) => {
     mockGetSession.mockResolvedValue(STAFF_SESSION);
     mockOrderFindUniqueStaff.mockResolvedValue({
       id: "order-uuid-1",
-      status: "PENDING",
-      order_type: "COUNTER",
-      user_id: USER_ID,
-      items: [],
-      points_earned: null,
-      total_vnd: 50000,
-      handled_by: null,
-    });
-
-    const PATCH = await getPATCH();
-    const res = await PATCH(makeStaffPatchReq({ status: "CANCELLED" }), {
-      params: Promise.resolve({ id: "order-uuid-1" }),
-    });
-
-    expect(res.status).toBe(400);
-    const json = await res.json();
-    expect(json.code).toBe("INVALID_TRANSITION");
-    expect(json.error).toContain("Only ADMIN");
-  });
-
-  it("5b. Staff cố hủy đơn ADMIN_CONFIRMED → 400 INVALID_TRANSITION", async () => {
-    mockGetSession.mockResolvedValue(STAFF_SESSION);
-    mockOrderFindUniqueStaff.mockResolvedValue({
-      id: "order-uuid-1",
-      status: "ADMIN_CONFIRMED",
-      order_type: "PICKUP",
+      status,
+      order_type: orderType,
       user_id: USER_ID,
       items: [],
       points_earned: null,

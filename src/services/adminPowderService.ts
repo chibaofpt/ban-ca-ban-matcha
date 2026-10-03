@@ -1,18 +1,12 @@
 import { apiClient } from "@/src/lib/api/client";
-import type { Powder, PowderMutationPayload } from "@/src/lib/types/powder";
+import type { ApiResponse } from "@/contracts/api";
+import type { Powder } from "@/contracts/catalog";
+import type { PowderMutationPayload } from "@/contracts/admin/catalog";
 
 const URL = {
   list: "/api/admin/powders",
   byId: (id: string) => `/api/admin/powders/${id}`,
 } as const;
-
-export interface AdminPowderApiResponse {
-  data: Powder[];
-}
-
-export interface AdminSinglePowderResponse {
-  data: Powder;
-}
 
 function buildMultipartPayload(
   payload: PowderMutationPayload,
@@ -28,7 +22,7 @@ function buildMultipartPayload(
 
 /** List every powder for admin management. */
 export async function listAdminPowders(): Promise<Powder[]> {
-  const { data } = await apiClient.get<AdminPowderApiResponse>(URL.list);
+  const { data } = await apiClient.get<ApiResponse<Powder[]>>(URL.list);
   return data.data;
 }
 
@@ -39,7 +33,7 @@ export async function createPowder(
   imageFilename?: string,
 ): Promise<Powder> {
   const body = buildMultipartPayload(payload, imageFile, imageFilename);
-  const { data } = await apiClient.post<AdminSinglePowderResponse>(URL.list, body);
+  const { data } = await apiClient.post<ApiResponse<Powder>>(URL.list, body);
   return data.data;
 }
 
@@ -51,18 +45,18 @@ export async function updatePowder(
   imageFilename?: string,
 ): Promise<Powder> {
   const body = buildMultipartPayload(payload, imageFile, imageFilename);
-  const { data } = await apiClient.put<AdminSinglePowderResponse>(URL.byId(id), body);
+  const { data } = await apiClient.put<ApiResponse<Powder>>(URL.byId(id), body);
   return data.data;
 }
 
 /** Toggle powder availability without uploading an image. */
 export async function togglePowderAvailability(id: string, is_available: boolean): Promise<Powder> {
-  const { data } = await apiClient.put<AdminSinglePowderResponse>(URL.byId(id), { is_available });
+  const { data } = await apiClient.put<ApiResponse<Powder>>(URL.byId(id), { is_available });
   return data.data;
 }
 
 /** Soft-delete a powder. */
 export async function deletePowder(id: string): Promise<Powder> {
-  const { data } = await apiClient.delete<AdminSinglePowderResponse>(URL.byId(id));
+  const { data } = await apiClient.delete<ApiResponse<Powder>>(URL.byId(id));
   return data.data;
 }

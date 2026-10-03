@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
+import { lazyExpireVouchers } from "@/lib/vouchers/lazyExpireVouchers";
 import { prisma } from "@/lib/prisma";
-import {
-  ensureAutoGrantedVouchers,
-  type VoucherIssuanceDatabase,
-} from "@/lib/voucherIssuance";
+import { ensureAutoGrantedVouchers } from "@/lib/vouchers/autoGrantVouchers";
+import type { VoucherIssuanceDatabase } from "@/lib/vouchers/voucherIssuance";
 
 export const dynamic = "force-dynamic";
 

@@ -9,9 +9,9 @@ import {
   type RawOrderItem,
   type PowderSizeEntry,
   type DefaultSizeEntry,
-} from "@/lib/reportAggregation";
+} from "@/lib/reports/reportAggregation";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { collectReportPages, ReportRangeTooLargeError } from "@/lib/reportPagination";
+import { collectReportPages, ReportRangeTooLargeError } from "@/lib/reports/reportPagination";
 
 /** GET /api/report — Generate daily/range report for staff or admin */
 export async function GET(req: NextRequest) {

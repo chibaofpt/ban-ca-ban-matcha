@@ -16,7 +16,7 @@ interface OrderTabsProps {
  * - All: all non-cancelled orders (Admin only)
  * - Tại quầy: COUNTER orders
  * - Khách đặt: PICKUP/DELIVERY orders (ADMIN_CONFIRMED and beyond)
- * - Chờ CK: Admin sees all PENDING; Staff sees only their own counter transfers
+ * - Chờ CK: Staff sees only their own counter transfers (Staff only)
  * - Đã huỷ: CANCELLED orders (Admin only)
  */
 export function OrderTabs({ activeTab, onTabChange, pendingCount, isAdmin }: OrderTabsProps) {
@@ -26,7 +26,7 @@ export function OrderTabs({ activeTab, onTabChange, pendingCount, isAdmin }: Ord
     ] : []),
     { id: "counter" as OrderTabKey, label: "Tại quầy", icon: Receipt },
     { id: "customer" as OrderTabKey, label: "Khách đặt", icon: ShoppingBag },
-    { id: "pending" as OrderTabKey, label: "Chờ CK", icon: Clock },
+    ...(!isAdmin ? [{ id: "pending" as OrderTabKey, label: "Chờ CK", icon: Clock }] : []),
     ...(isAdmin ? [
       { id: "cancelled" as OrderTabKey, label: "Đã huỷ", icon: XCircle }
     ] : [])

@@ -1,11 +1,11 @@
 /**
- * Tests for buildReport (existing) and buildAdminReport (new) in lib/reportAggregation.ts
+ * Tests for buildReport and the extracted admin report aggregation.
  */
 
 import { describe, it, expect } from "vitest";
-import { buildReport } from "@/lib/reportAggregation";
-// buildAdminReport will be imported once implemented
-// import { buildAdminReport } from "@/lib/reportAggregation";
+import { buildReport, type RawOrder } from "@/lib/reports/reportAggregation";
+// Keep the admin aggregation dynamically imported from its dedicated module.
+// import { buildAdminReport } from "@/lib/reports/adminReportAggregation";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -178,13 +178,138 @@ describe("buildReport — kết quả tổng hợp cơ bản", () => {
   });
 });
 
+describe("buildReport — các nhánh tổng hợp theo đơn và món", () => {
+  it("tính doanh thu của đơn không có món trong cùng kỳ", () => {
+    const result = buildReport(
+      [makeLatteOrder({ total_vnd: 69_000 }), { total_vnd: 11_000, items: [] }],
+      powders, milkTypes, powderSizeEntries, defaultSizeEntries,
+    );
+
+    expect(result.summary.total_orders).toBe(2);
+    expect(result.summary.total_cups).toBe(1);
+    expect(result.summary.total_revenue_vnd).toBe(80_000);
+  });
+
+  it("dùng gram mặc định, nhân quantity và gộp cùng bột qua nhiều đơn", () => {
+    const orders = [
+      makeLatteOrder({ quantity: 2 }),
+      makeLatteOrder({ quantity: 1 }),
+      makeLatteOrder({ powderId: "powder-hana", menuItemId: "item-hana" }),
+    ];
+    const result = buildReport(orders, powders, milkTypes, [], defaultSizeEntries);
+
+    expect(result.powder_usage).toEqual(expect.arrayContaining([
+      expect.objectContaining({ powder_name: "Meyumi", total_grams: 12 }),
+      expect.objectContaining({ powder_name: "Hana", total_grams: 4 }),
+    ]));
+    expect(result.powder_usage).toHaveLength(2);
+  });
+
+  it("cộng gram topping matcha nhưng bỏ qua topping không có gram", () => {
+    const withMatcha: RawOrder = makeLatteOrder({});
+    withMatcha.items[0]!.addons = [{ quantity: 1, addonOption: { gram_value: 3 } }];
+    const withoutMatcha: RawOrder = makeLatteOrder({});
+    withoutMatcha.items[0]!.addons = [{ quantity: 1, addonOption: { gram_value: null } }];
+
+    const withReport = buildReport([withMatcha], powders, milkTypes, powderSizeEntries, defaultSizeEntries);
+    const withoutReport = buildReport([withoutMatcha], powders, milkTypes, powderSizeEntries, defaultSizeEntries);
+
+    expect(withReport.powder_usage[0].total_grams).toBe(6.5);
+    expect(withoutReport.powder_usage[0].total_grams).toBe(3.5);
+  });
+
+  it("tách lượng sữa theo loại khi tổng hợp nhiều đơn", () => {
+    const result = buildReport(
+      [makeLatteOrder({ milkId: "milk-bo" }), makeLatteOrder({ milkId: "milk-oat" })],
+      powders, milkTypes, powderSizeEntries, defaultSizeEntries,
+    );
+
+    expect(result.milk_usage).toEqual(expect.arrayContaining([
+      expect.objectContaining({ milk_name: "Sữa bò", total_ml: 200 }),
+      expect.objectContaining({ milk_name: "Sữa yến mạch", total_ml: 200 }),
+    ]));
+    expect(result.milk_usage).toHaveLength(2);
+  });
+
+  it("bỏ qua sữa khi latte thiếu milk ID hoặc món là fusion", () => {
+    const noMilk: RawOrder = makeLatteOrder({});
+    noMilk.items[0]!.selected_milk_type_id = null;
+    const result = buildReport(
+      [noMilk, makeFusionOrder({ quantity: 2 })],
+      powders, milkTypes, powderSizeEntries, defaultSizeEntries,
+    );
+
+    expect(result.milk_usage).toHaveLength(0);
+  });
+
+  it("gộp size cùng món qua nhiều đơn và tách các món latte khác nhau", () => {
+    const result = buildReport(
+      [
+        makeLatteOrder({ size: "SMALL" }),
+        makeLatteOrder({ size: "MEDIUM", quantity: 2 }),
+        makeLatteOrder({ menuItemId: "item-latte-2", menuItemName: "Matcha Sữa Chua", powderId: "powder-hana", size: "LARGE" }),
+      ],
+      powders, milkTypes, powderSizeEntries, defaultSizeEntries,
+    );
+
+    expect(result.latte_sales).toHaveLength(2);
+    expect(result.fusion_sales).toHaveLength(0);
+    expect(result.latte_sales).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: "Premium Matcha Latte", total_cups: 3,
+        sizes: { SMALL: 1, MEDIUM: 2, LARGE: 0 },
+      }),
+      expect.objectContaining({
+        name: "Matcha Sữa Chua", total_cups: 1,
+        sizes: { SMALL: 0, MEDIUM: 0, LARGE: 1 },
+      }),
+    ]));
+  });
+
+  it("phân loại đơn chỉ có fusion và giữ đúng số ly theo size", () => {
+    const result = buildReport(
+      [makeFusionOrder({ size: "SMALL", quantity: 2 })],
+      powders, milkTypes, powderSizeEntries, defaultSizeEntries,
+    );
+
+    expect(result.latte_sales).toHaveLength(0);
+    expect(result.fusion_sales).toEqual([
+      expect.objectContaining({
+        name: "Matcha Kem Dừa", total_cups: 2,
+        sizes: { SMALL: 2, MEDIUM: 0, LARGE: 0 },
+      }),
+    ]);
+  });
+
+  it("tổng hợp latte và fusion trong cùng đơn mà không gộp sữa của fusion", () => {
+    const mixed: RawOrder = {
+      total_vnd: 120_000,
+      items: [
+        makeLatteOrder({}).items[0]!,
+        makeFusionOrder({ size: "MEDIUM" }).items[0]!,
+      ],
+    };
+    const defaults = [
+      { size: "SMALL" as const, milk_ml: 130, powder_gram: 3.5 },
+      { size: "MEDIUM" as const, milk_ml: 200, powder_gram: 4.5 },
+    ];
+    const result = buildReport([mixed], powders, milkTypes, [], defaults);
+
+    expect(result.summary.total_cups).toBe(2);
+    expect(result.latte_sales).toHaveLength(1);
+    expect(result.fusion_sales).toHaveLength(1);
+    expect(result.powder_usage.find((p) => p.powder_name === "Meyumi")?.total_grams).toBe(8);
+    expect(result.milk_usage.find((m) => m.milk_name === "Sữa bò")?.total_ml).toBe(130);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // buildAdminReport — Admin extras
 // ---------------------------------------------------------------------------
 
 describe("buildAdminReport — Admin extras (addon_usage, revenue_by_type, top_products)", () => {
   it("tính addon_usage theo addon option và trả breakdown bột ổn định", async () => {
-    const { buildAdminReport } = await import("@/lib/reportAggregation");
+    const { buildAdminReport } = await import("@/lib/reports/adminReportAggregation");
 
     const orders = [
       {
@@ -270,7 +395,7 @@ describe("buildAdminReport — Admin extras (addon_usage, revenue_by_type, top_p
   });
 
   it("không gộp nhầm addon trùng nhãn và nhân gram theo số ly", async () => {
-    const { buildAdminReport } = await import("@/lib/reportAggregation");
+    const { buildAdminReport } = await import("@/lib/reports/adminReportAggregation");
 
     const orders = [{
       total_vnd: 150_000,
@@ -324,7 +449,7 @@ describe("buildAdminReport — Admin extras (addon_usage, revenue_by_type, top_p
   });
 
   it("tính revenue_by_type đúng — COUNTER vs PICKUP vs DELIVERY", async () => {
-    const { buildAdminReport } = await import("@/lib/reportAggregation");
+    const { buildAdminReport } = await import("@/lib/reports/adminReportAggregation");
 
     const orders = [
       { total_vnd: 69_000, order_type: "COUNTER" as const, items: [] },
@@ -349,7 +474,7 @@ describe("buildAdminReport — Admin extras (addon_usage, revenue_by_type, top_p
   });
 
   it("top_products liệt kê tất cả sản phẩm, sorted descending theo số ly", async () => {
-    const { buildAdminReport } = await import("@/lib/reportAggregation");
+    const { buildAdminReport } = await import("@/lib/reports/adminReportAggregation");
 
     const orders = [
       {
@@ -400,7 +525,7 @@ describe("buildAdminReport — Admin extras (addon_usage, revenue_by_type, top_p
   });
 
   it("addon_usage không đếm addon khi quantity = 0", async () => {
-    const { buildAdminReport } = await import("@/lib/reportAggregation");
+    const { buildAdminReport } = await import("@/lib/reports/adminReportAggregation");
 
     const orders = [
       {

@@ -2,16 +2,19 @@
 
 import { useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { toast } from "sonner";
+import { FormProvider } from "react-hook-form";
 import { AdaptiveSelect } from "@/src/components/shared/AdaptiveSelect";
 import { BundleBenefitFields } from "@/src/components/admin/BundleBenefitFields";
-import { ProductDiscountTargetSelector } from "@/src/components/admin/ProductDiscountTargetSelector";
+import { BundleScopeEditor } from "@/src/components/admin/BundleScopeEditor";
+import { VoucherInlineFieldErrors, VoucherIssuanceFields } from "@/src/components/admin/VoucherIssuanceFields";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
-import { buildVoucherInput, createEmptyVoucherDraft, describeVoucherDraft, estimateVoucherLiabilityVnd, suggestVoucherCopy, validateVoucherDraft, type VoucherCopyLabels, type VoucherDraft, type VoucherType } from "@/src/lib/utils/adminVoucherForm";
+import { buildVoucherInput, describeProductDiscountTargets, describeVoucherDraft, estimateVoucherLiabilityVnd, suggestVoucherCopy, type VoucherCopyLabels, type VoucherDraft, type VoucherType } from "@/src/lib/utils/adminVoucherForm";
 import type { AdaptiveSelectOption } from "@/src/lib/utils/adaptiveSelect";
 import type { CreateVoucherPackageInput } from "@/src/services/adminVoucherService";
 import type { BundleMenuConfig } from "@/src/lib/utils/adminVoucherBundle";
+import { useAdminVoucherWizardForm } from "@/src/hooks/useAdminVoucherWizardForm";
+import { formatSizeLabel } from "@/src/utils/display";
 
 interface VoucherWizardProps {
   open: boolean;
@@ -24,7 +27,7 @@ interface VoucherWizardProps {
   menuPriceById: ReadonlyMap<string, number>;
   addonPriceById: ReadonlyMap<string, number>;
   submitting: boolean;
-  onSubmit: (input: CreateVoucherPackageInput) => void;
+  onSubmit: (input: CreateVoucherPackageInput) => Promise<void>;
 }
 
 const TYPE_OPTIONS: Array<{ value: VoucherType; label: string; hint: string }> = [
@@ -50,8 +53,9 @@ const VOUCHER_TITLE_BY_TYPE: Record<VoucherType, string> = {
 const inputClass = "h-11 w-full min-w-0 max-w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary";
 const numberValue = (value: string): number => Number(value) || 0;
 
-function NumberField({ label, value, onChange, min = 0, step = 1 }: { label: string; value: number | null; onChange: (value: number | null) => void; min?: number; step?: number }) {
-  return <label className="block min-w-0 space-y-1.5"><span className="text-sm font-semibold">{label}</span><input type="number" min={min} step={step} value={value ?? ""} onChange={(event) => onChange(event.target.value ? numberValue(event.target.value) : null)} className={inputClass} /></label>;
+function NumberField({ label, value, onChange, min = 0, step = 1, thousands = false }: { label: string; value: number | null; onChange: (value: number | null) => void; min?: number; step?: number; thousands?: boolean }) {
+  const displayValue = thousands && value !== null ? value.toLocaleString("vi-VN") : value ?? "";
+  return <label className="block min-w-0 space-y-1.5"><span className="text-sm font-semibold">{label}</span><input type={thousands ? "text" : "number"} inputMode={thousands ? "numeric" : undefined} min={thousands ? undefined : min} step={thousands ? undefined : step} value={displayValue} onChange={(event) => { const rawValue = thousands ? event.target.value.replace(/\D/g, "") : event.target.value; onChange(rawValue ? numberValue(rawValue) : null); }} className={inputClass} /></label>;
 }
 
 function BenefitFields({ draft, update, menuOptions, bundleMenuItems, addonOptions, powderOptions, milkOptions }: {
@@ -61,59 +65,73 @@ function BenefitFields({ draft, update, menuOptions, bundleMenuItems, addonOptio
 }) {
   if (draft.voucherType === "BUNDLE") return <BundleBenefitFields draft={draft} update={update} menuItems={bundleMenuItems} addonOptions={addonOptions} powderOptions={powderOptions} milkOptions={milkOptions} />;
   if (draft.voucherType === "PRODUCT") {
-    const selectedMenu = bundleMenuItems.find((menu) => menu.id === draft.menuItemId);
-    const allowedBaseLiquidIds = new Set(selectedMenu?.availableBaseLiquidIds ?? []);
-    const itemBaseLiquids = milkOptions.filter((option) => allowedBaseLiquidIds.has(option.value));
-    return <div className="space-y-4"><AdaptiveSelect label="Sản phẩm" options={menuOptions} value={draft.menuItemId} onChange={(value) => { const menu = bundleMenuItems.find((candidate) => candidate.id === value); update("menuItemId", value as string); update("milkTypeId", menu?.availableBaseLiquidIds[0] ?? ""); }} /><AdaptiveSelect label="Size" options={[{ value: "SMALL", label: "Small" }, { value: "MEDIUM", label: "Medium" }, { value: "LARGE", label: "Large" }]} value={draft.size} onChange={(value) => update("size", value as VoucherDraft["size"])} /><AdaptiveSelect label="Bột (nếu áp dụng)" options={[{ value: "", label: "Mặc định" }, ...powderOptions]} value={draft.matchaPowderId} onChange={(value) => update("matchaPowderId", value as string)} />{itemBaseLiquids.length > 0 ? <AdaptiveSelect label="Base Liquid" options={itemBaseLiquids} value={draft.milkTypeId} onChange={(value) => update("milkTypeId", value as string)} /> : null}</div>;
+    return <div className="space-y-4"><BundleScopeEditor label="Sản phẩm được tặng" purpose="PRODUCT" scopes={draft.productTargets} menuItems={bundleMenuItems.filter((menu) => menu.category !== "extras")} powderOptions={powderOptions} milkOptions={milkOptions} onChange={(productTargets) => { update("productTargets", productTargets.slice(0, 100)); update("menuItemId", productTargets[0]?.menuItemId ?? ""); }} /><VoucherInlineFieldErrors fields={["productTargets"]} /></div>;
   }
   if (draft.voucherType === "PRODUCT_DISCOUNT") {
+    const allBaseLiquidsValue = "__ALL_BASE_LIQUIDS__";
     const sizes = ["SMALL", "MEDIUM", "LARGE"] as const;
+    const sizeRank = { SMALL: 0, MEDIUM: 1, LARGE: 2 } as const;
     const selectedIds = draft.eligibleMenuItemIds?.length ? draft.eligibleMenuItemIds : draft.menuItemId ? [draft.menuItemId] : [];
     const selectedMenus = bundleMenuItems.filter((menu) => selectedIds.includes(menu.id));
+    const sharedBaseLiquidIds = selectedMenus.reduce<string[]>((shared, menu, index) =>
+      index === 0 ? [...menu.availableBaseLiquidIds] : shared.filter((id) => menu.availableBaseLiquidIds.includes(id)), []);
+    const baseLiquidOptions = [
+      { value: allBaseLiquidsValue, label: "Mọi Base Liquid", description: "Không giới hạn loại sữa/nền" },
+      ...milkOptions.filter((option) => sharedBaseLiquidIds.includes(option.value)),
+    ];
     const sharedSizes = sizes.filter((size) => selectedMenus.length > 0 && selectedMenus.every((menu) => menu.availableSizes.includes(size)));
+    const purchaseSizes = sharedSizes.filter((size) => size !== "LARGE" && sharedSizes.some((candidate) => sizeRank[candidate] > sizeRank[size]));
+    const purchaseSize = purchaseSizes.includes(draft.referenceSize) ? draft.referenceSize : purchaseSizes[0];
+    const upsizeOptions = purchaseSize ? sharedSizes.filter((size) => sizeRank[size] > sizeRank[purchaseSize]) : [];
+    const upsizeTarget = upsizeOptions.includes(draft.eligibleSizes[0]) ? draft.eligibleSizes[0] : upsizeOptions[0];
+    const sizeOptions = (values: readonly (typeof sizes)[number][]) => values.map((size) => ({ value: size, label: formatSizeLabel(size) }));
     return <div className="space-y-4">
-      <ProductDiscountTargetSelector items={bundleMenuItems} selectedIds={selectedIds} onChange={(ids) => { const nextMenus = bundleMenuItems.filter((menu) => ids.includes(menu.id)); const nextShared = sizes.filter((size) => nextMenus.length > 0 && nextMenus.every((menu) => menu.availableSizes.includes(size))); update("eligibleMenuItemIds", ids); update("menuItemId", ids[0] ?? ""); update("eligibleSizes", draft.eligibleSizes.filter((size) => nextShared.includes(size))); if (!nextShared.includes(draft.referenceSize)) update("referenceSize", nextShared[0] ?? "SMALL"); }} />
-      <AdaptiveSelect label="Kiểu giảm" options={[{ value: "FIXED_AMOUNT", label: "Giảm số tiền" }, { value: "PAY_AS_SIZE", label: "Trả giá size vừa" }]} value={draft.productDiscountMode} onChange={(value) => update("productDiscountMode", value as VoucherDraft["productDiscountMode"])} />
-      <fieldset className="space-y-2"><legend className="text-sm font-semibold">Size được áp dụng</legend><div className="flex gap-2">{sizes.map((size) => <button key={size} type="button" disabled={!sharedSizes.includes(size)} onClick={() => update("eligibleSizes", draft.eligibleSizes.includes(size) ? draft.eligibleSizes.filter((value) => value !== size) : [...draft.eligibleSizes, size])} className={`min-h-11 min-w-11 rounded-xl border px-3 text-sm disabled:opacity-40 ${draft.eligibleSizes.includes(size) ? "border-primary bg-primary/5" : "border-input"}`}>{size}</button>)}</div></fieldset>
+      <AdaptiveSelect multiple label="Sản phẩm" options={menuOptions.filter((option) => bundleMenuItems.some((menu) => menu.id === option.value && menu.category !== "extras"))} value={selectedIds} onChange={(value) => { const ids = value as string[]; const nextMenus = bundleMenuItems.filter((menu) => ids.includes(menu.id)); const nextShared = sizes.filter((size) => nextMenus.length > 0 && nextMenus.every((menu) => menu.availableSizes.includes(size))); const nextSharedBaseLiquids = nextMenus.reduce<string[]>((shared, menu, index) => index === 0 ? [...menu.availableBaseLiquidIds] : shared.filter((id) => menu.availableBaseLiquidIds.includes(id)), []); const nextPurchaseSizes = nextShared.filter((size) => size !== "LARGE" && nextShared.some((candidate) => sizeRank[candidate] > sizeRank[size])); const nextPurchase = nextPurchaseSizes.includes(draft.referenceSize) ? draft.referenceSize : nextPurchaseSizes[0]; const nextTargets = nextPurchase ? nextShared.filter((size) => sizeRank[size] > sizeRank[nextPurchase]) : []; update("eligibleMenuItemIds", ids.slice(0, 100)); update("menuItemId", ids[0] ?? ""); update("milkTypeId", draft.milkTypeId && nextSharedBaseLiquids.includes(draft.milkTypeId) ? draft.milkTypeId : ""); if (draft.productDiscountMode === "PAY_AS_SIZE") { update("referenceSize", nextPurchase ?? "SMALL"); update("eligibleSizes", nextTargets.includes(draft.eligibleSizes[0]) ? [draft.eligibleSizes[0]] : nextTargets[0] ? [nextTargets[0]] : []); } else { update("eligibleSizes", draft.eligibleSizes.filter((size) => nextShared.includes(size))); } }} />
+      <AdaptiveSelect label="Base Liquid áp dụng" options={baseLiquidOptions} value={draft.milkTypeId && sharedBaseLiquidIds.includes(draft.milkTypeId) ? draft.milkTypeId : allBaseLiquidsValue} disabled={selectedMenus.length === 0} onChange={(value) => update("milkTypeId", value === allBaseLiquidsValue ? "" : value as string)} placeholder="Mọi Base Liquid" />
+      <AdaptiveSelect label="Kiểu giảm" options={[{ value: "FIXED_AMOUNT", label: "Giảm số tiền" }, { value: "PAY_AS_SIZE", label: "Free upsize" }]} value={draft.productDiscountMode} onChange={(value) => { const mode = value as VoucherDraft["productDiscountMode"]; update("productDiscountMode", mode); if (mode === "PAY_AS_SIZE") { update("referenceSize", purchaseSize ?? "SMALL"); update("eligibleSizes", upsizeTarget ? [upsizeTarget] : []); } else if (draft.discountValue <= 0) update("discountValue", 10_000); }} />
+      {draft.productDiscountMode === "FIXED_AMOUNT" ? <fieldset className="space-y-2"><legend className="text-sm font-semibold">Size được áp dụng</legend><div className="flex gap-2">{sizes.map((size) => <button key={size} type="button" disabled={!sharedSizes.includes(size)} onClick={() => update("eligibleSizes", draft.eligibleSizes.includes(size) ? draft.eligibleSizes.filter((value) => value !== size) : [...draft.eligibleSizes, size])} className={`min-h-11 min-w-11 rounded-xl border px-3 text-sm disabled:opacity-40 ${draft.eligibleSizes.includes(size) ? "border-primary bg-primary/5" : "border-input"}`}>{formatSizeLabel(size)}</button>)}</div></fieldset> : null}
       {draft.productDiscountMode === "FIXED_AMOUNT"
-        ? <NumberField label="Mức giảm (VND)" value={draft.discountValue} min={1_000} step={1_000} onChange={(value) => update("discountValue", value ?? 0)} />
-        : <AdaptiveSelect label="Size tham chiếu" options={sharedSizes.map((size) => ({ value: size, label: size }))} value={sharedSizes.includes(draft.referenceSize) ? draft.referenceSize : sharedSizes[0] ?? ""} onChange={(value) => update("referenceSize", value as VoucherDraft["referenceSize"])} />}
+        ? <NumberField label="Mức giảm (VND)" value={draft.discountValue} min={1_000} step={1_000} thousands onChange={(value) => update("discountValue", value ?? 0)} />
+        : <div className="grid grid-cols-2 gap-2"><AdaptiveSelect label="Size mua" options={sizeOptions(purchaseSizes)} value={purchaseSize ?? ""} onChange={(value) => { const nextPurchase = value as VoucherDraft["referenceSize"]; const nextTargets = sharedSizes.filter((size) => sizeRank[size] > sizeRank[nextPurchase]); update("referenceSize", nextPurchase); update("eligibleSizes", nextTargets.includes(draft.eligibleSizes[0]) ? [draft.eligibleSizes[0]] : nextTargets[0] ? [nextTargets[0]] : []); }} /><AdaptiveSelect label="Size được up" options={sizeOptions(upsizeOptions)} value={upsizeTarget ?? ""} onChange={(value) => update("eligibleSizes", [value as VoucherDraft["eligibleSizes"][number]])} /></div>}
+      <VoucherInlineFieldErrors fields={["eligibleMenuItemIds", "eligibleSizes", "discountValue", "referenceSize"]} />
     </div>;
   }
   if (draft.voucherType === "ITEM") {
     const extras = bundleMenuItems
       .filter((menu) => menu.category === "extras")
       .map((menu) => ({ value: menu.id, label: menu.name, description: "Add-on" }));
-    return <AdaptiveSelect label="Add-on" options={extras} value={draft.menuItemId} onChange={(value) => update("menuItemId", value as string)} />;
+    const selectedIds = draft.eligibleMenuItemIds?.length ? draft.eligibleMenuItemIds : draft.menuItemId ? [draft.menuItemId] : [];
+    return <div className="space-y-2"><AdaptiveSelect multiple label="Add-on" options={extras} value={selectedIds} onChange={(value) => { const ids = (value as string[]).slice(0, 100); update("eligibleMenuItemIds", ids); update("menuItemId", ids[0] ?? ""); }} /><VoucherInlineFieldErrors fields={["menuItemId"]} /></div>;
   }
-  if (draft.voucherType === "ADDON") return <AdaptiveSelect label="Addon được tặng" options={addonOptions} value={draft.addonOptionId} onChange={(value) => update("addonOptionId", value as string)} />;
-  if (draft.voucherType === "FREESHIP") return <div className="space-y-4"><NumberField label="Phí giao tối đa được hỗ trợ" value={draft.coveredDeliveryFeeVnd} min={1_000} step={1_000} onChange={(value) => update("coveredDeliveryFeeVnd", value ?? 0)} /><NumberField label="Giá trị đơn tối thiểu" value={draft.minOrderVnd} min={1_000} step={1_000} onChange={(value) => update("minOrderVnd", value)} /></div>;
+  if (draft.voucherType === "ADDON") return <div className="space-y-2"><AdaptiveSelect multiple label="Addon được tặng" options={addonOptions} value={draft.eligibleAddonOptionIds.length ? draft.eligibleAddonOptionIds : draft.addonOptionId ? [draft.addonOptionId] : []} onChange={(value) => { const ids = (value as string[]).slice(0, 100); update("eligibleAddonOptionIds", ids); update("addonOptionId", ids[0] ?? ""); }} /><VoucherInlineFieldErrors fields={["addonOptionId"]} /></div>;
+  if (draft.voucherType === "FREESHIP") return <div className="space-y-4"><NumberField label="Phí giao tối đa được hỗ trợ" value={draft.coveredDeliveryFeeVnd} min={1_000} step={1_000} onChange={(value) => update("coveredDeliveryFeeVnd", value ?? 0)} /><NumberField label="Giá trị đơn tối thiểu" value={draft.minOrderVnd} min={1_000} step={1_000} onChange={(value) => update("minOrderVnd", value)} /><VoucherInlineFieldErrors fields={["coveredDeliveryFeeVnd", "minOrderVnd"]} /></div>;
   return <div className="space-y-4">
     <AdaptiveSelect label="Kiểu giảm" options={[{ value: "PERCENT", label: "Phần trăm" }, { value: "FIXED", label: "Số tiền" }]} value={draft.discountType} onChange={(value) => update("discountType", value as VoucherDraft["discountType"])} />
     <NumberField label={draft.discountType === "PERCENT" ? "Mức giảm (%)" : "Mức giảm (VND)"} value={draft.discountValue} min={1} step={draft.discountType === "FIXED" ? 1_000 : 1} onChange={(value) => update("discountValue", value ?? 0)} />
     {draft.discountType === "PERCENT" && <NumberField label="Mức giảm tối đa (VND)" value={draft.maxDiscountVnd} min={1_000} step={1_000} onChange={(value) => update("maxDiscountVnd", value)} />}
     <NumberField label="Giá trị đơn tối thiểu" value={draft.minOrderVnd} min={1_000} step={1_000} onChange={(value) => update("minOrderVnd", value)} />
+    <VoucherInlineFieldErrors fields={["discountValue", "maxDiscountVnd", "minOrderVnd"]} />
   </div>;
 }
 
 /** Three-step admin wizard for creating every voucher type in one place. */
 export function VoucherWizard(props: VoucherWizardProps) {
   const [step, setStep] = useState(1);
-  const [draft, setDraft] = useState(createEmptyVoucherDraft);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmState, setConfirmState] = useState<"closed" | "open" | "success">("closed");
   const manualCopy = useRef({ name: false, description: false });
+  const { draft, form, updateDraft, validate, submit: submitDraft, errorFor } = useAdminVoucherWizardForm();
   const copyLabels = useMemo<VoucherCopyLabels>(() => ({
     menuLabels: new Map(props.menuOptions.map((option) => [option.value, option.label])),
     addonLabels: new Map(props.addonOptions.map((option) => [option.value, option.label])),
     powderLabels: new Map(props.powderOptions.map((option) => [option.value, option.label])),
     milkLabels: new Map(props.milkOptions.map((option) => [option.value, option.label])),
-    defaultPowderByMenuId: new Map(props.bundleMenuItems.map((menu) => [menu.id, menu.fixedPowderId ?? menu.availablePowderIds[0] ?? ""])),
-    defaultMilkByMenuId: new Map(props.bundleMenuItems.map((menu) => [menu.id, menu.availableBaseLiquidIds[0] ?? ""])),
+    defaultPowderByMenuId: new Map(props.bundleMenuItems.map((menu) => [menu.id, menu.fixedPowderId ?? menu.defaultPowderId ?? ""])),
+    defaultMilkByMenuId: new Map(props.bundleMenuItems.map((menu) => [menu.id, menu.defaultBaseLiquidId ?? ""])),
   }), [props.addonOptions, props.bundleMenuItems, props.menuOptions, props.milkOptions, props.powderOptions]);
   const update = <K extends keyof VoucherDraft>(key: K, value: VoucherDraft[K]) => {
     if (key === "name") manualCopy.current.name = true;
     if (key === "description") manualCopy.current.description = true;
-    setDraft((current) => {
+    updateDraft((current) => {
       const nextDraft = { ...current, [key]: value };
       if (key === "name" || key === "description") return nextDraft;
       const suggestion = suggestVoucherCopy(nextDraft, copyLabels);
@@ -126,8 +144,14 @@ export function VoucherWizard(props: VoucherWizardProps) {
   };
   const chooseType = (voucherType: VoucherType) => {
     manualCopy.current = { name: false, description: false };
-    setDraft((current) => {
-      const nextDraft = { ...current, voucherType };
+    updateDraft((current) => {
+      const nextDraft = {
+        ...current,
+        voucherType,
+        discountValue: voucherType === "PRODUCT_DISCOUNT" && current.voucherType === "DISCOUNT"
+          ? 10_000
+          : current.discountValue,
+      };
       return { ...nextDraft, ...suggestVoucherCopy(nextDraft, copyLabels) };
     });
     setStep(2);
@@ -135,24 +159,29 @@ export function VoucherWizard(props: VoucherWizardProps) {
   const close = (open: boolean) => {
     props.onOpenChange(open);
     if (!open) {
-      setStep(1);
-      setDraft(createEmptyVoucherDraft());
-      setConfirmOpen(false);
-      manualCopy.current = { name: false, description: false };
+      setConfirmState("closed");
     }
   };
-  const next = () => {
-    if (!draft.name.trim()) return toast.error("Vui lòng nhập tên voucher");
-    setStep(3);
+  const handleSubmitSuccess = () => {
+    setConfirmState("success");
   };
-  const submit = () => { const error = validateVoucherDraft(draft); if (error) return toast.error(error); setConfirmOpen(true); };
+  const handleConfirmAfterClose = () => {
+    if (confirmState !== "success") return;
+    setConfirmState("closed");
+    setStep(1);
+    manualCopy.current = { name: false, description: false };
+    close(false);
+  };
+  const next = () => { void validate("step2").then((valid) => { if (valid) setStep(3); }); };
+  const submit = () => { void validate().then((valid) => { if (valid) setConfirmState("open"); }); };
   const review = describeVoucherDraft(draft, copyLabels.menuLabels, copyLabels.addonLabels, copyLabels.powderLabels, copyLabels.milkLabels);
   const liability = estimateVoucherLiabilityVnd(draft, props.menuPriceById, props.addonPriceById);
   const suggestion = suggestVoucherCopy(draft, copyLabels);
+  const applicableItems = describeProductDiscountTargets(draft, copyLabels.menuLabels);
   const overlayTitle = step === 1 ? "Tạo voucher" : `Tạo voucher ${VOUCHER_TITLE_BY_TYPE[draft.voucherType]}`;
   const restoreSuggestion = () => {
     manualCopy.current = { name: false, description: false };
-    setDraft((current) => ({ ...current, ...suggestVoucherCopy(current, copyLabels) }));
+    updateDraft((current) => ({ ...current, ...suggestVoucherCopy(current, copyLabels) }));
   };
   const footer = step === 1 ? undefined : (
     <div className="flex gap-3">
@@ -183,6 +212,7 @@ export function VoucherWizard(props: VoucherWizardProps) {
       footer={footer}
       className="w-full max-w-[100dvw] overflow-x-clip md:max-w-3xl"
     >
+      <FormProvider {...form}>
       {step === 1 ? (
         <section className="space-y-4">
           <p className="text-sm text-muted-foreground">Chọn loại voucher để tiếp tục.</p>
@@ -209,21 +239,17 @@ export function VoucherWizard(props: VoucherWizardProps) {
               <div className="min-w-0"><h3 className="font-bold">Nội dung khách sẽ thấy</h3><p className="mt-1 text-xs text-muted-foreground">Tự cập nhật theo quyền lợi cho đến khi bạn sửa tay.</p></div>
               <button type="button" disabled={!suggestion.name} onClick={restoreSuggestion} className="min-h-11 shrink-0 rounded-xl px-3 text-xs font-semibold text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40">Dùng gợi ý</button>
             </div>
-            <label className="block min-w-0 space-y-1.5"><span className="text-sm font-semibold">Tên voucher</span><input value={draft.name} onChange={(event) => update("name", event.target.value)} placeholder="Tên ngắn gọn khách dễ hiểu" className={inputClass} /></label>
+            <label className="block min-w-0 space-y-1.5"><span className="text-sm font-semibold">Tên voucher</span><input value={draft.name} onBlur={() => void form.trigger("name")} onChange={(event) => update("name", event.target.value)} placeholder="Tên ngắn gọn khách dễ hiểu" className={`${inputClass} ${errorFor("name") ? "border-destructive" : ""}`} />{errorFor("name") ? <span className="text-xs text-destructive">{errorFor("name")}</span> : null}</label>
             <label className="block min-w-0 space-y-1.5"><span className="text-sm font-semibold">Mô tả</span><textarea value={draft.description} onChange={(event) => update("description", event.target.value)} placeholder="Mô tả quyền lợi và điều kiện áp dụng" className="min-h-24 w-full min-w-0 max-w-full rounded-xl border border-input bg-background p-3 text-sm outline-none focus:border-primary" /></label>
+            {applicableItems ? <p className="text-sm text-muted-foreground">{applicableItems}</p> : null}
           </section>
         </div>
       ) : null}
       {step === 3 ? (
-        <div className="min-w-0 space-y-4 overflow-x-clip">
-          <AdaptiveSelect label="Cách khách nhận voucher" options={[{ value: "AUTO_GRANT", label: "Tự có trong ví" }, { value: "FREE_CLAIM", label: "Nhận miễn phí" }, { value: "POINTS_EXCHANGE", label: "Đổi bằng điểm" }]} value={draft.acquisitionMode} onChange={(value) => update("acquisitionMode", value as VoucherDraft["acquisitionMode"])} />
-          {draft.acquisitionMode === "POINTS_EXCHANGE" ? <NumberField label="Số điểm cần đổi" value={draft.pointsCost} min={1} onChange={(value) => update("pointsCost", value ?? 0)} /> : null}
-          <label className="space-y-1.5"><span className="text-sm font-semibold">Dùng đến hết ngày (không bắt buộc)</span><input type="date" value={draft.endsAt} onChange={(event) => update("endsAt", event.target.value)} className={inputClass} /></label>
-          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2"><NumberField label="Số voucher phát hành (trống = không giới hạn)" value={draft.quantity} min={1} onChange={(value) => update("quantity", value)} /><NumberField label="Tối đa mỗi khách" value={draft.maxPerUser} min={1} onChange={(value) => update("maxPerUser", value ?? 1)} /><NumberField label="Hạn dùng sau khi nhận (ngày)" value={draft.expiresAfterDays} min={1} onChange={(value) => update("expiresAfterDays", value)} /></div>
-          <div className="rounded-xl bg-muted p-4 text-sm"><strong>{draft.name}</strong><p className="mt-1 text-muted-foreground">{review}</p><p className="mt-2 font-semibold text-amber-800">{liability === null ? "Chi phí tối đa: chưa giới hạn" : `Chi phí tối đa ước tính: ${liability.toLocaleString("vi-VN")}đ`}</p></div>
-        </div>
+        <VoucherIssuanceFields draft={draft} update={update} form={form} submitting={props.submitting} review={review} liability={liability} />
       ) : null}
+      </FormProvider>
     </ResponsiveOverlay>
-    <ConfirmModal isOpen={confirmOpen} title="Xác nhận phát hành voucher?" message={`${review}. ${draft.quantity === null ? "Số lượng phát hành chưa giới hạn." : `Phát hành tối đa ${draft.quantity} voucher.`} Quy tắc sẽ không thể sửa sau khi tạo.`} confirmLabel={props.submitting ? "Đang tạo…" : "Phát hành"} onCancel={() => setConfirmOpen(false)} onConfirm={() => { setConfirmOpen(false); props.onSubmit(buildVoucherInput(draft)); }} />
+    <ConfirmModal isOpen={confirmState === "open"} isLoading={props.submitting} title="Xác nhận phát hành voucher?" message={`${review}. ${draft.quantity === null ? "Số lượng phát hành chưa giới hạn." : `Phát hành tối đa ${draft.quantity} voucher.`} Quy tắc sẽ không thể sửa sau khi tạo.`} confirmLabel={props.submitting ? "Đang tạo…" : "Phát hành"} onCancel={() => setConfirmState("closed")} onAfterClose={handleConfirmAfterClose} onConfirm={() => void submitDraft((current) => props.onSubmit(buildVoucherInput(current)), handleSubmitSuccess)} />
   </>;
 }

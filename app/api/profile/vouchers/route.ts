@@ -8,13 +8,17 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Prisma, VoucherStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { toPublicVoucherDto } from "@/lib/voucherPublicDto";
-import { attachBundleRewardBaselines } from "@/lib/voucherBundleDto";
 import {
-  attachOwnedVoucherAvailability,
+  PUBLIC_VOUCHER_PACKAGE_SELECT,
+  serializePublicVoucherDto,
+  toPublicVoucherDto,
+} from "@/lib/vouchers/voucherPublicDto";
+import { attachBundleRewardBaselines } from "@/lib/vouchers/voucherBundleDto";
+import { attachOwnedVoucherAvailability } from "@/lib/vouchers/ownedVoucherAvailability";
+import {
   loadVoucherAvailabilityCatalog,
   type VoucherAvailabilityDatabase,
-} from "@/lib/voucherAvailability";
+} from "@/lib/vouchers/voucherAvailability";
 
 export const dynamic = "force-dynamic";
 
@@ -48,9 +52,10 @@ export async function GET(req: NextRequest) {
       : null;
     const cursor = searchParams.get("cursor");
     const cursorId = cursor ? decodeCursor(cursor) : null;
-    const status = searchParams.get("status") as VoucherStatus | null;
+    const statusParam = searchParams.get("status");
+    const statuses = statusParam ? [...new Set(statusParam.split(","))] as VoucherStatus[] : [];
     const validStatuses: VoucherStatus[] = ["ACTIVE", "RESERVED", "REDEEMED", "EXPIRED", "REFUNDED"];
-    if (!limit || (cursor && !cursorId) || (status && !validStatuses.includes(status))) {
+    if (!limit || (cursor && !cursorId) || statuses.some((status) => !validStatuses.includes(status))) {
       return NextResponse.json(
         { error: "Invalid pagination", code: "VALIDATION_ERROR" },
         { status: 400 },
@@ -58,7 +63,7 @@ export async function GET(req: NextRequest) {
     }
 
     const now = new Date();
-    const lifecycleWhere: Prisma.VoucherWhereInput = status === "ACTIVE"
+    const lifecycleFilters = statuses.map((status): Prisma.VoucherWhereInput => status === "ACTIVE"
       ? { status: "ACTIVE", OR: [{ expires_at: null }, { expires_at: { gt: now } }] }
       : status === "EXPIRED"
         ? {
@@ -67,9 +72,10 @@ export async function GET(req: NextRequest) {
               { status: "ACTIVE", expires_at: { lte: now } },
             ],
           }
-        : status
-          ? { status }
-          : {};
+        : { status });
+    const lifecycleWhere: Prisma.VoucherWhereInput = lifecycleFilters.length > 1
+      ? { OR: lifecycleFilters }
+      : lifecycleFilters[0] ?? {};
 
     const vouchers = await prisma.voucher.findMany({
       where: { user_id: session.id, ...lifecycleWhere },
@@ -78,39 +84,12 @@ export async function GET(req: NextRequest) {
       ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
       include: {
         package: {
-          select: {
-            name: true,
-            description: true,
-            points_cost: true,
-            acquisition_mode: true,
-            ends_at: true,
-            bundleRule: {
-              select: {
-                buy_quantity: true,
-                reward_quantity: true,
-                reward_kind: true,
-                reward_mode: true,
-                benefit_scaling: true,
-                max_applications_order: true,
-                max_reward_units_order: true,
-                productScopes: {
-                  select: {
-                    role: true,
-                    menu_item_id: true,
-                    default_powder_id: true,
-                    default_base_liquid_id: true,
-                    sizes: { select: { size: true } },
-                    menuItem: { select: { name: true, category: true, is_available: true } },
-                  },
-                },
-                addonRewards: { select: { addon_option_id: true } },
-              },
-            },
-          },
+          select: PUBLIC_VOUCHER_PACKAGE_SELECT,
         },
         menuItem: { select: { name: true, is_available: true } },
         menuItemScopes: { include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } } },
         addonOption: { select: { label: true } },
+        addonOptionScopes: { include: { addonOption: { select: { label: true, price_vnd: true, is_active: true, gram_value: true } } } },
         // Staff who redeemed it offline (null = redeemed by the user themselves online)
         staff: { select: { name: true, role: true } },
         pointsLogs: {
@@ -130,9 +109,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       data: withBaselines.map((voucher) => {
         const dto = toPublicVoucherDto(voucher);
-        return voucher.status === "ACTIVE" && voucher.expires_at && voucher.expires_at <= now
+        const effectiveDto = voucher.status === "ACTIVE" && voucher.expires_at && voucher.expires_at <= now
           ? { ...dto, status: "EXPIRED" as const }
           : dto;
+        return serializePublicVoucherDto(effectiveDto);
       }),
       meta: { limit, has_more: hasMore, next_cursor: nextCursor },
     });

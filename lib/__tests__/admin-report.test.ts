@@ -230,12 +230,13 @@ describe("GET /api/admin/report â€” quyá»n truy cáº­p", () => {
     expect(body.code).toBe("VALIDATION_ERROR");
   });
 
-  it("từ chối ngày Gregorian không tồn tại và range quá 366 ngày", async () => {
+  it.each([
+    [{ startDate: "2026-02-30", endDate: "2026-03-01" }],
+    [{ startDate: "2025-01-01", endDate: "2026-01-02" }],
+  ])("từ chối ngày hoặc khoảng ngày không hợp lệ %o", async (params) => {
     mockGetSession.mockResolvedValue(adminSession);
-    const invalidDate = await GET(makeReq({ startDate: "2026-02-30", endDate: "2026-03-01" }));
-    const tooLong = await GET(makeReq({ startDate: "2025-01-01", endDate: "2026-01-02" }));
-    expect(invalidDate.status).toBe(400);
-    expect(tooLong.status).toBe(400);
+    const res = await GET(makeReq(params));
+    expect(res.status).toBe(400);
     expect(mockOrderFindMany).not.toHaveBeenCalled();
   });
 });

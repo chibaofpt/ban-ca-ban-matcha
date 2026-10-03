@@ -3,11 +3,22 @@ import type { MenuItem, Size } from "@/src/lib/types/menu";
 interface VoucherEligibleMenuItemDescriptor {
   menu_item_id: string;
   is_available: boolean;
+  milk_type_id?: string | null;
+}
+
+interface ProductDiscountBaseLiquidDescriptor {
+  voucher_type: string;
+  milk_type_id?: string | null;
+  eligible_menu_items?: Array<{
+    menu_item_id: string;
+    milk_type_id?: string | null;
+  }>;
 }
 
 export interface EligibleProductDiscountItem {
   item: MenuItem;
   allowedSizes: Size[];
+  milkTypeId?: string;
 }
 
 /** Intersects a product-discount voucher scope with currently sellable menu-item sizes. */
@@ -32,8 +43,23 @@ export function getEligibleProductDiscountItems(
     if (!eligibleIds.has(item.id)) return [];
     const sellableSizes = new Set(item.sizes.map((row) => row.size));
     const allowedSizes = voucherSizes.filter((size) => sellableSizes.has(size));
-    return allowedSizes.length > 0 ? [{ item, allowedSizes }] : [];
+    const target = eligibleMenuItems?.find((candidate) => candidate.menu_item_id === item.id);
+    if (allowedSizes.length === 0) return [];
+    const milkTypeId = target?.milk_type_id ?? null;
+    return [{ item, allowedSizes, ...(milkTypeId ? { milkTypeId } : {}) }];
   });
+}
+
+/** Match the selected Base Liquid against a PRODUCT_DISCOUNT target, with legacy-anchor fallback. */
+export function productDiscountMatchesBaseLiquid(
+  voucher: ProductDiscountBaseLiquidDescriptor,
+  menuItemId: string,
+  selectedBaseLiquidId: string | null | undefined,
+): boolean {
+  if (voucher.voucher_type !== "PRODUCT_DISCOUNT") return true;
+  const target = voucher.eligible_menu_items?.find((item) => item.menu_item_id === menuItemId);
+  const requiredBaseLiquidId = target?.milk_type_id ?? voucher.milk_type_id ?? null;
+  return requiredBaseLiquidId === null || requiredBaseLiquidId === selectedBaseLiquidId;
 }
 
 export type VoucherActionModel =
@@ -50,7 +76,7 @@ export interface VoucherSelectionModel {
 }
 
 type ActionInput =
-  | ({ context: "wallet"; busy: boolean } & Partial<VoucherSelectionModel>)
+  | ({ context: "wallet"; busy: boolean; label?: string } & Partial<VoucherSelectionModel>)
   | ({ context: "cart"; busy?: boolean } & VoucherSelectionModel);
 
 export interface ProductDiscountTarget {
@@ -76,6 +102,10 @@ interface MainCartVoucherDescriptor {
   status: string;
 }
 
+interface CartLineVoucherDescriptor {
+  voucher_type: "ITEM" | "PRODUCT" | "PRODUCT_DISCOUNT";
+}
+
 interface OrderVoucherDescriptor {
   qr_token: string;
   voucher_type: string;
@@ -88,6 +118,24 @@ export function filterActiveMainCartVouchers<T extends MainCartVoucherDescriptor
   voucherType: "DISCOUNT" | "FREESHIP" | "BUNDLE" | "PRODUCT_DISCOUNT" | "PRODUCT" | "ITEM" | "ADDON",
 ): T[] {
   return vouchers.filter((voucher) => voucher.voucher_type === voucherType && voucher.status === "ACTIVE");
+}
+
+/** Keeps selectable and reserved vouchers visible so the cart can explain their state. */
+export function filterMainCartVouchers<T extends MainCartVoucherDescriptor>(
+  vouchers: T[],
+  voucherType: "DISCOUNT" | "FREESHIP" | "PRODUCT_DISCOUNT" | "PRODUCT" | "ITEM" | "ADDON",
+): T[] {
+  return vouchers.filter((voucher) =>
+    voucher.voucher_type === voucherType &&
+    (voucher.status === "ACTIVE" || voucher.status === "RESERVED"),
+  );
+}
+
+/** Preserves the owned voucher type when attaching it to a cart line. */
+export function getCartLineVoucherKind(
+  voucher: CartLineVoucherDescriptor,
+): CartLineVoucherDescriptor["voucher_type"] {
+  return voucher.voucher_type;
 }
 
 /** Selects an order voucher while replacing the mutually exclusive token of the same class. */
@@ -111,10 +159,9 @@ export function selectOrderVoucherToken<T extends OrderVoucherDescriptor>(
 /** Resolves wallet action routing without coupling card content to its action. */
 export function resolveWalletUseNowIntent(_input: {
   voucherType: string;
-  productDiscountTargets?: ProductDiscountTarget[];
   canApplyOrder?: boolean;
 }): WalletUseNowIntent {
-  const { voucherType, productDiscountTargets = [], canApplyOrder = false } = _input;
+  const { voucherType, canApplyOrder = false } = _input;
   if (voucherType === "PRODUCT" || voucherType === "ITEM") return { kind: "apply-product" };
   if (voucherType === "PRODUCT_DISCOUNT") {
     // Always open detail so customer can pick item + customize via ProductModal
@@ -130,7 +177,7 @@ export function buildVoucherActionModel(input: ActionInput): VoucherActionModel 
   if (input.context === "wallet") {
     return {
       kind: "use-now",
-      label: "Dùng ngay",
+      label: input.label ?? "Dùng ngay",
       disabled: input.busy || input.selectable === false,
       ...(input.disabledReason ? { reason: input.disabledReason } : {}),
       busy: input.busy,

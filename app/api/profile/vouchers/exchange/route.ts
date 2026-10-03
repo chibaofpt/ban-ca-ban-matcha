@@ -7,7 +7,7 @@ import {
   issueVoucher,
   VoucherIssuanceError,
   type VoucherIssuanceDatabase,
-} from "@/lib/voucherIssuance";
+} from "@/lib/vouchers/voucherIssuance";
 
 export const dynamic = "force-dynamic";
 

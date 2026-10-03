@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import type { MenuData, MenuItem, MenuItemSize, MilkTypeOption, AddonGroup, AddonOption, MenuItemPowder } from "@/src/lib/types/menu";
+import type { MenuData, MenuItem, MenuItemSize, MilkTypeOption, AddonGroup, AddonOption, MenuItemPowder } from "@/contracts/menu";
 import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
 import {
   resolveDefaultBaseLiquidId,
@@ -28,7 +28,7 @@ async function fetchMenuData(): Promise<MenuData> {
       await Promise.all([
         prisma.menuItem.findMany({
           where: { is_available: true },
-          orderBy: { sort_order: "asc" },
+          orderBy: [{ sort_order: "asc" }, { id: "asc" }],
           include: {
             sizes: true,
             fusionAllowedPowders: {

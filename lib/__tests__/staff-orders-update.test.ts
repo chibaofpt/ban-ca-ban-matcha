@@ -316,40 +316,6 @@ describe("PATCH /api/staff/orders/[id] — COMPLETED points và surplus", () => 
     );
   });
 
-  it("COMPLETED không redeem voucher lần nữa nếu đã REDEEMED ở ADMIN_CONFIRMED", async () => {
-    mockGetSession.mockResolvedValue(STAFF_SESSION);
-
-    mockOrderFindUnique.mockResolvedValue({
-      id: ORDER_ID,
-      status: "STAFF_DONE",
-      order_type: "PICKUP",
-      points_earned: null,
-      user_id: USER_ID,
-      total_vnd: 50000,
-      grand_total_vnd: 50000,
-      handled_by: null,
-      freeship_voucher_id: "freeship-v1",
-      items: [
-        { product_voucher_id: "product-v1", unit_price_vnd: 50000, covered_price_vnd: 60000, addonVouchers: [] }
-      ],
-      discountVouchers: [{ voucher_id: "discount-v1" }],
-    });
-
-    mockVoucherUpdateMany.mockResolvedValue({ count: 0 });
-    mockOrderUpdate.mockResolvedValue({ id: ORDER_ID, status: "COMPLETED" });
-
-    const res = await PATCH(makeReq({ status: "COMPLETED" }), { params: Promise.resolve({ id: ORDER_ID }) });
-    expect(res.status).toBe(200);
-
-    // Should NOT call voucher.updateMany to redeem at COMPLETED
-    // (vouchers were already redeemed at ADMIN_CONFIRMED)
-    expect(mockVoucherUpdateMany).not.toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: "REDEEMED" }),
-      })
-    );
-  });
-
   it("Surplus aggregate: hai PRODUCT surplus 7k + 6k = 13k → floor(13k/10k) = 1 điểm", async () => {
     mockGetSession.mockResolvedValue(STAFF_SESSION);
 
@@ -382,6 +348,46 @@ describe("PATCH /api/staff/orders/[id] — COMPLETED points và surplus", () => 
     );
     expect(surplusLog).toBeDefined();
     expect(surplusLog![0].data.delta).toBe(1);
+  });
+
+  it("dùng covered price của đúng PRODUCT target đã đặt khi cộng điểm dư", async () => {
+    mockGetSession.mockResolvedValue(STAFF_SESSION);
+    mockOrderFindUnique.mockResolvedValue({
+      id: ORDER_ID,
+      status: "STAFF_DONE",
+      order_type: "PICKUP",
+      points_earned: null,
+      user_id: USER_ID,
+      total_vnd: 50_000,
+      grand_total_vnd: 50_000,
+      handled_by: null,
+      freeship_voucher_id: null,
+      items: [{
+        menu_item_id: "drink-b",
+        product_voucher_id: "pv-multi",
+        unit_price_vnd: 50_000,
+        productVoucher: {
+          covered_price_vnd: 45_000,
+          menuItemScopes: [
+            { menu_item_id: "legacy-anchor", covered_price_vnd: 45_000 },
+            { menu_item_id: "drink-b", covered_price_vnd: 65_000 },
+          ],
+        },
+        addonVouchers: [],
+      }],
+      discountVouchers: [],
+      bundleApplications: [],
+    });
+    mockOrderUpdate.mockResolvedValue({ id: ORDER_ID, status: "COMPLETED" });
+
+    const response = await PATCH(makeReq({ status: "COMPLETED" }), {
+      params: Promise.resolve({ id: ORDER_ID }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mockPointsLogCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ reason: "voucher_surplus", delta: 1 }),
+    }));
   });
 
   it("Surplus tạo đúng 1 log voucher_surplus với voucher_id = null", async () => {

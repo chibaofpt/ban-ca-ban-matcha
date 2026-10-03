@@ -1,19 +1,20 @@
 import { apiClient as api } from "@/src/lib/api/client";
-import { Address, AddressPayload } from "@/src/lib/types/address";
+import type { ApiResponse } from "@/contracts/api";
+import type { Address, AddressPayload } from "@/contracts/address";
 
 export const addressService = {
   getAddresses: async (): Promise<Address[]> => {
-    const { data } = await api.get<{ data: Address[] }>("/api/profile/addresses");
+    const { data } = await api.get<ApiResponse<Address[]>>("/api/profile/addresses");
     return data.data;
   },
 
   createAddress: async (payload: AddressPayload): Promise<Address> => {
-    const { data } = await api.post<{ data: Address }>("/api/profile/addresses", payload);
+    const { data } = await api.post<ApiResponse<Address>>("/api/profile/addresses", payload);
     return data.data;
   },
 
   updateAddress: async (id: string, payload: AddressPayload): Promise<Address> => {
-    const { data } = await api.put<{ data: Address }>(`/api/profile/addresses/${id}`, payload);
+    const { data } = await api.put<ApiResponse<Address>>(`/api/profile/addresses/${id}`, payload);
     return data.data;
   },
 
@@ -22,7 +23,7 @@ export const addressService = {
   },
 
   setDefaultAddress: async (id: string): Promise<Address> => {
-    const { data } = await api.put<{ data: Address }>(`/api/profile/addresses/${id}`, { is_default: true });
+    const { data } = await api.put<ApiResponse<Address>>(`/api/profile/addresses/${id}`, { is_default: true });
     return data.data;
   },
 };

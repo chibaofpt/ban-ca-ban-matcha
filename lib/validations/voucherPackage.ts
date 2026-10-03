@@ -1,8 +1,16 @@
 import { z } from "zod";
 
-const acquisitionModeSchema = z.enum(["POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"]);
+const acquisitionModeSchema = z.enum(["NONE", "POINTS_EXCHANGE", "FREE_CLAIM", "AUTO_GRANT"]);
+const visibilitySchema = z.enum(["PUBLIC", "PRIVATE"]).default("PUBLIC");
 const sizeSchema = z.enum(["SMALL", "MEDIUM", "LARGE"]);
 const nullableUuid = z.string().uuid().nullable().optional();
+
+const productTargetSchema = z.object({
+  menu_item_id: z.string().uuid(),
+  size: sizeSchema,
+  matcha_powder_id: nullableUuid,
+  milk_type_id: nullableUuid,
+}).strict();
 
 const bundleProductSchema = z.object({
   menu_item_id: z.string().uuid(),
@@ -27,6 +35,7 @@ const bundleRuleSchema = z.object({
 const commonFields = {
   name: z.string().trim().min(1).max(200),
   description: z.string().trim().max(500).optional(),
+  visibility: visibilitySchema,
   acquisition_mode: acquisitionModeSchema.default("POINTS_EXCHANGE"),
   points_cost: z.number().int().min(0),
   ends_at: z.string().datetime().nullable().optional(),
@@ -50,6 +59,7 @@ const rawVoucherPackageSchema = z.discriminatedUnion("voucher_type", [
     ...commonFields,
     voucher_type: z.literal("ITEM"),
     menu_item_id: z.string().uuid(),
+    eligible_menu_item_ids: z.array(z.string().uuid()).min(1).max(100).optional(),
   }),
   z.object({
     ...commonFields,
@@ -59,6 +69,7 @@ const rawVoucherPackageSchema = z.discriminatedUnion("voucher_type", [
     matcha_powder_id: nullableUuid,
     milk_type_id: nullableUuid,
     included_addon_option_ids: z.array(z.string().uuid()).max(100).default([]),
+    product_targets: z.array(productTargetSchema).min(1).max(100).optional(),
   }),
   z.object({
     ...commonFields,
@@ -69,11 +80,13 @@ const rawVoucherPackageSchema = z.discriminatedUnion("voucher_type", [
     eligible_sizes: z.array(sizeSchema).min(1).max(3),
     discount_value: z.number().int().positive().optional(),
     reference_size: sizeSchema.optional(),
+    milk_type_id: nullableUuid,
   }),
   z.object({
     ...commonFields,
     voucher_type: z.literal("ADDON"),
     addon_option_id: z.string().uuid(),
+    eligible_addon_option_ids: z.array(z.string().uuid()).min(1).max(100).optional(),
   }),
   z.object({
     ...commonFields,
@@ -92,12 +105,30 @@ const rawVoucherPackageSchema = z.discriminatedUnion("voucher_type", [
 /** Validates every admin voucher package before any database access. */
 export const createVoucherPackageSchema = rawVoucherPackageSchema.superRefine((data, ctx) => {
   const usesPoints = data.acquisition_mode === "POINTS_EXCHANGE";
+  const privatePackage = data.visibility === "PRIVATE";
+  if (privatePackage && data.acquisition_mode !== "NONE") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["acquisition_mode"],
+      message: "PRIVATE package requires ADMIN issuance",
+    });
+  }
+  if (!privatePackage && data.acquisition_mode === "NONE") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["acquisition_mode"],
+      message: "PUBLIC package requires a customer acquisition mode",
+    });
+  }
   if ((usesPoints && data.points_cost < 1) || (!usesPoints && data.points_cost !== 0)) {
     ctx.addIssue({
       code: "custom",
       path: ["points_cost"],
       message: usesPoints ? "POINTS_EXCHANGE requires positive points" : "Free acquisition requires zero points",
     });
+  }
+  if (!privatePackage && !usesPoints && data.acquisition_mode !== "NONE" && data.max_per_user !== 1) {
+    ctx.addIssue({ code: "custom", path: ["max_per_user"], message: "Free acquisition allows one voucher per customer" });
   }
   if (data.ends_at && new Date(data.ends_at) <= new Date()) {
     ctx.addIssue({ code: "custom", path: ["ends_at"], message: "ends_at must be in the future" });
@@ -152,6 +183,32 @@ export const createVoucherPackageSchema = rawVoucherPackageSchema.superRefine((d
       }
     }
   }
+  if (data.voucher_type === "ITEM" && data.eligible_menu_item_ids) {
+    if (new Set(data.eligible_menu_item_ids).size !== data.eligible_menu_item_ids.length) {
+      ctx.addIssue({ code: "custom", path: ["eligible_menu_item_ids"], message: "Duplicate eligible menu item" });
+    }
+    if (!data.eligible_menu_item_ids.includes(data.menu_item_id)) {
+      ctx.addIssue({ code: "custom", path: ["menu_item_id"], message: "Legacy anchor must belong to eligible scope" });
+    }
+  }
+  if (data.voucher_type === "PRODUCT" && data.product_targets) {
+    const ids = data.product_targets.map((target) => target.menu_item_id);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({ code: "custom", path: ["product_targets"], message: "Duplicate product target" });
+    }
+    const anchor = data.product_targets.find((target) => target.menu_item_id === data.menu_item_id);
+    if (!anchor || anchor.size !== data.size) {
+      ctx.addIssue({ code: "custom", path: ["menu_item_id"], message: "Legacy anchor must match one product target" });
+    }
+  }
+  if (data.voucher_type === "ADDON" && data.eligible_addon_option_ids) {
+    if (new Set(data.eligible_addon_option_ids).size !== data.eligible_addon_option_ids.length) {
+      ctx.addIssue({ code: "custom", path: ["eligible_addon_option_ids"], message: "Duplicate eligible addon option" });
+    }
+    if (!data.eligible_addon_option_ids.includes(data.addon_option_id)) {
+      ctx.addIssue({ code: "custom", path: ["addon_option_id"], message: "Legacy anchor must belong to eligible scope" });
+    }
+  }
   if (data.voucher_type !== "BUNDLE") return;
 
   const rule = data.bundle_rule;
@@ -191,4 +248,4 @@ export const createVoucherPackageSchema = rawVoucherPackageSchema.superRefine((d
   }
 });
 
-export type CreateVoucherPackageInput = z.infer<typeof createVoucherPackageSchema>;
+export type { CreateVoucherPackageInput } from "@/contracts/admin/voucher";

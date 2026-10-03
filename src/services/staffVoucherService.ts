@@ -7,15 +7,15 @@
 
 import { apiClient } from "@/src/lib/api/client";
 import type { ApiResponse } from "@/src/lib/types/api";
-import type { MyVoucher, ExchangedVoucher } from "./customerVoucherService";
+import type { ExchangedVoucher, MyVoucher } from "@/contracts/voucher";
 
 // Re-export for convenience
-export type { MyVoucher, ExchangedVoucher } from "./customerVoucherService";
+export type { ExchangedVoucher, MyVoucher } from "@/contracts/voucher";
 
 // ── API Calls ─────────────────────────────────────────────────────────────────
 
 /**
- * Fetches all ACTIVE vouchers belonging to a given customer.
+ * Fetches ACTIVE and RESERVED vouchers belonging to a given customer.
  * Calls GET /api/staff/users/[id]/vouchers (requires STAFF or ADMIN auth).
  */
 export async function fetchCustomerVouchers(userQrToken: string): Promise<MyVoucher[]> {

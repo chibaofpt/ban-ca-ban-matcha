@@ -14,7 +14,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { checkStoreOpen, validatePickupTime } from "@/lib/storeSchedule";
+import { checkStoreOpen, validatePickupTime } from "@/lib/store/storeSchedule";
 
 const mondayAt = (hour: number, minute = 0) => new Date(Date.UTC(2026, 8, 7, hour - 7, minute));
 

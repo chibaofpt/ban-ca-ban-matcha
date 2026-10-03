@@ -4,44 +4,50 @@ import React, { useCallback, useState } from 'react';
 import Image from 'next/image';
 import { Coffee, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
-import type { MenuItem, MilkTypeOption } from '@/src/lib/types/menu';
+import type { MenuItem, MilkTypeOption, Size } from '@/src/lib/types/menu';
 import { usePowderStore } from '@/src/lib/store/powderStore';
 import { useCartStore } from '@/src/lib/store/cartStore';
 import { calcLattePrice, calcFusionPrice, resolveGram } from '@/src/utils/pricing';
 import { formatKa } from "@/src/utils/display";
 import { CartQuantityButton } from "@/src/components/menu/CartQuantityButton";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 
 interface MenuCardProps {
   item: MenuItem;
   milkTypes: MilkTypeOption[];
   /** Total quantity of this menu item across all cart variants. */
-  cartQuantity: number;
+  cartQuantity?: number;
   /** Number of distinct cart entries (variants) for this item. */
-  cartVariantCount: number;
+  cartVariantCount?: number;
   /** Whether any cart variant for this item has a voucher. */
-  cartHasVoucher: boolean;
+  cartHasVoucher?: boolean;
   /** Click handler for the card body (opens ProductModal or ExistingCartItemSheet). */
   onItemClick: (item: MenuItem) => void;
   priority?: boolean;
+  /** Compact voucher-detail presentation without cart quantity controls. */
+  compact?: boolean;
+  /** Disable the compact voucher-target action while wallet data is read-only. */
+  disabled?: boolean;
+  /** Restrict rendered drink sizes to the voucher-configured choices. */
+  allowedSizes?: Size[];
 }
-
-const SIZE_CARD_LABELS: Record<string, string> = {
-  SMALL: "Cá Con",
-  MEDIUM: "Cá Vừa",
-  LARGE: "Cá Lớn",
-};
 
 /** Individual product card displayed on the customer menu page. */
 const MenuCard: React.FC<MenuCardProps> = ({
   item,
   milkTypes,
-  cartQuantity,
-  cartVariantCount,
-  cartHasVoucher,
+  cartQuantity = 0,
+  cartVariantCount = 0,
+  cartHasVoucher = false,
   onItemClick,
   priority,
+  compact = false,
+  disabled = false,
+  allowedSizes,
 }) => {
-  const sizes = item.sizes.filter((s) => s.base_price_vnd != null);
+  const sizes = item.sizes.filter((s) =>
+    s.base_price_vnd != null && (!allowedSizes || allowedSizes.includes(s.size)),
+  );
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
   const [loadedImageUrl, setLoadedImageUrl] = useState<string | null>(null);
@@ -98,12 +104,23 @@ const MenuCard: React.FC<MenuCardProps> = ({
 
   return (
     <motion.div
-      onClick={() => onItemClick(item)}
-      whileTap={{ scale: 0.96 }}
-      className="group flex flex-row items-center justify-between gap-4 md:gap-5 w-full h-[130px] md:h-[150px] border-b border-dashed border-primary/20 last:border-0 transition-all duration-300 cursor-pointer bg-transparent"
+      onClick={compact || disabled ? undefined : () => onItemClick(item)}
+      whileTap={disabled ? undefined : { scale: 0.96 }}
+      className={compact
+        ? "group relative flex min-h-[108px] w-full flex-row items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-secondary text-primary-foreground p-3 transition-all duration-200"
+        : "group flex flex-row items-center justify-between gap-4 md:gap-5 w-full h-[130px] md:h-[150px] border-b border-dashed border-primary/20 last:border-0 transition-all duration-300 cursor-pointer bg-transparent"}
     >
+      {compact ? (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onItemClick(item)}
+          aria-label={`Chọn ${item.name}`}
+          className="absolute inset-0 z-10 cursor-pointer rounded-2xl bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed"
+        />
+      ) : null}
       {/* Image Area */}
-      <div className="h-[80%] aspect-square bg-[#eef1eb] relative overflow-hidden flex-shrink-0 rounded-2xl">
+      <div className={`${compact ? "h-[76px] w-[76px] self-center" : "h-[80%]"} aspect-square bg-[#eef1eb] relative overflow-hidden flex-shrink-0 rounded-2xl`}>
         {canRenderImage && item.image_url ? (
           <>
             <div
@@ -131,9 +148,9 @@ const MenuCard: React.FC<MenuCardProps> = ({
       </div>
 
       {/* Content Area */}
-      <div className="flex flex-col flex-1 h-[80%] justify-between py-1 text-left items-start min-w-0">
+      <div className={compact ? "flex min-w-0 flex-1 flex-col justify-between gap-2 self-stretch text-left" : "flex flex-col flex-1 h-[80%] justify-between py-1 text-left items-start min-w-0"}>
         <div className="w-full">
-          <h3 className="font-serif font-medium text-lg text-[#2d4a22] leading-tight line-clamp-2 mb-1">
+          <h3 className={`font-serif font-medium leading-tight line-clamp-2 mb-1 ${compact ? "break-words text-base text-primary-foreground" : "text-lg text-[#2d4a22]"}`}>
             {item.name}
             {item.is_seasonal && (
               <span className="inline-flex items-center bg-amber-50 text-amber-600 text-[8px] font-sans font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border border-amber-200/50 align-middle ml-2 -translate-y-[1px]">
@@ -142,19 +159,19 @@ const MenuCard: React.FC<MenuCardProps> = ({
             )}
           </h3>
           {item.description && (
-            <p className="text-[11px] text-primary/60 line-clamp-2 leading-relaxed">
+            <p className={`text-[11px] leading-relaxed ${compact ? "line-clamp-1 break-words text-primary-foreground" : "line-clamp-2 text-primary/60"}`}>
               {item.description}
             </p>
           )}
         </div>
 
         {/* Sizes & Prices + Cart Button — inline row, stepper expands left */}
-        <div className="mt-auto pt-2 flex items-center w-full gap-2">
+        <div className={compact ? "mt-auto flex w-full shrink-0 items-center gap-2" : "mt-auto pt-2 flex items-center w-full gap-2"}>
           {item.category === "extras" ? (
             <div className="flex flex-1 items-center min-w-0">
               <div className="flex flex-col gap-0.5">
-                <span className="text-[10px] font-bold uppercase tracking-wide text-[#446c35]">Đơn giá</span>
-                <span className="text-base font-bold text-[#5b9a2b]">{formatKa(item.unit_price_vnd ?? 0, "ceil")}</span>
+                <span className={`text-[10px] font-bold uppercase tracking-wide ${compact ? "text-primary-foreground" : "text-[#446c35]"}`}>Đơn giá</span>
+                <span className={`text-base font-bold ${compact ? "text-primary-foreground" : "text-[#5b9a2b]"}`}>{formatKa(item.unit_price_vnd ?? 0, "ceil")}</span>
               </div>
             </div>
           ) : (
@@ -170,10 +187,10 @@ const MenuCard: React.FC<MenuCardProps> = ({
                 const price = getDisplayPrice(s);
                 return (
                   <div key={sizeKey} className="flex flex-col items-center gap-0.5">
-                    <span className={`uppercase tracking-wide whitespace-nowrap ${isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
-                      {SIZE_CARD_LABELS[sizeKey] ?? sizeKey}
+                    <span className={`tracking-wide whitespace-nowrap ${compact ? 'text-[10px] font-bold text-primary-foreground' : isDefault ? 'text-[10px] font-bold text-[#446c35]' : 'text-[9px] font-medium text-primary/40'}`}>
+                      <SizeLabel size={sizeKey} />
                     </span>
-                    <span className={`${isDefault ? 'text-base font-bold text-[#5b9a2b]' : 'text-sm font-semibold text-primary/50'}`}>
+                    <span className={`${compact ? 'text-base font-bold text-primary-foreground' : isDefault ? 'text-base font-bold text-[#5b9a2b]' : 'text-sm font-semibold text-primary/50'}`}>
                       {formatKa(price, "ceil")}
                     </span>
                   </div>
@@ -182,16 +199,18 @@ const MenuCard: React.FC<MenuCardProps> = ({
             </div>
           )}
 
-          <CartQuantityButton
-            quantity={cartQuantity}
-            variantCount={cartVariantCount}
-            hasVoucher={cartHasVoucher}
-            onAdd={() => onItemClick(item)}
-            onOpenVariants={() => onItemClick(item)}
-            onIncrement={handleIncrement}
-            onDecrement={handleDecrement}
-            onRemove={handleRemove}
-          />
+          {!compact && (
+            <CartQuantityButton
+              quantity={cartQuantity}
+              variantCount={cartVariantCount}
+              hasVoucher={cartHasVoucher}
+              onAdd={() => onItemClick(item)}
+              onOpenVariants={() => onItemClick(item)}
+              onIncrement={handleIncrement}
+              onDecrement={handleDecrement}
+              onRemove={handleRemove}
+            />
+          )}
         </div>
       </div>
     </motion.div>

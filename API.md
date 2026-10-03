@@ -5,6 +5,14 @@
 > **Update when:** a supported path/method/field/response behavior changes.
 > **Does not own:** domain formulas, physical database fields or frontend architecture.
 
+## Read by scope
+
+Read `Response Shape`, `Contract Stability`, `Error Codes` and the affected endpoint, not this entire
+catalog. Use the route inventory or search the exact path to locate it. Add `Auth Cookies` and
+`Middleware Behavior` for auth; `Image Upload Flow` for multipart; the relevant payload ceilings,
+rate limits or cron section for those contracts. Implementation belongs to
+[api-layer](.agents/skills/api-layer/SKILL.md); cross-endpoint business rules belong to domain skills.
+
 ---
 
 ## Response Shape
@@ -173,6 +181,7 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/admin/logs` | GET |
 | `/api/admin/menu` | GET, POST |
 | `/api/admin/menu/[id]` | PUT |
+| `/api/admin/menu/reorder` | PUT |
 | `/api/admin/menu/create-latte-with-powder` | POST |
 | `/api/admin/milk-types` | GET, POST |
 | `/api/admin/milk-types/[id]` | PUT, DELETE |
@@ -181,18 +190,39 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/admin/powders` | GET, POST |
 | `/api/admin/powders/[id]` | PUT, DELETE |
 | `/api/admin/report` | GET |
+| `/api/admin/reward-campaigns` | GET, POST |
+| `/api/admin/reward-campaigns/[id]` | GET, PATCH |
+| `/api/admin/reward-campaigns/[id]/pool` | PUT |
+| `/api/admin/reward-campaigns/[id]/boxes` | POST |
+| `/api/admin/reward-campaigns/[id]/boxes/[boxId]` | PATCH, DELETE |
+| `/api/admin/sms-test/connection` | POST |
+| `/api/admin/sms-test/balance` | POST |
+| `/api/admin/sms-test/send-otp` | POST |
+| `/api/admin/sms-test/verify-otp` | POST |
 | `/api/admin/staff` | GET |
 | `/api/admin/store-closure` | POST |
 | `/api/admin/store-schedule` | GET, PUT |
+| `/api/admin/users` | GET |
+| `/api/admin/users/voucher-packages` | GET |
+| `/api/admin/users/[userQrToken]` | GET, PATCH |
+| `/api/admin/users/[userQrToken]/orders` | GET |
+| `/api/admin/users/[userQrToken]/orders/[orderId]` | GET |
+| `/api/admin/users/[userQrToken]/points` | POST |
+| `/api/admin/users/[userQrToken]/vouchers` | GET |
 | `/api/admin/voucher-packages` | GET, POST |
 | `/api/admin/voucher-packages/[id]` | PUT, DELETE |
 | `/api/admin/voucher-packages/[id]/owners` | GET |
+| `/api/admin/voucher-packages/[id]/grants` | POST |
+| `/api/admin/voucher-packages/[id]/recipients/[userQrToken]` | GET |
+| `/api/admin/welcome-reward-settings` | GET, PUT |
 | `/api/auth/check-phone` | POST |
 | `/api/auth/login` | POST |
 | `/api/auth/logout` | POST |
 | `/api/auth/me` | GET |
 | `/api/auth/refresh` | POST |
 | `/api/auth/register` | POST |
+| `/api/customer/rewards/welcome` | GET |
+| `/api/customer/rewards/welcome/open` | POST |
 | `/api/cron/cancel-expired-orders` | GET |
 | `/api/cron/clean-sessions` | GET |
 | `/api/cron/cleanup-menu-images` | GET |
@@ -205,6 +235,7 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/orders/[id]` | GET, PATCH |
 | `/api/powders` | GET |
 | `/api/profile` | GET, PATCH |
+| `/api/profile/password` | PATCH |
 | `/api/profile/addresses` | GET, POST |
 | `/api/profile/addresses/[id]` | PUT, DELETE |
 | `/api/profile/points` | GET |
@@ -227,11 +258,47 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/store-status` | GET |
 | `/api/voucher-packages` | GET |
 
-`GET /api/admin/orders` accepts `exclude_cancelled=true` for the Admin “All” tab. Results remain
-ordered by `created_at DESC`; each non-null `handler` includes `name` and `role` so the Admin UI can
-distinguish orders received by an Admin from those received by Staff.
+`GET /api/admin/orders` accepts `exclude_cancelled=true` for the Admin “All” tab and
+`payment_method=CASH|BANK_TRANSFER` for the payment-method filter. Results remain
+ordered by `created_at DESC`; each non-null `handler` includes `name` and `role`.
+For presentation, `handler` projects the persisted payment confirmer when present, otherwise
+the persisted order handler. No current-session or customer-name fallback is used, and no
+additional actor identifier or response field is exposed.
 
 Auth mutations are rate-limited by hashed IP. Authorization details are defined by each contract and middleware.
+
+### Staging SMS test — ADMIN only
+
+`/test-sms` and these four API routes operate only when `NEXT_PUBLIC_APP_ENV=staging`,
+`VERCEL_ENV=preview`, and `ABENLA_SMS_TEST_ENABLED=true`. When disabled, the page is unavailable
+and an authenticated ADMIN request reaching these API handlers receives 404 before provider work;
+the shared middleware may return its usual 401/403 first for other callers. API handlers recheck
+the live ADMIN session. Responses use `Cache-Control: no-store`.
+
+| Route | Request | `{ data }` response |
+|---|---|---|
+| `POST /api/admin/sms-test/connection` | Empty body | `{ connected, provider_code, checked_at }` |
+| `POST /api/admin/sms-test/balance` | Empty body | `{ balance, checked_at }` |
+| `POST /api/admin/sms-test/send-otp` | `{ phone_number, request_id, message_template }` | `{ challenge_id, masked_phone, expires_at, resend_at, delivery_status, provider_code, sms_per_message }` |
+| `POST /api/admin/sms-test/verify-otp` | `{ challenge_id, otp }` | `{ verified: true }` |
+
+`delivery_status` is `accepted`, `pending`, or `unknown`. `accepted` means the provider accepted
+the request, not that the handset received it. The server generates and verifies a six-digit OTP;
+the `message_template` is supplied by the ADMIN for that send and must contain exactly one `{otp}`
+placeholder, with a maximum of 480 characters; the server substitutes the generated OTP before
+calling ABENLA SendOTP. Challenges expire after five minutes, permit at
+most five incorrect attempts, and are consumed once. Resend has a 60-second admin/phone cooldown.
+Send is capped at five attempts per 10 minutes per admin and 20 attempts per day globally;
+connection and balance together are capped at 10 calls per minute per admin. The SMS test counters
+and challenge fail closed when Redis is unavailable; this is separate from the existing fail-open
+security rate-limit policy. Repeating a `request_id` within 10 minutes never dispatches another
+SMS and returns the same challenge with the latest recorded outcome; it can remain `unknown` if
+the initial dispatch is still running or the outcome could not be persisted. Errors retain the
+standard error envelope, with machine-readable `details.reason` for OTP, cooldown, limit, and
+provider-unavailable outcomes. An explicit ABENLA rejection may include the numeric
+`details.provider_code`, never its free-text message. No OTP or full phone number appears in the response.
+Template validation failures return `400 VALIDATION_ERROR` with `details.reason=INVALID_MESSAGE_TEMPLATE`;
+the template is not persisted in Redis or returned by the API.
 
 ### Payload and value ceilings
 
@@ -256,6 +323,7 @@ order or voucher write.
 | Scope | Limit |
 |---|---:|
 | Auth mutations (`login`, `register`, `check-phone`, `refresh`) | 10/min/IP |
+| Password change (`PATCH /api/profile/password`) | 5/15 min/account + shared `authMutationIp` 10/min/IP |
 | Failed login attempts | 5/15 min/IP |
 | Failed normalized login identifier | 10/15 min/identifier |
 | Customer order creation | 5/10 min/account and 50/10 min/IP |
@@ -267,9 +335,9 @@ order or voucher write.
 
 The implementation uses fixed-window Upstash counters, HMAC-hashes every identifier before it
 becomes a Redis key, and returns `429 TOO_MANY_REQUESTS` with deterministic `Retry-After`. It fails
-open and reports the infrastructure error to Sentry if Redis is absent or unavailable. This is the
-only approved pre-Phase-5 Upstash use: a security control, not application caching or an OTP,
-promotion, or messaging feature.
+open and reports the infrastructure error to Sentry if Redis is absent or unavailable. Rate-limit
+keys are isolated from the cache-aside namespaces used by selected public GET endpoints. Redis is
+not an authorization authority; OTP, promotion and messaging remain Phase-5 work.
 
 ### Cron — `CRON_SECRET` required
 
@@ -357,7 +425,234 @@ in `Asia/Ho_Chi_Minh`.
   insta_name?: string // optional, unique, normalized without @ and to lowercase
 }
 // If phone exists with password_hash = "GHOST_USER_NO_PASSWORD" → UPDATE instead of INSERT
+
+// 201 — existing identity fields remain; welcome_reward is additive
+{
+  data: {
+    name: string
+    phone_number: string
+    insta_name: string | null
+    role: "CUSTOMER" | "STAFF" | "ADMIN"
+    welcome_reward: {
+      id: string
+      mode: "POINTS" | "FIXED_VOUCHER" | "GACHA"
+      status: "PENDING" | "COMPLETED"
+      outcome_kind: "VOUCHER" | "POINTS" | null
+    }
+  }
+}
 ```
+
+Registration creates or resolves exactly one welcome entitlement in the user/session transaction.
+`POINTS` and `FIXED_VOUCHER` complete immediately; only an available `GACHA` entitlement returns
+`PENDING`. Detailed selection, fallback and campaign rules belong to
+[voucher-flow lifecycle](.agents/skills/voucher-flow/references/lifecycle.md#welcome-reward-and-gacha).
+
+An unblocked CUSTOMER ghost row is claimed with a guarded update in that same transaction: the
+submitted name, password hash and Instagram alias replace the placeholder credentials while its
+existing customer history and balances remain attached. A blocked ghost returns `403 FORBIDDEN`.
+An existing registered phone, a non-CUSTOMER row, or losing the concurrent ghost-claim race returns
+`409 CONFLICT`; a create race re-reads the phone and may claim the ghost only if it is still eligible.
+
+### Customer welcome reward
+
+Both routes are CUSTOMER-only. `GET /api/customer/rewards/welcome` is read-only and returns
+`{ data: { reward: WelcomeReward | null } }`. It never creates, opens or reconciles an entitlement.
+
+```ts
+type RewardBox = {
+  id: string
+  name: string
+  closed_image_url: string
+  open_image_url: string
+  mouth_anchor_x: number // normalized 0..1
+  mouth_anchor_y: number // normalized 0..1
+  sort_order: number
+}
+type WelcomeReward = {
+  id: string
+  mode: "POINTS" | "FIXED_VOUCHER" | "GACHA"
+  status: "PENDING" | "COMPLETED"
+  can_open: boolean
+  unavailable_reason: "REWARD_PAUSED" | null
+  campaign: {
+    id: string
+    name: string
+    status: "DRAFT" | "ACTIVE" | "PAUSED" | "ENDED"
+    boxes: RewardBox[]
+  } | null
+  outcome:
+    | { kind: "POINTS", points: 5 }
+    | { kind: "VOUCHER", voucher: OwnedVoucher }
+    | null
+}
+```
+
+`OwnedVoucher` is the same public owned-voucher projection used by `GET /api/profile/vouchers`.
+It exposes the voucher `qr_token`, never `vouchers.id`, `users.id`, ownership foreign keys or actor
+IDs.
+
+`POST /api/customer/rewards/welcome/open` accepts the strict JSON body below. `request_id` is an
+idempotency key: replay for the same entitlement returns its committed outcome; an existing key
+bound to another entitlement returns `409 CONFLICT`.
+
+```ts
+{ reward_id: string, box_id: string, request_id: string } // all UUID
+// 200
+{ data: { reward: WelcomeReward } }
+```
+
+Stable failures are `400 VALIDATION_ERROR`, `401 UNAUTHORIZED`, `403 FORBIDDEN`, `404 NOT_FOUND`,
+`409 CONFLICT`, and `422 BUSINESS_RULE_VIOLATION`. The 422
+`details.reason` is `REWARD_PAUSED` or `REWARD_TEMPORARILY_UNAVAILABLE`; clients may defer and
+resume the durable reward instead of treating either reason as loss.
+
+### Admin welcome reward settings and campaigns
+
+Every route in this section is ADMIN-only and returns `401 UNAUTHORIZED` or `403 FORBIDDEN` before
+parsing mutation input. Settings use optimistic `revision` protection:
+
+```ts
+// GET /api/admin/welcome-reward-settings — 200
+{ data: { settings: {
+  mode: "POINTS" | "FIXED_VOUCHER" | "GACHA"
+  fixed_package_id: string | null
+  active_campaign_id: string | null
+  revision: number
+} } }
+
+// PUT /api/admin/welcome-reward-settings
+{
+  mode: "POINTS" | "FIXED_VOUCHER" | "GACHA"
+  fixed_package_id?: string | null
+  active_campaign_id?: string | null
+  revision: number
+}
+// 200: { data: { settings } }
+```
+
+Exactly one reference matches the mode: neither for `POINTS`, only `fixed_package_id` for
+`FIXED_VOUCHER`, and only `active_campaign_id` for `GACHA`. A fixed package must be active and
+unexpired; a selected campaign must be `ACTIVE`.
+
+```ts
+type CampaignSummary = {
+  id: string; name: string; status: "DRAFT" | "ACTIVE" | "PAUSED" | "ENDED"
+  revision: number; created_at: string; updated_at: string
+  draw_count: number; total_allocated: number; total_remaining: number; box_count: number
+}
+type Campaign = CampaignSummary & {
+  pool_items: Array<{
+    id: string; voucher_package_id: string
+    voucher_package: { name: string; is_active: boolean; ends_at: string | null }
+    quantity: number; unlock_after_draws: number; issued_count: number
+    remaining_quantity: number; unlocked: boolean; current_weight: number
+    eligible_weight_total: number
+  }>
+  boxes: RewardBox[]
+}
+```
+
+Campaign endpoints and envelopes:
+
+- `GET /api/admin/reward-campaigns` → `200 { data: { items: CampaignSummary[] } }`, newest first.
+- `POST /api/admin/reward-campaigns` with strict JSON `{ name: string }` →
+  `201 { data: { campaign: Campaign } }` in `DRAFT`.
+- `GET /api/admin/reward-campaigns/[id]` → `200 { data: { campaign: Campaign } }`.
+- `PATCH /api/admin/reward-campaigns/[id]` accepts exactly one of
+  `{ action: "RENAME", name: string, revision: number }` or
+  `{ action: "ACTIVATE" | "PAUSE" | "RESUME" | "END", revision: number }`; response is
+  `200 { data: { campaign: Campaign } }`.
+- `PUT /api/admin/reward-campaigns/[id]/pool` replaces the complete draft pool with strict JSON
+  `{ revision: number, items: Array<{ voucher_package_id: string, quantity: number,
+  unlock_after_draws: number }> }`; response is `200 { data: { campaign: Campaign } }`.
+- `POST /api/admin/reward-campaigns/[id]/boxes` uses multipart fields `revision`, `name`, optional
+  `mouth_anchor_x`/`mouth_anchor_y`, and required `closed_image`/`open_image`; response is
+  `201 { data: { box, campaign } }`. Omitted create anchors default to `0.5` and `0.2`.
+- `PATCH /api/admin/reward-campaigns/[id]/boxes/[boxId]` uses multipart `revision` plus at least one
+  of `name`, `mouth_anchor_x`, `mouth_anchor_y`, `closed_image`, `open_image`; response is
+  `200 { data: { box, campaign } }`. A `DRAFT` campaign accepts every listed field. `ACTIVE` and
+  `PAUSED` accept only the image and anchor fields; changing `name` returns
+  `422 BUSINESS_RULE_VIOLATION`. An `ENDED` campaign is immutable.
+- `DELETE /api/admin/reward-campaigns/[id]/boxes/[boxId]` uses strict JSON
+  `{ revision: number }`; response is `200 { data: { deleted: true, revision: number } }`.
+
+Box anchors are normalized from 0 through 1. Images accept JPEG, PNG or WebP source files in
+landscape, portrait, or square orientation; each file is at most
+2 MiB, supplied files total at most 4 MiB, and a declared multipart `Content-Length` above 4.5 MiB
+is rejected before parsing. Campaign names contain 1–100 trimmed characters and box names 1–80.
+Pool JSON contains 1–100 unique package rows; each `quantity` is 1–10,000, total allocation is at
+most 100,000, and `unlock_after_draws` is 0–99,999 and below total allocation. JSON bodies are
+strict, and box multipart rejects fields outside those listed above.
+
+Mutation failures use `400 VALIDATION_ERROR` for malformed route IDs, JSON/multipart input or images,
+`404 NOT_FOUND`, and `409 CONFLICT` for a stale revision. Rule failures use
+`422 BUSINESS_RULE_VIOLATION` with stable `details.reason`:
+`CAMPAIGN_NOT_DRAFT`, `INVALID_TRANSITION`, `CAMPAIGN_NOT_READY`,
+`UNREACHABLE_UNLOCK_THRESHOLD`, or `PACKAGE_UNAVAILABLE`. Image validation reasons are
+`INVALID_IMAGE_CONTENT_TYPE`, `IMAGE_TOO_LARGE`, `COMBINED_IMAGES_TOO_LARGE`, or
+`INVALID_DECODED_IMAGE_FORMAT` under `400 VALIDATION_ERROR`. Unexpected failures return
+`500 INTERNAL_ERROR`; customer reward routes use the same terminal error code.
+
+The pool field `quantity` is campaign allocation and controls remaining gacha weight. Voucher
+issuance sources `WELCOME_GIFT` and `GACHA_REWARD` do not consume the package's legacy `quantity`
+quota and do not count toward `max_per_user`; fixed welcome issuance has no campaign allocation.
+Package availability still applies. See the canonical business rules in
+[voucher-flow lifecycle](.agents/skills/voucher-flow/references/lifecycle.md#welcome-reward-and-gacha)
+and persistence semantics in [SCHEMA](SCHEMA.md#welcome_reward_settings).
+
+### Admin customer management — ADMIN only
+
+Every route in this section requires an authenticated `ADMIN`. Missing authentication returns
+`401 UNAUTHORIZED`; another role returns `403 FORBIDDEN`. Customer path identifiers are public
+`users.qr_token` UUIDs. A missing token, a non-CUSTOMER account, or a malformed token is reported as
+`404 NOT_FOUND` without exposing `users.id`.
+
+- `GET /api/admin/users?page=1&q?=` returns a 10-row page. Customers with at least one `COMPLETED`
+  order are ordered by the maximum `orders.updated_at` across their full history; customers without
+  a completed order form a stable tail. Search matches name, phone, or Instagram alias. Each summary
+  contains `qr_token`, identity fields, `is_registered`, `is_verified`, `is_blocked`,
+  `points_balance`, `spending_year`, `annual_spend_vnd`, spent/exchanged/current-voucher counts,
+  `latest_order_at`, and `latest_completed_order_at`. Annual spend sums stored `grand_total_vnd`
+  only for `COMPLETED` orders whose `created_at` falls in the current Vietnam calendar year.
+- `GET /api/admin/users/[userQrToken]` returns the same summary for one customer.
+- `PATCH /api/admin/users/[userQrToken]` accepts exactly one strict action:
+
+```ts
+{ action: "verify", is_verified: boolean }
+{ action: "block", is_blocked: boolean }
+{ action: "reset_password" }
+```
+
+Verify and block return `{ data: { success: true } }`. Blocking revokes all active sessions in the
+same transaction. Reset is available only to registered customers, replaces the password with the
+unique 24-character URL-safe credential generated from 144 bits of Node CSPRNG entropy and stored
+only as a cost-12 bcrypt hash, revokes all sessions, and returns the plaintext once as
+`{ data: { success: true, temporary_password: string } }`; clients must not persist or log it.
+Resetting a ghost returns `409 CONFLICT` with `details.reason = "RESET_NOT_ALLOWED"`.
+
+- `POST /api/admin/users/[userQrToken]/points` accepts strict JSON `{ points: number }`, where
+  `points` is an integer from 1 through 100. The server atomically increments the balance and appends
+  a `manual_admin_adjustment` points log with the Admin actor in one transaction. Integer overflow
+  returns `422 BUSINESS_RULE_VIOLATION`; success returns `{ data: { points_balance: number } }`.
+- `GET /api/admin/users/[userQrToken]/orders?page=1` returns 10 stored order snapshots; the nested
+  detail route additionally requires the order UUID and resolves it together with the selected
+  customer ID. Responses expose stored totals, items, voucher package names and BUNDLE allocations,
+  but not user or voucher database IDs. Each item exposes `line_total_vnd`, stored discount and
+  derived non-negative `line_payable_vnd`; an addon BUNDLE reward exposes
+  `parent_order_item_id` so consumers can attach it to its parent line. `points_breakdown` reports
+  order award, voucher-surplus award, reversal and non-negative net received; it is `null` for
+  unfinished orders and for cancelled legacy orders without lifecycle logs. `points_earned` remains
+  `number | null` until completion.
+- `GET /api/admin/users/[userQrToken]/vouchers?page=1` returns 10 wallet entries using voucher
+  `qr_token`, issuance source, `created_at`, `redeemed_at`, `expires_at`, and `days_remaining`.
+  Effective status is `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, or `REFUNDED`; an elapsed expiry
+  projects an otherwise active voucher as `EXPIRED` without mutating it during this read.
+- `GET /api/admin/users/voucher-packages?page=1&category=ALL|DISCOUNT|GIFT|SHIPPING` returns 10 active,
+  unended packages for the picker. `DISCOUNT` maps to `DISCOUNT|PRODUCT_DISCOUNT`, `GIFT` maps to
+  `ITEM|PRODUCT|ADDON|BUNDLE`, `SHIPPING` maps to `FREESHIP`, and `ALL` applies no type filter.
+  Granting still uses the idempotent
+  `POST /api/admin/voucher-packages/[id]/grants` contract and its additional-gift acknowledgement.
 
 ### `POST /api/auth/login`
 Password minimum remains 6 characters. New registration rejects passwords over 72 UTF-8 bytes;
@@ -437,6 +732,9 @@ Returns `{ qr_token, id, name, role }[]`. `qr_token` is canonical. During the on
 
 Read-only, maximum 50 rows, ordered by `(created_at DESC, id DESC)`. Returns
 `meta: { limit, has_more, next_cursor }`. Effective expiry is projected without writing data.
+`status` accepts one lifecycle status or a comma-separated list. Omission still returns all
+statuses; each selected status retains its effective-expiry semantics. Customer selection reads
+follow every cursor for `ACTIVE,RESERVED`; history reads page through `REDEEMED,EXPIRED` on demand.
 Each owned voucher may include `package_id?: string` as a public catalog reference. Older
 responses may omit it. The mapper emits it only when the source value is a string; raw
 `vouchers.id`, `users.id`, `user_id`, and `redeemed_by` remain internal and are never returned.
@@ -456,6 +754,27 @@ the wallet; GET routes never grant, expire, or cancel records.
 }
 // CUSTOMER-only. phone_number is intentionally not editable.
 ```
+
+### `PATCH /api/profile/password`
+
+CUSTOMER-only. The request changes the password only when the current password matches. The current
+device keeps its stable session ID, receives a rotated refresh token and a new access token, and all
+other sessions are revoked in the same database transaction.
+
+```ts
+{
+  current_password: string // 6–72 characters
+  new_password: string     // at least 6 characters, at most 72 UTF-8 bytes; must differ from current
+}
+
+// Success
+{ data: { success: true } }
+```
+
+Errors use the standard envelope. Validation errors include `details.field` for
+`current_password` or `new_password`; conditional transaction losers return `409 CONFLICT`. The
+route consumes the `passwordChangeAccount` bucket (5/15 minutes/account) and the shared
+`authMutationIp` bucket (10/minute/IP).
 
 ### `GET /api/powders`
 ```ts
@@ -671,7 +990,7 @@ Uses the same `updated_at`, `latte`, `fusion`, and `extras` grouping as `GET /ap
   unit_price_vnd?: number             // extras only; integer >= 1,000 and divisible by 1,000
   is_seasonal?: boolean
   image?: File
-  sort_order?: number
+  sort_order?: number                   // compatibility; omitted = prepend within category
   matcha_powder_id?: string           // Latte only
   default_powder_id?: string          // Fusion only
   base_liquid_note?: string           // Fusion only
@@ -684,9 +1003,40 @@ Uses the same `updated_at`, `latte`, `fusion`, and `extras` grouping as `GET /ap
     base_liquid_ml?: number | null    // null/omitted = system fallback
   }[]
 }
-// Server: INSERT menu_items + 3 menu_item_sizes + allowed Base Liquids in prisma.$transaction()
+// Server: drinks INSERT menu_items + 3 menu_item_sizes + allowed Base Liquids in prisma.$transaction(); extras have no drink configuration
 // Addons apply globally — no junction rows needed
 ```
+
+When `sort_order` is omitted, the server increments existing ranks in the selected category and
+creates the item at rank `0` inside the same transaction. Explicit `sort_order` remains supported
+for compatibility. The same omission rule applies to `POST /api/admin/menu/create-latte-with-powder`.
+
+### `PUT /api/admin/menu/reorder`
+
+Replaces the complete Latte, Fusion and Extras ordering in one request. The payload always includes
+active and unavailable items, even when the admin UI is filtering to active items:
+
+```ts
+{
+  groups: {
+    latte: string[]
+    fusion: string[]
+    extras: string[]
+  }
+  baseline: Array<{
+    id: string
+    category: "latte" | "fusion" | "extras"
+    sort_order: number
+    is_available: boolean
+  }>
+}
+```
+
+The route validates exact membership and category ownership, compares the baseline against current
+state, then derives dense zero-based ranks inside a Serializable transaction. Success returns
+`{ data: { groups, updated_at } }`. A stale baseline or changed membership returns `409 CONFLICT`
+with `details.reason = "MENU_CATALOG_CHANGED"`; exhausted Serializable retries return `409 CONFLICT`
+with `details.reason = "MENU_REORDER_CONFLICT"`.
 
 ### `POST /api/admin/voucher-packages` for BUNDLE
 
@@ -695,7 +1045,8 @@ Uses the same `updated_at`, `latte`, `fusion`, and `extras` grouping as `GET /ap
   voucher_type: "BUNDLE"
   name: string
   description?: string
-  acquisition_mode: "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT"
+  visibility?: "PUBLIC" | "PRIVATE" // default PUBLIC; PRIVATE requires NONE/admin gifts
+  acquisition_mode: "NONE" | "POINTS_EXCHANGE" | "FREE_CLAIM" | "AUTO_GRANT"
   points_cost: number              // positive only for POINTS_EXCHANGE
   ends_at?: string | null          // exclusive UTC instant; no starts_at, active immediately
   min_order_vnd?: number | null
@@ -724,10 +1075,25 @@ type ProductScope = {
 }
 ```
 
+Every admin package create variant accepts the same `visibility` and acquisition fields. PUBLIC
+packages retain POINTS_EXCHANGE, FREE_CLAIM, and AUTO_GRANT; PRIVATE packages require
+`visibility: "PRIVATE"`, `acquisition_mode: "NONE"`, and `points_cost: 0`. PRIVATE packages are
+absent from the public catalog and all customer acquisition mutations. `quantity` counts every
+issued voucher, including ADMIN gifts. `max_per_user` limits lifetime self-acquisition only;
+ADMIN gifts have no points cost, points log, or purchase refund and do not write `voucher_grants`.
+
 Rules are immutable after creation; `PUT /api/admin/voucher-packages/[id]` only accepts name,
 description, and `is_active`. Qualifier/reward arrays support multiple products, including seasonal
-items. Each BUNDLE has one reward kind. Package `min_order_vnd` excludes product-vouchered drink
-units and addon-vouchered addon units from the eligible subtotal.
+items. Each BUNDLE has one reward kind. Package `min_order_vnd` uses paid merchandise: exclude
+ITEM/PRODUCT/BUNDLE-covered product units and voucher-covered addon units, exclude shipping,
+and retain the remaining paid value of other partially discounted items. Bundle allocation
+eligibility and paid merchandise are separate calculations.
+
+Admin shared size/Base Liquid controls serialize into the existing per-product `ProductScope`
+entries; there are no shared configuration fields in the API. Drink sizes are explicit and
+non-empty. Extras keep empty sizes and null powder/Base Liquid. Existing heterogeneous package
+rules remain immutable and readable. `max_applications_per_order` limits each voucher instance
+within the order; multiple instances may use distinct units.
 
 `GET /api/admin/voucher-packages` keeps `_count.vouchers` and additionally returns `stats` with
 `issued_count`, current `active_count`, `reserved_count`, `redeemed_count`, effective
@@ -740,6 +1106,40 @@ phone forms. `status` is `ALL`, `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, or 
 the same effective-expiry semantics without expiring `RESERVED`. It returns at most 20 users,
 grouped voucher instances, and `next_cursor` based on the public user `qr_token`. User and voucher
 internal IDs are never returned.
+
+### `POST /api/admin/voucher-packages/[id]/grants`
+ADMIN-only and CUSTOMER-recipient-only. The route accepts only public QR tokens and a durable UUID
+request id:
+
+```ts
+{
+  user_qr_token: string       // CUSTOMER qr_token UUID
+  request_id: string          // UUID; keep it for warning acknowledgement and uncertain retries
+  acknowledge_additional_gift?: boolean
+}
+```
+
+One successful request issues exactly one `ADMIN` voucher. The same request id bound to the same
+admin, package, and customer returns the existing voucher with its effective status, even after
+the package is paused, ended, or sold out. Rebinding it returns `409 CONFLICT`; a new request id
+is a new intentional gift. If the customer has an ACTIVE/RESERVED voucher or has reached the
+applicable PUBLIC self-acquisition limit, an omitted acknowledgement returns
+`422 BUSINESS_RULE_VIOLATION` with `details.reason = "ADDITIONAL_GIFT_CONFIRMATION_REQUIRED"` and
+a fresh summary. Acknowledgement never bypasses package validity or global stock.
+
+### `GET /api/admin/voucher-packages/[id]/recipients/[userQrToken]`
+ADMIN-only, bounded read-only history for one CUSTOMER. Query `status=ALL|CURRENT|USED` and an
+opaque `cursor`; each page has at most 20 rows. `CURRENT` includes every RESERVED voucher and
+only unexpired ACTIVE vouchers; `USED` contains REDEEMED vouchers. The response includes public
+user and voucher `qr_token` values, `issued_via`, `created_at`, effective status, expiry and
+redemption timestamps, plus a page-independent summary of self-acquisition usage/limit, current
+and used counts, global stock, warning reasons, grant eligibility and expiry preview. GET never
+writes lifecycle expiry.
+
+### `GET /api/voucher-packages`
+PUBLIC customer catalog. PRIVATE packages are filtered out in both the cached and live branches;
+the response contains only packages eligible for customer acquisition. Owned-wallet reads remain
+able to return PRIVATE voucher instances.
 
 All package/wallet voucher responses expose the same grouped `qualifier_products` and
 `reward_products`. Each product additionally contains
@@ -890,6 +1290,15 @@ without a configured default Base Liquid. Any full edit still requires a valid a
 }
 ```
 
+### `GET /api/orders?page=1&limit=10&status=active|cancelled` — Customer history
+
+- Order history and staff/admin order-list DTOs explicitly include nullable persisted delivery_receiver_name, delivery_receiver_phone and delivery_address. Missing legacy values serialize as null; clients must not substitute account/address-book data. Existing wire field names and endpoints remain unchanged.
+- Returns the authenticated customer's paginated order snapshots in `{ data, meta }`.
+- Each order includes `points_earned: number`, the net customer-visible sum of order purchase points
+  and PRODUCT surplus points after any reversal logs. It is `0` before completion or after a full
+  cancellation reversal.
+- `status=active` excludes cancelled orders; `status=cancelled` returns only cancelled orders.
+
 ### `POST /api/staff/orders` — Staff
 ```ts
 {
@@ -955,7 +1364,8 @@ without a configured default Base Liquid. Any full edit still requires a valid a
 
 - Returns only `COUNTER + BANK_TRANSFER + PENDING` orders created by the current Staff/Admin.
 - Used by the POS “Chờ CK” launcher; `limit=100` is sufficient because each order expires after 20 minutes.
-- Expired rows are lazily cancelled and excluded client-side when no longer recoverable.
+- GET is read-only. Expired orders are cancelled by the authenticated cron workflow; the POS
+  excludes rows from payment recovery when no longer recoverable. See order-flow `Auto-Cancel`.
 - Omitting `mine=true` preserves the existing management-list behavior.
 
 ### `GET /api/staff/orders/[id]` — Staff/Admin payment recovery
@@ -1011,6 +1421,13 @@ the caller returns `404 NOT_FOUND`. A present BUNDLE that fails live eligibility
 `422 BUSINESS_RULE_VIOLATION` with `details.reason` set to the server reason; the HTTP boundary
 does not expose a separate `BUNDLE_NOT_ELIGIBLE` error code.
 
+A BUNDLE qualifier or reward unit cannot carry any personal PRODUCT, PRODUCT_DISCOUNT, ITEM,
+or ADDON voucher, even if that personal voucher has zero monetary benefit. This applies to
+drink, extras, and addon-reward recipient units. Return `BUNDLE_CONFLICT` in `details.reason`
+before reservation/persistence. Paid addons remain allowed. Separate units outside BUNDLE may
+use personal vouchers; a voucher-bearing order line remains quantity one. Cross-BUNDLE unit
+reuse remains `BUNDLE_ALLOCATION_OVERLAP`. Order-level DISCOUNT and FREESHIP rules are unchanged.
+
 ### `POST /api/profile/vouchers/exchange`
 CUSTOMER-only. Authenticated STAFF/ADMIN receive `403 FORBIDDEN` from this customer endpoint.
 
@@ -1044,6 +1461,15 @@ restore package quantity or per-user redemption count.
 { data: { items: { qr_token: string, name: string, phone_number: string, points_balance: number }[] } }
 ```
 
+### `GET /api/staff/users/[id]/vouchers`
+
+Requires STAFF or ADMIN. The existing customer identifier segment accepts the customer QR token
+with the resolver migration bridge. Returns `{ data: MyVoucher[] }` for owned, unexpired ACTIVE
+and RESERVED vouchers, newest first (at most 50); unknown customers return an empty array.
+RESERVED entries support read-only wallet detail. Application eligibility remains owned by
+[voucher-flow](.agents/skills/voucher-flow/SKILL.md). Public DTOs retain `qr_token` and omit
+internal voucher/user identifiers. This read does not mutate voucher state.
+
 ### `GET /api/staff/scan?token=xxx`
 Read-only: project effective `EXPIRED` status without updating expired voucher rows during a scan.
 
@@ -1051,9 +1477,12 @@ Read-only: project effective `EXPIRED` status without updating expired voucher r
 // user
 { data: { type: "user", data: { qr_token: string, name: string, phone_number: string, points_balance: number } } }
 
-// voucher
-{ data: { type: "voucher", data: { qr_token: string, voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "ADDON" | "FREESHIP" | "BUNDLE", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED", expires_at: string | null } } }
+// voucher; PRODUCT/ITEM scans include currently usable normalized choices for staff order entry
+{ data: { type: "voucher", data: { qr_token: string, voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, size: "SMALL" | "MEDIUM" | "LARGE" | null, matcha_powder_id: string | null, milk_type_id: string | null, covered_price_vnd: number | null, has_normalized_targets: boolean, eligible_menu_items: Array<{ menu_item_id: string, name: string, category: string, is_available: boolean, is_seasonal: boolean, size: "SMALL" | "MEDIUM" | "LARGE" | null, matcha_powder_id: string | null, milk_type_id: string | null, covered_price_vnd: number | null }>, status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED", expires_at: string | null } } }
 ```
+
+The scanner reports PRODUCT_DISCOUNT and ADDON as order-only vouchers and instructs Staff to select
+them from the customer's cart voucher picker, where the chosen menu-item/addon target is applied.
 
 ---
 
@@ -1094,16 +1523,16 @@ Read-only: project effective `EXPIRED` status without updating expired voucher r
 - `updated_at` in response = `MAX(menu_items.updated_at)` across all items including unavailable ones.
 - Fusion missing/inactive default: resolve fallback (Meyumi → Hana → MH-3 → lowest active `price_per_gram` → lowest ID). Return `resolved_default_powder_id` when any powder is active.
 - `allowed_powder_ids`: join `fusion_allowed_powder` + filter `matcha_powder.is_available = true`.
-- `POST /api/admin/menu`: INSERT `menu_items` + 3 `menu_item_sizes` + `menu_item_allowed_base_liquid` rows in one `prisma.$transaction()`.
+- `POST /api/admin/menu`: persist the parent and category-appropriate configuration in one transaction; drink sizes and extras follow the endpoint contract above.
 - `DELETE /api/admin/addon-groups/[id]`: set `is_active = false`. Never hard delete.
 - Admin soft-deleting a Latte item: check `matcha_powder.reference_latte_item_id` and warn if any powder references it.
 
 ### Pricing (Server)
-- Pricing in `lib/pricing.ts` → delegates pure logic to `src/utils/pricing.ts`.
-- Preload all pricing data (sizes, powder configs, milk types, `default_size_config`) in a single fetch before looping items — avoid N+1.
-- Fusion Premium_Latte: preload all referenced Latte item sizes upfront.
-- Extra matcha `unit_price_vnd` = `addon_option.gram_value × selected_powder.price_per_gram`. Snapshot into `order_item_addons.unit_price_vnd`.
-- `PRICE_CHANGED`: compare `client_price_vnd` per item against server-computed price. Any mismatch → reject entire order, return `details.conflicts[]`.
+
+Formulas, component boundaries and preload strategy belong to
+[pricing-logic](.agents/skills/pricing-logic/SKILL.md). API consumers submit only the fields declared
+by their endpoint. `PRICE_CHANGED` compares `client_price_vnd` per item against the server result;
+any mismatch rejects the whole order with `details.conflicts[]` as defined above.
 
 ### Orders
 - Latte: server sets `selected_powder_id` from `menu_item.matcha_powder_id` — client must not send it.
@@ -1131,9 +1560,9 @@ Read-only: project effective `EXPIRED` status without updating expired voucher r
   shipping fee. A mismatching `client_shipping_fee_vnd` returns `409 SHIPPING_FEE_CHANGED`.
 - The client map uses lazy MapLibre rendering with Goong style/tiles. Goong API-backed search and
   geocoding remain usable when rendering fails, providing the manual address-selection fallback.
-- Persisted customer cart schema is version `7`. Migrating an older cart keeps compatible items but
-  clears stale PRODUCT/ITEM/ADDON and order-level voucher identifiers and credits,
-  then recomputes client item prices so legacy database UUIDs cannot be resubmitted.
+- Cart persistence/versioning belongs to [Cart và POS](docs/specs/cart.md), not the HTTP contract.
+  Compatibility migrations must prevent stale voucher identifiers/credits and legacy internal IDs
+  from being resubmitted while preserving compatible items and recomputing client prices.
 - **Anonymous orders** (`phone_number` omitted):
   - `orders.user_id = NULL`
   - `points_earned = 0` — no points awarded, no `points_log` entry
@@ -1143,25 +1572,44 @@ Read-only: project effective `EXPIRED` status without updating expired voucher r
 ### Vouchers
 - Apply vouchers strictly in this order: `BUNDLE → ITEM/PRODUCT/PRODUCT_DISCOUNT → ADDON → DISCOUNT → FREESHIP`.
 - `product_voucher_id` accepts a PRODUCT or PRODUCT_DISCOUNT public token. PRODUCT_DISCOUNT
-  matches `menu_item_id` plus `eligible_sizes`; FIXED_AMOUNT uses `discount_value`, while
+  matches `menu_item_id` plus `eligible_sizes`, and when `milk_type_id` is non-null also requires
+  the order item's selected Base Liquid to match that active milk row; FIXED_AMOUNT uses `discount_value`, while
   PAY_AS_SIZE charges the canonical current reference-size price for the same powder/Base Liquid.
   It excludes addons, has null `covered_price_vnd`, and never creates surplus.
-- For PRODUCT_DISCOUNT package creation, new clients send `eligible_menu_item_ids` (1–100 unique
+- For PRODUCT_DISCOUNT and ITEM package creation, new clients send `eligible_menu_item_ids` (1–100 unique
   UUIDs) together with the legacy `menu_item_id` anchor. If both are present, the anchor must be in
   the array; legacy requests containing only `menu_item_id` remain valid. Package and owned-voucher
   responses add `eligible_menu_items` entries containing `menu_item_id`, `name`, `category`,
-  `is_available`, and `is_seasonal`.
-- ITEM: extras only, matches `menu_item_id`, makes one unit free at its current server price,
+  `is_available`, `is_seasonal`, `size`, `matcha_powder_id`, `milk_type_id`, and
+  `covered_price_vnd`. Owned-voucher and active-package responses omit normalized targets whose
+  live menu configuration is no longer usable, while the package remains available if any target works.
+- PRODUCT package creation accepts `product_targets` (1–100 unique menu IDs), where each target
+  owns `size`, `matcha_powder_id`, and `milk_type_id`. The server snapshots a separate immutable
+  drink-only `covered_price_vnd` per target. Legacy scalar PRODUCT fields remain the anchor.
+- ADDON package creation accepts `eligible_addon_option_ids` (1–100 unique fixed-price options)
+  including the legacy `addon_option_id` anchor. Issued vouchers copy the explicit scope. Responses
+  add `eligible_addon_options` entries with `addon_option_id`, `label`, `price_vnd`, `is_active`, and
+  `is_dynamic_gram`; customer-facing responses omit options whose option or owning group is inactive.
+- ITEM: extras only, matches one selected scoped `menu_item_id`, makes one unit free at its current server price,
   has no surplus, and cannot be redeemed outside an order. A target price change does not change
   eligibility or coverage; target soft-delete follows PRODUCT refund policy.
-- PRODUCT: match `menu_item_id` only. Apply one voucher to one drink unit. Limit
+- PRODUCT: match one selected scoped `menu_item_id`. Apply one voucher to one drink unit. Limit
   `covered_price_vnd` to base + powder + milk + Premium Latte; never spill credit into addons.
   Compute the package snapshot from those drink components only; included addon IDs are
   descriptive and never expand coverage.
-- The PRODUCT “Dùng ngay” cart flow resolves the voucher Base Liquid against the item's current
-  default/allow-list and includes the same Latte cost or Fusion swap delta as normal add-to-cart.
-- ADDON: apply to one unit of the exact `addon_option_id`. Allow multiple ADDON vouchers on one
-  item only when their addon IDs differ. Never apply to Extra Matcha.
+- The PRODUCT use-now cart flow resolves the voucher powder and Base Liquid against the item's
+  current default/allow-lists and includes the same Latte cost or Fusion swap delta as normal
+  add-to-cart. This live fallback does not change the issued target's `covered_price_vnd`.
+- ADDON: apply to one unit of one scoped `addon_option_id`. Allow multiple ADDON vouchers on one
+  item only when their addon IDs differ. If multiple scoped addons match one cart item, the client
+  requires an explicit target choice and sends that existing `addon_option_id`. Never apply to Extra Matcha.
+- Customer and staff order payloads remain unchanged: the selected PRODUCT/ITEM target is conveyed
+  by the existing item `menu_item_id`; the selected ADDON target is conveyed by the existing
+  `{ voucher_id, addon_option_id }` entry. The server re-resolves membership from owned-voucher
+  scopes and ignores all client prices.
+- Direct QR redemption remains compatible for singleton PRODUCT/ADDON vouchers. Multi-target
+  PRODUCT and ADDON vouchers return `VOUCHER_ORDER_REQUIRED`; ITEM, PRODUCT_DISCOUNT, and BUNDLE
+  always require an order.
 - DISCOUNT: check `min_order_vnd` after PRODUCT and ADDON. Apply multiple FIXED vouchers first
   in selection order, then at most one PERCENT. FIXED values must be multiples of 1,000 VND;
   round PERCENT reductions down to 1,000 VND.
@@ -1178,12 +1626,10 @@ Read-only: project effective `EXPIRED` status without updating expired voucher r
   as `OFFLINE` only when payment is confirmed.
 
 ### Points
-- Earn order points: `floor(total_vnd / 10000)` on COMPLETED; exclude shipping.
-- PRODUCT surplus: sum surplus VND across the whole order, then award
-  `floor(order_surplus_vnd / 10000)` once on COMPLETED.
-- Spend: deduct + create voucher in `prisma.$transaction()`.
-- Manual add: ADMIN only, max 100/action.
-- Reversal: insert new negative-delta row, `reason = "reversed_by_admin"`.
+
+Earning/reversal behavior belongs to [order-flow — Points](.agents/skills/order-flow/SKILL.md#points).
+Voucher exchange, surplus and refund behavior belongs to
+[voucher-flow](.agents/skills/voucher-flow/SKILL.md). Endpoint response contracts remain above.
 
 ### QR Scan
 1. Check `users` by `qr_token` first.
@@ -1191,14 +1637,5 @@ Read-only: project effective `EXPIRED` status without updating expired voucher r
 3. Never return internal `id` — always `qr_token`.
 
 ### `points_log.reason` Valid Values
-| Value | Trigger |
-|---|---|
-| `order_complete` | Order status → COMPLETED |
-| `manual_admin_adjustment` | Admin manually adds/deducts points |
-| `voucher_purchase` | Customer spends points to buy a voucher package |
-| `voucher_surplus` | Aggregate PRODUCT surplus awarded when order → COMPLETED |
-| `order_complete_reversed` | Reversal after a completed COUNTER order is cancelled |
-| `voucher_surplus_reversed` | Reversal of aggregate PRODUCT surplus after cancellation |
-| `voucher_refund` | Unusable points-exchange voucher → exact immutable purchase-points refund |
-| `reversed_by_admin` | Admin reverses a manual adjustment |
-| `registration_bonus` | New customer registration bonus |
+
+Persisted reason values belong to [SCHEMA — points_log](SCHEMA.md#points_log).

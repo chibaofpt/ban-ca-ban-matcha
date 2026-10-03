@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useCartStore } from "@/src/lib/store/cartStore";
+import { filterUsableVouchers, getAddonVoucherTargetChoices, matchProductVouchers } from "@/src/utils/voucherMatchUtils";
 import type {
   HistoryOrderItem,
   ReorderWarning,
@@ -64,36 +65,53 @@ export function useReorderItem() {
         return;
       }
 
-      const cartId = addItem(cartItem);
+      const addResult = addItem(cartItem);
+      if (!addResult.ok) {
+        toast.error(addResult.message);
+        return;
+      }
+      const cartId = addResult.value.cartId;
       try {
         const activeVouchers = (await listMyVouchers()).filter(
           (voucher) => voucher.status === "ACTIVE",
         );
-        const productVoucher = activeVouchers.find(
-          (voucher) =>
-            voucher.voucher_type === "PRODUCT" &&
-            voucher.menu_item_id === cartItem.menuItemId,
-        );
-        if (productVoucher?.covered_price_vnd) {
-          applyProductVoucher(
+        const productVoucher = matchProductVouchers(activeVouchers, cartItem.menuItemId)[0];
+        const productCredit = productVoucher?.eligible_menu_items?.find(
+          (target) => target.menu_item_id === cartItem.menuItemId,
+        )?.covered_price_vnd ?? productVoucher?.covered_price_vnd;
+        if (productVoucher && productCredit) {
+          const result = applyProductVoucher(
             cartId,
             productVoucher.qr_token,
-            productVoucher.covered_price_vnd,
+            productCredit,
           );
+          if (!result.ok) throw new Error(result.message);
         }
 
         const addonIds = getReorderVoucherEligibleAddonIds(menuData, cartItem);
         const usedOptions = new Set<string>();
-        for (const voucher of activeVouchers) {
-          const optionId = voucher.addon_option_id;
+        for (const voucher of filterUsableVouchers(activeVouchers, "ADDON")) {
+          const targetChoices = getAddonVoucherTargetChoices(
+            voucher,
+            addonIds,
+            Array.from(usedOptions),
+          );
+          const optionId = targetChoices.length === 1
+            ? targetChoices[0].addonOptionId
+            : null;
           if (
             voucher.voucher_type === "ADDON" &&
             optionId &&
             addonIds.includes(optionId) &&
             !usedOptions.has(optionId)
           ) {
-            applyAddonVoucher(cartId, voucher.qr_token, optionId);
-            usedOptions.add(optionId);
+            const group = menuData.addon_groups.find((candidate) => candidate.options.some((option) => option.id === optionId));
+            const result = applyAddonVoucher(cartId, voucher.qr_token, optionId, {
+              groupOptionIds: group?.options.map((option) => option.id) ?? [optionId],
+              maxSelect: group?.max_select ?? 1,
+              isExtraMatcha: group?.options.find((option) => option.id === optionId)?.gram_value !== null,
+            });
+            if (result.ok) usedOptions.add(optionId);
           }
         }
       } catch (error: unknown) {
@@ -102,7 +120,7 @@ export function useReorderItem() {
 
       setResult({
         isOpen: true,
-        itemName: cartItem.name,
+        itemName: item.menuItem.name,
         configSummary: resolved.configSummary,
         warnings: resolved.warnings,
         isSuccess: true,

@@ -616,6 +616,27 @@ describe("POST /api/profile/vouchers/refund", () => {
     expect(mockMenuItemFindMany.mock.invocationCallOrder[0]).toBeLessThan(mockVoucherUpdateMany.mock.invocationCallOrder[0]!);
   });
 
+  it("đọc đầy đủ multi-target PRODUCT và ADDON trước khi quyết định hoàn", async () => {
+    mockVoucherFindUnique.mockResolvedValue(productVoucher);
+
+    await refundPOST(makeRefundReq(refundPayload));
+
+    expect(mockVoucherFindUnique).toHaveBeenCalledWith(expect.objectContaining({
+      include: expect.objectContaining({
+        menuItemScopes: {
+          select: {
+            menu_item_id: true,
+            size: true,
+            matcha_powder_id: true,
+            milk_type_id: true,
+            covered_price_vnd: true,
+          },
+        },
+        addonOptionScopes: { select: { addon_option_id: true } },
+      }),
+    }));
+  });
+
   it("retry P2034 có giới hạn rồi trả 409 thay vì 500", async () => {
     mockTransaction.mockRejectedValue({ code: "P2034" });
     const res = await refundPOST(makeRefundReq(refundPayload));

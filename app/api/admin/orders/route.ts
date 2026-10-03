@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import type { OrderType, Prisma } from "@prisma/client";
-import { toPublicOrderDto } from "@/lib/orderPublicDto";
+import type { OrderType, PaymentMethod, Prisma } from "@prisma/client";
+import { toAdminOrderListItemDto } from "@/lib/orders/orderPublicDto";
 import { resolveStaffIdentifier } from "@/lib/publicIdentifiers";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +25,15 @@ export async function GET(req: NextRequest) {
   const staffName = searchParams.get("staffName");
   const status = searchParams.get("status");
   const orderType = searchParams.get("order_type");
+  const paymentMethod = searchParams.get("payment_method");
   const excludeCancelled = searchParams.get("exclude_cancelled") === "true";
+
+  if (paymentMethod && paymentMethod !== "CASH" && paymentMethod !== "BANK_TRANSFER") {
+    return NextResponse.json(
+      { error: "Invalid payment method", code: "VALIDATION_ERROR" },
+      { status: 400 },
+    );
+  }
   
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
   const limit = Math.max(1, Math.min(100, parseInt(searchParams.get("limit") || "10", 10)));
@@ -91,6 +99,10 @@ export async function GET(req: NextRequest) {
       where.order_type = { in: types as OrderType[] };
     }
 
+    if (paymentMethod) {
+      where.payment_method = paymentMethod as PaymentMethod;
+    }
+
 
     const [total, orders] = await prisma.$transaction([
       prisma.order.count({ where }),
@@ -109,9 +121,13 @@ export async function GET(req: NextRequest) {
           },
           user: { select: { name: true, phone_number: true } },
           handler: { select: { name: true, role: true } },
+          paymentConfirmer: { select: { name: true, role: true } },
           items: {
             include: {
               productVoucher: {
+                include: { package: { select: { name: true } } }
+              },
+              itemVoucher: {
                 include: { package: { select: { name: true } } }
               },
               addonVouchers: {
@@ -145,7 +161,7 @@ export async function GET(req: NextRequest) {
     const totalPages = Math.ceil(total / limit);
 
     return NextResponse.json({
-      data: orders.map((order) => toPublicOrderDto(order)),
+      data: orders.map(toAdminOrderListItemDto),
       meta: { total, page, totalPages }
     });
   } catch (err) {

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/src/lib/store/authStore";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
@@ -9,6 +8,7 @@ import {
   checkPhone,
   register as registerRequest,
   type RegisterPayload,
+  type RegisterResult,
 } from "@/src/services/authService";
 import { resetForceLogout } from "@/src/lib/api/client";
 import RegisterStepOne, {
@@ -17,15 +17,14 @@ import RegisterStepOne, {
 import RegisterStepTwo, {
   type RegisterStepTwoValues,
 } from "@/src/components/common/register/RegisterStepTwo";
+import { clearPrivateQueryCaches } from "@/src/lib/queryClient";
 
 /** Two-step customer registration wizard with optional Instagram alias. */
-const RegisterForm = () => {
-  const router = useRouter();
+const RegisterForm = ({ onRegistered }: { onRegistered: (result: RegisterResult) => void }) => {
   const queryClient = useQueryClient();
   const [step, setStep] = useState<1 | 2>(1);
   const [stepOne, setStepOne] = useState<RegisterStepOneValues | null>(null);
   const login = useAuthStore((state) => state.login);
-  const close = useAuthModalStore((state) => state.close);
   const switchTo = useAuthModalStore((state) => state.switchTo);
 
   const continueFromStepOne = async (
@@ -52,14 +51,11 @@ const RegisterForm = () => {
       ...(values.insta_name ? { insta_name: values.insta_name } : {}),
     };
     const user = await registerRequest(payload);
-    queryClient.removeQueries({ queryKey: ["customer"] });
+    clearPrivateQueryCaches(queryClient);
 
-    const from = new URLSearchParams(window.location.search).get("from");
-    router.push(from || "/menu");
-    router.refresh();
     login(user.phone_number, user.name);
     resetForceLogout();
-    close();
+    onRegistered(user);
   };
 
   return (

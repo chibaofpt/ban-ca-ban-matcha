@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { QrScanResult } from "@/contracts/staff";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { logSystemEvent } from "@/lib/logger";
@@ -59,8 +60,7 @@ export async function POST(request: Request) {
     });
 
     // 4. Return same shape as /api/staff/scan
-    return NextResponse.json({
-      data: {
+    const result = {
         type: "user",
         data: {
           qr_token: user.qr_token,
@@ -68,8 +68,8 @@ export async function POST(request: Request) {
           phone_number: user.phone_number,
           points_balance: user.points_balance,
         },
-      },
-    });
+    } satisfies QrScanResult;
+    return NextResponse.json({ data: result });
   } catch (error) {
     console.error("POST /api/staff/scan-fallback error", {
       name: error instanceof Error ? error.name : typeof error,

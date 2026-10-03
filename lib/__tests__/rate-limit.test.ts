@@ -41,6 +41,7 @@ describe("Rate limit tập trung", () => {
 
   it("khai báo đầy đủ giới hạn auth và order tại một config chung", () => {
     expect(RATE_LIMIT_RULES.authMutationIp).toMatchObject({ limit: 10, windowSeconds: 60 });
+    expect(RATE_LIMIT_RULES.passwordChangeAccount).toMatchObject({ limit: 5, windowSeconds: 900 });
     expect(RATE_LIMIT_RULES.customerOrderUser).toMatchObject({ limit: 5, windowSeconds: 600 });
     expect(RATE_LIMIT_RULES.customerOrderIp).toMatchObject({ limit: 50, windowSeconds: 600 });
     expect(RATE_LIMIT_RULES.staffOrderAccount).toMatchObject({ limit: 30, windowSeconds: 60 });
@@ -82,6 +83,32 @@ describe("Rate limit tập trung", () => {
     expect(getAuthRateLimitRule("POST", "/api/auth/register")).toBe("authMutationIp");
     expect(getAuthRateLimitRule("GET", "/api/auth/me")).toBeNull();
     expect(getAuthRateLimitRule("POST", "/api/auth/logout")).toBeNull();
+    expect(getAuthRateLimitRule("PATCH", "/api/profile/password")).toBeNull();
+  });
+
+  it("allows five password changes per account window and blocks the sixth", async () => {
+    const counts = new Map<string, number>();
+    const expirations = new Map<string, number>();
+    mockIncr.mockImplementation(async (key: string) => {
+      const next = (counts.get(key) ?? 0) + 1;
+      counts.set(key, next);
+      return next;
+    });
+    mockExpire.mockImplementation(async (key: string, seconds: number) => {
+      expirations.set(key, seconds);
+      return 1;
+    });
+    mockTtl.mockImplementation(async (key: string) => expirations.get(key) ?? -1);
+
+    const attempts = [];
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      attempts.push(await checkRateLimit("passwordChangeAccount", "account-1"));
+    }
+
+    expect(attempts.slice(0, 5).every((result) => result.allowed)).toBe(true);
+    expect(attempts[4]).toMatchObject({ allowed: true, remaining: 0 });
+    expect(attempts[5]).toEqual({ allowed: false, remaining: 0, retryAfterSeconds: 900 });
+    expect(mockExpire).toHaveBeenCalledTimes(1);
   });
 
   it("HMAC identifier ổn định nhưng không chứa dữ liệu thô", async () => {

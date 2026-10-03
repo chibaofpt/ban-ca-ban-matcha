@@ -54,4 +54,59 @@ describe("GET /api/admin/orders — tab All", () => {
       }),
     }));
   });
+
+  it.each([
+    { handler: { name: "Nhân viên pha chế", role: "STAFF" }, paymentConfirmer: { name: "Admin đã xác nhận", role: "ADMIN" }, expected: { name: "Admin đã xác nhận", role: "ADMIN" } },
+    { handler: { name: "Nhân viên tại quầy", role: "STAFF" }, paymentConfirmer: null, expected: { name: "Nhân viên tại quầy", role: "STAFF" } },
+    { handler: null, paymentConfirmer: null, expected: null },
+  ])("trả đúng người đã xác nhận hoặc tiếp nhận, không dùng khách hay admin hiện tại: $expected", async ({ handler, paymentConfirmer, expected }) => {
+    mockOrderCount.mockResolvedValue(1);
+    mockOrderFindMany.mockImplementation(async (query: {
+      include: { paymentConfirmer?: unknown };
+    }) => [{
+      id: "received-order", status: "ADMIN_CONFIRMED", order_type: "PICKUP",
+      payment_method: "BANK_TRANSFER", order_code: "ORDER-001",
+      user: { name: "Khách hàng", phone_number: "0900000000" }, handler,
+      paymentConfirmer: query.include.paymentConfirmer ? paymentConfirmer : null,
+      subtotal_vnd: 45000, total_voucher_discount_vnd: 0, total_vnd: 45000,
+      shipping_fee_vnd: 0, freeship_discount_vnd: 0, grand_total_vnd: 45000,
+      discountVouchers: [], items: [],
+    }]);
+
+    const response = await GET(new NextRequest("http://localhost/api/admin/orders"));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data[0].handler).toEqual(expected);
+    expect(body.data[0]).not.toHaveProperty("paymentConfirmer");
+    expect(body.data[0]).not.toHaveProperty("payment_confirmed_by");
+  });
+
+  it("trả tên voucher ITEM của món extras trong DTO đơn admin", async () => {
+    mockOrderCount.mockResolvedValue(1);
+    mockOrderFindMany.mockImplementation(async (query: {
+      include: { items: { include: { itemVoucher?: unknown } } };
+    }) => [{
+      id: "counter-item-order", status: "COMPLETED", order_type: "COUNTER",
+      payment_method: "CASH", order_code: "ITEM-001", user: null, handler: null,
+      subtotal_vnd: 15000, total_voucher_discount_vnd: 0, total_vnd: 0,
+      shipping_fee_vnd: 0, freeship_discount_vnd: 0, grand_total_vnd: 0,
+      discountVouchers: [],
+      items: [{
+        menu_item_id: "extra-1", menuItem: { name: "Bánh matcha", category: "extras" },
+        quantity: 1, unit_price_vnd: 15000, addons_price_vnd: 0,
+        size: null, sweetness: "FULL", ice_option: "NORMAL", coldwhisk: false,
+        note: null, base_liquid_ml: null, selectedPowder: null, milkType: null,
+        addons: [], productVoucher: null, addonVouchers: [],
+        ...(query.include.items.include.itemVoucher ? {
+          itemVoucher: { id: "private-voucher-id", package: { name: "Tặng bánh matcha" } },
+        } : {}),
+      }],
+    }]);
+
+    const response = await GET(new NextRequest("http://localhost/api/admin/orders"));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data[0].items[0].itemVoucher).toEqual({ package: { name: "Tặng bánh matcha" } });
+    expect(JSON.stringify(body)).not.toContain("private-voucher-id");
+  });
 });

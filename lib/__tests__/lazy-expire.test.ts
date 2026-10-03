@@ -18,7 +18,7 @@ vi.mock("@/lib/prisma", () => ({
 
 // ── Import after mock ─────────────────────────────────────────────────────────
 
-import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
+import { lazyExpireVouchers } from "@/lib/vouchers/lazyExpireVouchers";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 

@@ -18,6 +18,8 @@ export interface BundleMenuConfig {
   category: "latte" | "fusion" | "extras";
   availableSizes: BundleScopeSize[];
   fixedPowderId: string | null;
+  defaultPowderId?: string | null;
+  defaultBaseLiquidId?: string | null;
   availablePowderIds: string[];
   availableBaseLiquidIds: string[];
   isSeasonal?: boolean;
@@ -40,12 +42,19 @@ export interface BundleVoucherFormState {
 type BundleInput = Extract<CreateVoucherPackageInput, { voucher_type: "BUNDLE" }>;
 /** Create an editable product scope with safe defaults from one menu item. */
 export function createBundleScopeDraft(menu: BundleMenuConfig): BundleProductScopeDraft {
+  const isExtra = menu.category === "extras";
+  const defaultPowder = menu.defaultPowderId && menu.availablePowderIds.includes(menu.defaultPowderId)
+    ? menu.defaultPowderId
+    : null;
+  const defaultBaseLiquid = menu.defaultBaseLiquidId && menu.availableBaseLiquidIds.includes(menu.defaultBaseLiquidId)
+    ? menu.defaultBaseLiquidId
+    : null;
   return {
     menuItemId: menu.id,
     category: menu.category,
-    sizes: [],
-    powderIds: menu.availablePowderIds.slice(0, 1),
-    milkTypeIds: menu.availableBaseLiquidIds.slice(0, 1),
+    sizes: isExtra ? [] : menu.availableSizes.slice(),
+    powderIds: isExtra ? [] : menu.category === "fusion" && defaultPowder ? [defaultPowder] : [],
+    milkTypeIds: isExtra ? [] : defaultBaseLiquid ? [defaultBaseLiquid] : [],
     fixedPowderId: menu.fixedPowderId,
   };
 }

@@ -6,11 +6,11 @@ import {
   BundleRewardSelector,
   type BundleRewardOption,
 } from "@/src/components/shared/BundleRewardSelector";
-import type { CartItem } from "@/src/lib/types/cart";
-import type { CartBundleApplication, BundleCreatedRewardEffect } from "@/src/lib/types/cart";
+import type { BundleRuntimeStatus, CartBundleApplication, BundleCreatedRewardEffect, ProjectedCartLine } from "@/src/lib/types/cart";
 import { summarizeBundleCart, type BundleSelectionAllocation, type BundleVoucherSummary } from "@/src/lib/utils/bundleVoucher";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import { cn } from "@/src/utils/cn";
+import { formatSizeLabel } from "@/src/utils/display";
 
 /** Convert the wallet DTO into the shared selector's minimal rule summary. */
 export function getBundleVoucherSummary(voucher: MyVoucher): BundleVoucherSummary | null {
@@ -25,6 +25,7 @@ export function getBundleVoucherSummary(voucher: MyVoucher): BundleVoucherSummar
     benefit_scaling: rule.benefit_scaling,
     max_applications_per_order: rule.max_applications_per_order,
     max_reward_units_per_order: rule.max_reward_units_per_order,
+    reward_addon_option_ids: rule.reward_addon_option_ids,
     eligible_products: rule.qualifier_products.map((product) => ({
       menu_item_id: product.menu_item_id,
       allowed_sizes: product.allowed_sizes,
@@ -43,31 +44,31 @@ export function getBundleVoucherSummary(voucher: MyVoucher): BundleVoucherSummar
 
 function getOptions(
   voucher: MyVoucher,
-  cart: CartItem[],
+  cart: ProjectedCartLine[],
   addonLabels: ReadonlyMap<string, string>,
 ): BundleRewardOption[] {
   const summary = getBundleVoucherSummary(voucher);
   const rule = voucher.package.bundleRule;
   if (!summary || !rule) return [];
-  const matchesScope = (item: CartItem, scopes: typeof summary.eligible_products) =>
-    scopes.some((scope) => scope.menu_item_id === item.menuItemId && (item.size === null ? scope.allowed_sizes.length === 0 : scope.allowed_sizes.includes(item.size)));
+  const matchesScope = (item: ProjectedCartLine, scopes: typeof summary.eligible_products) =>
+    scopes.some((scope) => scope.menu_item_id === item.menuItemId && (item.configuration.size === null ? scope.allowed_sizes.length === 0 : scope.allowed_sizes.includes(item.configuration.size)));
   if (summary.reward_kind === "PRODUCT") {
     const rewardScopes = summary.reward_mode === "SAME_CONFIG"
       ? summary.eligible_products
       : summary.reward_products;
     return cart
-      .filter((item) => matchesScope(item, rewardScopes) && item.quantity > (item.productVoucherId ? 1 : 0))
+      .filter((item) => matchesScope(item, rewardScopes) && item.quantity > (item.lineVoucher ? 1 : 0))
       .map((item) => ({
         client_line_id: item.cartId,
-        quantity: item.quantity - (item.productVoucherId ? 1 : 0),
-        label: `${item.name} · ${item.size}`,
+        quantity: item.quantity - (item.lineVoucher ? 1 : 0),
+        label: `${item.name} · ${item.configuration.size ? formatSizeLabel(item.configuration.size) : "Add-on"}`,
       }));
   }
   const allowedAddonIds = new Set(rule.reward_addon_option_ids);
   return cart
     .filter((item) => matchesScope(item, summary.eligible_products))
     .flatMap((item) => {
-      const quantities = new Map(item.selectedOptionIds.map((id) => [id, 1]));
+      const quantities = new Map((item.configuration.size === null ? [] : item.configuration.addonOptionIds).map((id) => [id, item.quantity]));
       return [...quantities.entries()]
         .filter(([addonOptionId]) => allowedAddonIds.has(addonOptionId))
         .map(([addonOptionId, quantity]) => ({
@@ -88,17 +89,21 @@ export function CartBundleVoucherPanel({
   cart,
   addonLabels,
   bundleApplications,
+  bundleRuntime = {},
   onBundleApplicationChange,
   onRequestRemoveBundle,
-  onAddExtrasReward,
+  onOpenBundleSetup,
+  onRepairBundle,
 }: {
   vouchers: MyVoucher[];
-  cart: CartItem[];
+  cart: ProjectedCartLine[];
   addonLabels: ReadonlyMap<string, string>;
   bundleApplications: CartBundleApplication[];
+  bundleRuntime?: Readonly<Record<string, { status: BundleRuntimeStatus; message?: string }>>;
   onBundleApplicationChange: (voucher: MyVoucher, allocations: BundleSelectionAllocation[], effect?: BundleCreatedRewardEffect) => void;
   onRequestRemoveBundle: (voucherToken: string) => void;
-  onAddExtrasReward?: (menuItemId: string, voucherToken: string) => { clientLineId: string; effect: BundleCreatedRewardEffect } | string | null;
+  onOpenBundleSetup?: (voucher: MyVoucher) => void;
+  onRepairBundle?: (voucher: MyVoucher) => void;
 }) {
   const changeApplication = (voucher: MyVoucher, nextAllocations: BundleSelectionAllocation[], effect?: BundleCreatedRewardEffect) => {
     onBundleApplicationChange(voucher, nextAllocations, effect);
@@ -107,11 +112,33 @@ export function CartBundleVoucherPanel({
     onRequestRemoveBundle(token);
   };
   const [activeVoucherToken, setActiveVoucherToken] = useState<string | null>(bundleApplications[0]?.voucher_qr_token ?? null);
-  const usableVouchers = vouchers.filter((voucher) => voucher.availability.can_apply);
-  if (usableVouchers.length === 0) return null;
+  const visibleVouchers = vouchers.filter((voucher) =>
+    voucher.availability.can_apply || bundleApplications.some((application) => application.voucher_qr_token === voucher.qr_token),
+  );
+  if (visibleVouchers.length === 0 && bundleApplications.length === 0) return null;
+  if (visibleVouchers.length === 0) {
+    return (
+      <section className="space-y-2 rounded-2xl border border-red-200 bg-red-50/70 p-3">
+        <p className="text-sm font-bold text-red-900">Ưu đãi BUNDLE cần được làm mới</p>
+        {bundleApplications.map((application) => (
+          <div key={application.voucher_qr_token} className="flex items-center justify-between gap-2 rounded-xl bg-white px-3 py-2">
+            <span className="break-all text-xs text-red-800">Mã: {application.voucher_qr_token}</span>
+            <button
+              type="button"
+              className="min-h-11 shrink-0 rounded-lg border border-red-300 px-3 text-xs font-bold text-red-800"
+              onClick={() => removeApplication(application.voucher_qr_token)}
+            >
+              Gỡ
+            </button>
+          </div>
+        ))}
+      </section>
+    );
+  }
   const selectedVoucher = vouchers.find((voucher) => voucher.qr_token === activeVoucherToken);
   const summary = selectedVoucher ? getBundleVoucherSummary(selectedVoucher) : null;
   const application = selectedVoucher ? bundleApplications.find((item) => item.voucher_qr_token === selectedVoucher.qr_token) : undefined;
+  const runtime = selectedVoucher ? bundleRuntime[selectedVoucher.qr_token] : undefined;
   const allocations = application?.reward_allocations ?? [];
   const options = selectedVoucher ? getOptions(selectedVoucher, cart, addonLabels) : [];
   const cartSummary = summarizeBundleCart(cart);
@@ -122,14 +149,13 @@ export function CartBundleVoucherPanel({
         .map((scope) => [scope.menu_item_id, scope]),
     ).values(),
   ];
-
   return (
     <section id="cart-bundle-voucher-panel" tabIndex={-1} className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-3 focus-visible:ring-2 focus-visible:ring-amber-600">
       <p className="flex items-center gap-2 text-sm font-bold text-amber-900">
         <Gift className="size-4" aria-hidden="true" /> Ưu đãi mua X tặng Y
       </p>
       <div className="grid gap-2">
-        {usableVouchers.map((voucher) => {
+        {visibleVouchers.map((voucher) => {
           const isSelected = bundleApplications.some((application) => application.voucher_qr_token === voucher.qr_token);
           return (
             <button
@@ -139,6 +165,7 @@ export function CartBundleVoucherPanel({
               onClick={() => {
                 setActiveVoucherToken(voucher.qr_token);
                 if (isSelected) removeApplication(voucher.qr_token);
+                else if (onOpenBundleSetup) onOpenBundleSetup(voucher);
                 else changeApplication(voucher, []);
               }}
               className={cn(
@@ -151,24 +178,42 @@ export function CartBundleVoucherPanel({
           );
         })}
       </div>
+      {selectedVoucher && application && !summary ? (
+        <div className="flex items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+          <p className="text-xs font-semibold text-red-800">Voucher BUNDLE không còn khả dụng</p>
+          <button
+            type="button"
+            className="min-h-11 shrink-0 rounded-lg border border-red-300 bg-white px-3 text-xs font-bold text-red-800"
+            onClick={() => removeApplication(selectedVoucher.qr_token)}
+          >
+            Gỡ
+          </button>
+        </div>
+      ) : null}
       {selectedVoucher && summary ? (
         <>
-          {onAddExtrasReward && extrasRewardScopes.length > 0 ? (
+          {application && runtime && runtime.status !== "READY" && onRepairBundle ? (
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+              <p className="text-xs font-semibold text-red-800">{runtime.message ?? "Cần kiểm tra lại ưu đãi"}</p>
+              <button
+                type="button"
+                className="min-h-11 shrink-0 rounded-lg bg-red-700 px-3 text-xs font-bold text-white"
+                onClick={() => onRepairBundle(selectedVoucher)}
+              >
+                Sửa
+              </button>
+            </div>
+          ) : null}
+          {extrasRewardScopes.length > 0 && (onOpenBundleSetup || onRepairBundle) ? (
             <div className="grid gap-2">
               {extrasRewardScopes.map((scope) => (
                 <button
-                  key={`add-${scope.menu_item_id}`}
+                  key={`configure-${scope.menu_item_id}`}
                   type="button"
-                  onClick={() => {
-                    const created = onAddExtrasReward(scope.menu_item_id, selectedVoucher.qr_token);
-                    if (created) {
-                      const clientLineId = typeof created === "string" ? created : created.clientLineId;
-                      changeApplication(selectedVoucher, [...allocations, { client_line_id: clientLineId, quantity: 1 }], typeof created === "string" ? undefined : created.effect);
-                    }
-                  }}
+                  onClick={() => (onOpenBundleSetup ?? onRepairBundle)?.(selectedVoucher)}
                   className="min-h-11 rounded-xl border border-dashed border-amber-500 bg-white px-3 text-left text-sm font-bold text-amber-900"
                 >
-                  + Thêm quà {scope.menu_item.name}
+                  + Cấu hình quà {scope.menu_item.name}
                 </button>
               ))}
             </div>

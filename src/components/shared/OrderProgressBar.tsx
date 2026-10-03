@@ -1,6 +1,7 @@
+import Image from "next/image";
 import { cn } from "@/src/utils/cn";
 import type { OrderStatus } from "@/src/lib/types/order";
-import { ShoppingBag, Check, ChefHat, Star } from "lucide-react";
+import { ShoppingBag, Check, Star } from "lucide-react";
 
 interface StepConfig {
   icon: React.ReactNode;
@@ -24,7 +25,7 @@ const STEPS: StepConfig[] = [
     subtitle: "Nhân viên đang pha chế",
   },
   {
-    icon: <ChefHat size={14} />,
+    icon: <Image src="/favicon.ico" alt="" width={18} height={18} unoptimized aria-hidden="true" />,
     activeAt: "STAFF_DONE",
     title: "Sẵn sàng!",
     subtitle: "Đến quầy nhận đồ nhé 🎉",
@@ -84,9 +85,9 @@ export function OrderProgressBar({ status }: OrderProgressBarProps) {
                 className={cn(
                   "relative z-10 w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all duration-300",
                   isCompleted
-                    ? "bg-primary border-primary text-white"
+                    ? "bg-primary/15 border-primary/30 text-primary"
                     : isActive
-                    ? "bg-primary border-primary text-white"
+                    ? "bg-primary/15 border-primary/30 text-primary"
                     : "bg-background border-border text-muted-foreground"
                 )}
               >

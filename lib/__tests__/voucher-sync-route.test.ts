@@ -8,10 +8,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth", () => ({ getSession: mocks.getSession }));
 vi.mock("@/lib/prisma", () => ({ prisma: {} }));
-vi.mock("@/lib/voucherIssuance", () => ({
+vi.mock("@/lib/vouchers/autoGrantVouchers", () => ({
   ensureAutoGrantedVouchers: mocks.ensureAutoGrantedVouchers,
 }));
-vi.mock("@/lib/lazyExpireVouchers", () => ({
+vi.mock("@/lib/vouchers/lazyExpireVouchers", () => ({
   lazyExpireVouchers: mocks.lazyExpireVouchers,
 }));
 

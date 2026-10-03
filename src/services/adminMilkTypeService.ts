@@ -1,17 +1,13 @@
 import { apiClient } from "@/src/lib/api/client";
-import type { AdminMilkType } from "@/src/lib/types/milkType";
-import type { CreateMilkTypeInput, UpdateMilkTypeInput } from "@/lib/validations/milkType";
-
-export interface AdminMilkTypeApiResponse {
-  data: AdminMilkType[];
-}
-
-export interface AdminSingleMilkTypeResponse {
-  data: AdminMilkType;
-}
+import type { ApiResponse } from "@/contracts/api";
+import type {
+  AdminMilkType,
+  CreateMilkTypeInput,
+  UpdateMilkTypeInput,
+} from "@/contracts/admin/catalog";
 
 export async function listAdminMilkTypes(): Promise<AdminMilkType[]> {
-  const { data } = await apiClient.get<AdminMilkTypeApiResponse>("/api/admin/milk-types");
+  const { data } = await apiClient.get<ApiResponse<AdminMilkType[]>>("/api/admin/milk-types");
   return data.data;
 }
 
@@ -37,7 +33,7 @@ export async function createMilkType(
 ): Promise<AdminMilkType> {
   const body = buildMultipartPayload(payload, imageFile, imageFilename);
   const config = body instanceof FormData ? { headers: { "Content-Type": "multipart/form-data" } } : undefined;
-  const { data } = await apiClient.post<AdminSingleMilkTypeResponse>("/api/admin/milk-types", body, config);
+  const { data } = await apiClient.post<ApiResponse<AdminMilkType>>("/api/admin/milk-types", body, config);
   return data.data;
 }
 
@@ -49,21 +45,21 @@ export async function updateMilkType(
 ): Promise<AdminMilkType> {
   const body = buildMultipartPayload(payload, imageFile, imageFilename);
   const config = body instanceof FormData ? { headers: { "Content-Type": "multipart/form-data" } } : undefined;
-  const { data } = await apiClient.put<AdminSingleMilkTypeResponse>(`/api/admin/milk-types/${id}`, body, config);
+  const { data } = await apiClient.put<ApiResponse<AdminMilkType>>(`/api/admin/milk-types/${id}`, body, config);
   return data.data;
 }
 
 export async function toggleMilkTypeActive(id: string, is_active: boolean): Promise<AdminMilkType> {
-  const { data } = await apiClient.put<AdminSingleMilkTypeResponse>(`/api/admin/milk-types/${id}`, { is_active });
+  const { data } = await apiClient.put<ApiResponse<AdminMilkType>>(`/api/admin/milk-types/${id}`, { is_active });
   return data.data;
 }
 
 export async function deleteMilkType(id: string): Promise<AdminMilkType> {
-  const { data } = await apiClient.delete<AdminSingleMilkTypeResponse>(`/api/admin/milk-types/${id}`);
+  const { data } = await apiClient.delete<ApiResponse<AdminMilkType>>(`/api/admin/milk-types/${id}`);
   return data.data;
 }
 
 export async function reorderMilkType(id: string, display_order: number): Promise<AdminMilkType> {
-  const { data } = await apiClient.put<AdminSingleMilkTypeResponse>(`/api/admin/milk-types/${id}`, { display_order });
+  const { data } = await apiClient.put<ApiResponse<AdminMilkType>>(`/api/admin/milk-types/${id}`, { display_order });
   return data.data;
 }

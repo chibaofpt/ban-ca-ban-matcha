@@ -1,23 +1,27 @@
 import type { CreateVoucherPackageInput } from "@/src/services/adminVoucherService";
-import { buildBundleVoucherInput, type BundleVoucherFormState } from "@/src/lib/utils/adminVoucherBundle";
+import { buildBundleVoucherInput, type BundleProductScopeDraft, type BundleVoucherFormState } from "@/src/lib/utils/adminVoucherBundle";
 import { toExclusiveEndIso } from "@/src/lib/utils/voucherDates";
+import { formatSizeLabel } from "@/src/utils/display";
 
 export { formatInclusiveEndDate, toExclusiveEndIso } from "@/src/lib/utils/voucherDates";
 
 export type VoucherType = "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE";
 export interface VoucherDraft extends BundleVoucherFormState {
   voucherType: VoucherType;
+  visibility: "PUBLIC" | "PRIVATE";
   discountType: "PERCENT" | "FIXED";
   discountValue: number;
   productDiscountMode: "FIXED_AMOUNT" | "PAY_AS_SIZE";
   eligibleSizes: Array<"SMALL" | "MEDIUM" | "LARGE">;
   referenceSize: "SMALL" | "MEDIUM" | "LARGE";
   menuItemId: string;
+  productTargets: BundleProductScopeDraft[];
   eligibleMenuItemIds?: string[];
   size: "SMALL" | "MEDIUM" | "LARGE";
   matchaPowderId: string;
   milkTypeId: string;
   addonOptionId: string;
+  eligibleAddonOptionIds: string[];
   coveredDeliveryFeeVnd: number;
   maxDiscountVnd: number | null;
 }
@@ -25,11 +29,11 @@ export interface VoucherDraft extends BundleVoucherFormState {
 /** Creates a predictable initial state for the admin voucher wizard. */
 export function createEmptyVoucherDraft(): VoucherDraft {
   return {
-    voucherType: "DISCOUNT", name: "", description: "", endsAt: "",
+    voucherType: "DISCOUNT", visibility: "PUBLIC", name: "", description: "", endsAt: "",
     acquisitionMode: "POINTS_EXCHANGE", pointsCost: 10, expiresAfterDays: 30,
     quantity: null, maxPerUser: 1, minOrderVnd: null,
-    discountType: "PERCENT", discountValue: 10, productDiscountMode: "FIXED_AMOUNT", eligibleSizes: ["MEDIUM"], referenceSize: "SMALL", menuItemId: "", eligibleMenuItemIds: [], size: "SMALL",
-    matchaPowderId: "", milkTypeId: "", addonOptionId: "", coveredDeliveryFeeVnd: 30_000, maxDiscountVnd: null,
+    discountType: "PERCENT", discountValue: 10, productDiscountMode: "FIXED_AMOUNT", eligibleSizes: ["MEDIUM"], referenceSize: "SMALL", menuItemId: "", productTargets: [], eligibleMenuItemIds: [], size: "SMALL",
+    matchaPowderId: "", milkTypeId: "", addonOptionId: "", eligibleAddonOptionIds: [], coveredDeliveryFeeVnd: 30_000, maxDiscountVnd: null,
     buyQuantity: 2, rewardQuantity: 1, rewardKind: "PRODUCT", rewardMode: "SAME_CONFIG",
     benefitScaling: "PER_BUNDLE", maxApplications: 1,
     qualifierScopes: [], rewardProductScopes: [], rewardAddonOptionIds: [],
@@ -39,8 +43,9 @@ export function createEmptyVoucherDraft(): VoucherDraft {
 function common(draft: VoucherDraft) {
   return {
     name: draft.name.trim(), description: draft.description.trim() || undefined,
-    acquisition_mode: draft.acquisitionMode,
-    points_cost: draft.acquisitionMode === "POINTS_EXCHANGE" ? draft.pointsCost : 0,
+    visibility: draft.visibility,
+    acquisition_mode: draft.visibility === "PRIVATE" ? "NONE" as const : draft.acquisitionMode,
+    points_cost: draft.visibility === "PRIVATE" || draft.acquisitionMode !== "POINTS_EXCHANGE" ? 0 : draft.pointsCost,
     ends_at: toExclusiveEndIso(draft.endsAt),
     expires_after_days: draft.expiresAfterDays, quantity: draft.quantity,
     max_per_user: draft.maxPerUser,
@@ -49,23 +54,44 @@ function common(draft: VoucherDraft) {
 
 /** Builds the strict create payload for every voucher benefit type. */
 export function buildVoucherInput(draft: VoucherDraft): CreateVoucherPackageInput {
-  if (draft.voucherType === "BUNDLE") return buildBundleVoucherInput(draft);
+  if (draft.voucherType === "BUNDLE") {
+    const bundle = buildBundleVoucherInput(draft);
+    return {
+      ...bundle,
+      visibility: draft.visibility,
+      acquisition_mode: draft.visibility === "PRIVATE" ? "NONE" : bundle.acquisition_mode,
+      points_cost: draft.visibility === "PRIVATE" ? 0 : bundle.points_cost,
+    };
+  }
   const base = common(draft);
-  if (draft.voucherType === "ITEM") return { ...base, voucher_type: "ITEM", menu_item_id: draft.menuItemId };
+  if (draft.voucherType === "ITEM") return { ...base, voucher_type: "ITEM", menu_item_id: draft.menuItemId, eligible_menu_item_ids: draft.eligibleMenuItemIds?.length ? draft.eligibleMenuItemIds : [draft.menuItemId] };
   if (draft.voucherType === "PRODUCT") return {
-    ...base, voucher_type: "PRODUCT", menu_item_id: draft.menuItemId, size: draft.size,
-    matcha_powder_id: draft.matchaPowderId || null, milk_type_id: draft.milkTypeId || null,
+    ...base, voucher_type: "PRODUCT", menu_item_id: draft.productTargets[0]?.menuItemId ?? draft.menuItemId,
+    size: draft.productTargets[0]?.sizes[0] ?? draft.size,
+    matcha_powder_id: (draft.productTargets[0]?.powderIds[0] ?? draft.matchaPowderId) || null,
+    milk_type_id: (draft.productTargets[0]?.milkTypeIds[0] ?? draft.milkTypeId) || null,
     included_addon_option_ids: [],
+    product_targets: (draft.productTargets.length ? draft.productTargets : [{
+      menuItemId: draft.menuItemId, category: "fusion" as const, sizes: [draft.size],
+      powderIds: draft.matchaPowderId ? [draft.matchaPowderId] : [],
+      milkTypeIds: draft.milkTypeId ? [draft.milkTypeId] : [], fixedPowderId: null,
+    }]).map((target) => ({
+      menu_item_id: target.menuItemId,
+      size: target.sizes[0],
+      matcha_powder_id: target.category === "latte" ? null : target.powderIds[0] ?? null,
+      milk_type_id: target.milkTypeIds[0] ?? null,
+    })),
   };
   if (draft.voucherType === "PRODUCT_DISCOUNT") return {
     ...base, voucher_type: "PRODUCT_DISCOUNT", menu_item_id: draft.menuItemId,
     eligible_menu_item_ids: (draft.eligibleMenuItemIds?.length ?? 0) > 0 ? draft.eligibleMenuItemIds! : [draft.menuItemId],
     product_discount_mode: draft.productDiscountMode, eligible_sizes: draft.eligibleSizes,
+    milk_type_id: draft.milkTypeId || null,
     ...(draft.productDiscountMode === "FIXED_AMOUNT"
       ? { discount_value: draft.discountValue }
       : { reference_size: draft.referenceSize }),
   };
-  if (draft.voucherType === "ADDON") return { ...base, voucher_type: "ADDON", addon_option_id: draft.addonOptionId };
+  if (draft.voucherType === "ADDON") return { ...base, voucher_type: "ADDON", addon_option_id: draft.addonOptionId, eligible_addon_option_ids: draft.eligibleAddonOptionIds.length ? draft.eligibleAddonOptionIds : [draft.addonOptionId] };
   if (draft.voucherType === "FREESHIP") return {
     ...base, voucher_type: "FREESHIP", covered_delivery_fee_vnd: draft.coveredDeliveryFeeVnd,
     min_order_vnd: draft.minOrderVnd,
@@ -82,7 +108,11 @@ export function validateVoucherDraft(draft: VoucherDraft): string | null {
   if (!draft.name.trim()) return "Vui lòng nhập tên voucher";
   if (draft.acquisitionMode === "POINTS_EXCHANGE" && draft.pointsCost < 1) return "Điểm đổi phải lớn hơn 0";
   if (draft.voucherType === "DISCOUNT" && draft.discountType === "PERCENT" && draft.maxDiscountVnd !== null && draft.maxDiscountVnd % 1_000 !== 0) return "Mức giảm tối đa phải chia hết cho 1.000đ";
-  if (draft.voucherType === "PRODUCT" && !draft.menuItemId) return "Vui lòng chọn sản phẩm";
+  if (draft.voucherType === "PRODUCT" && draft.productTargets.length === 0) return "Vui lòng chọn sản phẩm";
+  if (draft.voucherType === "PRODUCT" && draft.productTargets.length > 100) return "Chỉ được chọn tối đa 100 sản phẩm";
+  if (draft.voucherType === "PRODUCT" && draft.productTargets.some((target) => target.sizes.length !== 1)) return "Mỗi sản phẩm cần đúng một size";
+  if (draft.voucherType === "PRODUCT" && draft.productTargets.some((target) => target.category === "fusion" && target.powderIds.length !== 1)) return "Mỗi món Fusion cần đúng một loại bột";
+  if (draft.voucherType === "PRODUCT" && draft.productTargets.some((target) => target.milkTypeIds.length !== 1)) return "Mỗi sản phẩm cần đúng một Base Liquid";
   if (draft.voucherType === "PRODUCT_DISCOUNT" && (draft.eligibleMenuItemIds?.length ?? 0) === 0 && !draft.menuItemId) return "Vui lòng chọn ít nhất một sản phẩm";
   if (draft.voucherType === "PRODUCT_DISCOUNT" && (draft.eligibleMenuItemIds?.length ?? 0) > 100) return "Chỉ được chọn tối đa 100 sản phẩm";
   if (draft.voucherType === "PRODUCT_DISCOUNT" && draft.eligibleSizes.length === 0) return "Vui lòng chọn ít nhất một size";
@@ -123,8 +153,6 @@ function names(ids: string[], labels: ReadonlyMap<string, string>): string {
   return ids.map((id) => labels.get(id) ?? "Món đã chọn").join(", ");
 }
 
-const SIZE_LABEL = { SMALL: "Nhỏ", MEDIUM: "Vừa", LARGE: "Lớn" } as const;
-
 export interface VoucherCopyLabels {
   menuLabels: ReadonlyMap<string, string>;
   addonLabels: ReadonlyMap<string, string>;
@@ -148,6 +176,12 @@ function fullVnd(value: number): string {
   return `${value.toLocaleString("vi-VN")}đ`;
 }
 
+const PRODUCT_DISCOUNT_SIZE_LABELS = {
+  SMALL: "nhỏ",
+  MEDIUM: "vừa",
+  LARGE: "lớn",
+} as const;
+
 function limitedLabels(ids: string[], labels: ReadonlyMap<string, string>): string {
   const uniqueIds = [...new Set(ids)];
   if (uniqueIds.length === 0 || uniqueIds.length > 2) return "";
@@ -169,28 +203,57 @@ export function suggestVoucherCopy(draft: VoucherDraft, labels: VoucherCopyLabel
     return { name: `Freeship đến ${compactVnd(draft.coveredDeliveryFeeVnd)}${minimumName}`, description: `Hỗ trợ phí giao hàng tối đa ${fullVnd(draft.coveredDeliveryFeeVnd)}${minimumDescription}.` };
   }
   if (draft.voucherType === "PRODUCT") {
-    const menu = labels.menuLabels.get(draft.menuItemId);
+    if (draft.productTargets.length > 1) {
+      const names = limitedLabels(draft.productTargets.map((target) => target.menuItemId), labels.menuLabels);
+      return {
+        name: `Free 1 trong ${draft.productTargets.length} ly`,
+        description: `Tặng 1 trong ${draft.productTargets.length} ly đã chọn${names ? `: ${names}` : ""}.`,
+      };
+    }
+    const target = draft.productTargets[0];
+    const menuId = target?.menuItemId ?? draft.menuItemId;
+    const menu = labels.menuLabels.get(menuId);
     if (!menu) return { name: "", description: "" };
-    const powderId = draft.matchaPowderId || labels.defaultPowderByMenuId.get(draft.menuItemId) || "";
-    const milkId = draft.milkTypeId || labels.defaultMilkByMenuId.get(draft.menuItemId) || "";
-    const detail = [menu, `size ${SIZE_LABEL[draft.size]}`, labels.powderLabels.get(powderId), labels.milkLabels.get(milkId)].filter(Boolean).join(" ");
-    return { name: `Free 1 ly ${detail}`, description: `Tặng 1 ly ${detail}.` };
+    const powderId = target?.powderIds[0] || labels.defaultPowderByMenuId.get(menuId) || "";
+    const milkId = target?.milkTypeIds[0] || labels.defaultMilkByMenuId.get(menuId) || "";
+    const detail = [menu, `size ${formatSizeLabel(target?.sizes[0] ?? draft.size)}`, labels.powderLabels.get(powderId), labels.milkLabels.get(milkId)].filter(Boolean).join(" ");
+    return { name: `Free 1 ly ${menu}`, description: `Tặng 1 ly ${detail}.` };
   }
   if (draft.voucherType === "ITEM" || draft.voucherType === "ADDON") {
-    const label = draft.voucherType === "ITEM" ? labels.menuLabels.get(draft.menuItemId) : labels.addonLabels.get(draft.addonOptionId);
+    const ids = draft.voucherType === "ITEM"
+      ? (draft.eligibleMenuItemIds?.length ? draft.eligibleMenuItemIds : [draft.menuItemId])
+      : (draft.eligibleAddonOptionIds.length ? draft.eligibleAddonOptionIds : [draft.addonOptionId]);
+    const labelMap = draft.voucherType === "ITEM" ? labels.menuLabels : labels.addonLabels;
+    if (ids.length > 1) {
+      const kind = draft.voucherType === "ITEM" ? "món" : "topping";
+      const names = limitedLabels(ids, labelMap);
+      return {
+        name: `Free 1 trong ${ids.length} ${kind}`,
+        description: `Tặng 1 trong ${ids.length} ${kind} đã chọn${names ? `: ${names}` : ""}.`,
+      };
+    }
+    const label = labelMap.get(ids[0] ?? "");
     return label ? { name: `Free 1 ${label}`, description: `Tặng 1 ${label}.` } : { name: "", description: "" };
   }
   if (draft.voucherType === "PRODUCT_DISCOUNT") {
     const ids = draft.eligibleMenuItemIds?.length ? draft.eligibleMenuItemIds : [draft.menuItemId];
     const targets = limitedLabels(ids.filter(Boolean), labels.menuLabels);
     const targetName = targets ? ` cho ${targets}` : " theo món";
-    const sizes = draft.eligibleSizes.map((size) => SIZE_LABEL[size]).join(", ");
+    const sizes = draft.eligibleSizes.map(formatSizeLabel).join(", ");
+    const milk = draft.milkTypeId ? labels.milkLabels.get(draft.milkTypeId) ?? "Base Liquid đã chọn" : "";
+    const milkDescription = milk ? ` dùng ${milk}` : "";
     if (draft.productDiscountMode === "PAY_AS_SIZE") {
-      const name = `Trả giá size ${SIZE_LABEL[draft.referenceSize]}${targetName}`;
-      return { name, description: `${name}${sizes ? ` khi chọn size ${sizes}` : ""}.` };
+      const targetSize = draft.eligibleSizes[0];
+      const targetSizeLabel = targetSize ? PRODUCT_DISCOUNT_SIZE_LABELS[targetSize] : "";
+      const targetFishLabel = targetSize ? formatSizeLabel(targetSize).toLocaleLowerCase("vi-VN") : "";
+      const targetLabels = names(ids.filter(Boolean), labels.menuLabels);
+      return {
+        name: targetFishLabel ? `Free upsize lên ${targetFishLabel}` : "Free upsize",
+        description: `Free up size cho ${targetLabels || "các món đã chọn"}${targetSizeLabel ? ` lên size ${targetSizeLabel}` : ""}${milkDescription}.`,
+      };
     }
     const name = `Giảm ${compactVnd(draft.discountValue)}${targetName}`;
-    return { name, description: `Giảm ${fullVnd(draft.discountValue)} cho ${targets || "các món đã chọn"}${sizes ? ` ở size ${sizes}` : ""}.` };
+    return { name, description: `Giảm ${fullVnd(draft.discountValue)} cho ${targets || "các món đã chọn"}${sizes ? ` ở size ${sizes}` : ""}${milkDescription}.` };
   }
   const qualifiers = limitedLabels(draft.qualifierScopes.map((scope) => scope.menuItemId), labels.menuLabels);
   const rewardIds = draft.rewardKind === "PRODUCT"
@@ -203,6 +266,19 @@ export function suggestVoucherCopy(draft: VoucherDraft, labels: VoucherCopyLabel
   return { name, description: `${name}.` };
 }
 
+/** Describe the selected PRODUCT_DISCOUNT menu items and customer-facing target sizes. */
+export function describeProductDiscountTargets(
+  draft: VoucherDraft,
+  menuLabels: ReadonlyMap<string, string>,
+): string {
+  if (draft.voucherType !== "PRODUCT_DISCOUNT") return "";
+  const ids = (draft.eligibleMenuItemIds?.length ? draft.eligibleMenuItemIds : [draft.menuItemId]).filter(Boolean);
+  const targetLabels = names(ids, menuLabels);
+  const sizeLabels = draft.eligibleSizes.map((size) => PRODUCT_DISCOUNT_SIZE_LABELS[size]).join(", ");
+  if (!targetLabels || !sizeLabels) return "";
+  return `Món áp dụng: ${targetLabels} size ${sizeLabels}`;
+}
+
 function describeScope(
   scope: BundleVoucherFormState["qualifierScopes"][number],
   menuLabels: ReadonlyMap<string, string>,
@@ -210,7 +286,7 @@ function describeScope(
   milkLabels: ReadonlyMap<string, string>,
 ): string {
   const details: string[] = [];
-  if (scope.sizes.length > 0) details.push(scope.sizes.map((size) => SIZE_LABEL[size]).join(" + "));
+  if (scope.sizes.length > 0) details.push(scope.sizes.map(formatSizeLabel).join(" + "));
   if (scope.category === "fusion" && scope.powderIds.length > 0) {
     details.push(scope.powderIds.map((id) => powderLabels.get(id) ?? "Bột đã chọn").join(" + "));
   }
@@ -261,7 +337,8 @@ export function estimateVoucherLiabilityVnd(
   }
   if (draft.voucherType === "FREESHIP") return draft.quantity * draft.coveredDeliveryFeeVnd;
   if (draft.voucherType === "PRODUCT") {
-    return draft.quantity * (menuPrices.get(draft.menuItemId) ?? 0);
+    const ids = draft.productTargets.length ? draft.productTargets.map((target) => target.menuItemId) : [draft.menuItemId];
+    return draft.quantity * maxPrice(ids, menuPrices);
   }
   if (draft.voucherType === "PRODUCT_DISCOUNT") {
     const targetIds = draft.eligibleMenuItemIds?.length ? draft.eligibleMenuItemIds : [draft.menuItemId];
@@ -272,10 +349,12 @@ export function estimateVoucherLiabilityVnd(
     return draft.quantity * unitLiability;
   }
   if (draft.voucherType === "ITEM") {
-    return draft.quantity * (menuPrices.get(draft.menuItemId) ?? 0);
+    const targetIds = draft.eligibleMenuItemIds?.length ? draft.eligibleMenuItemIds : [draft.menuItemId];
+    return draft.quantity * maxPrice(targetIds, menuPrices);
   }
   if (draft.voucherType === "ADDON") {
-    return draft.quantity * (addonPrices.get(draft.addonOptionId) ?? 0);
+    const targetIds = draft.eligibleAddonOptionIds?.length ? draft.eligibleAddonOptionIds : [draft.addonOptionId];
+    return draft.quantity * maxPrice(targetIds, addonPrices);
   }
   const unitPrice = draft.rewardKind === "ADDON"
     ? maxPrice(draft.rewardAddonOptionIds, addonPrices)

@@ -25,6 +25,7 @@ describe("Validation PRODUCT_DISCOUNT", () => {
     menu_item_id: UUID.menu,
     eligible_menu_item_ids: [UUID.menu],
     eligible_sizes: ["MEDIUM", "LARGE"] as const,
+    milk_type_id: UUID.milk,
   };
 
   it("nhận legacy menu_item_id và chuẩn hóa danh sách mục tiêu mới", () => {
@@ -138,5 +139,36 @@ describe("Validation gói BUNDLE grouped products", () => {
     expect(createVoucherPackageSchema.safeParse({ ...makeBundle(), points_cost: 0 }).success).toBe(false);
     expect(createVoucherPackageSchema.safeParse({ ...makeBundle(), acquisition_mode: "FREE_CLAIM", points_cost: 0 }).success).toBe(true);
     expect(createVoucherPackageSchema.safeParse({ ...makeBundle(), ends_at: "2026-01-01T00:00:00.000Z" }).success).toBe(false);
+  });
+
+  it("giới hạn mỗi khách là một voucher khi phát miễn phí hoặc tự cấp", () => {
+    expect(createVoucherPackageSchema.safeParse({ ...makeBundle(), acquisition_mode: "FREE_CLAIM", points_cost: 0, max_per_user: 2 }).success).toBe(false);
+    expect(createVoucherPackageSchema.safeParse({ ...makeBundle(), acquisition_mode: "AUTO_GRANT", points_cost: 0, max_per_user: 2 }).success).toBe(false);
+    expect(createVoucherPackageSchema.safeParse({ ...makeBundle(), max_per_user: 2 }).success).toBe(true);
+  });
+
+  it("mặc định PUBLIC, PRIVATE chỉ nhận NONE và không bị ràng buộc limit tự nhận", () => {
+    const publicResult = createVoucherPackageSchema.safeParse(makeBundle());
+    expect(publicResult.success).toBe(true);
+    if (publicResult.success) expect(publicResult.data.visibility).toBe("PUBLIC");
+
+    expect(createVoucherPackageSchema.safeParse({
+      ...makeBundle(),
+      visibility: "PRIVATE",
+      acquisition_mode: "NONE",
+      points_cost: 0,
+      max_per_user: 20,
+    }).success).toBe(true);
+    expect(createVoucherPackageSchema.safeParse({
+      ...makeBundle(),
+      visibility: "PRIVATE",
+      acquisition_mode: "POINTS_EXCHANGE",
+      points_cost: 10,
+    }).success).toBe(false);
+    expect(createVoucherPackageSchema.safeParse({
+      ...makeBundle(),
+      acquisition_mode: "NONE",
+      points_cost: 0,
+    }).success).toBe(false);
   });
 });

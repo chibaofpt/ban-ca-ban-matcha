@@ -46,7 +46,7 @@ when this review has no blocking findings and every verification gate passes.
 - If the user asks only for `qa review`, review and report, then stop. Do not commit or push.
 - If the user explicitly asks to push or deploy `dev`, automatically commit and push after every gate passes.
 - Work only on the `dev` branch. Do not switch branches, force-push, rebase, merge `main`, or resolve conflicts.
-- Run `git fetch origin dev`, inspect `git status --short`, and compare local changes with `origin/dev`.
+- Run `rtk git fetch origin dev`, inspect `rtk git status --short`, and compare local changes with `origin/dev`.
 - Stop if local `dev` is behind `origin/dev`, if the current branch is not `dev`, or if the remote state would make the push non-fast-forward.
 - Review staged, unstaged, and untracked files. Never automatically stage unreviewed untracked files, especially
   env files, scratch files, backups, or `ROLLBACK_*.sql` files. A new migration may be staged only after its SQL is reviewed.
@@ -63,12 +63,16 @@ when this review has no blocking findings and every verification gate passes.
   `DIRECT_URL`; never print or include their values in a report.
 - Confirm without logging values that staging and production database URLs are not identical. Block if the
   target cannot be distinguished safely.
-- Never rely on Prisma's implicit `.env` lookup. Prefix direct Prisma checks with
-  `npx.cmd dotenv -e .env.staging --`, or use an npm script that already loads `.env.staging`.
+- Never rely on Prisma's implicit .env lookup. Prefix direct Prisma checks with
+  `rtk proxy npx.cmd dotenv -e .env.staging --`, or use an npm script that already loads .env.staging.
 - Do not require shared application variables to exist in `.env.staging`; verify newly introduced application
   variables against `.env.local.example` and the Vercel Preview configuration instead.
 
-## 3. QA/QC Gate
+## 3. Schema Preflight
+
+Before final QA, inspect **Schema Preflight Details** below when `prisma/schema.prisma` changed. This release agent remains read-only: a missing migration is a blocking finding returned to the implementer in both review-only and explicit push/deploy modes. Review the migration SQL only after the implementer supplies it; any new production/test file invalidates earlier executable final-tree evidence.
+
+## 4. QA/QC Gate
 
 Read `AGENTS.md` and inspect the complete release diff. Apply any relevant order, voucher, pricing, API, and schema rules.
 
@@ -80,16 +84,16 @@ override an actionable manual-review finding.
 Run only checks that do not modify a database:
 
 ```powershell
-npm.cmd run lint
-npx.cmd tsc --noEmit
-npm.cmd run test
-npm.cmd run resources:check
-npx.cmd dotenv -e .env.staging -- prisma validate
-git diff --check
+rtk npm run lint
+rtk proxy npx.cmd tsc --noEmit
+rtk npm run resources:check
+rtk proxy npx.cmd dotenv -e .env.staging -- prisma validate
+rtk git diff --check
 ```
 
 - Do not run `npm run build`, `npm run build:staging`, `db push`, `migrate reset`, or any production migration during QA.
-- After every QA check passes, as the sole local-build exception, run `npx.cmd prisma generate; if ($LASTEXITCODE -eq 0) { npx.cmd dotenv -e .env.staging -- next build }` before staging files; it must not run migrations or load `.env.prod`.
+- Reuse the final repository-wide hermetic-suite evidence only when the executable code/test tree has not changed since that pass; otherwise run `rtk npm run test` once here.
+- After every QA check passes, as the sole local-build exception, run `rtk proxy npx.cmd dotenv -e .env.staging -- prisma generate`; then, only if it succeeds, run `rtk proxy npx.cmd dotenv -e .env.staging -- next build`. Neither command may run migrations or load `.env.prod`.
 - Treat failed checks, whitespace errors, secrets in the diff, unexplained API/schema changes, or business-rule risks as **BLOCKED**.
 - Missing Supabase cron jobs on staging do not block a `dev` push when the release owner explicitly
   accepts that limitation. Record the limitation in the staging handoff; never infer that production
@@ -97,26 +101,22 @@ git diff --check
 - Report all QA findings in Vietnamese and stop when blocked. QA/push does not modify production
   code, auto-fix lint or expand scope; return failures to the implementer.
 
-## 4. Schema Changes on Staging
+## Schema Preflight Details
 
 Run this section only when `prisma/schema.prisma` changed.
 
 1. Check whether a matching new directory exists under `prisma/migrations/`.
-2. If no migration exists, create one for review only on staging:
-
-   ```powershell
-   npm.cmd run migrate:dev -- --create-only --name "descriptive_change_name"
-   ```
-
-   The `migrate:dev` script is authoritative here because it explicitly loads `.env.staging`. Do not replace it
-   with a bare `prisma migrate dev` command.
-
-3. If Prisma detects drift or requests a reset, stop and ask exactly:
+2. If no matching migration exists, block and return the issue to the implementer. The correction packet may
+   name the project command `rtk npm run migrate:dev -- --create-only --name "descriptive_change_name"`;
+   the release agent must not execute it or edit the generated SQL. The script is authoritative because it
+   explicitly loads `.env.staging`; do not suggest bare `prisma migrate dev`.
+3. If the implementer reports Prisma drift or a reset request, preserve the exact user gate:
    `Reset the staging database and lose all test data?`
-   Never reset until the user gives a new, explicit confirmation. Until a seed exists, state that test data must be recreated manually.
-4. Review the new SQL migration. Block changes involving `DROP`, `TRUNCATE`, `DELETE`, enum removal or rename,
+   The release agent never performs or authorizes the reset. Until a seed exists, state that test data must be recreated manually.
+4. Review supplied migration SQL. Block changes involving `DROP`, `TRUNCATE`, `DELETE`, enum removal or rename,
    table/column rename, `ALTER COLUMN ... TYPE`, data rewrites, or any unapproved data-loss risk.
-5. Commit the reviewed migration together with `prisma/schema.prisma` and the code. Never edit an already committed or applied migration.
+5. Require the reviewed migration to be committed together with `prisma/schema.prisma` and the code. Never edit
+   an already committed or applied migration.
 
 After the `dev` push, Vercel Preview runs `prisma migrate deploy` against staging. Do not manually run a staging deploy migration in this skill.
 
@@ -142,16 +142,16 @@ gate: continue automatically after presenting it when every gate is already PASS
 1. Stage only reviewed release files:
 
    ```powershell
-   git add -- <reviewed-file-1> <reviewed-file-2>
-   git diff --cached --check
-   git diff --cached
+   rtk git add -- <reviewed-file-1> <reviewed-file-2>
+   rtk git diff --cached --check
+   rtk git diff --cached
    ```
 
 2. Create one concise commit message that describes the actual change. Do not amend an existing commit.
 3. Push normally:
 
    ```powershell
-   git push origin dev
+   rtk git push origin dev
    ```
 
 Never use `git add .`, `git push --force`, or push another branch.
@@ -162,7 +162,7 @@ Never use `git add .`, `git push --force`, or push another branch.
   should test, and the Vercel Preview URL when accessible. Call out any difference from the pre-push briefing.
 - If Vercel MCP is available, check that the `dev` deployment is READY and inspect recent runtime logs.
 - If Vercel cannot be checked automatically, report `Cannot verify Vercel automatically`; never assume success.
-- A clear user statement that friends tested staging successfully is sufficient to invoke `production-deploy`.
+- A clear user statement that friends tested staging successfully permits the `production-deploy` preflight. Merging or pushing `main` still requires an explicit production deployment request under that skill.
 
 ## Hard Rules
 

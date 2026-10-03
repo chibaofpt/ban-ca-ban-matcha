@@ -27,7 +27,7 @@ vi.mock("@/lib/storage", () => ({
   uploadMenuImage: (...args: unknown[]) => mockUploadMenuImage(...args),
 }));
 
-import { prepareCatalogImage } from "@/lib/catalogImage";
+import { prepareCatalogImage } from "@/lib/catalog/catalogImage";
 
 describe("Ảnh addon và bột matcha", () => {
   beforeEach(() => {

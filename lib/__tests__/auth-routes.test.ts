@@ -28,6 +28,7 @@ const mockResetPhoneFlood = vi.fn();
 const mockUserFindUnique = vi.fn();
 const mockUserCreate = vi.fn();
 const mockUserUpdate = vi.fn();
+const mockUserUpdateMany = vi.fn();
 const mockSessionFindUnique = vi.fn();
 const mockSessionFindMany = vi.fn();
 const mockSessionCreate = vi.fn();
@@ -36,6 +37,7 @@ const mockSessionDeleteMany = vi.fn();
 const mockPointsLogCreate = vi.fn();
 const mockTransaction = vi.fn();
 const mockEnsureAutoGrantedVouchers = vi.fn();
+const mockCreateWelcomeReward = vi.fn();
 const mockCacheDelete = vi.fn();
 
 const mockBcryptCompare = vi.fn();
@@ -74,6 +76,7 @@ vi.mock("@/lib/prisma", () => ({
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
       create: (...args: unknown[]) => mockUserCreate(...args),
       update: (...args: unknown[]) => mockUserUpdate(...args),
+      updateMany: (...args: unknown[]) => mockUserUpdateMany(...args),
     },
     session: {
       findUnique: (...args: unknown[]) => mockSessionFindUnique(...args),
@@ -96,8 +99,12 @@ vi.mock("bcryptjs", () => ({
   },
 }));
 
-vi.mock("@/lib/voucherIssuance", () => ({
+vi.mock("@/lib/vouchers/autoGrantVouchers", () => ({
   ensureAutoGrantedVouchers: (...args: unknown[]) => mockEnsureAutoGrantedVouchers(...args),
+}));
+
+vi.mock("@/lib/rewards/welcomeReward", () => ({
+  createWelcomeRewardInTransaction: (...args: unknown[]) => mockCreateWelcomeReward(...args),
 }));
 
 vi.mock("@/lib/redis", () => ({
@@ -121,6 +128,20 @@ function makeRequest(body: unknown, method = "POST") {
   });
 }
 
+function allowGuardedLoginSessionClaim() {
+  mockUserUpdateMany.mockResolvedValue({ count: 1 });
+  mockTransaction.mockImplementation(
+    async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { updateMany: (...args: unknown[]) => mockUserUpdateMany(...args) },
+      session: {
+        findMany: (...args: unknown[]) => mockSessionFindMany(...args),
+        create: (...args: unknown[]) => mockSessionCreate(...args),
+        deleteMany: (...args: unknown[]) => mockSessionDeleteMany(...args),
+      },
+    }),
+  );
+}
+
 const REAL_USER = {
   id: "user-real-uuid",
   name: "Nguyen Van A",
@@ -129,6 +150,7 @@ const REAL_USER = {
   role: "CUSTOMER",
   failed_login_attempts: 0,
   locked_until: null,
+  is_blocked: false,
 };
 
 const GHOST_USER = {
@@ -139,6 +161,7 @@ const GHOST_USER = {
   role: "CUSTOMER",
   failed_login_attempts: 0,
   locked_until: null,
+  is_blocked: false,
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -202,6 +225,7 @@ describe("POST /api/auth/check-phone — ghost user exclusion", () => {
 describe("POST /api/auth/login — ghost user guard", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    allowGuardedLoginSessionClaim();
     mockSessionCreate.mockResolvedValue({ id: "created-session-id", refresh_token: "created-refresh-token" });
     mockCacheDelete.mockResolvedValue(undefined);
     mockEnsureAutoGrantedVouchers.mockResolvedValue({ granted: 0, already_granted: 0 });
@@ -252,6 +276,33 @@ describe("POST /api/auth/login — ghost user guard", () => {
     expect(mockCookieSet).toHaveBeenCalledWith("refresh_token", "created-refresh-token", expect.objectContaining({
       httpOnly: true, sameSite: "strict", maxAge: 604800,
     }));
+    expect(mockUserUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: REAL_USER.id,
+        password_hash: REAL_USER.password_hash,
+        is_blocked: false,
+      },
+      data: { password_hash: REAL_USER.password_hash },
+    });
+  });
+
+  it("không tạo session khi reset mật khẩu thắng guarded claim", async () => {
+    mockUserFindUnique.mockResolvedValueOnce(REAL_USER);
+    mockBcryptCompare.mockResolvedValueOnce(true);
+    mockUserUpdateMany.mockResolvedValueOnce({ count: 0 });
+    mockSessionFindMany.mockResolvedValueOnce([]);
+
+    const res = await loginPOST(makeRequest({ phone_number: "0912345678", password: "password123" }));
+    const body = await res.json();
+
+    expect(res.status).toBe(401);
+    expect(body).toEqual({
+      error: "Thông tin đăng nhập hoặc mật khẩu không chính xác",
+      code: "INVALID_CREDENTIALS",
+    });
+    expect(mockSessionFindMany).not.toHaveBeenCalled();
+    expect(mockSessionCreate).not.toHaveBeenCalled();
+    expect(mockCookieSet).not.toHaveBeenCalled();
   });
 
   it("trả về 401 INVALID_CREDENTIALS khi sai mật khẩu", async () => {
@@ -263,6 +314,23 @@ describe("POST /api/auth/login — ghost user guard", () => {
 
     expect(res.status).toBe(401);
     expect(body.code).toBe("INVALID_CREDENTIALS");
+  });
+
+  it("từ chối user bị chặn sau khi vẫn kiểm tra đúng mật khẩu", async () => {
+    mockUserFindUnique.mockResolvedValueOnce({ ...REAL_USER, is_blocked: true });
+    mockBcryptCompare.mockResolvedValueOnce(true);
+    mockSessionFindMany.mockResolvedValueOnce([]);
+
+    const res = await loginPOST(makeRequest({ phone_number: "0912345678", password: "password123" }));
+    const body = await res.json();
+
+    expect(mockBcryptCompare).toHaveBeenCalledOnce();
+    expect(res.status).toBe(403);
+    expect(body).toEqual({
+      error: "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.",
+      code: "FORBIDDEN",
+    });
+    expect(mockSessionCreate).not.toHaveBeenCalled();
   });
 
   it("chạy bcrypt compare với DUMMY_HASH khi user không tồn tại (timing-safe)", async () => {
@@ -281,6 +349,7 @@ describe("POST /api/auth/login — ghost user guard", () => {
 describe("POST /api/auth/login — session limit (max 5)", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    allowGuardedLoginSessionClaim();
     mockBcryptCompare.mockResolvedValue(true);
     mockSessionCreate.mockResolvedValue({ id: "created-session-id", refresh_token: "created-refresh-token" });
     mockSessionDeleteMany.mockResolvedValue({ count: 0 });
@@ -442,6 +511,7 @@ describe("POST /api/auth/login — ghi nhận thất bại", () => {
 describe("POST /api/auth/login — reset khi đúng", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    allowGuardedLoginSessionClaim();
     mockCheckLoginFailLimit.mockResolvedValue({ allowed: true, remaining: 4 });
     mockCheckPhoneFloodGuard.mockResolvedValue({ allowed: true });
     mockSessionCreate.mockResolvedValue({ id: "created-session-id", refresh_token: "created-refresh-token" });
@@ -477,6 +547,7 @@ describe("POST /api/auth/login — reset khi đúng", () => {
 describe("POST /api/auth/login — fail-open khi Redis down", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    allowGuardedLoginSessionClaim();
     mockSessionCreate.mockResolvedValue({ id: "created-session-id", refresh_token: "created-refresh-token" });
     mockResetLoginFail.mockResolvedValue(undefined);
     mockResetPhoneFlood.mockResolvedValue(undefined);
@@ -507,23 +578,32 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
     vi.resetAllMocks();
     mockBcryptHash.mockResolvedValue("$2a$12$hashed");
     mockBcryptCompare.mockResolvedValue(false);
+    mockCreateWelcomeReward.mockResolvedValue({
+      id: "welcome-reward-id",
+      mode: "GACHA",
+      status: "PENDING",
+      outcome_kind: null,
+    });
   });
 
-  it("đăng ký user mới thành công → trả 201 và set cookies", async () => {
+  it("đăng ký user mới với GACHA pending giữ points_balance bằng 0 và không ghi điểm trực tiếp", async () => {
     mockUserFindUnique.mockResolvedValueOnce(null);
+    const mockTxUserCreate = vi.fn().mockResolvedValue({ ...REAL_USER, id: "new-user-id", points_balance: 0 });
+    const mockTxUserUpdate = vi.fn();
+    const mockTxPointsLogCreate = vi.fn();
     mockTransaction.mockImplementationOnce(
       async (fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {
           user: {
-            create: vi.fn().mockResolvedValue({ ...REAL_USER, id: "new-user-id" }),
-            update: vi.fn(),
+            create: mockTxUserCreate,
+            update: mockTxUserUpdate,
           },
           session: {
             findMany: vi.fn().mockResolvedValue([]),
             create: vi.fn().mockResolvedValue({ id: "registered-session-id", refresh_token: "new-refresh-token" }),
             deleteMany: vi.fn(),
           },
-          pointsLog: { create: vi.fn() },
+          pointsLog: { create: mockTxPointsLogCreate },
         };
         return fn(tx);
       }
@@ -536,6 +616,12 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
 
     expect(res.status).toBe(201);
     expect(body.data.role).toBe("CUSTOMER");
+    expect(body.data.welcome_reward).toEqual({
+      id: "welcome-reward-id",
+      mode: "GACHA",
+      status: "PENDING",
+      outcome_kind: null,
+    });
     const token = mockCookieSet.mock.calls.find(([key]) => key === "access_token")?.[1] as string;
     expect((await jwtVerify(token, new TextEncoder().encode("auth-route-cookie-test-secret-at-least-32-bytes"))).payload)
       .toMatchObject({ id: "new-user-id", sid: "registered-session-id", role: "CUSTOMER" });
@@ -543,10 +629,16 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
       httpOnly: true, sameSite: "strict", maxAge: 604800,
     }));
     expect(mockEnsureAutoGrantedVouchers).toHaveBeenCalledWith(expect.anything(), "new-user-id");
+    expect(mockCreateWelcomeReward).toHaveBeenCalledWith(expect.anything(), "new-user-id");
+    expect(mockTxUserCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ points_balance: 0 }),
+    });
+    expect(mockTxUserUpdate).not.toHaveBeenCalled();
+    expect(mockTxPointsLogCreate).not.toHaveBeenCalled();
   });
 
-  it("trả 409 CONFLICT khi số điện thoại đã đăng ký (không phải ghost)", async () => {
-    mockUserFindUnique.mockResolvedValueOnce(REAL_USER);
+  it("trả 409 CONFLICT cho tài khoản đã đăng ký dù đang bị chặn", async () => {
+    mockUserFindUnique.mockResolvedValueOnce({ ...REAL_USER, is_blocked: true });
     mockBcryptCompare.mockResolvedValueOnce(false); // timing-safe
 
     const res = await registerPOST(
@@ -558,9 +650,15 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
     expect(body.code).toBe("CONFLICT");
   });
 
-  it("convert ghost user thành real user khi đăng ký với số điện thoại ghost", async () => {
+  it("convert ghost user giữ nguyên điểm hợp lệ và không cộng thêm 5 điểm", async () => {
     mockUserFindUnique.mockResolvedValueOnce(GHOST_USER);
-    const mockTxUserUpdate = vi.fn().mockResolvedValue({ ...GHOST_USER, password_hash: "$2a$12$hashed", name: "Real Name" });
+    const mockTxUserUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const convertedUser = {
+      ...GHOST_USER,
+      password_hash: "$2a$12$hashed",
+      name: "Real Name",
+      points_balance: 37,
+    };
     const mockTxSessionCreate = vi.fn().mockResolvedValue({ id: "registered-session-id", refresh_token: "new-refresh-token" });
     const mockTxSessionFindMany = vi.fn().mockResolvedValue([]);
     const mockTxSessionDeleteMany = vi.fn();
@@ -569,7 +667,7 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
     mockTransaction.mockImplementationOnce(
       async (fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {
-          user: { update: mockTxUserUpdate, create: vi.fn() },
+          user: { updateMany: mockTxUserUpdateMany, findUnique: vi.fn().mockResolvedValue(convertedUser), create: vi.fn() },
           session: {
             findMany: mockTxSessionFindMany,
             create: mockTxSessionCreate,
@@ -586,17 +684,27 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
     );
 
     expect(res.status).toBe(201);
-    expect(mockTxUserUpdate).toHaveBeenCalledWith(
+    expect(mockTxUserUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: GHOST_USER.id },
+        where: {
+          id: GHOST_USER.id,
+          role: "CUSTOMER",
+          is_blocked: false,
+          password_hash: "GHOST_USER_NO_PASSWORD",
+        },
         data: expect.objectContaining({ name: "Real Name", password_hash: "$2a$12$hashed" }),
       })
     );
+    const conversionData = mockTxUserUpdateMany.mock.calls[0]?.[0]?.data;
+    expect(conversionData).not.toHaveProperty("points_balance");
+    expect(mockTxPointsLogCreate).not.toHaveBeenCalled();
+    expect(mockCreateWelcomeReward).toHaveBeenCalledWith(expect.anything(), GHOST_USER.id);
   });
 
   it("xóa session cũ nhất khi ghost user đã có 5 session active (edge case đặc biệt)", async () => {
     mockUserFindUnique.mockResolvedValueOnce(GHOST_USER);
-    const mockTxUserUpdate = vi.fn().mockResolvedValue({ ...GHOST_USER, password_hash: "$2a$12$hashed" });
+    const mockTxUserUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const convertedUser = { ...GHOST_USER, password_hash: "$2a$12$hashed" };
     const mockTxSessionCreate = vi.fn().mockResolvedValue({ id: "registered-session-id", refresh_token: "new-token" });
     const mockTxSessionFindMany = vi.fn().mockResolvedValue([
       { id: "s1" }, { id: "s2" }, { id: "s3" }, { id: "s4" }, { id: "s5" },
@@ -606,7 +714,7 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
     mockTransaction.mockImplementationOnce(
       async (fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {
-          user: { update: mockTxUserUpdate, create: vi.fn() },
+          user: { updateMany: mockTxUserUpdateMany, findUnique: vi.fn().mockResolvedValue(convertedUser), create: vi.fn() },
           session: {
             findMany: mockTxSessionFindMany,
             create: mockTxSessionCreate,
@@ -627,6 +735,206 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
         where: expect.objectContaining({ id: { in: ["s1"] } }),
       })
     );
+  });
+
+  it("ghost conversion thua conditional update trả 409 và không tạo reward/session", async () => {
+    mockUserFindUnique.mockResolvedValueOnce(GHOST_USER);
+    const sessionCreate = vi.fn();
+    mockTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { updateMany: vi.fn().mockResolvedValue({ count: 0 }), findUnique: vi.fn(), create: vi.fn() },
+      session: { findMany: vi.fn(), create: sessionCreate, deleteMany: vi.fn() },
+    }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Real Name", phone_number: "0912345678", password: "newpassword",
+    }));
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("CONFLICT");
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
+    expect(sessionCreate).not.toHaveBeenCalled();
+  });
+
+  it("khôi phục đúng ghost được chèn đồng thời sau P2002 thay vì báo trùng Instagram", async () => {
+    mockUserFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(GHOST_USER);
+    const p2002 = Object.assign(new Error("Unique constraint"), { code: "P2002" });
+    const convertedUser = { ...GHOST_USER, name: "Real Name", password_hash: "$2a$12$hashed" };
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const sessionCreate = vi.fn().mockResolvedValue({ id: "registered-session-id", refresh_token: "new-token" });
+
+    mockTransaction
+      .mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+        user: { create: vi.fn().mockRejectedValue(p2002), updateMany: vi.fn(), findUnique: vi.fn() },
+        session: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
+      }))
+      .mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+        user: { create: vi.fn(), updateMany, findUnique: vi.fn().mockResolvedValue(convertedUser) },
+        session: { findMany: vi.fn().mockResolvedValue([]), create: sessionCreate, deleteMany: vi.fn() },
+      }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Real Name", phone_number: "0912345678", password: "newpassword",
+    }));
+
+    expect(response.status).toBe(201);
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: GHOST_USER.id,
+        role: "CUSTOMER",
+        is_blocked: false,
+        password_hash: "GHOST_USER_NO_PASSWORD",
+      },
+    }));
+    expect(mockCreateWelcomeReward).toHaveBeenCalledOnce();
+    expect(sessionCreate).toHaveBeenCalledOnce();
+  });
+
+  it("P2002 có concurrent winner đã đăng ký trả phone conflict mà không tạo artifact", async () => {
+    mockUserFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(REAL_USER);
+    const p2002 = Object.assign(new Error("Unique constraint"), { code: "P2002" });
+    mockTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { create: vi.fn().mockRejectedValue(p2002), updateMany: vi.fn(), findUnique: vi.fn() },
+      session: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
+    }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Second", phone_number: "0912345678", password: "newpassword",
+    }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Số điện thoại đã được đăng ký", code: "CONFLICT" });
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
+  });
+
+  it("P2002 gặp concurrent winner đã đăng ký và bị chặn vẫn trả conflict", async () => {
+    mockUserFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...REAL_USER, is_blocked: true });
+    const p2002 = Object.assign(new Error("Unique constraint"), { code: "P2002" });
+    mockTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { create: vi.fn().mockRejectedValue(p2002), updateMany: vi.fn(), findUnique: vi.fn() },
+      session: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
+    }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Blocked Winner", phone_number: "0912345678", password: "newpassword",
+    }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Số điện thoại đã được đăng ký", code: "CONFLICT" });
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
+  });
+
+  it("P2002 gặp non-CUSTOMER ghost bị chặn vẫn trả conflict", async () => {
+    mockUserFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...GHOST_USER, role: "STAFF", is_blocked: true });
+    const p2002 = Object.assign(new Error("Unique constraint"), { code: "P2002" });
+    mockTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { create: vi.fn().mockRejectedValue(p2002), updateMany: vi.fn(), findUnique: vi.fn() },
+      session: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
+    }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Blocked Staff", phone_number: "0912345678", password: "newpassword",
+    }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Số điện thoại đã được đăng ký", code: "CONFLICT" });
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
+  });
+
+  it("P2002 gặp ghost bị chặn trả forbidden và không convert", async () => {
+    mockUserFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...GHOST_USER, is_blocked: true });
+    const p2002 = Object.assign(new Error("Unique constraint"), { code: "P2002" });
+    mockTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { create: vi.fn().mockRejectedValue(p2002), updateMany: vi.fn(), findUnique: vi.fn() },
+      session: { findMany: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
+    }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Blocked", phone_number: "0912345678", password: "newpassword",
+    }));
+
+    expect(response.status).toBe(403);
+    expect((await response.json()).code).toBe("FORBIDDEN");
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
+  });
+
+  it("P2002 nhưng không tìm thấy phone trả đúng conflict Instagram", async () => {
+    mockUserFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    const p2002 = Object.assign(new Error("Unique constraint"), { code: "P2002" });
+    const sessionCreate = vi.fn();
+    mockTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { create: vi.fn().mockRejectedValue(p2002), updateMany: vi.fn(), findUnique: vi.fn() },
+      session: { findMany: vi.fn(), create: sessionCreate, deleteMany: vi.fn() },
+    }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Instagram Conflict", phone_number: "0912345678", password: "newpassword",
+      insta_name: "taken.handle",
+    }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Tên Instagram này đã được sử dụng", code: "CONFLICT" });
+    expect(mockTransaction).toHaveBeenCalledOnce();
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
+    expect(sessionCreate).not.toHaveBeenCalled();
+  });
+
+  it("ghost bị chặn từ lookup đầu trả forbidden và không tạo artifact", async () => {
+    mockUserFindUnique.mockResolvedValueOnce({ ...GHOST_USER, is_blocked: true });
+    const updateMany = vi.fn();
+    const sessionCreate = vi.fn();
+    mockTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { create: vi.fn(), updateMany, findUnique: vi.fn() },
+      session: { findMany: vi.fn(), create: sessionCreate, deleteMany: vi.fn() },
+    }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Blocked Ghost", phone_number: "0912345678", password: "newpassword",
+    }));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      error: "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.",
+      code: "FORBIDDEN",
+    });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
+    expect(sessionCreate).not.toHaveBeenCalled();
+  });
+
+  it("non-CUSTOMER ghost bị chặn từ lookup đầu trả conflict", async () => {
+    mockUserFindUnique.mockResolvedValueOnce({ ...GHOST_USER, role: "STAFF", is_blocked: true });
+    const updateMany = vi.fn();
+    const sessionCreate = vi.fn();
+    mockTransaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { create: vi.fn(), updateMany, findUnique: vi.fn() },
+      session: { findMany: vi.fn(), create: sessionCreate, deleteMany: vi.fn() },
+    }));
+
+    const response = await registerPOST(makeRequest({
+      name: "Blocked Staff", phone_number: "0912345678", password: "newpassword",
+    }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "Số điện thoại đã được đăng ký", code: "CONFLICT" });
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
+    expect(sessionCreate).not.toHaveBeenCalled();
   });
 });
 

@@ -50,6 +50,7 @@ const MOCK_SESSION = {
     id: "user-uuid-456",
     role: "CUSTOMER",
     phone_number: "+84912345678",
+    is_blocked: false,
   },
 };
 
@@ -85,6 +86,16 @@ describe("middleware-auth — findSessionWithUser", () => {
     expect(result?.id).toBe("session-uuid-123");
     expect(result?.user.role).toBe("CUSTOMER");
     expect(result?.user.phone_number).toBe("+84912345678");
+  });
+
+  it("giữ trạng thái blocked trong authoritative session result", async () => {
+    mockFetch.mockResolvedValueOnce(
+      makeSupabaseResponse([{ ...MOCK_SESSION, user: { ...MOCK_SESSION.user, is_blocked: true } }])
+    );
+
+    const result = await findSessionWithUser("550e8400-e29b-41d4-a716-446655440000");
+
+    expect(result?.user.is_blocked).toBe(true);
   });
 
   it("gọi đúng endpoint PostgREST với apikey và Authorization headers", async () => {

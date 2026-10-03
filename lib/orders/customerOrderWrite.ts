@@ -1,0 +1,184 @@
+import { prisma } from "@/lib/prisma";
+import type { CustomerDeliveryResolution } from "@/lib/orders/customerOrderDelivery";
+import type {
+  CalcDiscountVoucher,
+  CalcOrderResult,
+} from "@/lib/orders/orderCalculator";
+import { OrderValidationError } from "@/lib/orders/orderProcessingErrors";
+import type { ProcessedOrderItem } from "@/lib/orders/orderProcessingTypes";
+import type { CustomerOrderInput } from "@/lib/validations/order";
+import type { IceOption } from "@/contracts/order";
+import type { SweetnessLevel } from "@/contracts/menu";
+import type { Prisma } from "@prisma/client";
+import type { ResolvedOrderBundles } from "@/lib/orders/orderBundle";
+import { persistOrderBundles } from "@/lib/orders/orderBundleWrite";
+
+interface CreateCustomerOrderParams {
+  data: CustomerOrderInput;
+  userId: string;
+  orderCode: string;
+  autoCancelAt: Date;
+  delivery: CustomerDeliveryResolution;
+  resolvedItems: ProcessedOrderItem[];
+  calculation: CalcOrderResult;
+  appliedDiscountVouchers: CalcDiscountVoucher[];
+  appliedFreeshipVoucherId: string | null;
+  appliedAddonVoucherIds: string[];
+  appliedProductVoucherIds: string[];
+  appliedBundles: ResolvedOrderBundles;
+}
+
+async function reserveVoucher(
+  tx: Prisma.TransactionClient,
+  voucherId: string,
+  conflictMessage: string,
+): Promise<void> {
+  const updated = await tx.voucher.updateMany({
+    where: { id: voucherId, status: "ACTIVE" },
+    data: { status: "RESERVED" },
+  });
+  if (updated.count === 0) {
+    throw new OrderValidationError("CONFLICT", conflictMessage);
+  }
+}
+
+/** Persists a customer order and atomically reserves every applied voucher. */
+export async function writeCustomerOrder(params: CreateCustomerOrderParams, transaction?: Prisma.TransactionClient) {
+  const {
+    data,
+    userId,
+    orderCode,
+    autoCancelAt,
+    delivery,
+    resolvedItems,
+    calculation,
+    appliedDiscountVouchers,
+    appliedFreeshipVoucherId,
+    appliedAddonVoucherIds,
+    appliedProductVoucherIds,
+    appliedBundles,
+  } = params;
+
+  const write = async (tx: Prisma.TransactionClient) => {
+      const order = await tx.order.create({
+        data: {
+          user_id: userId,
+          status: "PENDING",
+          order_type: data.order_type,
+          payment_method: "BANK_TRANSFER",
+          order_code: orderCode,
+          subtotal_vnd: calculation.subtotal_vnd,
+          total_voucher_discount_vnd: calculation.total_voucher_discount_vnd,
+          total_vnd: calculation.total_vnd,
+          shipping_fee_vnd: calculation.shipping_fee_vnd,
+          freeship_discount_vnd: calculation.freeship_discount_vnd,
+          grand_total_vnd: calculation.grand_total_vnd,
+          freeship_voucher_id: appliedFreeshipVoucherId,
+          points_earned: null,
+          pickup_time:
+            data.order_type === "PICKUP"
+              ? data.pickup_time
+                ? new Date(data.pickup_time)
+                : new Date(Date.now() + 10 * 60 * 1000)
+              : data.pickup_time
+                ? new Date(data.pickup_time)
+                : null,
+          note: data.note ?? null,
+          auto_cancel_at: autoCancelAt,
+          address_id: delivery.address_id,
+          delivery_address: delivery.delivery_address,
+          delivery_lat: delivery.delivery_lat,
+          delivery_lng: delivery.delivery_lng,
+          delivery_distance_km:
+            data.order_type === "DELIVERY" ? delivery.actual_distance_km : null,
+          delivery_receiver_name: delivery.receiver_name,
+          delivery_receiver_phone: delivery.receiver_phone,
+          items: {
+            create: resolvedItems.map((item, index) => {
+              const itemCalculation = calculation.itemResults[index];
+              if (!itemCalculation) {
+                throw new OrderValidationError(
+                  "VALIDATION_ERROR",
+                  "Missing item voucher calculation.",
+                );
+              }
+              return {
+                menu_item_id: item.menu_item_id,
+                quantity: item.quantity,
+                size: item.size,
+                unit_price_vnd: item.unit_price_vnd,
+                addons_price_vnd: item.addons_price_vnd,
+                product_voucher_discount_vnd:
+                  itemCalculation.product_voucher_discount_vnd + itemCalculation.item_voucher_discount_vnd,
+                total_discount_vnd: itemCalculation.total_discount_vnd,
+                sweetness: item.sweetness as SweetnessLevel,
+                ice_option: item.ice_option as IceOption,
+                coldwhisk: item.coldwhisk,
+                note: item.note,
+                product_voucher_id: itemCalculation.product_voucher_id,
+                item_voucher_id: itemCalculation.item_voucher_id,
+                addonVouchers: { create: itemCalculation.addon_vouchers },
+                selected_powder_id: item.selected_powder_id,
+                selected_milk_type_id: item.selected_milk_type_id,
+                base_liquid_ml: item.base_liquid_ml,
+                addons: {
+                  create: item.resolvedAddons.map((addon) => ({
+                    addon_option_id: addon.addon_option_id,
+                    quantity: addon.quantity,
+                    unit_price_vnd: addon.unit_price_vnd,
+                  })),
+                },
+              };
+            }),
+          },
+        },
+        include: { items: { include: { addons: true } } },
+      });
+
+      for (const voucher of appliedDiscountVouchers) {
+        await reserveVoucher(
+          tx,
+          voucher.id,
+          "Voucher discount đã được sử dụng hoặc đang bị khóa.",
+        );
+        await tx.orderDiscountVoucher.create({
+          data: { order_id: order.id, voucher_id: voucher.id },
+        });
+      }
+      if (appliedFreeshipVoucherId) {
+        await reserveVoucher(
+          tx,
+          appliedFreeshipVoucherId,
+          "Voucher freeship đã được sử dụng hoặc đang bị khóa.",
+        );
+      }
+      for (const voucherId of appliedAddonVoucherIds) {
+        await reserveVoucher(
+          tx,
+          voucherId,
+          "Voucher addon đã được sử dụng hoặc đang bị khóa.",
+        );
+      }
+      for (const voucherId of appliedProductVoucherIds) {
+        await reserveVoucher(
+          tx,
+          voucherId,
+          "Voucher sản phẩm đã được sử dụng hoặc đang bị khóa.",
+        );
+      }
+      if (appliedBundles.bundles.length > 0) {
+        await persistOrderBundles(tx, {
+          order_id: order.id,
+          order_items: order.items,
+          source_items: data.items,
+          bundles: appliedBundles,
+          redeem_immediately: false,
+          performed_by: userId,
+        });
+      }
+      return order;
+    };
+  return transaction ? write(transaction) : prisma.$transaction(
+    write, { isolationLevel: "Serializable", maxWait: 5000, timeout: 10000 },
+  );
+}

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { LoginSchema } from "@/lib/validations/auth";
 import { prisma } from "@/lib/prisma";
-import { normalizePhone, signJwt, createSession, setAuthCookies } from "@/lib/auth";
+import { normalizePhone, signJwt, createSessionForVerifiedPassword, setAuthCookies } from "@/lib/auth";
 import {
   checkLoginFailLimit,
   checkIdentifierFloodGuard,
@@ -116,6 +116,13 @@ export async function POST(req: Request) {
       );
     }
 
+    if (user.is_blocked) {
+      return NextResponse.json(
+        { error: "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.", code: "FORBIDDEN" },
+        { status: 403 }
+      );
+    }
+
     // Correct password — reset both counters so legitimate users never hit their own limit.
     // Run in parallel to minimize latency impact.
     await Promise.all([
@@ -123,27 +130,22 @@ export async function POST(req: Request) {
       resetIdentifierFlood(identifierKind, normalizedIdentifier),
     ]);
 
-    // EDGE-4: Session limit — keep at most MAX_ACTIVE_SESSIONS-1 existing sessions
-    // so the new one makes exactly MAX_ACTIVE_SESSIONS total.
-    const activeSessions = await prisma.session.findMany({
-      where: { user_id: user.id, expires_at: { gt: new Date() } },
-      orderBy: { created_at: "asc" },
-      select: { id: true, refresh_token: true },
-    });
-    if (activeSessions.length >= MAX_ACTIVE_SESSIONS) {
-      // Delete oldest sessions, keep (MAX_ACTIVE_SESSIONS - 1) newest
-      const idsToDelete = activeSessions
-        .slice(0, activeSessions.length - (MAX_ACTIVE_SESSIONS - 1))
-        .map((s) => s.id);
-      await prisma.session.deleteMany({ where: { id: { in: idsToDelete } } });
-      const cacheKeys = activeSessions
-        .slice(0, activeSessions.length - (MAX_ACTIVE_SESSIONS - 1))
-        .map((session) => `session:${session.refresh_token}`);
-      await cacheDelete(...cacheKeys);
+    const session = await createSessionForVerifiedPassword(
+      user.id,
+      user.role,
+      user.password_hash,
+      MAX_ACTIVE_SESSIONS,
+    );
+    if (!session) {
+      return NextResponse.json(
+        { error: "Thông tin đăng nhập hoặc mật khẩu không chính xác", code: "INVALID_CREDENTIALS" },
+        { status: 401 }
+      );
+    }
+    if (session.evictedRefreshTokens.length > 0) {
+      await cacheDelete(...session.evictedRefreshTokens.map((token) => `session:${token}`));
     }
 
-    // Create session
-    const session = await createSession(user.id, user.role);
     const accessToken = await signJwt({ id: user.id, role: user.role, phone_number: user.phone_number, sid: session.id });
 
     // Set cookies

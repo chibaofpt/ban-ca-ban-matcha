@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import type { CustomerSearchResult } from "@/contracts/staff";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 
@@ -63,8 +64,9 @@ export async function GET(req: NextRequest) {
         where: { phone_number: normalized },
         select: { qr_token: true, name: true, phone_number: true, points_balance: true },
       });
+      const items = (user ? [user] : []) satisfies CustomerSearchResult[];
       return NextResponse.json(
-        { data: { items: user ? [user] : [] } },
+        { data: { items } },
         { status: 200 }
       );
     }
@@ -83,7 +85,8 @@ export async function GET(req: NextRequest) {
       take: 10,
     });
 
-    return NextResponse.json({ data: { items: users } }, { status: 200 });
+    const items = users satisfies CustomerSearchResult[];
+    return NextResponse.json({ data: { items } }, { status: 200 });
   } catch (error) {
     console.error("[GET /api/staff/users]", error);
     return NextResponse.json(

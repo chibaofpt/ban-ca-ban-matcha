@@ -1,6 +1,8 @@
 import {
   BundlePromotionError,
+  type BundleCartAddon,
   type BundleCartItem,
+  type BundlePersonalVoucherItem,
   type BundleEvaluationResult,
   type BundleProductDefinition,
   type BundlePromotionRule,
@@ -13,6 +15,7 @@ import {
 export { BundlePromotionError } from "@/src/utils/bundlePromotionTypes";
 export type {
   BundleCartAddon, BundleCartItem, BundleEvaluationResult, BundleProductDefinition,
+  BundlePersonalVoucherItem,
   BundlePromotionRule, BundleQualifierAllocation, BundleRewardAllocation,
   BundleRewardResult, BundleSize,
 } from "@/src/utils/bundlePromotionTypes";
@@ -40,11 +43,37 @@ function itemMap(items: BundleCartItem[]): Map<string, BundleCartItem> {
 }
 
 function available(item: BundleCartItem): number {
-  return Math.max(0, item.quantity - item.product_voucher_quantity - (item.item_voucher_quantity ?? 0));
+  return bundleAvailableProductQuantity(item);
 }
 
-function rewardAvailable(item: BundleCartItem): number {
-  return Math.max(0, available(item) - (item.product_discount_voucher_quantity ?? 0));
+type BundlePersonalAddon = Pick<BundleCartAddon, "quantity" | "voucher_discounted_quantity" | "personal_voucher_quantity">;
+
+function addonPersonalVoucherQuantity(addon: BundlePersonalAddon): number {
+  return Math.max(0, addon.personal_voucher_quantity ?? addon.voucher_discounted_quantity ?? 0);
+}
+
+/** Count drink units carrying any personal voucher link for BUNDLE capacity checks. */
+export function bundlePersonalVoucherQuantity(item: BundlePersonalVoucherItem): number {
+  if (item.personal_voucher_quantity !== undefined) {
+    return Math.min(item.quantity, Math.max(0, item.personal_voucher_quantity));
+  }
+  const productLinks = Math.max(
+    0,
+    item.product_voucher_quantity,
+    item.product_discount_voucher_quantity ?? 0,
+    item.item_voucher_quantity ?? 0,
+  );
+  const addonLinks = item.addons.some((addon) => addonPersonalVoucherQuantity(addon) > 0) ? 1 : 0;
+  return Math.min(item.quantity, Math.max(productLinks, addonLinks));
+}
+
+/** Return product units available to a BUNDLE after all personal voucher links are masked. */
+export function bundleAvailableProductQuantity(item: BundlePersonalVoucherItem): number {
+  return Math.max(0, item.quantity - bundlePersonalVoucherQuantity(item));
+}
+
+function paidProductQuantity(item: BundleCartItem): number {
+  return Math.max(0, item.quantity - item.product_voucher_quantity - (item.item_voucher_quantity ?? 0));
 }
 
 function assertAllocations(qualifiers: BundleQualifierAllocation[], rewards: BundleRewardAllocation[]): void {
@@ -68,17 +97,15 @@ function assertAllocations(qualifiers: BundleQualifierAllocation[], rewards: Bun
 function assertCapacity(
   items: Map<string, BundleCartItem>, qualifiers: BundleQualifierAllocation[], rewards: BundleRewardAllocation[], rewardKind: "PRODUCT" | "ADDON",
 ): void {
-  const used = new Map<string, number>();
-  for (const allocation of qualifiers) used.set(allocation.client_line_id, (used.get(allocation.client_line_id) ?? 0) + allocation.quantity);
-  if (rewardKind === "PRODUCT") for (const allocation of rewards) {
-    const item = items.get(allocation.client_line_id);
-    if (allocation.quantity > rewardAvailable(item ?? ({ quantity: 0, product_voucher_quantity: 0 } as BundleCartItem))) {
-      throw new BundlePromotionError("BUNDLE_CONFLICT", "Bundle reward overlaps PRODUCT_DISCOUNT");
-    }
-    used.set(allocation.client_line_id, (used.get(allocation.client_line_id) ?? 0) + allocation.quantity);
-  }
+  const itemForAllocation = (lineId: string): BundleCartItem => {
+    const item = items.get(lineId);
+    if (!item) throw new BundlePromotionError("BUNDLE_SCOPE_MISMATCH", "Allocation line is missing");
+    return item;
+  };
+  const used = bundleProductUnitUsage({ reward_kind: rewardKind }, qualifiers, rewards);
   for (const [lineId, quantity] of used) {
-    if (quantity > available(items.get(lineId) ?? ({ quantity: 0, product_voucher_quantity: 0 } as BundleCartItem))) {
+    const item = itemForAllocation(lineId);
+    if (quantity > available(item)) {
       throw new BundlePromotionError("BUNDLE_CONFLICT", "Bundle allocations exceed paid product units");
     }
   }
@@ -93,10 +120,53 @@ function paidSubtotal(items: BundleCartItem[], rewards: BundleRewardAllocation[]
     target.set(key, (target.get(key) ?? 0) + reward.quantity);
   }
   return items.reduce((total, item) => {
-    const products = Math.max(0, available(item) - (productRewards.get(`${item.client_line_id}:PRODUCT`) ?? 0));
-    const addons = item.addons.reduce((sum, addon) => sum + Math.max(0, addon.quantity - (addon.voucher_discounted_quantity ?? 0) - (addonRewards.get(`${item.client_line_id}:${addon.addon_option_id}`) ?? 0)) * addon.unit_price_vnd, 0);
+    const products = Math.max(0, paidProductQuantity(item) - (productRewards.get(`${item.client_line_id}:PRODUCT`) ?? 0));
+    const addons = item.addons.reduce((sum, addon) => sum + Math.max(0, addon.quantity - addonPersonalVoucherQuantity(addon) - (addonRewards.get(`${item.client_line_id}:${addon.addon_option_id}`) ?? 0)) * addon.unit_price_vnd, 0);
     return total + Math.max(0, products * item.unit_price_vnd - (item.product_discount_vnd ?? 0)) + addons;
   }, 0);
+}
+
+/** Reserve the union of qualifier and addon-recipient units, then add product rewards. */
+export function bundleProductUnitUsage(
+  rule: Pick<BundlePromotionRule, "reward_kind">,
+  qualifiers: readonly BundleQualifierAllocation[],
+  rewards: readonly BundleRewardAllocation[],
+): Map<string, number> {
+  const qualifiersByLine = new Map<string, number>();
+  const addonRecipientsByLine = new Map<string, Map<string, number>>();
+  const productRewardsByLine = new Map<string, number>();
+  for (const allocation of qualifiers) qualifiersByLine.set(allocation.client_line_id, (qualifiersByLine.get(allocation.client_line_id) ?? 0) + allocation.quantity);
+  for (const allocation of rewards) {
+    if (allocation.addon_option_id) {
+      const options = addonRecipientsByLine.get(allocation.client_line_id) ?? new Map<string, number>();
+      options.set(allocation.addon_option_id, (options.get(allocation.addon_option_id) ?? 0) + allocation.quantity);
+      addonRecipientsByLine.set(allocation.client_line_id, options);
+    }
+    else if (rule.reward_kind === "PRODUCT") productRewardsByLine.set(allocation.client_line_id, (productRewardsByLine.get(allocation.client_line_id) ?? 0) + allocation.quantity);
+  }
+  const lineIds = new Set([...qualifiersByLine.keys(), ...addonRecipientsByLine.keys(), ...productRewardsByLine.keys()]);
+  return new Map([...lineIds].map((lineId) => {
+    const addonQuantity = Math.max(...[...(addonRecipientsByLine.get(lineId)?.values() ?? [])], 0);
+    return [lineId, Math.max(qualifiersByLine.get(lineId) ?? 0, addonQuantity) + (productRewardsByLine.get(lineId) ?? 0)];
+  }));
+}
+
+function assertAddonSelectionCapacity(items: Iterable<BundleCartItem>): void {
+  for (const item of items) {
+    const selectedByGroup = new Map<string, { count: number; max: number }>();
+    for (const addon of item.addons) {
+      if (!addon.addon_group_id || addon.max_select === undefined) continue;
+      const current = selectedByGroup.get(addon.addon_group_id) ?? { count: 0, max: addon.max_select };
+      current.count += 1;
+      current.max = Math.min(current.max, addon.max_select);
+      selectedByGroup.set(addon.addon_group_id, current);
+    }
+    for (const [groupId, selection] of selectedByGroup) {
+      if (selection.max < 1 || selection.count > selection.max) {
+        throw new BundlePromotionError("BUNDLE_SCOPE_MISMATCH", `Addon group ${groupId} exceeds its selection limit`);
+      }
+    }
+  }
 }
 
 function expand(allocations: BundleQualifierAllocation[], items: Map<string, BundleCartItem>): BundleCartItem[] {
@@ -190,14 +260,15 @@ function evaluateAddon(rule: BundlePromotionRule, items: Map<string, BundleCartI
   if (rewardTotal !== (rule.max_reward_units_per_order === null ? expectedRewards : Math.min(expectedRewards, rule.max_reward_units_per_order))) {
     throw new BundlePromotionError("BUNDLE_REWARD_LIMIT", "Addon reward quantity is invalid");
   }
-  const qualifierLines = new Set(qualifiers.map((allocation) => allocation.client_line_id));
   const discounts = new Map<string, number>();
   for (const allocation of rewards) {
     const item = items.get(allocation.client_line_id);
     const addon = item?.addons.find((candidate) => candidate.addon_option_id === allocation.addon_option_id);
-    if (!item || !qualifierLines.has(item.client_line_id) || !allocation.addon_option_id || !rule.reward_addon_option_ids.includes(allocation.addon_option_id) || !addon) throw new BundlePromotionError("BUNDLE_SCOPE_MISMATCH", "Addon reward must target its qualifier pool");
-    if (addon.gram_value !== null) throw new BundlePromotionError("BUNDLE_EXTRA_MATCHA_BLOCKED", "Extra Matcha cannot be a bundle reward");
-    if (allocation.quantity + (addon.voucher_discounted_quantity ?? 0) > addon.quantity) throw new BundlePromotionError("BUNDLE_CONFLICT", "Addon reward overlaps another benefit");
+    if (!item || !rule.qualifier_products.some((product) => matches(item, product)) || !allocation.addon_option_id || !rule.reward_addon_option_ids.includes(allocation.addon_option_id) || !addon) throw new BundlePromotionError("BUNDLE_SCOPE_MISMATCH", "Addon reward must target an eligible qualifier-product pool");
+    if (addon.is_active === false || addon.is_deleted === true) throw new BundlePromotionError("BUNDLE_SCOPE_MISMATCH", "Addon reward is no longer available");
+    if (addon.is_dynamic_gram === true || addon.gram_value !== null) throw new BundlePromotionError("BUNDLE_EXTRA_MATCHA_BLOCKED", "Extra Matcha cannot be a bundle reward");
+    if (allocation.quantity > available(item)) throw new BundlePromotionError("BUNDLE_CONFLICT", "Addon reward overlaps a personal voucher");
+    if (allocation.quantity + addonPersonalVoucherQuantity(addon) > addon.quantity) throw new BundlePromotionError("BUNDLE_CONFLICT", "Addon reward overlaps another benefit");
     discounts.set(`${item.client_line_id}:${addon.addon_option_id}`, addon.unit_price_vnd * allocation.quantity);
   }
   const rewardResults = results(rewards, discounts);
@@ -207,6 +278,7 @@ function evaluateAddon(rule: BundlePromotionRule, items: Map<string, BundleCartI
 /** Evaluate one explicit BUNDLE allocation pool against resolved item prices. */
 export function evaluateBundlePromotion(input: { rule: BundlePromotionRule; items: BundleCartItem[]; qualifier_allocations: BundleQualifierAllocation[]; reward_allocations: BundleRewardAllocation[]; paid_merchandise_subtotal_vnd?: number }): BundleEvaluationResult {
   assertRule(input.rule);
+  assertAddonSelectionCapacity(input.items);
   assertAllocations(input.qualifier_allocations, input.reward_allocations);
   const items = itemMap(input.items);
   assertCapacity(items, input.qualifier_allocations, input.reward_allocations, input.rule.reward_kind);

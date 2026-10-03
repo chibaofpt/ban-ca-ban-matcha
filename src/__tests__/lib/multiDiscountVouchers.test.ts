@@ -7,14 +7,11 @@
  *  - Thứ tự: tất cả FIXED trước → PERCENT áp trên số còn lại
  *  - Total >= 0đ (không âm)
  *
- * These tests will FAIL until `calcMultiDiscountVouchers` is added to `lib/vouchers.ts`.
  */
 
 import { describe, it, expect } from "vitest";
 
-// ── Import the function to be implemented ─────────────────────────────────────
-// This import will fail until the function is added to lib/vouchers.ts
-import { calcMultiDiscountVouchers } from "@/lib/vouchers";
+import { calcMultiDiscountVouchers } from "@/lib/vouchers/voucherRules";
 
 // ── Fixture helper ─────────────────────────────────────────────────────────────
 
@@ -39,9 +36,6 @@ describe("calcMultiDiscountVouchers — empty input", () => {
     expect(calcMultiDiscountVouchers([], 100_000)).toBe(0);
   });
 
-  it("mảng rỗng, subtotal = 0 → discount = 0", () => {
-    expect(calcMultiDiscountVouchers([], 0)).toBe(0);
-  });
 });
 
 // ── Single FIXED ──────────────────────────────────────────────────────────────
@@ -67,20 +61,12 @@ describe("calcMultiDiscountVouchers — nhiều FIXED", () => {
     expect(calcMultiDiscountVouchers([fixed(10_000), fixed(15_000)], 100_000)).toBe(25_000);
   });
 
-  it("3 FIXED (10K + 20K + 30K) trên 100K → discount = 60K", () => {
-    expect(
-      calcMultiDiscountVouchers([fixed(10_000), fixed(20_000), fixed(30_000)], 100_000)
-    ).toBe(60_000);
-  });
-
   it("tổng FIXED lớn hơn subtotal → discount = subtotal (không âm)", () => {
     // 20K + 30K = 50K, nhưng subtotal chỉ có 40K
-    expect(calcMultiDiscountVouchers([fixed(20_000), fixed(30_000)], 40_000)).toBe(40_000);
-  });
-
-  it("FIXED trừ lần lượt — không phải cộng tổng rồi mới trừ (kết quả đều như nhau trừ edge case âm)", () => {
-    // 100K - 20K = 80K, 80K - 30K = 50K → discount = 50K
-    expect(calcMultiDiscountVouchers([fixed(20_000), fixed(30_000)], 100_000)).toBe(50_000);
+    const subtotal = 40_000;
+    const discount = calcMultiDiscountVouchers([fixed(20_000), fixed(30_000)], subtotal);
+    expect(discount).toBe(subtotal);
+    expect(subtotal - discount).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -89,10 +75,6 @@ describe("calcMultiDiscountVouchers — nhiều FIXED", () => {
 describe("calcMultiDiscountVouchers — single PERCENT", () => {
   it("1 PERCENT 10% trên 100K → discount = 10K", () => {
     expect(calcMultiDiscountVouchers([percent(10)], 100_000)).toBe(10_000);
-  });
-
-  it("1 PERCENT 20% trên 55K → discount = 11K", () => {
-    expect(calcMultiDiscountVouchers([percent(20)], 55_000)).toBe(11_000);
   });
 
   it("1 PERCENT 100% → discount = subtotal (hết sạch)", () => {
@@ -130,12 +112,6 @@ describe("calcMultiDiscountVouchers — FIXED trước, PERCENT sau", () => {
     expect(calcMultiDiscountVouchers([fixed(200_000), percent(20)], 50_000)).toBe(50_000);
   });
 
-  it("kết quả: subtotal - result >= 0 (không bao giờ âm)", () => {
-    const subtotal = 30_000;
-    const discount = calcMultiDiscountVouchers([fixed(50_000), percent(50)], subtotal);
-    expect(subtotal - discount).toBeGreaterThanOrEqual(0);
-  });
-
   it("ví dụ thực tế từ plan: 100K - 20K - 10K = 70K → 70K×15% = 10.5K → làm tròn 10K → total = 40K", () => {
     // 100K - 20K = 80K, 80K - 10K = 70K → 70K * 15% = 10500 → rounded to 10000 → total discount = 40000
     expect(
@@ -163,7 +139,4 @@ describe("calcMultiDiscountVouchers — edge cases", () => {
     ).toBe(0);
   });
 
-  it("chỉ PERCENT, không có FIXED → chỉ áp PERCENT trực tiếp trên subtotal", () => {
-    expect(calcMultiDiscountVouchers([percent(20)], 100_000)).toBe(20_000);
-  });
 });

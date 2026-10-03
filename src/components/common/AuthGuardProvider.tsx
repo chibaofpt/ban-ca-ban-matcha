@@ -7,6 +7,9 @@ import { onForceLogout } from "@/src/lib/api/client";
 import { useAuthStore } from "@/src/lib/store/authStore";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { useQueryClient } from "@tanstack/react-query";
+import { useCartStore } from "@/src/lib/store/cartStore";
+import { useStaffCartStore } from "@/src/lib/store/staffCartStore";
+import { clearPrivateQueryCaches } from "@/src/lib/queryClient";
 
 
 /**
@@ -57,8 +60,10 @@ export default function AuthGuardProvider({ children }: { children: ReactNode })
       if (!userRef.current) return;
 
       // 1. Clear client-side auth state (localStorage)
+      useCartStore.getState().detachVoucherOwner(null);
+      useStaffCartStore.getState().detachCustomer();
       logout();
-      queryClient.removeQueries({ queryKey: ["customer"] });
+      clearPrivateQueryCaches(queryClient);
 
       // 2. Inform user why they were logged out
       toast.error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");

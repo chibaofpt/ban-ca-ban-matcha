@@ -1,72 +1,27 @@
 import { apiClient } from "@/src/lib/api/client";
-import type { CartItem } from "@/src/lib/types/cart";
+import { ApiServiceError } from "@/src/lib/api/serviceError";
+import type { ProjectedCartLine } from "@/src/lib/types/cart";
 import type { ApiError, ApiResponse } from "@/src/lib/types/api";
 import type {
+  BundleApplicationPayload,
+  CreateOrderPayload,
   CustomerHistoryOrdersResponse,
   CustomerOrderDetail,
   CreateOrderResult,
-} from "@/src/lib/types/order";
-import type { BundleApplicationPayload } from "@/src/lib/utils/bundleVoucher";
+  PriceConflict,
+} from "@/contracts/order";
 import { getBundleCheckoutAvailabilityReason } from "@/src/lib/utils/bundleCheckoutError";
+import { serializeCartOrderItems } from "@/src/lib/utils/cartOrderPayload";
 
 // Re-export for consumers
-export type { CreateOrderResult } from "@/src/lib/types/order";
-
-export interface CreateOrderPayload {
-  order_type: "PICKUP" | "DELIVERY";
-  items: {
-    client_line_id?: string;
-    menu_item_id: string;
-    quantity: number;
-    size: "SMALL" | "MEDIUM" | "LARGE" | null;
-    sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL" | "EXTRA";
-    ice_option: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
-    coldwhisk: boolean;
-    note?: string;
-    addon_option_ids: string[];
-    product_voucher_id?: string;
-    item_voucher_id?: string;
-    addon_voucher_ids?: { voucher_id: string; addon_option_id: string }[];
-    selected_powder_id?: string;
-    selected_milk_type_id?: string;
-    selected_base_liquid_id?: string;
-    client_price_vnd: number;
-  }[];
-  discount_voucher_ids: string[];
-  pickup_time?: string;
-  note?: string;
-  delivery_address?: string;
-
-  // Delivery fields
-  address_id?: string;
-  delivery_lat?: number;
-  delivery_lng?: number;
-  delivery_receiver_name?: string;
-  delivery_receiver_phone?: string;
-  client_shipping_fee_vnd?: number;
-  freeship_voucher_id?: string;
-  bundle_applications?: BundleApplicationPayload[];
-}
-
-export interface PriceConflict {
-  menu_item_id: string;
-  name: string;
-  size: string;
-  client_price_vnd: number;
-  server_price_vnd: number;
-}
-
-export class ApiServiceError<TDetails = unknown> extends Error {
-  constructor(
-    message: string,
-    public readonly status: number,
-    public readonly code: string,
-    public readonly details?: TDetails,
-  ) {
-    super(message);
-    this.name = "ApiServiceError";
-  }
-}
+export type {
+  CreateOrderPayload,
+  CreateOrderResult,
+  CustomerHistoryOrdersResponse,
+  CustomerOrderDetail,
+  PriceConflict,
+} from "@/contracts/order";
+export { ApiServiceError } from "@/src/lib/api/serviceError";
 
 export class PriceChangedError extends ApiServiceError {
   constructor(
@@ -117,34 +72,9 @@ function getServerError(err: unknown): { status: number; data: Record<string, un
   return { status, data };
 }
 
-/** Maps CartItem[] from Zustand store into the POST /api/orders payload items. */
-function buildPayloadItems(cart: CartItem[]): CreateOrderPayload["items"] {
-  return cart.map((c) => ({
-    menu_item_id: c.menuItemId,
-    quantity: c.quantity,
-    size: c.size,
-    sweetness: c.sweetness,
-    ice_option: c.iceOption,
-    coldwhisk: c.coldwhisk,
-    ...(c.note ? { note: c.note } : {}),
-    addon_option_ids: c.selectedOptionIds,
-    ...(c.productVoucherId ? { product_voucher_id: c.productVoucherId } : {}),
-    ...(c.itemVoucherId ? { item_voucher_id: c.itemVoucherId } : {}),
-    ...(c.addonVouchers && c.addonVouchers.length > 0
-      ? {
-          addon_voucher_ids: c.addonVouchers.map((av) => ({
-            voucher_id: av.voucherId,
-            addon_option_id: av.addonOptionId,
-          })),
-        }
-      : {}),
-    ...(c.selectedPowderId ? { selected_powder_id: c.selectedPowderId } : {}),
-    ...((c.selectedBaseLiquidId ?? c.selectedMilkTypeId)
-      ? { selected_base_liquid_id: c.selectedBaseLiquidId ?? c.selectedMilkTypeId }
-      : {}),
-    client_price_vnd: c.clientPriceVnd,
-  }));
-}
+/** Maps current-catalog cart projections into POST /api/orders payload items. */
+export const buildPayloadItems = (cart: ProjectedCartLine[]): CreateOrderPayload["items"] =>
+  serializeCartOrderItems(cart);
 
 /**
  * Submits the customer's cart as a new PICKUP order to POST /api/orders.
@@ -152,10 +82,12 @@ function buildPayloadItems(cart: CartItem[]): CreateOrderPayload["items"] {
  * Throws Error with message on other failures.
  */
 export async function createOrder(
-  cart: CartItem[],
+  cart: ProjectedCartLine[],
   options?: {
     orderType?: "PICKUP" | "DELIVERY";
     discountVoucherIds?: string[];
+    /** Effective projection tokens; omitted by callers without a cart projection. */
+    appliedOrderVoucherTokens?: readonly string[];
     pickupTime?: string;
     note?: string;
     deliveryAddress?: string;
@@ -171,10 +103,13 @@ export async function createOrder(
     bundleApplications?: BundleApplicationPayload[];
   }
 ): Promise<CreateOrderResult> {
+  const appliedTokens = options?.appliedOrderVoucherTokens === undefined
+    ? null : new Set(options.appliedOrderVoucherTokens);
   const payload: CreateOrderPayload = {
     order_type: options?.orderType ?? "PICKUP",
     items: buildPayloadItems(cart),
-    discount_voucher_ids: options?.discountVoucherIds ?? [],
+    discount_voucher_ids: (options?.discountVoucherIds ?? []).filter((token) =>
+      appliedTokens === null || appliedTokens.has(token)),
     ...(options?.pickupTime ? { pickup_time: options.pickupTime } : {}),
     ...(options?.note ? { note: options.note } : {}),
     ...(options?.deliveryAddress ? { delivery_address: options.deliveryAddress } : {}),
@@ -184,14 +119,12 @@ export async function createOrder(
     ...(options?.deliveryReceiverName ? { delivery_receiver_name: options.deliveryReceiverName } : {}),
     ...(options?.deliveryReceiverPhone ? { delivery_receiver_phone: options.deliveryReceiverPhone } : {}),
     ...(options?.clientShippingFeeVnd !== undefined ? { client_shipping_fee_vnd: options.clientShippingFeeVnd } : {}),
-    ...(options?.freeshipVoucherId ? { freeship_voucher_id: options.freeshipVoucherId } : {}),
+    ...(options?.freeshipVoucherId && (appliedTokens === null || appliedTokens.has(options.freeshipVoucherId))
+      ? { freeship_voucher_id: options.freeshipVoucherId } : {}),
     ...(options?.bundleApplications?.length
       ? {
           bundle_applications: options.bundleApplications,
-          items: buildPayloadItems(cart).map((item, index) => ({
-            ...item,
-            client_line_id: cart[index]?.cartId,
-          })),
+          items: serializeCartOrderItems(cart, { includeClientLineId: true }),
         }
       : {}),
   };

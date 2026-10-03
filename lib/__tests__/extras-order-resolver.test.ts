@@ -11,7 +11,9 @@ vi.mock("@/lib/pricing", () => ({
   resolveOrderItemBaseLiquidMl: (...args: unknown[]) => mockResolveOrderItemBaseLiquidMl(...args),
 }));
 
-import { OrderValidationError, processOrderItems, type OrderItemInput } from "@/lib/orders";
+import { processOrderItems } from "@/lib/orders/orderProcessing";
+import { OrderValidationError } from "@/lib/orders/orderProcessingErrors";
+import type { OrderItemInput } from "@/lib/orders/orderProcessingTypes";
 
 const EXTRA_ID = "extra-dessert-1";
 const basePricingContext = {

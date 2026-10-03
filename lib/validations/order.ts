@@ -1,4 +1,9 @@
 import { z } from "zod";
+import type {
+  CreateOrderPayload,
+  CreateStaffOrderPayload,
+  OrderItemPayload,
+} from "@/contracts/order";
 
 const sweetnessEnum = z.enum(["NONE", "QUARTER", "HALF", "THREE_QUARTER", "FULL", "EXTRA"]);
 const sizeEnum = z.enum(["SMALL", "MEDIUM", "LARGE"]);
@@ -178,4 +183,9 @@ export const customerOrderSchema = z.object({
 export type OrderItem = z.infer<typeof orderItemBaseSchema>;
 export type StaffOrderInput = z.infer<typeof staffOrderSchema>;
 export type CustomerOrderInput = z.infer<typeof customerOrderSchema>;
+
+const customerOrderContractCheck: z.ZodType<CreateOrderPayload> = customerOrderSchema;
+const staffOrderContractCheck: z.ZodType<CreateStaffOrderPayload> = staffOrderSchema;
+void customerOrderContractCheck;
+void staffOrderContractCheck;
 

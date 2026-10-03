@@ -93,6 +93,56 @@ export async function createSession(userId: string, role: string): Promise<{ id:
   return { id: session.id, refreshToken: session.refresh_token };
 }
 
+/** Claims the verified credential and creates a capped session in one transaction. */
+export async function createSessionForVerifiedPassword(
+  userId: string,
+  role: string,
+  expectedPasswordHash: string,
+  maxActiveSessions: number,
+): Promise<{ id: string; refreshToken: string; evictedRefreshTokens: string[] } | null> {
+  const ttlMs = refreshTtlSeconds(role) * 1000;
+  const expiresAt = new Date(Date.now() + ttlMs);
+
+  return prisma.$transaction(async (tx) => {
+    const claim = await tx.user.updateMany({
+      where: {
+        id: userId,
+        password_hash: expectedPasswordHash,
+        is_blocked: false,
+      },
+      data: { password_hash: expectedPasswordHash },
+    });
+    if (claim.count === 0) return null;
+
+    const activeSessions = await tx.session.findMany({
+      where: { user_id: userId, expires_at: { gt: new Date() } },
+      orderBy: { created_at: "asc" },
+      select: { id: true, refresh_token: true },
+    });
+    const evictedSessions = activeSessions.slice(
+      0,
+      Math.max(0, activeSessions.length - (maxActiveSessions - 1)),
+    );
+    if (evictedSessions.length > 0) {
+      await tx.session.deleteMany({
+        where: { id: { in: evictedSessions.map((session) => session.id) } },
+      });
+    }
+
+    const session = await tx.session.create({
+      data: {
+        user_id: userId,
+        expires_at: expiresAt,
+      },
+    });
+    return {
+      id: session.id,
+      refreshToken: session.refresh_token,
+      evictedRefreshTokens: evictedSessions.map((session) => session.refresh_token),
+    };
+  });
+}
+
 /**
  * Sets access_token, refresh_token, and has_session cookies.
  * has_session is NOT httpOnly so client JS can read it to sync Zustand state.
@@ -161,7 +211,15 @@ export async function getRefreshTokenCookie(): Promise<string | null> {
  * Verifies the access JWT and its live database session, returning the user's current role.
  * Returns null for missing/invalid tokens, revoked/expired sessions or database failures.
  */
-export async function getSession() {
+export interface AuthSession {
+  id: string;
+  role: string;
+  phone_number: string;
+  /** Stable database session ID used only by internal session workflows. */
+  session_id?: string;
+}
+
+export async function getSession(): Promise<AuthSession | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get("access_token")?.value;
   if (!token) return null;
@@ -170,10 +228,15 @@ export async function getSession() {
   try {
     const session = await prisma.session.findFirst({
       where: { id: claims.sid, user_id: claims.id, expires_at: { gt: new Date() } },
-      include: { user: { select: { id: true, role: true, phone_number: true } } },
+      include: { user: { select: { id: true, role: true, phone_number: true, is_blocked: true } } },
     });
-    if (!session || session.user.id !== claims.id) return null;
-    return { id: session.user.id, role: session.user.role, phone_number: session.user.phone_number };
+    if (!session || session.user.id !== claims.id || session.user.is_blocked) return null;
+    return {
+      id: session.user.id,
+      role: session.user.role,
+      phone_number: session.user.phone_number,
+      session_id: session.id,
+    };
   } catch {
     return null;
   }

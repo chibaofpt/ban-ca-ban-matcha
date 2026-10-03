@@ -10,18 +10,22 @@ vi.mock("@/lib/auth", () => ({ getSession: mocks.getSession }));
 vi.mock("@/lib/prisma", () => ({
   prisma: { voucher: { findMany: mocks.findMany } },
 }));
-vi.mock("@/lib/voucherAvailability", () => ({
+vi.mock("@/lib/vouchers/voucherAvailability", () => ({
   loadVoucherAvailabilityCatalog: vi.fn().mockResolvedValue({}),
+}));
+vi.mock("@/lib/vouchers/ownedVoucherAvailability", () => ({
   attachOwnedVoucherAvailability: (vouchers: unknown[]) => vouchers,
 }));
-vi.mock("@/lib/voucherBundleDto", () => ({
+vi.mock("@/lib/vouchers/voucherBundleDto", () => ({
   attachBundleRewardBaselines: (_db: unknown, vouchers: unknown[]) => Promise.resolve(vouchers),
 }));
-vi.mock("@/lib/voucherPublicDto", () => ({
+vi.mock("@/lib/vouchers/voucherPublicDto", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/vouchers/voucherPublicDto")>(),
   toPublicVoucherDto: (voucher: { qr_token: string; status: string }) => ({
     qr_token: voucher.qr_token,
     status: voucher.status,
   }),
+  serializePublicVoucherDto: (voucher: unknown) => voucher,
 }));
 
 import { GET } from "@/app/api/profile/vouchers/route";
@@ -66,6 +70,41 @@ describe("GET /api/profile/vouchers", () => {
       new NextRequest("http://localhost/api/profile/vouchers?cursor=bm90LWEtdXVpZA"),
     );
 
+    expect(response.status).toBe(400);
+    expect(mocks.findMany).not.toHaveBeenCalled();
+  });
+
+  it("lọc ACTIVE còn hạn và RESERVED trong cùng một trang của đúng khách", async () => {
+    const response = await GET(new NextRequest("http://localhost/api/profile/vouchers?status=ACTIVE,RESERVED"));
+
+    expect(response.status).toBe(200);
+    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { user_id: "customer-id", OR: [
+        { status: "ACTIVE", OR: [{ expires_at: null }, { expires_at: { gt: expect.any(Date) } }] },
+        { status: "RESERVED" },
+      ] },
+      take: 51,
+    }));
+  });
+
+  it("lịch sử gồm REDEEMED và effective EXPIRED, không đổi filter một trạng thái", async () => {
+    const response = await GET(new NextRequest("http://localhost/api/profile/vouchers?status=REDEEMED,EXPIRED"));
+    expect(response.status).toBe(200);
+    expect(mocks.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: { user_id: "customer-id", OR: [
+        { status: "REDEEMED" },
+        { OR: [{ status: "EXPIRED" }, { status: "ACTIVE", expires_at: { lte: expect.any(Date) } }] },
+      ] },
+    }));
+    const single = await GET(new NextRequest("http://localhost/api/profile/vouchers?status=RESERVED"));
+    expect(single.status).toBe(200);
+    expect(mocks.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
+      where: { user_id: "customer-id", status: "RESERVED" },
+    }));
+  });
+
+  it("từ chối danh sách có trạng thái không hợp lệ trước query", async () => {
+    const response = await GET(new NextRequest("http://localhost/api/profile/vouchers?status=ACTIVE,UNKNOWN"));
     expect(response.status).toBe(400);
     expect(mocks.findMany).not.toHaveBeenCalled();
   });

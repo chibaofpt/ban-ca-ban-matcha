@@ -25,7 +25,7 @@ export async function POST() {
       where: { OR: [{ refresh_token: presentedToken }, { previous_refresh_token: presentedToken }] },
       include: { user: true },
     });
-    if (!session || session.expires_at <= now) {
+    if (!session || session.expires_at <= now || session.user.is_blocked) {
       await clearAuthCookies();
       return NextResponse.json({ error: "Session expired", code: "UNAUTHORIZED" }, { status: 401 });
     }
@@ -54,6 +54,10 @@ export async function POST() {
     }
     session = await prisma.session.findUnique({ where: { id: sessionId }, include: { user: true } });
     const checkedAt = new Date();
+    if (session?.user.is_blocked) {
+      await clearAuthCookies();
+      return NextResponse.json({ error: "Session expired", code: "UNAUTHORIZED" }, { status: 401 });
+    }
     if (!session || session.user_id !== userId || session.user.id !== userId || session.expires_at <= checkedAt ||
         !session.previous_refresh_token || !session.rotating_at || session.rotating_at > checkedAt ||
         checkedAt.getTime() - session.rotating_at.getTime() > GRACE_MS ||

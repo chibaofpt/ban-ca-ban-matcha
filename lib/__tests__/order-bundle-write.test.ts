@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { persistOrderBundles } from "@/lib/orderBundleWrite";
+import { persistOrderBundles } from "@/lib/orders/orderBundleWrite";
 
 function resolvedBundles() {
   return { line_discounts_vnd: [45_000, 45_000], skipped_qr_tokens: [], bundles: ["1", "2"].map((id) => ({

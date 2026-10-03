@@ -5,15 +5,15 @@ const mockRunCancelExpiredOrders = vi.fn();
 const mockRunMenuImageCleanup = vi.fn();
 const mockRunCleanExpiredSessions = vi.fn();
 
-vi.mock("@/lib/cancelExpiredOrders", () => ({
+vi.mock("@/lib/orders/cancelExpiredOrders", () => ({
   runCancelExpiredOrders: (...args: unknown[]) => mockRunCancelExpiredOrders(...args),
 }));
 
-vi.mock("@/lib/menuImageCleanup", () => ({
+vi.mock("@/lib/catalog/menuImageCleanup", () => ({
   runMenuImageCleanup: (...args: unknown[]) => mockRunMenuImageCleanup(...args),
 }));
 
-vi.mock("@/lib/cleanExpiredSessions", () => ({
+vi.mock("@/lib/auth/cleanExpiredSessions", () => ({
   runCleanExpiredSessions: (...args: unknown[]) => mockRunCleanExpiredSessions(...args),
 }));
 

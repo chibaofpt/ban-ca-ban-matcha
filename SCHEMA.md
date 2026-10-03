@@ -5,9 +5,17 @@
 > **Update when:** an approved schema change alters those semantics.
 > **Does not own:** physical fields/indexes (see `prisma/schema.prisma` and migrations), API contract or domain workflow.
 
-> Read this file for any Prisma schema, migration, or DB-level task.
-> Read `AGENTS.md` for hard rules and the order/voucher/pricing skills for authoritative
-> business behavior. Do not infer business rules from legacy columns alone.
+## Read by scope
+
+Read `Currency & Units`, `Schema Change Gate` and affected entity/snapshot semantics. Search the
+table name under `Tables`; checkout also needs `Canonical Order Totals`, BUNDLE persistence needs
+`Current BUNDLE voucher architecture`. Historical migration notes are not a new migration plan.
+The field descriptions explain semantics; verify physical fields/indexes in Prisma/migrations
+when doing a code or schema task. Do not infer business rules from legacy columns alone.
+
+Domain behavior belongs to [order-flow](.agents/skills/order-flow/SKILL.md),
+[voucher-flow](.agents/skills/voucher-flow/SKILL.md) and
+[pricing-logic](.agents/skills/pricing-logic/SKILL.md). Platform operations use project `supabase`.
 
 ---
 
@@ -16,7 +24,7 @@
 | Unit | Value | Notes |
 |---|---|---|
 | 1 🐟 | 1,000 VND | Frontend display unit |
-| 1 point | 10,000 VND | Loyalty unit |
+| Order earning threshold | 10,000 VND per earned point | Earning rate; separate from the fish display value above |
 | Points formula | `floor(total_vnd / 10000)` | Earned on COMPLETED |
 | Manual add cap | 100 points/action | ADMIN only |
 | Gram quantities | Prisma `Decimal` | Never use Float for grams |
@@ -26,27 +34,27 @@
 
 ## Canonical Order Totals
 
-Apply vouchers in this strict order: `BUNDLE → ITEM/PRODUCT/PRODUCT_DISCOUNT → ADDON → DISCOUNT → FREESHIP`.
+Application order, money terms and threshold calculations belong to
+[voucher-flow — Canonical Application Order and Totals](.agents/skills/voucher-flow/SKILL.md#canonical-application-order-and-totals).
+This section owns the persisted scope/snapshot interpretation.
 
 `voucher_package_menu_item_scopes` and `voucher_menu_item_scopes` normalize the explicit 1–100
-drink targets of PRODUCT_DISCOUNT. Both use `(parent_id, menu_item_id)` composite primary keys;
+targets of PRODUCT, ITEM, and PRODUCT_DISCOUNT. PRODUCT rows also snapshot size, powder,
+Base Liquid, and immutable drink-only `covered_price_vnd`; ITEM rows keep those snapshot columns
+null. PRODUCT_DISCOUNT rows keep size, powder, and covered-price columns null, but may store
+`milk_type_id` as an optional Base Liquid eligibility restriction. Both use `(parent_id, menu_item_id)` composite primary keys;
 package/voucher deletion cascades while menu-item deletion is `NO ACTION`. The legacy
 `menu_item_id` remains the deterministic compatibility anchor. Issuance copies package scope rows
 to immutable voucher scope rows.
 
-```text
-subtotal_vnd = gross drinks + gross addons
-item_discount_vnd = BUNDLE reductions + ITEM/PRODUCT reductions + ADDON reductions
-discountable_subtotal_vnd = max(0, subtotal_vnd - item_discount_vnd)
-total_vnd = max(0, discountable_subtotal_vnd - total_voucher_discount_vnd)
-grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
-```
+`voucher_package_addon_option_scopes` and `voucher_addon_option_scopes` hold the explicit 1–100
+fixed-price ADDON targets with the same parent cascade and target `NO ACTION` policy. Legacy
+`addon_option_id` remains the compatibility anchor; the current selected option price is resolved
+server-side when the voucher is attached to an order.
 
-- Check DISCOUNT `min_order_vnd` on `discountable_subtotal_vnd`.
-- Check FREESHIP `min_order_vnd` on `total_vnd`, before shipping.
-- Calculate order points from `total_vnd`, excluding shipping.
-- Sum PRODUCT surplus VND across the whole order before converting once with
-  `floor(order_surplus_vnd / 10000)`.
+Persisted totals retain the meanings defined by that domain owner; avoid adding derived aliases.
+Order points use merchandise totals excluding shipping; PRODUCT surplus is converted once per order.
+Detailed earning and reversal rules belong to [order-flow — Points](.agents/skills/order-flow/SKILL.md#points).
 
 ## Schema Change Gate
 
@@ -79,6 +87,12 @@ grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
 | `VoucherType` | `ITEM`, `DISCOUNT`, `PRODUCT`, `PRODUCT_DISCOUNT`, `ADDON`, `FREESHIP`, `BUNDLE` |
 | `ProductDiscountMode` | `FIXED_AMOUNT`, `PAY_AS_SIZE` |
 | `DiscountType` | `PERCENT`, `FIXED` |
+| `VoucherPackageVisibility` | `PUBLIC`, `PRIVATE` |
+| `VoucherAcquisitionMode` | `POINTS_EXCHANGE`, `FREE_CLAIM`, `AUTO_GRANT`, `NONE`, `ADMIN`, `WELCOME_GIFT`, `GACHA_REWARD` |
+| `WelcomeRewardMode` | `POINTS`, `FIXED_VOUCHER`, `GACHA` |
+| `RewardCampaignStatus` | `DRAFT`, `ACTIVE`, `PAUSED`, `ENDED` |
+| `RewardOutcomeKind` | `VOUCHER`, `POINTS` |
+| `RewardOrigin` | `WELCOME` |
 | `VoucherStatus` | `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, `REFUNDED` |
 | `UsedChannel` | `ONLINE`, `OFFLINE` |
 | `OrderStatus` | `PENDING`, `ADMIN_CONFIRMED`, `STAFF_DONE`, `COMPLETED`, `CANCELLED` |
@@ -88,6 +102,15 @@ grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
 | `Size` | `SMALL`, `MEDIUM`, `LARGE` |
 | `PowderType` | `RECOMMEND`, `NEW`, `SEASONAL`, `NONE` |
 | `IceOption` | `NORMAL`, `LESS_ICE`, `NO_ICE`, `SEPARATE_ICE` |
+
+`VoucherAcquisitionMode` is one physical Prisma/PostgreSQL enum shared by
+`voucher_packages.acquisition_mode` and `vouchers.issued_via`. The semantic subsets differ:
+packages use `NONE` only for `PRIVATE` visibility and otherwise use the public allowlist
+`POINTS_EXCHANGE`, `FREE_CLAIM`, or `AUTO_GRANT`; vouchers use `POINTS_EXCHANGE`, `FREE_CLAIM`,
+`AUTO_GRANT`, `ADMIN`, `WELCOME_GIFT`, or `GACHA_REWARD`, and never `NONE`. `ADMIN`,
+`WELCOME_GIFT`, and `GACHA_REWARD` are issuance labels and are not package acquisition modes.
+The private-voucher migration extends this existing enum additively and keeps the existing
+`vouchers.issued_via` type and default; there is no separate database enum for issuance source.
 
 ---
 
@@ -129,6 +152,8 @@ grand_total_vnd = max(0, total_vnd + shipping_fee_vnd - freeship_discount_vnd)
 - `points_balance` int — default 0
 - `qr_token` string UK — UUID, encoded in QR, NEVER expose `id`
 - `otp_enabled` bool — default false, Phase 5
+- `is_verified` bool — default false; admin-managed customer identity verification state
+- `is_blocked` bool — default false; admin-managed account block state that denies authentication and live sessions
 - `created_at` timestamp
 - `updated_at` timestamp
 
@@ -244,7 +269,8 @@ Global Base Liquid catalog for Latte and Fusion. The physical table name is reta
 ---
 
 ### menu_item_sizes
-Always 3 rows per item (SMALL, MEDIUM, LARGE), in same transaction as parent. NULL = size not sold.
+Drinks have 3 rows (SMALL, MEDIUM, LARGE), in the same transaction as the parent.
+NULL base price means size not sold. Extras have no drink size configuration, as defined in API.md.
 
 - `id` uuid PK
 - `menu_item_id` uuid FK → menu_items (cascade delete)
@@ -304,7 +330,8 @@ Soft delete only — set `is_active = false`, never hard delete.
 - `id` uuid PK
 - `addon_group_id` uuid FK → addon_groups (cascade delete)
 - `label` string — e.g. "½ viên", "+2g"
-- `image_url` string nullable — Supabase Storage public URL for this option; customer UI falls back to `addon_groups.image_url` when null.
+- `image_url` string nullable — Supabase Storage public URL for this option. Display behavior belongs
+  to [Catalog UI](docs/specs/catalog-ui.md); this field does not imply a group-image fallback.
 - `price_vnd` int — 0 if no charge. Extra matcha: always 0 here — actual price computed from `gram_value × selected_powder.price_per_gram` at order time.
 - `gram_value` Decimal nullable — Extra matcha only: positive gram amount (1.0–4.0 in the current seed). Null for all fixed-price addon types.
 - `is_active` bool — default true. Referenced options are retired by setting false, never hard deleted.
@@ -430,14 +457,15 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `name` string
 - `description` string nullable
 - `voucher_type` VoucherType
-- `acquisition_mode` VoucherAcquisitionMode — `POINTS_EXCHANGE`, `FREE_CLAIM`, or `AUTO_GRANT`
+- `visibility` VoucherPackageVisibility — `PUBLIC` by default; `PRIVATE` packages are admin-gift only
+- `acquisition_mode` VoucherAcquisitionMode — package subset: `NONE` for PRIVATE; PUBLIC uses only `POINTS_EXCHANGE`, `FREE_CLAIM`, or `AUTO_GRANT`
 - `points_cost` int
 - `discount_type` DiscountType nullable
 - `discount_value` int nullable
 - `menu_item_id` uuid FK nullable → menu_items — PRODUCT or ITEM target
 - `size` Size nullable — PRODUCT type only
 - `matcha_powder_id` uuid FK nullable → matcha_powder — PRODUCT type only
-- `milk_type_id` uuid FK nullable → milk_type — PRODUCT type only
+- `milk_type_id` uuid FK nullable → milk_type — PRODUCT snapshot or PRODUCT_DISCOUNT eligibility restriction
 - `included_addon_option_ids` string[] — array of uuid (or jsonb) for PRODUCT type only
 - `addon_option_id` uuid FK nullable → addon_options — ADDON type only
 - `covered_price_vnd` int nullable — snapshot price for PRODUCT and ADDON; ITEM uses current price
@@ -447,13 +475,21 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `is_active` bool — default true
 - `expires_after_days` int nullable
 - `quantity` int nullable — maximum total vouchers issued; NULL = unlimited
-- `max_per_user` int — maximum issued per customer, default 1
+- `max_per_user` int — lifetime self-acquisition limit per customer, default 1; ADMIN gifts do not consume it
 - `created_at` timestamp
+
+The database constraint `voucher_packages_visibility_acquisition_mode_check` requires PRIVATE
+packages to use `NONE` and restricts PUBLIC packages to `POINTS_EXCHANGE`, `FREE_CLAIM`, or
+`AUTO_GRANT`; `ADMIN`, `WELCOME_GIFT`, and `GACHA_REWARD` are not package acquisition modes.
 
 > PRODUCT package fields such as size, powder, milk, and included addons remain snapshots for
 > package display and issuance. At order application time, PRODUCT eligibility matches
 > `menu_item_id` only and its credit applies to drink components only. Compute
 > `covered_price_vnd` from the selected drink configuration without addon prices.
+>
+> PRODUCT_DISCOUNT may set `milk_type_id` to require the order's selected Base Liquid to match
+> that active milk row. A null value preserves the legacy all-Base-Liquid behavior. The fixed
+> reduction still applies only to the drink component and excludes addons.
 >
 > ITEM packages target `extras` only. Their drink-configuration and covered-price fields are null.
 > Applying one makes one matching unit free at the current server price, with no surplus.
@@ -466,7 +502,7 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `package_id` uuid FK → voucher_packages
 - `qr_token` string UK — UUID, NEVER expose `id`
 - `voucher_type` VoucherType — copied from package
-- `issued_via` VoucherIssuedVia — immutable issuance audit (`POINTS_EXCHANGE`, `FREE_CLAIM`, `AUTO_GRANT`, `ADMIN`)
+- `issued_via` VoucherAcquisitionMode — shared physical enum, voucher subset; immutable issuance audit (`POINTS_EXCHANGE`, `FREE_CLAIM`, `AUTO_GRANT`, `ADMIN`, `WELCOME_GIFT`, `GACHA_REWARD`), never `NONE`
 - `discount_type` DiscountType nullable — copied from package
 - `discount_value` int nullable — copied from package
 - `max_discount_vnd` int nullable — copied from package
@@ -484,6 +520,8 @@ Junction table mapping multiple ADDON vouchers to an order item.
 - `expires_at` timestamp nullable
 - `redeemed_at` timestamp nullable
 - `redeemed_by` uuid FK nullable → users — STAFF or ADMIN only
+- `issuing_admin_id` uuid FK nullable → users — actor for an ADMIN gift
+- `manual_request_id` uuid UK nullable — durable idempotency key for one ADMIN gift action
 - `created_at` timestamp
 
 > `expires_at` is authoritative for eligibility at the server's order acceptance time.
@@ -491,11 +529,20 @@ Junction table mapping multiple ADDON vouchers to an order item.
 > moves only expired `ACTIVE` vouchers to `EXPIRED`; never lazy-expire `RESERVED` vouchers.
 > Cancelling an expired reservation restores it to `EXPIRED`, not `ACTIVE`.
 >
+> `issued_via` is immutable. ADMIN gifts have no points log and do not write `voucher_grants`;
+> `voucher_grants` remains the unique `(package_id, user_id)` guard for FREE_CLAIM and AUTO_GRANT.
 > Admin package statistics and owner lookup use composite indexes
 > `idx_vouchers_package_status (package_id, status)` and
 > `idx_vouchers_package_user (package_id, user_id)`. These indexes add no counters or lifecycle
 > state; effective expiry remains derived from `status` plus `expires_at`.
+> Admin actor audit lookups use `vouchers_issuing_admin_id_idx`.
 > Cursor wallet reads use `idx_vouchers_user_created_cursor (user_id, created_at DESC, id DESC)`.
+> The database constraints `vouchers_issued_via_not_none_check` and `vouchers_admin_audit_fields_check`
+> reject `NONE`, require both audit fields for `ADMIN`,
+> and require both audit fields to be NULL for every other issuance label.
+> The private-voucher migration uses `CREATE INDEX CONCURRENTLY`; Prisma migrate deploy must run
+> it without transaction wrapping. An interrupted concurrent build can leave an invalid index
+> that requires operational cleanup before retrying the migration.
 
 ---
 
@@ -530,6 +577,11 @@ is_active = true`. The shared trigger function `public.update_updated_at()` pins
 > Calculate the amount from existing `order_items.unit_price_vnd`, `product_voucher_id`, and
 > linked `vouchers.covered_price_vnd`; do not add another surplus snapshot by default.
 
+The aggregate log has `order_id` and null `voucher_id`, since it is not tied to a single voucher.
+Legacy `order_items.surplus_points` and `order_discount_vouchers.discount_applied_vnd` were dropped
+by migration `20260720201131`; do not reference or recreate them. This does not remove the distinct
+addon-unit `discount_applied_vnd` described in `order_item_addon_vouchers`.
+
 **`reason` valid values:**
 
 | Value | Trigger |
@@ -542,6 +594,104 @@ is_active = true`. The shared trigger function `public.update_updated_at()` pins
 | `voucher_surplus_reversed` | Reversal of a `voucher_surplus` entry when a completed COUNTER order is cancelled |
 | `voucher_refund` | Full purchase-cost refund for an eligible voucher, including soft-delete reconciliation or completed COUNTER cancellation recovery |
 | `reversed_by_admin` | Admin reverses a manual adjustment |
+| `welcome_bonus` | Immediate signup points and the five-point welcome-reward fallback |
+
+---
+
+### welcome_reward_settings
+Singleton configuration row for the signup reward. The migration inserts `id = 1` with mode
+`POINTS`, preserving the current five-point signup behavior until an administrator changes it.
+
+- `id` int PK — database check fixes the only valid value to 1
+- `mode` WelcomeRewardMode — default `POINTS`
+- `fixed_package_id` uuid FK nullable → voucher_packages (no action delete)
+- `active_campaign_id` uuid FK nullable → reward_campaigns (no action delete)
+- `revision` int — default 0, used for optimistic configuration updates
+- `created_at`, `updated_at` timestamp
+
+The mode-target check requires both foreign keys null for `POINTS`, only `fixed_package_id` for
+`FIXED_VOUCHER`, and only `active_campaign_id` for `GACHA`.
+
+### reward_campaigns
+Durable gacha campaign definition. Availability and draw counts are derived from pool items and
+immutable outcomes; no remaining quantity, exhausted flag, or mutable draw counter is stored.
+
+- `id` uuid PK
+- `name` text
+- `status` RewardCampaignStatus — default `DRAFT`
+- `revision` int — default 0
+- `created_at`, `updated_at` timestamp
+
+### reward_pool_items
+
+- `id` uuid PK
+- `campaign_id` uuid FK → reward_campaigns (no action delete)
+- `voucher_package_id` uuid FK → voucher_packages (no action delete)
+- `quantity` positive int
+- `unlock_after_draws` non-negative int — default 0
+- `created_at` timestamp
+- UK: (`campaign_id`, `voucher_package_id`)
+
+Application code must verify that an outcome's pool item belongs to its campaign; this cannot be
+expressed by the independent foreign keys without duplicating identity columns.
+
+### reward_boxes
+Campaign-specific visual choices retained for historical outcomes.
+
+- `id` uuid PK
+- `campaign_id` uuid FK → reward_campaigns (no action delete)
+- `name` text
+- `closed_image_url`, `open_image_url` text
+- `mouth_anchor_x`, `mouth_anchor_y` Decimal(5,4) — exact normalized coordinates from 0 through 1
+- `sort_order` non-negative int
+- `created_at`, `updated_at` timestamp
+- UK: (`campaign_id`, `sort_order`)
+
+Application code must verify that a selected box belongs to the selected campaign.
+
+### welcome_rewards
+One durable signup entitlement per user. `mode` stores the immutable effective mode committed after
+the signup transaction applies availability fallback; it is not necessarily the raw settings mode.
+For example, unavailable `FIXED_VOUCHER` commits the entitlement as `POINTS`. Later configuration
+changes do not rewrite pending or completed rewards.
+
+- `id` uuid PK
+- `user_id` uuid UK FK → users (no action delete)
+- `mode` WelcomeRewardMode
+- `campaign_id` uuid FK nullable → reward_campaigns (no action delete)
+- `created_at` timestamp
+- optional one-to-one outcome
+
+The campaign is non-null exactly when `mode = GACHA`. `POINTS` and `FIXED_VOUCHER` workflows create
+their outcome immediately; `GACHA` may remain pending until the user draws.
+
+### reward_outcomes
+Immutable fulfillment audit for a welcome entitlement. A voucher outcome issues through
+`WELCOME_GIFT` for fixed mode or `GACHA_REWARD` for a draw. A points outcome links the five-point
+fallback `points_log` row.
+
+- `id` uuid PK
+- `welcome_reward_id` uuid UK FK → welcome_rewards (no action delete)
+- `user_id` uuid FK → users (no action delete)
+- `origin` RewardOrigin — default `WELCOME`
+- `kind` RewardOutcomeKind
+- `campaign_id`, `pool_item_id`, `box_id` nullable UUID foreign keys (no action delete)
+- `voucher_id` uuid UK nullable FK → vouchers (no action delete)
+- `points_log_id` uuid UK nullable FK → points_log (no action delete)
+- `draw_number` int nullable; UK with `campaign_id`
+- `request_id` uuid UK nullable idempotency key
+- `created_at` timestamp
+
+The target check enforces XOR fulfillment: `VOUCHER` requires only `voucher_id`, while `POINTS`
+requires only `points_log_id`. A campaign voucher also requires campaign, pool item, box, and draw
+number. A five-point campaign fallback has campaign and box but null pool item and draw number;
+non-campaign fixed/points outcomes have all campaign detail fields null. Application code must also
+verify that `user_id` matches the entitlement and issued artifact, that campaign/pool/box identities
+agree, that the entitlement mode permits the outcome, and that point fallback delta equals 5.
+
+All six welcome-reward tables have RLS enabled and all privileges revoked from `PUBLIC`, `anon`,
+`authenticated`, and `service_role`. Custom-auth application access remains through direct Prisma;
+there are no `auth.uid()` policies or Realtime publication entries.
 
 ---
 
@@ -631,16 +781,5 @@ DISCOUNT, and FREESHIP. Issued vouchers follow their own `vouchers.expires_at` l
 
 ### Future group-order compatibility (design only)
 
-Do not add these tables until group ordering is implemented. The intended extension is:
-
-- `group_orders`: host user, share token, lifecycle, checkout order ID, timestamps.
-- `group_order_members`: group order, optional authenticated user, guest name, join token.
-- `group_order_items`: draft line ownership by member; finalized lines map to `order_items`.
-- Member PRODUCT/ADDON vouchers attach only to that member's lines.
-- Host BUNDLE/DISCOUNT/FREESHIP vouchers attach to the whole finalized order. BUNDLE qualifier
-  counts exclude line units already using a member PRODUCT voucher.
-- The resolver receives the selected voucher's explicit owner ID. Guest members cannot use a
-  personal voucher because they have no authenticated voucher owner.
-- The host pays and receives order points. Guests can join without an account and cannot own a
-  personal voucher. Preserve member ownership when copying draft lines into immutable order rows.
-
+Future design belongs to [NOTES — Group orders](NOTES.md#group-orders-design-only);
+it does not authorize adding schema in a current task.

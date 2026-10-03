@@ -1,40 +1,26 @@
 import { apiClient } from '@/src/lib/api/client';
-import type { OrderRes } from './staffOrdersListService';
-import type { OrderType, PaymentMethod } from '@/src/lib/types/order';
+import type {
+  AdminOrderFilters,
+  AdminOrderListItem,
+} from '@/contracts/admin/order';
+import type {
+  OrderType,
+  PaginatedResponse,
+  PaymentMethod,
+  StaffOrderResult,
+} from '@/contracts/order';
 import type { ApiError, ApiResponse } from '@/src/lib/types/api';
-import type { StaffOrderResult } from '@/src/lib/types/order';
 import { isAxiosError } from 'axios';
+
+export type { AdminOrderFilters, AdminOrderListItem } from '@/contracts/admin/order';
+export type { PaginatedResponse } from '@/contracts/order';
 
 const ORDER_URLS = {
   staffById: (orderId: string) => `/api/staff/orders/${orderId}`,
   confirmPayment: (orderId: string) => `/api/admin/orders/${orderId}/confirm-payment`,
 } as const;
 
-export interface AdminOrderRes extends OrderRes {
-  handler: { name: string; role: "ADMIN" | "STAFF" } | null;
-}
-
-export interface AdminOrderFilters {
-  startDate?: string;
-  endDate?: string;
-  search?: string;
-  staffId?: string;
-  staffName?: string;
-  order_type?: string;
-  status?: string;
-  exclude_cancelled?: boolean;
-  page?: number;
-  limit?: number;
-}
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  meta: {
-    total: number;
-    page: number;
-    totalPages: number;
-  };
-}
+export type AdminOrderRes = AdminOrderListItem;
 
 /** Lấy danh sách order cho Admin (có bộ lọc). */
 export async function fetchAdminOrders(filters: AdminOrderFilters = {}): Promise<PaginatedResponse<AdminOrderRes>> {
@@ -45,6 +31,7 @@ export async function fetchAdminOrders(filters: AdminOrderFilters = {}): Promise
   if (filters.staffId) params.append('staffId', filters.staffId);
   if (filters.staffName) params.append('staffName', filters.staffName);
   if (filters.order_type) params.append('order_type', filters.order_type);
+  if (filters.payment_method) params.append('payment_method', filters.payment_method);
   if (filters.status) params.append('status', filters.status);
   if (filters.exclude_cancelled) params.append('exclude_cancelled', 'true');
   if (filters.page) params.append('page', filters.page.toString());
@@ -52,6 +39,17 @@ export async function fetchAdminOrders(filters: AdminOrderFilters = {}): Promise
 
   const res = await apiClient.get(`/api/admin/orders?${params.toString()}`);
   return res.data;
+}
+
+/** Read today's pending bank transfers in UTC+7 independently of list filters. */
+export async function fetchAdminPendingTransferCount(): Promise<number> {
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
+  const result = await fetchAdminOrders({
+    startDate: new Date(`${today}T00:00:00+07:00`).toISOString(),
+    endDate: new Date(`${today}T23:59:59.999+07:00`).toISOString(),
+    status: 'PENDING', payment_method: 'BANK_TRANSFER', limit: 1,
+  });
+  return result.meta.total;
 }
 
 /** Admin confirms online payment or completes a pending counter bank transfer. */

@@ -2,18 +2,13 @@
 
 import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, Clock } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { MenuData, MenuItem } from "@/src/lib/types/menu";
 import type { VoucherPackage } from "@/src/services/customerVoucherService";
 import MenuCard from "@/src/components/menu/MenuCard";
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
-import {
-  getTicketHighlightText,
-  getPackageBenefitText,
-  formatExpiryLabel,
-  VOUCHER_TYPE_CONFIG,
-} from "@/src/lib/utils/voucherModalHelpers";
+import { VoucherCardFrame } from "@/src/components/shared/VoucherCardFrame";
 import { cn } from "@/src/utils/cn";
 
 type HomeTab = "menu" | "uu-dai";
@@ -21,36 +16,7 @@ type HomeTab = "menu" | "uu-dai";
 // ── Mini PackageCard (preview-only, no exchange) ─────────────────────────────
 
 function MiniPackageCard({ pkg }: { pkg: VoucherPackage }) {
-  const typeConfig = VOUCHER_TYPE_CONFIG[pkg.voucher_type] ?? VOUCHER_TYPE_CONFIG.DISCOUNT;
-  const highlight = getTicketHighlightText(pkg.voucher_type, pkg.discount_type, pkg.discount_value, pkg.reference_size);
-
-  return (
-    <div className="rounded-xl bg-white/60 backdrop-blur-xs shadow-paper border border-primary/10 overflow-hidden flex relative">
-      {/* Left: Highlight Ticket */}
-      <div className="w-[30%] flex flex-col items-center justify-center p-3 border-r-2 border-dashed border-primary/20 bg-primary/5 text-primary shrink-0">
-        <span className="font-black text-xl tracking-tighter leading-none text-center">{highlight.text}</span>
-        <span className="text-[10px] font-bold uppercase tracking-wider opacity-80 mt-1">{highlight.subtext}</span>
-      </div>
-
-      {/* Right: Info */}
-      <div className="flex-1 min-w-0 p-3 flex flex-col justify-center">
-        <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-bold self-start mb-1", typeConfig.badgeCls)}>
-          {typeConfig.label}
-        </span>
-        <p className="font-bold text-sm text-foreground leading-tight line-clamp-1">{pkg.name}</p>
-        <p className="text-xs text-primary font-medium mt-0.5 line-clamp-1">{getPackageBenefitText(pkg)}</p>
-        <div className="flex items-center justify-between mt-2">
-          {pkg.expires_after_days !== null ? (
-            <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-              <Clock size={10} />
-              Hạn: {formatExpiryLabel(pkg.expires_after_days)}
-            </p>
-          ) : <span />}
-          <span className="text-[10px] font-bold text-primary/70">{pkg.points_cost} 🐟</span>
-        </div>
-      </div>
-    </div>
-  );
+  return <VoucherCardFrame title={pkg.name} description={pkg.description} expiresAfterDays={pkg.expires_after_days} />;
 }
 
 // ── MenuVoucherTabs ───────────────────────────────────────────────────────────

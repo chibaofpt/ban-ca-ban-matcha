@@ -54,10 +54,19 @@ export async function resolveOwnedVoucherIdentifier(
   identifier: string,
   ownerId: string,
   db: Pick<typeof prisma, "voucher"> = prisma,
-): Promise<(Voucher & { menuItemScopes: Array<{ menu_item_id: string }> }) | null> {
+): Promise<(Voucher & {
+  menuItemScopes: Array<{
+    menu_item_id: string; size: Voucher["size"]; matcha_powder_id: string | null;
+    milk_type_id: string | null; covered_price_vnd: number | null;
+  }>;
+  addonOptionScopes: Array<{ addon_option_id: string }>;
+}) | null> {
   const publicVoucher = await db.voucher.findUnique({
     where: { qr_token: identifier },
-    include: { menuItemScopes: { select: { menu_item_id: true } } },
+    include: {
+      menuItemScopes: { select: { menu_item_id: true, size: true, matcha_powder_id: true, milk_type_id: true, covered_price_vnd: true } },
+      addonOptionScopes: { select: { addon_option_id: true } },
+    },
   });
   if (publicVoucher) {
     return publicVoucher.user_id === ownerId ? publicVoucher : null;
@@ -65,7 +74,10 @@ export async function resolveOwnedVoucherIdentifier(
 
   const legacyVoucher = await db.voucher.findUnique({
     where: { id: identifier },
-    include: { menuItemScopes: { select: { menu_item_id: true } } },
+    include: {
+      menuItemScopes: { select: { menu_item_id: true, size: true, matcha_powder_id: true, milk_type_id: true, covered_price_vnd: true } },
+      addonOptionScopes: { select: { addon_option_id: true } },
+    },
   });
   if (!legacyVoucher || legacyVoucher.user_id !== ownerId) return null;
   recordLegacyIdentifierFallback("voucher", "owner");
@@ -75,14 +87,25 @@ export async function resolveOwnedVoucherIdentifier(
 /** Resolve a voucher for an authorized staff flow, preferring its public token. */
 export async function resolveStaffVoucherIdentifier(
   identifier: string,
-): Promise<Voucher | null> {
+): Promise<(Voucher & {
+  menuItemScopes: Array<{ menu_item_id: string }>;
+  addonOptionScopes: Array<{ addon_option_id: string }>;
+}) | null> {
   const publicVoucher = await prisma.voucher.findUnique({
     where: { qr_token: identifier },
+    include: {
+      menuItemScopes: { select: { menu_item_id: true } },
+      addonOptionScopes: { select: { addon_option_id: true } },
+    },
   });
   if (publicVoucher) return publicVoucher;
 
   const legacyVoucher = await prisma.voucher.findUnique({
     where: { id: identifier },
+    include: {
+      menuItemScopes: { select: { menu_item_id: true } },
+      addonOptionScopes: { select: { addon_option_id: true } },
+    },
   });
   if (legacyVoucher) recordLegacyIdentifierFallback("voucher", "staff");
   return legacyVoucher;

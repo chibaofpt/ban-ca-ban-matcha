@@ -1,4 +1,8 @@
 import { apiClient } from "@/src/lib/api/client";
+import type {
+  PushSubscribeRequest,
+  PushUnsubscribeRequest,
+} from "@/contracts/push";
 
 function getVapidPublicKey() {
   const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
@@ -53,10 +57,14 @@ export async function subscribeToPush(): Promise<void> {
     throw new Error("Invalid subscription object");
   }
 
-  await apiClient.post("/api/push/subscribe", {
+  const payload: PushSubscribeRequest = {
     endpoint: subJSON.endpoint,
-    keys: subJSON.keys,
-  });
+    keys: {
+      p256dh: subJSON.keys.p256dh,
+      auth: subJSON.keys.auth,
+    },
+  };
+  await apiClient.post("/api/push/subscribe", payload);
 }
 
 /** Disable the current browser push subscription locally and on the server. */
@@ -69,9 +77,10 @@ export async function unsubscribeFromPush(): Promise<void> {
   if (!subscription) return;
 
   // 1. Tell server to mark inactive
-  await apiClient.post("/api/push/unsubscribe", {
+  const payload: PushUnsubscribeRequest = {
     endpoint: subscription.endpoint,
-  });
+  };
+  await apiClient.post("/api/push/unsubscribe", payload);
 
   // 2. Unsubscribe locally
   await subscription.unsubscribe();
@@ -97,10 +106,14 @@ export async function checkAndResubscribe(): Promise<boolean> {
       
       const subJSON = subscription.toJSON();
       if (subJSON.endpoint && subJSON.keys) {
-        await apiClient.post("/api/push/subscribe", {
+        const payload: PushSubscribeRequest = {
           endpoint: subJSON.endpoint,
-          keys: subJSON.keys,
-        });
+          keys: {
+            p256dh: subJSON.keys.p256dh,
+            auth: subJSON.keys.auth,
+          },
+        };
+        await apiClient.post("/api/push/subscribe", payload);
       }
     }
     

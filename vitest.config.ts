@@ -6,12 +6,17 @@ const staticContractTests = [
   "lib/__tests__/addon-max-select-migration.test.ts",
   "lib/__tests__/addon-opt-in-migration.test.ts",
   "lib/__tests__/admin-menu-delete-surface.test.ts",
+  "lib/__tests__/base-liquid-migration.test.ts",
   "lib/__tests__/bundle-promotion-migration.test.ts",
+  "lib/__tests__/contracts-architecture.test.ts",
   "lib/__tests__/extras-migration-contract.test.ts",
+  "lib/__tests__/private-voucher-migration.test.ts",
   "lib/__tests__/product-discount-scope-migration.test.ts",
+  "lib/__tests__/multi-choice-voucher-scope-migration.test.ts",
   "lib/__tests__/security-logging.test.ts",
   "lib/__tests__/supabase-data-plane-migration.test.ts",
   "lib/__tests__/voucher-architecture-migration.test.ts",
+  "src/__tests__/contracts/staff-voucher-flow.test.ts",
 ];
 
 export default defineConfig({

@@ -12,7 +12,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { runCleanExpiredSessions } from "@/lib/cleanExpiredSessions";
+import { runCleanExpiredSessions } from "@/lib/auth/cleanExpiredSessions";
 
 const now = new Date("2026-08-04T00:00:00.000Z");
 

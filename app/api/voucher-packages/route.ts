@@ -11,13 +11,15 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
-import { toVoucherPackageBundleDto } from "@/lib/voucherBundleDto";
+import { toVoucherPackageBundleDto } from "@/lib/vouchers/voucherBundleDto";
+import { LEGACY_PACKAGE_QUOTA_SOURCES, SELF_ACQUISITION_SOURCES } from "@/lib/vouchers/voucherIssuance";
 import {
   loadVoucherAvailabilityCatalog,
+  retainUsableVoucherTargetScopes,
   resolveVoucherTargetAvailability,
   type VoucherAvailabilityDatabase,
   type VoucherBundleRuleSource,
-} from "@/lib/voucherAvailability";
+} from "@/lib/vouchers/voucherAvailability";
 
 export async function GET() {
   try {
@@ -29,10 +31,12 @@ export async function GET() {
     );
     // Campaign windows and activation are live state; never put BUNDLE packages in app cache.
     const scheduledPackages = await fetchScheduledVoucherPackages(new Date());
-    const packages = [...cachedPackages, ...scheduledPackages].sort(
-      (left, right) =>
-        new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
-    );
+    const packages = [...cachedPackages, ...scheduledPackages]
+      .filter((pkg) => pkg.visibility !== "PRIVATE")
+      .sort(
+        (left, right) =>
+          new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
+      );
 
     const session = await getSession();
 
@@ -42,7 +46,10 @@ export async function GET() {
     if (packageIds.length > 0) {
       const globalRedeemedCounts = await prisma.voucher.groupBy({
         by: ["package_id"],
-        where: { package_id: { in: packageIds } },
+        where: {
+          package_id: { in: packageIds },
+          issued_via: { in: [...LEGACY_PACKAGE_QUOTA_SOURCES] },
+        },
         _count: { id: true },
       });
       globalCountMap = Object.fromEntries(
@@ -70,6 +77,7 @@ export async function GET() {
         where: {
           package_id: { in: packageIds },
           user_id: session.id,
+          issued_via: { in: [...SELF_ACQUISITION_SOURCES] },
         },
         _count: { id: true },
       });
@@ -100,12 +108,13 @@ export async function GET() {
 /** Fetches active voucher packages from DB. Called by withCache on cache miss. */
 async function fetchVoucherPackages() {
   return prisma.voucherPackage.findMany({
-    where: { is_active: true, ends_at: null, voucher_type: { in: ["DISCOUNT", "FREESHIP"] } },
+    where: { visibility: "PUBLIC", is_active: true, ends_at: null, voucher_type: { in: ["DISCOUNT", "FREESHIP"] } },
     orderBy: { created_at: "asc" },
     include: {
       menuItem: { select: { name: true, is_available: true } },
       menuItemScopes: { include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } } },
-      addonOption: { select: { label: true } },
+        addonOption: { select: { label: true } },
+        addonOptionScopes: { include: { addonOption: { select: { label: true, price_vnd: true, is_active: true, gram_value: true } } } },
       bundleRule: { include: {
         productScopes: { include: {
           sizes: true,
@@ -121,6 +130,7 @@ async function fetchVoucherPackages() {
 async function fetchScheduledVoucherPackages(now: Date) {
   const packages = await prisma.voucherPackage.findMany({
     where: {
+      visibility: "PUBLIC",
       is_active: true,
       OR: [
         { ends_at: { gt: now } },
@@ -132,6 +142,7 @@ async function fetchScheduledVoucherPackages(now: Date) {
       menuItem: { select: { name: true, is_available: true } },
       menuItemScopes: { include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } } },
       addonOption: { select: { label: true } },
+      addonOptionScopes: { include: { addonOption: { select: { label: true, price_vnd: true, is_active: true, gram_value: true } } } },
       bundleRule: { include: {
         productScopes: { include: {
           sizes: true,
@@ -160,10 +171,14 @@ async function fetchScheduledVoucherPackages(now: Date) {
       matcha_powder_id: pkg.matcha_powder_id,
       milk_type_id: pkg.milk_type_id,
       addon_option_id: pkg.addon_option_id,
+      addonOptionScopes: pkg.addonOptionScopes,
       package: { bundleRule: pkg.bundleRule as unknown as VoucherBundleRuleSource | null },
     }, catalog);
     return resolved.availability.can_apply
-      ? [toVoucherPackageBundleDto({ ...pkg, bundleRule: resolved.package.bundleRule ?? null } as typeof pkg)]
+      ? [toVoucherPackageBundleDto({
+          ...retainUsableVoucherTargetScopes(pkg, resolved),
+          bundleRule: resolved.package.bundleRule ?? null,
+        } as typeof pkg)]
       : [];
   });
 }

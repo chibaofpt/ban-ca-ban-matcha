@@ -19,7 +19,10 @@ export interface MiddlewareUser {
   id: string;
   role: string;
   phone_number: string;
+  is_blocked: boolean;
 }
+
+type AccessTokenClaims = Omit<MiddlewareUser, "is_blocked"> & { sid: string };
 
 /** Result of full page-session resolution, including optional rotated cookies. */
 export interface ResolvedMiddlewareSession {
@@ -88,7 +91,7 @@ export async function verifyAccessToken(request: NextRequest): Promise<Middlewar
     const claims = payloadToClaims(payload);
     if (!claims) return null;
     const session = await findLiveSessionById(claims.sid, claims.id);
-    return session ? sessionToUser(session) : null;
+    return session && !session.user.is_blocked ? sessionToUser(session) : null;
   } catch {
     return null;
   }
@@ -107,7 +110,7 @@ export async function resolveSessionFull(
       const claims = payloadToClaims(payload);
       if (claims) {
         const live = await findLiveSessionById(claims.sid, claims.id);
-        if (live) return { user: sessionToUser(live), cookieUpdates: null };
+        if (live && !live.user.is_blocked) return { user: sessionToUser(live), cookieUpdates: null };
       }
     } catch {
       // Expired access tokens fall through to refresh-token rotation.
@@ -116,14 +119,14 @@ export async function resolveSessionFull(
   if (!refreshToken) return { user: null, cookieUpdates: null };
 
   const session = await findSessionWithUser(refreshToken);
-  if (!session || new Date(session.expires_at) < new Date()) {
+  if (!session || session.user.is_blocked || new Date(session.expires_at) < new Date()) {
     return { user: null, cookieUpdates: null };
   }
 
   try {
     await evictSessionCache(refreshToken);
     const rotated = await rotateSessionInPlace(session, refreshToken);
-    if (!rotated) return { user: null, cookieUpdates: null };
+    if (!rotated || rotated.user.is_blocked) return { user: null, cookieUpdates: null };
     return {
       user: sessionToUser(rotated),
       cookieUpdates: {
@@ -155,14 +158,19 @@ export function buildAuthenticatedResponse(
   return securityHeaders ? applyPageResponseHeaders(response, securityHeaders) : response;
 }
 
-function payloadToClaims(payload: Awaited<ReturnType<typeof jwtVerify>>["payload"]): (MiddlewareUser & { sid: string }) | null {
+function payloadToClaims(payload: Awaited<ReturnType<typeof jwtVerify>>["payload"]): AccessTokenClaims | null {
   if (typeof payload.id !== "string" || typeof payload.role !== "string" ||
       typeof payload.phone_number !== "string" || typeof payload.sid !== "string") return null;
   return { id: payload.id, role: payload.role, phone_number: payload.phone_number, sid: payload.sid };
 }
 
-function sessionToUser(session: { user_id: string; user: { role: string; phone_number: string } }): MiddlewareUser {
-  return { id: session.user_id, role: session.user.role, phone_number: session.user.phone_number };
+function sessionToUser(session: { user_id: string; user: { role: string; phone_number: string; is_blocked: boolean } }): MiddlewareUser {
+  return {
+    id: session.user_id,
+    role: session.user.role,
+    phone_number: session.user.phone_number,
+    is_blocked: session.user.is_blocked,
+  };
 }
 
 async function signAccessToken(payload: MiddlewareUser, sid: string): Promise<string> {

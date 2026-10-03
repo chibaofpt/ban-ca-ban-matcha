@@ -2,7 +2,7 @@ import { expect, vi } from "vitest";
 import {
   VoucherIssuanceError,
   type VoucherIssuanceTransaction,
-} from "@/lib/voucherIssuance";
+} from "@/lib/vouchers/voucherIssuance";
 
 export const USER_ID = "11111111-1111-4111-8111-111111111111";
 export const PACKAGE_ID = "22222222-2222-4222-8222-222222222222";
@@ -12,6 +12,7 @@ export const NOW = new Date("2026-08-11T10:00:00.000Z");
 export const mockPackageFindUnique = vi.fn();
 export const mockPackageFindMany = vi.fn();
 export const mockVoucherCount = vi.fn();
+export const mockVoucherFindUnique = vi.fn();
 export const mockVoucherCreate = vi.fn();
 export const mockUserUpdateMany = vi.fn();
 export const mockPointsLogCreate = vi.fn();
@@ -58,6 +59,7 @@ export function makeTx(): VoucherIssuanceTransaction {
     },
     voucher: {
       count: (...args: unknown[]) => mockVoucherCount(...args),
+      findUnique: (...args: unknown[]) => mockVoucherFindUnique(...args),
       create: (...args: unknown[]) => mockVoucherCreate(...args),
     },
     user: {

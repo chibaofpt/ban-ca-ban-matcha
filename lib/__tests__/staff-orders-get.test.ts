@@ -30,8 +30,8 @@ vi.mock("@/lib/prisma", () => ({
 }));
 
 // Mock dependencies that are not under test
-vi.mock("@/lib/cancelOrder", () => ({ restoreVouchersOnCancel: vi.fn() }));
-vi.mock("@/lib/storeSchedule", () => ({
+vi.mock("@/lib/orders/cancelOrder", () => ({ restoreVouchersOnCancel: vi.fn() }));
+vi.mock("@/lib/store/storeSchedule", () => ({
   checkStoreOpen: vi.fn().mockResolvedValue({ is_open: true }),
   validatePickupTime: vi.fn(),
 }));
@@ -42,12 +42,10 @@ vi.mock("@/lib/pricing", () => ({
   resolveOrderItemPrice: vi.fn().mockReturnValue(69000),
   resolveOrderItemPremiumLatte: vi.fn().mockResolvedValue(0),
 }));
-vi.mock("@/lib/orders", () => ({
+vi.mock("@/lib/orders/orderProcessing", () => ({
   processOrderItems: vi.fn().mockResolvedValue({ items: [], subtotal: 0 }),
-  OrderValidationError: class extends Error {},
-  PriceChangedError: class extends Error {},
 }));
-vi.mock("@/lib/vouchers", () => ({
+vi.mock("@/lib/vouchers/voucherRules", () => ({
   assertVoucherUsable: vi.fn(),
   calcMultiDiscountVouchers: vi.fn().mockReturnValue({ totalDiscount: 0, appliedVoucherIds: [] }),
   calcProductVoucherSurplusPoints: vi.fn().mockReturnValue(0),
@@ -108,20 +106,8 @@ describe("GET /api/staff/orders — lọc đơn CANCELLED ra khỏi tab thông t
 
     await GET(makeReq({ order_type: "COUNTER" }));
 
-    // status must NOT include CANCELLED
     const whereArg = mockOrderCount.mock.calls[0]?.[0]?.where;
-    if (whereArg?.status) {
-      // If status filter is set, it must exclude CANCELLED
-      const statusFilter = whereArg.status;
-      if (statusFilter?.notIn) {
-        expect(statusFilter.notIn).toContain("CANCELLED");
-      } else if (statusFilter?.in) {
-        expect(statusFilter.in).not.toContain("CANCELLED");
-      } else {
-        // If status equals a specific string, it shouldn't be "CANCELLED"
-        expect(statusFilter).not.toBe("CANCELLED");
-      }
-    }
+    expect(whereArg?.status?.notIn).toContain("CANCELLED");
   });
 
   it("tab Khách đặt (order_type=PICKUP,DELIVERY) không trả đơn CANCELLED", async () => {
@@ -135,18 +121,7 @@ describe("GET /api/staff/orders — lọc đơn CANCELLED ra khỏi tab thông t
     await GET(makeReq({ order_type: "PICKUP,DELIVERY" }));
 
     const whereArg = mockOrderCount.mock.calls[0]?.[0]?.where;
-    if (whereArg?.status) {
-      const statusFilter = whereArg.status;
-      if (statusFilter?.in) {
-        expect(statusFilter.in).not.toContain("CANCELLED");
-      } else if (statusFilter?.notIn) {
-        expect(statusFilter.notIn).toContain("CANCELLED");
-      }
-    } else {
-      // status is missing from where — this is the bug we're fixing
-      // After fix, there should be a status filter
-      // For now we accept this test as pending
-    }
+    expect(whereArg?.status?.in).toEqual(["ADMIN_CONFIRMED", "STAFF_DONE", "COMPLETED"]);
   });
 
   it("tab Đã huỷ (status=CANCELLED) Admin chỉ trả đơn CANCELLED", async () => {

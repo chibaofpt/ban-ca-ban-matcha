@@ -1,5 +1,5 @@
 /**
- * GET /api/staff/users/[id]/vouchers — List ACTIVE vouchers of a customer.
+ * GET /api/staff/users/[id]/vouchers — List ACTIVE and RESERVED vouchers of a customer.
  * Auth: STAFF or ADMIN only.
  * Returns empty array for unknown user_id (no 404 — prevents info leak).
  */
@@ -8,17 +8,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { resolveCustomerIdentifier } from "@/lib/publicIdentifiers";
-import { toPublicVoucherDto } from "@/lib/voucherPublicDto";
-import { attachBundleRewardBaselines } from "@/lib/voucherBundleDto";
+import { serializePublicVoucherDto, toPublicVoucherDto } from "@/lib/vouchers/voucherPublicDto";
+import { attachBundleRewardBaselines } from "@/lib/vouchers/voucherBundleDto";
+import { attachOwnedVoucherAvailability } from "@/lib/vouchers/ownedVoucherAvailability";
 import {
-  attachOwnedVoucherAvailability,
   loadVoucherAvailabilityCatalog,
   type VoucherAvailabilityDatabase,
-} from "@/lib/voucherAvailability";
+} from "@/lib/vouchers/voucherAvailability";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/staff/users/[id]/vouchers — Returns all ACTIVE vouchers for the given customer. */
+/** GET /api/staff/users/[id]/vouchers — Returns ACTIVE and RESERVED vouchers for the given customer. */
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -42,7 +42,7 @@ export async function GET(
     const vouchers = await prisma.voucher.findMany({
       where: {
         user_id: userId,
-        status: "ACTIVE",
+        status: { in: ["ACTIVE", "RESERVED"] },
         OR: [{ expires_at: null }, { expires_at: { gt: new Date() } }],
       },
       orderBy: { created_at: "desc" },
@@ -82,6 +82,7 @@ export async function GET(
         menuItem: { select: { name: true, is_available: true } },
         menuItemScopes: { include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } } },
         addonOption: { select: { label: true } },
+        addonOptionScopes: { include: { addonOption: { select: { label: true, price_vnd: true, is_active: true, gram_value: true } } } },
         staff: { select: { name: true, role: true } },
         pointsLogs: {
           where: { reason: "voucher_purchase" },
@@ -94,7 +95,9 @@ export async function GET(
     const catalog = await loadVoucherAvailabilityCatalog(prisma as unknown as VoucherAvailabilityDatabase);
     const withAvailability = attachOwnedVoucherAvailability(vouchers, catalog);
     const withBaselines = await attachBundleRewardBaselines(prisma, withAvailability);
-    return NextResponse.json({ data: withBaselines.map(toPublicVoucherDto) });
+    return NextResponse.json({
+      data: withBaselines.map((voucher) => serializePublicVoucherDto(toPublicVoucherDto(voucher))),
+    });
   } catch (err) {
     console.error("[GET /api/staff/users/[id]/vouchers]", {
       name: err instanceof Error ? err.name : typeof err,

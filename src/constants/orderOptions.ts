@@ -20,10 +20,3 @@ export const ICE_OPTIONS: { label: string; value: IceOption }[] = [
   { label: "Không đá", value: "NO_ICE" },
   { label: "Đá riêng", value: "SEPARATE_ICE" },
 ];
-
-/** Display labels for size picker. */
-export const SIZE_LABELS: Record<"SMALL" | "MEDIUM" | "LARGE", string> = {
-  SMALL: "Cá Con",
-  MEDIUM: "Cá Vừa",
-  LARGE: "Cá Lớn",
-};

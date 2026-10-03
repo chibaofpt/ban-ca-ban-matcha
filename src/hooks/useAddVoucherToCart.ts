@@ -1,9 +1,8 @@
 /**
  * useAddVoucherToCart — Handles "Dùng ngay" flow for PRODUCT vouchers.
  *
- * Fetches current menu data, finds the matching item, computes its price
- * with the voucher configuration (size, powder, milk, addons), builds a
- * CartItem, applies the voucher credit, and adds it to the cart store.
+ * Fetches current menu data, resolves the voucher configuration, and adds a
+ * minimal CartItem whose price and benefit are projected from current data.
  *
  * Usage: Call addToCart(voucher) from MyVouchersPage VoucherCard.
  */
@@ -24,12 +23,14 @@ import {
 import { getBaseLiquidOptionsForItem } from "@/src/utils/baseLiquid";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import type { CartItem } from "@/src/lib/types/cart";
+import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import type { AddonGroup, MenuItem, MilkTypeOption, Size } from "@/src/lib/types/menu";
+import { getVoucherCartDefaults } from "@/src/lib/utils/voucherUseNowHelpers";
 
 /** Result of attempting to add a PRODUCT voucher item to the cart. */
 export type AddVoucherResult =
   | { ok: true }
-  | { ok: false; reason: "item_unavailable" | "size_unavailable" | "fetch_failed" };
+  | { ok: false; reason: "item_unavailable" | "size_unavailable" | "configuration_unavailable" | "no_benefit" | "fetch_failed" };
 
 /**
  * Resolves the price of a menu item with a given configuration.
@@ -141,19 +142,25 @@ export function resolveVoucherBaseLiquidId(
  * Hook for the "Dùng ngay" flow.
  * Returns addToCart function and loading state.
  */
-export function useAddVoucherToCart() {
-  const { addItem, applyProductVoucher, setCartOpen } = useCartStore();
-  const powders = usePowderStore((s) => s.data);
-  const defaultPowderGram = usePowderStore((s) => s.defaultPowderGram);
+export function useAddVoucherToCart({ openCartOnSuccess = true, onAddItem }: {
+  openCartOnSuccess?: boolean;
+  onAddItem?: (item: Omit<CartItem, "cartId">) => CartMutationResult<unknown>;
+} = {}) {
+  const { addItem: customerAddItem, setCartOpen } = useCartStore();
+  const addItem = onAddItem ?? customerAddItem;
   const [loading, setLoading] = useState(false);
 
   const addToCart = useCallback(
-    async (voucher: MyVoucher, selection?: { menuItemId: string; size: Size }): Promise<AddVoucherResult> => {
+    async (
+      voucher: MyVoucher,
+      selection?: { menuItemId: string; size?: Size },
+      canCommit: () => boolean = () => true,
+    ): Promise<AddVoucherResult> => {
       const supportsAddToCart = voucher.voucher_type === "PRODUCT" ||
         voucher.voucher_type === "PRODUCT_DISCOUNT" || voucher.voucher_type === "ITEM";
-      const targetMenuItemId = voucher.voucher_type === "PRODUCT_DISCOUNT"
-        ? selection?.menuItemId ?? voucher.menu_item_id
-        : voucher.menu_item_id;
+      const targetMenuItemId = selection?.menuItemId
+        ?? voucher.eligible_menu_items?.[0]?.menu_item_id
+        ?? voucher.menu_item_id;
       if (!supportsAddToCart || !targetMenuItemId) {
         return { ok: false, reason: "fetch_failed" };
       }
@@ -163,8 +170,6 @@ export function useAddVoucherToCart() {
         // Fetch fresh menu data (cannot rely on MenuPage cache from outside that context)
         const menuData = await fetchMenu();
         const allItems = [...menuData.latte, ...menuData.fusion, ...(menuData.extras ?? [])];
-        const latteItems = menuData.latte;
-
         const menuItem = allItems.find((i) => i.id === targetMenuItemId);
         if (!menuItem) {
           return { ok: false, reason: "item_unavailable" };
@@ -174,33 +179,24 @@ export function useAddVoucherToCart() {
           if (menuItem.category !== "extras" || menuItem.unit_price_vnd == null) {
             return { ok: false, reason: "item_unavailable" };
           }
-          addItem({
+          if (!canCommit()) return { ok: false, reason: "fetch_failed" };
+          const result = addItem({
             menuItemId: menuItem.id,
-            name: menuItem.name,
-            category: "extras",
-            imageUrl: menuItem.image_url,
-            size: null,
-            unitPrice: menuItem.unit_price_vnd,
             quantity: 1,
-            sweetness: "FULL",
-            iceOption: "NORMAL",
-            coldwhisk: false,
-            note: "",
-            selectedOptionIds: [],
-            addonsPrice: 0,
-            addonPrices: {},
-            clientPriceVnd: 0,
-            originalClientPriceVnd: menuItem.unit_price_vnd,
-            itemVoucherId: voucher.qr_token,
+            configuration: { size: null, note: "" },
+            lineVoucher: { token: voucher.qr_token, kind: "ITEM" },
+            addonVouchers: [],
           });
-          setCartOpen(true);
+          if (!result.ok) return { ok: false, reason: "fetch_failed" };
+          if (openCartOnSuccess) setCartOpen(true);
           return { ok: true };
         }
 
         // Use voucher's size config (soft match: item must support this size)
+        const selectedScope = voucher.eligible_menu_items?.find((target) => target.menu_item_id === targetMenuItemId);
         const voucherSize = (voucher.voucher_type === "PRODUCT_DISCOUNT"
           ? selection?.size ?? voucher.eligible_sizes?.find((size) => menuItem.sizes.some((row) => row.size === size && row.base_price_vnd !== null))
-          : voucher.size) as Size | undefined;
+          : selectedScope?.size ?? voucher.size) as Size | undefined;
         if (!voucherSize) return { ok: false, reason: "size_unavailable" };
         const sizeObj = menuItem.sizes.find((s) => s.size === voucherSize);
         if (!sizeObj || sizeObj.base_price_vnd == null) {
@@ -210,35 +206,29 @@ export function useAddVoucherToCart() {
         // Resolve addons — voucher.included_addon_option_ids is the snapshot config
         const includedAddonIds = (voucher as MyVoucher & { included_addon_option_ids?: string[] }).included_addon_option_ids ?? [];
 
-        // Compute the server-equivalent price for this item at its voucher configuration
         const resolvedBaseLiquidId = resolveVoucherBaseLiquidId(
           menuItem,
-          voucher.milk_type_id ?? null,
+          selectedScope?.milk_type_id ?? voucher.milk_type_id ?? null,
           menuData.base_liquids ?? menuData.milk_types,
         );
-        const { drinkPrice, addonsCost } = computeVoucherItemPrice(
-          menuItem,
-          voucherSize,
-          voucher.matcha_powder_id ?? null,
-          resolvedBaseLiquidId,
-          includedAddonIds,
-          powders,
-          defaultPowderGram,
-          latteItems,
-          menuData.milk_types,
-          menuData.addon_groups,
-        );
-        const originalPrice = drinkPrice + addonsCost;
-        let voucherBenefit = voucher.covered_price_vnd ?? 0;
+        const requestedPowderId = selectedScope?.matcha_powder_id ?? voucher.matcha_powder_id ?? null;
+        const defaultPowderId = menuItem.category === "latte" ? menuItem.powder?.id : menuItem.resolved_default_powder_id;
+        const effectivePowderId = menuItem.category === "fusion" && requestedPowderId && (requestedPowderId === defaultPowderId || menuItem.allowed_powder_ids.includes(requestedPowderId))
+          ? requestedPowderId : defaultPowderId ?? null;
         if (voucher.voucher_type === "PRODUCT_DISCOUNT") {
-          const referencePrice = voucher.product_discount_mode === "PAY_AS_SIZE" && voucher.reference_size
-            ? computeVoucherItemPrice(menuItem, voucher.reference_size, voucher.matcha_powder_id ?? null,
-                resolvedBaseLiquidId, [], powders, defaultPowderGram, latteItems, menuData.milk_types,
-                menuData.addon_groups).drinkPrice
-            : null;
-          voucherBenefit = computeProductDiscountBenefit(voucher, drinkPrice, referencePrice);
+          const requiredLiquidId = selectedScope?.milk_type_id ?? voucher.milk_type_id;
+          const { data: powders, defaultPowderGram } = usePowderStore.getState();
+          if ((requiredLiquidId && requiredLiquidId !== resolvedBaseLiquidId) || !powders.some((powder) => powder.id === effectivePowderId)) {
+            return { ok: false, reason: "configuration_unavailable" };
+          }
+          const priceForSize = (size: Size) => computeVoucherItemPrice(menuItem, size, effectivePowderId, resolvedBaseLiquidId, [], powders, defaultPowderGram, menuData.latte, menuData.base_liquids ?? menuData.milk_types, menuData.addon_groups).drinkPrice;
+          const referenceSize = voucher.reference_size;
+          const referencePrice = voucher.product_discount_mode === "PAY_AS_SIZE" && referenceSize && menuItem.sizes.some((row) => row.size === referenceSize && row.base_price_vnd != null)
+            ? priceForSize(referenceSize) : null;
+          if (computeProductDiscountBenefit(voucher, priceForSize(voucherSize), referencePrice) <= 0) {
+            return { ok: false, reason: "no_benefit" };
+          }
         }
-
         // Build addon details for display
         const allAddonOptions = menuData.addon_groups.flatMap((group) => group.options);
         const addonDetails = includedAddonIds
@@ -254,51 +244,32 @@ export function useAddVoucherToCart() {
 
         // Determine selected option ids (use voucher config as selected)
         const selectedOptionIds = [...new Set(includedAddonIds)];
-        const addonPrices: Record<string, number> = {};
-        const activePowderId = menuItem.category === "latte"
-          ? (menuItem.powder?.id ?? voucher.matcha_powder_id ?? "")
-          : (voucher.matcha_powder_id ?? menuItem.resolved_default_powder_id ?? "");
-        const activePowderPrice = powders.find(
-          (powder) => powder.id === activePowderId
-        )?.price_per_gram ?? 0;
-        for (const option of allAddonOptions) {
-          if (!includedAddonIds.includes(option.id)) continue;
-          const rawPrice = option.gram_value !== null
-            ? option.gram_value * activePowderPrice
-            : option.price_vnd;
-          addonPrices[option.id] = ceilTo1000(rawPrice);
-        }
 
 
         // Build CartItem with separated drink/addon prices for correct PRODUCT credit capping
         const cartItemBase: Omit<CartItem, "cartId"> = {
           menuItemId: menuItem.id,
-          name: menuItem.name,
-          category: menuItem.category,
-          imageUrl: menuItem.image_url,
-          size: voucherSize,
-          unitPrice: originalPrice,
           quantity: 1,
-          sweetness: "QUARTER",
-          iceOption: "NORMAL",
-          coldwhisk: false,
-          note: "",
-          selectedOptionIds,
-          addonsPrice: addonsCost,
-          addonPrices,
-          selectedPowderId: menuItem.category === "fusion" ? (voucher.matcha_powder_id ?? undefined) : undefined,
-          selectedMilkTypeId: menuItem.category === "latte" ? (resolvedBaseLiquidId ?? undefined) : undefined,
-          selectedBaseLiquidId: resolvedBaseLiquidId ?? undefined,
-          clientPriceVnd: originalPrice,
-          originalClientPriceVnd: originalPrice,
+          configuration: {
+            size: voucherSize,
+            ...getVoucherCartDefaults(),
+            note: "",
+            ...(menuItem.category === "fusion" && effectivePowderId ? { powderId: effectivePowderId } : {}),
+            ...(resolvedBaseLiquidId ? { baseLiquidId: resolvedBaseLiquidId } : {}),
+            addonOptionIds: selectedOptionIds,
+          },
+          lineVoucher: {
+            token: voucher.qr_token,
+            kind: voucher.voucher_type === "PRODUCT_DISCOUNT" ? "PRODUCT_DISCOUNT" : "PRODUCT",
+          },
+          addonVouchers: [],
         };
 
-        const newCartId = addItem(cartItemBase);
-        if (newCartId) {
-          applyProductVoucher(newCartId, voucher.qr_token, voucherBenefit, voucher.voucher_type === "PRODUCT_DISCOUNT" ? "PRODUCT_DISCOUNT" : "PRODUCT");
-        }
+        if (!canCommit()) return { ok: false, reason: "fetch_failed" };
+        const result = addItem(cartItemBase);
+        if (!result.ok) return { ok: false, reason: "fetch_failed" };
 
-        setCartOpen(true);
+        if (openCartOnSuccess) setCartOpen(true);
         return { ok: true };
       } catch {
         return { ok: false, reason: "fetch_failed" };
@@ -306,7 +277,7 @@ export function useAddVoucherToCart() {
         setLoading(false);
       }
     },
-    [addItem, applyProductVoucher, setCartOpen, powders, defaultPowderGram]
+    [addItem, setCartOpen, openCartOnSuccess]
   );
 
   return { addToCart, loading };

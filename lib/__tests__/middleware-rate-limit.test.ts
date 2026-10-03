@@ -53,18 +53,24 @@ describe("Middleware rate limit auth mutation", () => {
     expect(mockCheckRateLimit).toHaveBeenCalledWith("authMutationIp", "203.0.113.7");
   });
 
-  it("không dùng Redis cho GET me", async () => {
-    const response = await middleware(makeRequest("/api/auth/me", "GET"));
+  it.each([
+    ["GET", "/api/auth/me"],
+    ["POST", "/api/auth/logout"],
+  ])("không dùng Redis cho %s %s", async (method, path) => {
+    const response = await middleware(makeRequest(path, method));
 
     expect(response.status).toBe(200);
     expect(mockCheckRateLimit).not.toHaveBeenCalled();
   });
 
-  it("không dùng Redis cho POST logout", async () => {
-    const response = await middleware(makeRequest("/api/auth/logout", "POST"));
+  it.each([
+    ["GET", "/api/profile/points?page=1&limit=10"],
+    ["POST", "/api/profile/vouchers/sync"],
+  ])("để route profile tự xác thực cho %s %s", async (method, path) => {
+    const response = await middleware(makeRequest(path, method));
 
     expect(response.status).toBe(200);
-    expect(mockCheckRateLimit).not.toHaveBeenCalled();
+    expect(response.headers.get("x-middleware-next")).toBe("1");
   });
 
   it("trả 429 và Retry-After khi auth mutation vượt giới hạn", async () => {

@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { ChevronDown, ChevronUp, Phone, Clock, Search, FilterX, Filter, CheckCircle2, XCircle, BarChart3 } from "lucide-react";
+import { Phone, Clock, Search, FilterX, Filter, CheckCircle2, XCircle, BarChart3 } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import { formatKa, formatOrderSize } from "@/src/utils/display";
 import { fetchAdminOrders, confirmPayment, adminCancelOrder, AdminOrderServiceError, type AdminOrderRes } from "@/src/services/adminOrderService";
 import { apiClient } from "@/src/lib/api/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { DeliveryRecipientDetails } from "@/src/components/shared/DeliveryRecipientDetails";
+import { OrderReadOnlyDetail } from "@/src/components/shared/OrderReadOnlyDetail";
 import { OrderItemDetails } from "@/src/components/shared/OrderItemDetails";
 import { PaymentMethodBadge } from "@/src/components/shared/PaymentMethodBadge";
 import { resolveOrderPaymentMethod } from "@/src/lib/utils/counterTransferOrder";
@@ -16,6 +18,7 @@ import { CountdownTimer } from "@/src/components/customer/CountdownTimer";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { OrderProgressBar } from "@/src/components/shared/OrderProgressBar";
 import { DailyReportModal } from "@/src/components/report/DailyReportModal";
+import { useAdminPendingTransferCount } from "@/src/hooks/useAdminPendingTransferCount";
 
 const formatDateTime = (iso: string): string => {
   const d = new Date(iso);
@@ -42,7 +45,7 @@ export default function AdminOrdersPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<OrderTabKey>("all");
   const [page, setPage] = useState(1);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -64,6 +67,7 @@ export default function AdminOrdersPage() {
   const [activeFilters, setActiveFilters] = useState({
     search: "",
     staffName: "",
+    paymentMethod: "" as "" | "CASH" | "BANK_TRANSFER",
     startDate: getTodayStr(),
     endDate: "",
   });
@@ -92,6 +96,7 @@ export default function AdminOrdersPage() {
       startDate: activeTab !== "pending" ? startIso : undefined,
       endDate: activeTab !== "pending" ? endIso : undefined,
       order_type: orderTypeParam || undefined,
+      payment_method: activeFilters.paymentMethod || undefined,
       status: statusParam || undefined,
       exclude_cancelled: activeTab === "all" || undefined,
       page,
@@ -108,23 +113,10 @@ export default function AdminOrdersPage() {
   const orders = queryData?.data || [];
   const totalPages = queryData?.meta.totalPages || 1;
 
-  // Background polling cho pendingCount
-  const fetchPendingCountAPI = useCallback(async () => {
-    const res = await fetchAdminOrders({ status: "PENDING", limit: 1 });
-    return res;
-  }, []);
-
-  const { data: pendingRes } = useQuery({
-    queryKey: ["admin", "orders", "pending-count"],
-    queryFn: fetchPendingCountAPI,
-    refetchInterval: 20000,
-  });
-
-  const pendingCount = pendingRes?.meta.total || 0;
+  const { data: pendingCount = 0 } = useAdminPendingTransferCount();
 
   const refetch = () => queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
 
-  const toggle = (id: string) => setExpanded((s) => ({ ...s, [id]: !s[id] }));
 
   const openFilterModal = () => {
     setDraftFilters(activeFilters);
@@ -138,7 +130,7 @@ export default function AdminOrdersPage() {
   };
 
   const clearFilters = () => {
-    const defaultFilters = { search: "", staffName: "", startDate: getTodayStr(), endDate: "" };
+    const defaultFilters = { search: "", staffName: "", paymentMethod: "" as const, startDate: getTodayStr(), endDate: "" };
     setDraftFilters(defaultFilters);
     setPage(1);
     setActiveFilters(defaultFilters);
@@ -148,6 +140,7 @@ export default function AdminOrdersPage() {
   const activeFilterCount = 
     (activeFilters.search ? 1 : 0) +
     (activeFilters.staffName ? 1 : 0) +
+    (activeFilters.paymentMethod ? 1 : 0) +
     (activeFilters.startDate && activeFilters.startDate !== getTodayStr() ? 1 : 0) +
     (activeFilters.endDate ? 1 : 0);
 
@@ -290,7 +283,7 @@ export default function AdminOrdersPage() {
   return (
     <div className="px-2 md:px-0 py-4 space-y-4 pb-24 md:pb-8 max-w-7xl mx-auto">
       <div className="flex items-baseline justify-between">
-        <h1 className="font-serif text-2xl font-semibold text-foreground">Quản lý Đơn hàng</h1>
+        <h1 className="font-serif text-2xl font-semibold text-foreground">Đơn hàng</h1>
         <div className="flex gap-3 items-center">
           <button
             onClick={() => setShowReportModal(true)}
@@ -365,7 +358,6 @@ export default function AdminOrdersPage() {
       ) : (
         <div className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6 mt-4">
           {orders.map((order) => {
-            const isOpen = !!expanded[order.id];
             const isTerminal = order.status === "COMPLETED" || order.status === "CANCELLED";
 
             return (
@@ -373,7 +365,7 @@ export default function AdminOrdersPage() {
                 key={order.id}
                 className={cn(
                   "rounded-2xl border bg-card shadow-sm overflow-hidden transition",
-                  order.status === "PENDING" && "border-yellow-400 border-2 shadow-yellow-100",
+                  order.status === "PENDING" && "border-primary/30 bg-primary/5",
                   order.status === "CANCELLED" && "opacity-60"
                 )}
               >
@@ -385,7 +377,7 @@ export default function AdminOrdersPage() {
                         {order.order_code ?? `#${order.id.slice(0, 8)}`}
                       </div>
                       {order.pickup_time && (
-                        <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-md w-fit">
+                        <span className="inline-flex items-center gap-1 bg-muted/50 text-foreground text-xs font-bold px-2 py-0.5 rounded-md w-fit">
                           <Clock size={10} />
                           Nhận lúc: {formatTimeOnly(order.pickup_time)}
                         </span>
@@ -404,21 +396,23 @@ export default function AdminOrdersPage() {
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span className="text-sm font-medium text-foreground">
-                        {order.user?.name ?? "Khách vãng lai"}
+                        {order.order_type === "DELIVERY" ? "Đơn giao hàng" : order.user?.name ?? "Khách vãng lai"}
                       </span>
-                      <span className="inline-flex items-center gap-1">
+                      <span className={order.order_type === "DELIVERY" ? "hidden" : "inline-flex items-center gap-1"}>
                         <Phone size={11} />
                         {order.user?.phone_number ?? "—"}
                       </span>
                     </div>
                     {order.status === "PENDING" && order.auto_cancel_at && (
-                      <div className="flex items-center gap-1 text-[11px] bg-yellow-50 border border-yellow-200 px-2 py-0.5 rounded-lg text-yellow-700">
+                      <div className="flex items-center gap-1 text-[11px] bg-muted/50 border border-border px-2 py-0.5 rounded-lg text-primary">
                         <Clock size={11} />
                         <CountdownTimer targetTime={order.auto_cancel_at} className="text-[11px]" />
                       </div>
                     )}
                   </div>
 
+                  <DeliveryRecipientDetails {...order} />
+                  <button type="button" className="min-h-11 w-full rounded-xl border border-border bg-muted/40 px-3 text-sm font-semibold" onClick={() => setDetailOrderId(order.id)}>Chi tiết đơn</button>
                   {/* Progress Bar — chỉ hiện cho non-terminal states */}
                   {!isTerminal && (
                     <div className="pt-1">
@@ -429,19 +423,8 @@ export default function AdminOrdersPage() {
                   {/* Action buttons (Confirm Payment for PENDING) */}
                   {renderActionButtons(order)}
 
-                  {/* Expand toggle */}
-                  <button
-                    onClick={() => toggle(order.id)}
-                    className="w-full flex items-center justify-between text-sm text-foreground/80 hover:text-foreground bg-secondary/20 p-2 rounded-xl"
-                  >
-                    <span className="font-medium">
-                      {order.items.reduce((s, i) => s + i.quantity, 0)} món
-                    </span>
-                    {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </button>
-
-                  {/* Expanded item list */}
-                  {isOpen && (
+                  {/* Show all items for active orders; terminal cards stay compact. */}
+                  {!isTerminal && (
                     <ul className="space-y-3 text-sm text-foreground/90 pt-1">
                       {order.items.map((it, idx) => (
                         <li key={idx} className="flex justify-between gap-3">
@@ -463,7 +446,7 @@ export default function AdminOrdersPage() {
                         </li>
                       ))}
                       {order.discountVouchers && order.discountVouchers.length > 0 && (
-                        <li className="text-xs text-green-600 pt-1 flex flex-col gap-0.5">
+                        <li className="text-xs text-primary pt-1 flex flex-col gap-0.5">
                           {order.discountVouchers.map((dv, idx) => {
                             const v = dv.voucher;
                             let discountText = "";
@@ -503,7 +486,7 @@ export default function AdminOrdersPage() {
                       const totalDiscount = (order.total_voucher_discount_vnd || 0) + (order.freeship_discount_vnd || 0) + itemDiscount;
                       if (totalDiscount <= 0) return null;
                       return (
-                        <div className="flex justify-between items-center gap-2 text-[13px] text-green-600">
+                        <div className="flex justify-between items-center gap-2 text-[13px] text-primary">
                           <span>Voucher giảm:</span>
                           <span>-{formatKa(totalDiscount, "floor")}</span>
                         </div>
@@ -529,8 +512,8 @@ export default function AdminOrdersPage() {
                       return (
                         <div className="flex items-center justify-between mt-1.5">
                           {order.status === "CANCELLED" ? (
-                            <span className="text-xs font-semibold flex items-center gap-1 text-red-500">
-                              <XCircle size={13} className="text-red-500" />
+                            <span className="text-xs font-semibold flex items-center gap-1 text-destructive">
+                              <XCircle size={13} className="text-destructive" />
                               <span>Đã huỷ</span>
                             </span>
                           ) : order.status === "COMPLETED" && order.order_type !== "COUNTER" ? (
@@ -542,7 +525,7 @@ export default function AdminOrdersPage() {
                             <button
                               disabled={cancelOrderMutation.isPending}
                               onClick={(e) => handleCancelOrder(e, order.id, order.order_type, order.status)}
-                              className="min-h-10 px-2 text-[11px] font-semibold text-red-500 hover:text-red-700 hover:underline transition-colors disabled:opacity-50"
+                              className="min-h-10 px-2 text-[11px] font-semibold text-destructive hover:text-destructive hover:underline transition-colors disabled:opacity-50"
                             >
                               Huỷ đơn
                             </button>
@@ -553,7 +536,7 @@ export default function AdminOrdersPage() {
                             </span>
                           )}
                           <span className="text-[11px] text-muted-foreground ml-auto">
-                            Người nhận: {order.handler?.role === "ADMIN" ? "Admin" : order.handler?.name ?? "Chưa nhận"}
+                            {order.handler?.name ?? "Chưa nhận"}
                           </span>
                         </div>
                       );
@@ -589,6 +572,7 @@ export default function AdminOrdersPage() {
         </div>
       )}
 
+      {orders.find((order) => order.id === detailOrderId) ? <OrderReadOnlyDetail open={detailOrderId !== null} onOpenChange={(open) => { if (!open) setDetailOrderId(null); }} order={orders.find((order) => order.id === detailOrderId)!} /> : null}
       {/* Filter Modal */}
       {showFilterModal && (
         <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
@@ -623,6 +607,20 @@ export default function AdminOrdersPage() {
                   onChange={(e) => setDraftFilters({ ...draftFilters, staffName: e.target.value })}
                   className="w-full h-11 px-4 rounded-xl border bg-background text-sm focus:ring-2 focus:ring-primary outline-none"
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="admin-order-payment-method" className="text-xs font-medium text-foreground">Phương thức thanh toán</label>
+                <select
+                  id="admin-order-payment-method"
+                  value={draftFilters.paymentMethod}
+                  onChange={(e) => setDraftFilters({ ...draftFilters, paymentMethod: e.target.value as "" | "CASH" | "BANK_TRANSFER" })}
+                  className="h-11 w-full rounded-xl border bg-background px-4 text-sm outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">Tất cả</option>
+                  <option value="CASH">Tiền mặt</option>
+                  <option value="BANK_TRANSFER">Chuyển khoản</option>
+                </select>
               </div>
 
               <div className="space-y-1.5">

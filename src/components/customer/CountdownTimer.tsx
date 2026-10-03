@@ -34,7 +34,7 @@ export function CountdownTimer({ targetTime, className }: CountdownTimerProps) {
 
   if (seconds <= 0) {
     return (
-      <span className={cn("text-red-500 font-semibold text-sm", className)}>
+      <span className={cn("text-destructive font-semibold text-sm", className)}>
         Hết thời gian thanh toán
       </span>
     );
@@ -47,9 +47,9 @@ export function CountdownTimer({ targetTime, className }: CountdownTimerProps) {
 
   const colorClass =
     seconds < 60
-      ? "text-red-500"
+      ? "text-destructive"
       : seconds < 300
-      ? "text-orange-500"
+      ? "text-primary"
       : "text-foreground";
 
   return (

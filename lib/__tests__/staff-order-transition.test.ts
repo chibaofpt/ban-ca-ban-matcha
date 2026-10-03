@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateStaffOrderTransition } from "@/lib/staffOrderTransition";
+import { validateStaffOrderTransition } from "@/lib/orders/staffOrderTransition";
 
 describe("quy tắc chuyển trạng thái đơn staff", () => {
   it("giữ nguyên luồng online: chỉ Admin xác nhận PENDING", () => {

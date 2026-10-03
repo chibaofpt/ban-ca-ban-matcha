@@ -4,7 +4,8 @@
 
 ## Chạy local
 
-Yêu cầu Node.js 18+, Supabase PostgreSQL/Storage và các biến trong `.env.local.example`.
+Yêu cầu Node.js tương thích phiên bản Next.js của dự án, Supabase PostgreSQL/Storage và các biến
+trong `.env.local.example`. Hướng dẫn local dành cho người vận hành; agent theo gate trong AGENTS.
 
 ```bash
 npm install
@@ -26,5 +27,7 @@ npm run dev
 - Bắt đầu mọi task tại [`AGENTS.md`](./AGENTS.md). File này sẽ chỉ đúng resource cần đọc; không đọc toàn bộ tài liệu mặc định.
 - Kiến trúc và UI conventions hiện hành nằm tại [`SPECIFICATION.md`](./SPECIFICATION.md).
 - API, schema semantics, cấu trúc file và quyết định đang hoãn lần lượt thuộc `API.md`, `SCHEMA.md`, `STRUCTURE.md`, `NOTES.md`.
+- Feature UI và quy tắc duy trì tài liệu: [spec registry](docs/specs/README.md).
+- Lý do các quyết định dài hạn: [decision log](docs/decisions/README.md), chỉ đọc khi task cần bối cảnh.
 
 Lịch sử thay đổi nằm trong Git. Dự án không dùng thư mục `changes/`, changelog theo task, `task.md` hay `implementation_plan.md`.

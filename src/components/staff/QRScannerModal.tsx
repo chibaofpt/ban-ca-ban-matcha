@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { QrCode } from "lucide-react";
 import { scanQrToken } from "@/src/services/staffOrderService";
+import type { ScannedVoucherMenuTarget } from "@/src/services/staffOrderService";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,7 +18,16 @@ interface QRScannerModalProps {
     discount_value: number;
   }) => void;
   /** Called when an order-only PRODUCT or ITEM voucher QR is scanned. */
-  onScanVoucherProduct: (data: { qr_token: string; menu_item_id: string; covered_price_vnd: number }) => void;
+  onScanVoucherProduct: (data: {
+    qr_token: string;
+    menu_item_id: string | null;
+    size: "SMALL" | "MEDIUM" | "LARGE" | null;
+    matcha_powder_id: string | null;
+    milk_type_id: string | null;
+    covered_price_vnd: number;
+    has_normalized_targets: boolean;
+    eligible_menu_items: ScannedVoucherMenuTarget[];
+  }) => void;
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -85,14 +95,32 @@ export function QRScannerModal({
                     discount_value: dv,
                   });
                 }
+              } else if (result.data.voucher_type === "PRODUCT_DISCOUNT" || result.data.voucher_type === "ADDON") {
+                setError(result.data.voucher_type === "ADDON"
+                  ? "Voucher topping cần được chọn trong giỏ hàng của khách."
+                  : "Voucher giảm món cần được chọn trong giỏ hàng của khách.");
+                processingRef.current = false;
+                setProcessing(false);
+                return;
               } else if (result.data.voucher_type === "PRODUCT" || result.data.voucher_type === "ITEM") {
                 const mid = result.data.menu_item_id;
                 const cpv = result.data.covered_price_vnd;
-                if (mid !== null && (result.data.voucher_type === "ITEM" || cpv !== null)) {
+                if (result.data.has_normalized_targets && result.data.eligible_menu_items.length === 0) {
+                  setError("Voucher không còn món khả dụng.");
+                  processingRef.current = false;
+                  setProcessing(false);
+                  return;
+                }
+                if ((mid !== null || result.data.eligible_menu_items.length > 0) && (result.data.voucher_type === "ITEM" || cpv !== null || result.data.eligible_menu_items.length > 0)) {
                   onScanVoucherProduct({
                     qr_token: result.data.qr_token,
                     menu_item_id: mid,
+                    size: result.data.size,
+                    matcha_powder_id: result.data.matcha_powder_id,
+                    milk_type_id: result.data.milk_type_id,
                     covered_price_vnd: cpv ?? 0,
+                    has_normalized_targets: result.data.has_normalized_targets,
+                    eligible_menu_items: result.data.eligible_menu_items,
                   });
                 }
               }

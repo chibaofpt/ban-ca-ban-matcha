@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, ShoppingBag } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCcw, ShoppingBag } from "lucide-react";
 import { OrderHistoryCard } from "@/src/components/customer/OrderHistoryCard";
 import type {
   CustomerHistoryOrder,
@@ -13,6 +13,8 @@ type OrderFilter = "active" | "cancelled";
 interface OrderHistoryTabProps {
   orders: CustomerHistoryOrder[];
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
   page: number;
   totalPages: number;
   filter: OrderFilter;
@@ -31,6 +33,8 @@ const FILTER_OPTIONS: { key: OrderFilter; label: string }[] = [
 export function OrderHistoryTab({
   orders,
   isLoading,
+  isError,
+  onRetry,
   page,
   totalPages,
   filter,
@@ -58,6 +62,23 @@ export function OrderHistoryTab({
             </div>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div role="alert" className="rounded-3xl border border-red-200 bg-red-50 px-5 py-14 text-center">
+        <p className="font-bold text-red-900">Không thể tải lịch sử đơn hàng</p>
+        <p className="mt-1 text-sm text-red-800">Vui lòng kiểm tra kết nối rồi thử lại.</p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mx-auto mt-4 flex min-h-11 items-center gap-2 rounded-xl border border-red-300 bg-white px-4 text-sm font-bold text-red-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700"
+        >
+          <RefreshCcw className="size-4" aria-hidden="true" />
+          Thử lại
+        </button>
       </div>
     );
   }

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { MenuItem } from "@/src/lib/types/menu";
-import { getEligibleProductDiscountItems } from "@/src/utils/customerVoucherSelection";
+import {
+  filterMainCartVouchers,
+  getCartLineVoucherKind,
+  getEligibleProductDiscountItems,
+  productDiscountMatchesBaseLiquid,
+} from "@/src/utils/customerVoucherSelection";
+import { getVoucherCartDefaults } from "@/src/lib/utils/voucherUseNowHelpers";
 
 const item = (id: string, sizes: MenuItem["sizes"]): MenuItem => ({
   id,
@@ -69,5 +75,47 @@ describe("getEligibleProductDiscountItems", () => {
       null,
       ["LARGE"],
     )).toEqual([]);
+  });
+});
+
+describe("customer voucher cart selection", () => {
+  it("chỉ nhận cart line có đúng Base Liquid mà PRODUCT_DISCOUNT yêu cầu", () => {
+    const voucher = {
+      voucher_type: "PRODUCT_DISCOUNT",
+      menu_item_id: "latte-a",
+      milk_type_id: "cow-milk",
+      eligible_menu_items: [
+        { menu_item_id: "latte-a", milk_type_id: null },
+      ],
+    };
+
+    expect(productDiscountMatchesBaseLiquid(voucher, "latte-a", "cow-milk")).toBe(true);
+    expect(productDiscountMatchesBaseLiquid(voucher, "latte-a", "oat-milk")).toBe(false);
+    expect(productDiscountMatchesBaseLiquid({ ...voucher, milk_type_id: null }, "latte-a", "oat-milk")).toBe(true);
+  });
+
+  it("giữ voucher RESERVED hiển thị trong picker nhưng loại trạng thái kết thúc", () => {
+    const vouchers = [
+      { qr_token: "active", voucher_type: "ITEM", status: "ACTIVE" },
+      { qr_token: "reserved", voucher_type: "ITEM", status: "RESERVED" },
+      { qr_token: "redeemed", voucher_type: "ITEM", status: "REDEEMED" },
+    ];
+
+    expect(filterMainCartVouchers(vouchers, "ITEM").map((voucher) => voucher.qr_token))
+      .toEqual(["active", "reserved"]);
+  });
+
+  it("giữ đúng loại ITEM khi gắn voucher vào extras đã có trong cart", () => {
+    expect(getCartLineVoucherKind({ voucher_type: "ITEM" })).toBe("ITEM");
+    expect(getCartLineVoucherKind({ voucher_type: "PRODUCT" })).toBe("PRODUCT");
+    expect(getCartLineVoucherKind({ voucher_type: "PRODUCT_DISCOUNT" })).toBe("PRODUCT_DISCOUNT");
+  });
+
+  it("dùng cấu hình order mặc định khi voucher tự thêm một thức uống", () => {
+    expect(getVoucherCartDefaults()).toEqual({
+      sweetness: "FULL",
+      iceOption: "NORMAL",
+      coldwhisk: false,
+    });
   });
 });

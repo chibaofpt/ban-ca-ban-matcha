@@ -30,7 +30,7 @@ vi.mock("@/lib/auth", async (importOriginal) => {
   return { ...(await importOriginal<typeof import("@/lib/auth")>()), getSession: () => mockGetSession() };
 });
 
-vi.mock("@/lib/storeSchedule", () => ({
+vi.mock("@/lib/store/storeSchedule", () => ({
   checkStoreOpen: () => mockCheckStoreOpen(),
   validatePickupTime: vi.fn().mockResolvedValue({ isValid: true }),
 }));
@@ -85,6 +85,7 @@ const POWDER_ID  = "550e8400-e29b-41d4-a716-446655440002";
 const USER_ID    = "550e8400-e29b-41d4-a716-446655440003";
 const OTHER_USER_ID = "550e8400-e29b-41d4-a716-446655440004";
 const VOUCHER_ID = "550e8400-e29b-41d4-a716-446655440011";
+const VOUCHER_ID_2 = "550e8400-e29b-41d4-a716-446655440012";
 const QR_TOKEN   = "550e8400-e29b-41d4-a716-446655440020"; // customer's qr_token
 const STAFF_SESSION = { id: "550e8400-e29b-41d4-a716-446655440030", role: "STAFF" };
 const ADMIN_SESSION = { id: "550e8400-e29b-41d4-a716-446655440031", role: "ADMIN" };
@@ -98,6 +99,7 @@ const latteMenuItem = {
   default_powder_id: null,
   custom_powder_grams: null,
   fusionAllowedPowders: [],
+  allowedBaseLiquids: [],
   sizes: [{ size: "MEDIUM", base_price_vnd: 55000, base_liquid_ml: 200 }],
 };
 
@@ -205,7 +207,15 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
     mockPointsLogCreate.mockResolvedValue({});
     mockVoucherFindUnique.mockResolvedValue(null);
     mockVoucherFindMany.mockResolvedValue([]);
-    mockMenuItemFindMany.mockResolvedValue([]);
+    mockMenuItemFindMany.mockImplementation(async (args: unknown) => {
+      const include = typeof args === "object" && args !== null
+        ? (args as { include?: Record<string, unknown> }).include
+        : undefined;
+      const where = typeof args === "object" && args !== null
+        ? (args as { where?: Record<string, unknown> }).where
+        : undefined;
+      return include && "fusionAllowedPowders" in include && where ? [latteMenuItem] : [];
+    });
     mockMatchaPowderFindMany.mockResolvedValue([{ id: POWDER_ID, name: "Bột test", is_available: true, price_per_gram: 1200, reference_latte_item_id: null }]);
     mockMilkTypeFindMany.mockResolvedValue([{ id: "550e8400-e29b-41d4-a716-446655440099", is_default: true, is_active: true, price_per_ml: 40, display_order: 0 }]);
     mockAddonOptionFindMany.mockResolvedValue([]);
@@ -258,10 +268,12 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
     const addonId = "550e8400-e29b-41d4-a716-446655440050";
     mockGetSession.mockResolvedValue(ADMIN_SESSION);
     mockVoucherFindUnique.mockResolvedValue({ ...discountVoucher, voucher_type: "ADDON", addon_option_id: addonId });
-    tx.addonOption.mockResolvedValue({
+    const addonOption = {
       id: addonId, is_active: true, price_vnd: 5000, gram_value: null,
       group: { id: "addon-group", is_active: true, max_select: 1 },
-    });
+    };
+    tx.addonOption.mockResolvedValue(addonOption);
+    mockAddonOptionFindMany.mockResolvedValue([addonOption]);
     const response = await POST(makeReq(makePayload({ items: [{
       ...baseItem, addon_option_ids: [addonId],
       addon_voucher_ids: [{ voucher_id: VOUCHER_ID, addon_option_id: addonId }],
@@ -342,6 +354,39 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
 
     const res = await POST(makeReq(payload));
     expect(res.status).toBe(201);
+  });
+
+  it("từ chối hai voucher PERCENT trước khi tạo đơn staff", async () => {
+    setupTx();
+    mockUserFindUnique.mockResolvedValue(existingCustomer);
+    mockVoucherFindUnique
+      .mockResolvedValueOnce({
+        ...discountVoucher,
+        id: VOUCHER_ID,
+        qr_token: "percent-one",
+        discount_type: "PERCENT",
+        discount_value: 10,
+        min_order_vnd: null,
+        max_discount_vnd: null,
+      })
+      .mockResolvedValueOnce({
+        ...discountVoucher,
+        id: VOUCHER_ID_2,
+        qr_token: "percent-two",
+        discount_type: "PERCENT",
+        discount_value: 20,
+        min_order_vnd: null,
+        max_discount_vnd: null,
+      });
+    mockGetSession.mockResolvedValue(ADMIN_SESSION);
+
+    const res = await POST(makeReq(makePayload({
+      discount_voucher_ids: [VOUCHER_ID, VOUCHER_ID_2],
+    })));
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(mockOrderCreate).not.toHaveBeenCalled();
   });
 
   it("đơn không có voucher, không cần qr_token → 201", async () => {

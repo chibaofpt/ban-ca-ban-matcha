@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { attachOwnedVoucherAvailability } from "@/lib/vouchers/ownedVoucherAvailability";
 import {
-  attachOwnedVoucherAvailability,
   loadVoucherAvailabilityCatalog,
   type VoucherAvailabilityDatabase,
-} from "@/lib/voucherAvailability";
+} from "@/lib/vouchers/voucherAvailability";
 
 export const dynamic = "force-dynamic";
 const refundSchema = z.object({ qr_token: z.string().min(1) });
@@ -42,7 +42,16 @@ export async function POST(req: NextRequest) {
             where: { qr_token: parsed.data.qr_token },
             include: {
               package: { include: { bundleRule: { include: { productScopes: { include: { sizes: true } }, addonRewards: true } } } },
-              menuItemScopes: { select: { menu_item_id: true } },
+              menuItemScopes: {
+                select: {
+                  menu_item_id: true,
+                  size: true,
+                  matcha_powder_id: true,
+                  milk_type_id: true,
+                  covered_price_vnd: true,
+                },
+              },
+              addonOptionScopes: { select: { addon_option_id: true } },
               pointsLogs: { where: { reason: "voucher_purchase" }, select: { delta: true, reason: true }, orderBy: { created_at: "asc" }, take: 1 },
             },
           });

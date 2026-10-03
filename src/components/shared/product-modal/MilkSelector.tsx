@@ -2,13 +2,16 @@ import React from "react";
 import OptionCard from "./OptionCard";
 import type { MilkTypeOption, Size } from "@/src/lib/types/menu";
 import { formatKa } from "@/src/utils/display";
+import { ceilTo1000 } from "@/src/utils/pricing";
 
 interface MilkSelectorProps {
   milkTypes: MilkTypeOption[];
   selectedMilkId: string;
   defaultMilkId: string;
   onChange: (milkId: string) => void;
-  getPriceForContext: (targetSize: Size, targetPowderId: string, milkId?: string) => { baseDrinkPrice: number };
+  getPriceForContext: (targetSize: Size, targetPowderId: string, milkId?: string) => {
+    baseLiquidSwapDeltaVnd: number;
+  };
   selectedSize: Size;
   activePowderId: string;
 }
@@ -29,9 +32,9 @@ export function MilkSelector({
     <div className="mt-2 grid grid-cols-3 gap-2">
       {milkTypes.map((milk) => {
         const isDefault = milk.id === defaultMilkId;
-        const milkPrice = getPriceForContext(selectedSize, activePowderId, milk.id).baseDrinkPrice;
-        const defMilkPrice = getPriceForContext(selectedSize, activePowderId, defaultMilkId).baseDrinkPrice;
-        const diff = milkPrice - defMilkPrice;
+        const milkDelta = getPriceForContext(selectedSize, activePowderId, milk.id).baseLiquidSwapDeltaVnd;
+        const defaultMilkDelta = getPriceForContext(selectedSize, activePowderId, defaultMilkId).baseLiquidSwapDeltaVnd;
+        const diff = ceilTo1000(milkDelta - defaultMilkDelta);
 
         return (
           <OptionCard

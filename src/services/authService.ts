@@ -1,6 +1,14 @@
 import { apiClient } from "@/src/lib/api/client";
-import type { ApiResponse } from "@/src/lib/types/api";
-import type { AuthUser } from "@/src/lib/types/user";
+import type { ApiResponse } from "@/contracts/api";
+import type {
+  AuthUser,
+  LoginPayload,
+  PhoneCheckResult,
+  RegisterPayload,
+  RegisterResult,
+} from "@/contracts/auth";
+
+export type { LoginPayload, RegisterPayload, RegisterResult } from "@/contracts/auth";
 
 const URL = {
   register:   "/api/auth/register",
@@ -10,26 +18,15 @@ const URL = {
   me:         "/api/auth/me",
 } as const;
 
-export interface RegisterPayload {
-  name: string;
-  phone_number: string;
-  password: string;
-  insta_name?: string;
-}
-
-export type LoginPayload =
-  | { phone_number: string; password: string; insta_name?: never }
-  | { insta_name: string; password: string; phone_number?: never };
-
 /** Check whether a phone number is already registered */
-export async function checkPhone(phone_number: string): Promise<{ exists: boolean }> {
-  const res = await apiClient.post<ApiResponse<{ exists: boolean }>>(URL.checkPhone, { phone_number });
+export async function checkPhone(phone_number: string): Promise<PhoneCheckResult> {
+  const res = await apiClient.post<ApiResponse<PhoneCheckResult>>(URL.checkPhone, { phone_number });
   return res.data.data;
 }
 
 /** Register a new account */
-export async function register(payload: RegisterPayload): Promise<AuthUser> {
-  const res = await apiClient.post<ApiResponse<AuthUser>>(URL.register, payload);
+export async function register(payload: RegisterPayload): Promise<RegisterResult> {
+  const res = await apiClient.post<ApiResponse<RegisterResult>>(URL.register, payload);
   return res.data.data;
 }
 

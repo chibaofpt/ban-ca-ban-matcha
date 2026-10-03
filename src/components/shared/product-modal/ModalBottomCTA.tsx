@@ -11,6 +11,10 @@ interface ModalBottomCTAProps {
   isEditing: boolean;
   /** Override the action label (e.g. "Chọn món này" for bundle selection). */
   ctaLabel?: string;
+  /** Disable saves that could mutate an unverified personal voucher link. */
+  disabled?: boolean;
+  /** Explain why the CTA is disabled. */
+  disabledReason?: string;
 }
 
 /** Bottom action bar for ProductModal — quantity stepper + merged price/CTA button. */
@@ -22,6 +26,8 @@ export function ModalBottomCTA({
   handleAddToCart,
   isEditing,
   ctaLabel,
+  disabled = false,
+  disabledReason,
 }: ModalBottomCTAProps) {
   const label = ctaLabel ?? (isEditing ? "Cập nhật" : "Bỏ vào giỏ cá");
 
@@ -46,7 +52,9 @@ export function ModalBottomCTA({
         {/* Add to Cart Button — price merged in; layout ensures price is never truncated */}
         <button
           onClick={handleAddToCart}
-          className="min-w-0 flex-1 flex items-center justify-center gap-1 bg-primary text-white rounded-2xl h-11 px-3 font-bold text-sm shadow-lg active:scale-[0.98] transition-all overflow-hidden"
+          disabled={disabled}
+          title={disabledReason}
+          className="min-w-0 flex-1 flex items-center justify-center gap-1 bg-primary text-white rounded-2xl h-11 px-3 font-bold text-sm shadow-lg active:scale-[0.98] transition-all overflow-hidden disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600 disabled:active:scale-100"
         >
           <span className="truncate">{label}</span>
           <span className="shrink-0 whitespace-nowrap">- {formatKa(totalCost, "ceil")}</span>

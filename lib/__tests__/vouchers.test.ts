@@ -1,5 +1,5 @@
 /**
- * Unit tests for lib/vouchers.ts — pure voucher business logic.
+ * Unit tests for lib/vouchers/voucherRules.ts — pure voucher business logic.
  * No DB, no Prisma — all pure functions.
  */
 
@@ -12,7 +12,7 @@ import {
   findAddonVoucherDiscount,
   calcPointsEarned,
   type ResolvedOrderItem,
-} from "@/lib/vouchers";
+} from "@/lib/vouchers/voucherRules";
 import type { Voucher } from "@prisma/client";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -50,6 +50,8 @@ function makeVoucher(overrides: Partial<Voucher> = {}): Voucher {
     expires_at: null,
     redeemed_at: null,
     redeemed_by: null,
+    issuing_admin_id: null,
+    manual_request_id: null,
     created_at: new Date(),
     ...overrides,
   };

@@ -107,6 +107,13 @@ describe("Supabase Storage wrapper cho ảnh menu", () => {
     })).toBe("products/fusion/cam-matcha-12345678.png");
   });
 
+  it("tạo path reward box dưới namespace riêng", () => {
+    expect(buildMenuImagePath({
+      category: "reward-boxes", productName: "Hộp Sen-closed",
+      contentType: "image/webp", suffix: "12345678",
+    })).toBe("products/reward-boxes/hop-sen-closed-12345678.webp");
+  });
+
   it("từ chối path traversal trong filename", () => {
     expect(() => buildMenuImagePath({
       category: "latte",
@@ -164,12 +171,66 @@ describe("Supabase Storage wrapper cho ảnh menu", () => {
     expect(metadata.height).toBe(240);
   });
 
+  it("preset reward box xuất canvas WebP trong suốt đúng 800x800", async () => {
+    await uploadMenuImage(
+      "products/reward-boxes/closed.webp",
+      await makeImage(300, 500, "png"),
+      "image/png",
+      "reward-box",
+    );
+
+    const metadata = await sharp(mockUpload.mock.calls[0]?.[1] as Buffer).metadata();
+    expect(metadata).toMatchObject({ format: "webp", width: 800, height: 800, hasAlpha: true, channels: 4 });
+    expect(mockUpload.mock.calls[0]?.[2]).toMatchObject({ contentType: "image/webp", upsert: false });
+  });
+
+  it("preset reward box giữ alpha channel với input opaque vuông phủ kín", async () => {
+    await uploadMenuImage(
+      "products/reward-boxes/open.webp",
+      await makeImage(800, 800, "jpeg"),
+      "image/jpeg",
+      "reward-box",
+    );
+
+    const metadata = await sharp(mockUpload.mock.calls[0]?.[1] as Buffer).metadata();
+    expect(metadata).toMatchObject({ format: "webp", width: 800, height: 800, hasAlpha: true, channels: 4 });
+  });
+
   it("không gọi Storage khi buffer ảnh bị hỏng", async () => {
     await expect(uploadMenuImage(
       "products/latte/broken.webp",
       Buffer.from("not-an-image"),
       "image/png",
-    )).rejects.toThrow();
+    )).rejects.toThrow("INVALID_DECODED_IMAGE_FORMAT");
+
+    expect(mockUpload).not.toHaveBeenCalled();
+  });
+
+  it("chuẩn hóa lỗi render của PNG bị truncate sau khi metadata đọc thành công", async () => {
+    const complete = await makeImage(20, 20, "png");
+    const truncated = complete.subarray(0, complete.length - 20);
+    await expect(sharp(truncated).metadata()).resolves.toMatchObject({ format: "png" });
+
+    await expect(uploadMenuImage(
+      "products/reward-boxes/truncated.webp",
+      truncated,
+      "image/png",
+      "reward-box",
+    )).rejects.toThrow("INVALID_DECODED_IMAGE_FORMAT");
+
+    expect(mockUpload).not.toHaveBeenCalled();
+  });
+
+  it("chuẩn hóa corrupt header của WebP bị truncate trước Storage upload", async () => {
+    const complete = await makeImage(20, 20, "webp");
+    const truncated = complete.subarray(0, complete.length - 4);
+
+    await expect(uploadMenuImage(
+      "products/reward-boxes/truncated-webp.webp",
+      truncated,
+      "image/webp",
+      "reward-box",
+    )).rejects.toThrow("INVALID_DECODED_IMAGE_FORMAT");
 
     expect(mockUpload).not.toHaveBeenCalled();
   });

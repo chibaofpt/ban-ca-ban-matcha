@@ -1,6 +1,6 @@
 import { apiClient } from "@/src/lib/api/client";
-import type { ApiResponse } from "@/src/lib/types/api";
-import type { DailyReport, StaffMember, StaffReport, AdminReport } from "@/src/lib/types/report";
+import type { ApiResponse } from "@/contracts/api";
+import type { DailyReport, StaffMember, StaffReport, AdminReport } from "@/contracts/report";
 
 const URL = {
   report: "/api/report",

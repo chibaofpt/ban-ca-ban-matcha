@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import type { UpdateVoucherPackageInput } from "@/contracts/admin/voucher";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { invalidateVoucherCaches } from "@/lib/cacheInvalidation";
@@ -13,7 +14,7 @@ import {
   resolveVoucherTargetAvailability,
   type VoucherAvailabilityDatabase,
   type VoucherBundleRuleSource,
-} from "@/lib/voucherAvailability";
+} from "@/lib/vouchers/voucherAvailability";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,7 @@ export async function PUT(
   }
 
   try {
+    const update: UpdateVoucherPackageInput = parsed.data;
     const existing = await prisma.voucherPackage.findUnique({ where: { id } });
     if (!existing) {
       return NextResponse.json(
@@ -53,7 +55,7 @@ export async function PUT(
       );
     }
 
-    if (parsed.data.is_active === true) {
+    if (update.is_active === true) {
       const target = await prisma.voucherPackage.findUnique({
         where: { id },
         select: {
@@ -63,27 +65,22 @@ export async function PUT(
           product_discount_mode: true,
           eligible_sizes: true,
           reference_size: true,
-          menuItemScopes: { select: { menu_item_id: true } },
+          menuItemScopes: { select: {
+            menu_item_id: true,
+            size: true,
+            matcha_powder_id: true,
+            milk_type_id: true,
+            covered_price_vnd: true,
+          } },
           matcha_powder_id: true,
           milk_type_id: true,
           addon_option_id: true,
-          addonOption: {
-            select: { is_active: true, gram_value: true, group: { select: { is_active: true } } },
-          },
+          addonOptionScopes: { select: { addon_option_id: true } },
           bundleRule: {
             include: { productScopes: { include: { sizes: true } }, addonRewards: true },
           },
         },
       });
-      if (
-        target?.voucher_type === "ADDON" &&
-        (!target.addonOption || !target.addonOption.is_active || !target.addonOption.group.is_active || target.addonOption.gram_value !== null)
-      ) {
-        return NextResponse.json(
-          { error: "Không thể kích hoạt package trỏ tới addon không hợp lệ", code: "VALIDATION_ERROR" },
-          { status: 400 },
-        );
-      }
       if (target && ["ITEM", "PRODUCT", "PRODUCT_DISCOUNT", "ADDON", "BUNDLE"].includes(target.voucher_type)) {
         const catalog = await loadVoucherAvailabilityCatalog(prisma as unknown as VoucherAvailabilityDatabase);
         const resolved = resolveVoucherTargetAvailability({
@@ -97,6 +94,7 @@ export async function PUT(
           matcha_powder_id: target.matcha_powder_id,
           milk_type_id: target.milk_type_id,
           addon_option_id: target.addon_option_id,
+          addonOptionScopes: target.addonOptionScopes,
           package: { bundleRule: target.bundleRule as unknown as VoucherBundleRuleSource | null },
         }, catalog);
         if (!resolved.availability.can_apply) {
@@ -111,9 +109,9 @@ export async function PUT(
     const updated = await prisma.voucherPackage.update({
       where: { id },
       data: {
-        ...(parsed.data.name !== undefined && { name: parsed.data.name }),
-        ...(parsed.data.description !== undefined && { description: parsed.data.description }),
-        ...(parsed.data.is_active !== undefined && { is_active: parsed.data.is_active }),
+        ...(update.name !== undefined && { name: update.name }),
+        ...(update.description !== undefined && { description: update.description }),
+        ...(update.is_active !== undefined && { is_active: update.is_active }),
       },
     });
 

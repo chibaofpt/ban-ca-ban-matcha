@@ -20,7 +20,7 @@ const fetchBoundary = vi.fn<typeof fetch>();
 const row = (patch: Partial<SessionWithUser> = {}): SessionWithUser => ({
   id: "session-1", user_id: "user-1", refresh_token: oldToken,
   previous_refresh_token: null, rotating_at: null, expires_at: "2026-09-05T00:00:00Z",
-  user: { id: "user-1", role: "STAFF", phone_number: "+84912345678" }, ...patch,
+  user: { id: "user-1", role: "STAFF", phone_number: "+84912345678", is_blocked: false }, ...patch,
 });
 const winner = (patch: Partial<SessionWithUser> = {}) => row({
   refresh_token: newToken, previous_refresh_token: oldToken, rotating_at: now.toISOString(), ...patch,
@@ -82,7 +82,7 @@ describe("Middleware session — policy thật qua PostgREST giả lập", () =>
 
   it.each([
     { id: "other-session" }, { user_id: "other-user" },
-    { user: { id: "other-user", role: "ADMIN", phone_number: "+84912345678" } },
+    { user: { id: "other-user", role: "ADMIN", phone_number: "+84912345678", is_blocked: false } },
     { expires_at: now.toISOString() }, { rotating_at: "2026-09-04T00:00:01Z" },
   ])("không ký cookie khi winner sai binding hoặc expiry: %j", async (patch) => {
     fetchBoundary.mockResolvedValueOnce(rows([row()])).mockResolvedValueOnce(rows([]))
@@ -123,5 +123,20 @@ describe("Middleware session — policy thật qua PostgREST giả lập", () =>
   it("access JWT không authenticate khi query live session trả rỗng", async () => {
     fetchBoundary.mockResolvedValueOnce(rows([]));
     expect(await verifyAccessToken(request(oldToken, await accessToken()))).toBeNull();
+  });
+
+  it("access JWT không authenticate khi user đã bị chặn", async () => {
+    fetchBoundary.mockResolvedValueOnce(rows([
+      row({ user: { ...row().user, is_blocked: true } }),
+    ]));
+    expect(await verifyAccessToken(request(oldToken, await accessToken()))).toBeNull();
+  });
+
+  it("refresh middleware không xoay token khi user đã bị chặn", async () => {
+    fetchBoundary.mockResolvedValueOnce(rows([
+      row({ user: { ...row().user, is_blocked: true } }),
+    ]));
+    expect(await resolveSessionFull(request())).toEqual(denied);
+    expect(fetchBoundary).toHaveBeenCalledOnce();
   });
 });

@@ -6,13 +6,13 @@ import {
   updateAddonGroupSchema,
 } from "@/lib/validations/addonGroup";
 import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
-import { parseCatalogRequest } from "@/lib/catalogRequest";
+import { parseCatalogRequest } from "@/lib/catalog/catalogRequest";
 import {
   catalogImageValidationMessage,
   prepareCatalogImage,
-} from "@/lib/catalogImage";
+} from "@/lib/catalog/catalogImage";
 import { removeMenuImages } from "@/lib/storage";
-import { ADMIN_ADDON_OPTION_ORDER_BY, mapAdminAddonGroup } from "@/lib/adminAddonGroup";
+import { ADMIN_ADDON_OPTION_ORDER_BY, mapAdminAddonGroup } from "@/lib/catalog/adminAddonGroup";
 import { runSerializableTransaction } from "@/lib/serializableTransaction";
 
 export const dynamic = "force-dynamic";

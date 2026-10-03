@@ -4,9 +4,11 @@ import { Gift } from "lucide-react";
 import { PackageCard } from "@/src/components/shared/VoucherCards";
 import { filterModalPackages } from "@/src/lib/utils/voucherModalHelpers";
 import type { VoucherPackage } from "@/src/services/customerVoucherService";
+import type { MenuData } from "@/src/lib/types/menu";
 
 interface VoucherPackageCatalogProps {
   packages: VoucherPackage[];
+  menuData?: MenuData;
   pointsBalance: number;
   pendingPackageId: string | null;
   onAcquire: (pkg: VoucherPackage) => void;
@@ -17,12 +19,14 @@ interface VoucherPackageCatalogProps {
 /** Render reusable FREE_CLAIM and POINTS_EXCHANGE package sections. */
 export function VoucherPackageCatalog({
   packages,
+  menuData,
   pointsBalance,
   pendingPackageId,
   onAcquire,
   onPackageClick,
   columns = "responsive",
 }: VoucherPackageCatalogProps) {
+  const menuItems = [...(menuData?.latte ?? []), ...(menuData?.fusion ?? []), ...(menuData?.extras ?? [])];
   const visible = filterModalPackages(packages);
   const free = visible.filter((pkg) => pkg.acquisition_mode === "FREE_CLAIM");
   const points = visible.filter((pkg) => pkg.acquisition_mode === "POINTS_EXCHANGE");
@@ -43,6 +47,8 @@ export function VoucherPackageCatalog({
         <PackageCard
           key={pkg.id}
           pkg={pkg}
+          menuItem={(pkg.eligible_menu_items ?? []).map((target) => menuItems.find((item) => item.id === target.menu_item_id)).find((item) => item?.image_url)
+            ?? menuItems.find((item) => item.id === pkg.menu_item_id && item.image_url)}
           userBalance={pointsBalance}
           onExchange={onAcquire}
           isExchanging={pendingPackageId === pkg.id}

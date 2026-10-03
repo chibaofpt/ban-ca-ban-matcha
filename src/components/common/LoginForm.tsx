@@ -13,6 +13,7 @@ import { login as loginRequest, type LoginPayload } from "@/src/services/authSer
 import { resetForceLogout } from "@/src/lib/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { classifyLoginIdentifier } from "@/src/lib/utils/loginIdentifier";
+import { clearPrivateQueryCaches } from "@/src/lib/queryClient";
 
 const LoginForm = () => {
   const router = useRouter();
@@ -38,6 +39,7 @@ const LoginForm = () => {
 
   const login = useAuthStore((s) => s.login);
   const close = useAuthModalStore((s) => s.close);
+  const dismiss = useAuthModalStore((s) => s.dismiss);
   const switchTo = useAuthModalStore((s) => s.switchTo);
 
   const onSubmit = async (data: LoginInput) => {
@@ -49,19 +51,26 @@ const LoginForm = () => {
           ? { phone_number: identifier.value, password: data.password }
           : { insta_name: identifier.value, password: data.password };
       const user = await loginRequest(payload);
-      queryClient.removeQueries({ queryKey: ["customer"] });
+      clearPrivateQueryCaches(queryClient);
 
       const isStaffUser = user.role === "ADMIN" || user.role === "STAFF";
       const isOnMenu = pathname === "/" || pathname === "/menu";
-      if (isStaffUser || !isOnMenu) {
-        router.push(isStaffUser ? "/staff/orders" : "/menu");
-        router.refresh();
-      }
 
-      // Auth state enables customer TanStack queries without remounting the menu/cart.
+      // Set auth state first so queries/UI update immediately.
       login(user.phone_number, user.name);
       resetForceLogout(); // Allow force-logout to fire again after re-login (BUG-3)
-      close();
+      if (isStaffUser) {
+        // Release focus and scroll lock before the admin shell navigation starts.
+        dismiss();
+        router.replace("/staff/orders");
+        router.refresh();
+      } else {
+        if (!isOnMenu) {
+          router.push("/menu");
+          router.refresh();
+        }
+        close();
+      }
     } catch (error) {
       const axiosError = error as { response?: { data?: { error?: string } } };
       setServerError(

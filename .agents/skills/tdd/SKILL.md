@@ -59,7 +59,21 @@ executable behavior.
 
 Read [references/mock-boundaries.md](references/mock-boundaries.md) only when a test doubles a
 database, Redis, session, time, or external API boundary, models a race outcome, makes a rate
-limit claim, or needs to state an evidence gap. It defines the permitted claim labels.
+limit claim, or needs to state an evidence gap. Evidence labels below are shared by all lanes.
+
+## Evidence Labels
+
+Use one label in the Test Seam and completion report. Each label limits, rather than inflates,
+the claim.
+
+| Label | Supports | Explicitly does not support |
+|---|---|---|
+| `APPLICATION_LOGIC` | Real application branching, validation, authorization, state handling, and response/error mapping around a boundary result | PostgreSQL constraints, transactions, locks, isolation, rollback, Decimal behavior, or actual concurrency |
+| `SIMULATED_RACE_OUTCOME` | The application handles a controlled winner/loser result consistently | That a real database/Redis race, lock, isolation level, atomic update, or rollback occurred |
+| `RATE_LIMIT_POLICY` | Key/window policy and caller-visible handling using a stateful fake Redis counter | Redis command atomicity, production availability, cross-process consistency, or actual distributed enforcement |
+| `FRONTEND_CONTRACT` | Service URL/method/payload, successful response/DTO unwrapping, and preservation of server error status, `error`, `code`, and `details` | Rendered UI, accessibility, layout, touch behavior, or server/database execution |
+| `STATIC_ARTIFACT` | A source/schema/SQL artifact has the required textual or structural guardrail | Runtime execution, migration application, PostgreSQL semantics, or deployed behavior |
+| `MANUAL_UI_REQUIRED` | A manual acceptance check is required for the stated UI/UX behavior | Automated proof of that visual or interactive behavior |
 
 ## Test Seam Record
 
@@ -88,8 +102,8 @@ its helpers, constants, or copied control flow.
 
 ## Vertical Red/Green Loop
 
-1. Write a proportional Test Plan in the current task, naming applicable happy-path,
-   authorization, validation, business-rule, and edge cases. Reuse the closest domain test.
+1. Record only the proportional cases needed for the slice: applicable happy path, authorization,
+   validation, business rule, and edge cases. Reuse the closest domain test.
 2. For automated-eligible `REQUIRED_RED` and `UPDATE_EXISTING` slices, write one complete case
    and run it before the corresponding production change. It must compile, reach the intended
    assertion, and fail for the approved behavior—not setup or baseline noise.

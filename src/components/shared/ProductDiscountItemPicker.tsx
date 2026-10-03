@@ -1,10 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
-import { motion } from "framer-motion";
-import { ArrowLeft, Leaf, Sparkles } from "lucide-react";
-import Image from "next/image";
+import React, { useRef, useState } from "react";
 import { toast } from "sonner";
+import { VoucherMenuTargetCard, VoucherTargetCard } from "./VoucherTargetCard";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import {
@@ -12,10 +10,12 @@ import {
   computeProductDiscountBenefit,
   resolveVoucherBaseLiquidId,
 } from "@/src/hooks/useAddVoucherToCart";
+import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import type { CartItem } from "@/src/lib/types/cart";
 import type { MenuData, Size } from "@/src/lib/types/menu";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import ProductModal from "@/src/components/shared/ProductModal";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 import {
   getEligibleProductDiscountItems,
   type EligibleProductDiscountItem,
@@ -23,8 +23,12 @@ import {
 
 interface ProductDiscountItemPickerProps {
   voucher: MyVoucher;
+  open?: boolean;
+  onChildOpenChange?: (open: boolean) => void;
+  onAddItem?: (item: Omit<CartItem, "cartId">) => CartMutationResult<unknown>;
   menuData: MenuData;
-  onBack: () => void;
+  /** Lock voucher edits while the wallet query is loading or revalidating. */
+  canEdit?: boolean;
   onSuccess: () => void;
 }
 
@@ -38,10 +42,15 @@ interface ProductDiscountItemPickerProps {
 export const ProductDiscountItemPicker = ({
   voucher,
   menuData,
-  onBack,
+  onAddItem,
+  open = true,
+  onChildOpenChange,
+  canEdit = true,
   onSuccess,
 }: ProductDiscountItemPickerProps) => {
-  const { addItem, applyProductVoucher, setCartOpen } = useCartStore();
+  const pendingSuccess = useRef(false);
+  const customerAddItem = useCartStore((state) => state.addItem);
+  const addItem = onAddItem ?? customerAddItem;
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGram = usePowderStore((s) => s.defaultPowderGram);
 
@@ -54,11 +63,11 @@ export const ProductDiscountItemPicker = ({
   );
   const voucherSizes = (voucher.eligible_sizes ?? []) as Size[];
 
-  const sizeLabel = (s: Size) => (s === "SMALL" ? "Nhỏ" : s === "MEDIUM" ? "Vừa" : "Lớn");
-
   /** Called when ProductModal's onConfirm fires with the fully configured CartItem. */
   const handleConfirm = (cartItem: CartItem) => {
-      if (!cartItem.size) {
+      if (!canEdit) return;
+      const configuration = cartItem.configuration;
+      if (configuration.size === null) {
         toast.error("Vui lòng chọn size hợp lệ.");
         return;
       }
@@ -66,22 +75,27 @@ export const ProductDiscountItemPicker = ({
       const target = eligibleItems.find(
         ({ item }) => item.id === cartItem.menuItemId,
       );
-      if (!target || !target.allowedSizes.includes(cartItem.size)) {
+      if (!target || !target.allowedSizes.includes(configuration.size)) {
         toast.error("Món hoặc size này không thuộc phạm vi voucher.");
         return;
       }
       const menuItem = target.item;
+      const requiredMilkTypeId = target.milkTypeId ?? voucher.milk_type_id ?? null;
 
       const resolvedBaseLiquidId = resolveVoucherBaseLiquidId(
         menuItem,
-        cartItem.selectedBaseLiquidId ?? cartItem.selectedMilkTypeId ?? null,
+        configuration.baseLiquidId ?? null,
         menuData.base_liquids ?? menuData.milk_types,
       );
+      if (requiredMilkTypeId && resolvedBaseLiquidId !== requiredMilkTypeId) {
+        toast.error("Voucher này chỉ áp dụng khi dùng đúng Base Liquid đã chọn.");
+        return;
+      }
 
       const { drinkPrice } = computeVoucherItemPrice(
         menuItem,
-        cartItem.size,
-        cartItem.selectedPowderId ?? null,
+        configuration.size,
+        configuration.powderId ?? null,
         resolvedBaseLiquidId,
         [], // PRODUCT_DISCOUNT benefit excludes addons
         powders,
@@ -107,7 +121,7 @@ export const ProductDiscountItemPicker = ({
           ? computeVoucherItemPrice(
               menuItem,
               referenceSize,
-              cartItem.selectedPowderId ?? null,
+              configuration.powderId ?? null,
               resolvedBaseLiquidId,
               [],
               powders,
@@ -127,71 +141,54 @@ export const ProductDiscountItemPicker = ({
       // Destructure cartId (assigned by ProductModal) — addItem generates its own
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { cartId: _cartId, ...cartItemWithoutId } = cartItem;
-      const newCartId = addItem({
+      const result = addItem({
         ...cartItemWithoutId,
-        // Clear any voucher fields ProductModal may have set; we apply ours below
-        productVoucherId: undefined,
-        productVoucherDiscountVnd: undefined,
-        productVoucherType: undefined,
+        quantity: 1,
+        lineVoucher: { token: voucher.qr_token, kind: "PRODUCT_DISCOUNT" },
       });
 
-      if (!newCartId) {
-        toast.error("Không thể thêm món vào giỏ. Vui lòng thử lại.");
+      if (!result.ok) {
+        toast.error(result.message);
         return;
       }
 
-      applyProductVoucher(newCartId, voucher.qr_token, benefit, "PRODUCT_DISCOUNT");
-
-      setCartOpen(true);
-      onSuccess();
+      pendingSuccess.current = true;
+      return result;
   };
 
   // When an item is picked, open ProductModal for customization
   if (pickedItem) {
     return (
-      <ProductModal
+      <ProductModal managed open={open}
         item={pickedItem.item}
         latteItems={menuData.latte}
         milkTypes={menuData.milk_types}
         addonGroups={menuData.addon_groups}
         allowedSizes={pickedItem.allowedSizes}
+        lockedBaseLiquidId={pickedItem.milkTypeId ?? voucher.milk_type_id ?? null}
         disableVoucherApplication
         nested
         ctaLabel="Thêm vào giỏ"
-        onClose={() => setPickedItem(null)}
+        onClose={() => { setPickedItem(null); onChildOpenChange?.(false); if (pendingSuccess.current) { pendingSuccess.current = false; onSuccess(); } }}
         onConfirm={handleConfirm}
       />
     );
   }
 
   return (
-    <motion.div
-      initial={{ x: "100%" }}
-      animate={{ x: 0 }}
-      exit={{ x: "100%" }}
-      transition={{ type: "spring", damping: 25, stiffness: 300 }}
-      className="absolute inset-0 z-20 flex flex-col bg-background"
-    >
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-border/40 shrink-0 bg-card">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label="Quay lại chi tiết voucher"
-          className="w-11 h-11 rounded-full bg-primary/5 flex items-center justify-center hover:bg-primary/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          <ArrowLeft className="w-5 h-5 text-primary" />
-        </button>
+    <section className="space-y-3" aria-labelledby="product-discount-targets">
         <div>
-          <h3 className="font-bold text-primary">Chọn món áp dụng</h3>
+          <h5 id="product-discount-targets" className="text-xs font-bold uppercase tracking-widest text-primary">Chọn món áp dụng</h5>
           {voucherSizes.length > 0 && (
-            <p className="text-xs text-primary/50">
-              Size được giảm: {voucherSizes.map(sizeLabel).join(" / ")}
+            <p className="mt-1 text-xs text-primary/60">
+              Size được giảm: {voucherSizes.map((size, index) => (
+                <React.Fragment key={size}>
+                  {index > 0 ? " / " : null}<SizeLabel size={size} />
+                </React.Fragment>
+              ))}
             </p>
           )}
         </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none p-5 space-y-3 overscroll-contain pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         {eligibleItems.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-12 text-center">
             <p className="text-sm font-semibold text-primary/50">
@@ -199,44 +196,20 @@ export const ProductDiscountItemPicker = ({
             </p>
           </div>
         ) : (
-          eligibleItems.map(({ item, allowedSizes }) => (
-            <motion.button
-              key={item.id}
-              type="button"
-              whileTap={{ scale: 0.96 }}
-              onClick={() => setPickedItem({ item, allowedSizes })}
-              className="w-full flex items-center gap-4 p-3.5 bg-card border border-border/40 rounded-2xl text-left hover:border-primary/30 hover:shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <div className="w-14 h-14 shrink-0 rounded-xl overflow-hidden relative bg-primary/5">
-                {item.image_url ? (
-                  <Image
-                    src={item.image_url}
-                    alt={item.name}
-                    fill
-                    sizes="56px"
-                    className="object-cover"
-                  />
-                ) : (
-                  <Leaf className="absolute inset-0 m-auto size-6 text-primary/50" aria-hidden="true" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-sm text-primary truncate">{item.name}</p>
-                {item.description && (
-                  <p className="text-xs text-primary/55 mt-0.5 line-clamp-1">{item.description}</p>
-                )}
-                <p className="text-xs text-primary/40 mt-1">
-                  <span className="inline-flex items-center gap-1">
-                    {item.category === "latte" ? <Leaf className="size-3" /> : <Sparkles className="size-3" />}
-                    {item.category === "latte" ? "Latte Premium" : "Fusion Special"}
-                  </span>
-                </p>
-              </div>
-              <ArrowLeft className="w-4 h-4 text-primary/30 rotate-180 shrink-0" aria-hidden="true" />
-            </motion.button>
+          eligibleItems.map(({ item, allowedSizes, milkTypeId }) => (
+            <div key={item.id}>
+              <VoucherMenuTargetCard
+                item={item}
+                menuData={menuData}
+                configuration={{ baseLiquidId: milkTypeId ?? voucher.milk_type_id }}
+                disabled={!canEdit}
+                allowedSizes={allowedSizes}
+                onClick={() => { if (canEdit) { onChildOpenChange?.(true); setPickedItem({ item, allowedSizes, milkTypeId }); } }}
+              />
+            </div>
           ))
         )}
-      </div>
-    </motion.div>
+        {(voucher.eligible_menu_items ?? []).filter((target) => !eligibleItems.some(({ item }) => item.id === target.menu_item_id)).map((target) => <VoucherTargetCard key={target.menu_item_id} name={target.name} description="Không còn cấu hình khả dụng" disabled />)}
+    </section>
   );
 };

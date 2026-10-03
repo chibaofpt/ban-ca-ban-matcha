@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createOrder } from "@/src/services/orderService";
-import type { CartItem } from "@/src/lib/types/cart";
+import type { ProjectedCartLine } from "@/src/lib/types/cart";
 import { addBusinessBreadcrumb } from "@/src/lib/observability";
 
 /**
@@ -11,7 +11,7 @@ export function useCheckout() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ items, options }: { items: CartItem[], options: NonNullable<Parameters<typeof createOrder>[1]> }) => {
+    mutationFn: ({ items, options }: { items: ProjectedCartLine[], options: NonNullable<Parameters<typeof createOrder>[1]> }) => {
       addBusinessBreadcrumb("checkout.started", {
         item_count: items.length,
         order_type: options.orderType ?? "UNKNOWN",

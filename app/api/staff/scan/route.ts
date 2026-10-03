@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Category } from "@/contracts/menu";
+import type { QrScanResult } from "@/contracts/staff";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import {
+  loadVoucherAvailabilityCatalog,
+  retainUsableVoucherTargetScopes,
+  resolveVoucherTargetAvailability,
+  type VoucherAvailabilityDatabase,
+} from "@/lib/vouchers/voucherAvailability";
 
 export const dynamic = "force-dynamic";
 
@@ -35,21 +43,27 @@ export async function GET(request: NextRequest) {
     });
 
     if (user) {
-      return NextResponse.json({
+      const result = {
+        type: "user",
         data: {
-          type: "user",
-          data: {
-            qr_token: token,
-            name: user.name,
-            phone_number: user.phone_number,
-            points_balance: user.points_balance,
-          },
+          qr_token: token,
+          name: user.name,
+          phone_number: user.phone_number,
+          points_balance: user.points_balance,
         },
+      } satisfies QrScanResult;
+      return NextResponse.json({
+        data: result,
       });
     }
 
     const voucher = await prisma.voucher.findUnique({
       where: { qr_token: token },
+      include: {
+        menuItemScopes: {
+          include: { menuItem: { select: { name: true, category: true, is_available: true, is_seasonal: true } } },
+        },
+      },
     });
 
     if (voucher) {
@@ -59,8 +73,18 @@ export async function GET(request: NextRequest) {
         effectiveStatus = "EXPIRED";
       }
 
-      return NextResponse.json({
-        data: {
+      let scopedVoucher = voucher;
+      if (voucher.voucher_type === "PRODUCT" || voucher.voucher_type === "ITEM") {
+        const catalog = await loadVoucherAvailabilityCatalog(prisma as unknown as VoucherAvailabilityDatabase);
+        const resolved = resolveVoucherTargetAvailability({
+          ...voucher,
+          addonOptionScopes: [],
+          package: {},
+        }, catalog);
+        scopedVoucher = retainUsableVoucherTargetScopes(voucher, resolved);
+      }
+
+      const result = {
           type: "voucher",
           data: {
             qr_token: voucher.qr_token,
@@ -68,12 +92,27 @@ export async function GET(request: NextRequest) {
             discount_type: voucher.discount_type,
             discount_value: voucher.discount_value,
             menu_item_id: voucher.menu_item_id,
+            size: voucher.size,
+            matcha_powder_id: voucher.matcha_powder_id,
+            milk_type_id: voucher.milk_type_id,
             covered_price_vnd: voucher.covered_price_vnd,
+            has_normalized_targets: voucher.menuItemScopes.length > 0,
+            eligible_menu_items: scopedVoucher.menuItemScopes.map((scope) => ({
+              menu_item_id: scope.menu_item_id,
+              name: scope.menuItem.name,
+              category: scope.menuItem.category as Category,
+              is_available: scope.menuItem.is_available,
+              is_seasonal: scope.menuItem.is_seasonal,
+              size: scope.size,
+              matcha_powder_id: scope.matcha_powder_id,
+              milk_type_id: scope.milk_type_id,
+              covered_price_vnd: scope.covered_price_vnd,
+            })),
             status: effectiveStatus,
             expires_at: voucher.expires_at ? voucher.expires_at.toISOString() : null,
           },
-        },
-      });
+      } satisfies QrScanResult;
+      return NextResponse.json({ data: result });
     }
 
     // 3. Not found

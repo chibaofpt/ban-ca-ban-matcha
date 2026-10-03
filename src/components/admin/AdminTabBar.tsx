@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ClipboardList, Package, Gift, Megaphone, Receipt, Settings } from "lucide-react";
+import { ClipboardList, Package, Gift, Megaphone, Receipt, Settings, Users } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { Role } from "@/src/lib/types/user";
 import * as authService from "@/src/services/authService";
@@ -11,6 +11,10 @@ import { motion } from "framer-motion";
 import StoreSettingsModal from "@/src/components/admin/StoreSettingsModal";
 import { useAuthStore } from "@/src/lib/store/authStore";
 import { toast } from "sonner";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAdminPendingTransferCount } from "@/src/hooks/useAdminPendingTransferCount";
+import { useStaffCartStore } from "@/src/lib/store/staffCartStore";
+import { clearPrivateQueryCaches } from "@/src/lib/queryClient";
 
 interface Tab {
   to: string;
@@ -23,6 +27,7 @@ const LEGACY_TABS: Tab[] = [
   { to: "/staff/orders", label: "Tạo Order", icon: ClipboardList, roles: ["ADMIN", "STAFF"] },
   { to: "/staff/orders-list", label: "Đơn hàng", icon: Receipt, roles: ["STAFF"] },
   { to: "/admin/orders", label: "Đơn hàng", icon: Receipt, roles: ["ADMIN"] },
+  { to: "/admin/users", label: "Khách hàng", icon: Users, roles: ["ADMIN"] },
   { to: "/admin/menu", label: "Menu", icon: Package, roles: ["ADMIN"] },
   { to: "/admin/voucher-packages", label: "Điểm & Voucher", icon: Gift, roles: ["ADMIN"] },
   { to: "/admin/promotions", label: "Khuyến mãi", icon: Megaphone, roles: ["ADMIN"] },
@@ -48,6 +53,10 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<{ to: string; from: string } | null>(null);
   const authStoreLogout = useAuthStore((s) => s.logout);
+  const detachCustomer = useStaffCartStore((s) => s.detachCustomer);
+  const queryClient = useQueryClient();
+
+  const { data: pendingCount = 0 } = useAdminPendingTransferCount(userRole === "ADMIN");
 
   const tabs = TABS.filter((t) => t.roles.includes(userRole));
   const selectedPath = pendingNavigation?.from === pathname ? pendingNavigation.to : pathname;
@@ -71,15 +80,20 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
     setPendingNavigation({ to, from: pathname });
   };
 
-  const handleLogout = async () => {
-    try {
-      await authService.logout();
+  const logoutMutation = useMutation({
+    mutationFn: authService.logout,
+    onSuccess: () => {
+      detachCustomer();
+      clearPrivateQueryCaches(queryClient, ["staff", "admin"]);
       authStoreLogout();
       router.replace("/");
-    } catch {
+    },
+    onError: () => {
       toast.error("Không thể đăng xuất lúc này. Vui lòng thử lại.");
-    }
-  };
+    },
+  });
+
+  const handleLogout = () => logoutMutation.mutate();
 
   return (
     <>
@@ -117,6 +131,11 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
                   )}
                   <Icon size={16} className="relative z-10" />
                   <span className="relative z-10">{label}</span>
+                  {to === "/admin/orders" && pendingCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                      {pendingCount}
+                    </span>
+                  )}
                 </Link>
               );
             })}
@@ -167,18 +186,8 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
       {isNavigationPending ? <AdminRouteSkeleton /> : children}
 
       {/* Bottom tab bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border shadow-[0_-4px_12px_rgba(0,0,0,0.05)] pb-[env(safe-area-inset-bottom)]">
-        <div
-          className={cn(
-            "grid",
-            tabs.length === 2 && "grid-cols-2",
-            tabs.length === 3 && "grid-cols-3",
-            tabs.length === 4 && "grid-cols-4",
-            tabs.length === 5 && "grid-cols-5",
-            tabs.length === 6 && "grid-cols-6",
-            tabs.length === 7 && "grid-cols-7",
-          )}
-        >
+      <nav aria-label="Điều hướng quản trị" className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_12px_rgba(0,0,0,0.05)] md:hidden">
+        <div className="flex w-full gap-1 px-1 py-1">
           {tabs.map(({ to, label, icon: Icon }) => {
             const isActive = selectedPath === to || selectedPath.startsWith(to + "/");
             return (
@@ -188,14 +197,14 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
                 aria-current={isActive ? "page" : undefined}
                 onClick={(event) => handleTabClick(event, to)}
                 className={cn(
-                  "relative flex flex-col items-center justify-center py-2 text-xs transition-colors w-full",
+                  "relative flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center rounded-xl py-2 text-xs transition-colors",
                   isActive ? "text-primary font-medium" : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 {isActive && (
                   <motion.div
                     layoutId="admin-mobile-tab-indicator"
-                    className="absolute inset-0 bg-primary/5 rounded-xl pointer-events-none mx-1"
+                    className="pointer-events-none absolute inset-0 rounded-xl bg-primary/5"
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                   />
                 )}
@@ -203,8 +212,15 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
                   whileTap={{ scale: 0.85 }}
                   className="flex flex-col items-center gap-1 relative z-10"
                 >
-                  <Icon size={20} className={isActive ? "stroke-[2.5]" : undefined} />
-                  <span className="leading-none text-[11px]">{label}</span>
+                  <div className="relative">
+                    <Icon size={20} className={isActive ? "stroke-[2.5]" : undefined} />
+                    {to === "/admin/orders" && pendingCount > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                        {pendingCount}
+                      </span>
+                    )}
+                  </div>
+                  <span className="leading-none text-[10px] truncate max-w-full">{label}</span>
                 </motion.div>
               </Link>
             );

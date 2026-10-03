@@ -1,6 +1,7 @@
 import type { UseFormRegisterReturn } from "react-hook-form";
 import type { Category, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import { cn } from "@/src/utils/cn";
+import { SizeLabel } from "@/src/components/ui/SizeLabel";
 
 interface VolumeFieldsProps {
   defaultSizeConfig: Array<{ size: Size; base_liquid_ml: number }>;
@@ -16,7 +17,6 @@ export function MenuItemBaseLiquidVolumeFields({
   inputClass,
   labelClass,
 }: VolumeFieldsProps) {
-  const labelMap: Record<Size, string> = { SMALL: "S", MEDIUM: "M", LARGE: "L" };
   return (
     <div className="pt-3 border-t border-border/40">
       <label className={labelClass}>Định lượng Base Liquid theo size (ml)</label>
@@ -28,7 +28,7 @@ export function MenuItemBaseLiquidVolumeFields({
           const systemMl = defaultSizeConfig.find((entry) => entry.size === size)?.base_liquid_ml ?? 0;
           return (
             <div key={size}>
-              <label className="text-[11px] font-bold text-muted-foreground">{labelMap[size]}</label>
+              <label className="text-[11px] font-bold text-muted-foreground"><SizeLabel size={size} /></label>
               <input
                 type="number"
                 min="1"

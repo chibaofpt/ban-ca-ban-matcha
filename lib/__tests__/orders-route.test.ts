@@ -41,8 +41,8 @@ vi.mock("@/lib/auth", () => ({
   normalizePhone: (p: string) => p,
 }));
 
-// Mock lib/storeSchedule
-vi.mock("@/lib/storeSchedule", () => ({
+// Mock lib/store/storeSchedule
+vi.mock("@/lib/store/storeSchedule", () => ({
   checkStoreOpen: () => mockCheckStoreOpen(),
   validatePickupTime: (pt: Date, now?: Date) => mockValidatePickupTime(pt, now),
 }));
@@ -933,8 +933,11 @@ describe("GET /api/orders", () => {
 
   it("returns customer orders ordered by created_at desc", async () => {
     const mockOrders = [
-      { id: "o1", user_id: USER_ID, created_at: "2026-05-01" },
-      { id: "o2", user_id: USER_ID, created_at: "2026-05-02" },
+      { id: "o1", user_id: USER_ID, created_at: "2026-05-01", pointsLogs: [
+        { reason: "order_complete", delta: 5 },
+        { reason: "voucher_surplus", delta: 2 },
+      ] },
+      { id: "o2", user_id: USER_ID, created_at: "2026-05-02", pointsLogs: [] },
     ];
     Object.assign(prisma.order, { findMany: vi.fn().mockResolvedValue(mockOrders) });
 
@@ -942,12 +945,16 @@ describe("GET /api/orders", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.data).toEqual(
-      mockOrders.map(({ id, created_at }) => ({
+      mockOrders.map(({ id, created_at, pointsLogs }) => ({
         id,
         created_at,
+        points_earned: pointsLogs.reduce((total, log) => total + log.delta, 0),
         discountVouchers: [],
         items: [],
         payment_qr_url: null,
+        delivery_receiver_name: null,
+        delivery_receiver_phone: null,
+        delivery_address: null,
       }))
     );
     expect(JSON.stringify(json.data)).not.toContain("user_id");
@@ -986,20 +993,45 @@ describe("GET /api/orders", () => {
     Object.assign(prisma.order, { findMany: vi.fn().mockResolvedValue([{
       id: "o-addon", user_id: USER_ID, status: "COMPLETED", created_at: "2026-05-02",
       order_code: null, order_type: "PICKUP", grand_total_vnd: 50_000, total_vnd: 50_000,
-      discountVouchers: [],
-      items: [{
-        product_voucher_id: null, item_voucher_id: null,
-        productVoucher: null, itemVoucher: null,
-        addonVouchers: [{ discount_applied_vnd: 8_000, voucher: { package: { name: "Free kem" } } }],
-      }],
-    }]) });
+       discountVouchers: [],
+       items: [{
+         id: "private-order-item-id", order_id: "private-order-id",
+         menu_item_id: "menu-1", quantity: 1, unit_price_vnd: 42_000, addons_price_vnd: 8_000,
+         total_discount_vnd: 8_000, product_voucher_discount_vnd: 0,
+         size: "MEDIUM", sweetness: "HALF", ice_option: "NORMAL", coldwhisk: false, note: null,
+         selected_powder_id: null, selected_milk_type_id: null,
+         menuItem: { name: "Matcha latte", category: "latte" },
+         selectedPowder: null, milkType: null,
+         addons: [{
+           id: "private-addon-id", order_item_id: "private-order-item-id",
+           addon_option_id: "addon-1", unit_price_vnd: 8_000, quantity: 1,
+           addonOption: {
+             label: "Kem", gram_value: null, price_vnd: 8_000, group: { name: "Kem" },
+           },
+         }],
+         product_voucher_id: null, item_voucher_id: null,
+         productVoucher: null, itemVoucher: null,
+         addonVouchers: [{
+           id: "private-addon-voucher-link-id", order_item_id: "private-order-item-id",
+           voucher_id: "private-voucher-id", discount_applied_vnd: 8_000,
+           voucher: { id: "private-voucher-id", package_id: "private-package-id", package: { name: "Free kem" } },
+         }],
+       }],
+     }]) });
 
-    const json = await (await GET(makeGetReq())).json();
-    expect(json.data[0].items[0].addonVouchers).toEqual([{
-      discount_applied_vnd: 8_000,
-      voucher: { package: { name: "Free kem" } },
-    }]);
-  });
+     const json = await (await GET(makeGetReq())).json();
+     const item = json.data[0].items[0];
+     expect(item.addonVouchers).toEqual([{
+       discount_applied_vnd: 8_000,
+       voucher: { package: { name: "Free kem" } },
+     }]);
+     expect(item).not.toHaveProperty("id");
+     expect(item).not.toHaveProperty("order_id");
+     expect(item.addons[0]).not.toHaveProperty("id");
+     expect(item.addons[0]).not.toHaveProperty("order_item_id");
+     expect(item.addonVouchers[0]).not.toHaveProperty("voucher_id");
+     expect(item.addonVouchers[0].voucher).not.toHaveProperty("id");
+   });
 
   it("returns 500 on database error", async () => {
     Object.assign(prisma.order, {

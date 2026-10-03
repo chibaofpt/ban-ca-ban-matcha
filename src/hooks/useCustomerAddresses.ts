@@ -5,11 +5,12 @@ import type { AddressPayload } from "@/src/lib/types/address";
 /**
  * Hook fetch danh sách địa chỉ của khách hàng.
  */
-export function useCustomerAddresses() {
+export function useCustomerAddresses(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["customer", "addresses"],
     queryFn: addressService.getAddresses,
     staleTime: 5 * 60 * 1000,
+    enabled: options?.enabled ?? true,
   });
 }
 

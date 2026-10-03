@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { restoreVouchersOnCancel } from "@/lib/cancelOrder";
-import { redeemOrderVouchers, VoucherRedeemError } from "@/lib/redeemVouchers";
-import { toPublicOrderDto } from "@/lib/orderPublicDto";
+import { restoreVouchersOnCancel } from "@/lib/orders/cancelOrder";
+import { redeemOrderVouchers, VoucherRedeemError } from "@/lib/vouchers/redeemVouchers";
+import { toPublicOrderDto } from "@/lib/orders/orderPublicDto";
 import { after } from "next/server";
 import { sendPushToRoles } from "@/lib/push";
 

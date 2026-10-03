@@ -4,24 +4,23 @@ import { prisma } from "@/lib/prisma";
 import { runSerializableTransaction } from "@/lib/serializableTransaction";
 import { getSession, normalizePhone } from "@/lib/auth";
 import { staffOrderSchema } from "@/lib/validations/order";
-import { processOrderItems, OrderValidationError, PriceChangedError } from "@/lib/orders";
-import type { ProductVoucherInfo } from "@/lib/orders";
+import { processOrderItems } from "@/lib/orders/orderProcessing";
+import { OrderValidationError, PriceChangedError } from "@/lib/orders/orderProcessingErrors";
+import type { ProductVoucherInfo } from "@/lib/orders/orderVoucherTargets";
 import {
   assertVoucherUsable,
   VoucherError,
-} from "@/lib/vouchers";
-import { calcOrderTotals } from "@/lib/orderCalculator";
-import type { CalcDiscountVoucher } from "@/lib/orderCalculator";
-import { lazyExpireVouchers } from "@/lib/lazyExpireVouchers";
-import type { SweetnessLevel } from "@/src/lib/types/menu";
-import type { IceOption } from "@/src/lib/types/cart";
-import { BundlePromotionError } from "@/lib/promotionBundle";
-import { resolveOrderBundles, type OrderBundleDatabase } from "@/lib/orderBundle";
-import { persistOrderBundles } from "@/lib/orderBundleWrite";
-import {
-  ensureAutoGrantedVouchers,
-  type VoucherIssuanceDatabase,
-} from "@/lib/voucherIssuance";
+} from "@/lib/vouchers/voucherRules";
+import { calcOrderTotals } from "@/lib/orders/orderCalculator";
+import type { CalcDiscountVoucher } from "@/lib/orders/orderCalculator";
+import { lazyExpireVouchers } from "@/lib/vouchers/lazyExpireVouchers";
+import type { SweetnessLevel } from "@/contracts/menu";
+import type { IceOption } from "@/contracts/order";
+import { BundlePromotionError } from "@/lib/orders/promotionBundle";
+import { resolveOrderBundles, type OrderBundleDatabase } from "@/lib/orders/orderBundle";
+import { persistOrderBundles } from "@/lib/orders/orderBundleWrite";
+import { ensureAutoGrantedVouchers } from "@/lib/vouchers/autoGrantVouchers";
+import type { VoucherIssuanceDatabase } from "@/lib/vouchers/voucherIssuance";
 
 import { logSystemEvent } from "@/lib/logger";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -29,16 +28,18 @@ import {
   resolveCustomerIdentifier,
   resolveOwnedVoucherIdentifier,
 } from "@/lib/publicIdentifiers";
-import { toPublicOrderDto } from "@/lib/orderPublicDto";
-import { getOrderValueViolation } from "@/lib/orderLimits";
+import { toOrderListItemDto } from "@/lib/orders/orderPublicDto";
+import { getOrderValueViolation } from "@/lib/orders/orderLimits";
 import {
   claimCounterVoucher,
-  getPendingPaymentQrUrl,
-  getPendingPaymentWhere,
   prepareCounterPayment,
   StaffPaymentBusinessError,
   toStaffOrderPaymentResult,
-} from "@/lib/staffOrderPayment";
+} from "@/lib/orders/staffOrderPayment";
+import {
+  getPendingPaymentQrUrl,
+  getPendingPaymentWhere,
+} from "@/lib/orders/staffOrderPaymentRead";
 
 export const dynamic = "force-dynamic";
 
@@ -223,21 +224,28 @@ export async function POST(req: NextRequest) {
             }
             throw e;
           }
-          if (!pv!.menu_item_id || (pv!.voucher_type === "PRODUCT" && !pv!.covered_price_vnd)) {
+          const menuScope = pv!.menuItemScopes?.find((scope) => scope.menu_item_id === item.menu_item_id);
+          const hasNormalizedTargets = (pv!.menuItemScopes?.length ?? 0) > 0;
+          const matchesMenuTarget = Boolean(hasNormalizedTargets ? menuScope : pv!.menu_item_id === item.menu_item_id);
+          const matchingCoverage = hasNormalizedTargets
+            ? menuScope?.covered_price_vnd ?? 0
+            : pv!.covered_price_vnd ?? 0;
+          if (!matchesMenuTarget || (pv!.voucher_type === "PRODUCT" && matchingCoverage <= 0)) {
             return NextResponse.json(
               { error: "ITEM voucher is not properly configured", code: "VALIDATION_ERROR" },
               { status: 400 }
             );
           }
           productVoucherMap.set(pv!.id, {
-            menu_item_id: pv!.menu_item_id,
+            menu_item_id: item.menu_item_id,
             eligible_menu_item_ids: pv!.menuItemScopes?.map((scope) => scope.menu_item_id) ?? [],
-            covered_price_vnd: pv!.covered_price_vnd ?? 0,
+            covered_price_vnd: matchingCoverage,
             voucher_type: pv!.voucher_type === "ITEM" ? "ITEM" : pv!.voucher_type === "PRODUCT_DISCOUNT" ? "PRODUCT_DISCOUNT" : "PRODUCT",
             product_discount_mode: pv!.product_discount_mode,
             eligible_sizes: pv!.eligible_sizes,
             reference_size: pv!.reference_size,
             discount_value: pv!.discount_value,
+            milk_type_id: menuScope?.milk_type_id ?? pv!.milk_type_id ?? null,
           });
           if (item.item_voucher_id) item.item_voucher_id = pv!.id;
           else item.product_voucher_id = pv!.id;
@@ -290,13 +298,16 @@ export async function POST(req: NextRequest) {
               }
               throw e;
             }
-            if (!dbAv!.addon_option_id || dbAv!.addon_option_id !== av.addon_option_id) {
+            const addonTargets = dbAv!.addonOptionScopes?.length
+              ? dbAv!.addonOptionScopes.map((scope) => scope.addon_option_id)
+              : dbAv!.addon_option_id ? [dbAv!.addon_option_id] : [];
+            if (!addonTargets.includes(av.addon_option_id)) {
               return NextResponse.json(
                 { error: "Addon voucher option mismatch or missing", code: "VALIDATION_ERROR" },
                 { status: 400 }
               );
             }
-            addonVoucherMap.set(dbAv!.id, dbAv!.addon_option_id);
+            addonVoucherMap.set(dbAv!.id, av.addon_option_id);
             addonVoucherIds.add(dbAv!.id);
             av.voucher_id = dbAv!.id;
             voucherQrTokens.set(dbAv!.id, dbAv!.qr_token);
@@ -596,7 +607,7 @@ export async function POST(req: NextRequest) {
       },
       { status: 201 }
     );
-    });
+    }, { timeoutMs: 30_000 });
   } catch (err) {
     if (err instanceof Error && "code" in err && err.code === "P2034") {
       return NextResponse.json({ error: "Order changed concurrently", code: "CONFLICT" }, { status: 409 });
@@ -649,7 +660,11 @@ export async function POST(req: NextRequest) {
     const errName = err instanceof Error ? err.name : typeof err;
     
     // Fallback to console + save to SystemLog
-    console.error("[POST /api/staff/orders] UNHANDLED ERROR:", { name: errName });
+    console.error("[POST /api/staff/orders] UNHANDLED ERROR:", {
+      name: errName,
+      code: err instanceof Error && "code" in err && typeof err.code === "string" ? err.code : undefined,
+      message: err instanceof Error ? err.message : undefined,
+    });
     await logSystemEvent({
       level: "error",
       source: "POST /api/staff/orders",
@@ -790,10 +805,10 @@ export async function GET(req: NextRequest) {
 
     const totalPages = Math.ceil(total / limit);
 
-    const data = orders.map((order) => ({
-      ...toPublicOrderDto(order),
-      payment_qr_url: getPendingPaymentQrUrl(order),
-    }));
+    const data = orders.map((order) => toOrderListItemDto(
+      order,
+      getPendingPaymentQrUrl(order),
+    ));
 
     return NextResponse.json({ 
       data,
