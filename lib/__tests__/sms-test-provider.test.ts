@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { sendAbenlaOtp } from "@/lib/sms/abenla";
+import { getAbenlaBalance, sendAbenlaOtp } from "@/lib/sms/abenla";
 
 describe("Bộ chuyển tiếp Abenla", () => {
   function configure(): void {
@@ -12,6 +12,12 @@ describe("Bộ chuyển tiếp Abenla", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+  });
+
+  it("giữ số dư bằng không từ provider cho bảng cấu hình đăng ký", async () => {
+    configure();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ Code: 106, Message: "OK", Balance: 0 })));
+    expect(await getAbenlaBalance()).toBe(0);
   });
 
   it("từ chối mã gửi thất bại thay vì báo trạng thái chưa rõ", async () => {

@@ -33,3 +33,4 @@ thêm ADR mới và đánh dấu bản cũ `Superseded` kèm link; giữ lại b
 | [0001 — Nạp ngữ cảnh theo owner](0001-context-routing.md) | Accepted | Harness và tài liệu |
 | [0002 — Entitlement và pool cho quà chào mừng](0002-welcome-reward-entitlement-and-pool.md) | Accepted | Welcome reward và gacha pool |
 | [0003 — Root contract boundary](0003-root-contract-boundary.md) | Accepted | Shared API wire contracts |
+| [0004 — Registration OTP và admission trả phí](0004-registration-otp-paid-admission.md) | Accepted | Đăng ký, chi phí gửi và CAPTCHA fallback |

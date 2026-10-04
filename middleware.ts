@@ -32,7 +32,7 @@ function isProtectedApi(pathname: string): boolean {
 }
 
 function isProtectedPage(pathname: string): boolean {
-  return pathname.startsWith("/staff") || pathname.startsWith("/admin") || pathname === "/test-sms";
+  return pathname.startsWith("/staff") || pathname.startsWith("/admin");
 }
 
 /** Protects app routes, enforces roles, rotates page sessions, and rate-limits auth mutations. */
@@ -144,7 +144,7 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith("/staff") && !["STAFF", "ADMIN"].includes(user.role)) {
     return redirectWithSecurityHeaders(request, "/", pageSecurityHeaders);
   }
-  if ((pathname.startsWith("/admin") || pathname === "/test-sms") && user.role !== "ADMIN") {
+  if (pathname.startsWith("/admin") && user.role !== "ADMIN") {
     const destination = user.role === "STAFF" ? "/staff/orders" : "/";
     return redirectWithSecurityHeaders(request, destination, pageSecurityHeaders);
   }
@@ -191,6 +191,5 @@ export const config = {
     "/staff/:path*",
     "/api/admin/:path*",
     "/admin/:path*",
-    "/test-sms",
   ],
 };

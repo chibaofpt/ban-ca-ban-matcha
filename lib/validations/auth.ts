@@ -63,7 +63,22 @@ export const RegisterStep2Schema = z.object({
 export const RegisterSchema = RegisterStep1Schema.merge(RegisterStep2Schema);
 export const RegisterSchemaWithInstagram = RegisterSchema.extend({
   insta_name: InstagramUsernameSchema.optional(),
+  challenge_id: z.string().uuid().optional(),
+  otp: z.string().regex(/^\d{6}$/).optional(),
 });
+
+/** Validate full details and request ownership before a registration OTP send. */
+export const RegistrationOtpSendSchema = RegisterSchemaWithInstagram.extend({
+  request_id: z.string().uuid(),
+  turnstile_token: z.string().max(2048),
+});
+
+/** Validate the admin singleton configuration without client-visible secrets. */
+export const RegistrationOtpSettingsSchema = z.object({
+  otp_enabled: z.boolean(),
+  daily_send_limit: z.number().int().min(1).max(2147483647),
+  revision: z.number().int().min(0).max(2147483646),
+}).strict();
 
 /** Validates the authenticated customer's password-change request. */
 export const ChangePasswordSchema = z

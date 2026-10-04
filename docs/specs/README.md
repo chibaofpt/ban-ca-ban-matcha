@@ -32,7 +32,6 @@ cùng owner. Khi một loại thông tin đổi, sửa owner và liên kết t�
 | [Order UI](order-ui.md) | Customer/admin/staff cards/detail, persisted delivery recipient, address defaults và global orders badge |
 | [Cart và POS](cart.md) | Source state/persistence, BUNDLE setup, nhóm giỏ, khôi phục chuyển khoản |
 | [Admin customer management](admin-customer-management.md) | Users tab, customer overlay, account actions, gifts, orders và wallet |
-| [Staging SMS test UI](sms-test-ui.md) | Trang ADMIN riêng `/test-sms`, trạng thái kết nối/số dư, gửi và nhập tay OTP |
 
 Đây là yêu cầu đang được tài liệu dự án mô tả, không phải bằng chứng implementation hoặc UI đã
 nghiệm thu. Phần API/schema/nghiệp vụ liên kết owner, không suy lại từ UI.

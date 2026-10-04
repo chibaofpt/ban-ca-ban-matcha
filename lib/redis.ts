@@ -83,3 +83,18 @@ export async function isRedisHealthy(): Promise<boolean> {
 export function getRedisClient(): Redis | null {
   return getRedis();
 }
+
+let registrationOtpRedis: Redis | null = null;
+
+/** Return a dedicated OTP client with bounded requests and no automatic Redis retries. */
+export function getRegistrationOtpRedisClient(): Redis | null {
+  if (registrationOtpRedis) return registrationOtpRedis;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  registrationOtpRedis = new Redis({
+    url, token, retry: { retries: 0 }, signal: () => AbortSignal.timeout(3000),
+    enableAutoPipelining: false,
+  });
+  return registrationOtpRedis;
+}

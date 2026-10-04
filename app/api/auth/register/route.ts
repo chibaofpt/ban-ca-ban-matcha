@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { runSerializableTransaction } from "@/lib/serializableTransaction";
+import { RegistrationOtpError, registrationOtpErrorResponse } from "@/lib/auth/registrationOtpError";
+import { consumeRegistrationOtpProof, finishRegistrationOtpProof, prepareRegistrationOtpProof, type RegistrationOtpProof } from "@/lib/auth/registrationOtpVerification";
 import type { Prisma, User } from "@prisma/client";
 import type { RegisterResult } from "@/contracts/auth";
 import { RegisterSchemaWithInstagram } from "@/lib/validations/auth";
@@ -22,6 +25,8 @@ class RegistrationCreateUniqueError extends Error {
  * Handle POST request for user registration.
  */
 export async function POST(req: Request) {
+  let otpProof: RegistrationOtpProof | null = null;
+  let otpConsumed = false;
   try {
     const body = await req.json().catch(() => null);
     const parsedParams = RegisterSchemaWithInstagram.safeParse(body);
@@ -34,6 +39,7 @@ export async function POST(req: Request) {
       );
     }
 
+    otpProof = await prepareRegistrationOtpProof(req, parsedParams.data);
     const { name, phone_number, password, insta_name } = parsedParams.data;
     const normalizedPhone = normalizePhone(phone_number);
 
@@ -60,7 +66,8 @@ export async function POST(req: Request) {
     const MAX_ACTIVE_SESSIONS = 5;
 
     // Create or convert the user, persist the welcome reward, and open a session atomically.
-    const registerInTransaction = (candidate: User | null) => prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const registerInTransaction = (candidate: User | null) => runSerializableTransaction(prisma, async (tx: Prisma.TransactionClient) => {
+      const otpVerified = await consumeRegistrationOtpProof(tx, otpProof);
       let finalUser: User;
 
       if (candidate) {
@@ -79,6 +86,7 @@ export async function POST(req: Request) {
             name,
             password_hash: passwordHash,
             insta_name,
+            is_verified: otpVerified,
           },
         });
         if (converted.count !== 1) throw new GhostRegistrationConflictError();
@@ -94,6 +102,7 @@ export async function POST(req: Request) {
               password_hash: passwordHash,
               insta_name,
               points_balance: 0,
+              is_verified: otpVerified,
             },
           });
         } catch (error: unknown) {
@@ -125,7 +134,7 @@ export async function POST(req: Request) {
         },
       });
 
-      return { user: finalUser, session, welcomeReward };
+      return { user: finalUser, session, welcomeReward, otpVerified };
     });
 
     let registration: Awaited<ReturnType<typeof registerInTransaction>>;
@@ -143,6 +152,7 @@ export async function POST(req: Request) {
       if (concurrentUser.is_blocked) throw new BlockedGhostRegistrationError();
       registration = await registerInTransaction(concurrentUser);
     }
+    otpConsumed = registration.otpVerified;
     const { user, session, welcomeReward } = registration;
 
     // Create access token
@@ -172,6 +182,7 @@ export async function POST(req: Request) {
       { status: 201 }
     );
   } catch (err: unknown) {
+    if (err instanceof RegistrationOtpError) return registrationOtpErrorResponse(err);
     if (err instanceof BlockedGhostRegistrationError) {
       return NextResponse.json(
         { error: "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên.", code: "FORBIDDEN" },
@@ -192,5 +203,7 @@ export async function POST(req: Request) {
     }
     console.error("Registration temporarily unavailable");
     return NextResponse.json({ error: "Đã xảy ra lỗi hệ thống", code: "INTERNAL_ERROR" }, { status: 500 });
+  } finally {
+    await finishRegistrationOtpProof(otpProof, otpConsumed);
   }
 }

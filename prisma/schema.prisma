@@ -80,9 +80,20 @@ model Address {
   @@map("addresses")
 }
 
+/// Global registration policy; users.otp_enabled keeps its legacy meaning.
+model RegistrationOtpSettings {
+  id               Int     @id @default(1)
+  otp_enabled      Boolean @default(false)
+  daily_send_limit Int     @default(100)
+  revision         Int     @default(0)
+
+  @@map("registration_otp_settings")
+}
+
 model OtpAttempt {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   phone_number String
+  binding_hash String?
   code_hash    String
   expires_at   DateTime @db.Timestamptz(6)
   attempts     Int      @default(0)

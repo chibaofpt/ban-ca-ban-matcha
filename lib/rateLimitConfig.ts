@@ -80,6 +80,7 @@ export const RATE_LIMIT_RULES = {
 const AUTH_MUTATION_PATHS = new Set([
   "/api/auth/login",
   "/api/auth/register",
+  "/api/auth/register/otp",
   "/api/auth/check-phone",
   "/api/auth/refresh",
 ]);

@@ -195,14 +195,12 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/admin/reward-campaigns/[id]/pool` | PUT |
 | `/api/admin/reward-campaigns/[id]/boxes` | POST |
 | `/api/admin/reward-campaigns/[id]/boxes/[boxId]` | PATCH, DELETE |
-| `/api/admin/sms-test/connection` | POST |
-| `/api/admin/sms-test/balance` | POST |
-| `/api/admin/sms-test/send-otp` | POST |
-| `/api/admin/sms-test/verify-otp` | POST |
 | `/api/admin/staff` | GET |
 | `/api/admin/store-closure` | POST |
 | `/api/admin/store-schedule` | GET, PUT |
 | `/api/admin/users` | GET |
+| `/api/admin/users/registration-settings` | GET, PUT |
+| `/api/admin/users/registration-settings/balance` | POST |
 | `/api/admin/users/voucher-packages` | GET |
 | `/api/admin/users/[userQrToken]` | GET, PATCH |
 | `/api/admin/users/[userQrToken]/orders` | GET |
@@ -221,6 +219,7 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/auth/me` | GET |
 | `/api/auth/refresh` | POST |
 | `/api/auth/register` | POST |
+| `/api/auth/register/otp` | GET, POST |
 | `/api/customer/rewards/welcome` | GET |
 | `/api/customer/rewards/welcome/open` | POST |
 | `/api/cron/cancel-expired-orders` | GET |
@@ -267,38 +266,11 @@ additional actor identifier or response field is exposed.
 
 Auth mutations are rate-limited by hashed IP. Authorization details are defined by each contract and middleware.
 
-### Staging SMS test — ADMIN only
+### Retired staging SMS test
 
-`/test-sms` and these four API routes operate only when `NEXT_PUBLIC_APP_ENV=staging`,
-`VERCEL_ENV=preview`, and `ABENLA_SMS_TEST_ENABLED=true`. When disabled, the page is unavailable
-and an authenticated ADMIN request reaching these API handlers receives 404 before provider work;
-the shared middleware may return its usual 401/403 first for other callers. API handlers recheck
-the live ADMIN session. Responses use `Cache-Control: no-store`.
-
-| Route | Request | `{ data }` response |
-|---|---|---|
-| `POST /api/admin/sms-test/connection` | Empty body | `{ connected, provider_code, checked_at }` |
-| `POST /api/admin/sms-test/balance` | Empty body | `{ balance, checked_at }` |
-| `POST /api/admin/sms-test/send-otp` | `{ phone_number, request_id, message_template }` | `{ challenge_id, masked_phone, expires_at, resend_at, delivery_status, provider_code, sms_per_message }` |
-| `POST /api/admin/sms-test/verify-otp` | `{ challenge_id, otp }` | `{ verified: true }` |
-
-`delivery_status` is `accepted`, `pending`, or `unknown`. `accepted` means the provider accepted
-the request, not that the handset received it. The server generates and verifies a six-digit OTP;
-the `message_template` is supplied by the ADMIN for that send and must contain exactly one `{otp}`
-placeholder, with a maximum of 480 characters; the server substitutes the generated OTP before
-calling ABENLA SendOTP. Challenges expire after five minutes, permit at
-most five incorrect attempts, and are consumed once. Resend has a 60-second admin/phone cooldown.
-Send is capped at five attempts per 10 minutes per admin and 20 attempts per day globally;
-connection and balance together are capped at 10 calls per minute per admin. The SMS test counters
-and challenge fail closed when Redis is unavailable; this is separate from the existing fail-open
-security rate-limit policy. Repeating a `request_id` within 10 minutes never dispatches another
-SMS and returns the same challenge with the latest recorded outcome; it can remain `unknown` if
-the initial dispatch is still running or the outcome could not be persisted. Errors retain the
-standard error envelope, with machine-readable `details.reason` for OTP, cooldown, limit, and
-provider-unavailable outcomes. An explicit ABENLA rejection may include the numeric
-`details.provider_code`, never its free-text message. No OTP or full phone number appears in the response.
-Template validation failures return `400 VALIDATION_ERROR` with `details.reason=INVALID_MESSAGE_TEMPLATE`;
-the template is not persisted in Redis or returned by the API.
+The temporary `/test-sms` page and `/api/admin/sms-test/*` handlers have been removed.
+Use registration OTP and the admin registration balance control below; no diagnostic OTP
+challenge can verify a customer. Shared ABENLA credentials remain in use by those flows.
 
 ### Payload and value ceilings
 
@@ -337,14 +309,15 @@ The implementation uses fixed-window Upstash counters, HMAC-hashes every identif
 becomes a Redis key, and returns `429 TOO_MANY_REQUESTS` with deterministic `Retry-After`. It fails
 open and reports the infrastructure error to Sentry if Redis is absent or unavailable. Rate-limit
 keys are isolated from the cache-aside namespaces used by selected public GET endpoints. Redis is
-not an authorization authority; OTP, promotion and messaging remain Phase-5 work.
+not an authorization authority. Registration OTP uses a separate fail-closed policy;
+promotion and other messaging remain deferred Phase-5 work.
 
 ### Cron — `CRON_SECRET` required
 
 | Route | Schedule | Purpose |
 |---|---|---|
 | `/api/cron/cancel-expired-orders` | Required Supabase `*/5 * * * *` UTC; Vercel `0 0 * * *` UTC backup | Cancel expired PENDING orders in bounded batches and release reservations |
-| `/api/cron/clean-sessions` | Required Supabase `15 20 * * *` UTC | Delete expired sessions in at most 5 batches of 500 |
+| `/api/cron/clean-sessions` | Required Supabase `0 17 * * *` UTC — daily at 00:00 Asia/Ho_Chi_Minh (UTC+7) | Delete expired sessions in at most 5 batches of 500 |
 | `/api/cron/cleanup-menu-images` | Chưa cấu hình lịch ở staging/production | Dry-run/delete orphaned menu images older than 48 hours |
 
 Cron calls must send `Authorization: Bearer <CRON_SECRET>`. A missing server-side
@@ -423,6 +396,8 @@ in `Asia/Ho_Chi_Minh`.
   password: string
   name: string
   insta_name?: string // optional, unique, normalized without @ and to lowercase
+  challenge_id?: string // required with otp when global registration OTP is enabled
+  otp?: string // six digits; never a client assertion of is_verified
 }
 // If phone exists with password_hash = "GHOST_USER_NO_PASSWORD" → UPDATE instead of INSERT
 
@@ -444,6 +419,12 @@ in `Asia/Ho_Chi_Minh`.
 ```
 
 Registration creates or resolves exactly one welcome entitlement in the user/session transaction.
+The authoritative global OTP setting is checked by the server: enabled registration requires a
+live cookie/phone-bound challenge and sets `is_verified=true`; disabled registration sets it to
+false. OTP consumption commits with user, reward, and session creation, so a failed transaction
+does not consume a valid code. Enabling OTP while a form is open requires its caller to acquire
+OTP; disabling it allows the normal unverified registration flow. In-flight provider requests
+already admitted may still finish. Login and password recovery do not acquire registration OTP.
 `POINTS` and `FIXED_VOUCHER` complete immediately; only an available `GACHA` entitlement returns
 `PENDING`. Detailed selection, fallback and campaign rules belong to
 [voucher-flow lifecycle](.agents/skills/voucher-flow/references/lifecycle.md#welcome-reward-and-gacha).
@@ -453,6 +434,51 @@ submitted name, password hash and Instagram alias replace the placeholder creden
 existing customer history and balances remain attached. A blocked ghost returns `403 FORBIDDEN`.
 An existing registered phone, a non-CUSTOMER row, or losing the concurrent ghost-claim race returns
 `409 CONFLICT`; a create race re-reads the phone and may claim the ghost only if it is still eligible.
+
+### Registration OTP — public onboarding
+
+Registration OTP applies only to account creation and eligible CUSTOMER ghost claims. The shared
+ABENLA adapter delivers the six-digit code through the configured service. Provider secrets, raw codes and full provider replies
+must not enter public responses or logs.
+
+- `GET /api/auth/register/otp` returns `{ data: { enabled, turnstile, challenge } }`; `turnstile`
+  is `{ site_key, action: "registration_otp" }` or null and `challenge` is the live DTO below or null.
+  It exposes authoritative enabled state, public Turnstile configuration,
+  and any live challenge bound to the pre-registration cookie. Responses use
+  `Cache-Control: no-store`; OTP-disabled configuration does not require Redis or provider secrets.
+- `POST /api/auth/register/otp` validates the complete registration payload plus a UUID `request_id`
+  and `turnstile_token`. Success exposes `challenge_id`, `masked_phone`, `expires_at`, `resend_at`
+  and `delivery_status`, plus optional sanitized `provider_code` and `sms_per_message`.
+  Reload resumes the current challenge without retaining the password.
+- A random httpOnly pre-registration cookie binds the challenge to the normalized phone and
+  submitted registration identity. Codes expire after five minutes; a newly admitted challenge
+  invalidates the previous code. Registration consumes proof in the same transaction as customer,
+  welcome entitlement and session creation. A rolled-back registration leaves valid proof usable.
+
+Paid admission is atomic in Redis and shared across sessions, IPs and phone formats. Send one is
+immediate; subsequent gaps are 120, 3,600, 18,000 and 86,400 seconds. Stop after five reserved
+sends; reset after seven days since the last reservation. Rejected requests and idempotent replays
+do not extend the phone state. Also enforce 20 reservations per IP per 600 seconds and a global
+daily limit (default 100), resetting at Vietnam midnight. Admin sees reservations, not a claim of
+confirmed delivery; estimated cost is 350 VND per reservation. Unknown provider outcomes retain
+the reservation and are not retried automatically.
+
+Claim a request ID before CAPTCHA verification; reserve paid quota only after accepted CAPTCHA
+or a server-observed Turnstile outage. An invalid, expired, reused or mismatched token is rejected
+without paid admission. Cloudflare widget settings own the allowed hostnames; the application
+requires a nonempty hostname and action `registration_otp` in a successful Siteverify response,
+without a separate hostname environment variable. Only backend-observed
+network/timeout, provider 5xx or internal-error outages allow fallback through all existing OTP
+limits; missing tokens, client assertions and invalid server configuration do not grant bypass.
+Redis or authoritative-settings failure returns 503; paid sends fail closed. Idempotent replay
+returns the stored result without another provider call. Reusing an ID for another payload fails.
+
+Allow at most five wrong codes per challenge and five wrong codes per phone over 30 minutes,
+including across resends. A verification lock also prevents another paid send. The browser uses
+server `resend_at` for its countdown; disabling a button alone does not enforce the limit.
+Quota rejection returns 429 with `Retry-After` and retry metadata; missing/invalid proof returns
+422, CAPTCHA rejection 403, provider failure 502 and unavailable configuration or store 503.
+Existing login and password recovery behavior remains outside this contract.
 
 ### Customer welcome reward
 
@@ -653,6 +679,28 @@ Resetting a ghost returns `409 CONFLICT` with `details.reason = "RESET_NOT_ALLOW
   `ITEM|PRODUCT|ADDON|BUNDLE`, `SHIPPING` maps to `FREESHIP`, and `ALL` applies no type filter.
   Granting still uses the idempotent
   `POST /api/admin/voucher-packages/[id]/grants` contract and its additional-gift acknowledgement.
+
+### Admin registration OTP controls — ADMIN only
+
+- `GET /api/admin/users/registration-settings` returns the authoritative global OTP switch,
+  `{ data: { otp_enabled, daily_send_limit, revision, today_reserved_count, estimated_cost_vnd,
+  date, stats_unavailable } }`. Estimated cost is 350 VND per reservation. Daily counters reset
+  at Vietnam midnight. When stats are unavailable, `today_reserved_count` and
+  `estimated_cost_vnd` are null and `stats_unavailable=true`; settings and revision remain readable
+  so Admin can still disable OTP. This does not permit paid admission during a Redis outage.
+- `PUT /api/admin/users/registration-settings` accepts `otp_enabled`, a positive integer
+  `daily_send_limit` and the current `revision`. Success returns those three
+  fields under `data`. A stale revision returns 409; the server never interprets missing
+  or unreadable settings as permission to register without OTP. Migration initializes disabled
+  OTP, daily limit 100 and revision 0. Changing settings does not clear reserved quota.
+- `POST /api/admin/users/registration-settings/balance` checks ABENLA balance and returns
+  `{ data: { balance, checked_at } }`. Require ADMIN and at most ten probes per minute per Admin.
+  This admin control uses the registration diagnostic quota. The UI checks on panel mount and
+  explicit refresh; after an error it retains the previous balance and marks it stale.
+
+The panel belongs to customer management. Successful OTP-enabled registration sets the customer
+verified automatically; disabled registration creates an unverified customer. Existing manual
+verification actions and individual customer `otp_enabled` values remain separate.
 
 ### `POST /api/auth/login`
 Password minimum remains 6 characters. New registration rejects passwords over 72 UTF-8 bytes;

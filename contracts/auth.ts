@@ -15,6 +15,8 @@ export interface RegisterPayload {
   phone_number: string;
   password: string;
   insta_name?: string;
+  challenge_id?: string;
+  otp?: string;
 }
 
 export interface RegisterResult extends AuthUser {

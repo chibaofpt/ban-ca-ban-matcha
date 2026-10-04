@@ -1,5 +1,10 @@
-import type { SmsTestDeliveryStatus } from "@/contracts/smsTest";
-import { smsTestMessageTemplateSchema } from "@/lib/validations/smsTest";
+import { z } from "zod";
+
+const messageTemplateSchema = z.string().trim().min(1).max(480).refine(
+  (value) => value.split("{otp}").length === 2,
+  "Message template must contain exactly one {otp} placeholder",
+);
+type AbenlaDeliveryStatus = "accepted" | "pending" | "unknown";
 
 const BASE_URL = "https://api.abenla.com/api";
 const MAX_RESPONSE_BYTES = 64 * 1024;
@@ -75,9 +80,9 @@ async function boundedJson(response: Response): Promise<AbenlaResponse> {
   }
 }
 
-async function getDiagnostic(method: "CheckConnection" | "GetBalance"): Promise<AbenlaResponse> {
+async function getDiagnostic(): Promise<AbenlaResponse> {
   const { loginName, sign } = credentials();
-  const url = new URL(`${BASE_URL}/${method}`);
+  const url = new URL(`${BASE_URL}/GetBalance`);
   url.searchParams.set("loginName", loginName);
   url.searchParams.set("sign", sign);
   try {
@@ -90,15 +95,9 @@ async function getDiagnostic(method: "CheckConnection" | "GetBalance"): Promise<
   }
 }
 
-/** Check the Abenla connection without exposing its message or credentials. */
-export async function checkAbenlaConnection(): Promise<{ connected: boolean; providerCode: number }> {
-  const result = await getDiagnostic("CheckConnection");
-  return { connected: result.Code === 106, providerCode: result.Code };
-}
-
 /** Read the SMS credit balance through the bounded Abenla adapter. */
 export async function getAbenlaBalance(): Promise<number> {
-  const result = await getDiagnostic("GetBalance");
+  const result = await getDiagnostic();
   if (result.Code !== 106 || typeof result.Balance !== "number" ||
     !Number.isFinite(result.Balance) || result.Balance < 0) throw new AbenlaResponseError();
   return result.Balance;
@@ -106,13 +105,13 @@ export async function getAbenlaBalance(): Promise<number> {
 
 /** Dispatch one fixed-template OTP; uncertain transport outcomes remain unknown. */
 export async function sendAbenlaOtp(phoneNumber: string, otp: string, smsGuid: string, messageTemplate: string): Promise<{
-  deliveryStatus: SmsTestDeliveryStatus;
+  deliveryStatus: AbenlaDeliveryStatus;
   providerCode: number | null;
   smsPerMessage: number | null;
 }> {
   const { loginName, sign } = credentials();
   const { serviceTypeId, brandName } = sendSettings();
-  const parsedTemplate = smsTestMessageTemplateSchema.safeParse(messageTemplate);
+  const parsedTemplate = messageTemplateSchema.safeParse(messageTemplate);
   if (!parsedTemplate.success) throw new AbenlaConfigError();
   const body = {
     LoginName: loginName,
@@ -135,7 +134,7 @@ export async function sendAbenlaOtp(phoneNumber: string, otp: string, smsGuid: s
   } catch {
     return { deliveryStatus: "unknown", providerCode: null, smsPerMessage: null };
   }
-  const deliveryStatus: SmsTestDeliveryStatus = [106, 203].includes(result.Code)
+  const deliveryStatus: AbenlaDeliveryStatus = [106, 203].includes(result.Code)
     ? "accepted" : [201, 212].includes(result.Code) ? "pending" : "unknown";
   if (deliveryStatus === "unknown") throw new AbenlaRejectedError(result.Code);
   const smsPerMessage = typeof result.SmsPerMessage === "number" &&

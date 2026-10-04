@@ -9,17 +9,15 @@ Không implement nội dung trong file này nếu task hiện tại chưa đư�
 
 ## Unresolved
 
-- Cron documentation needs an operational check in an authorized infrastructure task: API `Cron`
-  requires `clean-sessions` at `15 20 * * *` UTC, while the 2026-08-27 observation below records
-  `15 18 * * *`. Preserve the distinction between desired schedule and historical deployment;
-  a docs-only audit cannot confirm today's scheduler or silently reschedule it.
 - QR scanner and direct redemption are separate contracts: API `GET /api/staff/scan` presents ADDON
   as order-only, while API `Vouchers` preserves singleton ADDON direct redemption. Before changing
   either flow, verify its intended compatibility boundary; do not infer endpoint permission from UI.
 
 - Fresh migration replay previously failed because `0_init` does not create `users.insta_name`.
-  The current `20260628100500_remove_insta_name` artifact uses `DROP COLUMN IF EXISTS`, but replay
-  and compatibility with already-applied migration checksums remain unverified. Any deployed-history
+  The current `20260628100500_remove_insta_name` artifact uses an unconditional `DROP COLUMN`.
+  On 2026-10-04, registration OTP `migrate:dev --create-only` failed with P3006 while replaying
+  that migration in the shadow database. Local schema-diff/static audit cannot establish successful
+  replay or compatibility with already-applied migration checksums. Any deployed-history
   reconciliation requires a separately approved baseline strategy; do not rewrite applied history.
   The mock-only suite does not execute migrations or prove historical data transforms, SQL-only
   functions, PostgreSQL constraints or RLS.
@@ -55,9 +53,10 @@ Không implement nội dung trong file này nếu task hiện tại chưa đư�
 
 ### Phase 5+
 
-- OTP khách hàng và order-ready SMS/Zalo ZNS qua ESMS vẫn thuộc Phase 5. Trang `/test-sms`
-  chỉ thử tài khoản ABENLA trên staging; kết quả xác minh ở đó không xác thực khách hàng và
-  chưa quyết định provider cho luồng vận hành sau này.
+- OTP đăng ký khách hàng qua cấu hình ABENLA/Zalo đã được duyệt trong phạm vi đăng ký;
+  contract và quota thuộc [API](API.md#registration-otp--public-onboarding). OTP đăng nhập,
+  khôi phục mật khẩu và order-ready SMS/Zalo ZNS vẫn ngoài phạm vi. Công cụ tạm `/test-sms` đã được gỡ;
+  adapter ABENLA và các test tự động cho đăng ký vẫn được giữ.
 - Mở rộng Redis cache-aside ngoài menu, powders, store status và voucher packages cần task kiến trúc
   xác định freshness, invalidation và failure behavior.
 - Chưa có ADR ghi lý do hoặc thời điểm duyệt phạm vi Redis cache-aside hiện tại; SPECIFICATION phản
@@ -112,6 +111,10 @@ Các ghi nhận dưới đây cần được xác minh lại khi làm release/h�
   `production_app_url` hiện ghim vào deployment Production mới nhất vì alias canonical đang trả
   `DEPLOYMENT_NOT_FOUND`; sau mỗi production release phải refresh Vault sang deployment Production
   mới cho đến khi alias ổn định được khôi phục.
+- 2026-10-04: theo yêu cầu user, production `clean-sessions` đã đổi từ lịch lịch sử trên sang
+  lịch trong API `Cron`; kiểm tra trực tiếp xác nhận scheduler dùng GMT, job active và command
+  không đổi. Sai lệch lịch cron trước đây đã được giải quyết. Production Vault URL đã được
+  xác nhận dùng alias canonical `https://bancabanmatcha.io.vn` từ release 2026-10-03.
 - Follow-up cùng ngày: staging đã bật `pg_cron`/`pg_net` và có hai Vault secret, nhưng smoke test
   xác nhận Vercel staging chưa có runtime `CRON_SECRET` (route fail-closed `500`). Hai job thử
   nghiệm đã được unschedule để không retry lỗi. Production route trả `401` khi thiếu bearer, xác

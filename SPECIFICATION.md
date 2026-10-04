@@ -118,10 +118,21 @@ Redis rate-limit counters dùng namespace riêng và policy trong `API.md`. Lega
 evict; PostgreSQL session state vẫn là authorization authority. Không thêm cache cho route khác hoặc
 đặt business correctness phụ thuộc Redis nếu chưa có task kiến trúc duyệt scope và invalidation.
 
-Trang `/test-sms` trên staging preview dùng Redis trong namespace riêng `sms-test` để giữ OTP
-challenge ngắn hạn, request idempotency, cooldown và quota. Đây là state tạm của công cụ thử
-ABENLA, không phải cache cho public read hoặc nguồn xác thực session. Send/verify fail closed
-khi Redis không sẵn sàng; không fallback vào bộ nhớ Vercel Function hay database production.
+OTP đăng ký khách hàng dùng namespace Redis riêng cho admission, lịch chờ, idempotency và quota
+theo môi trường. Redis lỗi thì chặn gửi có phí và
+không fallback vào bộ nhớ Function. Prisma sở hữu cấu hình bật/tắt toàn hệ thống và challenge OTP;
+consume challenge cùng transaction tạo/claim khách, quà chào mừng và session. Đây là scope state
+bảo mật đã duyệt cho đăng ký, không mở rộng Redis cache-aside hoặc nguồn xác thực session.
+Policy thuộc [API registration OTP](API.md#registration-otp--public-onboarding), semantics thuộc
+[SCHEMA](SCHEMA.md#otp_attempts--registration-otp). Hostname allowlist do Cloudflare Turnstile widget settings quản lý; server xác minh token/action
+qua Siteverify, không giữ một hostname env riêng. Turnstile và ABENLA nằm sau adapter; fallback
+Turnstile khi dịch vụ lỗi vẫn bắt buộc qua quota OTP.
+Client Upstash vẫn chỉ được tạo trong `lib/redis.ts`. Client riêng cho OTP dùng timeout HTTP
+và không retry; client cache/limiter tổng quát giữ policy hiện có. Admission giữ row lock cấu hình
+trong transaction không retry khi gọi Redis, rồi chỉ dispatch provider sau transaction commit.
+Redis reservation đã xảy ra nhưng transaction lỗi được giữ lại; không tự hoàn quota hoặc gửi lại.
+CSP giữ nonce và chỉ bổ sung nguồn Cloudflare cần cho widget. Khách nhận mã qua Zalo sau khi điền đủ thông tin; admin quản lý công tắc/quota và
+xem số dư trong Quản lý khách hàng.
 
 ## Business consistency boundaries
 
@@ -169,6 +180,37 @@ khi Redis không sẵn sàng; không fallback vào bộ nhớ Vercel Function ha
 - Sonner cho transient feedback; React Hook Form + Zod `onBlur` và inline error cho form.
 - Lucide cho structural icons. Ký hiệu 🐟 được phép khi biểu diễn đơn vị thương hiệu.
 - `src/utils/cn.ts` là class-name helper canonical.
+
+### Registration OTP form
+
+Public registration keeps its information steps and adds a code step when the server requires OTP.
+Inputs and feedback follow `mobile-ux`; business policy and errors belong to
+[API registration OTP](API.md#registration-otp--public-onboarding).
+
+A challenge sent in the current mount may be reused only for the same normalized registration
+details. Editing those details requires a fresh send flow; changing phones must not inherit another
+phone's countdown. After reload, the UI explains that the customer must re-enter the original
+details to continue with the previous code and offers a recovery path to request a new code.
+Credentials and payload fingerprints are not persisted in browser storage.
+
+Send/resend uses the server's retry time and refreshes its countdown when a background tab resumes.
+An older configuration request must not overwrite the challenge produced by a newer send.
+Only a successful registration response transitions into the existing session/welcome flow.
+
+Manual acceptance remains `MANUAL_UI_REQUIRED`:
+
+- Khi sửa tên, mật khẩu, Instagram hoặc số điện thoại, kể cả số mới trùng ba số cuối, thì UI không
+  tự dùng challenge của thông tin cũ; số mới không chịu countdown của số cũ.
+- Khi reload, thì customer có thể nhập lại đúng thông tin để dùng mã còn hạn hoặc chọn gửi mã mới;
+  UI không lưu lại mật khẩu và không claim proof hợp lệ trước phản hồi server. Nếu nhập nhầm
+  thông tin khi resume, thì quay lại sửa đúng và chọn dùng mã đã nhận không gọi gửi thêm tin.
+- Khi GET cấu hình cũ trả về sau resend thành công, thì UI vẫn giữ challenge mới. Background tab
+  trở lại dùng thời gian thực và server retry time, không cho gửi sớm vì timer cũ.
+- Khi OTP hợp lệ, thì tài khoản được tạo/claim, xác thực và tự đăng nhập đúng một lần. Khi công tắc
+  tắt hoặc provider/verification lỗi, thì UI phản ánh trạng thái server và không claim success.
+  Khi Admin tắt OTP lúc customer đang chờ hoặc mã đã hết hạn, control kiểm tra lại chế độ đăng ký
+  cho phép cập nhật chế độ không OTP mà không phải chờ countdown cũ.
+
 
 ### Primitive decision matrix
 

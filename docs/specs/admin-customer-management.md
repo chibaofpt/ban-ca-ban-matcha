@@ -22,6 +22,25 @@ Each row shows identity, registration, verification and block state, points bala
 Vietnam-year completed spend. Spend uses the server summary; the UI does not recompute money or
 derive registration from visible fields. Selecting a row opens its customer surface.
 
+## Registration OTP settings
+
+A registration settings panel sits above the customer list. It applies to the global registration
+flow and is separate from each customer's manual verification actions. The panel exposes the OTP
+requirement checkbox and a positive integer daily send limit, followed by an explicit save action.
+The authoritative switch, reservation policy and response fields belong to
+[API registration controls](../../API.md#admin-registration-otp-controls--admin-only).
+
+Initial configuration loading, load failure/retry, pending save and save failure remain visible.
+Successful save refreshes the configuration. A revision conflict explains that settings changed
+and provides a control to load the current values before saving again.
+
+The usage area shows today's reserved sends and estimated cost from the server. When stats are
+unavailable it shows unavailable text rather than zero; readable configuration remains editable.
+A provider balance check runs when the panel loads and on explicit refresh. Show the balance,
+including zero, together with its last check time. A failed refresh keeps the previous balance
+and time, marks that value stale and offers another refresh; an initial failure shows unavailable.
+
+
 ## One customer overlay
 
 One `ResponsiveOverlay` owns the selected-customer session. It switches its body between customer
@@ -97,3 +116,10 @@ expired using the server projection. Reads do not mutate voucher lifecycle.
 - Khi reset ghost, grant thất bại, hoặc load tab thất bại, thì UI hiển thị failure và không claim
   success; mutation đang chạy khóa thao tác đóng hoặc gửi lặp tương ứng.
 - Khi xem order hoặc voucher, UI trình bày server snapshot/projection và không tính lại business rule.
+- Khi Admin thay đổi yêu cầu OTP hoặc hạn mức rồi lưu, thì UI giữ trạng thái pending, nhận cấu
+  hình mới từ server và không sửa trạng thái xác minh của các khách đã có.
+- Khi revision đã cũ, thì UI báo conflict và cho tải cấu hình hiện tại; không claim save thành công.
+- Khi Redis stats lỗi, thì số lượt/chi phí hiện unavailable và Admin vẫn có thể tắt OTP với revision
+  hợp lệ; không hiển thị zero như một kết quả thống kê thành công.
+- Khi số dư bằng zero hoặc refresh provider lỗi, thì UI phân biệt zero đã kiểm tra với unavailable,
+  giữ số dư/thời gian gần nhất và đánh dấu dữ liệu cũ.
