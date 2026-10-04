@@ -12,6 +12,7 @@ import { resolveOrderBundles, type OrderBundleDatabase } from "@/lib/orders/orde
 import { prisma } from "@/lib/prisma";
 import { runSerializableTransaction } from "@/lib/serializableTransaction";
 import { sendPushToRoles } from "@/lib/push";
+import { publishOrderChange } from "@/lib/orderRealtime";
 import type { CustomerOrderInput } from "@/lib/validations/order";
 import { buildVietQRUrl } from "@/lib/vietqr";
 import { ensureAutoGrantedVouchers } from "@/lib/vouchers/autoGrantVouchers";
@@ -167,8 +168,9 @@ export async function createCustomerOrder(
     const payload = await response.clone().json() as {
       data: { order_code: string; grand_total_vnd: number };
     };
-    after(() => {
-      sendPushToRoles(["ADMIN"], {
+    after(async () => {
+      const signal = publishOrderChange();
+      await sendPushToRoles(["ADMIN"], {
         title: "🔔 Đơn hàng mới (Online)",
         body: `${payload.data.order_code} — ${data.items.length} món — ${new Intl.NumberFormat("vi-VN").format(payload.data.grand_total_vnd)}đ`,
         url: "/admin/orders",
@@ -177,6 +179,7 @@ export async function createCustomerOrder(
           name: error instanceof Error ? error.name : typeof error,
         });
       });
+      await signal;
     });
   }
   return response;

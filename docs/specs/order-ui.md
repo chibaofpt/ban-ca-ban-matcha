@@ -43,5 +43,8 @@ receiver đã lưu. Validation, phone normalization, map và default-address pay
 Badge tab “Đơn hàng” dùng shared query/service cho tổng PENDING + BANK_TRANSFER ở mọi loại đơn
 được tạo trong hôm nay theo UTC+7, độc lập page/search và các bộ lọc tùy chọn của danh sách.
 Service gửi startDate/endDate qua endpoint hiện có, lấy limit=1 nhưng đọc meta.total.
-Poll 20 giây/refocus; create/confirm/cancel invalidate admin orders prefix. Zero ẩn badge; lỗi
-refetch giữ giá trị thành công cuối. POS “Chờ CK” giữ nguồn server riêng hiện có.
+Kênh Realtime của admin/staff shell invalidate admin orders prefix sau create/confirm/cancel;
+badge và list dùng chung tín hiệu. Khi socket khỏe giữ safety refresh 5 phút; khi mất kết nối badge
+poll 20 giây/refocus. Zero ẩn badge; lỗi refetch giữ giá trị thành công cuối. POS “Chờ CK” giữ nguồn
+server riêng hiện có. Lifecycle, token và catch-up thuộc
+[Order Realtime](../../SPECIFICATION.md#order-realtime).

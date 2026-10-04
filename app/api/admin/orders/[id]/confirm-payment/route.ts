@@ -6,6 +6,7 @@ import { redeemOrderVouchers, VoucherRedeemError } from "@/lib/vouchers/redeemVo
 import { toPublicOrderDto } from "@/lib/orders/orderPublicDto";
 import { after } from "next/server";
 import { sendPushToRoles } from "@/lib/push";
+import { publishOrderChange } from "@/lib/orderRealtime";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +75,7 @@ export async function PATCH(
           { status: 409 }
         );
       }
+      after(publishOrderChange);
       return NextResponse.json(
         { error: "Order has expired and was automatically cancelled", code: "ORDER_EXPIRED" },
         { status: 422 }
@@ -173,9 +175,10 @@ export async function PATCH(
     );
 
     // After response returns, trigger push notification
-    after(() => {
+    after(async () => {
+      const signal = publishOrderChange();
       console.log(`[AFTER JOB] Starting background push notification for confirmed order: ${updatedOrder.order_code}`);
-      sendPushToRoles(
+      await sendPushToRoles(
         ["STAFF", "ADMIN"],
         {
           title: "✅ Đã xác nhận thanh toán",
@@ -190,6 +193,7 @@ export async function PATCH(
             name: error instanceof Error ? error.name : typeof error,
           });
         });
+      await signal;
     });
 
     return NextResponse.json({ data: toPublicOrderDto(updatedOrder) });

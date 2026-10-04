@@ -29,6 +29,18 @@ Không implement nội dung trong file này nếu task hiện tại chưa đư�
 
 ## Approved but deferred
 
+### Realtime rollout — operational observation 2026-10-04
+
+Staging `mnklsbzkefuefpqvghrr` advertises the prepared ES256 public key, and the scoped
+`orders_operations_receive` policy is applied. Local staging env is configured. Vercel Preview
+already has Supabase URL/publishable credentials, but its metadata has no
+`SUPABASE_REALTIME_SIGNING_JWK`; activation still requires that server-only env and a reviewed
+staging deployment. This is configuration evidence, not proof of websocket delivery or UI recovery.
+Production `nqwfbmghziubdhvtgyao` does not advertise the prepared production key yet. Its key/policy
+activation and production release remain pending staging acceptance. Current contract and lifecycle
+are owned by [Order Realtime](SPECIFICATION.md#order-realtime), not this dated observation.
+
+
 ### Staging order/voucher coverage chưa hoàn tất
 
 - Không bổ sung fixture, nạp cá hay đổi voucher ngoài ngân sách để lấp khoảng trống coverage.

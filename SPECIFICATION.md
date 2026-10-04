@@ -107,6 +107,30 @@ Query key phải ổn định, có prefix theo audience/domain và tái sử d�
 xóa private customer/staff/admin query caches nhưng giữ public menu/catalog caches. Inline key và direct
 `apiClient` đang tồn tại là legacy exception; không dùng làm mẫu cho code mới.
 
+### Order Realtime
+
+Admin/staff shell owns one private Supabase Broadcast channel `orders:operations` through
+`OrderRealtimeProvider` and `orderRealtimeService`. Receive-only capabilities are issued by the
+[Realtime token endpoint](API.md#get-apirealtimeorderstoken), using an ES256 key imported into the
+same Supabase project. App authentication remains custom cookie auth; no Supabase Auth login.
+
+`lib/orderRealtime.ts` sends an empty `orders_changed` signal through the REST Broadcast API after
+committed create, confirm, status/cancel and auto-cancel writes. Route writes use `after()`; cron
+emits once per successful batch. No server websocket, row payload, order-table client grants, or
+order-table publication is needed for this REST Broadcast path. Platform receive policy is maintained
+in [configure-order-realtime.sql](scripts/configure-order-realtime.sql); application schema stays Prisma-owned.
+
+Signals are coalesced and invalidate the admin/staff orders prefixes, including badge queries.
+First subscribe, reconnect, returning to the foreground and network restoration refresh via the
+existing authorized API/service path. JWT renewal checks the current app session/role; failed renewal
+disposes the old connection. Cleanup removes the exact channel, timers and browser listeners.
+
+Healthy subscriptions retain only a 5-minute safety refresh because delivery is best-effort after
+commit. Disconnection or missing configuration retains the existing list/badge polling cadence.
+Web push remains a separate background notification channel. Per-environment URL, publishable key
+and server signing JWK belong to [.env.local.example](.env.local.example).
+Rationale: [private order signals](docs/decisions/0005-private-order-realtime.md).
+
 ### Server cache boundary
 
 Upstash Redis đang chạy cache-aside cho bốn public reads: menu, powders, store status và voucher

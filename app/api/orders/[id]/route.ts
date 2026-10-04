@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { scheduleOrderChange } from "@/lib/orderRealtime";
 import type { CustomerOrderDetail } from "@/contracts/order";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
@@ -173,6 +174,7 @@ export async function PATCH(
       );
     }
 
+    scheduleOrderChange();
     return NextResponse.json({ data: { id: order.id, status: "CANCELLED" } });
   } catch (err) {
     console.error("[PATCH /api/orders/[id]]", err);

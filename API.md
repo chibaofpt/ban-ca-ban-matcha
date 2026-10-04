@@ -68,6 +68,7 @@ rate limits or cron section for those contracts. Implementation belongs to
 | `VOUCHER_EXPIRED` | Voucher past expiry date |
 | `VOUCHER_REDEEMED` | Voucher already used |
 | `STORE_CLOSED` | Store is outside opening hours or temporarily closed — rejects PICKUP/DELIVERY orders (HTTP 503) |
+| `SERVICE_UNAVAILABLE` | Realtime capability cannot be issued because signing configuration is unavailable (HTTP 503) |
 | `INTERNAL_ERROR` | Unexpected server error |
 
 ---
@@ -245,6 +246,7 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/profile/vouchers/refund` | POST |
 | `/api/push/subscribe` | POST |
 | `/api/push/unsubscribe` | POST |
+| `/api/realtime/orders/token` | GET |
 | `/api/report` | GET |
 | `/api/staff/orders` | GET, POST |
 | `/api/staff/orders/[id]` | GET, PATCH |
@@ -334,6 +336,22 @@ smoke-tested against the production deployment.
 ---
 
 ## Request / Response Specs
+
+### `GET /api/realtime/orders/token`
+
+Current custom session required; ADMIN/STAFF only. `getSession()` checks the live database session
+and current role. Returns `{ data: { token, expires_at, topic, event } }` as defined in
+`contracts/realtime.ts`, with `Cache-Control: private, no-store`. The ES256 JWT lasts 300 seconds,
+has role `authenticated`, operator `app_role`, purpose `order-realtime`, and uses the current app
+session ID as `sub`; it contains no user ID, phone, or order fields. It does not replace app cookies.
+
+Errors: `401 UNAUTHORIZED`, `403 FORBIDDEN`, `503 SERVICE_UNAVAILABLE` for missing/invalid signing
+configuration. Never return signing-key diagnostics. Frontend consumer:
+`src/services/orderRealtimeService.ts`. Authorization of all order data remains at the existing
+admin/staff order APIs. A revoked session or changed role is detected at token renewal; an already
+issued receive-only token can remain valid for at most 5 minutes. See
+[Realtime architecture](SPECIFICATION.md#order-realtime).
+
 
 ### `GET /api/admin/report?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD&staffId?=qr_token`
 

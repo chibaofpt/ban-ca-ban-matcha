@@ -24,8 +24,11 @@ derive registration from visible fields. Selecting a row opens its customer surf
 
 ## Registration OTP settings
 
-A registration settings panel sits above the customer list. It applies to the global registration
-flow and is separate from each customer's manual verification actions. The panel exposes the OTP
+The Admin shell's store-settings control opens a list with `Giờ mở cửa` and `OTP`. Selecting
+`Giờ mở cửa` opens the schedule and temporary-closure overlay; selecting `OTP` opens the global
+registration settings in the shared responsive overlay (a bottom sheet on mobile). OTP settings
+are no longer displayed above the customer list. They remain separate from each customer's manual
+verification actions. The panel exposes the OTP
 requirement checkbox and a positive integer daily send limit, followed by an explicit save action.
 The authoritative switch, reservation policy and response fields belong to
 [API registration controls](../../API.md#admin-registration-otp-controls--admin-only).
@@ -118,6 +121,9 @@ expired using the server projection. Reads do not mutate voucher lifecycle.
 - Khi xem order hoặc voucher, UI trình bày server snapshot/projection và không tính lại business rule.
 - Khi Admin thay đổi yêu cầu OTP hoặc hạn mức rồi lưu, thì UI giữ trạng thái pending, nhận cấu
   hình mới từ server và không sửa trạng thái xác minh của các khách đã có.
+- Khi Admin mở Cài đặt, thì danh sách có `Giờ mở cửa` và `OTP`; chọn từng mục hiện nội dung
+  tương ứng trong bottom sheet trên mobile. Trang Khách hàng không còn panel OTP; Staff không có
+  quyền truy cập các mục cài đặt này. Sheet hỗ trợ vuốt đóng và nút đóng theo shared dismiss policy.
 - Khi revision đã cũ, thì UI báo conflict và cho tải cấu hình hiện tại; không claim save thành công.
 - Khi Redis stats lỗi, thì số lượt/chi phí hiện unavailable và Admin vẫn có thể tắt OTP với revision
   hợp lệ; không hiển thị zero như một kết quả thống kê thành công.

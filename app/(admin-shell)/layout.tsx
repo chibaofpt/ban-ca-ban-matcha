@@ -5,6 +5,7 @@ import { getSessionFromHeaders } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import PushSubscriptionManager from "@/src/components/admin/PushSubscriptionManager";
+import { OrderRealtimeProvider } from "@/src/components/shared/OrderRealtimeProvider";
 
 /**
  * Layout shell for all admin and staff pages — top bar + bottom tab bar.
@@ -30,9 +31,11 @@ export default async function AdminShellLayout({ children }: { children: ReactNo
 
   return (
     <div className="min-h-[100dvh] bg-background flex flex-col">
-      <AdminTabBar userName={userName} userRole={userRole}>
-        <main className="flex-1 px-2 md:px-8 pt-4 pb-20 md:pb-6 max-w-7xl mx-auto w-full min-w-0 touch-pan-y overflow-x-clip overscroll-x-none">{children}</main>
-      </AdminTabBar>
+      <OrderRealtimeProvider key={userRole} userRole={userRole}>
+        <AdminTabBar userName={userName} userRole={userRole}>
+          <main className="flex-1 px-2 md:px-8 pt-4 pb-20 md:pb-6 max-w-7xl mx-auto w-full min-w-0 touch-pan-y overflow-x-clip overscroll-x-none">{children}</main>
+        </AdminTabBar>
+      </OrderRealtimeProvider>
       <PushSubscriptionManager />
     </div>
   );
