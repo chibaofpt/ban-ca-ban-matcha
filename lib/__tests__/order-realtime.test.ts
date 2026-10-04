@@ -112,4 +112,3 @@ describe("Realtime đơn — quyền nhận và tín hiệu tối thiểu", () =
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
   });
 });
-

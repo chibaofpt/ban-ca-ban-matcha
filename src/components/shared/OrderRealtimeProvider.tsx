@@ -50,4 +50,3 @@ export function OrderRealtimeProvider({ children, userRole }: { children: ReactN
 export function useOrderRealtime() {
   return useContext(OrderRealtimeContext);
 }
-

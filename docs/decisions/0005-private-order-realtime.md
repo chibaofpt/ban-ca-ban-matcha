@@ -30,4 +30,3 @@ publisher if delivery guarantees become a business requirement or external write
 Current owners: [Runtime architecture](../../SPECIFICATION.md#order-realtime),
 [token contract](../../API.md#get-apirealtimeorderstoken),
 [Realtime skill](../../.agents/skills/supabase-realtime/SKILL.md).
-

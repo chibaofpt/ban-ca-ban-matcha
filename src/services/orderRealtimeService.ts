@@ -100,4 +100,3 @@ export function subscribeToOrderChanges(onChange: () => void, onStatus: (connect
     },
   };
 }
-

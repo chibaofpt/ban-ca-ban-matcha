@@ -22,4 +22,3 @@ describe("Service token Realtime", () => {
     expect(get).toHaveBeenCalledWith("/api/realtime/orders/token");
   });
 });
-
