@@ -22,6 +22,7 @@ interface VoucherModalFrameProps extends VoucherModalTabsProps {
   detailOpen?: boolean;
   pointsBalance?: number;
   title?: string;
+  customerName?: string;
   pointsLabel?: string;
   onPointsClick?: () => void;
   headerAction?: ReactNode;
@@ -37,7 +38,8 @@ export function VoucherModalFrame({
   voucherCount,
   pointsBalance,
   title = "Voucher",
-  pointsLabel = "Điểm",
+  customerName,
+  pointsLabel,
   onPointsClick,
   tabs,
   voucherTabLabel,
@@ -61,6 +63,10 @@ export function VoucherModalFrame({
   const visibleTabs = tabs ?? (isLoggedIn
     ? ["my_vouchers", "packages", "history"]
     : ["packages"]);
+  const hasCustomerHeader = customerName !== undefined;
+  const pointsContent = hasCustomerHeader ? (
+    <>điểm: <span className="font-bold">{(pointsBalance ?? 0).toLocaleString("vi-VN")}</span></>
+  ) : pointsLabel ? <>{pointsLabel}: {(pointsBalance ?? 0).toLocaleString("vi-VN")} điểm cá</> : (<>Bạn đang có <span className="font-bold">{(pointsBalance ?? 0).toLocaleString("vi-VN")}</span> điểm ká</>);
 
   const changeToAdjacentTab = (direction: "left" | "right") => {
     const currentIndex = visibleTabs.indexOf(activeTab);
@@ -76,9 +82,15 @@ export function VoucherModalFrame({
     <div data-slot="voucher-modal-frame" className="relative flex h-auto min-h-[85dvh] max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-[2.5rem] bg-background shadow-2xl md:h-[85dvh] md:min-h-0 md:max-h-[85dvh] md:max-w-2xl md:rounded-[2.5rem]">
       {!detailOpen && <>
       <div className="absolute inset-x-0 top-3 z-10 mx-auto h-1.5 w-12 rounded-full bg-border/60 md:hidden" aria-hidden="true" />
-      <header className="z-10 shrink-0 bg-background px-4 pb-3 pt-6 md:pt-4">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="shrink-0 font-serif text-lg text-primary">{title}</h2>
+      <header className={cn("z-10 shrink-0 bg-background", hasCustomerHeader ? "px-3 pb-2 pt-3 md:pt-2" : "px-4 pb-3 pt-6 md:pt-4")}>
+        <div className={cn("flex items-center justify-between gap-2", hasCustomerHeader && "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-y-1")}>
+          {hasCustomerHeader ? (
+            <div className="flex min-w-0 items-center gap-2 self-center">
+              <h2 className="shrink-0 text-left text-lg font-normal text-muted-foreground">{title}</h2>
+              {headerAction}
+            </div>
+          ) : <h2 className="shrink-0 font-serif text-lg text-primary">{title}</h2>}
+          {hasCustomerHeader ? <p className="col-start-1 row-start-2 min-w-0 break-words text-left text-base font-medium text-foreground">{customerName}</p> : null}
           {isLoggedIn ? (
             onPointsClick ? <motion.button
               ref={pointsButtonRef}
@@ -87,18 +99,18 @@ export function VoucherModalFrame({
               onClick={() => { restorePointsFocus.current = true; onPointsClick(); }}
               whileTap={{ scale: 0.92 }}
               transition={{ duration: 0.18 }}
-              className="ml-auto min-h-11 rounded-lg px-2 text-right text-lg font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
+              className={cn("min-h-11 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", hasCustomerHeader ? "col-start-2 row-start-2 justify-self-end whitespace-nowrap text-right text-base font-normal text-primary" : "ml-auto px-2 text-right text-xs font-normal text-primary")}
             >
-              {pointsLabel}: {(pointsBalance ?? 0).toLocaleString("vi-VN")} điểm cá
-            </motion.button> : <p className="ml-auto text-right text-lg font-semibold text-primary sm:text-sm">
-              {pointsLabel}: {(pointsBalance ?? 0).toLocaleString("vi-VN")} điểm cá
+              {pointsContent}
+            </motion.button> : <p className={hasCustomerHeader ? "col-start-2 row-start-2 whitespace-nowrap text-right text-base font-normal text-primary" : "ml-auto text-right text-xs font-normal text-primary"}>
+              {pointsContent}
             </p>
           ) : null}
-          <button type="button" onClick={onClose} className="flex size-11 shrink-0 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:ring-ring" aria-label="Đóng">
+          <button type="button" onClick={onClose} className={cn("flex size-11 shrink-0 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:ring-ring", hasCustomerHeader && "col-start-2 row-start-1")} aria-label="Đóng">
             <X size={18} />
           </button>
         </div>
-        {headerAction ? <div className="mt-2 flex min-h-8 justify-end">{headerAction}</div> : null}
+        {!hasCustomerHeader && headerAction ? <div className="mt-2 flex min-h-8 justify-end">{headerAction}</div> : null}
       </header>
       <VoucherModalTabs
         activeTab={activeTab}

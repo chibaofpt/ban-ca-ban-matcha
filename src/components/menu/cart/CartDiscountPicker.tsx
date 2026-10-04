@@ -93,6 +93,7 @@ interface CartDiscountPickerProps {
   isSelectionContextCurrent?: (voucherToken?: string) => boolean;
   tabs?: VoucherModalTab[];
   title?: string;
+  customerName?: string;
   pointsLabel?: string;
   voucherTabLabel?: string;
   emptyWalletLabel?: string;
@@ -148,6 +149,7 @@ export const CartDiscountPicker = ({
   isSelectionContextCurrent,
   tabs,
   title,
+  customerName,
   pointsLabel,
   voucherTabLabel,
   emptyWalletLabel = "Bạn chưa có mã ưu đãi nào",
@@ -192,9 +194,11 @@ export const CartDiscountPicker = ({
   const selectionContextIsCurrent = (voucherToken?: string) => !isLoading && !loadError &&
     (isSelectionContextCurrent?.(voucherToken) ?? true) && (!voucherToken ||
       myVouchers.some((voucher) => voucher.qr_token === voucherToken && isVoucherUsable(voucher)));
-  const hasAppliedNonBundleVoucher = selectedVoucherIds.length > 0 || cart.some((item) =>
-    Boolean(item.lineVoucher) || item.addonVouchers.length > 0,
-  );
+  const hasClearableVoucher = customerName !== undefined
+    ? selectedVoucherIds.length > 0 || selectedFreeshipVouchers.length > 0
+    : selectedVoucherIds.length > 0 || cart.some((item) =>
+      Boolean(item.lineVoucher) || item.addonVouchers.length > 0,
+    );
 
   const productTargets = (voucher: MyVoucher) => cart.flatMap((item) => {
     const matchesProduct = (voucher.eligible_menu_items?.length ?? 0) > 0
@@ -386,13 +390,14 @@ export const CartDiscountPicker = ({
         voucherCount={myVouchers.length}
         pointsBalance={pointsBalance}
         title={title}
+        customerName={customerName}
         pointsLabel={pointsLabel}
         tabs={tabs}
         voucherTabLabel={voucherTabLabel}
         onChange={setActiveTab}
         onClose={closePicker}
         detailOpen={detailVoucher !== null}
-        headerAction={activeTab === "my_vouchers" && !isLoading && !loadError && hasAppliedNonBundleVoucher ? (
+        headerAction={activeTab === "my_vouchers" && !isLoading && !loadError && hasClearableVoucher ? (
           <button
             type="button"
             onClick={clearAppliedNonBundleVouchers}

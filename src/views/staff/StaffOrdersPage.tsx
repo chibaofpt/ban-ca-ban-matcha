@@ -1328,7 +1328,8 @@ export default function StaffOrdersPage({
           onAcquired={handleStaffVoucherAcquired}
           isSelectionContextCurrent={canMutateStaffWallet}
           tabs={userRole === "ADMIN" ? ["my_vouchers", "packages"] : ["my_vouchers"]}
-          title={`Ưu đãi của ${customerInfo.data.name}`}
+          title={userRole === "ADMIN" ? "Voucher" : `Ưu đãi của ${customerInfo.data.name}`}
+          customerName={userRole === "ADMIN" ? customerInfo.data.name : undefined}
           pointsLabel="Điểm khách"
           voucherTabLabel="Voucher của khách"
           emptyWalletLabel="Khách chưa có voucher khả dụng"

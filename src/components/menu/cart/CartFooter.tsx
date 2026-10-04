@@ -197,8 +197,8 @@ export const CartFooter = memo(function CartFooter({
         </div>
       </div>
 
-      {/* Controls and payment summary in an equal-width layout */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Controls and payment summary in a 4:6 layout */}
+      <div className="grid grid-cols-[minmax(0,4fr)_minmax(0,6fr)] gap-3">
         <motion.div 
           className="flex min-w-0 flex-col gap-2 touch-pan-y"
           drag="x"
@@ -274,14 +274,8 @@ export const CartFooter = memo(function CartFooter({
 
         <div className="flex min-w-0 flex-col items-end gap-2 text-right">
           <div className="flex w-full flex-col gap-1">
-            <span className="text-left text-xs font-semibold text-muted-foreground">Tổng</span>
             <span className="inline-flex w-full flex-wrap items-baseline justify-end gap-1 font-serif text-xl font-bold text-primary">
-              {totalDiscountVnd > 0 && (
-                <span className="whitespace-nowrap font-sans text-xs font-medium text-muted-foreground line-through">
-                  <span className="sr-only">Giá gốc </span>
-                  <CartMoney amountVnd={subtotalVnd + shippingVnd} />
-                </span>
-              )}
+              <span className="font-sans text-xs font-semibold text-muted-foreground">Tổng</span>
               <span className="whitespace-nowrap"><CartMoney amountVnd={grandTotalVnd} /></span>
               {isLoggedIn && totalPoints > 0 && (
                 <button
@@ -297,11 +291,15 @@ export const CartFooter = memo(function CartFooter({
               )}
             </span>
           </div>
-          {totalDiscountVnd > 0 ? (
-            <p className="text-right text-[10px] font-semibold text-red-700">
-              Được giảm <CartMoney amountVnd={totalDiscountVnd} />
-            </p>
-          ) : null}
+          {totalDiscountVnd > 0 && (
+            <div className="flex w-full flex-wrap items-baseline justify-end gap-1 text-[10px] font-semibold text-red-700">
+              <span className="whitespace-nowrap font-medium text-muted-foreground line-through">
+                <span className="sr-only">Giá gốc </span>
+                <CartMoney amountVnd={subtotalVnd + shippingVnd} />
+              </span>
+              <span>Bạn đã được giảm <CartMoney amountVnd={totalDiscountVnd} /></span>
+            </div>
+          )}
           <button
             id="btn-checkout"
             onClick={handleCheckout}

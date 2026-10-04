@@ -52,7 +52,7 @@ nào giữ trạng thái chưa xác minh. Lịch sử dùng cache riêng, chỉ 
 cursor bằng nút “Xem thêm”; lỗi tải thêm giữ các mục đã tải và cho thử lại. Reconciliation chạy
 trước trang đầu của mỗi lần làm mới ví, không lặp lại ở từng trang tiếp theo.
 Wallet và cart dùng chung voucher frame edge-to-edge với một lớp padding; title “Voucher” và
-“Điểm: N điểm cá” nằm cùng hàng. Detail thay nội dung trong cùng frame thay vì mở sheet lồng. Mobile voucher frame giữ
+“Bạn đang có N điểm ká” nằm cùng hàng; dòng điểm customer dùng cỡ 12px, chỉ số N in đậm. Detail thay nội dung trong cùng frame thay vì mở sheet lồng. Mobile voucher frame giữ
 chiều cao tối thiểu 85dvh hiện có, tăng theo nội dung tới 100dvh khi danh sách dài;
 header/tab cố định và danh sách cuộn bên trong. Desktop giữ dialog 85dvh.
 Trong ví customer, bấm số dư điểm mở lịch sử điểm của tài khoản đang đăng nhập trong cùng frame,
@@ -71,7 +71,14 @@ bất đồng bộ kiểm tra lại wallet, voucher và owner hiện tại trư�
 từ sheet này dùng layer `critical`.
 
 Staff/Admin POS chọn khách hàng rồi dùng lại chính cart voucher picker này với adapter của staff
-cart; không dựng danh sách ví hoặc order-discount picker riêng. Entry point theo từng món có thể giữ
+cart; không dựng danh sách ví hoặc order-discount picker riêng. Header chọn voucher trong Admin
+hiển thị “Voucher” cỡ 18px/nét thường ở dòng trên; tên khách căn trái và “điểm: N” căn phải chung dòng dưới.
+Dòng điểm dùng cỡ 16px và màu xanh matcha từ token primary; chỉ số N được in đậm, phần nhãn dùng nét thường.
+Header Admin dùng padding ngang 12px, trên 12px ở mobile/8px ở desktop và dưới 8px;
+khoảng cách giữa hai hàng là 4px để giảm không gian thừa.
+Nút “Bỏ tất cả” trong Admin nằm ngay cạnh title “Voucher”, chỉ hiện khi có voucher giảm đơn
+hoặc giảm ship đang được chọn; chỉ áp voucher món/topping thì không hiển thị nút này.
+Entry point theo từng món có thể giữ
 context của dòng cart nhưng danh sách tổng, detail và target flow thuộc shared picker. Surface phải được key và
 commit theo `user.qr_token` đang chọn: đổi hoặc bỏ khách đóng surface, gỡ toàn bộ voucher owner cũ
 và kết quả async của khách cũ không được ghi sang cart khách mới. Đơn `COUNTER + BANK_TRANSFER`
