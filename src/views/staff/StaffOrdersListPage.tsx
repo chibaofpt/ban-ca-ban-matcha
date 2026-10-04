@@ -276,7 +276,7 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
                   </div>
 
                   <DeliveryRecipientDetails {...order} />
-                  <button type="button" className="min-h-11 w-full rounded-xl border border-border bg-muted/40 px-3 text-sm font-semibold" onClick={() => setDetailOrderId(order.id)}>Chi tiết đơn</button>
+                  <button type="button" className="min-h-11 w-full rounded-xl border border-primary/20 bg-primary/10 px-3 text-sm font-semibold text-foreground transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setDetailOrderId(order.id)}>Chi tiết đơn</button>
                   {/* Progress Bar */}
                   {!isTerminal && (
                     <div className="pt-1">

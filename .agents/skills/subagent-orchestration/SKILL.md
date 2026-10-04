@@ -31,11 +31,11 @@ auth, pricing, order, voucher, security, or cross-domain changes are high risk r
 
 | Class | Signals | Orchestrator recommendation | Implementer | Independent reviewer |
 | --- | --- | --- | --- | --- |
-| Bounded | Clear behavior; up to 3 production files; no contract change | GPT-5.6 Luna `max` or Sol `medium` | GPT-5.6 Luna `max` | GPT-5.6 Sol `medium` |
-| Integrated | Several files or layers in one domain; contracts frozen | GPT-5.6 Sol `medium` | GPT-5.6 Luna `max` when scope is precise; otherwise Sol `high` | GPT-5.6 Sol `high` |
-| High risk | Architecture, cross-domain work, or a sensitive contract | GPT-5.6 Sol `high` | GPT-5.6 Sol `high` or `xhigh` | GPT-5.6 Sol `xhigh`; `max` for the hardest cases |
+| Bounded | Clear behavior; up to 3 production files; no contract change | GPT-5.6 Luna `max` or GPT-6.1 Sol `medium` | GPT-5.6 Luna `max` | GPT-6.1 Sol `medium` |
+| Integrated | Several files or layers in one domain; contracts frozen | GPT-6.1 Sol `medium` | GPT-5.6 Luna `max` when scope is precise; otherwise GPT-6.1 Sol `high` | GPT-6.1 Sol `high` |
+| High risk | Architecture, cross-domain work, or a sensitive contract | GPT-6.1 Sol `high` | GPT-6.1 Sol `high` or `xhigh` | GPT-6.1 Sol `xhigh`; `max` for the hardest cases |
 
-When Luna is chosen, use `max` for quality. If GPT-5.6 is unavailable, use GPT-5.6 Sol at an
+When Luna is chosen, use `max` for quality. If GPT-5.6 is unavailable, use GPT-6.1 Sol at an
 appropriate effort and report the substitution. Orchestrator recommendations apply when
 selecting a model for a task; Root still owns acceptance with its current model.
 
