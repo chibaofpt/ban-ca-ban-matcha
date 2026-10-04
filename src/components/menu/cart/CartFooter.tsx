@@ -83,6 +83,8 @@ export const CartFooter = memo(function CartFooter({
   shippingFee,
   setIsAddressPickerOpen,
   setIsDiscountPickerOpen,
+  subtotalVnd,
+  shippingVnd,
   totalDiscountVnd,
   voucherRevalidating,
   grandTotalVnd,
@@ -274,6 +276,12 @@ export const CartFooter = memo(function CartFooter({
           <div className="flex w-full flex-col gap-1">
             <span className="text-left text-xs font-semibold text-muted-foreground">Tổng</span>
             <span className="inline-flex w-full flex-wrap items-baseline justify-end gap-1 font-serif text-xl font-bold text-primary">
+              {totalDiscountVnd > 0 && (
+                <span className="whitespace-nowrap font-sans text-xs font-medium text-muted-foreground line-through">
+                  <span className="sr-only">Giá gốc </span>
+                  <CartMoney amountVnd={subtotalVnd + shippingVnd} />
+                </span>
+              )}
               <span className="whitespace-nowrap"><CartMoney amountVnd={grandTotalVnd} /></span>
               {isLoggedIn && totalPoints > 0 && (
                 <button

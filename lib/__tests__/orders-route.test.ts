@@ -998,6 +998,26 @@ describe("GET /api/orders", () => {
     );
   });
 
+  it.each([
+    ["delivery", "DELIVERY"],
+    ["pickup", "PICKUP"],
+  ] as const)("lọc %s trước phân trang và chỉ lấy đơn chưa huỷ của khách hiện tại", async (filter, orderType) => {
+    Object.assign(prisma.order, { count: vi.fn().mockResolvedValue(6) });
+    const response = await GET(new NextRequest(
+      "http://localhost/api/orders?page=2&limit=5&status=" + filter,
+    ));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      data: [], meta: { total: 6, page: 2, totalPages: 2 },
+    });
+    const where = { user_id: USER_ID, order_type: orderType, NOT: { status: "CANCELLED" } };
+    expect(prisma.order.count).toHaveBeenCalledWith({ where });
+    expect(prisma.order.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where, skip: 5, take: 5, orderBy: { created_at: "desc" },
+    }));
+  });
+
   it("không lazy-cancel đơn PENDING quá hạn khi đọc lịch sử", async () => {
     const expiredOrder = {
       id: "o-expired",

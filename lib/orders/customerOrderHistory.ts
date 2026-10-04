@@ -1,5 +1,6 @@
 import type {
   CustomerHistoryOrder,
+  CustomerOrderHistoryFilter,
   CustomerHistoryOrderItem,
 } from "@/contracts/order";
 import { prisma } from "@/lib/prisma";
@@ -37,17 +38,22 @@ export async function getCustomerOrderHistory(
   userId: string,
   page: number,
   limit: number,
-  /** 'cancelled' → only CANCELLED orders; 'active' → exclude CANCELLED; omit → all */
-  statusFilter?: "active" | "cancelled",
+  /** Type filters exclude cancelled orders; omit the filter to include all orders. */
+  statusFilter?: CustomerOrderHistoryFilter,
 ): Promise<CustomerOrderHistoryResult> {
   const skip = (page - 1) * limit;
   const statusWhere =
     statusFilter === "cancelled"
       ? { status: "CANCELLED" as const }
-      : statusFilter === "active"
+      : statusFilter !== undefined
         ? { NOT: { status: "CANCELLED" as const } }
         : {};
-  const baseWhere = { user_id: userId, ...statusWhere };
+  const typeWhere = statusFilter === "delivery"
+    ? { order_type: "DELIVERY" as const }
+    : statusFilter === "pickup"
+      ? { order_type: "PICKUP" as const }
+      : {};
+  const baseWhere = { user_id: userId, ...statusWhere, ...typeWhere };
 
   const [total, orders] = await prisma.$transaction([
     prisma.order.count({ where: baseWhere }),

@@ -42,7 +42,7 @@ export function OrderHistoryItems({
         return (
           <li key={`${item.menu_item_id}-${index}`} className="flex flex-col gap-1">
 
-            {/* Row 1: name+size LEFT — price · ×qty · [Đặt lại] RIGHT */}
+            {/* Row 1: name+size LEFT — price with quantity below · [Đặt lại] RIGHT */}
             <div className="flex items-start justify-between gap-2">
               <span className="text-[13px] font-semibold leading-snug">
                 {item.menuItem.name}{" "}
@@ -52,25 +52,27 @@ export function OrderHistoryItems({
               </span>
 
               <div className="flex shrink-0 items-center gap-1.5">
-                {showItemDiscounts ? (
-                  <div className="flex flex-col items-end leading-tight">
-                    {itemDiscount > 0 && (
-                      <span className="text-[11px] font-light text-foreground line-through">
-                        {formatKa(itemPrice)}
+                <div className="flex flex-col items-end gap-0.5">
+                  {showItemDiscounts ? (
+                    <div className="flex flex-col items-end leading-tight">
+                      {itemDiscount > 0 && (
+                        <span className="text-[11px] font-light text-foreground line-through">
+                          {formatKa(itemPrice)}
+                        </span>
+                      )}
+                      <span className={itemDiscount > 0 ? "text-[13px] font-bold text-foreground" : "text-[13px] font-semibold text-foreground"}>
+                        {formatKa(itemPrice - itemDiscount / item.quantity)}
                       </span>
-                    )}
-                    <span className={itemDiscount > 0 ? "text-[13px] font-bold text-foreground" : "text-[13px] font-semibold text-foreground"}>
-                      {formatKa(itemPrice - itemDiscount / item.quantity)}
+                    </div>
+                  ) : (
+                    <span className="text-[13px] font-semibold text-primary">
+                      {formatKa(itemPrice, "ceil")}
                     </span>
-                  </div>
-                ) : (
-                  <span className="text-[13px] font-semibold text-primary">
-                    {formatKa(itemPrice, "ceil")}
+                  )}
+                  <span className="text-[12px] text-muted-foreground">
+                    ×{item.quantity}
                   </span>
-                )}
-                <span className="text-[12px] text-muted-foreground">
-                  ×{item.quantity}
-                </span>
+                </div>
                 {canReorder && (
                   <motion.button
                     type="button"

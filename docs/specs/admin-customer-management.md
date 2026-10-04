@@ -18,9 +18,10 @@ The Admin shell exposes a `Users` tab. Its list has ten customers per page and s
 name, phone or Instagram alias. Customers with completed orders appear first, sorted by the most
 recent completed-order update across full history; customers with no completed order form the tail.
 
-Each row shows identity, registration, verification and block state, points balance and the current
-Vietnam-year completed spend. Spend uses the server summary; the UI does not recompute money or
-derive registration from visible fields. Selecting a row opens its customer surface.
+Each row shows identity, registration, verification and block state, with points presented as
+"Bạn đang có n điểm ká" on its own prominent green line and the value emphasized. Current
+Vietnam-year completed spend uses the server summary; the UI does not recompute money or derive
+registration from visible fields. Selecting a row opens its customer surface.
 
 ## Registration OTP settings
 
@@ -109,6 +110,7 @@ The voucher tab shows ten newest wallet entries per page with package name, issu
 status and expiry presentation. Status labels cover active, reserved, redeemed, expired and refunded.
 Entries without expiry say so; active entries show remaining days, and elapsed expiry is shown as
 expired using the server projection. Reads do not mutate voucher lifecycle.
+While the Vouchers tab is active, the overlay header shows "Voucher" above the selected customer name.
 
 ## Acceptance
 

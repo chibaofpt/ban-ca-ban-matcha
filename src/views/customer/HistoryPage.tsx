@@ -15,14 +15,13 @@ import { useCustomerPoints, useCustomerPointsHistory } from "@/src/hooks/useCust
 import { useReorderItem } from "@/src/hooks/useReorderItem";
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
 import type { CustomerHistoryOrderItem } from "@/src/lib/types/order";
+import type { CustomerOrderHistoryFilter } from "@/contracts/order";
 import {
   getHistoryTabHref,
   resolveHistoryTab,
   type HistoryTab,
 } from "@/src/lib/utils/historyTab";
 import { cancelOrder, fetchCustomerOrders } from "@/src/services/orderService";
-
-type OrderFilter = "active" | "cancelled";
 
 /** Customer history page combining order tracking and grouped point transactions. */
 export default function HistoryPage() {
@@ -34,7 +33,7 @@ export default function HistoryPage() {
   const { data: points } = useCustomerPoints();
   const [orderPage, setOrderPage] = useState(1);
   const [pointsPage, setPointsPage] = useState(1);
-  const [orderFilter, setOrderFilter] = useState<OrderFilter>("active");
+  const [orderFilter, setOrderFilter] = useState<CustomerOrderHistoryFilter>("active");
   const [cancelModal, setCancelModal] = useState({
     isOpen: false,
     orderId: "",
@@ -99,7 +98,7 @@ export default function HistoryPage() {
     router.replace(getHistoryTabHref(tab), { scroll: false });
   };
 
-  const changeOrderFilter = (filter: OrderFilter): void => {
+  const changeOrderFilter = (filter: CustomerOrderHistoryFilter): void => {
     setOrderFilter(filter);
     setOrderPage(1);
   };

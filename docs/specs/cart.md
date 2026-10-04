@@ -101,7 +101,8 @@ Phần dưới chia hai cột tỷ lệ 5:5; cột trái xếp dọc nút Vouche
 nền gradient hồng nhẹ #c9799f → #dda0be (hover #be6d93 → #d494b2, chỉ hiện khi giao hàng); gradient chéo 135 độ; tiêu đề trắng đậm 13 px, mô tả trắng nét thường 12 px; cả hai có viền chữ mỏng 0,3 px màu đen opacity 25%, bỏ chevron.
 Voucher đã có giảm hiển thị thẳng Giảm … ká, không có tiền tố Đã áp dụng.
 Cột phải có nhãn Tổng ở hàng riêng phía trên căn trái; số tổng tiền và điểm ở hàng dưới căn phải,
-rồi Được giảm căn phải; nút thanh toán nằm phía dưới
+rồi Được giảm căn phải; khi có giảm giá, tổng gốc (tiền món và phí ship trước giảm) gạch ngang
+cạnh giá phải trả ở hàng Tổng; không giảm thì chỉ hiện giá phải trả. Nút thanh toán nằm phía dưới
 và chiếm chiều rộng cột phải, chiều cao tối thiểu 40 px, dùng nền primary xanh đậm với chữ trắng.
 Action xóa chỉ nằm trên header.
 Không lặp lại Tạm tính, Phí ship và Giảm giá trong footer; các khoản này thuộc bảng chi tiết cuối body.

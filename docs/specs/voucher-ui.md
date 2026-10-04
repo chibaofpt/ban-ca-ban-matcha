@@ -55,6 +55,10 @@ Wallet và cart dùng chung voucher frame edge-to-edge với một lớp padding
 “Điểm: N điểm cá” nằm cùng hàng. Detail thay nội dung trong cùng frame thay vì mở sheet lồng. Mobile voucher frame giữ
 chiều cao tối thiểu 85dvh hiện có, tăng theo nội dung tới 100dvh khi danh sách dài;
 header/tab cố định và danh sách cuộn bên trong. Desktop giữ dialog 85dvh.
+Trong ví customer, bấm số dư điểm mở lịch sử điểm của tài khoản đang đăng nhập trong cùng frame,
+thay nội dung danh sách voucher. Lịch sử tái sử dụng `PointsHistoryTab` và hook điểm hiện có,
+chỉ tải khi mở, có phân trang, trạng thái tải/rỗng/lỗi và nút thử lại. Nút Back trả về
+“Voucher của tôi” và focus về nút số dư điểm; đóng rồi mở lại ví trở về danh sách voucher.
 Wallet “Dùng ngay” với PRODUCT, PRODUCT_DISCOUNT hoặc ITEM còn đúng một món hợp lệ thêm một
 unit theo cấu hình voucher và mặc định menu, không mở ProductModal; PRODUCT_DISCOUNT ưu tiên
 size vừa nếu thuộc scope, sau đó size hợp lệ đầu tiên. Nhiều món vẫn mở detail để chọn và customize.

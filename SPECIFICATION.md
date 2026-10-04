@@ -275,6 +275,8 @@ Button dùng variants `primary`, `secondary`, `outline`, `ghost`, `destructive`.
 
 Nhãn size đồ uống trong UI dùng `SizeLabel`; khi cần ghép thành chuỗi, dùng `formatSizeLabel`. Enum `SMALL`/`MEDIUM`/`LARGE` chỉ thuộc data contract, không render trực tiếp cho người dùng.
 
+ResponsiveOverlay exposes optional titleClassName and descriptionClassName for flow-specific text presentation; the shared overlay retains ownership of header structure and accessibility semantics.
+
 ## Legacy UI migration policy
 
 - Existing direct Radix/Vaul imports và manual overlays là legacy, không phải API mẫu.

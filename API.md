@@ -1356,7 +1356,7 @@ without a configured default Base Liquid. Any full edit still requires a valid a
 }
 ```
 
-### `GET /api/orders?page=1&limit=10&status=active|cancelled` — Customer history
+### `GET /api/orders?page=1&limit=10&status=active|delivery|pickup|cancelled` — Customer history
 
 - Order history and staff/admin order-list DTOs explicitly include nullable persisted delivery_receiver_name, delivery_receiver_phone and delivery_address. Missing legacy values serialize as null; clients must not substitute account/address-book data. Existing wire field names and endpoints remain unchanged.
 - Returns the authenticated customer's paginated order snapshots in `{ data, meta }`.
@@ -1364,6 +1364,9 @@ without a configured default Base Liquid. Any full edit still requires a valid a
   and PRODUCT surplus points after any reversal logs. It is `0` before completion or after a full
   cancellation reversal.
 - `status=active` excludes cancelled orders; `status=cancelled` returns only cancelled orders.
+- `status=delivery` and `status=pickup` return non-cancelled DELIVERY and PICKUP orders respectively.
+  Each filter is applied before pagination to both the order query and the total count.
+  Omitting `status` or passing an unrecognized value preserves the existing unfiltered read.
 
 ### `POST /api/staff/orders` — Staff
 ```ts

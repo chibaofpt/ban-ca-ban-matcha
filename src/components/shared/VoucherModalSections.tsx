@@ -1,8 +1,8 @@
 "use client";
 
 import { History, X } from "lucide-react";
-import { AnimatePresence } from "framer-motion";
-import { useRef, type ReactNode } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useRef, type ReactNode } from "react";
 import { VoucherCard } from "@/src/components/shared/VoucherCards";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 import type { VoucherModalTab } from "@/src/lib/utils/voucherModalHelpers";
@@ -23,6 +23,7 @@ interface VoucherModalFrameProps extends VoucherModalTabsProps {
   pointsBalance?: number;
   title?: string;
   pointsLabel?: string;
+  onPointsClick?: () => void;
   headerAction?: ReactNode;
   footer?: ReactNode;
   overlayContent?: ReactNode;
@@ -37,6 +38,7 @@ export function VoucherModalFrame({
   pointsBalance,
   title = "Voucher",
   pointsLabel = "Điểm",
+  onPointsClick,
   tabs,
   voucherTabLabel,
   headerAction,
@@ -48,6 +50,14 @@ export function VoucherModalFrame({
   detailOpen = false,
 }: VoucherModalFrameProps) {
   const touchStart = useRef({ x: 0, y: 0 });
+  const pointsButtonRef = useRef<HTMLButtonElement>(null);
+  const restorePointsFocus = useRef(false);
+  useEffect(() => {
+    if (!detailOpen && restorePointsFocus.current) {
+      pointsButtonRef.current?.focus();
+      restorePointsFocus.current = false;
+    }
+  }, [detailOpen]);
   const visibleTabs = tabs ?? (isLoggedIn
     ? ["my_vouchers", "packages", "history"]
     : ["packages"]);
@@ -68,9 +78,19 @@ export function VoucherModalFrame({
       <div className="absolute inset-x-0 top-3 z-10 mx-auto h-1.5 w-12 rounded-full bg-border/60 md:hidden" aria-hidden="true" />
       <header className="z-10 shrink-0 bg-background px-4 pb-3 pt-6 md:pt-4">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="shrink-0 font-serif text-lg font-bold text-primary">{title}</h2>
+          <h2 className="shrink-0 font-serif text-lg text-primary">{title}</h2>
           {isLoggedIn ? (
-            <p className="ml-auto text-right text-[11px] font-semibold text-primary sm:text-sm">
+            onPointsClick ? <motion.button
+              ref={pointsButtonRef}
+              type="button"
+              aria-label="Xem lịch sử điểm"
+              onClick={() => { restorePointsFocus.current = true; onPointsClick(); }}
+              whileTap={{ scale: 0.92 }}
+              transition={{ duration: 0.18 }}
+              className="ml-auto min-h-11 rounded-lg px-2 text-right text-lg font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
+            >
+              {pointsLabel}: {(pointsBalance ?? 0).toLocaleString("vi-VN")} điểm cá
+            </motion.button> : <p className="ml-auto text-right text-lg font-semibold text-primary sm:text-sm">
               {pointsLabel}: {(pointsBalance ?? 0).toLocaleString("vi-VN")} điểm cá
             </p>
           ) : null}

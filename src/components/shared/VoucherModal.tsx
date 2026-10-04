@@ -29,6 +29,7 @@ import { VoucherAcquisitionConfirm } from "./VoucherAcquisitionConfirm";
 import { VoucherCard } from "./VoucherCards";
 import { VoucherModalDetailTransition, VoucherModalFrame } from "./VoucherModalSections";
 import { CustomerVoucherHistory } from "@/src/components/shared/CustomerVoucherHistory";
+import { CustomerPointsHistory } from "@/src/components/customer/CustomerPointsHistory";
 import { VoucherPackageCatalog } from "./VoucherPackageCatalog";
 import { VoucherDetailSheet } from "./VoucherDetailSheet";
 import { BundleVoucherSetupSheet } from "./BundleVoucherSetupSheet";
@@ -91,6 +92,7 @@ export default function VoucherModal() {
   }, [queryClient]);
   const { acquire, retryRefresh, receipt, isPending } = useVoucherAcquisition({ refreshWallet });
   const [activeTab, setActiveTab] = useState<VoucherModalTab>("my_vouchers");
+  const [pointsHistoryOpen, setPointsHistoryOpen] = useState(false);
   const [pendingPackage, setPendingPackage] = useState<VoucherPackage | null>(null);
   const [exchangingId, setExchangingId] = useState<string | null>(null);
   const [highlightToken, setHighlightToken] = useState<string | null>(null);
@@ -111,6 +113,7 @@ export default function VoucherModal() {
     setBundleSetupVoucher(null);
     setRefundCandidate(null);
     setWelcomeRewardOpen(false);
+    setPointsHistoryOpen(false);
   }, []);
   const closeVoucherSurface = useCallback(() => {
     close();
@@ -306,6 +309,7 @@ export default function VoucherModal() {
     if (!claimUseNowVoucherRequest(token, requestVersion)) return;
     consumingUseNowVersionRef.current = requestVersion;
     if (pendingIntent) clearIntent();
+    setPointsHistoryOpen(false);
     setActiveTab("my_vouchers");
 
     const stillOwnsDispatch = () => {
@@ -362,7 +366,10 @@ export default function VoucherModal() {
   }, [refundCandidate, refundMutation]);
 
   useEffect(() => {
-    if (open) setActiveTab(isLoggedIn ? "my_vouchers" : "packages");
+    if (open) {
+      setPointsHistoryOpen(false);
+      setActiveTab(isLoggedIn ? "my_vouchers" : "packages");
+    }
   }, [isLoggedIn, open]);
 
   const acquirePackage = useCallback(async (pkg: VoucherPackage) => {
@@ -497,15 +504,21 @@ export default function VoucherModal() {
       isLoggedIn={isLoggedIn}
       voucherCount={activeVouchers.length}
       pointsBalance={points}
+      onPointsClick={() => setPointsHistoryOpen(true)}
       onChange={setActiveTab}
       onClose={closeVoucherSurface}
-      detailOpen={detailVoucher !== null || detailPackage !== null}
+      detailOpen={pointsHistoryOpen || detailVoucher !== null || detailPackage !== null}
       overlayContent={(
         <>
           <AnimatePresence>{qrVoucher && <QrModal voucher={qrVoucher} onClose={() => setQrVoucher(null)} />}</AnimatePresence>
           <VoucherAcquisitionConfirm pkg={pendingPackage} pointsBalance={points} isLoading={isPending} onCancel={() => setPendingPackage(null)} onConfirm={() => { if (pendingPackage) void acquirePackage(pendingPackage); }} />
 
           <VoucherModalDetailTransition>
+            {pointsHistoryOpen && isLoggedIn ? <CustomerPointsHistory
+              key="points-history"
+              onBack={() => { setPointsHistoryOpen(false); setActiveTab("my_vouchers"); }}
+              onClose={closeVoucherSurface}
+            /> : null}
             {detailPackage && (
               <VoucherDetailSheet
                 key="package-detail-sheet"
@@ -634,7 +647,7 @@ export default function VoucherModal() {
   return (
     <ResponsiveOverlay
       open={open}
-      title="Voucher"
+      title={pointsHistoryOpen ? "Lịch sử điểm" : "Voucher"}
       presentation="bare"
       className="w-full md:max-w-2xl"
       onOpenChange={(nextOpen) => { if (!nextOpen) closeVoucherSurface(); }}

@@ -6,6 +6,7 @@ import type {
   BundleApplicationPayload,
   CreateOrderPayload,
   CustomerHistoryOrdersResponse,
+  CustomerOrderHistoryFilter,
   CustomerOrderDetail,
   CreateOrderResult,
   PriceConflict,
@@ -161,10 +162,10 @@ export async function createOrder(
 
 /**
  * Fetches the paginated list of orders for the current customer.
- * Calls GET /api/orders with optional status filter.
+ * Calls GET /api/orders with an optional status or fulfillment filter.
  */
 export async function fetchCustomerOrders(
-  params?: { page?: number; limit?: number; statusFilter?: "active" | "cancelled" },
+  params?: { page?: number; limit?: number; statusFilter?: CustomerOrderHistoryFilter },
 ): Promise<CustomerHistoryOrdersResponse> {
   const query = new URLSearchParams();
   if (params?.page) query.append("page", params.page.toString());

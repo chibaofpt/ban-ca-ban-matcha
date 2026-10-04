@@ -83,7 +83,9 @@ export default function AdminUsersPage() {
   });
   const user = detailQuery.data ?? selected;
   const busy = accountMutation.isPending || pointsMutation.isPending || voucherBusy;
-  const sheetTitle = detailView.kind === "gift-points" ? "Tặng điểm"
+  const isCustomerVoucherList = detailView.kind === "customer" && activeTab === "vouchers";
+  const sheetTitle = isCustomerVoucherList ? "Voucher"
+    : detailView.kind === "gift-points" ? "Tặng điểm"
     : detailView.kind === "gift-voucher" ? "Tặng voucher"
       : detailView.kind === "order" ? orderQuery.data?.code ?? "Chi tiết đơn hàng"
         : user?.name ?? "Chi tiết khách hàng";
@@ -91,6 +93,7 @@ export default function AdminUsersPage() {
     ? "Các giá trị đã lưu tại thời điểm đặt đơn."
     : user ? `${user.phone_number} · ${user.current_voucher_count} voucher hiện có` : "Đang tải thông tin khách hàng";
 
+  const overlayDescription = isCustomerVoucherList ? (user?.name ?? "Đang tải thông tin khách hàng") : sheetDescription;
   function handleInputChange(value: string) {
     setInput(value);
     setPage(1);
@@ -139,7 +142,17 @@ export default function AdminUsersPage() {
     <div className="flex min-h-11 min-w-0 items-center gap-2 rounded-xl border bg-background px-3"><Search className="h-4 w-4 shrink-0 text-muted-foreground" /><input id="admin-user-search" value={input} onChange={(event) => handleInputChange(event.target.value)} placeholder="Tìm theo tên, số điện thoại, @instagram" className="min-w-0 flex-1 bg-transparent text-sm outline-none" /></div>
     {listQuery.isPending ? <p role="status" className="flex justify-center gap-2 py-12 text-muted-foreground"><Loader2 className="animate-spin" />Đang tải khách hàng…</p> : listQuery.isError ? <div className="space-y-3 rounded-2xl bg-destructive/10 p-5 text-destructive"><p role="alert">Không tải được danh sách khách hàng.</p><Button variant="outline" onClick={() => void listQuery.refetch()}>Thử lại</Button></div> : listQuery.data.items.length === 0 ? <p className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">Không tìm thấy khách hàng phù hợp.</p> : <section className="space-y-3" aria-label="Danh sách khách hàng">{listQuery.data.items.map((item) => <AdminUserSummary key={item.qr_token} user={item} interactive onClick={() => setSelected(item)} />)}<AdminUserPagination page={listQuery.data.page} totalPages={listQuery.data.total_pages} disabled={listQuery.isFetching} onPageChange={setPage} /></section>}
 
-    <ResponsiveOverlay open={Boolean(selected)} title={sheetTitle} description={sheetDescription} size="lg" dismissPolicy="locked-while-busy" busy={busy} onOpenChange={(open) => { if (!open) closeCustomer(); }}>
+    <ResponsiveOverlay
+      open={Boolean(selected)}
+      title={sheetTitle}
+      description={overlayDescription}
+      titleClassName={isCustomerVoucherList ? "text-sm font-normal text-muted-foreground" : undefined}
+      descriptionClassName={isCustomerVoucherList ? "mt-1 text-base font-semibold text-foreground" : undefined}
+      size="lg"
+      dismissPolicy="locked-while-busy"
+      busy={busy}
+      onOpenChange={(open) => { if (!open) closeCustomer(); }}
+    >
       {detailQuery.isPending || !user ? <p role="status" className="flex justify-center gap-2 py-10 text-muted-foreground"><Loader2 className="animate-spin" />Đang tải chi tiết…</p> : detailQuery.isError ? <div className="space-y-3"><p role="alert" className="text-destructive">Không tải được chi tiết khách hàng.</p><Button variant="outline" onClick={() => void detailQuery.refetch()}>Thử lại</Button></div> : detailView.kind === "customer" ? <div className="space-y-6">
         <section className="rounded-2xl border bg-card p-4"><AdminUserSummary user={user} /></section>
         <AdminUserActions user={user} busy={busy} onShowPoints={() => setDetailView({ kind: "gift-points" })} onShowVouchers={() => setDetailView({ kind: "gift-voucher" })} onResetPassword={() => setIntent(accountIntent({ action: "reset_password" }))} onBlockToggle={() => setIntent(accountIntent({ action: "block", is_blocked: !user.is_blocked }))} onVerify={() => setIntent(accountIntent({ action: "verify", is_verified: !user.is_verified }))} />

@@ -13,7 +13,7 @@ const money = new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND
 /** Displays the canonical admin customer identity and yearly value summary. */
 export function AdminUserSummary({ user, interactive = false, onClick }: AdminUserSummaryProps) {
   const body = (
-    <div className="flex min-w-0 flex-1 items-start justify-between gap-3 text-left">
+    <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,48%)] gap-x-3 gap-y-2 text-left">
       <div className="min-w-0">
         <p className="truncate font-semibold text-foreground">{user.name}</p>
         <p className="truncate text-sm text-muted-foreground">{user.phone_number}{user.insta_name ? ` · @${user.insta_name.replace(/^@/, "")}` : ""}</p>
@@ -23,12 +23,14 @@ export function AdminUserSummary({ user, interactive = false, onClick }: AdminUs
           {user.is_blocked ? <span className="rounded-full bg-destructive/10 px-2 py-1 text-destructive">Đã chặn</span> : null}
         </div>
       </div>
-      <div className="max-w-[48%] shrink-0 text-right">
+      <div className="min-w-0 text-right">
         <p className="font-bold text-primary">{money.format(user.annual_spend_vnd)}</p>
         <p className="text-xs text-muted-foreground">Chi tiêu matcha {user.spending_year}</p>
-        <p className="mt-1 text-sm font-medium text-foreground">{user.points_balance.toLocaleString("vi-VN")} điểm</p>
-        <p className="max-w-48 text-xs text-muted-foreground">Đã sử dụng {user.points_spent.toLocaleString("vi-VN")} điểm đổi {user.vouchers_exchanged.toLocaleString("vi-VN")} vouchers</p>
       </div>
+      <p className="col-span-2 text-base font-medium text-emerald-800 dark:text-emerald-300">
+        Bạn đang có <span className="font-bold text-emerald-900 dark:text-emerald-200">{user.points_balance.toLocaleString("vi-VN")}</span> điểm ká
+      </p>
+      <p className="col-span-2 text-xs text-muted-foreground">Đã sử dụng {user.points_spent.toLocaleString("vi-VN")} điểm đổi {user.vouchers_exchanged.toLocaleString("vi-VN")} vouchers</p>
     </div>
   );
   if (!interactive) return body;
