@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { scheduleOrderChange } from "@/lib/orderRealtime";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { runSerializableTransaction } from "@/lib/serializableTransaction";
@@ -123,7 +124,7 @@ export async function POST(req: NextRequest) {
       );
     }
     const originalData = data;
-    return await runSerializableTransaction(prisma, async (tx) => {
+    const response = await runSerializableTransaction(prisma, async (tx) => {
     const data = structuredClone(originalData);
 
     // Step 1: Resolve user (read-only) — skip entirely for anonymous
@@ -608,6 +609,8 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
     }, { timeoutMs: 30_000 });
+    if (response.status === 201) scheduleOrderChange();
+    return response;
   } catch (err) {
     if (err instanceof Error && "code" in err && err.code === "P2034") {
       return NextResponse.json({ error: "Order changed concurrently", code: "CONFLICT" }, { status: 409 });

@@ -19,6 +19,7 @@ import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { OrderProgressBar } from "@/src/components/shared/OrderProgressBar";
 import { DailyReportModal } from "@/src/components/report/DailyReportModal";
 import { useAdminPendingTransferCount } from "@/src/hooks/useAdminPendingTransferCount";
+import { useOrderRealtime } from "@/src/components/shared/OrderRealtimeProvider";
 
 const formatDateTime = (iso: string): string => {
   const d = new Date(iso);
@@ -42,6 +43,7 @@ const formatOrderType = (type: string): string => {
 void formatOrderType;
 
 export default function AdminOrdersPage() {
+  const realtimeConnected = useOrderRealtime();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<OrderTabKey>("all");
   const [page, setPage] = useState(1);
@@ -107,7 +109,7 @@ export default function AdminOrdersPage() {
   const { data: queryData, isLoading: isInitialLoading } = useQuery({
     queryKey: ["admin", "orders", { activeTab, activeFilters, page }],
     queryFn: fetchOrdersFn,
-    refetchInterval: activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000,
+    refetchInterval: realtimeConnected ? 300_000 : activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000,
   });
 
   const orders = queryData?.data || [];
@@ -412,7 +414,7 @@ export default function AdminOrdersPage() {
                   </div>
 
                   <DeliveryRecipientDetails {...order} />
-                  <button type="button" className="min-h-11 w-full rounded-xl border border-border bg-muted/40 px-3 text-sm font-semibold" onClick={() => setDetailOrderId(order.id)}>Chi tiết đơn</button>
+                  <button type="button" className="min-h-11 w-full rounded-xl border border-primary/20 bg-primary/10 px-3 text-sm font-semibold text-foreground transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setDetailOrderId(order.id)}>Chi tiết đơn</button>
                   {/* Progress Bar — chỉ hiện cho non-terminal states */}
                   {!isTerminal && (
                     <div className="pt-1">

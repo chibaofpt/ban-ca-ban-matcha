@@ -56,11 +56,11 @@ describe("Content Security Policy dùng nonce", () => {
     expect(policy).toContain("worker-src 'self' blob:");
   });
 
-  it("chỉ cho phép Google Maps làm nguồn iframe", () => {
+  it("cho phép Google Maps và Turnstile làm nguồn iframe", () => {
     const policy = buildContentSecurityPolicy("fixed-nonce");
     const frameDirective = policy.split(";").find((part) => part.trim().startsWith("frame-src"));
 
-    expect(frameDirective?.trim()).toBe("frame-src https://www.google.com");
+    expect(frameDirective?.trim()).toBe("frame-src https://www.google.com https://challenges.cloudflare.com");
     expect(frameDirective).not.toContain("*");
   });
 

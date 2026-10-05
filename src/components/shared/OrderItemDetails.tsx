@@ -1,6 +1,7 @@
 import { SWEETNESS_OPTIONS, ICE_OPTIONS } from "@/src/constants/orderOptions";
 import type { OrderItemRes } from "@/src/services/staffOrdersListService";
 import { Ticket } from "lucide-react";
+import { formatKa } from "@/src/utils/display";
 
 /** Render configuration and each persisted item voucher exactly once. */
 export function OrderItemDetails({ item }: { item: OrderItemRes }) {
@@ -44,7 +45,7 @@ export function OrderItemDetails({ item }: { item: OrderItemRes }) {
       } else if (groupName.includes("matcha")) {
         // extra matcha
         if (addon.addonOption.gram_value && addon.addonOption.gram_value !== "0") {
-          const priceStr = addon.unit_price_vnd > 0 ? ` (+${(addon.unit_price_vnd / 1000).toLocaleString("vi-VN")}K)` : "";
+          const priceStr = addon.unit_price_vnd > 0 ? ` (+${formatKa(addon.unit_price_vnd)})` : "";
           addonChips.push(`Thêm ${addon.addonOption.gram_value}g Matcha${priceStr}`);
         }
       } else {
@@ -97,13 +98,13 @@ export function OrderItemDetails({ item }: { item: OrderItemRes }) {
           {lineVoucher && (
             <div className="text-[10px] font-bold bg-muted/50 border border-border text-primary px-2 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
               <Ticket size={12} className="text-primary" /> {lineVoucher.package.name}
-              {item.product_voucher_discount_vnd ? ` (-${(item.product_voucher_discount_vnd / 1000).toLocaleString("vi-VN")}K)` : ""}
+              {item.product_voucher_discount_vnd ? ` (-${formatKa(item.product_voucher_discount_vnd)})` : ""}
             </div>
           )}
           {item.addonVouchers && item.addonVouchers.map((av, idx) => (
             <div key={idx} className="text-[10px] font-bold bg-muted/50 border border-border text-primary px-2 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
               <Ticket size={12} className="text-primary" /> Free {av.voucher.package.name}
-              {av.discount_applied_vnd ? ` (-${(av.discount_applied_vnd / 1000).toLocaleString("vi-VN")}K)` : ""}
+              {av.discount_applied_vnd ? ` (-${formatKa(av.discount_applied_vnd)})` : ""}
             </div>
           ))}
         </div>

@@ -107,6 +107,30 @@ Query key phải ổn định, có prefix theo audience/domain và tái sử d�
 xóa private customer/staff/admin query caches nhưng giữ public menu/catalog caches. Inline key và direct
 `apiClient` đang tồn tại là legacy exception; không dùng làm mẫu cho code mới.
 
+### Order Realtime
+
+Admin/staff shell owns one private Supabase Broadcast channel `orders:operations` through
+`OrderRealtimeProvider` and `orderRealtimeService`. Receive-only capabilities are issued by the
+[Realtime token endpoint](API.md#get-apirealtimeorderstoken), using an ES256 key imported into the
+same Supabase project. App authentication remains custom cookie auth; no Supabase Auth login.
+
+`lib/orderRealtime.ts` sends an empty `orders_changed` signal through the REST Broadcast API after
+committed create, confirm, status/cancel and auto-cancel writes. Route writes use `after()`; cron
+emits once per successful batch. No server websocket, row payload, order-table client grants, or
+order-table publication is needed for this REST Broadcast path. Platform receive policy is maintained
+in [configure-order-realtime.sql](scripts/configure-order-realtime.sql); application schema stays Prisma-owned.
+
+Signals are coalesced and invalidate the admin/staff orders prefixes, including badge queries.
+First subscribe, reconnect, returning to the foreground and network restoration refresh via the
+existing authorized API/service path. JWT renewal checks the current app session/role; failed renewal
+disposes the old connection. Cleanup removes the exact channel, timers and browser listeners.
+
+Healthy subscriptions retain only a 5-minute safety refresh because delivery is best-effort after
+commit. Disconnection or missing configuration retains the existing list/badge polling cadence.
+Web push remains a separate background notification channel. Per-environment URL, publishable key
+and server signing JWK belong to [.env.local.example](.env.local.example).
+Rationale: [private order signals](docs/decisions/0005-private-order-realtime.md).
+
 ### Server cache boundary
 
 Upstash Redis đang chạy cache-aside cho bốn public reads: menu, powders, store status và voucher
@@ -118,10 +142,21 @@ Redis rate-limit counters dùng namespace riêng và policy trong `API.md`. Lega
 evict; PostgreSQL session state vẫn là authorization authority. Không thêm cache cho route khác hoặc
 đặt business correctness phụ thuộc Redis nếu chưa có task kiến trúc duyệt scope và invalidation.
 
-Trang `/test-sms` trên staging preview dùng Redis trong namespace riêng `sms-test` để giữ OTP
-challenge ngắn hạn, request idempotency, cooldown và quota. Đây là state tạm của công cụ thử
-ABENLA, không phải cache cho public read hoặc nguồn xác thực session. Send/verify fail closed
-khi Redis không sẵn sàng; không fallback vào bộ nhớ Vercel Function hay database production.
+OTP đăng ký khách hàng dùng namespace Redis riêng cho admission, lịch chờ, idempotency và quota
+theo môi trường. Redis lỗi thì chặn gửi có phí và
+không fallback vào bộ nhớ Function. Prisma sở hữu cấu hình bật/tắt toàn hệ thống và challenge OTP;
+consume challenge cùng transaction tạo/claim khách, quà chào mừng và session. Đây là scope state
+bảo mật đã duyệt cho đăng ký, không mở rộng Redis cache-aside hoặc nguồn xác thực session.
+Policy thuộc [API registration OTP](API.md#registration-otp--public-onboarding), semantics thuộc
+[SCHEMA](SCHEMA.md#otp_attempts--registration-otp). Hostname allowlist do Cloudflare Turnstile widget settings quản lý; server xác minh token/action
+qua Siteverify, không giữ một hostname env riêng. Turnstile và ABENLA nằm sau adapter; fallback
+Turnstile khi dịch vụ lỗi vẫn bắt buộc qua quota OTP.
+Client Upstash vẫn chỉ được tạo trong `lib/redis.ts`. Client riêng cho OTP dùng timeout HTTP
+và không retry; client cache/limiter tổng quát giữ policy hiện có. Admission giữ row lock cấu hình
+trong transaction không retry khi gọi Redis, rồi chỉ dispatch provider sau transaction commit.
+Redis reservation đã xảy ra nhưng transaction lỗi được giữ lại; không tự hoàn quota hoặc gửi lại.
+CSP giữ nonce và chỉ bổ sung nguồn Cloudflare cần cho widget. Khách nhận mã qua Zalo sau khi điền đủ thông tin; admin quản lý công tắc/quota và
+xem số dư trong Quản lý khách hàng.
 
 ## Business consistency boundaries
 
@@ -170,6 +205,37 @@ khi Redis không sẵn sàng; không fallback vào bộ nhớ Vercel Function ha
 - Lucide cho structural icons. Ký hiệu 🐟 được phép khi biểu diễn đơn vị thương hiệu.
 - `src/utils/cn.ts` là class-name helper canonical.
 
+### Registration OTP form
+
+Public registration keeps its information steps and adds a code step when the server requires OTP.
+Inputs and feedback follow `mobile-ux`; business policy and errors belong to
+[API registration OTP](API.md#registration-otp--public-onboarding).
+
+A challenge sent in the current mount may be reused only for the same normalized registration
+details. Editing those details requires a fresh send flow; changing phones must not inherit another
+phone's countdown. After reload, the UI explains that the customer must re-enter the original
+details to continue with the previous code and offers a recovery path to request a new code.
+Credentials and payload fingerprints are not persisted in browser storage.
+
+Send/resend uses the server's retry time and refreshes its countdown when a background tab resumes.
+An older configuration request must not overwrite the challenge produced by a newer send.
+Only a successful registration response transitions into the existing session/welcome flow.
+
+Manual acceptance remains `MANUAL_UI_REQUIRED`:
+
+- Khi sửa tên, mật khẩu, Instagram hoặc số điện thoại, kể cả số mới trùng ba số cuối, thì UI không
+  tự dùng challenge của thông tin cũ; số mới không chịu countdown của số cũ.
+- Khi reload, thì customer có thể nhập lại đúng thông tin để dùng mã còn hạn hoặc chọn gửi mã mới;
+  UI không lưu lại mật khẩu và không claim proof hợp lệ trước phản hồi server. Nếu nhập nhầm
+  thông tin khi resume, thì quay lại sửa đúng và chọn dùng mã đã nhận không gọi gửi thêm tin.
+- Khi GET cấu hình cũ trả về sau resend thành công, thì UI vẫn giữ challenge mới. Background tab
+  trở lại dùng thời gian thực và server retry time, không cho gửi sớm vì timer cũ.
+- Khi OTP hợp lệ, thì tài khoản được tạo/claim, xác thực và tự đăng nhập đúng một lần. Khi công tắc
+  tắt hoặc provider/verification lỗi, thì UI phản ánh trạng thái server và không claim success.
+  Khi Admin tắt OTP lúc customer đang chờ hoặc mã đã hết hạn, control kiểm tra lại chế độ đăng ký
+  cho phép cập nhật chế độ không OTP mà không phải chờ countdown cũ.
+
+
 ### Primitive decision matrix
 
 | Tình huống | Primitive bắt buộc |
@@ -208,6 +274,8 @@ Overlay layer chỉ có `base`, `nested`, `critical`. Không tạo z-index tùy 
 Button dùng variants `primary`, `secondary`, `outline`, `ghost`, `destructive`. Option card/tab có thể là specialized control nhưng vẫn phải có semantic button và focus state.
 
 Nhãn size đồ uống trong UI dùng `SizeLabel`; khi cần ghép thành chuỗi, dùng `formatSizeLabel`. Enum `SMALL`/`MEDIUM`/`LARGE` chỉ thuộc data contract, không render trực tiếp cho người dùng.
+
+ResponsiveOverlay exposes optional titleClassName and descriptionClassName for flow-specific text presentation; the shared overlay retains ownership of header structure and accessibility semantics.
 
 ## Legacy UI migration policy
 

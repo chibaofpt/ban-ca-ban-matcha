@@ -9,7 +9,7 @@ import {
   openStore,
 } from "@/src/services/adminStoreService";
 import type { DaySchedule } from "@/src/services/adminStoreService";
-import { useBodyScrollLock } from "@/src/hooks/useBodyScrollLock";
+import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 import { STORE_STATUS_QUERY_KEY, useStoreStatus } from "@/src/hooks/useStoreStatus";
 import { getStoreStatus } from "@/src/services/storeStatusService";
 
@@ -191,29 +191,9 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
     }
   };
 
-  useBodyScrollLock(isOpen);
-
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="bg-card w-full max-w-lg max-h-[90vh] overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain rounded-2xl shadow-2xl border border-border">
-        {/* Header */}
-        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-4 bg-card border-b border-border rounded-t-2xl">
-          <h2 className="text-lg font-semibold text-foreground">⚙️ Cài đặt cửa hàng</h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-muted transition text-muted-foreground"
-            aria-label="Đóng"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="p-5 space-y-6">
+    <ResponsiveOverlay open={isOpen} title="Giờ mở cửa" size="md" dismissPolicy="locked-while-busy" busy={saving || closureLoading} onOpenChange={(open) => { if (!open) onClose(); }}>
+        <div className="space-y-6">
           {/* Section 1: Temporary Closure */}
           <section>
             <h3 className="text-sm font-semibold text-foreground mb-3 uppercase tracking-wide opacity-70">
@@ -425,7 +405,6 @@ export default function StoreSettingsModal({ isOpen, onClose }: StoreSettingsMod
             </div>
           </section>
         </div>
-      </div>
-    </div>
+    </ResponsiveOverlay>
   );
 }

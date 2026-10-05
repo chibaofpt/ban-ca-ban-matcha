@@ -183,6 +183,12 @@ describe("checkAndResubscribe", () => {
     vi.clearAllMocks();
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY = VAPID_PUBLIC_KEY;
     mockPost.mockResolvedValue({ data: { data: { subscribed: true } } });
+    mockNotification.permission = "granted";
+    mockGetSubscription.mockResolvedValue(mockPushSubscription);
+    Object.defineProperty(global, "navigator", {
+      value: { serviceWorker: { getRegistration: () => Promise.resolve(mockRegistration) } },
+      writable: true,
+    });
   });
 
   it("không throw dù có lỗi — silent, iOS reliability", async () => {
@@ -226,6 +232,37 @@ describe("checkAndResubscribe", () => {
     );
   });
 
+  it("trả false khi server không đồng bộ được subscription còn trên trình duyệt", async () => {
+    mockPost.mockRejectedValueOnce(new Error("Subscription sync failed"));
+
+    await expect(checkAndResubscribe()).resolves.toBe(false);
+    expect(mockPost).toHaveBeenCalledWith("/api/push/subscribe", {
+      endpoint: "https://fcm.googleapis.com/fcm/send/test-endpoint",
+      keys: { p256dh: "BNSAr9GqsZKxLnO8Aopf2hS12345", auth: "auth-secret" },
+    });
+  });
+
+  it("chờ server xác nhận trước khi báo subscription đã bật", async () => {
+    let finishSync = () => {};
+    mockPost.mockReturnValueOnce(new Promise<void>((resolve) => { finishSync = resolve; }));
+    const result = checkAndResubscribe();
+    let settled = false;
+    void result.then(() => { settled = true; });
+    await vi.waitFor(() => expect(mockPost).toHaveBeenCalled());
+    expect(settled).toBe(false);
+    finishSync();
+    await expect(result).resolves.toBe(true);
+  });
+
+  it("trả false và không gửi payload khi subscription thiếu keys", async () => {
+    mockGetSubscription.mockResolvedValueOnce({
+      toJSON: () => ({ endpoint: "https://fcm.googleapis.com/fcm/send/test-endpoint" }),
+    });
+
+    await expect(checkAndResubscribe()).resolves.toBe(false);
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
   it("không re-subscribe nếu subscription vẫn còn active", async () => {
     Object.defineProperty(global, "navigator", {
       value: {
@@ -243,8 +280,11 @@ describe("checkAndResubscribe", () => {
 
     await checkAndResubscribe();
 
-    // Nếu đã có rồi → upsert (để refresh), không unsubscribe rồi subscribe lại
-    // Server tự xử lý upsert nếu endpoint trùng
+    // Refresh server ownership and active state without replacing the browser subscription.
     expect(mockSubscribe).not.toHaveBeenCalled();
+    expect(mockPost).toHaveBeenCalledWith("/api/push/subscribe", {
+      endpoint: "https://fcm.googleapis.com/fcm/send/test-endpoint",
+      keys: { p256dh: "BNSAr9GqsZKxLnO8Aopf2hS12345", auth: "auth-secret" },
+    });
   });
 });

@@ -24,28 +24,44 @@ interface Props {
 
 /** Render one shared read-only order frame while callers retain operational and reorder actions. */
 export function OrderReadOnlyDetail({ open, onOpenChange, order, children }: Props) {
-  const money = (value: number) => `${value.toLocaleString("vi-VN")}đ`;
+  const itemDiscountTotal = order.items.reduce((total, item) => total + (item.total_discount_vnd ?? 0), 0);
+
   return <ResponsiveOverlay open={open} onOpenChange={onOpenChange} title="Chi tiết đơn" size="md">
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-mono font-semibold">{order.order_code ?? `#${order.id.slice(0, 8)}`}</p>
-        <span className="rounded-lg bg-muted px-3 py-2 text-sm font-semibold">{statusLabels[order.status]}</span>
+        <span className={order.status === "COMPLETED" ? "rounded-lg bg-primary/10 px-3 py-2 text-sm font-semibold text-primary" : "rounded-lg bg-muted px-3 py-2 text-sm font-semibold text-foreground"}>{statusLabels[order.status]}</span>
       </div>
       <PaymentMethodBadge method={resolveOrderPaymentMethod(order.order_type, order.payment_method)} />
       <OrderProgressBar status={order.status} />
       <DeliveryRecipientDetails {...order} detail />
-      {children ?? <ul className="space-y-3">{order.items.map((item, index) => <li key={index} className="border-b border-border/50 pb-3">
-        <div className="flex justify-between gap-2 text-sm font-semibold">
-          <span>{item.menuItem.name} {item.size ? formatOrderSize(item.size) : "Add-on"} ×{item.quantity}</span>
-          <span>{formatKa((item.unit_price_vnd + item.addons_price_vnd) * item.quantity, "ceil")}</span>
-        </div>
-        <OrderItemDetails item={item} />
-      </li>)}</ul>}
+      {children ?? <ul className="space-y-3">{order.items.map((item, index) => {
+        const itemPrice = item.unit_price_vnd + item.addons_price_vnd;
+        const itemDiscount = item.total_discount_vnd ?? 0;
+        return <li key={index} className="border-b border-border/50 pb-3">
+          <div className="flex justify-between gap-2 text-sm font-semibold">
+            <span>{item.menuItem.name} {item.size ? formatOrderSize(item.size) : "Add-on"}</span>
+            <span className="flex flex-col items-end leading-tight">
+              {itemDiscount > 0 && <span className="text-xs font-light text-foreground line-through">{formatKa(itemPrice)}</span>}
+              <span className={itemDiscount > 0 ? "font-bold text-foreground" : "font-semibold text-foreground"}>{formatKa(itemPrice - itemDiscount / item.quantity)}</span>
+              <span className="text-xs font-normal text-muted-foreground">×{item.quantity}</span>
+            </span>
+          </div>
+          <OrderItemDetails item={item} />
+        </li>;
+      })}</ul>}
       {!children && (order.discountVouchers?.length ?? 0) > 0 ? <p className="text-sm text-muted-foreground">Voucher đơn: {order.discountVouchers!.map((entry) => entry.voucher.package.name).join(", ")}</p> : null}
       <dl className="space-y-2 border-t border-border pt-3 text-sm">
-        {[ ["Tạm tính", order.subtotal_vnd], ["Giảm voucher đơn", -order.total_voucher_discount_vnd],
-          ["Phí giao hàng", order.shipping_fee_vnd], ["Giảm giao hàng", -order.freeship_discount_vnd],
-          ["Tổng thanh toán", order.grand_total_vnd] ].map(([label, value]) => <div key={label} className="flex justify-between gap-3"><dt>{label}</dt><dd className="font-semibold">{money(Number(value))}</dd></div>)}
+        {[
+          { label: "Tạm tính", value: order.subtotal_vnd, keepZero: true, isDiscount: false },
+          { label: "Giảm voucher đơn", value: -order.total_voucher_discount_vnd, keepZero: false, isDiscount: true },
+          { label: "Giảm món", value: -itemDiscountTotal, keepZero: false, isDiscount: true },
+          { label: "Phí giao hàng", value: order.shipping_fee_vnd, keepZero: false, isDiscount: false },
+          { label: "Giảm giao hàng", value: -order.freeship_discount_vnd, keepZero: false, isDiscount: true },
+          { label: "Tổng thanh toán", value: order.grand_total_vnd, keepZero: true, isDiscount: false },
+        ]
+          .filter((row) => row.keepZero || Number(row.value) !== 0)
+          .map(({ label, value, isDiscount }) => <div key={label} className={isDiscount ? "flex justify-between gap-3 text-destructive" : "flex justify-between gap-3"}><dt>{label}</dt><dd className="font-semibold">{formatKa(Number(value))}</dd></div>)}
       </dl>
     </div>
   </ResponsiveOverlay>;

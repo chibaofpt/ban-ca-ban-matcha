@@ -28,6 +28,7 @@ export function OrderHistoryItems({
   const visibleItems =
     maxItems !== undefined ? groupedItems.slice(0, maxItems) : groupedItems;
   const showDiscount = maxItems === undefined || groupedItems.length <= maxItems;
+  const showItemDiscounts = maxItems === undefined;
 
   const orderDiscountVouchers = order.discountVouchers ?? [];
   const hasOrderDiscount = order.total_voucher_discount_vnd > 0;
@@ -36,11 +37,12 @@ export function OrderHistoryItems({
     <ul className="space-y-4 pb-2 text-sm text-foreground/90">
       {visibleItems.map((item, index) => {
         const itemPrice = item.unit_price_vnd + item.addons_price_vnd;
+        const itemDiscount = item.total_discount_vnd ?? 0;
 
         return (
           <li key={`${item.menu_item_id}-${index}`} className="flex flex-col gap-1">
 
-            {/* Row 1: name+size LEFT — price · ×qty · [Đặt lại] RIGHT */}
+            {/* Row 1: name+size LEFT — price with quantity below · [Đặt lại] RIGHT */}
             <div className="flex items-start justify-between gap-2">
               <span className="text-[13px] font-semibold leading-snug">
                 {item.menuItem.name}{" "}
@@ -50,12 +52,27 @@ export function OrderHistoryItems({
               </span>
 
               <div className="flex shrink-0 items-center gap-1.5">
-                <span className="text-[13px] font-semibold text-primary">
-                  {formatKa(itemPrice, "ceil")}
-                </span>
-                <span className="text-[12px] text-muted-foreground">
-                  ×{item.quantity}
-                </span>
+                <div className="flex flex-col items-end gap-0.5">
+                  {showItemDiscounts ? (
+                    <div className="flex flex-col items-end leading-tight">
+                      {itemDiscount > 0 && (
+                        <span className="text-[11px] font-light text-foreground line-through">
+                          {formatKa(itemPrice)}
+                        </span>
+                      )}
+                      <span className={itemDiscount > 0 ? "text-[13px] font-bold text-foreground" : "text-[13px] font-semibold text-foreground"}>
+                        {formatKa(itemPrice - itemDiscount / item.quantity)}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-[13px] font-semibold text-primary">
+                      {formatKa(itemPrice, "ceil")}
+                    </span>
+                  )}
+                  <span className="text-[12px] text-muted-foreground">
+                    ×{item.quantity}
+                  </span>
+                </div>
                 {canReorder && (
                   <motion.button
                     type="button"

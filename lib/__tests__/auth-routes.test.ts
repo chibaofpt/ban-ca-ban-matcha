@@ -35,6 +35,7 @@ const mockSessionCreate = vi.fn();
 const mockSessionDelete = vi.fn();
 const mockSessionDeleteMany = vi.fn();
 const mockPointsLogCreate = vi.fn();
+const mockRegistrationSettings = vi.fn();
 const mockTransaction = vi.fn();
 const mockEnsureAutoGrantedVouchers = vi.fn();
 const mockCreateWelcomeReward = vi.fn();
@@ -72,6 +73,7 @@ vi.mock("@/lib/rateLimit", () => ({
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
+    registrationOtpSettings: { findUnique: (...args: unknown[]) => mockRegistrationSettings(...args) },
     user: {
       findUnique: (...args: unknown[]) => mockUserFindUnique(...args),
       create: (...args: unknown[]) => mockUserCreate(...args),
@@ -88,7 +90,7 @@ vi.mock("@/lib/prisma", () => ({
     pointsLog: {
       create: (...args: unknown[]) => mockPointsLogCreate(...args),
     },
-    $transaction: (fn: (tx: unknown) => Promise<unknown>) => mockTransaction(fn),
+    $transaction: (fn: (tx: unknown) => Promise<unknown>) => mockTransaction((tx: object) => fn({ ...tx, registrationOtpSettings: { findUnique: (...args: unknown[]) => mockRegistrationSettings(...args), updateMany: vi.fn().mockResolvedValue({ count: 1 }) } })),
   },
 }));
 
@@ -576,6 +578,7 @@ describe("POST /api/auth/login — fail-open khi Redis down", () => {
 describe("POST /api/auth/register — session limit và ghost user conversion", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mockRegistrationSettings.mockResolvedValue({ id: 1, otp_enabled: false, daily_send_limit: 100, revision: 0 });
     mockBcryptHash.mockResolvedValue("$2a$12$hashed");
     mockBcryptCompare.mockResolvedValue(false);
     mockCreateWelcomeReward.mockResolvedValue({
@@ -584,6 +587,20 @@ describe("POST /api/auth/register — session limit và ghost user conversion", 
       status: "PENDING",
       outcome_kind: null,
     });
+  });
+
+  it("OTP bật yêu cầu proof trước khi tạo tài khoản, welcome reward hoặc session", async () => {
+    mockRegistrationSettings.mockResolvedValue({ id: 1, otp_enabled: true, daily_send_limit: 100, revision: 0 });
+    mockUserFindUnique.mockResolvedValue(null);
+    mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn({
+      user: { create: vi.fn().mockResolvedValue(REAL_USER) },
+      session: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn().mockResolvedValue({ id: "new-session", refresh_token: "token" }) },
+    }));
+    const response = await registerPOST(makeRequest({ name: "New", phone_number: "0912345678", password: "secret12" }));
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ code: "BUSINESS_RULE_VIOLATION", details: { reason: "OTP_REQUIRED" } });
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockCreateWelcomeReward).not.toHaveBeenCalled();
   });
 
   it("đăng ký user mới với GACHA pending giữ points_balance bằng 0 và không ghi điểm trực tiếp", async () => {

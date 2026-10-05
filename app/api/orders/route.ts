@@ -128,7 +128,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   );
   const rawStatus = searchParams.get("status");
   const statusFilter =
-    rawStatus === "active" || rawStatus === "cancelled" ? rawStatus : undefined;
+    rawStatus === "active" || rawStatus === "cancelled"
+      || rawStatus === "delivery" || rawStatus === "pickup" ? rawStatus : undefined;
   try {
     const result = await getCustomerOrderHistory(session.id, page, limit, statusFilter);
     return NextResponse.json(result);

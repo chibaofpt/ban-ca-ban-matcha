@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { updateStaffOrderStatus } from "@/src/services/staffOrderService";
 import { resolveOrderPaymentMethod } from "@/src/lib/utils/counterTransferOrder";
 import { useCounterTransferListAction } from "@/src/lib/hooks/useCounterTransferPayment";
+import { useOrderRealtime } from "@/src/components/shared/OrderRealtimeProvider";
 
 const formatDateTime = (iso: string): string => {
   const d = new Date(iso);
@@ -38,6 +39,7 @@ interface StaffOrdersListPageProps {
 
 export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersListPageProps) {
   const queryClient = useQueryClient();
+  const realtimeConnected = useOrderRealtime();
   const [activeTab, setActiveTab] = useState<OrderTabKey>("counter");
   const [page, setPage] = useState(1);
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
@@ -69,13 +71,13 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
   const { data: queryData, isLoading: isInitialLoading, isFetching: isRefreshing } = useQuery({
     queryKey: ["staff", "orders", { activeTab, page }],
     queryFn: fetchOrdersFn,
-    refetchInterval: activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000,
+    refetchInterval: realtimeConnected ? 300_000 : activeTab === "customer" ? 15000 : activeTab === "pending" ? 10000 : 30000,
   });
 
   const orders = queryData?.data || [];
   const totalPages = queryData?.meta.totalPages || 1;
 
-  // Background polling cho pendingCount
+  // Socket invalidation and fallback refresh keep the pending count current.
   const fetchPendingCountAPI = useCallback(async () => {
     try {
       const res = await fetchOrdersList({ status: "PENDING", limit: 1 });
@@ -88,7 +90,7 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
   const { data: pendingRes } = useQuery({
     queryKey: ["staff", "orders", "pending-count"],
     queryFn: fetchPendingCountAPI,
-    refetchInterval: 20000,
+    refetchInterval: realtimeConnected ? 300_000 : 20000,
     enabled: true,
   });
 
@@ -274,7 +276,7 @@ export default function StaffOrdersListPage({ userRole = "STAFF" }: StaffOrdersL
                   </div>
 
                   <DeliveryRecipientDetails {...order} />
-                  <button type="button" className="min-h-11 w-full rounded-xl border border-border bg-muted/40 px-3 text-sm font-semibold" onClick={() => setDetailOrderId(order.id)}>Chi tiết đơn</button>
+                  <button type="button" className="min-h-11 w-full rounded-xl border border-primary/20 bg-primary/10 px-3 text-sm font-semibold text-foreground transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setDetailOrderId(order.id)}>Chi tiết đơn</button>
                   {/* Progress Bar */}
                   {!isTerminal && (
                     <div className="pt-1">

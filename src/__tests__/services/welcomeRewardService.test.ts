@@ -98,6 +98,18 @@ describe("welcomeRewardService", () => {
     expect(caught).not.toBeInstanceOf(ApiServiceError);
   });
 
+  it("đăng ký giữ payload proof và lỗi OTP_REQUIRED có cấu trúc", async () => {
+    const payload = { name: "Bạn Cá", phone_number: "0912345678", password: "secret12", challenge_id: "challenge", otp: "123456" };
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: { name: "Bạn Cá" } } });
+    await register(payload);
+    expect(apiClient.post).toHaveBeenCalledWith("/api/auth/register", payload);
+    vi.mocked(apiClient.post).mockRejectedValueOnce({
+      isAxiosError: true, response: { status: 422, data: { error: "Cần xác nhận", code: "BUSINESS_RULE_VIOLATION", details: { reason: "OTP_REQUIRED" } } },
+    });
+    await expect(register(payload)).rejects.toMatchObject({
+      name: ApiServiceError.name, message: "Cần xác nhận", status: 422, code: "BUSINESS_RULE_VIOLATION", details: { reason: "OTP_REQUIRED" },
+    });
+  });
   it("giữ welcome_reward trong kết quả đăng ký", async () => {
     const payload = { name: "Bạn Cá", phone_number: "0912345678", password: "secret12" };
     const result = {

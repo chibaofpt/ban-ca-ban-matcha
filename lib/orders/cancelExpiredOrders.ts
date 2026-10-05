@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { restoreVouchersOnCancel } from "@/lib/orders/cancelOrder";
 import { captureServerException } from "@/lib/observability";
 import { prisma } from "@/lib/prisma";
+import { publishOrderChange } from "@/lib/orderRealtime";
 
 const BATCH_SIZE = 25;
 const CONCURRENCY = 5;
@@ -55,6 +56,8 @@ export async function runCancelExpiredOrders(
     const group = expiredOrders.slice(index, index + CONCURRENCY);
     outcomes.push(...await Promise.all(group.map((order) => cancelOneExpiredOrder(order.id))));
   }
+
+  if (outcomes.includes("cancelled")) await publishOrderChange();
 
   return {
     selected: expiredOrders.length,

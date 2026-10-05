@@ -103,21 +103,20 @@ export async function checkAndResubscribe(): Promise<boolean> {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(getVapidPublicKey()),
       });
-      
-      const subJSON = subscription.toJSON();
-      if (subJSON.endpoint && subJSON.keys) {
-        const payload: PushSubscribeRequest = {
-          endpoint: subJSON.endpoint,
-          keys: {
-            p256dh: subJSON.keys.p256dh,
-            auth: subJSON.keys.auth,
-          },
-        };
-        await apiClient.post("/api/push/subscribe", payload);
-      }
     }
-    
-    return !!subscription;
+
+    if (!subscription) return false;
+    const subJSON = subscription.toJSON();
+    if (!subJSON.endpoint || !subJSON.keys) return false;
+    const payload: PushSubscribeRequest = {
+      endpoint: subJSON.endpoint,
+      keys: {
+        p256dh: subJSON.keys.p256dh,
+        auth: subJSON.keys.auth,
+      },
+    };
+    await apiClient.post("/api/push/subscribe", payload);
+    return true;
   } catch (error) {
     console.error("[PushService] Silent resubscribe failed:", error);
     return false;

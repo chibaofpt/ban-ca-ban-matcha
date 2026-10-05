@@ -18,6 +18,9 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 const mockSendPushToRoles = vi.fn();
+const mockPublishOrderChange = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/lib/orderRealtime", () => ({ publishOrderChange: () => mockPublishOrderChange() }));
+const mockAfter = vi.fn<(fn: () => void | Promise<unknown>) => void>();
 
 vi.mock("@/lib/push", () => ({
   sendPushToRoles: (...args: unknown[]) => mockSendPushToRoles(...args),
@@ -27,7 +30,7 @@ vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
   return {
     ...actual,
-    after: (fn: () => void) => fn(),
+    after: (fn: () => void | Promise<unknown>) => mockAfter(fn),
   };
 });
 const mockOrderFindUnique = vi.fn();
@@ -127,6 +130,7 @@ describe("PATCH /api/admin/orders/[id]/confirm-payment — push notification", (
     vi.clearAllMocks();
     mockGetSession.mockResolvedValue(adminSession);
     mockSendPushToRoles.mockResolvedValue(undefined);
+    mockAfter.mockReset().mockImplementation((fn) => { void fn(); });
   });
 
   it("gọi sendPushToRoles với ['STAFF', 'ADMIN'] và excludeUserId = admin.id sau khi confirm thành công", async () => {
@@ -149,6 +153,43 @@ describe("PATCH /api/admin/orders/[id]/confirm-payment — push notification", (
     );
   });
 
+  it("giữ tác vụ sau response chờ push staff hoàn tất", async () => {
+    setupSuccessfulConfirmation();
+    mockAfter.mockImplementationOnce(() => undefined);
+    let finishDelivery = () => {};
+    mockSendPushToRoles.mockReturnValueOnce(new Promise<void>((resolve) => {
+      finishDelivery = resolve;
+    }));
+
+    const response = await PATCH(makeReq(), { params: Promise.resolve({ id: ORDER_ID }) });
+    expect(response.status).toBe(200);
+    expect(mockSendPushToRoles).not.toHaveBeenCalled();
+
+    const task = mockAfter.mock.calls[0][0]();
+    expect(task).toBeInstanceOf(Promise);
+    let settled = false;
+    void Promise.resolve(task).then(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(mockSendPushToRoles).toHaveBeenCalledWith(
+      ["STAFF", "ADMIN"], expect.objectContaining({ url: "/staff/orders" }), ADMIN_ID,
+    );
+    finishDelivery();
+    await expect(task).resolves.toBeUndefined();
+  });
+
+  it("phát tín hiệu sau commit xác nhận và không phát khi bị từ chối", async () => {
+    setupSuccessfulConfirmation();
+    const response = await PATCH(makeReq(), { params: Promise.resolve({ id: ORDER_ID }) });
+    expect(response.status).toBe(200);
+    expect(mockPublishOrderChange).toHaveBeenCalledWith();
+
+    mockPublishOrderChange.mockClear();
+    mockOrderFindUnique.mockResolvedValue({ ...pendingOrder, status: "ADMIN_CONFIRMED" });
+    const rejected = await PATCH(makeReq(), { params: Promise.resolve({ id: ORDER_ID }) });
+    expect(rejected.status).toBe(422);
+    expect(mockPublishOrderChange).not.toHaveBeenCalled();
+  });
   it("payload push chứa order_code trong body", async () => {
     setupSuccessfulConfirmation();
 
@@ -316,6 +357,7 @@ describe("PATCH /api/admin/orders/[id]/confirm-payment — voucher lifecycle", (
     vi.clearAllMocks();
     mockGetSession.mockResolvedValue(adminSession);
     mockSendPushToRoles.mockResolvedValue(undefined);
+    mockAfter.mockReset().mockImplementation((fn) => { void fn(); });
   });
 
   it("Chuyển PENDING → ADMIN_CONFIRMED và redeem tất cả voucher RESERVED → REDEEMED", async () => {

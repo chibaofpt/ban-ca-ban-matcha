@@ -9,6 +9,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
 const mockSendPushToRoles = vi.fn();
+const mockPublishOrderChange = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/lib/orderRealtime", () => ({ publishOrderChange: () => mockPublishOrderChange() }));
+const mockAfter = vi.fn<(fn: () => void | Promise<unknown>) => void>();
 
 vi.mock("@/lib/push", () => ({
   sendPushToRoles: (...args: unknown[]) => mockSendPushToRoles(...args),
@@ -18,7 +21,7 @@ vi.mock("next/server", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next/server")>();
   return {
     ...actual,
-    after: (fn: () => void) => fn(),
+    after: (fn: () => void | Promise<unknown>) => mockAfter(fn),
   };
 });
 
@@ -263,6 +266,7 @@ describe("POST /api/orders", () => {
     mockUserUpdate.mockResolvedValue({});
     mockPointsLogCreate.mockResolvedValue({});
     mockSendPushToRoles.mockResolvedValue(undefined);
+    mockAfter.mockReset().mockImplementation((fn) => { void fn(); });
     // Restore pricing mocks cleared by clearAllMocks
     vi.mocked(buildPricingContext).mockResolvedValue({
       defaultSizeConfigs: [
@@ -862,6 +866,33 @@ describe("POST /api/orders", () => {
 
   // ── Push notification trigger ──────────────────────────────────────────────
 
+  it("giữ tác vụ sau response chờ push admin hoàn tất", async () => {
+    setupTx();
+    mockAfter.mockImplementationOnce(() => undefined);
+    let finishDelivery = () => {};
+    mockSendPushToRoles.mockReturnValueOnce(new Promise<void>((resolve) => {
+      finishDelivery = resolve;
+    }));
+
+    const response = await POST(makeReq(validPayload));
+    expect(response.status).toBe(201);
+    expect(mockSendPushToRoles).not.toHaveBeenCalled();
+    expect(mockPublishOrderChange).not.toHaveBeenCalled();
+
+    const task = mockAfter.mock.calls[0][0]();
+    expect(mockPublishOrderChange).toHaveBeenCalledWith();
+    expect(task).toBeInstanceOf(Promise);
+    let settled = false;
+    void Promise.resolve(task).then(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(mockSendPushToRoles).toHaveBeenCalledWith(
+      ["ADMIN"], expect.objectContaining({ url: "/admin/orders" }),
+    );
+    finishDelivery();
+    await expect(task).resolves.toBeUndefined();
+  });
+
   it("gọi sendPushToRoles với ['ADMIN'] sau khi tạo order thành công", async () => {
     setupTx();
     mockSendPushToRoles.mockResolvedValue(undefined);
@@ -965,6 +996,26 @@ describe("GET /api/orders", () => {
         orderBy: { created_at: "desc" },
       })
     );
+  });
+
+  it.each([
+    ["delivery", "DELIVERY"],
+    ["pickup", "PICKUP"],
+  ] as const)("lọc %s trước phân trang và chỉ lấy đơn chưa huỷ của khách hiện tại", async (filter, orderType) => {
+    Object.assign(prisma.order, { count: vi.fn().mockResolvedValue(6) });
+    const response = await GET(new NextRequest(
+      "http://localhost/api/orders?page=2&limit=5&status=" + filter,
+    ));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      data: [], meta: { total: 6, page: 2, totalPages: 2 },
+    });
+    const where = { user_id: USER_ID, order_type: orderType, NOT: { status: "CANCELLED" } };
+    expect(prisma.order.count).toHaveBeenCalledWith({ where });
+    expect(prisma.order.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where, skip: 5, take: 5, orderBy: { created_at: "desc" },
+    }));
   });
 
   it("không lazy-cancel đơn PENDING quá hạn khi đọc lịch sử", async () => {

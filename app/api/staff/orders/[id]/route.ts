@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { scheduleOrderChange } from "@/lib/orderRealtime";
 import type { StaffOrderResult, StaffOrderStatusPayload } from "@/contracts/order";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
@@ -325,6 +326,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         ? { cancellation_adjustment: transactionResult.cancellationAdjustment }
         : {}),
     } satisfies StaffOrderResult & Record<string, unknown>;
+    scheduleOrderChange();
     return NextResponse.json({ data });
 
   } catch (err: unknown) {

@@ -8,7 +8,7 @@ import type {
   CustomerHistoryOrderItem,
 } from "@/src/lib/types/order";
 
-type OrderFilter = "active" | "cancelled";
+import type { CustomerOrderHistoryFilter } from "@/contracts/order";
 
 interface OrderHistoryTabProps {
   orders: CustomerHistoryOrder[];
@@ -17,19 +17,21 @@ interface OrderHistoryTabProps {
   onRetry: () => void;
   page: number;
   totalPages: number;
-  filter: OrderFilter;
-  onFilterChange: (filter: OrderFilter) => void;
+  filter: CustomerOrderHistoryFilter;
+  onFilterChange: (filter: CustomerOrderHistoryFilter) => void;
   onPageChange: (page: number) => void;
   onCancel: (orderId: string) => void;
   onReorder: (item: CustomerHistoryOrderItem) => void;
 }
 
-const FILTER_OPTIONS: { key: OrderFilter; label: string }[] = [
+const FILTER_OPTIONS: { key: CustomerOrderHistoryFilter; label: string }[] = [
   { key: "active", label: "Tất cả" },
+  { key: "delivery", label: "Giao hàng" },
+  { key: "pickup", label: "Đến lấy" },
   { key: "cancelled", label: "Đơn huỷ" },
 ];
 
-/** Renders the paginated customer order-history tab with server-driven status filter. */
+/** Renders customer order history with server-driven status and fulfillment filters. */
 export function OrderHistoryTab({
   orders,
   isLoading,
@@ -47,7 +49,7 @@ export function OrderHistoryTab({
     return (
       <div className="space-y-4">
         {/* Filter bar skeleton */}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {FILTER_OPTIONS.map((opt) => (
             <div
               key={opt.key}
@@ -85,8 +87,8 @@ export function OrderHistoryTab({
 
   return (
     <div className="space-y-4">
-      {/* Status filter bar — drives API call via parent */}
-      <div role="group" aria-label="Lọc đơn hàng" className="flex gap-2">
+      {/* Order filter bar — drives API call via parent */}
+      <div role="group" aria-label="Lọc đơn hàng" className="flex flex-wrap gap-2">
         {FILTER_OPTIONS.map((opt) => {
           const active = filter === opt.key;
           return (
@@ -97,7 +99,7 @@ export function OrderHistoryTab({
               transition={{ duration: 0.15 }}
               onClick={() => onFilterChange(opt.key)}
               aria-pressed={active}
-              className={`min-h-8 rounded-full px-3.5 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              className={`min-h-8 whitespace-nowrap rounded-full px-3.5 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
                 active
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : "border border-border/60 bg-card text-primary/60 hover:border-primary/30 hover:text-primary"
@@ -114,7 +116,10 @@ export function OrderHistoryTab({
         <div className="rounded-3xl border border-border/50 bg-secondary/20 py-20 text-center">
           <ShoppingBag className="mx-auto mb-4 h-12 w-12 text-primary/30" aria-hidden="true" />
           <p className="font-bold text-primary">
-            {filter === "cancelled" ? "Không có đơn nào bị huỷ" : "Bạn chưa có đơn hàng nào"}
+            {filter === "cancelled" ? "Không có đơn nào bị huỷ"
+              : filter === "delivery" ? "Bạn chưa có đơn giao hàng nào"
+                : filter === "pickup" ? "Bạn chưa có đơn đến lấy nào"
+                  : "Bạn chưa có đơn hàng nào"}
           </p>
           {filter === "active" && (
             <p className="mt-1 text-sm text-primary/60">Hãy đặt thử một ly matcha nhé!</p>

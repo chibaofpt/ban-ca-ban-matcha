@@ -7,6 +7,7 @@ export type OrderStatus =
   | "COMPLETED"
   | "CANCELLED";
 export type OrderType = "COUNTER" | "PICKUP" | "DELIVERY";
+export type CustomerOrderHistoryFilter = "active" | "delivery" | "pickup" | "cancelled";
 export type PaymentMethod = "CASH" | "BANK_TRANSFER";
 export type IceOption = "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
 

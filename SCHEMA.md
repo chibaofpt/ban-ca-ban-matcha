@@ -151,8 +151,9 @@ The private-voucher migration extends this existing enum additively and keeps th
 - `role` Role — default `CUSTOMER`
 - `points_balance` int — default 0
 - `qr_token` string UK — UUID, encoded in QR, NEVER expose `id`
-- `otp_enabled` bool — default false, Phase 5
-- `is_verified` bool — default false; admin-managed customer identity verification state
+- `otp_enabled` bool — default false; reserved per-user field, not the global registration OTP switch
+- `is_verified` bool — default false; successful OTP-backed registration sets true; registration
+  with global OTP disabled sets false. Existing admin verification actions remain available.
 - `is_blocked` bool — default false; admin-managed account block state that denies authentication and live sessions
 - `created_at` timestamp
 - `updated_at` timestamp
@@ -172,14 +173,30 @@ The private-voucher migration extends this existing enum additively and keeps th
 
 ---
 
-### otp_attempts — Phase 5 only
+### otp_attempts — Registration OTP
 - `id` uuid PK
 - `phone_number` string
-- `code_hash` string — SHA-256 of 6-digit code
+- `code_hash` string — HMAC of the six-digit code bound to the challenge and registration context
+- `binding_hash` string nullable — HMAC binding to the server-issued registration cookie;
+  legacy rows without a binding cannot verify a new registration
 - `expires_at` timestamp — 5 min TTL
 - `attempts` int — max 5 before lockout
-- `verified` bool — default false
+- `verified` bool — default false; successful registration consumes the challenge in the same
+  transaction as user, welcome reward and session writes; transaction failure preserves eligibility
 - `created_at` timestamp
+
+---
+
+### registration_otp_settings
+
+- Singleton `id=1`; authoritative global registration policy, independent of `users.otp_enabled`.
+- `otp_enabled` bool — initially false.
+- `daily_send_limit` int — positive daily ceiling, initially 100.
+- `revision` int — conditional admin writes prevent stale configuration overwrite.
+- Migration creates the initial row and denies exposed Data API roles access with the project's RLS
+  boundary. Missing/read-failed settings fail unavailable; no implicit disabled fallback.
+- Redis owns temporary admission/idempotency counters, not persisted settings or final OTP
+  consumption. Limits and retry behavior belong to [registration OTP](API.md#registration-otp--public-onboarding).
 
 ---
 

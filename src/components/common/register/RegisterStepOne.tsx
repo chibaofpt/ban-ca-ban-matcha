@@ -21,12 +21,15 @@ const schema = registerFormSchema.pick({
 export type RegisterStepOneValues = z.infer<typeof schema>;
 
 interface RegisterStepOneProps {
+  initialValues?: RegisterStepOneValues;
+  totalSteps?: 2 | 3;
   onContinue: (values: RegisterStepOneValues) => Promise<void>;
   onLogin: () => void;
 }
 
 /** Collect phone and password for the first registration step. */
 export default function RegisterStepOne({
+  initialValues, totalSteps = 2,
   onContinue,
   onLogin,
 }: RegisterStepOneProps) {
@@ -40,7 +43,7 @@ export default function RegisterStepOne({
   } = useForm<RegisterStepOneValues>({
     resolver: zodResolver(schema),
     mode: "onChange",
-    defaultValues: { phone_number: "", password: "" },
+    defaultValues: initialValues ?? { phone_number: "", password: "" },
   });
 
   const submit = async (values: RegisterStepOneValues) => {
@@ -62,7 +65,7 @@ export default function RegisterStepOne({
 
   return (
     <>
-      <Header step={1} />
+      <Header step={1} total={totalSteps} />
       {serverError && <ErrorBanner message={serverError} />}
       <form onSubmit={handleSubmit(submit)} className="space-y-4">
         <Field label="Số điện thoại" error={errors.phone_number?.message}>
@@ -110,11 +113,11 @@ export default function RegisterStepOne({
   );
 }
 
-function Header({ step }: { step: 1 | 2 }) {
+function Header({ step, total = 2 }: { step: 1 | 2 | 3; total?: 2 | 3 }) {
   return (
     <div className="space-y-2 text-center">
       <div className="flex items-center justify-center gap-2">
-        {[1, 2].map((number) => (
+        {Array.from({ length: total }, (_, index) => index + 1).map((number) => (
           <div key={number} className="flex items-center gap-2">
             <span
               className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${
@@ -125,10 +128,10 @@ function Header({ step }: { step: 1 | 2 }) {
             >
               {number}
             </span>
-            {number === 1 && (
+            {number < total && (
               <span
                 className={`h-px w-8 ${
-                  step === 2 ? "bg-primary" : "bg-border"
+                  step > number ? "bg-primary" : "bg-border"
                 }`}
               />
             )}
@@ -137,7 +140,7 @@ function Header({ step }: { step: 1 | 2 }) {
       </div>
       <h2 className="font-playfair text-2xl font-bold">Tạo tài khoản</h2>
       <p className="text-sm text-muted-foreground">
-        Bước {step} / 2 — {step === 1 ? "Thông tin đăng nhập" : "Thông tin cá nhân"}
+        Bước {step} / {total} — {step === 1 ? "Thông tin đăng nhập" : step === 2 ? "Thông tin cá nhân" : "Xác nhận số điện thoại"}
       </p>
     </div>
   );

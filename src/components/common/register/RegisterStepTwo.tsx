@@ -11,6 +11,8 @@ import {
   Loader2,
   User,
 } from "lucide-react";
+import { ApiServiceError } from "@/src/lib/api/serviceError";
+import { registrationOtpMessage } from "@/src/hooks/useRegistrationOtp";
 import { registerFormSchema } from "@/src/lib/validations/auth";
 import {
   Header,
@@ -21,6 +23,12 @@ const schema = registerFormSchema.pick({ name: true, insta_name: true });
 export type RegisterStepTwoValues = z.infer<typeof schema>;
 
 interface RegisterStepTwoProps {
+  initialValues?: RegisterStepTwoValues;
+  totalSteps?: 2 | 3;
+  submitLabel?: string;
+  submitDisabled?: boolean;
+  onValuesChange?: (values: RegisterStepTwoValues) => void;
+  onResume?: (values: RegisterStepTwoValues) => Promise<void>;
   onBack: () => void;
   onSubmit: (values: RegisterStepTwoValues) => Promise<void>;
   onLogin: () => void;
@@ -28,6 +36,7 @@ interface RegisterStepTwoProps {
 
 /** Collect display name and optional Instagram alias. */
 export default function RegisterStepTwo({
+  initialValues, totalSteps = 2, submitLabel = "Đăng ký", submitDisabled = false, onValuesChange, onResume,
   onBack,
   onSubmit,
   onLogin,
@@ -37,25 +46,26 @@ export default function RegisterStepTwo({
     register,
     handleSubmit,
     setError,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<RegisterStepTwoValues>({
     resolver: zodResolver(schema),
     mode: "onBlur",
-    defaultValues: { name: "", insta_name: "" },
+    defaultValues: initialValues ?? { name: "", insta_name: "" },
   });
 
-  const submit = async (values: RegisterStepTwoValues) => {
+  const submit = async (values: RegisterStepTwoValues, resume = false) => {
     setServerError(null);
     try {
-      await onSubmit(values);
+      await (resume && onResume ? onResume(values) : onSubmit(values));
     } catch (error: unknown) {
       const response = (
         error as {
           response?: { status?: number; data?: { error?: string } };
         }
       ).response;
-      const message = response?.data?.error ?? "Không thể tạo tài khoản.";
-      if (response?.status === 409) {
+      const message = error instanceof ApiServiceError ? registrationOtpMessage(error) : response?.data?.error ?? (error instanceof Error ? error.message : "Không thể tạo tài khoản.");
+      if ((response?.status === 409 || error instanceof ApiServiceError && error.status === 409) && message.includes("Instagram")) {
         setError("insta_name", { message });
       } else {
         setServerError(message);
@@ -65,14 +75,14 @@ export default function RegisterStepTwo({
 
   return (
     <>
-      <Header step={2} />
+      <Header step={2} total={totalSteps} />
       {serverError && (
         <div className="flex gap-2 rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
           <AlertCircle className="h-4 w-4 shrink-0" />
           {serverError}
         </div>
       )}
-      <form onSubmit={handleSubmit(submit)} className="space-y-4">
+      <form onSubmit={handleSubmit((values) => submit(values))} className="space-y-4">
         <label className="block space-y-1.5 text-sm font-medium">
           Họ và tên
           <span className="relative mt-1.5 block">
@@ -80,7 +90,7 @@ export default function RegisterStepTwo({
             <input
               autoComplete="name"
               placeholder="Bạn Cá"
-              {...register("name")}
+              {...register("name", { onChange: (event) => onValuesChange?.({ ...getValues(), name: event.target.value }) })}
               className={inputClass(Boolean(errors.name))}
             />
           </span>
@@ -99,7 +109,7 @@ export default function RegisterStepTwo({
               autoCapitalize="none"
               spellCheck={false}
               placeholder="ten_instagram"
-              {...register("insta_name")}
+              {...register("insta_name", { onChange: (event) => onValuesChange?.({ ...getValues(), insta_name: event.target.value }) })}
               className={inputClass(Boolean(errors.insta_name))}
             />
           </span>
@@ -116,6 +126,11 @@ export default function RegisterStepTwo({
         <p className="text-center text-xs text-muted-foreground">
           Bạn sẽ nhận được <span className="font-semibold text-primary">5 điểm</span> chào mừng.
         </p>
+        {onResume ? <div className="space-y-2 rounded-xl border p-3 text-sm">
+          <p>Nhập lại đúng thông tin đã dùng để gửi mã. Bạn có thể tiếp tục bằng mã đã nhận hoặc gửi mã mới.</p>
+          <button type="button" disabled={isSubmitting} onClick={() => void handleSubmit((values) => submit(values, true))()}
+            className="min-h-11 rounded-xl border px-4 font-medium">Dùng mã đã nhận</button>
+        </div> : null}
         <div className="flex gap-3">
           <button
             type="button"
@@ -128,11 +143,11 @@ export default function RegisterStepTwo({
           </button>
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || submitDisabled}
             className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-primary-foreground disabled:opacity-60"
           >
             {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            Đăng ký
+            {submitLabel}
           </button>
         </div>
       </form>

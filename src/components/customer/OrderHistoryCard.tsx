@@ -129,7 +129,7 @@ export function OrderHistoryCard({
               whileTap={{ scale: 0.97 }}
               transition={{ duration: 0.15 }}
               onClick={() => setDetailOpen(true)}
-              className="mt-1 flex min-h-9 w-full items-center justify-center gap-1 rounded-xl border border-border/60 bg-secondary/30 text-[12px] font-semibold text-primary/70 transition-colors hover:bg-secondary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="mt-1 flex min-h-9 w-full items-center justify-center gap-1 rounded-xl border border-primary/20 bg-primary/10 text-[12px] font-semibold text-foreground transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Chi tiết đơn{hiddenCount > 0 ? ` · +${hiddenCount} món` : ""}
               <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />

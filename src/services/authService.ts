@@ -1,3 +1,6 @@
+import { isAxiosError } from "axios";
+import { ApiServiceError } from "@/src/lib/api/serviceError";
+import type { ApiError } from "@/contracts/api";
 import { apiClient } from "@/src/lib/api/client";
 import type { ApiResponse } from "@/contracts/api";
 import type {
@@ -26,8 +29,15 @@ export async function checkPhone(phone_number: string): Promise<PhoneCheckResult
 
 /** Register a new account */
 export async function register(payload: RegisterPayload): Promise<RegisterResult> {
-  const res = await apiClient.post<ApiResponse<RegisterResult>>(URL.register, payload);
-  return res.data.data;
+  try {
+    const res = await apiClient.post<ApiResponse<RegisterResult>>(URL.register, payload);
+    return res.data.data;
+  } catch (error) {
+    if (isAxiosError<ApiError>(error) && error.response && typeof error.response.data?.error === "string" && typeof error.response.data.code === "string") {
+      throw new ApiServiceError(error.response.data.error, error.response.status, error.response.data.code, error.response.data.details);
+    }
+    throw error;
+  }
 }
 
 /** Login — access token is set as httpOnly cookie automatically */

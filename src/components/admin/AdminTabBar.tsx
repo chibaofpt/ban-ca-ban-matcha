@@ -2,13 +2,16 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ClipboardList, Package, Gift, Megaphone, Receipt, Settings, Users } from "lucide-react";
+import { ArrowLeft, ChevronRight, Clock, ClipboardList, Package, Gift, Megaphone, Receipt, Settings, ShieldCheck, Users } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { Role } from "@/src/lib/types/user";
 import * as authService from "@/src/services/authService";
 import { useState, type MouseEvent } from "react";
 import { motion } from "framer-motion";
 import StoreSettingsModal from "@/src/components/admin/StoreSettingsModal";
+import { RegistrationSettingsPanel } from "@/src/components/admin/RegistrationSettingsPanel";
+import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
+import { Button } from "@/src/components/ui/button";
 import { useAuthStore } from "@/src/lib/store/authStore";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -51,6 +54,8 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
   const pathname = usePathname();
   const router = useRouter();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<"menu" | "hours" | "otp">("menu");
+  const [hoursOpen, setHoursOpen] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<{ to: string; from: string } | null>(null);
   const authStoreLogout = useAuthStore((s) => s.logout);
   const detachCustomer = useStaffCartStore((s) => s.detachCustomer);
@@ -149,8 +154,8 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
             {userRole === "ADMIN" && (
               <button
                 id="btn-store-settings"
-                onClick={() => setSettingsOpen(true)}
-                className="p-2 rounded-full hover:bg-white/10 transition"
+                onClick={() => { setSettingsSection("menu"); setSettingsOpen(true); }}
+                className="flex size-11 items-center justify-center rounded-full hover:bg-white/10 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label="Cài đặt cửa hàng"
               >
                 <Settings size={18} />
@@ -228,12 +233,34 @@ export default function AdminTabBar({ userName, userRole, children }: AdminTabBa
         </div>
       </nav>
 
-      {/* Store Settings Modal — ADMIN only */}
+      {/* Store settings — ADMIN only */}
       {userRole === "ADMIN" && (
-        <StoreSettingsModal
-          isOpen={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-        />
+        <>
+          <ResponsiveOverlay
+            open={settingsOpen}
+            title={settingsSection === "otp" ? "OTP" : "Cài đặt cửa hàng"}
+            size="md"
+            onOpenChange={setSettingsOpen}
+            onAfterClose={() => { if (settingsSection === "hours") setHoursOpen(true); }}
+          >
+            {settingsSection === "otp" ? (
+              <div className="space-y-4">
+                <Button variant="ghost" className="gap-2" onClick={() => setSettingsSection("menu")}><ArrowLeft className="size-4" />Cài đặt</Button>
+                <RegistrationSettingsPanel />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <motion.button type="button" whileTap={{ scale: 0.96 }} onClick={() => { setSettingsSection("hours"); setSettingsOpen(false); }} className="flex min-h-14 w-full items-center gap-3 rounded-xl border bg-card px-4 py-3 text-left font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <Clock className="size-5 text-primary" /><span className="flex-1">Giờ mở cửa</span><ChevronRight className="size-4 text-muted-foreground" />
+                </motion.button>
+                <motion.button type="button" whileTap={{ scale: 0.96 }} onClick={() => setSettingsSection("otp")} className="flex min-h-14 w-full items-center gap-3 rounded-xl border bg-card px-4 py-3 text-left font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <ShieldCheck className="size-5 text-primary" /><span className="flex-1">OTP</span><ChevronRight className="size-4 text-muted-foreground" />
+                </motion.button>
+              </div>
+            )}
+          </ResponsiveOverlay>
+          <StoreSettingsModal isOpen={hoursOpen} onClose={() => { setHoursOpen(false); setSettingsSection("menu"); }} />
+        </>
       )}
     </>
   );
