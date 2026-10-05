@@ -499,17 +499,28 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
       !selectedVoucherIds.includes(voucher.qr_token) && !usedTokens.has(voucher.qr_token) &&
       getCartVoucherAvailability(voucher, context).canUse);
     const toastId = "cart-voucher-minimum-lost";
-    toast.warning(hasOtherVoucher ? (
-      <button type="button" className="min-h-11 w-full text-left font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        onClick={() => {
-          toast.dismiss(toastId);
-          if (useAuthStore.getState().user?.phone !== ownerPhone) return;
-          setCartOpen(true);
-          setIsDiscountPickerOpen(true);
-        }}>
-        Voucher bạn đã chọn không thể sử dụng được nữa, bấm vào đây để sử dụng voucher khác
-      </button>
-    ) : "Voucher bạn đã chọn không thể sử dụng được nữa, vui lòng kiểm tra lại đơn", { id: toastId, duration: 5000 });
+    toast.warning(
+      hasOtherVoucher ? (
+        <>
+          Voucher bạn đã chọn không thể sử dụng được nữa,{" "}
+          <a
+            href="#cart-vouchers"
+            className="cursor-pointer font-medium underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            style={{ touchAction: "manipulation" }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (useAuthStore.getState().user?.phone !== ownerPhone) return;
+              setCartOpen(true);
+              setIsDiscountPickerOpen(true);
+            }}
+          >
+            bấm vào đây để sử dụng voucher khác
+          </a>
+        </>
+      ) : "Voucher bạn đã chọn không thể sử dụng được nữa, vui lòng kiểm tra lại đơn",
+      { id: toastId, duration: 5000 },
+    );
   }, [bundleApplications, cartProjection, currentUser?.phone, isCartOpen, items, lineBenefitsProjection,
     menuData, orderType, powderData, selectedDiscountVouchers, selectedFreeshipVouchers,
     selectedVoucherIds, setCartOpen, shippingFee, visibleWalletVouchers, walletVerified]);
