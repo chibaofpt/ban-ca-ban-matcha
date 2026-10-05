@@ -507,6 +507,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
             href="#cart-vouchers"
             className="cursor-pointer font-medium underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             style={{ touchAction: "manipulation" }}
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
