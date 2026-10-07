@@ -174,6 +174,24 @@ describe("GET /api/menu — contract dữ liệu chuẩn hóa", () => {
     expect(body.data.fusion[0]?.default_base_liquid_id).not.toBe("milk-inactive");
   });
 
+  it("Fusion chỉ trả powder swap active từ cấu hình có cả inactive", async () => {
+    mockMenuItemFindMany.mockResolvedValue([{
+      id: "fusion-swaps", name: "Fusion", description: null, category: "fusion",
+      is_seasonal: false, image_url: null, sort_order: 0, base_liquid_note: null,
+      custom_powder_grams: null, default_powder_id: "powder-1", default_base_liquid_id: "milk-1",
+      updated_at: new Date("2026-08-22T00:00:00.000Z"),
+      sizes: [{ size: "SMALL", base_price_vnd: 30_000 }], matchaPowder: null,
+      allowedBaseLiquids: [],
+      fusionAllowedPowders: [
+        { powder_id: "powder-active-swap", matchaPowder: { id: "powder-active-swap", is_available: true } },
+        { powder_id: "powder-inactive-swap", matchaPowder: { id: "powder-inactive-swap", is_available: false } },
+      ],
+    }]);
+    const response = await GET();
+    const body = (await response.json()) as { data: { fusion: Array<{ allowed_powder_ids: string[] }> } };
+    expect(body.data.fusion[0]?.allowed_powder_ids).toEqual(["powder-active-swap"]);
+  });
+
   it("không trả Latte có bột cố định đã inactive và vẫn giữ mốc updated_at", async () => {
     mockMenuItemFindMany.mockResolvedValue([{
       id: "latte-inactive", name: "Latte ngưng bột", description: null, category: "latte",

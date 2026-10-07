@@ -63,15 +63,15 @@ export async function parseAdminMenuUpdate(
       : undefined,
     confirm_price_change: parseOptionalBoolean(formData.get("confirm_price_change")),
     matcha_powder_id:
-      typeof powderId === "string" && /^[0-9a-fA-F]{8}-/.test(powderId)
+      typeof powderId === "string" && powderId.length > 0
         ? powderId
         : undefined,
     default_powder_id:
-      typeof defaultPowderId === "string" && /^[0-9a-fA-F]{8}-/.test(defaultPowderId)
+      typeof defaultPowderId === "string" && defaultPowderId.length > 0
         ? defaultPowderId
         : undefined,
     default_base_liquid_id:
-      typeof defaultBaseLiquidId === "string" && /^[0-9a-fA-F]{8}-/.test(defaultBaseLiquidId)
+      typeof defaultBaseLiquidId === "string" && defaultBaseLiquidId.length > 0
         ? defaultBaseLiquidId
         : undefined,
     base_liquid_note: formData.get("base_liquid_note") || undefined,

@@ -19,7 +19,9 @@ import {
   asMenuStorageCategory,
   buildMenuItemSizeUpdate,
   isAvailabilityOnlyMenuUpdate,
+  menuPowderForeignKeyError,
   validateMenuImageFile,
+  validateMenuPowderReferences,
   validateUniqueLattePowder,
 } from "@/lib/catalog/adminMenuUpdate";
 
@@ -40,6 +42,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   let newImagePath: string | null = null;
   let oldImagePathToDelete: string | null = null;
   let databaseCommitted = false;
+  let powderWriteFailure: ((error: unknown) => NextResponse | null) | null = null;
   try {
     // ── Detect Content-Type → parse body ──────────────────────────────────
     // Toggle availability sends JSON { is_available }
@@ -121,15 +124,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     let resolvedDefaultBaseLiquidId = existing.default_base_liquid_id;
     let allowedBaseLiquidIdsToSave: string[] | undefined;
     if (!availabilityOnlyUpdate && existing.category !== "extras") {
-      const activeBaseLiquids = await prisma.milkType.findMany({
-        where: { is_active: true },
-        select: { id: true, is_default: true },
+      const baseLiquids = await prisma.milkType.findMany({
+        select: { id: true, is_default: true, is_active: true },
       });
-      const activeBaseLiquidIds = new Set(activeBaseLiquids.map((liquid) => liquid.id));
+      const baseLiquidIds = new Set(baseLiquids.map((liquid) => liquid.id));
+      const activeBaseLiquids = baseLiquids.filter((liquid) => liquid.is_active);
       resolvedDefaultBaseLiquidId = existing.category === "latte"
         ? activeBaseLiquids.find((liquid) => liquid.is_default)?.id ?? null
         : validData.default_base_liquid_id ?? existing.default_base_liquid_id;
-      if (!resolvedDefaultBaseLiquidId || !activeBaseLiquidIds.has(resolvedDefaultBaseLiquidId)) {
+      if (!resolvedDefaultBaseLiquidId || !baseLiquidIds.has(resolvedDefaultBaseLiquidId)) {
         return NextResponse.json(
           { error: "Base Liquid mặc định không khả dụng", code: "BUSINESS_RULE_VIOLATION" },
           { status: 422 },
@@ -139,13 +142,16 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         ? undefined
         : [...new Set(validData.allowed_base_liquid_ids)]
           .filter((baseLiquidId) => baseLiquidId !== resolvedDefaultBaseLiquidId);
-      if (allowedBaseLiquidIdsToSave?.some((baseLiquidId) => !activeBaseLiquidIds.has(baseLiquidId))) {
+      if (allowedBaseLiquidIdsToSave?.some((baseLiquidId) => !baseLiquidIds.has(baseLiquidId))) {
         return NextResponse.json(
           { error: "Danh sách Base Liquid có lựa chọn không khả dụng", code: "BUSINESS_RULE_VIOLATION" },
           { status: 422 },
         );
       }
     }
+
+    const powderReferenceError = await validateMenuPowderReferences(existing.category, validData);
+    if (powderReferenceError) return powderReferenceError;
 
     // ── Check uniqueness of powder ──────────────────────────────────────────
     const powderConflict = await validateUniqueLattePowder({
@@ -207,6 +213,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     // ── DB write in transaction ───────────────────────────────────────────
     const defaultSizeConfigs = await prisma.defaultSizeConfig.findMany();
+    powderWriteFailure = (error) => menuPowderForeignKeyError(error, existing.category, validData);
     const updatedItem = await prisma.$transaction(async (tx) => {
         await tx.menuItem.update({
           where: { id },
@@ -277,7 +284,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           await tx.fusionAllowedPowder.deleteMany({ where: { menu_item_id: id } });
           if (validData.allowed_powder_ids.length > 0) {
             await tx.fusionAllowedPowder.createMany({
-              data: validData.allowed_powder_ids.map((pid) => ({
+              data: [...new Set(validData.allowed_powder_ids)].map((pid) => ({
                 menu_item_id: id,
                 powder_id: pid,
               })),
@@ -335,6 +342,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         });
       }
     }
+    const powderError = powderWriteFailure?.(err);
+    if (powderError) return powderError;
     captureServerException(err, { operation: "update_menu_item" });
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },

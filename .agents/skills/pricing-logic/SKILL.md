@@ -97,11 +97,14 @@ For each item + size, resolve grams in this order:
 
 - The physical `milk_type` table is the shared Base Liquid catalog; do not add a `kind` field.
 - Latte uses the global `is_default = true` row. Admin is responsible for allowing milk entries only.
-- Fusion uses `menu_items.default_base_liquid_id`; new/edited Fusion items require it. A legacy unconfigured Fusion contributes no Base Liquid delta.
+- Fusion uses `menu_items.default_base_liquid_id`; new Fusion items require an active default.
+  An edit requires the referenced row to still exist but may retain or select an inactive default.
+  A legacy unconfigured Fusion contributes no Base Liquid delta.
 - Effective volume is `menu_item_sizes.base_liquid_ml ?? default_size_config[size].milk_ml`.
 - Persist that resolved volume to `order_items.base_liquid_ml` at order time. Historical consumption
   must use the immutable snapshot; current recipe fallback is permitted only for pre-migration null rows.
 - Allowed swaps come from `menu_item_allowed_base_liquid`; the default is always implicitly allowed.
+  Admin edits may retain inactive existing rows; public selectors continue to expose active options only.
 - Frontend and server calculate swap delta as `(selected.price_per_ml - default.price_per_ml) × effective_ml`; Fusion may increase or decrease before the final single rounding step.
 - API naming, compatibility aliases and response fields belong to [API.md](../../../API.md).
   The client computes display prices from canonical pricing inputs rather than a precomputed price.
@@ -131,7 +134,9 @@ For each item + size, resolve grams in this order:
 - **Latte**: fixed powder via `menu_item.matcha_powder_id`. Server auto-resolves `selected_powder_id` — client never sends it.
 - **Fusion**: client sends `selected_powder_id`. Server validates: must be either `resolved_default_powder_id` OR exist in `fusion_allowed_powder` for that item. Default powder always accepted regardless of allowed list.
 - **Fusion `default_powder_id = NULL` fallback**: server resolves while producing menu data — Meyumi → Hana → MH-3 → cheapest available `price_per_gram`. The resolved default is never null; response naming belongs to [API.md](../../../API.md).
-- `allowed_powder_ids` in menu response only includes powders with `is_available = true`.
+- Public `allowed_powder_ids` only includes powders with `is_available = true`. Admin responses
+  preserve every configured powder ID, including inactive powders; Admin edits require the row
+  to exist but do not require it to be available.
 - If `fusion_allowed_powder` list is empty → lock to default, frontend hides swap UI.
 
 ---

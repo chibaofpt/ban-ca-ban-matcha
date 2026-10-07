@@ -37,6 +37,9 @@ const sizesSchema = z
     },
     { message: "Phải có đủ 3 size SMALL, MEDIUM, LARGE" }
   );
+/** Updates accept an empty list as a no-op for fixed-price extras. */
+const updateSizesSchema = z.union([sizesSchema, z.array(z.never()).length(0)]);
+
 
 const baseMenuSchema = z.object({
   name: z.string().min(1, "Vui lòng nhập tên món"),
@@ -92,7 +95,7 @@ export const updateMenuSchema = z.object({
   image_url: z.string().url().optional().nullable(),
   image_filename: imageFilenameSchema,
   sort_order: z.number().int().min(0).optional(),
-  sizes: sizesSchema.optional(),
+  sizes: updateSizesSchema.optional(),
   unit_price_vnd: extrasPriceSchema.optional().nullable(),
   confirm_price_change: z.boolean().optional(),
   custom_powder_grams: customPowderGramsSchema,

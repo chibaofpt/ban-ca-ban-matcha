@@ -1043,6 +1043,7 @@ backward compatible.
 Uses the same `updated_at`, `latte`, `fusion`, and `extras` grouping as `GET /api/menu`, but does not return the public global `milk_types` or `addon_groups` collections. It also:
 - Includes items with `is_available = false`
 - Includes `default_powder_id` (raw, may be null) alongside `resolved_default_powder_id`
+- Preserves all configured `allowed_powder_ids` and `allowed_base_liquid_ids`, including inactive records, so Admin edits do not discard stored selections. Public availability filtering belongs to `GET /api/menu`.
 - Includes all 3 size rows including those with `base_price_vnd = null`
 - `updated_at` is still `MAX(menu_items.updated_at)` across all items including unavailable
 
@@ -1274,7 +1275,10 @@ campaign issuance limit; there is no second limit inside `bundle_rule`.
   sort_order?: number
   matcha_powder_id?: string
   default_powder_id?: string
+  allowed_powder_ids?: string[]
   base_liquid_note?: string
+  default_base_liquid_id?: string | null
+  allowed_base_liquid_ids?: string[]
   custom_powder_grams?: { SMALL?: number, MEDIUM?: number, LARGE?: number } | null
   sizes?: {
     size: "SMALL" | "MEDIUM" | "LARGE"
@@ -1285,7 +1289,20 @@ campaign issuance limit; there is no second limit inside `bundle_rule`.
 ```
 
 The JSON quick-toggle payload `{ is_available: boolean }` remains valid for legacy Fusion rows
-without a configured default Base Liquid. Any full edit still requires a valid active default.
+without a configured default Base Liquid. A full Fusion edit requires a default Base Liquid ID
+that still exists; an inactive default or inactive allow-list entry remains valid for Admin
+configuration, while an unknown ID returns `422 BUSINESS_RULE_VIOLATION`. For extras, `sizes`
+may be omitted or sent as `[]`; extras remain priced only by `unit_price_vnd`.
+
+Submitted Latte `matcha_powder_id` and Fusion `default_powder_id` / `allowed_powder_ids`
+must reference existing powders; inactive powders remain valid for Admin configuration.
+Malformed UUIDs return `400 VALIDATION_ERROR`; unknown powder IDs return
+`422 BUSINESS_RULE_VIOLATION` before image upload or database writes, with
+`details: { reason: "POWDER_REFERENCE_NOT_FOUND", field, powder_ids }` identifying missing
+references. Duplicate swap IDs are saved once. Omitting an allow-list preserves its rows;
+`[]` clears it. A known powder foreign-key failure during the transaction returns the same
+reference error, with the submitted IDs for that field as the affected candidates; unrelated
+database failures remain `500 INTERNAL_ERROR`.
 
 ### `POST /api/orders` — Customer
 ```ts

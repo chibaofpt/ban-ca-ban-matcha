@@ -248,7 +248,7 @@ export default function PowderForm({
           <option value="">— Không neo giá (Premium = 0) —</option>
           {latteItems.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.name}
+              {item.name}{!item.is_available ? " (Tạm ngưng bán)" : ""}
             </option>
           ))}
         </select>

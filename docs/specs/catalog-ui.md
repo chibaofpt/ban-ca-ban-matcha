@@ -23,6 +23,18 @@ API payload thuộc [API.md](../../API.md); không suy quy tắc tính tiền t�
 - Editor Base Liquid cho phép tìm kiếm, lọc Latte/Fusion và chọn hàng loạt món, kể cả món tạm ngưng
   bán. Các món dùng liquid đó làm default hiển thị đã chọn nhưng khóa; lưu xong phải invalidate dữ
   liệu Menu để editor món phản ánh cùng allow-list.
+- Editor món mặc định chỉ hiện Base Liquid active trong allow-list. Một nút nhỏ cho phép mở rộng
+  các Base Liquid inactive; các lựa chọn này hiển thị mờ nhưng checkbox vẫn hoạt động bình thường.
+  Fusion đang dùng default inactive phải tiếp tục hiển thị giá trị đó với nhãn ngưng hoạt động để
+  Admin có thể lưu mà không buộc đổi cấu hình.
+- Swap bột của Fusion hiển thị active trước; nút nhỏ mở rộng nhóm inactive có số lượng lựa chọn.
+  Nếu đã tick swap inactive, nhóm đó mở sẵn. Thu gọn Base Liquid hoặc swap bột chỉ đổi
+  hiển thị, giữ nguyên tick và hiển thị số inactive đang chọn cạnh nút. Inactive dùng màu nền/chữ
+  dịu hơn cùng nhãn tạm ngưng, vẫn đọc rõ và tick được; nút có focus và trạng thái mở rộng.
+- Danh sách bột mặc định của Fusion dùng toàn bộ catalog Admin, đánh dấu bột ngưng bán. Default
+  Base Liquid inactive đang lưu luôn hiện trong select; mở nhóm inactive cho phép chọn thêm
+  default inactive khi chỉnh sửa. Select Latte tham chiếu của bột giữ cả món inactive và gắn
+  nhãn “Tạm ngưng bán”.
 
 ## Ảnh hiển thị và pipeline
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useId, useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useForm, Controller, useWatch } from "react-hook-form";
 import { cn } from "@/src/utils/cn";
@@ -168,6 +169,7 @@ export default function MenuItemForm({
   const matchaPowderId = useWatch({ control, name: "matcha_powder_id" });
   const defaultBaseLiquidId = useWatch({ control, name: "default_base_liquid_id" });
   const allowedBaseLiquidIds = useWatch({ control, name: "allowed_base_liquid_ids" });
+  const powderSwapId = useId();
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -192,6 +194,25 @@ export default function MenuItemForm({
 
   // Hiển thị tất cả bột cho Admin, đánh dấu nếu ngưng bán
   const sortedPowders = [...powders].sort((a, b) => a.name.localeCompare(b.name));
+  const activePowders = sortedPowders.filter((powder) => powder.is_available);
+  const inactivePowders = sortedPowders.filter(
+    (powder) => !powder.is_available && powder.id !== defaultPowderId,
+  );
+  const inactivePowderPanelId = "fusion-powder-inactive-" + powderSwapId.replace(/:/g, "");
+  const inactiveSelectedPowderCount = inactivePowders.filter((powder) =>
+    allowedPowderIds.includes(powder.id),
+  ).length;
+  const [showInactivePowders, setShowInactivePowders] = useState(false);
+  const [inactivePowderToggleTouched, setInactivePowderToggleTouched] = useState(false);
+  const hasSelectedInactivePowder = inactivePowders.some((powder) =>
+    allowedPowderIds.includes(powder.id),
+  );
+  const showInactivePowderRows =
+    showInactivePowders || (!inactivePowderToggleTouched && hasSelectedInactivePowder);
+  const selectableSwapPowders = [
+    ...activePowders.filter((powder) => powder.id !== defaultPowderId),
+    ...inactivePowders,
+  ];
 
   // Manual parse helpers
   const parseSize = (v: string): number | null => {
@@ -623,32 +644,69 @@ export default function MenuItemForm({
                     Đã chọn {allowedPowderIds.length}
                   </span>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 bg-secondary/10 p-3 rounded-xl border border-border/40">
-                  {sortedPowders
-                    .filter((p) => p.id !== defaultPowderId)
-                    .map((p) => (
-                      <label
-                        key={p.id}
+                <div
+                  id={inactivePowderPanelId}
+                  className="grid grid-cols-2 gap-2 rounded-xl border border-border/40 bg-secondary/10 p-3 md:grid-cols-3"
+                >
+                  {selectableSwapPowders.map((powder) => {
+                    const isInactive = !powder.is_available;
+                    return (
+                      <motion.label
+                        key={powder.id}
+                        initial={false}
+                        animate={isInactive ? {
+                          display: showInactivePowderRows ? "flex" : "none",
+                          opacity: showInactivePowderRows ? 1 : 0,
+                          y: showInactivePowderRows ? 0 : -4,
+                        } : undefined}
+                        transition={{ duration: 0.2 }}
+                        whileTap={{ scale: 0.98 }}
                         className={cn(
-                          "flex items-center space-x-2 text-sm p-2 rounded-lg hover:bg-background transition-colors cursor-pointer border border-transparent hover:border-border/60", 
-                          !p.is_available && "opacity-50 grayscale"
+                          "flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-transparent p-2 text-sm transition-colors hover:border-border/60 hover:bg-background",
+                          isInactive && "border-border/70 bg-muted/50",
                         )}
                       >
                         <input
                           type="checkbox"
-                          value={p.id}
+                          value={powder.id}
                           {...register("allowed_powder_ids")}
-                          className="rounded border-border text-primary focus:ring-primary/40"
+                          className="shrink-0 rounded border-border text-primary focus:ring-primary/40"
                         />
-                        <span className="truncate">
-                          {p.name}
-                        </span>
-                      </label>
-                    ))}
-                  {sortedPowders.filter((p) => p.id !== defaultPowderId).length === 0 && (
+                        <span className="min-w-0 truncate text-foreground">{powder.name}</span>
+                        {isInactive && (
+                          <span className="shrink-0 rounded-md border border-border/70 bg-muted px-1.5 py-0.5 text-[10px] font-medium text-foreground">
+                            Tạm ngưng
+                          </span>
+                        )}
+                      </motion.label>
+                    );
+                  })}
+                  {selectableSwapPowders.length === 0 && (
                     <p className="text-xs text-muted-foreground col-span-full py-2 text-center">Không có bột khả dụng</p>
                   )}
                 </div>
+                {inactivePowders.length > 0 && (
+                  <motion.button
+                    type="button"
+                    aria-expanded={showInactivePowderRows}
+                    aria-controls={inactivePowderPanelId}
+                    whileTap={{ scale: 0.92 }}
+                    onClick={() => {
+                      setInactivePowderToggleTouched(true);
+                      setShowInactivePowders(!showInactivePowderRows);
+                    }}
+                    className="mt-2 min-h-9 rounded-lg px-2 text-xs font-medium text-foreground transition-colors duration-200 hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  >
+                    <span>
+                      {showInactivePowderRows
+                        ? "Ẩn bột tạm ngưng"
+                        : "Hiện thêm " + inactivePowders.length + " bột tạm ngưng"}
+                    </span>{" "}
+                    <span className="text-[10px] text-foreground">
+                      (Đã chọn {inactiveSelectedPowderCount})
+                    </span>
+                  </motion.button>
+                )}
               </div>
             </div>
           )}
@@ -657,6 +715,7 @@ export default function MenuItemForm({
         {category !== "extras" && <>
           <div className="w-full h-px bg-border/50" />
           <MenuItemBaseLiquidFields
+            mode={mode}
             category={category}
             baseLiquids={baseLiquids}
             defaultBaseLiquidId={defaultBaseLiquidId}

@@ -47,9 +47,7 @@ export function formatAdminMenuItem(
     powder: item.matchaPowder ?? null,
     default_powder_id: item.default_powder_id ?? null,
     default_powder: item.defaultPowder ?? null,
-    allowed_powder_ids: item.fusionAllowedPowders
-      .filter((entry) => entry.matchaPowder.is_available)
-      .map((entry) => entry.powder_id),
+    allowed_powder_ids: item.fusionAllowedPowders.map((entry) => entry.powder_id),
     default_base_liquid_id: item.default_base_liquid_id ?? null,
     allowed_base_liquid_ids: item.allowedBaseLiquids.map(
       (entry) => entry.base_liquid_id,
