@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createFusionMenuSchema } from "@/lib/validations/menu";
+import { createFusionMenuSchema, updateMenuSchema } from "@/lib/validations/menu";
 import { customerOrderItemSchema } from "@/lib/validations/order";
 import { createMilkTypeSchema, updateMilkTypeSchema } from "@/lib/validations/milkType";
 import {
@@ -15,10 +15,19 @@ const sizes = ["SMALL", "MEDIUM", "LARGE"].map((size) => ({
 }));
 
 describe("Validation cấu hình Base Liquid", () => {
+  it("chấp nhận payload cập nhật Add-on với danh sách size rỗng", () => {
+    expect(updateMenuSchema.safeParse({
+      category: "extras",
+      unit_price_vnd: 20_000,
+      sizes: [],
+    }).success).toBe(true);
+  });
+
   it("không cho lưu Fusion nếu thiếu default Base Liquid", () => {
     const result = createFusionMenuSchema.safeParse({
       category: "fusion",
       name: "Fusion A",
+      default_powder_id: uuid,
       sizes,
     });
     expect(result.success).toBe(false);
@@ -28,6 +37,7 @@ describe("Validation cấu hình Base Liquid", () => {
     const result = createFusionMenuSchema.safeParse({
       category: "fusion",
       name: "Fusion A",
+      default_powder_id: uuid,
       sizes,
       default_base_liquid_id: uuid,
       allowed_base_liquid_ids: [uuid],

@@ -5,7 +5,7 @@ import type {
   HistoryOrderItem,
   ReorderWarning,
 } from "@/src/lib/types/reorder";
-import { calcLattePrice, calcFusionPrice, calcBaseLiquidDelta, resolveGram, ceilTo1000, formatMoney } from "@/src/utils/pricing";
+import { calcLattePrice, calcFusionPrice, calcPremiumLatte, calcBaseLiquidDelta, resolveGram, ceilTo1000, formatMoney } from "@/src/utils/pricing";
 import { getBaseLiquidOptionsForItem } from "@/src/utils/baseLiquid";
 import { formatOrderSize } from "@/src/utils/display";
 
@@ -277,19 +277,7 @@ export function buildReorderItem(
       milk_price_per_ml: milk?.price_per_ml || 0
     });
   } else {
-    // Fusion premium calc
-    let premiumLatte = 0;
-    if (finalPowderId && finalPowderId !== menuItem.resolved_default_powder_id) {
-      const selectedP = powderData.data.find(p => p.id === finalPowderId);
-      const defaultP = powderData.data.find(p => p.id === menuItem.resolved_default_powder_id);
-      if (selectedP && selectedP.reference_latte_item_id && defaultP && defaultP.reference_latte_item_id) {
-        const sLatte = allMenuItems.find(m => m.id === selectedP.reference_latte_item_id);
-        const dLatte = allMenuItems.find(m => m.id === defaultP.reference_latte_item_id);
-        const sSize = sLatte?.sizes.find(s => s.size === item.size)?.base_price_vnd || 0;
-        const dSize = dLatte?.sizes.find(s => s.size === item.size)?.base_price_vnd || 0;
-        premiumLatte = sSize - dSize;
-      }
-    }
+    const premiumLatte = calcPremiumLatte(finalPowderId ?? "", menuItem.default_powder_id, item.size, menuData.latte_price_anchors);
 
     newDrinkPrice = calcFusionPrice({
       base_price_vnd: sizeConfig.base_price_vnd,

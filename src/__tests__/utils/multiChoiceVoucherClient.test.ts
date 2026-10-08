@@ -85,7 +85,7 @@ describe("multi-choice voucher client contracts", () => {
     const selected = baseVoucher({ voucher_type: "DISCOUNT", discount_type: "FIXED", discount_value: 10_000, min_order_vnd: 100_000 });
     const freeship = baseVoucher({ qr_token: "freeship", voucher_type: "FREESHIP", min_order_vnd: 55_000, covered_delivery_fee_vnd: 15_000 });
     const context: CartVoucherContext = {
-      menuData: { updated_at: "2026-10-03T00:00:00Z", latte: [], fusion: [], milk_types: [], addon_groups: [] },
+      menuData: { updated_at: "2026-10-03T00:00:00Z", latte_price_anchors: {}, latte: [], fusion: [], milk_types: [], addon_groups: [] },
       powders: [], defaultPowderGram: [], selectedDiscountVouchers: [selected],
       subtotalPrice: 60_000, orderType: "DELIVERY", shippingFee: 15_000,
     };
@@ -105,7 +105,7 @@ describe("multi-choice voucher client contracts", () => {
     const retained = baseVoucher({ voucher_type: "DISCOUNT", discount_type: "FIXED", discount_value: 70_000, min_order_vnd: 100_000 });
     const candidate = baseVoucher({ qr_token: "candidate", voucher_type: "DISCOUNT", discount_type: "FIXED", discount_value: 5_000 });
     expect(getCartVoucherAvailability(candidate, {
-      menuData: { updated_at: "2026-10-03T00:00:00Z", latte: [], fusion: [], milk_types: [], addon_groups: [] },
+      menuData: { updated_at: "2026-10-03T00:00:00Z", latte_price_anchors: {}, latte: [], fusion: [], milk_types: [], addon_groups: [] },
       powders: [], defaultPowderGram: [], selectedDiscountVouchers: [retained],
       subtotalPrice: 60_000, orderType: "PICKUP", shippingFee: 0,
     })).toMatchObject({ canUse: true, reason: "" });

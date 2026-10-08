@@ -77,6 +77,10 @@ export interface MenuItem {
     LARGE?: number;
   } | null;
   powder: MenuItemPowder | null;
+  /** Original Fusion powder used as the premium price anchor. */
+  default_powder_id: string | null;
+  /** Admin-selected serving default while the original is inactive. */
+  replacement_powder_id: string | null;
   resolved_default_powder_id: string | null;
   allowed_powder_ids: string[];
   default_base_liquid_id?: string | null;
@@ -84,9 +88,13 @@ export interface MenuItem {
   sizes: MenuItemSize[];
 }
 
+/** Latte base-price inputs by powder, including inactive original anchors. */
+export type LattePriceAnchors = Record<string, Partial<Record<Size, number>> | null>;
+
 /** The complete menu structure returned by GET /api/menu. */
 export interface MenuData {
   updated_at: string;
+  latte_price_anchors: LattePriceAnchors;
   latte: MenuItem[];
   fusion: MenuItem[];
   extras?: MenuItem[];

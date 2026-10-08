@@ -47,18 +47,19 @@ export async function processOrderItems(
     typeof (client.addonOption as { findMany?: unknown }).findMany === "function";
   const menuIds = [...new Set(items.map((item) => item.menu_item_id))];
   const addonIds = [...new Set(items.flatMap((item) => item.addon_option_ids))];
-  const [pricingCtx, menuItems, addonOptions] = await Promise.all([
-    buildPricingContext(client as Parameters<typeof buildPricingContext>[0]),
-    supportsBatchCatalog
-      ? client.menuItem.findMany({
-          where: { id: { in: menuIds } },
-          include: {
-            sizes: true,
-            fusionAllowedPowders: { include: { matchaPowder: { select: { is_available: true } } } },
-            allowedBaseLiquids: { include: { baseLiquid: { select: { is_active: true } } } },
-          },
-        })
-      : Promise.resolve([]),
+  const menuItems = supportsBatchCatalog
+    ? await client.menuItem.findMany({
+        where: { id: { in: menuIds } },
+        include: {
+          sizes: true,
+          fusionAllowedPowders: { include: { matchaPowder: { select: { is_available: true } } } },
+          allowedBaseLiquids: { include: { baseLiquid: { select: { is_active: true } } } },
+        },
+      })
+    : [];
+  const originalPowderIds = [...new Set(menuItems.flatMap((menu) => menu.default_powder_id ? [menu.default_powder_id] : []))];
+  const [pricingCtx, addonOptions] = await Promise.all([
+    buildPricingContext(client as Parameters<typeof buildPricingContext>[0], { powderIds: originalPowderIds }),
     supportsBatchCatalog && addonIds.length > 0
       ? client.addonOption.findMany({
           where: { id: { in: addonIds } },

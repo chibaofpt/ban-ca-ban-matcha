@@ -74,7 +74,7 @@ export async function toWelcomeRewardDto(
   } else if (reward.outcome?.voucher) {
     const catalog = await loadVoucherAvailabilityCatalog(db);
     const [withAvailability] = attachOwnedVoucherAvailability([reward.outcome.voucher], catalog, now);
-    const [withBaseline] = await attachBundleRewardBaselines(db, [withAvailability]);
+    const [withBaseline] = await attachBundleRewardBaselines(db, [withAvailability], [reward.outcome.voucher]);
     const voucher = toPublicVoucherDto(withBaseline);
     const effectiveVoucher = withBaseline.status === "ACTIVE" && withBaseline.expires_at && withBaseline.expires_at <= now
       ? { ...voucher, status: "EXPIRED" as const }

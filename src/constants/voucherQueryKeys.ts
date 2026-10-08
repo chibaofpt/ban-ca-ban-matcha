@@ -7,5 +7,6 @@ export const VOUCHER_QUERY_KEYS = {
     cursor === undefined
       ? ["admin", "voucher-packages", packageId, "recipients", userQrToken, status]
       : ["admin", "voucher-packages", packageId, "recipients", userQrToken, status, cursor],
+  STAFF_CUSTOMER_CATALOG: (customerQrToken: string | null) => ["staff", "voucher-packages", customerQrToken],
   CUSTOMER_POINTS: ["customer", "points"],
 } as const;

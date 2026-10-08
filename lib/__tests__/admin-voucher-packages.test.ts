@@ -249,6 +249,7 @@ describe("POST /api/admin/voucher-packages", () => {
     // Route now calls pricing engine to auto-calc covered_price_vnd
     mockMenuItemFindUnique.mockResolvedValue(latteMenuItem);
     mockBuildPricingContext.mockResolvedValue(basePricingCtx);
+    mockResolveOrderItemPremiumLatte.mockResolvedValue(0);
     mockResolveOrderItemPrice.mockReturnValue(65000); // server computes this
     mockAddonFindMany.mockResolvedValue([]);           // no addons included
     mockPkgCreate.mockResolvedValue({ id: PKG_ID, voucher_type: "PRODUCT", covered_price_vnd: 65000 });
@@ -327,12 +328,13 @@ describe("POST /api/admin/voucher-packages", () => {
     expect(mockPkgCreate).not.toHaveBeenCalled();
   });
 
-  it("publish PRODUCT Fusion dùng fallback bột và Base Liquid active làm baseline", async () => {
+  it("publish PRODUCT Fusion dùng replacement tường minh và mốc original", async () => {
     mockMenuItemFindUnique.mockResolvedValue({
       ...latteMenuItem,
       category: "fusion",
       matcha_powder_id: null,
       default_powder_id: "powder-inactive",
+      replacement_powder_id: POWDER_ID,
       default_base_liquid_id: "liquid-inactive",
       allowedBaseLiquids: [{
         base_liquid_id: BASE_LIQUID_ID,
@@ -340,6 +342,7 @@ describe("POST /api/admin/voucher-packages", () => {
       }],
     });
     mockBuildPricingContext.mockResolvedValue(basePricingCtx);
+    mockResolveOrderItemPremiumLatte.mockResolvedValue(0);
     mockResolveOrderItemPrice.mockReturnValue(42_000);
     mockAddonFindMany.mockResolvedValue([]);
     mockPkgCreate.mockImplementation(
@@ -373,6 +376,7 @@ describe("POST /api/admin/voucher-packages", () => {
       allowedBaseLiquids: [],
     });
     mockBuildPricingContext.mockResolvedValue(basePricingCtx);
+    mockResolveOrderItemPremiumLatte.mockResolvedValue(0);
 
     const res = await POST(makeReq({
       voucher_type: "PRODUCT", name: "Fusion hết liquid", points_cost: 5,
@@ -597,6 +601,7 @@ describe("POST /api/admin/voucher-packages", () => {
   it("does not set discount fields for PRODUCT package", async () => {
     mockMenuItemFindUnique.mockResolvedValue(latteMenuItem);
     mockBuildPricingContext.mockResolvedValue(basePricingCtx);
+    mockResolveOrderItemPremiumLatte.mockResolvedValue(0);
     mockResolveOrderItemPrice.mockReturnValue(75000);
     mockAddonFindMany.mockResolvedValue([]);
     mockPkgCreate.mockResolvedValue({ id: PKG_ID });
@@ -631,6 +636,7 @@ describe("POST /api/admin/voucher-packages", () => {
   it("returns 500 on DB error", async () => {
     mockMenuItemFindUnique.mockResolvedValue(latteMenuItem);
     mockBuildPricingContext.mockResolvedValue(basePricingCtx);
+    mockResolveOrderItemPremiumLatte.mockResolvedValue(0);
     mockResolveOrderItemPrice.mockReturnValue(65000);
     mockAddonFindMany.mockResolvedValue([]);
     mockPkgCreate.mockRejectedValue(new Error("timeout"));
@@ -679,6 +685,7 @@ describe("POST /api/admin/voucher-packages — validation bổ sung", () => {
     // Setup: latte SMALL with addon kem (15k)
     mockMenuItemFindUnique.mockResolvedValue(latteMenuItem);
     mockBuildPricingContext.mockResolvedValue(basePricingCtx);
+    mockResolveOrderItemPremiumLatte.mockResolvedValue(0);
     mockResolveOrderItemPrice.mockReturnValue(45000); // base SMALL = 45k
 
     // Addon kem 15k
@@ -714,6 +721,7 @@ describe("POST /api/admin/voucher-packages — validation bổ sung", () => {
       args.where.id === secondMenuId ? { ...latteMenuItem, id: secondMenuId } : latteMenuItem,
     );
     mockBuildPricingContext.mockResolvedValue(basePricingCtx);
+    mockResolveOrderItemPremiumLatte.mockResolvedValue(0);
     mockResolveOrderItemPrice.mockReturnValueOnce(45_000).mockReturnValueOnce(58_000);
     mockPkgCreate.mockResolvedValue({ id: PKG_ID });
 
@@ -746,6 +754,7 @@ describe("POST /api/admin/voucher-packages — validation bổ sung", () => {
   it("PRODUCT package từ chối included addon có giá gram động", async () => {
     mockMenuItemFindUnique.mockResolvedValue(latteMenuItem);
     mockBuildPricingContext.mockResolvedValue(basePricingCtx);
+    mockResolveOrderItemPremiumLatte.mockResolvedValue(0);
     mockResolveOrderItemPrice.mockReturnValue(45_000);
     mockAddonFindMany.mockResolvedValue([
       { id: EXTRA_MATCHA_ADDON_ID, price_vnd: 0, gram_value: { valueOf: () => 1 } },

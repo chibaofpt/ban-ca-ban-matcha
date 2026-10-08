@@ -39,7 +39,7 @@ describe("GET /api/menu — contract dữ liệu chuẩn hóa", () => {
         id: "latte-1",
         name: "Matcha Latte",
         description: null,
-        category: "latte",
+        category: "latte", is_available: true, replacement_powder_id: null,
         is_seasonal: true,
         image_url: null,
         sort_order: 1,
@@ -55,7 +55,7 @@ describe("GET /api/menu — contract dữ liệu chuẩn hóa", () => {
         id: "fusion-1",
         name: "Matcha Cam",
         description: null,
-        category: "fusion",
+        category: "fusion", is_available: true, replacement_powder_id: null,
         is_seasonal: false,
         image_url: null,
         sort_order: 2,
@@ -174,9 +174,27 @@ describe("GET /api/menu — contract dữ liệu chuẩn hóa", () => {
     expect(body.data.fusion[0]?.default_base_liquid_id).not.toBe("milk-inactive");
   });
 
+  it("Fusion chỉ trả powder swap active từ cấu hình có cả inactive", async () => {
+    mockMenuItemFindMany.mockResolvedValue([{
+      id: "fusion-swaps", name: "Fusion", description: null, category: "fusion", is_available: true, replacement_powder_id: null,
+      is_seasonal: false, image_url: null, sort_order: 0, base_liquid_note: null,
+      custom_powder_grams: null, default_powder_id: "powder-1", default_base_liquid_id: "milk-1",
+      updated_at: new Date("2026-08-22T00:00:00.000Z"),
+      sizes: [{ size: "SMALL", base_price_vnd: 30_000 }], matchaPowder: null,
+      allowedBaseLiquids: [],
+      fusionAllowedPowders: [
+        { powder_id: "powder-active-swap", matchaPowder: { id: "powder-active-swap", is_available: true } },
+        { powder_id: "powder-inactive-swap", matchaPowder: { id: "powder-inactive-swap", is_available: false } },
+      ],
+    }]);
+    const response = await GET();
+    const body = (await response.json()) as { data: { fusion: Array<{ allowed_powder_ids: string[] }> } };
+    expect(body.data.fusion[0]?.allowed_powder_ids).toEqual(["powder-active-swap"]);
+  });
+
   it("không trả Latte có bột cố định đã inactive và vẫn giữ mốc updated_at", async () => {
     mockMenuItemFindMany.mockResolvedValue([{
-      id: "latte-inactive", name: "Latte ngưng bột", description: null, category: "latte",
+      id: "latte-inactive", name: "Latte ngưng bột", description: null, category: "latte", is_available: true, replacement_powder_id: null,
       is_seasonal: false, image_url: null, sort_order: 1, base_liquid_note: null,
       custom_powder_grams: null, default_powder_id: null,
       updated_at: new Date("2026-08-22T00:00:00.000Z"),
@@ -189,5 +207,45 @@ describe("GET /api/menu — contract dữ liệu chuẩn hóa", () => {
     const body = (await response.json()) as { data: { latte: unknown[]; updated_at: string } };
     expect(body.data.latte).toEqual([]);
     expect(body.data.updated_at).toBe("2026-08-22T00:00:00.000Z");
+  });
+
+  it("giữ anchor Latte A inactive và Fusion replacement B, ẩn Fusion không cấu hình hợp lệ", async () => {
+    const rows = [
+      {
+        id: "latte-A", name: "Latte A", category: "latte", is_available: false,
+        is_seasonal: false, sort_order: 0, updated_at: new Date("2026-10-07T00:00:00Z"),
+        sizes: [{ size: "MEDIUM", base_price_vnd: 5_000 }], fusionAllowedPowders: [], allowedBaseLiquids: [],
+        default_powder_id: null, replacement_powder_id: null,
+        matchaPowder: { id: "A", name: "A", type: "NONE", is_available: false },
+      },
+      {
+        id: "latte-B", name: "Latte B", category: "latte", is_available: true,
+        is_seasonal: false, sort_order: 1, updated_at: new Date("2026-10-06T00:00:00Z"),
+        sizes: [{ size: "MEDIUM", base_price_vnd: 8_000 }], fusionAllowedPowders: [], allowedBaseLiquids: [],
+        default_powder_id: null, replacement_powder_id: null,
+        matchaPowder: { id: "B", name: "B", type: "NONE", is_available: true },
+      },
+      ...[true, false].map((valid) => ({
+        id: valid ? "valid" : "invalid", name: "Fusion", category: "fusion", is_available: true,
+        is_seasonal: false, sort_order: 2, updated_at: new Date("2026-10-05T00:00:00Z"),
+        sizes: [{ size: "MEDIUM", base_price_vnd: 23_000 }], fusionAllowedPowders: [], allowedBaseLiquids: [],
+        default_powder_id: valid ? "A" : null, replacement_powder_id: "B", matchaPowder: null,
+      })),
+    ];
+    const powders = [
+      { id: "A", name: "A", price_per_gram: 6_000, is_available: false, reference_latte_item_id: "latte-A" },
+      { id: "B", name: "B", price_per_gram: 7_000, is_available: true, reference_latte_item_id: "latte-B" },
+    ];
+    mockMenuItemFindMany.mockImplementation(async (args: { where?: { is_available?: boolean } }) =>
+      args.where?.is_available ? rows.filter((row) => row.is_available) : rows);
+    mockMatchaPowderFindMany.mockImplementation(async (args: { where?: { is_available?: boolean } }) =>
+      args.where?.is_available ? powders.filter((powder) => powder.is_available) : powders);
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ data: {
+      updated_at: "2026-10-07T00:00:00.000Z", latte: [{ id: "latte-B" }],
+      fusion: [{ id: "valid", default_powder_id: "A", replacement_powder_id: "B", resolved_default_powder_id: "B" }],
+      latte_price_anchors: { A: { MEDIUM: 5_000 }, B: { MEDIUM: 8_000 } },
+    } });
   });
 });

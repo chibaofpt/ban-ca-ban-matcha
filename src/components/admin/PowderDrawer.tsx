@@ -12,6 +12,9 @@ import type { AdminMenuItem } from "@/src/lib/types/menu";
 import CatalogImageFields from "@/src/components/admin/CatalogImageFields";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 
+import { useFusionPowderReplacement } from "@/src/hooks/useFusionPowderReplacement";
+import { FusionPowderReplacementSheet } from "@/src/components/admin/FusionPowderReplacementSheet";
+
 interface PowderDrawerProps {
   open: boolean;
   mode: "create" | "edit";
@@ -34,6 +37,7 @@ export default function PowderDrawer({
   onSuccess,
   onToggleSuccess,
 }: PowderDrawerProps) {
+  const replacement = useFusionPowderReplacement();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -59,14 +63,14 @@ export default function PowderDrawer({
     setIsSubmitting(true);
     setErrorMsg(null);
     try {
-      let saved: Powder;
-      if (mode === "edit" && item) {
-        saved = await updatePowder(item.id, payload, imageFile, requestedFilename);
-      } else {
-        saved = await createPowder(payload, imageFile, requestedFilename);
-      }
-      onSuccess(saved);
-      onClose();
+      await replacement.run(async (mappings) => {
+        const input = mappings ? { ...payload, fusion_powder_replacements: mappings } : payload;
+        const saved = mode === "edit" && item
+          ? await updatePowder(item.id, input, imageFile, requestedFilename)
+          : await createPowder(input, imageFile, requestedFilename);
+        onSuccess(saved);
+        onClose();
+      });
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Có lỗi xảy ra, vui lòng thử lại.";
@@ -81,9 +85,11 @@ export default function PowderDrawer({
     const next = !item.is_available;
     setIsToggling(true);
     try {
-      await togglePowderAvailability(item.id, next);
-      onToggleSuccess?.(item.id, next);
-      onClose();
+      await replacement.run(async (mappings) => {
+        await togglePowderAvailability(item.id, next, mappings);
+        onToggleSuccess?.(item.id, next);
+        onClose();
+      });
     } catch {
       setErrorMsg("Không thể thay đổi trạng thái. Vui lòng thử lại.");
     } finally {
@@ -95,6 +101,7 @@ export default function PowderDrawer({
     mode === "edit" && item ? buildPowderDefaultValues(item) : undefined;
 
   return (
+    <>
     <ResponsiveOverlay
       open={open}
       title={mode === "create" ? "Thêm bột mới" : `Chỉnh sửa — ${item?.name}`}
@@ -102,7 +109,7 @@ export default function PowderDrawer({
         ? "Điền thông tin để thêm loại bột matcha mới."
         : "Cập nhật thông tin, giá và trạng thái bán."}
       size="lg"
-      busy={isSubmitting || isToggling}
+      busy={isSubmitting || isToggling || replacement.pending !== null}
       dismissPolicy="locked-while-busy"
       onOpenChange={(next) => { if (!next) onClose(); }}
     >
@@ -127,7 +134,7 @@ export default function PowderDrawer({
               aria-label="Trạng thái bán của bột"
               aria-checked={item.is_available}
               onClick={handleToggle}
-              disabled={isToggling || isSubmitting}
+              disabled={isToggling || isSubmitting || replacement.pending !== null}
               className="flex h-10 w-12 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-50"
             >
               <span className={cn(
@@ -158,9 +165,11 @@ export default function PowderDrawer({
           defaultValues={defaultValues}
           latteItems={latteItems}
           onSubmit={handleSubmit}
-          isSubmitting={isSubmitting}
+          isSubmitting={isSubmitting || replacement.busy || replacement.pending !== null}
         />
       </div>
     </ResponsiveOverlay>
+    {replacement.pending && <FusionPowderReplacementSheet details={replacement.pending.details} busy={replacement.busy} error={replacement.error} onConfirm={replacement.confirm} onCancel={replacement.cancel} />}
+    </>
   );
 }

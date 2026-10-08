@@ -70,7 +70,7 @@ export function VoucherMenuTargetCard({ item, menuData, allowedSizes, configurat
   const baseLiquidId = resolveVoucherBaseLiquidId(item, configuration?.baseLiquidId ?? null, liquids);
   const liquid = liquids.find((candidate) => candidate.id === baseLiquidId);
   const prices = powder ? sizes.map(({ size }) => {
-    const price = computeVoucherItemPrice(item, size, powderId ?? null, baseLiquidId, configuration?.addonOptionIds ?? [], powders, defaultPowderGram, menuData.latte, liquids, menuData.addon_groups);
+    const price = computeVoucherItemPrice(item, size, powderId ?? null, baseLiquidId, configuration?.addonOptionIds ?? [], powders, defaultPowderGram, menuData.latte_price_anchors, liquids, menuData.addon_groups);
     return price.drinkPrice + price.addonsCost;
   }) : [];
   const currentPrice = item.category === "extras" ? item.unit_price_vnd : prices.length > 0 ? Math.min(...prices) : null;

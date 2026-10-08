@@ -619,6 +619,7 @@ export const BundleVoucherSetupSheet = ({
         <ProductModal
           item={menuItem}
           latteItems={menuData.latte}
+          lattePriceAnchors={menuData.latte_price_anchors}
           milkTypes={milkTypes}
           addonGroups={menuData.addon_groups}
           managed

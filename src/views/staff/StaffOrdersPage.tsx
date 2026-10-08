@@ -9,14 +9,17 @@ import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
 import {
   fetchCustomerVouchers,
+  listCustomerVoucherPackages,
   exchangeCustomerVoucher,
   type MyVoucher,
 } from "@/src/services/staffVoucherService";
-import { listActiveVoucherPackages, type VoucherPackage } from "@/src/services/customerVoucherService";
+import type { VoucherPackage } from "@/src/services/customerVoucherService";
+import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import {
   calcLattePrice,
   calcFusionPrice,
+  calcPremiumLatte,
   resolveGram,
 } from "@/src/utils/pricing";
 import {
@@ -58,6 +61,7 @@ import { serializeCartOrderItems } from "@/src/lib/utils/cartOrderPayload";
 import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import { normalizeStaffBundleApplications } from "@/src/lib/utils/staffBundlePayload";
 import { isVoucherUsable } from "@/src/utils/voucherMatchUtils";
+import { getCartVoucherAvailability, getUsedCartVoucherTokens } from "@/src/lib/utils/cartVoucherAvailability";
 import { getVoucherAvailabilityMessage } from "@/src/lib/utils/voucherModalHelpers";
 import { computeProductDiscountBenefit, computeVoucherItemPrice } from "@/src/hooks/useAddVoucherToCart";
 import { filterMainCartVouchers, selectOrderVoucherToken } from "@/src/utils/customerVoucherSelection";
@@ -191,7 +195,7 @@ export default function StaffOrdersPage({
           base_price_vnd: base,
           gram,
           powder_price_per_gram: pwdPrice,
-          premium_latte: 0,
+          premium_latte: calcPremiumLatte(defaultPowderId ?? "", item.default_powder_id, s, menuData?.latte_price_anchors ?? {}),
         });
       }
     },
@@ -384,20 +388,20 @@ export default function StaffOrdersPage({
     toast.error("QR khách hàng không còn hợp lệ. Giỏ món trả phí vẫn được giữ.");
   }, [detachCustomer, queryClient, selectedCustomerQuery.isError, staffCustomerQrToken]);
 
-  const { data: voucherPackages } = useQuery({
-    queryKey: ["staff", "voucherPackages"],
-    queryFn: listActiveVoucherPackages,
-    enabled: userRole === "ADMIN",
+  const voucherPackagesQuery = useQuery({
+    queryKey: VOUCHER_QUERY_KEYS.STAFF_CUSTOMER_CATALOG(staffCustomerQrToken),
+    queryFn: () => listCustomerVoucherPackages(staffCustomerQrToken!),
+    enabled: userRole === "ADMIN" && Boolean(staffCustomerQrToken &&
+      selectedCustomerQuery.isSuccess && selectedCustomerQuery.data?.type === "user" &&
+      selectedCustomerQuery.data.data.qr_token === staffCustomerQrToken),
     staleTime: 1000 * 60 * 5,
   });
 
   const availableVoucherPackages = useMemo(() => {
-    if (userRole !== "ADMIN" || !voucherPackages) return [];
-    return voucherPackages.filter((p) =>
-      p.acquisition_mode === "POINTS_EXCHANGE" &&
-      (p.voucher_type === "DISCOUNT" || p.voucher_type === "BUNDLE"),
-    );
-  }, [userRole, voucherPackages]);
+    if (userRole !== "ADMIN" || voucherPackagesQuery.isError || !staffCustomerQrToken ||
+      selectedCustomerQuery.data?.type !== "user" || selectedCustomerQuery.data.data.qr_token !== staffCustomerQrToken) return [];
+    return (voucherPackagesQuery.data ?? []).filter((p) => p.acquisition_mode === "POINTS_EXCHANGE");
+  }, [userRole, voucherPackagesQuery.data, voucherPackagesQuery.isError, staffCustomerQrToken, selectedCustomerQuery.data]);
 
   const refreshStaffWallet = useCallback(
     async (): Promise<MyVoucher[]> => {
@@ -421,8 +425,8 @@ export default function StaffOrdersPage({
     };
   }, [staffCustomerQrToken]);
   const refreshStaffCatalog = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ["staff", "voucherPackages"] });
-  }, [queryClient]);
+    await queryClient.invalidateQueries({ queryKey: VOUCHER_QUERY_KEYS.STAFF_CUSTOMER_CATALOG(staffCustomerQrToken) });
+  }, [queryClient, staffCustomerQrToken]);
   const voucherAcquisitionOptions = useMemo(() => ({
     exchangeVoucher: exchangeStaffVoucher,
     refreshCatalog: refreshStaffCatalog,
@@ -435,17 +439,7 @@ export default function StaffOrdersPage({
       latestCustomer?.type !== "existing" ||
       latestCustomer.data.qr_token !== staffCustomerQrToken
     ) return;
-    const updatedCustomer = {
-      ...latestCustomer.data,
-      points_balance: Math.max(0, latestCustomer.data.points_balance - voucherPackage.points_cost),
-    };
-    useStaffCartStore.setState({
-      customerInfo: { type: "existing", data: updatedCustomer },
-    });
-    queryClient.setQueryData(["staff", "cart-customer", latestCustomer.data.qr_token], {
-      type: "user",
-      data: updatedCustomer,
-    });
+    void queryClient.invalidateQueries({ queryKey: ["staff", "cart-customer", latestCustomer.data.qr_token] });
   }, [queryClient, staffCustomerQrToken, userRole]);
 
   // ── Derived ───────────────────────────────────────────────────────────
@@ -519,6 +513,64 @@ export default function StaffOrdersPage({
     bundleApplications,
     shippingFeeVnd: 0,
   }), [bundleApplications, cart, cartProjection, customerWalletQuery.data, menuData, pData, projectionVouchers, selectedDiscountIds]);
+  const voucherLossSnapshot = useRef<{
+    ownerToken: string | null; quantity: number; appliedTokens: Set<string>;
+  } | null>(null);
+  useEffect(() => {
+    const previous = voucherLossSnapshot.current;
+    if (!cartOpen && !previous) return;
+    if (walletRevalidating || cartProjection.revalidating || !menuData || !pData) {
+      if (!cartOpen) voucherLossSnapshot.current = null;
+      return;
+    }
+    const quantity = cart.reduce((sum, item) => sum + item.quantity, 0);
+    const appliedTokens = new Set(cartProjection.appliedOrderVoucherTokens);
+    voucherLossSnapshot.current = cartOpen
+      ? { ownerToken: staffCustomerQrToken, quantity, appliedTokens } : null;
+    if (!previous || !staffCustomerQrToken || previous.ownerToken !== staffCustomerQrToken ||
+      quantity >= previous.quantity) return;
+    const lostMinimum = selectedOrderDiscountVouchers.some((voucher) =>
+      previous.appliedTokens.has(voucher.qr_token) && !appliedTokens.has(voucher.qr_token) &&
+      isVoucherUsable(voucher) &&
+      (voucher.min_order_vnd ?? 0) > cartProjection.totals.discountable_subtotal_vnd);
+    if (!lostMinimum) return;
+    const usedTokens = getUsedCartVoucherTokens(cart, bundleApplications);
+    const context = {
+      menuData, powders: pData.data, defaultPowderGram: pData.default_powder_gram,
+      selectedDiscountVouchers: selectedOrderDiscountVouchers,
+      subtotalPrice: cartProjection.totals.discountable_subtotal_vnd,
+      orderType: "PICKUP" as const, shippingFee: 0,
+    };
+    const hasOtherVoucher = customerVouchers.some((voucher) =>
+      !selectedDiscountIds.includes(voucher.qr_token) && !usedTokens.has(voucher.qr_token) &&
+      getCartVoucherAvailability(voucher, context).canUse);
+    toast.warning(
+      hasOtherVoucher ? (
+        <>
+          Voucher bạn đã chọn không thể sử dụng được nữa,{" "}
+          <a
+            href="#cart-vouchers"
+            className="cursor-pointer font-medium underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            style={{ touchAction: "manipulation" }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (useStaffCartStore.getState().customerQrToken !== staffCustomerQrToken ||
+                pendingOwnerChange.current) return;
+              setCartOpen(true);
+              setVoucherPickerOpen(true);
+              toast.dismiss("staff-cart-voucher-minimum-lost");
+            }}
+          >
+            bấm vào đây để sử dụng voucher khác
+          </a>
+        </>
+      ) : "Voucher bạn đã chọn không thể sử dụng được nữa, vui lòng kiểm tra lại đơn",
+      { id: "staff-cart-voucher-minimum-lost", duration: 5000 },
+    );
+  }, [bundleApplications, cart, cartOpen, cartProjection, customerVouchers, menuData, pData,
+    selectedDiscountIds, selectedOrderDiscountVouchers, staffCustomerQrToken, walletRevalidating]);
   const projectedCart = displayCartProjection.lines;
   const bundleAllocatedQuantitiesByCartId = useMemo(
     () => getBundleAllocatedQuantities(bundleApplications),
@@ -541,7 +593,7 @@ export default function StaffOrdersPage({
           [],
           pData.data,
           pData.default_powder_gram,
-          menuData.latte,
+          menuData.latte_price_anchors,
           menuData.milk_types,
           menuData.addon_groups,
         ).drinkPrice
@@ -928,11 +980,8 @@ export default function StaffOrdersPage({
       .map((application) => application.voucher_qr_token));
     const normalizedBundleApplications = normalizeStaffBundleApplications(bundleApplications, readyBundleTokens);
     const items = buildOrderItems(projectedCart, normalizedBundleApplications.length > 0);
-    const discountVoucherIds = Array.from(
-      new Set([
-        ...(discountVoucher ? [discountVoucher.qr_token] : []),
-        ...selectedDiscountIds,
-      ]),
+    const discountVoucherIds = selectedDiscountIds.filter(
+      (token) => cartProjection.appliedOrderVoucherTokens.includes(token),
     );
 
     if (!customerInfo) {
@@ -1395,6 +1444,7 @@ export default function StaffOrdersPage({
               key="staff-edit-modal"
               item={selectedItem}
               latteItems={menuData?.latte ?? []}
+              lattePriceAnchors={menuData?.latte_price_anchors ?? {}}
               milkTypes={menuData?.milk_types ?? []}
               addonGroups={menuData?.addon_groups ?? []}
               editingItem={editingCartItem || undefined}
@@ -1437,6 +1487,7 @@ export default function StaffOrdersPage({
           key="staff-add-modal"
           item={selectedItem}
           latteItems={menuData?.latte ?? []}
+          lattePriceAnchors={menuData?.latte_price_anchors ?? {}}
           milkTypes={menuData?.milk_types ?? []}
           addonGroups={menuData?.addon_groups ?? []}
           freeVoucherId={scannedProductVoucher?.qr_token}

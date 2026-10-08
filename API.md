@@ -877,6 +877,8 @@ route consumes the `passwordChangeAccount` bucket (5/15 minutes/account) and the
 {
   data: {
     updated_at: string              // MAX(menu_items.updated_at) — ISO timestamp for cache invalidation
+    latte_price_anchors: Record<string, Partial<Record<"SMALL" | "MEDIUM" | "LARGE", number>> | null>
+                                    // keyed by powder ID; includes inactive original Latte price anchors
     latte: MenuItem[]
     fusion: MenuItem[]
     extras: MenuItem[]              // fixed-price merchandise; rendered below Fusion
@@ -909,7 +911,9 @@ route consumes the `passwordChangeAccount` bucket (5/15 minutes/account) and the
   } | null
 
   // Fusion only
-  resolved_default_powder_id: string   // never null — server resolves fallback
+  default_powder_id: string           // original powder / premium anchor
+  replacement_powder_id: string | null // explicit admin serving default while original is inactive
+  resolved_default_powder_id: string   // active original or configured replacement; invalid Fusion omitted
   allowed_powder_ids: string[]         // fusion_allowed_powder WHERE is_available=true; empty = swap locked
 
   sizes: {
@@ -1042,7 +1046,9 @@ backward compatible.
 ### `GET /api/admin/menu`
 Uses the same `updated_at`, `latte`, `fusion`, and `extras` grouping as `GET /api/menu`, but does not return the public global `milk_types` or `addon_groups` collections. It also:
 - Includes items with `is_available = false`
-- Includes `default_powder_id` (raw, may be null) alongside `resolved_default_powder_id`
+- Includes original `default_powder_id`, configured `replacement_powder_id`, and
+  `resolved_default_powder_id` (nullable for invalid configuration). Admin retains unavailable items.
+- Preserves all configured `allowed_powder_ids` and `allowed_base_liquid_ids`, including inactive records, so Admin edits do not discard stored selections. Public availability filtering belongs to `GET /api/menu`.
 - Includes all 3 size rows including those with `base_price_vnd = null`
 - `updated_at` is still `MAX(menu_items.updated_at)` across all items including unavailable
 
@@ -1058,7 +1064,7 @@ Uses the same `updated_at`, `latte`, `fusion`, and `extras` grouping as `GET /ap
   image?: File
   sort_order?: number                   // compatibility; omitted = prepend within category
   matcha_powder_id?: string           // Latte only
-  default_powder_id?: string          // Fusion only
+  default_powder_id?: string          // required non-null for Fusion; new selection must be active
   base_liquid_note?: string           // Fusion only
   default_base_liquid_id?: string     // required for new/edited Fusion
   allowed_base_liquid_ids?: string[]  // default is implicit; do not include it
@@ -1203,9 +1209,21 @@ and used counts, global stock, warning reasons, grant eligibility and expiry pre
 writes lifecycle expiry.
 
 ### `GET /api/voucher-packages`
-PUBLIC customer catalog. PRIVATE packages are filtered out in both the cached and live branches;
-the response contains only packages eligible for customer acquisition. Owned-wallet reads remain
-able to return PRIVATE voucher instances.
+Public package catalog. PRIVATE packages are filtered out in both the cached and live branches;
+active package windows and live target availability are resolved by the server. Owned-wallet reads
+remain able to return PRIVATE voucher instances. Catalog visibility and acquisition composition belong
+to [voucher UI](docs/specs/voucher-ui.md#nhận-đổi-và-auth-intent).
+
+Optional query: `customerQrToken=<UUID>`. Only ADMIN may scope this read to a selected CUSTOMER.
+The identifier uses the existing QR-first resolver and legacy UUID migration bridge. Missing session
+returns `401 UNAUTHORIZED`; STAFF/CUSTOMER returns `403 FORBIDDEN`; an empty, malformed or repeated
+query returns `400 VALIDATION_ERROR`; an unknown or non-CUSTOMER identifier returns `404 NOT_FOUND`.
+Requests without the query retain the public/own-session behavior and unchanged `{ data: VoucherPackage[] }`
+response. `user_redeemed_count` belongs to the selected customer when scoped, otherwise the session user
+(or zero for guests). Counts are lifetime self-acquisitions under the
+[voucher lifecycle owner](.agents/skills/voucher-flow/references/lifecycle.md), independent of wallet status.
+`remaining_quantity` is zero when exhausted and null when unlimited. Both counts are fetched live
+outside Redis; only the existing base package list is cached.
 
 All package/wallet voucher responses expose the same grouped `qualifier_products` and
 `reward_products`. Each product additionally contains
@@ -1270,11 +1288,15 @@ campaign issuance limit; there is no second limit inside `bundle_rule`.
   description?: string
   is_seasonal?: boolean
   is_available?: boolean
+  fusion_powder_replacements?: { menu_item_id: string; replacement_powder_id: string }[]
   image?: File
   sort_order?: number
   matcha_powder_id?: string
   default_powder_id?: string
+  allowed_powder_ids?: string[]
   base_liquid_note?: string
+  default_base_liquid_id?: string | null
+  allowed_base_liquid_ids?: string[]
   custom_powder_grams?: { SMALL?: number, MEDIUM?: number, LARGE?: number } | null
   sizes?: {
     size: "SMALL" | "MEDIUM" | "LARGE"
@@ -1285,7 +1307,63 @@ campaign issuance limit; there is no second limit inside `bundle_rule`.
 ```
 
 The JSON quick-toggle payload `{ is_available: boolean }` remains valid for legacy Fusion rows
-without a configured default Base Liquid. Any full edit still requires a valid active default.
+without a configured default Base Liquid. Enabling a Fusion, including a quick-toggle, validates
+its original and active serving powder before writes and again inside the transaction; invalid
+configuration returns `422 BUSINESS_RULE_VIOLATION`. Disabling remains available for invalid rows.
+A full Fusion edit requires a default Base Liquid ID
+that still exists; an inactive default or inactive allow-list entry remains valid for Admin
+configuration, while an unknown ID returns `422 BUSINESS_RULE_VIOLATION`. For extras, `sizes`
+may be omitted or sent as `[]`; extras remain priced only by `unit_price_vnd`.
+
+Submitted Latte `matcha_powder_id` and Fusion `default_powder_id` / `allowed_powder_ids`
+must reference existing powders. Admin may retain inactive stored originals and allow-list entries;
+a new Fusion original selection must be active. The Fusion original cannot be cleared.
+Malformed UUIDs return `400 VALIDATION_ERROR`; unknown powder IDs return
+`422 BUSINESS_RULE_VIOLATION` before image upload or database writes, with
+`details: { reason: "POWDER_REFERENCE_NOT_FOUND", field, powder_ids }` identifying missing
+references. Duplicate swap IDs are saved once. Omitting an allow-list preserves its rows;
+`[]` clears it. A known powder foreign-key failure during the transaction returns the same
+reference error, with the submitted IDs for that field as the affected candidates; unrelated
+database failures remain `500 INTERNAL_ERROR`.
+
+### Powder and anchored Latte availability mutations
+
+Use the existing `PUT /api/admin/powders/[id]`, `PUT /api/admin/menu/[id]`, and
+powder soft-delete path. The JSON toggle remains `{ is_available: boolean }`; it may additionally
+send `fusion_powder_replacements: { menu_item_id, replacement_powder_id }[]`.
+Multipart edits serialize that list as JSON. Creation/full edits validate the merged Fusion original;
+omitting its ID preserves it, clearing it is invalid, and changing it to an active original clears
+the prior replacement. Ordinary saves with an unchanged availability do not clear replacements.
+A full powder edit that changes `reference_latte_item_id` synchronizes availability only with the
+resulting reference Latte; the detached Latte keeps its status. Omitting `is_available` preserves
+the powder status, including when changing or removing the reference. Replacement validation
+happens before configuration writes in the same transaction.
+
+Disabling without a complete valid replacement mapping returns HTTP 422 with:
+```ts
+{
+  error: string,
+  code: "BUSINESS_RULE_VIOLATION",
+  details: {
+    reason: "FUSION_POWDER_REPLACEMENT_REQUIRED",
+    powder_id: string,
+    fusion_items: {
+      id: string; name: string; is_available: boolean;
+      default_powder_id: string | null; replacement_powder_id: string | null;
+    }[],
+    available_powders: { id: string; name: string }[]
+  }
+}
+```
+The error makes no availability/configuration writes. It supplies the current impact and selectable
+active powders, excluding the powder being disabled. Clients resubmit explicit per-item selections;
+both shared and per-item UI modes use this same list. If the impact or candidates changed, return
+the current details for correction. Malformed input returns 400; exhausted serialization retries
+return 409 CONFLICT. Success preserves existing response envelopes and refreshes catalog caches.
+
+Business invariants and paired transition behavior belong to
+[pricing-logic](.agents/skills/pricing-logic/SKILL.md#powder-rules); admin interaction belongs to
+[Catalog UI](docs/specs/catalog-ui.md#fusion-powder-replacement).
 
 ### `POST /api/orders` — Customer
 ```ts
@@ -1539,6 +1617,14 @@ RESERVED entries support read-only wallet detail. Application eligibility remain
 [voucher-flow](.agents/skills/voucher-flow/SKILL.md). Public DTOs retain `qr_token` and omit
 internal voucher/user identifiers. This read does not mutate voucher state.
 
+### `POST /api/staff/users/[id]/vouchers/exchange`
+
+ADMIN-only; STAFF receives `403 FORBIDDEN`. The customer segment uses the existing QR-first resolver
+and legacy UUID bridge; unknown or non-CUSTOMER identifiers return `404 NOT_FOUND`.
+Body: `{ package_id: string }`. Exchanges only POINTS_EXCHANGE packages using the selected customer's
+points and quotas, and returns `201 { data: ExchangedVoucher }` with the public voucher `qr_token`.
+FREE_CLAIM remains on the customer claim endpoint and is absent from the POS acquisition adapter.
+
 ### `GET /api/staff/scan?token=xxx`
 Read-only: project effective `EXPIRED` status without updating expired voucher rows during a scan.
 
@@ -1590,11 +1676,15 @@ them from the customer's cart voucher picker, where the chosen menu-item/addon t
 ### Menu
 - `GET /api/menu`: return the active global Base Liquid catalog once, plus each item's resolved default, active allowed IDs, and effective per-size volume. Consumers show the selector only when default + allowed contains more than one option.
 - `updated_at` in response = `MAX(menu_items.updated_at)` across all items including unavailable ones.
-- Fusion missing/inactive default: resolve fallback (Meyumi → Hana → MH-3 → lowest active `price_per_gram` → lowest ID). Return `resolved_default_powder_id` when any powder is active.
+- Fusion serving default and lifecycle follow [pricing-logic](.agents/skills/pricing-logic/SKILL.md#powder-rules).
+  Return the original, explicit replacement and resolved serving default separately; omit invalid
+  Fusion configurations rather than automatically selecting another powder. Inactive Latte anchors
+  remain in `latte_price_anchors` as pricing inputs, not saleable menu entries.
 - `allowed_powder_ids`: join `fusion_allowed_powder` + filter `matcha_powder.is_available = true`.
 - `POST /api/admin/menu`: persist the parent and category-appropriate configuration in one transaction; drink sizes and extras follow the endpoint contract above.
 - `DELETE /api/admin/addon-groups/[id]`: set `is_active = false`. Never hard delete.
-- Admin soft-deleting a Latte item: check `matcha_powder.reference_latte_item_id` and warn if any powder references it.
+- Availability writes from Latte or powder use the shared transition contract below and preserve
+  `reference_latte_item_id` while inactive.
 
 ### Pricing (Server)
 

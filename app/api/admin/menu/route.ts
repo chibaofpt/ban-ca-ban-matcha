@@ -1,3 +1,5 @@
+import { runSerializableTransaction } from "@/lib/serializableTransaction";
+import { validateFusionOriginalPowder, fusionOriginalPowderErrorResponse } from "@/lib/catalog/adminMenuUpdate";
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -167,6 +169,14 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
     const validData = validation.data;
+    if (validData.category === "fusion") {
+      const powder = await prisma.matchaPowder.findUnique({ where: { id: validData.default_powder_id } });
+      if (!powder) return NextResponse.json({
+        error: "Bột gốc không tồn tại", code: "BUSINESS_RULE_VIOLATION",
+        details: { reason: "POWDER_REFERENCE_NOT_FOUND", field: "default_powder_id", powder_ids: [validData.default_powder_id] },
+      }, { status: 422 });
+      if (!powder.is_available) return NextResponse.json({ error: "Bột gốc phải đang bán", code: "BUSINESS_RULE_VIOLATION" }, { status: 422 });
+    }
 
     const activeBaseLiquids = await prisma.milkType.findMany({
       where: { is_active: true },
@@ -283,7 +293,8 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     // ── DB write — 1 menu_item + 3 menu_item_sizes in one transaction ───────
     const defaultSizeConfigs = await prisma.defaultSizeConfig.findMany();
-    const createdItem = await prisma.$transaction(async (tx) => {
+    const createdItem = await runSerializableTransaction(prisma, async (tx) => {
+        if (validData.category === "fusion") await validateFusionOriginalPowder(validData.default_powder_id, null, tx);
         if (!hasExplicitSortOrder) {
           await tx.menuItem.updateMany({
             where: { category: validData.category },
@@ -336,7 +347,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           where: { id: item.id },
           include: ADMIN_MENU_INCLUDE,
         });
-      }, { maxWait: 10000, timeout: 15000 });
+      }, { timeoutMs: 15000 });
     databaseCommitted = true;
     const milkMlMap: Record<string, number> = {};
     for (const c of defaultSizeConfigs) milkMlMap[c.size] = c.milk_ml;
@@ -357,6 +368,10 @@ export async function POST(req: Request): Promise<NextResponse> {
         });
       }
     }
+    const originalError = fusionOriginalPowderErrorResponse(err);
+    if (originalError) return originalError;
+    if (err instanceof Error && "code" in err && err.code === "P2034") return NextResponse.json(
+      { error: "Dữ liệu đã thay đổi, vui lòng tải lại và thử lại", code: "CONFLICT" }, { status: 409 });
     captureServerException(err, { operation: "create_menu_item" });
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },

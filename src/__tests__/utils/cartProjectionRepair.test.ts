@@ -4,10 +4,11 @@ import type { CartItem } from "@/src/lib/types/cart";
 import type { MenuData } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
 import { projectCart, resolveCartProjectionVouchers } from "@/src/lib/utils/cartProjection";
+import { serializeCartOrderItems } from "@/src/lib/utils/cartOrderPayload";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
 
 const menuData: MenuData = {
-  updated_at: "2026-09-11T00:00:00.000Z",
+  updated_at: "2026-09-11T00:00:00.000Z", latte_price_anchors: {},
   latte: [{
     id: "latte-1",
     name: "Matcha latte",
@@ -19,7 +20,7 @@ const menuData: MenuData = {
     base_liquid_note: null,
     custom_powder_grams: null,
     powder: { id: "powder-1", name: "Matcha", type: "RECOMMEND" },
-    resolved_default_powder_id: null,
+    default_powder_id: null, replacement_powder_id: null, resolved_default_powder_id: null,
     allowed_powder_ids: [],
     default_base_liquid_id: "milk-1",
     allowed_base_liquid_ids: ["milk-1"],
@@ -37,7 +38,7 @@ const menuData: MenuData = {
     base_liquid_note: null,
     custom_powder_grams: null,
     powder: null,
-    resolved_default_powder_id: null,
+    default_powder_id: null, replacement_powder_id: null, resolved_default_powder_id: null,
     allowed_powder_ids: [],
     default_base_liquid_id: null,
     allowed_base_liquid_ids: [],
@@ -395,5 +396,141 @@ describe("projection giỏ hàng theo trạng thái ví", () => {
     expect(result.checkoutBlocked).toBe(false);
     expect(result.errors).toEqual([]);
     expect(result.lines[0]?.personalVoucherDiscountVnd).toBe(10_000);
+  });
+});
+
+describe("giỏ Fusion giữ anchor gốc và lựa chọn đã có", () => {
+  const originalId = "powder-a";
+  const replacementId = "powder-b";
+  const fusion: MenuData["fusion"][number] = {
+    ...menuData.latte[0]!, id: "fusion-1", name: "Fusion", category: "fusion", powder: null,
+    default_powder_id: originalId, replacement_powder_id: replacementId, resolved_default_powder_id: replacementId,
+    allowed_powder_ids: [], default_base_liquid_id: null, allowed_base_liquid_ids: [],
+    custom_powder_grams: { MEDIUM: 4.5 },
+    sizes: [{ size: "MEDIUM", base_price_vnd: 23_000, milk_ml: 0 }],
+  };
+  const a = { ...powderData.data[0]!, id: originalId, name: "A", price_per_gram: 6000, reference_latte_item_id: "latte-a" };
+  const b = { ...powderData.data[0]!, id: replacementId, name: "B", price_per_gram: 7000, reference_latte_item_id: "latte-b" };
+  const anchors = { [originalId]: { MEDIUM: 5000 }, [replacementId]: { MEDIUM: 8000 } };
+  const runFusion = (selectedId: string, item: typeof fusion, availablePowders: typeof powderData.data) => {
+    const raw: CartItem = {
+      ...cartItem, menuItemId: fusion.id,
+      configuration: {
+        size: "MEDIUM", powderId: selectedId, sweetness: "FULL", iceOption: "NORMAL",
+        coldwhisk: false, note: "", addonOptionIds: [],
+      },
+    };
+    const result = projectCart({
+      items: [raw], menuData: { ...menuData, latte: [], fusion: [item], extras: [], latte_price_anchors: anchors },
+      powderData: { ...powderData, data: availablePowders }, vouchers: [], selectedOrderVoucherTokens: [],
+      bundleApplications: [], shippingFeeVnd: 0,
+    });
+    expect(raw.configuration).toMatchObject({ powderId: selectedId });
+    expect(result.lines[0]?.configuration).toMatchObject({ powderId: selectedId });
+    return result;
+  };
+  it("default thay thế B vẫn cộng premium B trừ A khi Latte A đã ẩn", () => {
+    const result = runFusion(replacementId, fusion, [b]);
+    // ceil(23,000 + 4.5 × 7,000 + (8,000 - 5,000)) = 58,000.
+    expect(result.lines[0]?.drinkPriceVnd).toBe(58_000);
+    expect(result.checkoutBlocked).toBe(false);
+  });
+  it("cart A bị ngưng bán giữ nguyên ID và yêu cầu chọn lại trước checkout", () => {
+    const result = runFusion(originalId, fusion, [b]);
+    expect(result.checkoutBlocked).toBe(true);
+    expect(result.lines[0]?.errors.join(" ")).toMatch(/chọn lại/);
+  });
+  it("A mở lại giữ cart B khi B active và có trong allow-list lâu dài", () => {
+    const result = runFusion(replacementId, { ...fusion, resolved_default_powder_id: originalId, allowed_powder_ids: [replacementId] }, [a, b]);
+    expect(result.lines[0]?.drinkPriceVnd).toBe(58_000);
+    expect(result.checkoutBlocked).toBe(false);
+  });
+  it("A mở lại khóa cart B nếu B chỉ là replacement tạm thời", () => {
+    const result = runFusion(replacementId, { ...fusion, resolved_default_powder_id: originalId, allowed_powder_ids: [] }, [a, b]);
+    expect(result.checkoutBlocked).toBe(true);
+    expect(result.lines[0]?.errors.join(" ")).toMatch(/chọn lại/);
+  });
+  it("A mở lại vẫn khóa cart B đã inactive dù B nằm trong allow-list", () => {
+    const result = runFusion(replacementId, { ...fusion, resolved_default_powder_id: originalId, allowed_powder_ids: [replacementId] }, [a]);
+    expect(result.checkoutBlocked).toBe(true);
+    expect(result.lines[0]?.errors.join(" ")).toMatch(/chọn lại/);
+  });
+});
+
+describe("voucher kết hợp trong projection và payload món của POS", () => {
+  const product = activeVoucher({ qr_token: "product-token", menu_item_id: "latte-1" });
+  const productDiscount = activeVoucher({
+    qr_token: "product-discount-token", voucher_type: "PRODUCT_DISCOUNT",
+    menu_item_id: "latte-1", product_discount_mode: "FIXED_AMOUNT",
+    discount_value: 10_000, eligible_sizes: ["MEDIUM"],
+  });
+  const item = activeVoucher({ qr_token: "item-token", voucher_type: "ITEM", menu_item_id: "extra-1" });
+  const addon = activeVoucher({ qr_token: "addon-token", voucher_type: "ADDON", addon_option_id: "addon-1" });
+  const items: CartItem[] = [
+    {
+      ...cartItem,
+      configuration: { ...cartItem.configuration, size: "MEDIUM", sweetness: "FULL", iceOption: "NORMAL", coldwhisk: false, addonOptionIds: ["addon-1"] },
+      lineVoucher: { token: "product-token", kind: "PRODUCT" },
+      addonVouchers: [{ token: "addon-token", addonOptionId: "addon-1" }],
+    },
+    { ...cartItem, cartId: "line-2", lineVoucher: { token: "product-discount-token", kind: "PRODUCT_DISCOUNT" } },
+    {
+      cartId: "line-3", menuItemId: "extra-1", quantity: 1,
+      configuration: { size: null, note: "" },
+      lineVoucher: { token: "item-token", kind: "ITEM" }, addonVouchers: [],
+    },
+    { ...cartItem, cartId: "line-4" },
+  ];
+
+  it("giữ voucher món/topping trong applied tokens và field item khi kết hợp với DISCOUNT", () => {
+    const selectedOrderVoucherTokens = ["discount-percent", "discount-b", "discount-a"];
+    const result = projectCart({
+      items, menuData, powderData,
+      vouchers: [
+        product, productDiscount, item, addon,
+        activeVoucher({ qr_token: "discount-percent", voucher_type: "DISCOUNT", discount_type: "PERCENT", discount_value: 10 }),
+        activeVoucher({ qr_token: "discount-b", voucher_type: "DISCOUNT", discount_type: "FIXED", discount_value: 10_000 }),
+        activeVoucher({ qr_token: "discount-a", voucher_type: "DISCOUNT", discount_type: "FIXED", discount_value: 5_000 }),
+      ],
+      selectedOrderVoucherTokens, bundleApplications: [], shippingFeeVnd: 0,
+    });
+
+    expect(result.checkoutBlocked).toBe(false);
+    expect(result.appliedOrderVoucherTokens).toHaveLength(7);
+    expect(result.appliedOrderVoucherTokens).toEqual(expect.arrayContaining([
+      "product-token", "product-discount-token", "item-token", "addon-token",
+      "discount-a", "discount-b", "discount-percent",
+    ]));
+    // Gross 183,000; item/addon savings 65,000; FIXED 15,000 then PERCENT 10,000.
+    expect(result.totals.discountable_subtotal_vnd).toBe(118_000);
+    expect(result.totals.total_voucher_discount_vnd).toBe(25_000);
+    expect(result.totals.total_vnd).toBe(93_000);
+    const serialized = serializeCartOrderItems(result.lines);
+    expect(serialized[0]).toMatchObject({
+      product_voucher_id: "product-token",
+      addon_voucher_ids: [{ voucher_id: "addon-token", addon_option_id: "addon-1" }],
+    });
+    expect(serialized[1]).toMatchObject({ product_voucher_id: "product-discount-token" });
+    expect(serialized[2]).toMatchObject({ item_voucher_id: "item-token" });
+    expect(serialized[3]).not.toHaveProperty("product_voucher_id");
+  });
+
+  it("loại DISCOUNT không còn lợi ích khỏi applied tokens dù vẫn được chọn", () => {
+    const result = projectCart({
+      items, menuData, powderData,
+      vouchers: [
+        product, productDiscount, item, addon,
+        activeVoucher({ qr_token: "discount-cover", voucher_type: "DISCOUNT", discount_type: "FIXED", discount_value: 200_000 }),
+        activeVoucher({ qr_token: "discount-unused", voucher_type: "DISCOUNT", discount_type: "FIXED", discount_value: 5_000 }),
+      ],
+      selectedOrderVoucherTokens: ["discount-cover", "discount-unused"],
+      bundleApplications: [], shippingFeeVnd: 0,
+    });
+
+    expect(result.checkoutBlocked).toBe(false);
+    expect(result.totals.total_vnd).toBe(0);
+    expect(result.appliedOrderVoucherTokens).toHaveLength(5);
+    expect(result.appliedOrderVoucherTokens).toContain("discount-cover");
+    expect(result.appliedOrderVoucherTokens).not.toContain("discount-unused");
   });
 });

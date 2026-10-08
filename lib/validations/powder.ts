@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { imageFilenameSchema } from "@/lib/validations/menu";
+import { imageFilenameSchema, fusionPowderReplacementsSchema } from "@/lib/validations/menu";
 
 const powderTypeEnum = z.enum(["RECOMMEND", "NEW", "SEASONAL", "NONE"]);
 const sizeEnum = z.enum(["SMALL", "MEDIUM", "LARGE"]);
@@ -31,7 +31,7 @@ export const createPowderSchema = z.object({
   size_config: z.array(sizeConfigSchema).max(3).optional(),
 });
 
-export const updatePowderSchema = createPowderSchema.partial();
+export const updatePowderSchema = createPowderSchema.partial().extend({ fusion_powder_replacements: fusionPowderReplacementsSchema });
 
 export type CreatePowderInput = z.infer<typeof createPowderSchema>;
 export type UpdatePowderInput = z.infer<typeof updatePowderSchema>;

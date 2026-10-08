@@ -87,9 +87,12 @@ export function getVoucherRefundConfirmation(points: number): string {
  * Hide automatic grants and exhausted acquisition packages without changing the owned wallet.
  */
 export function filterModalPackages(packages: VoucherPackage[]): VoucherPackage[] {
-  return packages.filter(
-    (pkg) => pkg.acquisition_mode !== "AUTO_GRANT" && (pkg.user_redeemed_count ?? 0) < pkg.max_per_user
-  );
+  return packages.filter((pkg) => {
+    const remainingQuantity = pkg.remaining_quantity === undefined ? pkg.quantity : pkg.remaining_quantity;
+    return (pkg.acquisition_mode === "POINTS_EXCHANGE" || pkg.acquisition_mode === "FREE_CLAIM") &&
+      (remainingQuantity === null || remainingQuantity > 0) &&
+      (pkg.user_redeemed_count ?? 0) < pkg.max_per_user;
+  });
 }
 
 /**
@@ -104,7 +107,7 @@ export function canExchange(
   if (userBalance < pkg.points_cost) {
     return { ok: false, reason: "insufficient_points" };
   }
-  const remainingQuantity = pkg.remaining_quantity ?? pkg.quantity;
+  const remainingQuantity = pkg.remaining_quantity === undefined ? pkg.quantity : pkg.remaining_quantity;
   if (remainingQuantity !== null && remainingQuantity <= 0) {
     return { ok: false, reason: "sold_out" };
   }

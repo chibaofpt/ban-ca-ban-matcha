@@ -63,22 +63,19 @@ export async function parseAdminMenuUpdate(
       : undefined,
     confirm_price_change: parseOptionalBoolean(formData.get("confirm_price_change")),
     matcha_powder_id:
-      typeof powderId === "string" && /^[0-9a-fA-F]{8}-/.test(powderId)
+      typeof powderId === "string" && powderId.length > 0
         ? powderId
         : undefined,
-    default_powder_id:
-      typeof defaultPowderId === "string" && /^[0-9a-fA-F]{8}-/.test(defaultPowderId)
-        ? defaultPowderId
-        : undefined,
+    default_powder_id: typeof defaultPowderId === "string" ? (defaultPowderId || null) : undefined,
     default_base_liquid_id:
-      typeof defaultBaseLiquidId === "string" && /^[0-9a-fA-F]{8}-/.test(defaultBaseLiquidId)
+      typeof defaultBaseLiquidId === "string" && defaultBaseLiquidId.length > 0
         ? defaultBaseLiquidId
         : undefined,
     base_liquid_note: formData.get("base_liquid_note") || undefined,
     image_filename: formData.get("image_filename") || undefined,
   };
 
-  for (const field of ["sizes", "custom_powder_grams", "allowed_powder_ids", "allowed_base_liquid_ids"]) {
+  for (const field of ["sizes", "custom_powder_grams", "allowed_powder_ids", "allowed_base_liquid_ids", "fusion_powder_replacements"]) {
     const error = parseJsonField(formData, raw, field);
     if (error) return error;
   }

@@ -6,9 +6,9 @@ import { processOrderItems } from "@/lib/orders/orderProcessing";
 import type { OrderItemInput } from "@/lib/orders/orderProcessingTypes";
 import type { ProductVoucherInfo } from "@/lib/orders/orderVoucherTargets";
 
-function catalog(options: { selectedMedium?: number | null; reference?: string | null } = {}) {
+function catalog(options: { selectedMedium?: number | null; reference?: string | null; inactiveDefault?: boolean } = {}) {
   const powders = [
-    { id: "default", name: "Default", price_per_gram: 4_000, is_available: true, reference_latte_item_id: "latte-default" },
+    { id: "default", name: "Default", price_per_gram: 4_000, is_available: !options.inactiveDefault, reference_latte_item_id: "latte-default" },
     { id: "selected", name: "Selected", price_per_gram: 6_000, is_available: true,
       reference_latte_item_id: options.reference === undefined ? "latte-selected" : options.reference },
   ];
@@ -38,7 +38,7 @@ function catalog(options: { selectedMedium?: number | null; reference?: string |
     },
     menuItem: { findMany: vi.fn().mockResolvedValue([{
       id: "fusion", name: "Fusion", category: "fusion", is_available: true,
-      default_powder_id: "default", default_base_liquid_id: "milk", custom_powder_grams: null,
+      default_powder_id: "default", replacement_powder_id: options.inactiveDefault ? "selected" : null, default_base_liquid_id: "milk", custom_powder_grams: null,
       sizes: [{ size: "SMALL", base_price_vnd: 15_000 }, { size: "MEDIUM", base_price_vnd: 20_000 }],
       fusionAllowedPowders: [{ powder_id: "selected", matchaPowder: { is_available: true } }],
       allowedBaseLiquids: [],
@@ -83,5 +83,49 @@ describe("Fusion dùng pricing thật và snapshot catalog của order", () => {
     const [result] = await processOrderItems([line(payable, "voucher")],
       db as unknown as Parameters<typeof processOrderItems>[1], new Map([["voucher", voucher]]));
     expect(result).toMatchObject({ unit_price_vnd: price, product_voucher_discount_vnd: discount, addons_price_vnd: 7_000 });
+  });
+
+  it("giữ mốc gốc inactive khi bột thay thế là mặc định hiện tại", async () => {
+    const db = catalog();
+    db.matchaPowder.findMany.mockResolvedValue([
+      { id: "default", name: "A", price_per_gram: 6_000, is_available: false, reference_latte_item_id: "latte-default" },
+      { id: "selected", name: "B", price_per_gram: 7_000, is_available: true, reference_latte_item_id: "latte-selected" },
+    ]);
+    db.menuItem.findMany.mockResolvedValue([{
+      id: "fusion", name: "Fusion", category: "fusion", is_available: true,
+      default_powder_id: "default", replacement_powder_id: "selected", default_base_liquid_id: "milk", custom_powder_grams: null,
+      sizes: [{ size: "SMALL", base_price_vnd: 23_000 }, { size: "MEDIUM", base_price_vnd: 23_000 }],
+      fusionAllowedPowders: [], allowedBaseLiquids: [],
+    }]);
+    db.defaultSizeConfig.findMany.mockResolvedValue([
+      { size: "MEDIUM", milk_ml: 200, powder_gram: 4.5 },
+    ]);
+    db.menuItemSize.findMany.mockResolvedValue([
+      { menu_item_id: "latte-default", size: "MEDIUM", base_price_vnd: 5_000 },
+      { menu_item_id: "latte-selected", size: "MEDIUM", base_price_vnd: 8_000 },
+    ]);
+    const input = { ...line(58_000), addon_option_ids: [] };
+    const [result] = await processOrderItems([input], db as unknown as Parameters<typeof processOrderItems>[1]);
+    expect(result).toMatchObject({ selected_powder_id: "selected", unit_price_vnd: 58_000 });
+    expect(db.matchaPowder.findMany).toHaveBeenCalledWith({
+      where: { OR: [{ is_available: true }, { id: { in: ["default"] } }] },
+    });
+    expect(db.matchaPowder.findUnique).not.toHaveBeenCalled();
+    expect(db.menuItemSize.findFirst).not.toHaveBeenCalled();
+    await expect(processOrderItems([{ ...input, client_price_vnd: 50_000 }],
+      db as unknown as Parameters<typeof processOrderItems>[1])).rejects.toMatchObject({
+        conflicts: [{ menu_item_id: "fusion", server_price_vnd: 58_000, client_price_vnd: 50_000 }],
+      });
+  });
+
+  it("PAY_AS_SIZE trên replacement giữ mốc original cho cả size tính tiền và size tham chiếu", async () => {
+    const db = catalog({ inactiveDefault: true });
+    const [result] = await processOrderItems([line(45_000, "voucher")],
+      db as unknown as Parameters<typeof processOrderItems>[1], new Map([["voucher", voucher]]));
+    // M51k and S38k: discount13k; addon7k stays payable. Replacement remains the current selection.
+    expect(result).toMatchObject({
+      selected_powder_id: "selected", unit_price_vnd: 51_000,
+      product_voucher_discount_vnd: 13_000, addons_price_vnd: 7_000,
+    });
   });
 });

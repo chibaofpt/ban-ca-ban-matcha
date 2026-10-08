@@ -1,12 +1,24 @@
 import { apiClient } from "@/src/lib/api/client";
-import type { ApiResponse } from "@/contracts/api";
+import axios from "axios";
+import { ApiServiceError } from "@/src/lib/api/serviceError";
+import type { ApiError, ApiResponse } from "@/contracts/api";
 import type { Powder } from "@/contracts/catalog";
-import type { PowderMutationPayload } from "@/contracts/admin/catalog";
+import type { PowderMutationPayload, FusionPowderReplacement } from "@/contracts/admin/catalog";
 
 const URL = {
   list: "/api/admin/powders",
   byId: (id: string) => `/api/admin/powders/${id}`,
 } as const;
+
+async function preserveApiError<T>(request: () => Promise<T>): Promise<T> {
+  try { return await request(); } catch (error: unknown) {
+    if (axios.isAxiosError<ApiError>(error) && error.response?.data?.error) {
+      const body = error.response.data;
+      throw new ApiServiceError(body.error, error.response.status, body.code, body.details);
+    }
+    throw error;
+  }
+}
 
 function buildMultipartPayload(
   payload: PowderMutationPayload,
@@ -45,18 +57,21 @@ export async function updatePowder(
   imageFilename?: string,
 ): Promise<Powder> {
   const body = buildMultipartPayload(payload, imageFile, imageFilename);
-  const { data } = await apiClient.put<ApiResponse<Powder>>(URL.byId(id), body);
+  const { data } = await preserveApiError(() => apiClient.put<ApiResponse<Powder>>(URL.byId(id), body));
   return data.data;
 }
 
 /** Toggle powder availability without uploading an image. */
-export async function togglePowderAvailability(id: string, is_available: boolean): Promise<Powder> {
-  const { data } = await apiClient.put<ApiResponse<Powder>>(URL.byId(id), { is_available });
+export async function togglePowderAvailability(id: string, is_available: boolean, replacements?: FusionPowderReplacement[]): Promise<Powder> {
+  const payload = { is_available, ...(replacements ? { fusion_powder_replacements: replacements } : {}) };
+  const { data } = await preserveApiError(() => apiClient.put<ApiResponse<Powder>>(URL.byId(id), payload));
   return data.data;
 }
 
-/** Soft-delete a powder. */
-export async function deletePowder(id: string): Promise<Powder> {
-  const { data } = await apiClient.delete<ApiResponse<Powder>>(URL.byId(id));
+/** Soft-delete a powder with optional explicit Fusion replacements. */
+export async function deletePowder(id: string, replacements?: FusionPowderReplacement[]): Promise<Powder> {
+  const { data } = await preserveApiError(() => replacements
+    ? apiClient.delete<ApiResponse<Powder>>(URL.byId(id), { data: { fusion_powder_replacements: replacements } })
+    : apiClient.delete<ApiResponse<Powder>>(URL.byId(id)));
   return data.data;
 }

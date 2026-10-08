@@ -10,6 +10,8 @@ import {
   prepareCatalogImage,
 } from "@/lib/catalog/catalogImage";
 import { removeMenuImages } from "@/lib/storage";
+import { runSerializableTransaction } from "@/lib/serializableTransaction";
+import { syncPowderAvailability, powderAvailabilityErrorResponse } from "@/lib/powderAvailability";
 
 export const dynamic = "force-dynamic";
 
@@ -31,33 +33,20 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       : {};
 
     // Support quick toggle of is_available
-    if (Object.keys(raw).length === 1 && "is_available" in raw) {
+    if ("is_available" in raw && Object.keys(raw).every((key) => key === "is_available" || key === "fusion_powder_replacements")) {
       const isAvailable = raw.is_available;
       if (typeof isAvailable !== "boolean") {
         return NextResponse.json({ error: "is_available must be a boolean", code: "VALIDATION_ERROR" }, { status: 400 });
       }
 
-      let disabledLatteId: string | undefined;
-
-      const updated = await prisma.$transaction(async (tx) => {
-        const powder = await tx.matchaPowder.update({
-          where: { id },
-          data: { is_available: isAvailable },
-          include: { powderSizeConfigs: true },
-        });
-
-        // Cascade: sync latte anchor cùng trạng thái với powder
-        if (powder.reference_latte_item_id) {
-          await tx.menuItem.update({
-            where: { id: powder.reference_latte_item_id },
-            data: { is_available: isAvailable, updated_at: new Date() },
-          });
-          if (!isAvailable) disabledLatteId = powder.reference_latte_item_id;
-        }
-
-        return powder;
+      const validation = updatePowderSchema.safeParse(raw);
+      if (!validation.success) return NextResponse.json(
+        { error: validation.error.issues[0].message, code: "VALIDATION_ERROR" }, { status: 400 });
+      const { updated, disabledLatteId } = await runSerializableTransaction(prisma, async (tx) => {
+        const latteId = await syncPowderAvailability(tx, id, isAvailable, validation.data.fusion_powder_replacements);
+        const updated = await tx.matchaPowder.findUniqueOrThrow({ where: { id }, include: { powderSizeConfigs: true } });
+        return { updated, disabledLatteId: !isAvailable && latteId ? latteId : undefined };
       });
-
       const mappedUpdated = {
         ...updated,
         size_config: updated.powderSizeConfigs.map((c) => ({
@@ -96,7 +85,16 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     newImagePath = preparedImage.newPath;
     oldImagePath = preparedImage.oldPath;
 
-    const result = await prisma.$transaction(async (tx) => {
+    // Partial creation-schema defaults must not turn an omitted status into an enable request.
+    const availability = raw.is_available === undefined ? undefined : validData.is_available;
+    const result = await runSerializableTransaction(prisma, async (tx) => {
+      if (availability !== undefined || validData.reference_latte_item_id !== undefined) {
+        const nextAvailability = availability ?? (await tx.matchaPowder.findUniqueOrThrow({
+          where: { id }, select: { is_available: true },
+        })).is_available;
+        await syncPowderAvailability(tx, id, nextAvailability,
+          validData.fusion_powder_replacements, validData.reference_latte_item_id);
+      }
       // Update powder details
       await tx.matchaPowder.update({
         where: { id },
@@ -113,7 +111,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           bitterness: validData.bitterness,
           umami: validData.umami,
           color: validData.color,
-          is_available: validData.is_available,
+          is_available: availability,
         },
       });
 
@@ -161,6 +159,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (newImagePath && !databaseCommitted) {
       await removeMenuImages([newImagePath]).catch(() => undefined);
     }
+    if (error instanceof Error && "code" in error && error.code === "P2034") return NextResponse.json({ error: "Dữ liệu đã thay đổi, vui lòng tải lại và thử lại", code: "CONFLICT" }, { status: 409 });
+    const availabilityError = powderAvailabilityErrorResponse(error);
+    if (availabilityError) return availabilityError;
     const imageMessage = catalogImageValidationMessage(error);
     if (imageMessage) {
       return NextResponse.json(
@@ -192,27 +193,17 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   try {
     const { id } = await params;
 
-    let disabledLatteId: string | undefined;
-
-    // Soft delete + cascade
-    const updated = await prisma.$transaction(async (tx) => {
-      const powder = await tx.matchaPowder.update({
-        where: { id },
-        data: { is_available: false },
-      });
-
-      // Cascade: inactive latte anchor khi powder bị xoá mềm
-      if (powder.reference_latte_item_id) {
-        await tx.menuItem.update({
-          where: { id: powder.reference_latte_item_id },
-          data: { is_available: false, updated_at: new Date() },
-        });
-        disabledLatteId = powder.reference_latte_item_id;
-      }
-
-      return powder;
+    const text = await req.text();
+    let raw: unknown;
+    try { raw = text.trim() ? JSON.parse(text) : {}; } catch { raw = null; }
+    const validation = updatePowderSchema.safeParse(raw);
+    if (!validation.success) return NextResponse.json(
+      { error: validation.error.issues[0].message, code: "VALIDATION_ERROR" }, { status: 400 });
+    const { updated, disabledLatteId } = await runSerializableTransaction(prisma, async (tx) => {
+      const latteId = await syncPowderAvailability(tx, id, false, validation.data.fusion_powder_replacements);
+      const updated = await tx.matchaPowder.findUniqueOrThrow({ where: { id } });
+      return { updated, disabledLatteId: latteId ?? undefined };
     });
-
     await invalidateMenuCaches();
     return NextResponse.json({
       data: {
@@ -221,6 +212,10 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       },
     });
   } catch (error: unknown) {
+    if (error instanceof Error && "code" in error && error.code === "P2034") return NextResponse.json({ error: "Dữ liệu đã thay đổi, vui lòng tải lại và thử lại", code: "CONFLICT" }, { status: 409 });
+    const availabilityError = powderAvailabilityErrorResponse(error);
+    if (availabilityError) return availabilityError;
+    if (error instanceof Error && error.message === "NOT_FOUND") return NextResponse.json({ error: "Bột không tồn tại", code: "NOT_FOUND" }, { status: 404 });
     console.error("[DELETE /api/admin/powders/[id]] Error:", error instanceof Error ? error.message : error);
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
       return NextResponse.json({ error: "Bột không tồn tại", code: "NOT_FOUND" }, { status: 404 });

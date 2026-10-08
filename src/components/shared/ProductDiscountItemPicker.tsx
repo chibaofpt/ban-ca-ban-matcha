@@ -100,7 +100,7 @@ export const ProductDiscountItemPicker = ({
         [], // PRODUCT_DISCOUNT benefit excludes addons
         powders,
         defaultPowderGram,
-        menuData.latte,
+        menuData.latte_price_anchors,
         menuData.milk_types,
         menuData.addon_groups,
       );
@@ -126,7 +126,7 @@ export const ProductDiscountItemPicker = ({
               [],
               powders,
               defaultPowderGram,
-              menuData.latte,
+              menuData.latte_price_anchors,
               menuData.milk_types,
               menuData.addon_groups,
             ).drinkPrice
@@ -162,6 +162,7 @@ export const ProductDiscountItemPicker = ({
       <ProductModal managed open={open}
         item={pickedItem.item}
         latteItems={menuData.latte}
+        lattePriceAnchors={menuData.latte_price_anchors}
         milkTypes={menuData.milk_types}
         addonGroups={menuData.addon_groups}
         allowedSizes={pickedItem.allowedSizes}

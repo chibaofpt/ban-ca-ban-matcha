@@ -1,3 +1,4 @@
+import type { LattePriceAnchors } from "@/contracts/menu";
 import { useMemo } from "react";
 import type { AddonGroup, MenuItem, MilkTypeOption, Size } from "@/src/lib/types/menu";
 import type { Powder, DefaultPowderGram } from "@/src/lib/types/powder";
@@ -7,6 +8,7 @@ import {
   applyProductVoucherCredit,
   calcLattePrice,
   calcFusionPrice,
+  calcPremiumLatte,
   calcBaseLiquidDelta,
   resolveGram,
   ceilTo1000,
@@ -16,7 +18,7 @@ interface UsePriceMapProps {
   item: MenuItem;
   milkTypes: MilkTypeOption[];
   addonGroups: AddonGroup[];
-  latteItems: MenuItem[];
+  lattePriceAnchors: LattePriceAnchors;
   powders: Powder[];
   defaultPowderGrams: DefaultPowderGram[];
   selectedSize: Size;
@@ -31,11 +33,12 @@ interface UsePriceMapProps {
   quantity: number;
 }
 
+/** Calculate canonical drink prices and fully rounded powder swap deltas. */
 export function usePriceMap({
   item,
   milkTypes,
   addonGroups,
-  latteItems,
+  lattePriceAnchors,
   powders,
   defaultPowderGrams,
   selectedSize,
@@ -84,11 +87,7 @@ export function usePriceMap({
         const milk_price_per_ml = selectedLiquid?.price_per_ml ?? 40;
         baseDrinkPrice = calcLattePrice({ base_price_vnd, gram, powder_price_per_gram: pwd_price_per_gram, milk_ml: liquidMl, milk_price_per_ml });
       } else {
-        if (pwd?.reference_latte_item_id && defaultPowder?.reference_latte_item_id) {
-          const selBase = latteItems.find((i) => i.id === pwd.reference_latte_item_id)?.sizes.find((s) => s.size === targetSize)?.base_price_vnd ?? 0;
-          const defBase = latteItems.find((i) => i.id === defaultPowder.reference_latte_item_id)?.sizes.find((s) => s.size === targetSize)?.base_price_vnd ?? 0;
-          premium_latte = selBase - defBase;
-        }
+        premium_latte = calcPremiumLatte(targetPowderId, item.default_powder_id, targetSize, lattePriceAnchors);
         baseDrinkPrice = calcFusionPrice({
           base_price_vnd,
           gram,
@@ -98,8 +97,14 @@ export function usePriceMap({
         });
       }
 
-      const powderSwapDeltaVnd = gram * pwd_price_per_gram + premium_latte
-        - defaultPowderGram * (defaultPowder?.price_per_gram ?? 0);
+      const defaultDrinkPrice = isLatte ? baseDrinkPrice : calcFusionPrice({
+        base_price_vnd,
+        gram: defaultPowderGram,
+        powder_price_per_gram: defaultPowder?.price_per_gram ?? 0,
+        premium_latte: calcPremiumLatte(item.resolved_default_powder_id ?? "", item.default_powder_id, targetSize, lattePriceAnchors),
+        base_liquid_delta_vnd: baseLiquidSwapDeltaVnd,
+      });
+      const powderSwapDeltaVnd = baseDrinkPrice - defaultDrinkPrice;
 
       let addonsCost = 0;
       const addonPricesMap: Record<string, number> = {};
@@ -184,7 +189,7 @@ export function usePriceMap({
       effectiveProductVoucherType,
     };
   }, [
-    item, latteItems, milkTypes, addonGroups, powders, defaultPowderGrams, selectedSize, activePowderId,
+    item, lattePriceAnchors, milkTypes, addonGroups, powders, defaultPowderGrams, selectedSize, activePowderId,
     selectedMilkId, selectedOptionIds, selectedAddonVoucherTargets,
     availableVouchers, selectedProductVoucherId, freeVoucherId, freeVoucherCoveredPriceVnd, quantity, isLatte
   ]);

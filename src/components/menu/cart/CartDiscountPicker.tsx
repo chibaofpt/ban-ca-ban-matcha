@@ -26,7 +26,7 @@ import {
   productDiscountMatchesBaseLiquid,
   selectOrderVoucherToken,
 } from "@/src/utils/customerVoucherSelection";
-import { type VoucherModalTab } from "@/src/lib/utils/voucherModalHelpers";
+import { canExchange, filterModalPackages, type VoucherModalTab } from "@/src/lib/utils/voucherModalHelpers";
 import { BundleVoucherSetupSheet } from "@/src/components/shared/BundleVoucherSetupSheet";
 import { getBundleVoucherSummary } from "@/src/components/menu/cart/CartBundleVoucherPanel";
 import { validateBundleCartDraft } from "@/src/lib/utils/bundleCartDraft";
@@ -170,6 +170,12 @@ export const CartDiscountPicker = ({
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
   const [isRetryingWallet, setIsRetryingWallet] = useState(false);
   const [confirmPackage, setConfirmPackage] = useState<VoucherPackage | null>(null);
+  const [detailPackageId, setDetailPackageId] = useState<string | null>(null);
+  const detailPackage = availableVoucherPackages.find((pkg) => pkg.id === detailPackageId) ?? null;
+  const latestConfirmPackage = filterModalPackages(availableVoucherPackages).find((pkg) => pkg.id === confirmPackage?.id);
+  const currentConfirmPackage = latestConfirmPackage &&
+    canExchange(latestConfirmPackage, pointsBalance, latestConfirmPackage.user_redeemed_count ?? 0).ok
+    ? latestConfirmPackage : null;
   const [activeView, setActiveView] = useState<VoucherPickerView>({ kind: "list" });
   const [activeTab, setActiveTab] = useState<VoucherModalTab>("my_vouchers");
 
@@ -218,26 +224,34 @@ export const CartDiscountPicker = ({
       : [];
   });
 
+  const presentAcquiredVoucher = (voucher: MyVoucher) => {
+    if (!pickerOpen.current || !isVoucherUsable(voucher) || !(isSelectionContextCurrent?.(voucher.qr_token) ?? true)) return;
+    if (voucher.voucher_type === "BUNDLE") {
+      setActiveView({ kind: "bundle-setup", voucher });
+    } else if (voucher.voucher_type === "DISCOUNT" || voucher.voucher_type === "FREESHIP") {
+      if (getCartVoucherAvailability(voucher, voucherContext).canUse) {
+        onUpdateSelectedVouchers((previous) => selectOrderVoucherToken(previous, voucher, [...myVouchers, voucher]));
+      } else {
+        setActiveView({ kind: "detail", voucher });
+      }
+    } else {
+      setActiveView({ kind: "detail", voucher });
+    }
+  };
+
   const acquirePackage = async (pkg: VoucherPackage) => {
+    if (redeemingId || !selectionContextIsCurrent()) return;
+    const latestPackage = filterModalPackages(availableVoucherPackages).find((candidate) => candidate.id === pkg.id);
+    if (!latestPackage || !canExchange(latestPackage, pointsBalance, latestPackage.user_redeemed_count ?? 0).ok) return;
     try {
       setRedeemingId(pkg.id);
-      const result = await acquire(pkg);
+      const result = await acquire(latestPackage);
       if (!selectionContextIsCurrent()) return;
       setConfirmPackage(null);
-      onAcquired?.(pkg);
-      const newVoucher = result.acquired;
-      const refreshedVoucher = result.wallet?.find((voucher) => voucher.qr_token === newVoucher.qr_token);
-      const acquiredSelection = refreshedVoucher ?? {
-        qr_token: newVoucher.qr_token,
-        voucher_type: newVoucher.voucher_type,
-        discount_type: pkg.discount_type,
-      };
-      if (!result.refreshError && refreshedVoucher && isVoucherUsable(refreshedVoucher) && (isSelectionContextCurrent?.(refreshedVoucher.qr_token) ?? true) && newVoucher.voucher_type === "BUNDLE") {
-        if (refreshedVoucher) setActiveView({ kind: "bundle-setup", voucher: refreshedVoucher });
-      } else if (!result.refreshError && refreshedVoucher && isVoucherUsable(refreshedVoucher) && (isSelectionContextCurrent?.(refreshedVoucher.qr_token) ?? true)) {
-        onUpdateSelectedVouchers((previous) =>
-          selectOrderVoucherToken(previous, acquiredSelection, [...myVouchers, acquiredSelection]));
-      }
+      setDetailPackageId(null);
+      const refreshedVoucher = result.wallet?.find((voucher) => voucher.qr_token === result.acquired.qr_token);
+      if (!result.refreshError && refreshedVoucher) presentAcquiredVoucher(refreshedVoucher);
+      onAcquired?.(latestPackage);
       if (result.refreshError) toast.warning("Đã nhận voucher. Hãy làm mới ví để xem chi tiết.");
       toast.success(pkg.acquisition_mode === "FREE_CLAIM" ? "Đã nhận voucher" : "Đổi voucher thành công");
     } catch (error: unknown) {
@@ -255,12 +269,7 @@ export const CartDiscountPicker = ({
       const result = await retryRefresh();
       if (result && selectionContextIsCurrent()) {
         const refreshedVoucher = result.wallet?.find((voucher) => voucher.qr_token === result.acquired.qr_token);
-        if (refreshedVoucher && isVoucherUsable(refreshedVoucher) && (isSelectionContextCurrent?.(refreshedVoucher.qr_token) ?? true) && refreshedVoucher.voucher_type === "BUNDLE") {
-          setActiveView({ kind: "bundle-setup", voucher: refreshedVoucher });
-        } else if (refreshedVoucher && isVoucherUsable(refreshedVoucher) && (isSelectionContextCurrent?.(refreshedVoucher.qr_token) ?? true)) {
-          onUpdateSelectedVouchers((previous) =>
-            selectOrderVoucherToken(previous, refreshedVoucher, [...myVouchers, refreshedVoucher]));
-        }
+        if (refreshedVoucher) presentAcquiredVoucher(refreshedVoucher);
         toast.success("Đã cập nhật ví voucher.");
       }
     } catch {
@@ -379,7 +388,7 @@ export const CartDiscountPicker = ({
       open={open || productChildOpen || bundleSetupVoucher !== null || targetVoucher !== null || addonTargetVoucher !== null}
       onOpenChange={(open) => { if (!open) closePicker(); }}
       layer="nested"
-      onAfterClose={() => { setActiveView({ kind: "list" }); setConfirmPackage(null); onAfterClose?.(); }}
+      onAfterClose={() => { setActiveView({ kind: "list" }); setDetailPackageId(null); setConfirmPackage(null); onAfterClose?.(); }}
       title="Mã ưu đãi"
       presentation="bare"
       className="w-full md:max-w-2xl"
@@ -396,7 +405,7 @@ export const CartDiscountPicker = ({
         voucherTabLabel={voucherTabLabel}
         onChange={setActiveTab}
         onClose={closePicker}
-        detailOpen={detailVoucher !== null}
+        detailOpen={detailVoucher !== null || detailPackage !== null}
         headerAction={activeTab === "my_vouchers" && !isLoading && !loadError && hasClearableVoucher ? (
           <button
             type="button"
@@ -412,13 +421,27 @@ export const CartDiscountPicker = ({
         overlayContent={(
           <>
             <VoucherAcquisitionConfirm
-              pkg={confirmPackage}
+              pkg={currentConfirmPackage}
               pointsBalance={pointsBalance}
-              isLoading={isPending}
+              isLoading={isPending || redeemingId !== null}
               onCancel={() => setConfirmPackage(null)}
-              onConfirm={() => { if (confirmPackage) void acquirePackage(confirmPackage); }}
+              onConfirm={() => { if (currentConfirmPackage) void acquirePackage(currentConfirmPackage); }}
             />
             <VoucherModalDetailTransition>
+              {detailPackage ? (
+                <VoucherDetailSheet
+                  key="cart-package-detail"
+                  packageData={detailPackage}
+                  menuData={menuData}
+                  powderLabels={new Map(powders.map((powder) => [powder.id, powder.name]))}
+                  pointsBalance={pointsBalance}
+                  isLoggedIn
+                  isExchanging={redeemingId !== null}
+                  onBack={() => setDetailPackageId(null)}
+                  onExchange={handleAcquire}
+                  onLogin={handleAcquire}
+                />
+              ) : null}
               {detailVoucher ? (
                 <VoucherDetailSheet
                   overlayOpen={open}
@@ -540,8 +563,9 @@ export const CartDiscountPicker = ({
             packages={availableVoucherPackages}
             menuData={menuData}
             pointsBalance={pointsBalance}
-            pendingPackageId={isPending ? redeemingId : null}
+            pendingPackageId={redeemingId}
             onAcquire={handleAcquire}
+            onPackageClick={(pkg) => setDetailPackageId(pkg.id)}
             columns="one"
           />
         )}

@@ -102,6 +102,7 @@ function EditModalOverlay({ menuItems, menuData, allVouchers, projectedItems, wa
       key="edit-modal"
       item={menuItem}
       latteItems={menuData.latte}
+      lattePriceAnchors={menuData.latte_price_anchors}
       milkTypes={menuData.milk_types}
       addonGroups={menuData.addon_groups}
       editingItem={projectedEditingItem}
@@ -169,11 +170,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
   const packagesQuery = useVoucherPackages({ enabled: isCartOpen });
 
   const allVouchers = useMemo(() => vouchersQuery.data ?? [], [vouchersQuery.data]);
-  const availableVoucherPackages = React.useMemo(() => (packagesQuery.data ?? []).filter((pkg) =>
-    pkg.voucher_type === "DISCOUNT" ||
-    pkg.voucher_type === "FREESHIP" ||
-    pkg.voucher_type === "BUNDLE"
-  ), [packagesQuery.data]);
+  const availableVoucherPackages = packagesQuery.data ?? [];
 
   let voucherLoadState: "idle" | "loading" | "loaded" | "error" = "idle";
   if (isCartOpen && isLoggedInSynced) {
@@ -230,7 +227,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
       const referencePrice = voucher.product_discount_mode === "PAY_AS_SIZE" && voucher.reference_size
         ? computeVoucherItemPrice(menuItem, voucher.reference_size, item.configuration.powderId ?? null,
             item.configuration.baseLiquidId ?? null, [], powderData.data,
-            powderData.default_powder_gram, menuData.latte, menuData.milk_types, menuData.addon_groups).drinkPrice
+            powderData.default_powder_gram, menuData.latte_price_anchors, menuData.milk_types, menuData.addon_groups).drinkPrice
         : null;
       benefit = computeProductDiscountBenefit(voucher, item.drinkPriceVnd, referencePrice);
     }
@@ -514,6 +511,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
               if (useAuthStore.getState().user?.phone !== ownerPhone) return;
               setCartOpen(true);
               setIsDiscountPickerOpen(true);
+              toast.dismiss(toastId);
             }}
           >
             bấm vào đây để sử dụng voucher khác

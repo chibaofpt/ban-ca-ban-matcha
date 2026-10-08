@@ -1,3 +1,4 @@
+import { resolveFusionDefaultPowderId } from "@/src/utils/menuConfiguration";
 import type { CreateVoucherPackageInput } from "@/lib/validations/voucherPackage";
 
 type BundleInput = Extract<CreateVoucherPackageInput, { voucher_type: "BUNDLE" }>;
@@ -8,6 +9,7 @@ interface BundleReferenceMenu {
   is_available: boolean;
   matcha_powder_id?: string | null;
   default_powder_id?: string | null;
+  replacement_powder_id?: string | null;
   default_base_liquid_id?: string | null;
   sizes?: Array<{ size: string; base_price_vnd: number | null }>;
   fusionAllowedPowders?: Array<{ powder_id: string }>;
@@ -61,10 +63,14 @@ function validateScopeConfigurations(
       !menu.sizes?.some((row) => row.size === size && row.base_price_vnd !== null))) {
       throw new VoucherBundleReferenceError("Bundle scope size is unavailable");
     }
-    const powderAllowed = product.default_powder_id !== undefined && product.default_powder_id !== null &&
+    const effectivePowderId = menu.category === "fusion"
+      ? resolveFusionDefaultPowderId(menu.default_powder_id ?? null, [...activePowderIds].map((id) =>
+          ({ id, name: "", price_per_gram: 0, is_available: true })), menu.replacement_powder_id)
+      : menu.matcha_powder_id;
+    const powderAllowed = Boolean(effectivePowderId) && product.default_powder_id !== undefined && product.default_powder_id !== null &&
       activePowderIds.has(product.default_powder_id) &&
       (menu.category === "latte" ? menu.matcha_powder_id === product.default_powder_id
-        : menu.default_powder_id === product.default_powder_id ||
+        : effectivePowderId === product.default_powder_id ||
           Boolean(menu.fusionAllowedPowders?.some((row) => row.powder_id === product.default_powder_id)));
     if (!powderAllowed) throw new VoucherBundleReferenceError("Bundle scope powder is unavailable");
     if (!product.default_base_liquid_id || !activeBaseLiquidIds.has(product.default_base_liquid_id)) {
@@ -98,6 +104,7 @@ export async function createBundleVoucherPackage(
       is_available: true,
       matcha_powder_id: true,
       default_powder_id: true,
+      replacement_powder_id: true,
       default_base_liquid_id: true,
       sizes: { select: { size: true, base_price_vnd: true } },
       fusionAllowedPowders: { select: { powder_id: true } },

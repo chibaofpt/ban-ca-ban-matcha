@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
     const page = vouchers.slice(0, limit);
     const catalog = await loadVoucherAvailabilityCatalog(prisma as unknown as VoucherAvailabilityDatabase);
     const withAvailability = attachOwnedVoucherAvailability(page, catalog);
-    const withBaselines = await attachBundleRewardBaselines(prisma, withAvailability);
+    const withBaselines = await attachBundleRewardBaselines(prisma, withAvailability, page);
     const nextCursor = hasMore && page.length > 0 ? encodeCursor(page[page.length - 1].id) : null;
     return NextResponse.json({
       data: withBaselines.map((voucher) => {

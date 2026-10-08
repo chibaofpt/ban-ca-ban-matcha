@@ -272,7 +272,13 @@ Global Base Liquid catalog for Latte and Fusion. The physical table name is reta
   always null for drink categories
 - `is_seasonal` bool — default false
 - `matcha_powder_id` uuid FK nullable UK → matcha_powder — Latte only: the fixed powder. 1 powder can only belong to 1 Latte item.
-- `default_powder_id` uuid FK nullable → matcha_powder — Fusion only: default powder
+- `default_powder_id` uuid FK nullable → matcha_powder — Fusion original default and Premium_Latte
+  anchor. Required for Fusion by application validation; nullable storage remains for Latte/extras.
+  Compatibility rationale and manual data-rollout boundary: [ADR 0006](docs/decisions/0006-fusion-original-powder-and-manual-rollout.md).
+- `replacement_powder_id` uuid FK nullable → matcha_powder — explicit admin-selected serving default
+  while the original is inactive. It never replaces the original price anchor. Indexed along with
+  `default_powder_id` for reverse availability impact; FK deletion uses NO ACTION.
+  Runtime and lifecycle invariants belong to [pricing-logic](.agents/skills/pricing-logic/SKILL.md#powder-rules).
 - `default_base_liquid_id` uuid FK nullable → milk_type — Fusion per-item default; Latte resolves the global `is_default = true` row
 - `custom_powder_grams` Json nullable — `{"MEDIUM": 4.5, "LARGE": 8.0}`.
   Keys: "SMALL" | "MEDIUM" | "LARGE" only.
@@ -300,7 +306,8 @@ NULL base price means size not sold. Extras have no drink size configuration, as
 
 ### fusion_allowed_powder
 Which powders can be swapped on a Fusion item. Empty = only default powder, swap UI hidden.
-The `default_powder_id` of the item is always implicitly allowed — no row needed here for it.
+The active serving default (original or explicit replacement) is implicitly allowed without a row.
+Replacement does not add a permanent swap permission; see [pricing-logic](.agents/skills/pricing-logic/SKILL.md#powder-rules).
 
 - `menu_item_id` uuid FK → menu_items (cascade delete)
 - `powder_id` uuid FK → matcha_powder (cascade delete)

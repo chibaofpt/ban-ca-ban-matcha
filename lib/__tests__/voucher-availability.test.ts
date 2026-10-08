@@ -59,12 +59,12 @@ function rule(overrides: Partial<VoucherBundleRuleSource> = {}): VoucherBundleRu
 }
 
 describe("Cấu hình menu dùng chung cho voucher", () => {
-  it("Fusion fallback theo tên ưu tiên rồi mới đến bột rẻ nhất và ID", () => {
-    expect(resolveFusionDefaultPowderId("meyumi", catalog.powders)).toBe("hana");
-    const withoutPriority = catalog.powders.filter((powder) => powder.name !== "Hana");
-    expect(resolveFusionDefaultPowderId(null, withoutPriority)).toBe("cheap");
+  it("Fusion chỉ dùng bột gốc active hoặc replacement tường minh", () => {
+    expect(resolveFusionDefaultPowderId("meyumi", catalog.powders)).toBeNull();
+    expect(resolveFusionDefaultPowderId("meyumi", catalog.powders, "hana")).toBe("hana");
+    expect(resolveFusionDefaultPowderId("meyumi", catalog.powders, "cheap")).toBe("cheap");
+    expect(resolveFusionDefaultPowderId(null, catalog.powders, "hana")).toBeNull();
   });
-
   it("Base Liquid fallback trong allow-list theo display_order", () => {
     expect(resolveDefaultBaseLiquidId("inactive-liquid", ["liquid-late", "liquid-first"], catalog.baseLiquids)).toBe("liquid-first");
   });

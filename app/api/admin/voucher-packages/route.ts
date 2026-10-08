@@ -202,7 +202,14 @@ export async function POST(req: NextRequest) {
         matcha_powder_id: data.matcha_powder_id,
         milk_type_id: data.milk_type_id,
       }];
-      const pricingCtx = await buildPricingContext();
+      const menuTargets = await Promise.all(productTargets.map((target) => prisma.menuItem.findUnique({
+        where: { id: target.menu_item_id },
+        include: { sizes: true, fusionAllowedPowders: true,
+          allowedBaseLiquids: { include: { baseLiquid: { select: { is_active: true } } } } },
+      })));
+      const targetMenuMap = new Map(menuTargets.filter((item) => item !== null).map((item) => [item.id, item]));
+      const originalPowderIds = [...new Set(menuTargets.flatMap((item) => item?.default_powder_id ? [item.default_powder_id] : []))];
+      const pricingCtx = await buildPricingContext(prisma, { powderIds: originalPowderIds });
       const targetSnapshots: Array<{
         menu_item_id: string;
         size: typeof data.size;
@@ -212,16 +219,7 @@ export async function POST(req: NextRequest) {
       }> = [];
 
       for (const target of productTargets) {
-      const menuItem = await prisma.menuItem.findUnique({
-        where: { id: target.menu_item_id },
-        include: {
-          sizes: true,
-          fusionAllowedPowders: true,
-          allowedBaseLiquids: {
-            include: { baseLiquid: { select: { is_active: true } } },
-          },
-        },
-      });
+      const menuItem = targetMenuMap.get(target.menu_item_id);
 
       if (!menuItem || !menuItem.is_available) {
         return NextResponse.json(
@@ -263,10 +261,11 @@ export async function POST(req: NextRequest) {
         const effectiveDefaultPowderId = resolveFusionDefaultPowderId(
           menuItem.default_powder_id,
           activePowders,
+          menuItem.replacement_powder_id,
         );
         const selected_powder_id = target.matcha_powder_id ?? effectiveDefaultPowderId;
 
-        if (!selected_powder_id) {
+        if (!effectiveDefaultPowderId || !selected_powder_id) {
           return NextResponse.json(
             { error: "Fusion item has no resolvable powder", code: "VALIDATION_ERROR" },
             { status: 400 }
@@ -290,9 +289,9 @@ export async function POST(req: NextRequest) {
         powder_id = selected_powder_id;
         resolved_matcha_powder_id = target.matcha_powder_id ?? null;
 
-        // Compute Premium_Latte for non-default powder
-        if (effectiveDefaultPowderId && powder_id !== effectiveDefaultPowderId) {
-          premium_latte = await resolveOrderItemPremiumLatte(powder_id, effectiveDefaultPowderId, target.size);
+        // Price every selection against the persisted original Fusion powder.
+        if (menuItem.default_powder_id) {
+          premium_latte = await resolveOrderItemPremiumLatte(powder_id, menuItem.default_powder_id, target.size, prisma, pricingCtx);
         }
       }
 

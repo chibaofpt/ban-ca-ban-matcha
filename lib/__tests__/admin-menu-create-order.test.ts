@@ -6,11 +6,14 @@ const mockUpdateMany = vi.fn();
 const mockCreate = vi.fn();
 const mockMilkFindMany = vi.fn();
 const mockSizeConfigFindMany = vi.fn();
+const mockPowderFindUnique = vi.fn();
+const mockTxPowders = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ getSession: () => mockGetSession() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     $transaction: (...args: unknown[]) => mockTransaction(...args),
+    matchaPowder: { findUnique: (...args: unknown[]) => mockPowderFindUnique(...args) },
     milkType: { findMany: (...args: unknown[]) => mockMilkFindMany(...args) },
     defaultSizeConfig: { findMany: (...args: unknown[]) => mockSizeConfigFindMany(...args) },
   },
@@ -59,8 +62,22 @@ function request(includeSortOrder: boolean): Request {
   return new Request("http://localhost/api/admin/menu", { method: "POST", body });
 }
 
+
+const ORIGINAL_ID = "33333333-3333-4333-8333-333333333333";
+const LIQUID_ID = "44444444-4444-4444-8444-444444444444";
+function fusionRequest(includeOriginal = true): Request {
+  const body = new FormData();
+  body.set("name", "Fusion");
+  body.set("category", "fusion");
+  body.set("default_base_liquid_id", LIQUID_ID);
+  if (includeOriginal) body.set("default_powder_id", ORIGINAL_ID);
+  body.set("sizes", JSON.stringify(["SMALL", "MEDIUM", "LARGE"].map((size) => ({ size, base_price_vnd: 23_000 }))));
+  return new Request("http://localhost/api/admin/menu", { method: "POST", body });
+}
+
 describe("POST /api/admin/menu - thứ tự món mới", () => {
-  const tx = { menuItem: { updateMany: mockUpdateMany, create: mockCreate } };
+  const tx = { menuItem: { updateMany: mockUpdateMany, create: mockCreate, findUniqueOrThrow: async () => createdExtra },
+    menuItemSize: { createMany: vi.fn() }, matchaPowder: { findMany: (...args: unknown[]) => mockTxPowders(...args) } };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -92,5 +109,38 @@ describe("POST /api/admin/menu - thứ tự món mới", () => {
     expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ sort_order: 7 }),
     }));
+  });
+
+  it("Fusion không có UUID bột gốc bị từ chối trước transaction", async () => {
+    expect((await POST(fusionRequest(false))).status).toBe(400);
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it("Fusion preflight active nhưng bột inactive trong transaction không được tạo", async () => {
+    mockMilkFindMany.mockResolvedValue([{ id: LIQUID_ID, is_default: true }]);
+    mockPowderFindUnique.mockResolvedValue({ id: ORIGINAL_ID, is_available: true });
+    mockTxPowders.mockResolvedValue([{ id: ORIGINAL_ID, is_available: false }]);
+    const response = await POST(fusionRequest());
+    expect(response.status).toBe(422);
+    expect(mockCreate).not.toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("Fusion hết retry P2034 trả 409", async () => {
+    mockMilkFindMany.mockResolvedValue([{ id: LIQUID_ID, is_default: true }]);
+    mockPowderFindUnique.mockResolvedValue({ id: ORIGINAL_ID, is_available: true });
+    mockTransaction.mockRejectedValue(Object.assign(new Error("serialization"), { code: "P2034" }));
+    expect((await POST(fusionRequest())).status).toBe(409);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it("bột gốc không tồn tại trả details tham chiếu và không ghi", async () => {
+    mockPowderFindUnique.mockResolvedValue(null);
+    const response = await POST(fusionRequest());
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ code: "BUSINESS_RULE_VIOLATION", details: {
+      reason: "POWDER_REFERENCE_NOT_FOUND", field: "default_powder_id", powder_ids: [ORIGINAL_ID],
+    } });
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
 });

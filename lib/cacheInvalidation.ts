@@ -9,6 +9,7 @@ import { invalidateCache, CACHE_KEYS } from './cache';
 export async function invalidateMenuCaches(): Promise<void> {
   await invalidateCache(
     CACHE_KEYS.MENU,
+    CACHE_KEYS.VOUCHER_PACKAGES,
     CACHE_KEYS.POWDERS,
     CACHE_KEYS.ADDON_GROUPS,
     CACHE_KEYS.MILK_TYPES,

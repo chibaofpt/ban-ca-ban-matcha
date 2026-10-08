@@ -18,6 +18,13 @@ Projection join cart với catalog/wallet hiện hành, khóa checkout trong lú
 nếu dữ liệu chưa sẵn sàng. Đổi owner/logout giữ paid line nhưng tháo personal/order voucher và chỉ
 xóa reward line/addon được ghi trong `created_reward_effects`.
 
+Khi catalog thay đổi bột, giữ nguyên lựa chọn của line đã có. Bột inactive hoặc không còn quyền
+dùng thì hiện yêu cầu chọn lại và khóa checkout; không tự đổi sang bột mặc định mới. Khi bột gốc
+được mở lại, line dùng bột thay thế chỉ tiếp tục hợp lệ nếu bột đó còn active và nằm trong allow-list.
+Lượt chọn món mới dùng mặc định đang phục vụ. Định giá dựa vào các neo Latte trong menu DTO,
+bao gồm neo inactive; xem [pricing-logic](../../.agents/skills/pricing-logic/SKILL.md) và
+[API](../../API.md#get-apimenu).
+
 Customer có thể chạm phần nội dung của một cart line để mở `ProductModal` sửa cấu hình; các nút số
 lượng, xóa và voucher vẫn giữ action riêng và không kích hoạt edit. Với POS, sau khi chọn khách hiện
 có, cart hiển thị ngay danh sách voucher của khách cùng trạng thái tải/khả dụng/đang giữ.
@@ -97,7 +104,10 @@ rồi Tiền mặt/Chuyển khoản; phải đặt nhãn Tổng căn trái cùng
 Được giảm căn phải khi có giảm, và nút Chốt đơn phía dưới trong cùng cột.
 Các khoản giảm tiền trong bảng chi tiết, trên voucher món/topping và dòng Được giảm dùng màu đỏ. Các action chốt/xóa đơn giữ lifecycle hiện có. Customer dùng chung bảng tiền ở cuối body. Footer customer giữ lựa chọn nhận tại quán/giao hàng,
 địa chỉ và checkout. Hàng trên giữ Delivery/Pickup và giờ nhận ở vị trí hiện có.
-Phần dưới chia hai cột tỷ lệ 4:6; cột trái xếp dọc nút Voucher nền gradient amber nhẹ #e4a132 → #f1be60 (hover #d99529 → #e9b354) và nút Địa chỉ
+Phần dưới chia hai cột voucher/địa chỉ và tổng tiền theo số tiền khách phải trả sau giảm giá, gồm phí ship:
+dưới 100.000 VND dùng tỷ lệ 5:5; từ 100.000 đến dưới 1.000.000 VND dùng tỷ lệ 45:55;
+từ 1.000.000 VND dùng tỷ lệ 4:6. So sánh bằng VND nguyên,
+không dùng số ká đã làm tròn. Cột trái xếp dọc nút Voucher nền gradient amber nhẹ #e4a132 → #f1be60 (hover #d99529 → #e9b354) và nút Địa chỉ
 nền gradient hồng nhẹ #c9799f → #dda0be (hover #be6d93 → #d494b2, chỉ hiện khi giao hàng); gradient chéo 135 độ; tiêu đề trắng đậm 13 px, mô tả trắng nét thường 12 px; cả hai có viền chữ mỏng 0,3 px màu đen opacity 25%, bỏ chevron.
 Voucher đã có giảm hiển thị thẳng Giảm … ká, không có tiền tố Đã áp dụng.
 Cột phải có nhãn Tổng, giá phải trả và điểm cùng hàng, căn phải. Khi có giảm giá, hàng dưới hiển thị

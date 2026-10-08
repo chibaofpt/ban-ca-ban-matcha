@@ -18,6 +18,9 @@ import type { AdminMenuItem, Category, MenuOrderGroups } from "@/src/lib/types/m
 import { cn } from "@/src/utils/cn";
 import { mergeVisibleMenuOrder, moveVisibleMenuItem } from "@/src/utils/menuReorder";
 import Image from "next/image";
+import { useFusionPowderReplacement } from "@/src/hooks/useFusionPowderReplacement";
+import { FusionPowderReplacementSheet } from "@/src/components/admin/FusionPowderReplacementSheet";
+
 
 // ── Modal state ───────────────────────────────────────────────────────────────
 
@@ -53,6 +56,7 @@ function groupIds(groups: MenuGroups): MenuOrderGroups {
 /** Trang quản lý menu — Admin. */
 export default function AdminMenuPage() {
   const queryClient = useQueryClient();
+  const replacement = useFusionPowderReplacement();
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<"all" | "latte" | "fusion" | "extras" | "unavailable">("all");
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
@@ -183,36 +187,17 @@ export default function AdminMenuPage() {
     }
   };
 
-  const toggleMutation = useMutation({
-    mutationFn: ({ id, next }: { id: string; next: boolean }) =>
-      toggleMenuItemAvailability(id, next),
-    onMutate: async ({ id, next }) => {
-      setTogglingId(id);
-      await queryClient.cancelQueries({ queryKey: ["admin", "menu"] });
-      const previousMenu = queryClient.getQueryData<AdminMenuData>(["admin", "menu"]);
-      if (previousMenu) {
-        queryClient.setQueryData<AdminMenuData>(["admin", "menu"], (old) => {
-          if (!old) return old;
-          const toggle = (list: AdminMenuItem[]) =>
-            list.map((i) => (i.id === id ? { ...i, is_available: next } : i));
-          return { ...old, latte: toggle(old.latte), fusion: toggle(old.fusion), extras: toggle(old.extras ?? []) };
-        });
-      }
-      return { previousMenu };
-    },
-    onError: (err, variables, context) => {
-      if (context?.previousMenu) {
-        queryClient.setQueryData(["admin", "menu"], context.previousMenu);
-      }
-      showToast("Không thể thay đổi trạng thái. Vui lòng thử lại.", "error");
-    },
-    onSettled: () => {
-      setTogglingId(null);
-    },
-  });
-
   const handleToggleAvailable = async (id: string, next: boolean) => {
-    toggleMutation.mutate({ id, next });
+    if (togglingId || replacement.pending || replacement.busy) return;
+    setTogglingId(id);
+    try {
+      await replacement.run(async (mappings) => {
+        await toggleMenuItemAvailability(id, next, mappings);
+        showToast(next ? "Đã mở bán món" : "Đã ngừng bán món");
+      });
+    } catch (failure: unknown) {
+      showToast(failure instanceof Error ? failure.message : "Không thể thay đổi trạng thái.", "error");
+    } finally { setTogglingId(null); }
   };
 
   const hasReorderChanges = Boolean(
@@ -630,6 +615,7 @@ export default function AdminMenuPage() {
         }}
       />
 
+      {replacement.pending && <FusionPowderReplacementSheet details={replacement.pending.details} busy={replacement.busy} error={replacement.error} onConfirm={replacement.confirm} onCancel={replacement.cancel} />}
       {/* Toast */}
       {toast && (
         <div

@@ -493,7 +493,10 @@ model MenuItem {
   created_at           DateTime                @default(now()) @db.Timestamptz(6)
   is_seasonal          Boolean                 @default(false)
   matcha_powder_id     String?                 @unique @db.Uuid
+  /// Original Fusion powder; remains the price anchor during replacement.
   default_powder_id    String?                 @db.Uuid
+  /// Admin-selected serving default while the original powder is inactive.
+  replacement_powder_id String?               @db.Uuid
   custom_powder_grams  Json?
   base_liquid_note     String?
   /// Fusion-specific default. Latte resolves the global MilkType.is_default row.
@@ -504,6 +507,7 @@ model MenuItem {
   referenceLatteItem   MatchaPowder?           @relation("MatchaPowder_referenceLatteItem")
   sizes                MenuItemSize[]
   defaultPowder        MatchaPowder?           @relation("MenuItem_defaultPowder", fields: [default_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replacementPowder    MatchaPowder?           @relation("MenuItem_replacementPowder", fields: [replacement_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   matchaPowder         MatchaPowder?           @relation("MenuItem_matchaPowder", fields: [matcha_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   defaultBaseLiquid    MilkType?               @relation("MenuItem_defaultBaseLiquid", fields: [default_base_liquid_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   orderItems           OrderItem[]
@@ -516,6 +520,8 @@ model MenuItem {
   @@index([category], map: "idx_menu_items_category")
   @@index([is_available], map: "idx_menu_items_is_available")
   @@index([default_base_liquid_id], map: "idx_menu_items_default_base_liquid_id")
+  @@index([default_powder_id], map: "idx_menu_items_default_powder_id")
+  @@index([replacement_powder_id], map: "idx_menu_items_replacement_powder_id")
   @@map("menu_items")
 }
 
@@ -775,7 +781,7 @@ model MatchaPowder {
   image_url               String?
   price_per_gram          Int
   type                    PowderType              @default(NONE)
-  /// FK → menu_items; SET NULL on soft-delete. Used as Premium_Latte pricing anchor.
+  /// FK to the Latte price anchor; availability changes preserve this relation.
   reference_latte_item_id String?                 @unique @db.Uuid
   fragrance               Int?
   body                    Int?
@@ -787,6 +793,7 @@ model MatchaPowder {
   fusionAllowedPowders    FusionAllowedPowder[]
   referenceLatteItem      MenuItem?               @relation("MatchaPowder_referenceLatteItem", fields: [reference_latte_item_id], references: [id], onUpdate: NoAction)
   defaultPowderItems      MenuItem[]              @relation("MenuItem_defaultPowder")
+  replacementPowderItems  MenuItem[]              @relation("MenuItem_replacementPowder")
   matchaPowderItems       MenuItem[]              @relation("MenuItem_matchaPowder")
   orderItems              OrderItem[]
   powderSizeConfigs       PowderSizeConfig[]

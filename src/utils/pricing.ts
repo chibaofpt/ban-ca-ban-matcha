@@ -5,6 +5,7 @@
  */
 
 import { DELIVERY_CONFIG } from "@/src/constants/delivery";
+import type { LattePriceAnchors } from "@/contracts/menu";
 
 export type Size = "SMALL" | "MEDIUM" | "LARGE";
 
@@ -120,13 +121,27 @@ export function calcLattePrice(params: LattePriceParams): number {
   );
 }
 
+/** Compute a Fusion premium against its original powder, including inactive Latte anchors. */
+export function calcPremiumLatte(
+  selectedPowderId: string,
+  originalPowderId: string | null,
+  size: Size,
+  anchors: LattePriceAnchors,
+): number {
+  if (!originalPowderId || selectedPowderId === originalPowderId) return 0;
+  const selected = anchors[selectedPowderId];
+  const original = anchors[originalPowderId];
+  if (!selected || !original) return 0;
+  return (selected[size] ?? 0) - (original[size] ?? 0);
+}
+
 // ── Fusion price ──────────────────────────────────────────────────────────────
 
 export interface FusionPriceParams {
   base_price_vnd: number;
   gram: number;
   powder_price_per_gram: number;
-  /** Premium_Latte[size] = BaseLatte[selectedPowder][size] − BaseLatte[defaultPowder][size] */
+  /** Premium_Latte[size] = BaseLatte[selectedPowder][size] − BaseLatte[originalPowder][size] */
   premium_latte: number;
   /** Exact positive or negative delta versus the Fusion item's default Base Liquid. */
   base_liquid_delta_vnd?: number;

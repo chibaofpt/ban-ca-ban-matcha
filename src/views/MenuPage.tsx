@@ -218,6 +218,7 @@ export default function MenuPage() {
             error={catalogUnavailable}
             onRetry={handleRetryCatalog}
             latteItems={data?.latte ?? []}
+            lattePriceAnchors={data?.latte_price_anchors ?? {}}
             fusionItems={data?.fusion ?? []}
             extrasItems={data?.extras ?? []}
             seasonalItems={seasonalItems}
@@ -237,6 +238,7 @@ export default function MenuPage() {
           key="product-modal-root"
           item={selectedItem}
           latteItems={data?.latte ?? []}
+          lattePriceAnchors={data?.latte_price_anchors ?? {}}
           milkTypes={data?.milk_types ?? []}
           addonGroups={data?.addon_groups ?? []}
           onClose={() => setSelectedItem(null)}

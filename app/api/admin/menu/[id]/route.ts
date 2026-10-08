@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { updateMenuSchema } from "@/lib/validations/menu";
+import { runSerializableTransaction } from "@/lib/serializableTransaction";
+import { syncReferenceLatteAvailability, powderAvailabilityErrorResponse } from "@/lib/powderAvailability";
 import {
   MENU_IMAGE_OUTPUT_CONTENT_TYPE,
   buildMenuImagePath,
@@ -19,8 +21,12 @@ import {
   asMenuStorageCategory,
   buildMenuItemSizeUpdate,
   isAvailabilityOnlyMenuUpdate,
+  menuPowderForeignKeyError,
   validateMenuImageFile,
+  validateMenuPowderReferences,
   validateUniqueLattePowder,
+  validateFusionOriginalPowder,
+  fusionOriginalPowderErrorResponse,
 } from "@/lib/catalog/adminMenuUpdate";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +46,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   let newImagePath: string | null = null;
   let oldImagePathToDelete: string | null = null;
   let databaseCommitted = false;
+  let powderWriteFailure: ((error: unknown) => NextResponse | null) | null = null;
   try {
     // ── Detect Content-Type → parse body ──────────────────────────────────
     // Toggle availability sends JSON { is_available }
@@ -121,15 +128,15 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     let resolvedDefaultBaseLiquidId = existing.default_base_liquid_id;
     let allowedBaseLiquidIdsToSave: string[] | undefined;
     if (!availabilityOnlyUpdate && existing.category !== "extras") {
-      const activeBaseLiquids = await prisma.milkType.findMany({
-        where: { is_active: true },
-        select: { id: true, is_default: true },
+      const baseLiquids = await prisma.milkType.findMany({
+        select: { id: true, is_default: true, is_active: true },
       });
-      const activeBaseLiquidIds = new Set(activeBaseLiquids.map((liquid) => liquid.id));
+      const baseLiquidIds = new Set(baseLiquids.map((liquid) => liquid.id));
+      const activeBaseLiquids = baseLiquids.filter((liquid) => liquid.is_active);
       resolvedDefaultBaseLiquidId = existing.category === "latte"
         ? activeBaseLiquids.find((liquid) => liquid.is_default)?.id ?? null
         : validData.default_base_liquid_id ?? existing.default_base_liquid_id;
-      if (!resolvedDefaultBaseLiquidId || !activeBaseLiquidIds.has(resolvedDefaultBaseLiquidId)) {
+      if (!resolvedDefaultBaseLiquidId || !baseLiquidIds.has(resolvedDefaultBaseLiquidId)) {
         return NextResponse.json(
           { error: "Base Liquid mặc định không khả dụng", code: "BUSINESS_RULE_VIOLATION" },
           { status: 422 },
@@ -139,12 +146,22 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         ? undefined
         : [...new Set(validData.allowed_base_liquid_ids)]
           .filter((baseLiquidId) => baseLiquidId !== resolvedDefaultBaseLiquidId);
-      if (allowedBaseLiquidIdsToSave?.some((baseLiquidId) => !activeBaseLiquidIds.has(baseLiquidId))) {
+      if (allowedBaseLiquidIdsToSave?.some((baseLiquidId) => !baseLiquidIds.has(baseLiquidId))) {
         return NextResponse.json(
           { error: "Danh sách Base Liquid có lựa chọn không khả dụng", code: "BUSINESS_RULE_VIOLATION" },
           { status: 422 },
         );
       }
+    }
+
+    const powderReferenceError = await validateMenuPowderReferences(existing.category, validData);
+    if (powderReferenceError) return powderReferenceError;
+
+    if (existing.category === "fusion" && (!availabilityOnlyUpdate || validData.is_available === true)) {
+      await validateFusionOriginalPowder(
+        validData.default_powder_id === undefined ? existing.default_powder_id : validData.default_powder_id,
+        existing.default_powder_id, prisma, existing.replacement_powder_id,
+      );
     }
 
     // ── Check uniqueness of powder ──────────────────────────────────────────
@@ -207,7 +224,18 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 
     // ── DB write in transaction ───────────────────────────────────────────
     const defaultSizeConfigs = await prisma.defaultSizeConfig.findMany();
-    const updatedItem = await prisma.$transaction(async (tx) => {
+    powderWriteFailure = (error) => menuPowderForeignKeyError(error, existing.category, validData);
+    const updatedItem = await runSerializableTransaction(prisma, async (tx) => {
+        if (existing.category === "latte" && validData.is_available !== undefined) {
+          await syncReferenceLatteAvailability(tx, id, validData.is_available, validData.fusion_powder_replacements);
+        }
+        const current = await tx.menuItem.findUniqueOrThrow({ where: { id } });
+        if (current.category === "fusion" && (!availabilityOnlyUpdate || validData.is_available === true)) {
+          await validateFusionOriginalPowder(
+            validData.default_powder_id === undefined ? current.default_powder_id : validData.default_powder_id,
+            current.default_powder_id, tx, current.replacement_powder_id,
+          );
+        }
         await tx.menuItem.update({
           where: { id },
           data: {
@@ -233,6 +261,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
             ...(existing.category === "fusion" &&
               validData.default_powder_id !== undefined && {
                 default_powder_id: validData.default_powder_id,
+                ...(validData.default_powder_id !== current.default_powder_id && { replacement_powder_id: null }),
               }),
             ...(existing.category === "fusion" && !availabilityOnlyUpdate && {
               default_base_liquid_id: resolvedDefaultBaseLiquidId,
@@ -277,7 +306,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           await tx.fusionAllowedPowder.deleteMany({ where: { menu_item_id: id } });
           if (validData.allowed_powder_ids.length > 0) {
             await tx.fusionAllowedPowder.createMany({
-              data: validData.allowed_powder_ids.map((pid) => ({
+              data: [...new Set(validData.allowed_powder_ids)].map((pid) => ({
                 menu_item_id: id,
                 powder_id: pid,
               })),
@@ -285,26 +314,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           }
         }
 
-        // Cascade: sync powder anchor cùng trạng thái khi latte thay đổi is_available
-        if (
-          existing.category === "latte" &&
-          validData.is_available !== undefined &&
-          validData.is_available !== existing.is_available
-        ) {
-          const referencingPowder = await tx.matchaPowder.findFirst({
-            where: { reference_latte_item_id: id },
-            select: { id: true },
-          });
-          if (referencingPowder) {
-            await tx.matchaPowder.update({
-              where: { id: referencingPowder.id },
-              data: { is_available: validData.is_available },
-            });
-          }
-        }
-
         return tx.menuItem.findUniqueOrThrow({ where: { id }, include: ADMIN_MENU_INCLUDE });
-      }, { maxWait: 10000, timeout: 15000 });
+      }, { timeoutMs: 15000 });
     databaseCommitted = true;
     const milkMlMap: Record<string, number> = {};
     for (const c of defaultSizeConfigs) milkMlMap[c.size] = c.milk_ml;
@@ -335,6 +346,13 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         });
       }
     }
+    const originalError = fusionOriginalPowderErrorResponse(err);
+    if (originalError) return originalError;
+    if (err instanceof Error && "code" in err && err.code === "P2034") return NextResponse.json({ error: "Dữ liệu đã thay đổi, vui lòng tải lại và thử lại", code: "CONFLICT" }, { status: 409 });
+    const availabilityError = powderAvailabilityErrorResponse(err);
+    if (availabilityError) return availabilityError;
+    const powderError = powderWriteFailure?.(err);
+    if (powderError) return powderError;
     captureServerException(err, { operation: "update_menu_item" });
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },

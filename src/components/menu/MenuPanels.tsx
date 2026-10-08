@@ -1,3 +1,4 @@
+import type { LattePriceAnchors } from "@/contracts/menu";
 import { AlertTriangle, Coffee, CupSoda, RefreshCcw, Sparkles } from "lucide-react";
 import type { RefObject } from "react";
 
@@ -15,6 +16,7 @@ interface MenuPanelsProps {
   extrasItems: MenuItem[];
   seasonalItems: MenuItem[];
   milkTypes: MilkTypeOption[];
+  lattePriceAnchors: LattePriceAnchors;
   cartItems: CartItem[];
   latteSectionRef: RefObject<HTMLDivElement | null>;
   fusionSectionRef: RefObject<HTMLDivElement | null>;
@@ -27,6 +29,7 @@ interface ItemSectionProps {
   title: "Latte" | "Fusion" | "Add-on" | "Seasonal";
   items: MenuItem[];
   milkTypes: MilkTypeOption[];
+  lattePriceAnchors: LattePriceAnchors;
   cartItems: CartItem[];
   sectionRef: RefObject<HTMLDivElement | null>;
   onItemClick: (item: MenuItem) => void;
@@ -55,10 +58,10 @@ export function MenuPanels(props: MenuPanelsProps) {
         </div>
       ) : (
         <>
-          <ItemSection title="Latte" items={latteItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.latteSectionRef} onItemClick={props.onItemClick} />
-          <ItemSection title="Fusion" items={fusionItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.fusionSectionRef} onItemClick={props.onItemClick} />
-          <ItemSection title="Add-on" items={extrasItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.extrasSectionRef} onItemClick={props.onItemClick} />
-          <ItemSection title="Seasonal" items={seasonalItems} milkTypes={props.milkTypes} cartItems={props.cartItems} sectionRef={props.seasonalSectionRef} onItemClick={props.onItemClick} />
+          <ItemSection title="Latte" items={latteItems} milkTypes={props.milkTypes} lattePriceAnchors={props.lattePriceAnchors} cartItems={props.cartItems} sectionRef={props.latteSectionRef} onItemClick={props.onItemClick} />
+          <ItemSection title="Fusion" items={fusionItems} milkTypes={props.milkTypes} lattePriceAnchors={props.lattePriceAnchors} cartItems={props.cartItems} sectionRef={props.fusionSectionRef} onItemClick={props.onItemClick} />
+          <ItemSection title="Add-on" items={extrasItems} milkTypes={props.milkTypes} lattePriceAnchors={props.lattePriceAnchors} cartItems={props.cartItems} sectionRef={props.extrasSectionRef} onItemClick={props.onItemClick} />
+          <ItemSection title="Seasonal" items={seasonalItems} milkTypes={props.milkTypes} lattePriceAnchors={props.lattePriceAnchors} cartItems={props.cartItems} sectionRef={props.seasonalSectionRef} onItemClick={props.onItemClick} />
         </>
       )}
     </div>
@@ -69,6 +72,7 @@ function ItemSection({
   title,
   items,
   milkTypes,
+  lattePriceAnchors,
   cartItems,
   sectionRef,
   onItemClick,
@@ -105,6 +109,7 @@ function ItemSection({
         <ItemGrid
           items={items}
           milkTypes={milkTypes}
+          lattePriceAnchors={lattePriceAnchors}
           cartItems={cartItems}
           onItemClick={onItemClick}
           priorityCount={title === "Latte" ? 2 : 0}
@@ -117,10 +122,11 @@ function ItemSection({
 function ItemGrid({
   items,
   milkTypes,
+  lattePriceAnchors,
   cartItems,
   onItemClick,
   priorityCount,
-}: Pick<MenuPanelsProps, "milkTypes" | "cartItems" | "onItemClick"> & {
+}: Pick<MenuPanelsProps, "milkTypes" | "lattePriceAnchors" | "cartItems" | "onItemClick"> & {
   items: MenuItem[];
   priorityCount: number;
 }) {
@@ -133,6 +139,7 @@ function ItemGrid({
             key={item.id}
             item={item}
             milkTypes={milkTypes}
+            lattePriceAnchors={lattePriceAnchors}
             cartQuantity={info.quantity}
             cartVariantCount={info.variantCount}
             cartHasVoucher={info.hasVoucher}

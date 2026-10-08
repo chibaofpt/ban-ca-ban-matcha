@@ -57,20 +57,26 @@ type VoucherWithBundleRule = {
 export async function attachBundleRewardBaselines<T extends VoucherWithBundleRule>(
   client: Parameters<typeof resolveBundleBaselineProducts>[0],
   vouchers: T[],
+  snapshots: VoucherWithBundleRule[] = vouchers,
 ): Promise<T[]> {
+  const snapshotMap = new Map(snapshots.map((voucher) => [voucher.qr_token, voucher.package.bundleRule]));
   const entries = vouchers.flatMap((voucher) => {
     const rule = voucher.package.bundleRule;
     if (!rule || rule.reward_mode === "SAME_CONFIG") return [];
-    return rule.productScopes.flatMap((scope, index) => scope.role === "REWARD" ? [{
-      key: `${voucher.qr_token}:${index}`,
-      scope,
-      input: {
-        menu_item_id: scope.menu_item_id,
-        allowed_sizes: scope.sizes.map((size) => size.size),
-        default_powder_id: scope.default_powder_id,
-        default_base_liquid_id: scope.default_base_liquid_id,
-      },
-    }] : []);
+    return rule.productScopes.flatMap((scope, index) => {
+      const persisted = snapshotMap.get(voucher.qr_token)?.productScopes.find((source) =>
+        source.role === scope.role && source.menu_item_id === scope.menu_item_id);
+      return scope.role === "REWARD" ? [{
+        key: `${voucher.qr_token}:${index}`,
+        scope,
+        input: {
+          menu_item_id: scope.menu_item_id,
+          allowed_sizes: scope.sizes.map((size) => size.size),
+          default_powder_id: persisted ? persisted.default_powder_id : scope.default_powder_id,
+          default_base_liquid_id: persisted ? persisted.default_base_liquid_id : scope.default_base_liquid_id,
+        },
+      }] : [];
+    });
   });
   if (entries.length === 0) return vouchers;
   const resolved = await resolveBundleBaselineProducts(client, entries.map((entry) => entry.input));

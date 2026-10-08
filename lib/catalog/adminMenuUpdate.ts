@@ -1,11 +1,71 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import type { UpdateMenuInput } from "@/lib/validations/menu";
+import { Prisma } from "@prisma/client";
+
+type PowderField = "matcha_powder_id" | "default_powder_id" | "allowed_powder_ids";
+type PowderUpdate = Pick<UpdateMenuInput, PowderField>;
+
+function submittedPowderReferences(category: string, data: PowderUpdate): Array<[PowderField, string[]]> {
+  if (category === "latte") return [["matcha_powder_id", data.matcha_powder_id ? [data.matcha_powder_id] : []]];
+  if (category !== "fusion") return [];
+  return [
+    ["default_powder_id", data.default_powder_id ? [data.default_powder_id] : []],
+    ["allowed_powder_ids", [...new Set(data.allowed_powder_ids ?? [])]],
+  ];
+}
+
+function missingPowderResponse(field: PowderField, powderIds: string[]): NextResponse {
+  const messages: Record<PowderField, string> = {
+    matcha_powder_id: "Loại bột Latte không còn tồn tại",
+    default_powder_id: "Loại bột mặc định không còn tồn tại",
+    allowed_powder_ids: "Danh sách bột được đổi có lựa chọn không còn tồn tại",
+  };
+  return NextResponse.json({
+    error: messages[field], code: "BUSINESS_RULE_VIOLATION",
+    details: { reason: "POWDER_REFERENCE_NOT_FOUND", field, powder_ids: powderIds },
+  }, { status: 422 });
+}
+
+/** Validate submitted applicable powder references, including inactive catalogue rows. */
+export async function validateMenuPowderReferences(category: string, data: PowderUpdate): Promise<NextResponse | null> {
+  const references = submittedPowderReferences(category, data);
+  const ids = [...new Set(references.flatMap(([, powderIds]) => powderIds))];
+  if (ids.length === 0) return null;
+  const powders = await prisma.matchaPowder.findMany({ where: { id: { in: ids } }, select: { id: true } });
+  const existingIds = new Set(powders.map((powder) => powder.id));
+  for (const [field, powderIds] of references) {
+    const missingIds = powderIds.filter((powderId) => !existingIds.has(powderId));
+    if (missingIds.length > 0) return missingPowderResponse(field, missingIds);
+  }
+  return null;
+}
+
+/** Map only identified powder foreign keys from the submitted menu write to a business error. */
+export function menuPowderForeignKeyError(error: unknown, category: string, data: PowderUpdate): NextResponse | null {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2003") return null;
+  const fieldName = error.meta?.field_name;
+  if (typeof fieldName !== "string") return null;
+  const key = fieldName.replace(/ \(index\)$/, "");
+  const references = submittedPowderReferences(category, data);
+  for (const [field, powderIds] of references) {
+    if (powderIds.length === 0) continue;
+    const constraint = field === "allowed_powder_ids"
+      ? "fusion_allowed_powder_powder_id_fkey"
+      : `menu_items_${field}_fkey`;
+    const columnMatches = field === "allowed_powder_ids"
+      ? key === "powder_id" && error.meta?.modelName === "FusionAllowedPowder"
+      : key === field && (!error.meta?.modelName || error.meta.modelName === "MenuItem");
+    if (key === constraint || columnMatches) return missingPowderResponse(field, powderIds);
+  }
+  return null;
+}
 
 /** Return true only for the compatibility quick-toggle payload. */
 export function isAvailabilityOnlyMenuUpdate(raw: unknown): boolean {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
   const keys = Object.keys(raw);
-  return keys.length === 1 && keys[0] === "is_available";
+  return keys.includes("is_available") && keys.every((key) => key === "is_available" || key === "fusion_powder_replacements");
 }
 
 /** Build an upsert update without clearing an omitted Base Liquid volume override. */
@@ -69,4 +129,33 @@ export async function validateUniqueLattePowder(input: {
     },
     { status: 400 },
   );
+}
+
+/** Require a configured original; an intentional change may select only a currently active powder. */
+export async function validateFusionOriginalPowder(
+  effectivePowderId: string | null,
+  currentPowderId: string | null,
+  client: Pick<Prisma.TransactionClient, "matchaPowder"> = prisma,
+  replacementPowderId: string | null = null,
+): Promise<void> {
+  if (!effectivePowderId) throw new FusionOriginalPowderError("Vui lòng chọn bột gốc cho món Fusion");
+  const isChangingOriginal = effectivePowderId !== currentPowderId;
+  const ids = [effectivePowderId, ...(!isChangingOriginal && replacementPowderId ? [replacementPowderId] : [])];
+  const powders = await client.matchaPowder.findMany({
+    where: { id: { in: ids } }, select: { id: true, is_available: true },
+  });
+  if (powders.some((powder) => powder.id === effectivePowderId && powder.is_available)) return;
+  if (!isChangingOriginal && replacementPowderId &&
+    powders.some((powder) => powder.id === replacementPowderId && powder.is_available)) return;
+  throw new FusionOriginalPowderError(isChangingOriginal ? "Bột gốc mới phải đang bán" : "Fusion cần bột gốc hoặc bột thay thế đang bán");
+}
+
+/** Caller-visible configuration failure for an absent or inactive newly selected Fusion original. */
+export class FusionOriginalPowderError extends Error {}
+
+/** Map the Fusion original validation error without hiding unrelated persistence failures. */
+export function fusionOriginalPowderErrorResponse(error: unknown): NextResponse | null {
+  return error instanceof FusionOriginalPowderError
+    ? NextResponse.json({ error: error.message, code: "BUSINESS_RULE_VIOLATION" }, { status: 422 })
+    : null;
 }

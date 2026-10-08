@@ -211,10 +211,19 @@ export async function resolveOrderBundles(
   if (baselineEntries.length > 0) {
     const resolved = await resolveBundleBaselineProducts(
       db as unknown as Parameters<typeof resolveBundleBaselineProducts>[0],
-      baselineEntries.map((entry) => entry.product),
+      baselineEntries.map((entry) => {
+        const snapshot = prepared[entry.preparedIndex]!.voucher.package.bundleRule!.productScopes
+          .find((scope) => scope.role === "REWARD" && scope.menu_item_id === entry.product.menu_item_id);
+        return { ...entry.product,
+          default_powder_id: snapshot ? snapshot.default_powder_id : entry.product.default_powder_id,
+          default_base_liquid_id: snapshot ? snapshot.default_base_liquid_id : entry.product.default_base_liquid_id };
+      }),
     );
     baselineEntries.forEach((entry, index) => {
-      prepared[entry.preparedIndex]!.rule.reward_products[entry.rewardIndex] = resolved[index]!;
+      prepared[entry.preparedIndex]!.rule.reward_products[entry.rewardIndex] = {
+        ...entry.product, baseline_prices_vnd: resolved[index]!.baseline_prices_vnd,
+        ...(resolved[index]!.baseline_price_vnd === undefined ? {} : { baseline_price_vnd: resolved[index]!.baseline_price_vnd }),
+      };
     });
   }
   const evaluated = evaluateBundleApplications({

@@ -29,11 +29,14 @@ import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 
+import type { LattePriceAnchors } from "@/contracts/menu";
+
 interface ProductModalProps {
   managed?: boolean;
   open?: boolean;
   item: MenuItem;
   latteItems: MenuItem[];
+  lattePriceAnchors: LattePriceAnchors;
   milkTypes: MilkTypeOption[];
   addonGroups: AddonGroup[];
   onClose: () => void;
@@ -88,7 +91,7 @@ export function resolveAddonOptionImage(
 // Extracted OptionCard, SizeSelector, MilkSelector, PowderSelector are imported
 
 const BaseModal: React.FC<ProductModalProps> = ({ 
-  item, latteItems, milkTypes, addonGroups, onClose, editingItem, onConfirm, freeVoucherId,
+  item, lattePriceAnchors, milkTypes, addonGroups, onClose, editingItem, onConfirm, freeVoucherId,
   freeVoucherCoveredPriceVnd, availableVouchers, nested = false, currentCartItems,
   allowedSizes, disableVoucherApplication, ctaLabel, initialSize, initialPowderId, initialBaseLiquidId, lockedBaseLiquidId,
   walletVerified = true, walletReadOnlyReason = "Ví voucher đang được xác minh. Vui lòng thử lại sau một chút.",
@@ -223,6 +226,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
   const isLatte = item.category === "latte";
   const activePowderId = isLatte ? (item.powder?.id ?? "") : selectedPowderId;
   const activePowder = useMemo(() => powders.find((p) => p.id === activePowderId), [powders, activePowderId]);
+  const powderSelectionValid = Boolean(activePowder?.is_available && (isLatte || activePowderId === item.resolved_default_powder_id || item.allowed_powder_ids.includes(activePowderId)));
   const activePowderPricePerGram = activePowder?.price_per_gram ?? 0;
 
   const orderedAddonGroups = useMemo(
@@ -240,10 +244,11 @@ const BaseModal: React.FC<ProductModalProps> = ({
     ?? (isLatte ? "Sữa mặc định" : "Nền mặc định");
 
   const powderList = useMemo(() => {
-    return !isLatte && item.allowed_powder_ids.length > 0
-      ? [item.resolved_default_powder_id!, ...item.allowed_powder_ids.filter(id => id !== item.resolved_default_powder_id)]
+    const ids = [item.resolved_default_powder_id, ...item.allowed_powder_ids].filter((id): id is string => Boolean(id));
+    return !isLatte && (ids.length > 1 || !powderSelectionValid)
+      ? [...new Set(ids)].filter((id) => powders.some((powder) => powder.id === id && powder.is_available))
       : [];
-  }, [isLatte, item.allowed_powder_ids, item.resolved_default_powder_id]);
+  }, [isLatte, item.allowed_powder_ids, item.resolved_default_powder_id, powderSelectionValid, powders]);
 
   // ── Pricing ──────────────────────────────────────────────────────────────
   const {
@@ -254,7 +259,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
     effectiveFreeVoucherId,
     effectiveProductVoucherType,
   } = usePriceMap({
-    item, latteItems, milkTypes, addonGroups, powders, defaultPowderGrams, selectedSize, activePowderId,
+    item, lattePriceAnchors, milkTypes, addonGroups, powders, defaultPowderGrams, selectedSize, activePowderId,
     selectedMilkId, selectedOptionIds, selectedAddonVoucherTargets,
     availableVouchers, selectedProductVoucherId, freeVoucherId, freeVoucherCoveredPriceVnd, quantity
   });
@@ -296,6 +301,10 @@ const BaseModal: React.FC<ProductModalProps> = ({
   }, [closeWithHistory, managed]);
 
   const handleAddToCart = useCallback(() => {
+    if (!powderSelectionValid) {
+      void import("sonner").then(({ toast }) => toast.error("Bột đã ngưng bán hoặc không còn được phép. Vui lòng chọn lại."));
+      return;
+    }
     if (saveBlockedByWallet) {
       void import("sonner").then(({ toast }) => toast.error(walletReadOnlyReason));
       return;
@@ -405,7 +414,7 @@ const BaseModal: React.FC<ProductModalProps> = ({
     selectedOptionIds, isLatte, selectedPowderId, selectedMilkId, effectiveFreeVoucherId,
     effectiveProductVoucherType, onConfirm, editingItem, updateItem, addItem, handleClose,
     addonGroups, pendingAddonVoucher, setPendingAddonVoucher,
-    saveBlockedByWallet, walletReadOnlyReason,
+    saveBlockedByWallet, walletReadOnlyReason, powderSelectionValid,
   ]);
 
   const finishPendingAddonConflict = useCallback((replace: boolean) => {
@@ -645,9 +654,10 @@ const BaseModal: React.FC<ProductModalProps> = ({
           </div>
 
           {/* 3b. FUSION: Powder */}
-          {powderList.length > 0 && (
+          {(!powderSelectionValid || powderList.length > 0) && (
             <div className="mt-5">
               <SectionLabel text="Loại bột matcha" />
+              {!powderSelectionValid && <p role="alert" className="mb-3 text-sm text-destructive">Bột đã ngưng bán hoặc không còn được phép. Vui lòng chọn lại bột.</p>}
               <PowderSelector
                 powderList={powderList}
                 powders={powders}
@@ -844,8 +854,8 @@ const BaseModal: React.FC<ProductModalProps> = ({
           handleAddToCart={handleAddToCart}
           isEditing={!!editingItem}
           ctaLabel={ctaLabel}
-          disabled={saveBlockedByWallet}
-          disabledReason={saveBlockedByWallet ? walletReadOnlyReason : undefined}
+          disabled={saveBlockedByWallet || !powderSelectionValid}
+          disabledReason={saveBlockedByWallet ? walletReadOnlyReason : !powderSelectionValid ? "Vui lòng chọn lại bột matcha." : undefined}
         />
     </>
   );

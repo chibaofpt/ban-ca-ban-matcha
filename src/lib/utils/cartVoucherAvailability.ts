@@ -52,7 +52,7 @@ export function getVoucherMenuTargets(voucher: MyVoucher, context: CartVoucherCo
     const requiredLiquid = scope?.milk_type_id ?? voucher.milk_type_id;
     if (voucher.voucher_type === "PRODUCT_DISCOUNT" && requiredLiquid && requiredLiquid !== liquidId) return [];
     const price = (size: Size) => computeVoucherItemPrice(item, size, powderId, liquidId, [],
-      powders, defaultPowderGram, menuData.latte, menuData.base_liquids ?? menuData.milk_types, menuData.addon_groups).drinkPrice;
+      powders, defaultPowderGram, menuData.latte_price_anchors, menuData.base_liquids ?? menuData.milk_types, menuData.addon_groups).drinkPrice;
     const orderedSizes = allowedSizes.includes("MEDIUM")
       ? ["MEDIUM" as const, ...allowedSizes.filter((size) => size !== "MEDIUM")] : allowedSizes;
     const size = orderedSizes.find((candidate) => {
