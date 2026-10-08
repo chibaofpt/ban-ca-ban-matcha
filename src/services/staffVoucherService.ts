@@ -6,11 +6,28 @@
  */
 
 import { apiClient } from "@/src/lib/api/client";
+import { isAxiosError } from "axios";
+import { ApiServiceError } from "@/src/lib/api/serviceError";
+import type { ApiError } from "@/src/lib/types/api";
 import type { ApiResponse } from "@/src/lib/types/api";
-import type { ExchangedVoucher, MyVoucher } from "@/contracts/voucher";
+import type { ExchangedVoucher, MyVoucher, VoucherPackage } from "@/contracts/voucher";
 
 // Re-export for convenience
 export type { ExchangedVoucher, MyVoucher } from "@/contracts/voucher";
+
+const URL = { catalog: "/api/voucher-packages" } as const;
+
+/** Fetch acquisition packages on behalf of an ADMIN-selected customer. */
+export async function listCustomerVoucherPackages(customerQrToken: string): Promise<VoucherPackage[]> {
+  try {
+    const res = await apiClient.get<ApiResponse<VoucherPackage[]>>(URL.catalog, { params: { customerQrToken } });
+    return res.data.data;
+  } catch (error: unknown) {
+    if (!isAxiosError<ApiError>(error) || !error.response?.data?.error) throw error;
+    const payload = error.response.data;
+    throw new ApiServiceError(payload.error, error.response.status, payload.code ?? "INTERNAL_ERROR", payload.details);
+  }
+}
 
 // ── API Calls ─────────────────────────────────────────────────────────────────
 

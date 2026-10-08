@@ -170,11 +170,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
   const packagesQuery = useVoucherPackages({ enabled: isCartOpen });
 
   const allVouchers = useMemo(() => vouchersQuery.data ?? [], [vouchersQuery.data]);
-  const availableVoucherPackages = React.useMemo(() => (packagesQuery.data ?? []).filter((pkg) =>
-    pkg.voucher_type === "DISCOUNT" ||
-    pkg.voucher_type === "FREESHIP" ||
-    pkg.voucher_type === "BUNDLE"
-  ), [packagesQuery.data]);
+  const availableVoucherPackages = packagesQuery.data ?? [];
 
   let voucherLoadState: "idle" | "loading" | "loaded" | "error" = "idle";
   if (isCartOpen && isLoggedInSynced) {

@@ -4,10 +4,12 @@
  * ordered by created_at asc (oldest first for stable listing).
  *
  * Caching: base package list cached in Redis (TTL 5 min).
- * User-specific redeemed counts are always fetched live and merged client-side.
+ * Global and customer lifetime counts are fetched live and merged into the response.
  */
 
 import { NextResponse } from "next/server";
+import { z } from "zod";
+import { resolveCustomerIdentifier } from "@/lib/publicIdentifiers";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { withCache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
@@ -21,8 +23,23 @@ import {
   type VoucherBundleRuleSource,
 } from "@/lib/vouchers/voucherAvailability";
 
-export async function GET() {
+/** Read the public catalog, optionally scoped to an ADMIN-selected customer. */
+export async function GET(request?: Request) {
   try {
+    const session = await getSession();
+    const customerTokens = request ? new URL(request.url).searchParams.getAll("customerQrToken") : [];
+    let countUserId = session?.id;
+    if (customerTokens.length > 0) {
+      if (!session) return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
+      if (session.role !== "ADMIN") return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+      const parsed = z.string().uuid().safeParse(customerTokens[0]);
+      if (customerTokens.length !== 1 || !parsed.success) {
+        return NextResponse.json({ error: "Invalid customer QR token", code: "VALIDATION_ERROR" }, { status: 400 });
+      }
+      const customer = await resolveCustomerIdentifier(parsed.data);
+      if (!customer) return NextResponse.json({ error: "Customer not found", code: "NOT_FOUND" }, { status: 404 });
+      countUserId = customer.id;
+    }
     // Cache the base package list (no user-specific data)
     const cachedPackages = await withCache(
       CACHE_KEYS.VOUCHER_PACKAGES,
@@ -37,8 +54,6 @@ export async function GET() {
         (left, right) =>
           new Date(left.created_at).getTime() - new Date(right.created_at).getTime(),
       );
-
-    const session = await getSession();
 
     let globalCountMap: Record<string, number> = {};
     const packageIds = packages.map((p) => p.id);
@@ -76,7 +91,7 @@ export async function GET() {
         by: ["package_id"],
         where: {
           package_id: { in: packageIds },
-          user_id: session.id,
+          user_id: countUserId,
           issued_via: { in: [...SELF_ACQUISITION_SOURCES] },
         },
         _count: { id: true },

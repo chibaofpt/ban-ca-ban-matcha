@@ -104,7 +104,9 @@ rồi Tiền mặt/Chuyển khoản; phải đặt nhãn Tổng căn trái cùng
 Được giảm căn phải khi có giảm, và nút Chốt đơn phía dưới trong cùng cột.
 Các khoản giảm tiền trong bảng chi tiết, trên voucher món/topping và dòng Được giảm dùng màu đỏ. Các action chốt/xóa đơn giữ lifecycle hiện có. Customer dùng chung bảng tiền ở cuối body. Footer customer giữ lựa chọn nhận tại quán/giao hàng,
 địa chỉ và checkout. Hàng trên giữ Delivery/Pickup và giờ nhận ở vị trí hiện có.
-Phần dưới chia hai cột tỷ lệ 4:6; cột trái xếp dọc nút Voucher nền gradient amber nhẹ #e4a132 → #f1be60 (hover #d99529 → #e9b354) và nút Địa chỉ
+Phần dưới chia hai cột voucher/địa chỉ và tổng tiền theo số tiền khách phải trả sau giảm giá, gồm phí ship:
+dưới 1.000.000 VND dùng tỷ lệ 5:5; từ 1.000.000 VND dùng tỷ lệ 4:6. So sánh bằng VND nguyên,
+không dùng số ká đã làm tròn. Cột trái xếp dọc nút Voucher nền gradient amber nhẹ #e4a132 → #f1be60 (hover #d99529 → #e9b354) và nút Địa chỉ
 nền gradient hồng nhẹ #c9799f → #dda0be (hover #be6d93 → #d494b2, chỉ hiện khi giao hàng); gradient chéo 135 độ; tiêu đề trắng đậm 13 px, mô tả trắng nét thường 12 px; cả hai có viền chữ mỏng 0,3 px màu đen opacity 25%, bỏ chevron.
 Voucher đã có giảm hiển thị thẳng Giảm … ká, không có tiền tố Đã áp dụng.
 Cột phải có nhãn Tổng, giá phải trả và điểm cùng hàng, căn phải. Khi có giảm giá, hàng dưới hiển thị

@@ -9,10 +9,12 @@ import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
 import {
   fetchCustomerVouchers,
+  listCustomerVoucherPackages,
   exchangeCustomerVoucher,
   type MyVoucher,
 } from "@/src/services/staffVoucherService";
-import { listActiveVoucherPackages, type VoucherPackage } from "@/src/services/customerVoucherService";
+import type { VoucherPackage } from "@/src/services/customerVoucherService";
+import { VOUCHER_QUERY_KEYS } from "@/src/constants/voucherQueryKeys";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import {
   calcLattePrice,
@@ -385,20 +387,20 @@ export default function StaffOrdersPage({
     toast.error("QR khách hàng không còn hợp lệ. Giỏ món trả phí vẫn được giữ.");
   }, [detachCustomer, queryClient, selectedCustomerQuery.isError, staffCustomerQrToken]);
 
-  const { data: voucherPackages } = useQuery({
-    queryKey: ["staff", "voucherPackages"],
-    queryFn: listActiveVoucherPackages,
-    enabled: userRole === "ADMIN",
+  const voucherPackagesQuery = useQuery({
+    queryKey: VOUCHER_QUERY_KEYS.STAFF_CUSTOMER_CATALOG(staffCustomerQrToken),
+    queryFn: () => listCustomerVoucherPackages(staffCustomerQrToken!),
+    enabled: userRole === "ADMIN" && Boolean(staffCustomerQrToken &&
+      selectedCustomerQuery.isSuccess && selectedCustomerQuery.data?.type === "user" &&
+      selectedCustomerQuery.data.data.qr_token === staffCustomerQrToken),
     staleTime: 1000 * 60 * 5,
   });
 
   const availableVoucherPackages = useMemo(() => {
-    if (userRole !== "ADMIN" || !voucherPackages) return [];
-    return voucherPackages.filter((p) =>
-      p.acquisition_mode === "POINTS_EXCHANGE" &&
-      (p.voucher_type === "DISCOUNT" || p.voucher_type === "BUNDLE"),
-    );
-  }, [userRole, voucherPackages]);
+    if (userRole !== "ADMIN" || voucherPackagesQuery.isError || !staffCustomerQrToken ||
+      selectedCustomerQuery.data?.type !== "user" || selectedCustomerQuery.data.data.qr_token !== staffCustomerQrToken) return [];
+    return (voucherPackagesQuery.data ?? []).filter((p) => p.acquisition_mode === "POINTS_EXCHANGE");
+  }, [userRole, voucherPackagesQuery.data, voucherPackagesQuery.isError, staffCustomerQrToken, selectedCustomerQuery.data]);
 
   const refreshStaffWallet = useCallback(
     async (): Promise<MyVoucher[]> => {
@@ -422,8 +424,8 @@ export default function StaffOrdersPage({
     };
   }, [staffCustomerQrToken]);
   const refreshStaffCatalog = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ["staff", "voucherPackages"] });
-  }, [queryClient]);
+    await queryClient.invalidateQueries({ queryKey: VOUCHER_QUERY_KEYS.STAFF_CUSTOMER_CATALOG(staffCustomerQrToken) });
+  }, [queryClient, staffCustomerQrToken]);
   const voucherAcquisitionOptions = useMemo(() => ({
     exchangeVoucher: exchangeStaffVoucher,
     refreshCatalog: refreshStaffCatalog,
@@ -436,17 +438,7 @@ export default function StaffOrdersPage({
       latestCustomer?.type !== "existing" ||
       latestCustomer.data.qr_token !== staffCustomerQrToken
     ) return;
-    const updatedCustomer = {
-      ...latestCustomer.data,
-      points_balance: Math.max(0, latestCustomer.data.points_balance - voucherPackage.points_cost),
-    };
-    useStaffCartStore.setState({
-      customerInfo: { type: "existing", data: updatedCustomer },
-    });
-    queryClient.setQueryData(["staff", "cart-customer", latestCustomer.data.qr_token], {
-      type: "user",
-      data: updatedCustomer,
-    });
+    void queryClient.invalidateQueries({ queryKey: ["staff", "cart-customer", latestCustomer.data.qr_token] });
   }, [queryClient, staffCustomerQrToken, userRole]);
 
   // ── Derived ───────────────────────────────────────────────────────────

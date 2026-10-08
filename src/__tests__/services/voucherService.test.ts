@@ -19,6 +19,7 @@ vi.mock("@/src/lib/api/client", () => ({
 }));
 
 import { apiClient } from "@/src/lib/api/client";
+import { listCustomerVoucherPackages } from "@/src/services/staffVoucherService";
 import {
   listActiveVoucherPackages,
   listMyVouchers,
@@ -87,6 +88,36 @@ const mockMyVoucher = {
 };
 
 // ── listActiveVoucherPackages ─────────────────────────────────────────────────
+
+describe("catalog đổi voucher của khách tại POS", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("gửi QR khách được chọn và unwrap đủ loại voucher", async () => {
+    const packages = [mockDiscountPackage, mockProductPackage];
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { data: packages } });
+    expect(await listCustomerVoucherPackages("11111111-1111-4111-8111-111111111111")).toEqual(packages);
+    expect(apiClient.get).toHaveBeenCalledWith("/api/voucher-packages", {
+      params: { customerQrToken: "11111111-1111-4111-8111-111111111111" },
+    });
+  });
+});
+
+describe("lỗi catalog POS", () => {
+  it("giữ lỗi kết nối khi không có phản hồi server", async () => {
+    const error = new Error("Network unavailable");
+    vi.mocked(apiClient.get).mockRejectedValueOnce(error);
+    await expect(listCustomerVoucherPackages("11111111-1111-4111-8111-111111111111")).rejects.toBe(error);
+  });
+  it("giữ message, status, code và details của server", async () => {
+    vi.mocked(apiClient.get).mockRejectedValueOnce({
+      isAxiosError: true,
+      response: { status: 422, data: { error: "Khách không thể đổi", code: "BUSINESS_RULE_VIOLATION", details: { reason: "VOUCHER_LIMIT_REACHED" } } },
+    });
+    await expect(listCustomerVoucherPackages("11111111-1111-4111-8111-111111111111")).rejects.toMatchObject({
+      message: "Khách không thể đổi", status: 422, code: "BUSINESS_RULE_VIOLATION", details: { reason: "VOUCHER_LIMIT_REACHED" },
+    });
+  });
+});
 
 describe("listActiveVoucherPackages", () => {
   beforeEach(() => vi.clearAllMocks());

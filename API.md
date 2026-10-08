@@ -1209,9 +1209,21 @@ and used counts, global stock, warning reasons, grant eligibility and expiry pre
 writes lifecycle expiry.
 
 ### `GET /api/voucher-packages`
-PUBLIC customer catalog. PRIVATE packages are filtered out in both the cached and live branches;
-the response contains only packages eligible for customer acquisition. Owned-wallet reads remain
-able to return PRIVATE voucher instances.
+Public package catalog. PRIVATE packages are filtered out in both the cached and live branches;
+active package windows and live target availability are resolved by the server. Owned-wallet reads
+remain able to return PRIVATE voucher instances. Catalog visibility and acquisition composition belong
+to [voucher UI](docs/specs/voucher-ui.md#nhận-đổi-và-auth-intent).
+
+Optional query: `customerQrToken=<UUID>`. Only ADMIN may scope this read to a selected CUSTOMER.
+The identifier uses the existing QR-first resolver and legacy UUID migration bridge. Missing session
+returns `401 UNAUTHORIZED`; STAFF/CUSTOMER returns `403 FORBIDDEN`; an empty, malformed or repeated
+query returns `400 VALIDATION_ERROR`; an unknown or non-CUSTOMER identifier returns `404 NOT_FOUND`.
+Requests without the query retain the public/own-session behavior and unchanged `{ data: VoucherPackage[] }`
+response. `user_redeemed_count` belongs to the selected customer when scoped, otherwise the session user
+(or zero for guests). Counts are lifetime self-acquisitions under the
+[voucher lifecycle owner](.agents/skills/voucher-flow/references/lifecycle.md), independent of wallet status.
+`remaining_quantity` is zero when exhausted and null when unlimited. Both counts are fetched live
+outside Redis; only the existing base package list is cached.
 
 All package/wallet voucher responses expose the same grouped `qualifier_products` and
 `reward_products`. Each product additionally contains
@@ -1604,6 +1616,14 @@ and RESERVED vouchers, newest first (at most 50); unknown customers return an em
 RESERVED entries support read-only wallet detail. Application eligibility remains owned by
 [voucher-flow](.agents/skills/voucher-flow/SKILL.md). Public DTOs retain `qr_token` and omit
 internal voucher/user identifiers. This read does not mutate voucher state.
+
+### `POST /api/staff/users/[id]/vouchers/exchange`
+
+ADMIN-only; STAFF receives `403 FORBIDDEN`. The customer segment uses the existing QR-first resolver
+and legacy UUID bridge; unknown or non-CUSTOMER identifiers return `404 NOT_FOUND`.
+Body: `{ package_id: string }`. Exchanges only POINTS_EXCHANGE packages using the selected customer's
+points and quotas, and returns `201 { data: ExchangedVoucher }` with the public voucher `qr_token`.
+FREE_CLAIM remains on the customer claim endpoint and is absent from the POS acquisition adapter.
 
 ### `GET /api/staff/scan?token=xxx`
 Read-only: project effective `EXPIRED` status without updating expired voucher rows during a scan.

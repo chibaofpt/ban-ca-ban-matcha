@@ -159,9 +159,30 @@ hoặc một Base Liquid chung mà toàn bộ món đã chọn cho phép; khi đ
 
 ## Nhận, đổi và auth intent
 
-Catalog nhận/đổi của customer wallet và cart ẩn `AUTO_GRANT` và gói có
-`(user_redeemed_count ?? 0) >= max_per_user`. Việc ẩn gói không xóa, ẩn hoặc thay đổi voucher đã
-sở hữu, quota hay lịch sử đổi. Detail đang mở phải khóa CTA nếu dữ liệu mới cho biết hết lượt.
+Catalog nhận/đổi tách biệt với ví đã sở hữu. Customer wallet và cart hiển thị đủ ITEM, PRODUCT,
+PRODUCT_DISCOUNT, ADDON, DISCOUNT, FREESHIP và BUNDLE; FREE_CLAIM giữ nhóm miễn phí riêng,
+POINTS_EXCHANGE giữ nhóm đổi điểm. Catalog chỉ trình bày hai mode này từ gói PUBLIC đang hoạt động,
+còn thời hạn và còn ít nhất một target/cấu hình khả dụng theo server; không tự suy luận lifecycle menu.
+PRIVATE, AUTO_GRANT, NONE và các nguồn nhận khác không xuất hiện trong catalog nhận/đổi.
+
+Gói hết stock hoặc đủ lượt lifetime của khách biến mất khỏi catalog. `remaining_quantity = null`
+là unlimited; khi field thiếu, dùng `quantity` làm fallback. Semantics quota và refund thuộc
+[voucher lifecycle](../../.agents/skills/voucher-flow/references/lifecycle.md). Việc ẩn gói không
+xóa, ẩn hoặc thay đổi voucher đã sở hữu; đổi lượt cuối xong vẫn thấy instance mới trong ví.
+Thiếu điểm vẫn hiện card và mở được detail, báo số điểm còn thiếu và khóa đổi. Min order, món
+trong cart và PICKUP/DELIVERY chỉ chi phối sử dụng; không ẩn hoặc chặn nhận voucher để dùng sau.
+
+ADMIN POS dùng cùng catalog cho đủ bảy loại POINTS_EXCHANGE, với query/count/cache theo QR khách
+đã xác minh. STAFF giữ quyền hiện có; POS không có adapter FREE_CLAIM. Đổi/bỏ khách giữ owner guards:
+request cũ chỉ cập nhật cache khách cũ, không được ghi voucher vào cart khách mới. Sau nhận/đổi refresh
+catalog và ví; customer refresh điểm qua hook hiện có, POS refetch hồ sơ khách thay cho trừ điểm
+optimistic để tránh double-subtract.
+
+Card gói trong cart/POS mở detail như wallet. Detail và bước xác nhận dùng package mới nhất để khóa
+CTA khi stock/hạn mức đã hết. Sau acquisition hoặc retry làm mới ví, ITEM/PRODUCT/PRODUCT_DISCOUNT/
+ADDON mở detail để chọn/dùng theo flow hiện có, không thêm token vào selection giảm đơn.
+BUNDLE giữ setup; DISCOUNT/FREESHIP chỉ được tự chọn khi đủ eligibility sử dụng hiện tại, nếu chưa
+đủ thì vẫn đọc detail và dùng về sau. Retry refresh không phát hành voucher lần nữa.
 
 Footer chi tiết gói chỉ điều phối callbacks hiện có: guest đăng nhập với đúng package intent;
 `FREE_CLAIM` dùng “Nhận miễn phí”; `POINTS_EXCHANGE` hiển thị chi phí cá và vẫn cần xác nhận trước

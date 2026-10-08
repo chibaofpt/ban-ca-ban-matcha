@@ -93,7 +93,7 @@ export default function RootLayout({
               {children}
             </div>
             <Footer />
-            <Toaster richColors position="top-center" />
+            <Toaster richColors position="top-center" style={{ pointerEvents: "auto" }} />
             {process.env.NODE_ENV === "development" && (
               <RenderStatsOverlay componentIds={["CartDrawer", "ProductModal"]} />
             )}
