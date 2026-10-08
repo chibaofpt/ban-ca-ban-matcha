@@ -511,6 +511,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
               if (useAuthStore.getState().user?.phone !== ownerPhone) return;
               setCartOpen(true);
               setIsDiscountPickerOpen(true);
+              toast.dismiss(toastId);
             }}
           >
             bấm vào đây để sử dụng voucher khác

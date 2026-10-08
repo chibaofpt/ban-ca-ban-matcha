@@ -61,6 +61,7 @@ import { serializeCartOrderItems } from "@/src/lib/utils/cartOrderPayload";
 import type { CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import { normalizeStaffBundleApplications } from "@/src/lib/utils/staffBundlePayload";
 import { isVoucherUsable } from "@/src/utils/voucherMatchUtils";
+import { getCartVoucherAvailability, getUsedCartVoucherTokens } from "@/src/lib/utils/cartVoucherAvailability";
 import { getVoucherAvailabilityMessage } from "@/src/lib/utils/voucherModalHelpers";
 import { computeProductDiscountBenefit, computeVoucherItemPrice } from "@/src/hooks/useAddVoucherToCart";
 import { filterMainCartVouchers, selectOrderVoucherToken } from "@/src/utils/customerVoucherSelection";
@@ -512,6 +513,64 @@ export default function StaffOrdersPage({
     bundleApplications,
     shippingFeeVnd: 0,
   }), [bundleApplications, cart, cartProjection, customerWalletQuery.data, menuData, pData, projectionVouchers, selectedDiscountIds]);
+  const voucherLossSnapshot = useRef<{
+    ownerToken: string | null; quantity: number; appliedTokens: Set<string>;
+  } | null>(null);
+  useEffect(() => {
+    const previous = voucherLossSnapshot.current;
+    if (!cartOpen && !previous) return;
+    if (walletRevalidating || cartProjection.revalidating || !menuData || !pData) {
+      if (!cartOpen) voucherLossSnapshot.current = null;
+      return;
+    }
+    const quantity = cart.reduce((sum, item) => sum + item.quantity, 0);
+    const appliedTokens = new Set(cartProjection.appliedOrderVoucherTokens);
+    voucherLossSnapshot.current = cartOpen
+      ? { ownerToken: staffCustomerQrToken, quantity, appliedTokens } : null;
+    if (!previous || !staffCustomerQrToken || previous.ownerToken !== staffCustomerQrToken ||
+      quantity >= previous.quantity) return;
+    const lostMinimum = selectedOrderDiscountVouchers.some((voucher) =>
+      previous.appliedTokens.has(voucher.qr_token) && !appliedTokens.has(voucher.qr_token) &&
+      isVoucherUsable(voucher) &&
+      (voucher.min_order_vnd ?? 0) > cartProjection.totals.discountable_subtotal_vnd);
+    if (!lostMinimum) return;
+    const usedTokens = getUsedCartVoucherTokens(cart, bundleApplications);
+    const context = {
+      menuData, powders: pData.data, defaultPowderGram: pData.default_powder_gram,
+      selectedDiscountVouchers: selectedOrderDiscountVouchers,
+      subtotalPrice: cartProjection.totals.discountable_subtotal_vnd,
+      orderType: "PICKUP" as const, shippingFee: 0,
+    };
+    const hasOtherVoucher = customerVouchers.some((voucher) =>
+      !selectedDiscountIds.includes(voucher.qr_token) && !usedTokens.has(voucher.qr_token) &&
+      getCartVoucherAvailability(voucher, context).canUse);
+    toast.warning(
+      hasOtherVoucher ? (
+        <>
+          Voucher bạn đã chọn không thể sử dụng được nữa,{" "}
+          <a
+            href="#cart-vouchers"
+            className="cursor-pointer font-medium underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            style={{ touchAction: "manipulation" }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (useStaffCartStore.getState().customerQrToken !== staffCustomerQrToken ||
+                pendingOwnerChange.current) return;
+              setCartOpen(true);
+              setVoucherPickerOpen(true);
+              toast.dismiss("staff-cart-voucher-minimum-lost");
+            }}
+          >
+            bấm vào đây để sử dụng voucher khác
+          </a>
+        </>
+      ) : "Voucher bạn đã chọn không thể sử dụng được nữa, vui lòng kiểm tra lại đơn",
+      { id: "staff-cart-voucher-minimum-lost", duration: 5000 },
+    );
+  }, [bundleApplications, cart, cartOpen, cartProjection, customerVouchers, menuData, pData,
+    selectedDiscountIds, selectedOrderDiscountVouchers, staffCustomerQrToken, walletRevalidating]);
   const projectedCart = displayCartProjection.lines;
   const bundleAllocatedQuantitiesByCartId = useMemo(
     () => getBundleAllocatedQuantities(bundleApplications),
@@ -921,11 +980,8 @@ export default function StaffOrdersPage({
       .map((application) => application.voucher_qr_token));
     const normalizedBundleApplications = normalizeStaffBundleApplications(bundleApplications, readyBundleTokens);
     const items = buildOrderItems(projectedCart, normalizedBundleApplications.length > 0);
-    const discountVoucherIds = Array.from(
-      new Set([
-        ...(discountVoucher ? [discountVoucher.qr_token] : []),
-        ...selectedDiscountIds,
-      ]),
+    const discountVoucherIds = selectedDiscountIds.filter(
+      (token) => cartProjection.appliedOrderVoucherTokens.includes(token),
     );
 
     if (!customerInfo) {

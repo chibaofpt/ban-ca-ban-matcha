@@ -120,6 +120,7 @@ không thông báo khi mount, render lại hoặc chỉ refetch ví. Đủ đi�
 projection tự áp lại voucher từ lựa chọn đang giữ.
 Còn voucher khác khả dụng thì toast có thể bấm để mở picker:
 “Voucher bạn đã chọn không thể sử dụng được nữa, bấm vào đây để sử dụng voucher khác”.
+Click dòng chữ gạch chân mở picker và đóng chính toast đó trên customer và Staff/Admin POS.
 Không còn voucher khác khả dụng:
 “Voucher bạn đã chọn không thể sử dụng được nữa, vui lòng kiểm tra lại đơn”.
 “Khả dụng” xét mọi loại voucher còn hiệu lực, có target/cấu hình hợp lệ và quyền lợi;

@@ -200,9 +200,11 @@ export const CartFooter = memo(function CartFooter({
       {/* Controls and payment summary adapt to the payable total */}
       <div className={cn(
         "grid gap-3",
-        grandTotalVnd < 1_000_000
+        grandTotalVnd < 100_000
           ? "grid-cols-[minmax(0,5fr)_minmax(0,5fr)]"
-          : "grid-cols-[minmax(0,4fr)_minmax(0,6fr)]"
+          : grandTotalVnd < 1_000_000
+            ? "grid-cols-[minmax(0,45fr)_minmax(0,55fr)]"
+            : "grid-cols-[minmax(0,4fr)_minmax(0,6fr)]"
       )}>
         <motion.div 
           className="flex min-w-0 flex-col gap-2 touch-pan-y"
