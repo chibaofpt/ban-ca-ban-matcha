@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { welcomeRewardKeys } from "@/src/services/welcomeRewardService";
 import { ADMIN_REWARD_QUERY_KEYS } from "@/src/constants/adminRewardQueryKeys";
 import {
   createAdminRewardBox,
@@ -43,10 +44,14 @@ export function useAdminRewardMutations() {
   const commitCampaign = (campaign: AdminRewardCampaign) => {
     client.setQueryData(ADMIN_REWARD_QUERY_KEYS.CAMPAIGN(campaign.id), campaign);
     void client.invalidateQueries({ queryKey: ADMIN_REWARD_QUERY_KEYS.CAMPAIGNS });
+    void client.invalidateQueries({ queryKey: welcomeRewardKeys.preview });
   };
   const settings = useMutation({
     mutationFn: updateAdminWelcomeRewardSettings,
-    onSuccess: (value) => client.setQueryData(ADMIN_REWARD_QUERY_KEYS.SETTINGS, value),
+    onSuccess: (value) => {
+      client.setQueryData(ADMIN_REWARD_QUERY_KEYS.SETTINGS, value);
+      void client.invalidateQueries({ queryKey: welcomeRewardKeys.preview });
+    },
   });
   const createCampaign = useMutation({
     mutationFn: createAdminRewardCampaign,

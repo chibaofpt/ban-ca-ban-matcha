@@ -1,3 +1,4 @@
+import { formatVietnamPhone } from "@/src/utils/display";
 import { motion } from "framer-motion";
 import type { AdminUserSummary as AdminUserSummaryDto } from "@/src/lib/types/adminUser";
 import { cn } from "@/src/utils/cn";
@@ -16,7 +17,7 @@ export function AdminUserSummary({ user, interactive = false, onClick }: AdminUs
     <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,48%)] gap-x-3 gap-y-2 text-left">
       <div className="min-w-0">
         <p className="truncate font-semibold text-foreground">{user.name}</p>
-        <p className="truncate text-sm text-muted-foreground">{user.phone_number}{user.insta_name ? ` · @${user.insta_name.replace(/^@/, "")}` : ""}</p>
+        <p className="truncate text-sm text-muted-foreground">{formatVietnamPhone(user.phone_number)}{user.insta_name ? ` · @${user.insta_name.replace(/^@/, "")}` : ""}</p>
         <div className="mt-2 flex flex-wrap gap-2 text-xs">
           {!user.is_registered ? <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">Chưa đăng ký</span> : null}
           <span className={cn("rounded-full px-2 py-1", user.is_verified ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive")}>{user.is_verified ? "Đã xác thực" : "Chưa xác thực"}</span>

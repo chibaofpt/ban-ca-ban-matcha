@@ -1,5 +1,7 @@
 "use client";
 
+import { formatVietnamPhone } from "@/src/utils/display";
+
 import { useEffect, useRef, useState } from "react";
 import { QrCode, ScanLine } from "lucide-react";
 import { scanQrToken, scanFallback } from "@/src/services/staffOrderService";
@@ -74,7 +76,7 @@ export function VoucherQRVerifyModal({
               // Verify this QR belongs to the selected customer
               if (result.data.phone_number !== customerPhone) {
                 setError(
-                  `QR không khớp. Yêu cầu QR của khách ${customerPhone}.`
+                  `QR không khớp. Yêu cầu QR của khách ${formatVietnamPhone(customerPhone)}.`
                 );
                 processingRef.current = false;
                 setProcessing(false);
@@ -194,7 +196,7 @@ export function VoucherQRVerifyModal({
           <h2 className="font-serif text-base font-semibold">Xác thực khách hàng</h2>
           <p className="text-xs text-muted-foreground">
             Yêu cầu khách{" "}
-            <span className="font-medium text-foreground">{customerPhone}</span>{" "}
+            <span className="font-medium text-foreground">{formatVietnamPhone(customerPhone)}</span>{" "}
             mở QR cá nhân để xác nhận sử dụng voucher
           </p>
         </div>

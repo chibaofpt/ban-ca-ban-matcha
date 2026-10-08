@@ -1,3 +1,5 @@
+import { toLocalPhone } from "@/src/utils/phone";
+export { normalizeCustomerSearch } from "@/src/utils/phone";
 import type { Size } from "@/src/lib/types/menu";
 
 export type KaRoundingMode = "exact" | "ceil" | "floor";
@@ -48,25 +50,9 @@ export function getSizeDisplay(size: Size): { label: string; volume: string } {
   return SIZE_DISPLAY[size];
 }
 
-/** Normalizes phone-like staff search input to the stored phone suffix. */
-export function normalizeCustomerSearch(query: string): string {
-  const trimmed = query.trim();
-  if (/\p{L}/u.test(trimmed)) return trimmed;
-
-  const digits = trimmed.replace(/\D/g, "");
-  if (digits.startsWith("84") && digits.length >= 11) return digits.slice(2);
-  if (digits.startsWith("0") && digits.length >= 10) return digits.slice(1);
-  return digits;
-}
-
 /** Formats a Vietnamese phone number in the staff-friendly local form. */
 export function formatVietnamPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  const local =
-    digits.startsWith("84") && digits.length === 11
-      ? `0${digits.slice(2)}`
-      : digits;
-
+  const local = toLocalPhone(phone);
   if (local.length !== 10) return phone;
   return `${local.slice(0, 4)} ${local.slice(4, 7)} ${local.slice(7)}`;
 }

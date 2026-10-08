@@ -6,7 +6,7 @@ import { normalizePhone } from "@/lib/auth";
 const BodySchema = z.object({
   phone_number: z
     .string()
-    .regex(/^(0|\+84)\d{9}$/, "Số điện thoại không hợp lệ"),
+    .transform(normalizePhone).pipe(z.string().regex(/^\+84\d{9}$/, "Số điện thoại không hợp lệ")),
 });
 
 /**

@@ -1,3 +1,4 @@
+import { getWelcomeRewardPreview } from "@/lib/rewards/welcomeRewardConfiguration";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -58,7 +59,7 @@ function registrationTx(mode: "POINTS" | "FIXED_VOUCHER" | "GACHA", fixedMenuIte
   const tx = {
     welcomeReward: { findFirst: vi.fn().mockResolvedValue(null), create: rewardCreate, update: vi.fn() },
     welcomeRewardSettings: { findUnique: vi.fn().mockResolvedValue({
-      mode,
+      mode, points_amount: 5,
       fixed_package_id: FIXED_PACKAGE_ID,
       activeCampaign: mode === "GACHA" ? {
         id: CAMPAIGN_ID, status: "ACTIVE", poolItems: [{ id: "pool", quantity: 1 }],
@@ -94,11 +95,39 @@ function registrationTx(mode: "POINTS" | "FIXED_VOUCHER" | "GACHA", fixedMenuIte
 describe("Tạo welcome reward khi đăng ký", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it("cộng mức cấu hình 12 điểm và chốt quyền lợi lúc đăng ký", async () => {
+    const { tx, account, pointsLogs } = registrationTx("POINTS");
+    tx.welcomeRewardSettings.findUnique.mockResolvedValue({ mode: "POINTS", points_amount: 12, fixed_package_id: FIXED_PACKAGE_ID, activeCampaign: null });
+    const result = await createWelcomeRewardInTransaction(tx as never, USER_ID);
+    expect(account.pointsBalance).toBe(49);
+    expect(pointsLogs).toEqual([{ user_id: USER_ID, delta: 12, reason: "welcome_bonus", performed_by: null }]);
+    expect(result).toMatchObject({ points: 12 });
+    expect(tx.welcomeReward.create).toHaveBeenCalledWith({ data: { user_id: USER_ID, mode: "POINTS", points_amount: 12 } });
+  });
+
+  it.each(["GACHA", "FIXED_VOUCHER"] as const)("chụp mức 16 điểm cho %s và dùng chung fallback", async (mode) => {
+    const { tx, account, pointsLogs } = registrationTx(mode, "menu-off");
+    const settings = await tx.welcomeRewardSettings.findUnique();
+    tx.welcomeRewardSettings.findUnique.mockResolvedValue({ ...settings, points_amount: 16 });
+    const result = await createWelcomeRewardInTransaction(tx as never, USER_ID, FIXED_NOW);
+    expect(tx.welcomeReward.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ points_amount: 16 }),
+    }));
+    if (mode === "GACHA") {
+      expect(result).toMatchObject({ mode: "GACHA", status: "PENDING", points: null });
+      expect(pointsLogs).toEqual([]);
+    } else {
+      expect(result).toMatchObject({ mode: "POINTS", status: "COMPLETED", points: 16 });
+      expect(account.pointsBalance).toBe(53);
+      expect(pointsLogs).toEqual([{ user_id: USER_ID, delta: 16, reason: "welcome_bonus", performed_by: null }]);
+    }
+  });
+
   it("thiếu settings trao đúng 5 điểm và outcome hoàn tất", async () => {
     const { tx, outcomeCreate } = registrationTx("POINTS");
     tx.welcomeRewardSettings.findUnique.mockResolvedValue(null);
     const result = await createWelcomeRewardInTransaction(tx as never, USER_ID);
-    expect(result).toEqual({ id: REWARD_ID, mode: "POINTS", status: "COMPLETED", outcome_kind: "POINTS" });
+    expect(result).toEqual({ id: REWARD_ID, mode: "POINTS", status: "COMPLETED", outcome_kind: "POINTS", points: 5 });
     expect(tx.user.update).toHaveBeenCalledWith({ where: { id: USER_ID }, data: { points_balance: { increment: 5 } } });
     expect(tx.pointsLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ delta: 5, reason: "welcome_bonus" }) }));
     expect(outcomeCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ kind: "POINTS", points_log_id: "log" }) }));
@@ -107,7 +136,7 @@ describe("Tạo welcome reward khi đăng ký", () => {
   it("FIXED_VOUCHER phát hành snapshot thật và gắn outcome bằng nguồn WELCOME_GIFT", async () => {
     const { tx, vouchers, outcomes } = registrationTx("FIXED_VOUCHER");
     const result = await createWelcomeRewardInTransaction(tx as never, USER_ID, FIXED_NOW);
-    expect(result).toEqual({ id: REWARD_ID, mode: "FIXED_VOUCHER", status: "COMPLETED", outcome_kind: "VOUCHER" });
+    expect(result).toEqual({ id: REWARD_ID, mode: "FIXED_VOUCHER", status: "COMPLETED", outcome_kind: "VOUCHER", points: null });
     expect(vouchers).toEqual([expect.objectContaining({
       id: "voucher-1", user_id: USER_ID, package_id: FIXED_PACKAGE_ID, issued_via: "WELCOME_GIFT",
       voucher_type: "ITEM", menu_item_id: "menu-on", status: "ACTIVE",
@@ -122,7 +151,7 @@ describe("Tạo welcome reward khi đăng ký", () => {
     const { tx, vouchers, outcomes, account, pointsLogs } = registrationTx("FIXED_VOUCHER", "menu-off");
     const initialPointsBalance = account.pointsBalance;
     await expect(createWelcomeRewardInTransaction(tx as never, USER_ID, FIXED_NOW)).resolves.toEqual({
-      id: REWARD_ID, mode: "POINTS", status: "COMPLETED", outcome_kind: "POINTS",
+      id: REWARD_ID, mode: "POINTS", status: "COMPLETED", outcome_kind: "POINTS", points: 5,
     });
     expect(vouchers).toEqual([]);
     expect(account.pointsBalance - initialPointsBalance).toBe(5);
@@ -140,7 +169,7 @@ describe("Tạo welcome reward khi đăng ký", () => {
     const { tx, account } = registrationTx("GACHA");
     const initialPointsBalance = account.pointsBalance;
     await expect(createWelcomeRewardInTransaction(tx as never, USER_ID)).resolves.toEqual({
-      id: REWARD_ID, mode: "GACHA", status: "PENDING", outcome_kind: null,
+      id: REWARD_ID, mode: "GACHA", status: "PENDING", outcome_kind: null, points: null,
     });
     expect(account.pointsBalance).toBe(initialPointsBalance);
     expect(tx.user.update).not.toHaveBeenCalled();
@@ -153,14 +182,14 @@ describe("Tạo welcome reward khi đăng ký", () => {
     const { tx } = registrationTx("GACHA");
     tx.rewardOutcome.groupBy.mockResolvedValue([{ pool_item_id: "pool", _count: { _all: 1 } }]);
     await expect(createWelcomeRewardInTransaction(tx as never, USER_ID)).resolves.toMatchObject({
-      mode: "POINTS", status: "COMPLETED", outcome_kind: "POINTS",
+      mode: "POINTS", status: "COMPLETED", outcome_kind: "POINTS", points: 5,
     });
   });
 });
 
 function pendingReward(overrides: Record<string, unknown> = {}) {
   return {
-    id: REWARD_ID, user_id: USER_ID, mode: "GACHA", campaign_id: CAMPAIGN_ID, outcome: null,
+    id: REWARD_ID, user_id: USER_ID, mode: "GACHA", points_amount: 5, campaign_id: CAMPAIGN_ID, outcome: null,
     campaign: {
       id: CAMPAIGN_ID, name: "Mở hộp", status: "ACTIVE", revision: 2,
       boxes: [{ id: BOX_ID }],
@@ -179,6 +208,7 @@ function drawDatabase(
   rareMenuItemId = "menu-off",
 ) {
   let current: { [key: string]: unknown; outcome: unknown } = reward;
+  let pointsDelta = 5;
   const vouchers: Array<Record<string, unknown>> = [];
   const rows = catalogRows();
   const packages = new Map([
@@ -202,14 +232,14 @@ function drawDatabase(
             issued_via: "GACHA_REWARD",
             package_id: data.pool_item_id === "rare" ? "rare-package" : "normal-package",
           } : null,
-          pointsLog: data.points_log_id ? { user_id: USER_ID, delta: 5, reason: "welcome_bonus" } : null,
+          pointsLog: data.points_log_id ? { user_id: USER_ID, delta: pointsDelta, reason: "welcome_bonus" } : null,
         } };
         return Promise.resolve(current.outcome);
       }),
     },
     rewardCampaign: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
     user: { update: vi.fn() },
-    pointsLog: { create: vi.fn().mockResolvedValue({ id: "log" }) },
+    pointsLog: { create: vi.fn(async ({ data }: { data: { delta: number } }) => { pointsDelta = data.delta; return { id: "log" }; }) },
     voucherPackage: { findUnique: vi.fn(({ where }: { where: { id: string } }) => Promise.resolve(packages.get(where.id) ?? null)) },
     voucher: {
       count: vi.fn().mockResolvedValue(0), findUnique: vi.fn().mockResolvedValue(null),
@@ -286,6 +316,17 @@ describe("Mở welcome reward GACHA", () => {
     await expect(openWelcomeReward(db, { userId: USER_ID, rewardId: REWARD_ID, boxId: BOX_ID, requestId: REQUEST_ID }))
       .rejects.toMatchObject({ reason: "REWARD_PAUSED" });
     expect(db.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("fallback dùng 7 điểm đã chốt và replay không phát lại", async () => {
+    const reward = pendingReward({ points_amount: 7, campaign: { ...pendingReward().campaign, status: "ENDED" } });
+    const { db, tx } = drawDatabase(reward);
+    const input = { userId: USER_ID, rewardId: REWARD_ID, boxId: BOX_ID, requestId: REQUEST_ID };
+    const result = await openWelcomeReward(db, input);
+    expect(result.outcome).toMatchObject({ pointsLog: { delta: 7 } });
+    expect(tx.user.update).toHaveBeenCalledWith({ where: { id: USER_ID }, data: { points_balance: { increment: 7 } } });
+    await expect(openWelcomeReward(db, input)).resolves.toEqual(result);
+    expect(tx.pointsLog.create).toHaveBeenCalledTimes(1);
   });
 
   it("campaign ENDED trao 5 điểm gắn campaign và box mà không có draw_number", async () => {
@@ -387,5 +428,27 @@ describe("Kiểm chứng outcome đã lưu trước replay", () => {
   ])("từ chối $name", async ({ reward }) => {
     const tx = { welcomeReward: { findFirst: vi.fn().mockResolvedValue(reward) } };
     await expect(getWelcomeReward(tx as never, USER_ID)).rejects.toThrow("Welcome reward identity invariant violated");
+  });
+});
+
+describe("Lời giới thiệu quà công khai — APPLICATION_LOGIC", () => {
+  it.each(["POINTS", "FIXED_VOUCHER", "GACHA"] as const)("phản ánh chế độ %s hiện khả dụng và chỉ trả dữ liệu công khai", async (mode) => {
+    const { tx, account, vouchers, outcomes } = registrationTx(mode);
+    await expect(getWelcomeRewardPreview(tx as never, FIXED_NOW)).resolves.toEqual({ mode, points_amount: 5 });
+    expect(account.pointsBalance).toBe(37); expect(vouchers).toEqual([]); expect(outcomes).toEqual([]);
+  });
+  it("voucher mất target giới thiệu điểm fallback", async () => {
+    const { tx } = registrationTx("FIXED_VOUCHER", "menu-off");
+    await expect(getWelcomeRewardPreview(tx as never, FIXED_NOW)).resolves.toEqual({ mode: "POINTS", points_amount: 5 });
+  });
+  it("campaign hết allocation giới thiệu điểm thay vì hộp quà", async () => {
+    const { tx } = registrationTx("GACHA");
+    tx.rewardOutcome.groupBy.mockResolvedValue([{ pool_item_id: "pool", _count: { _all: 1 } }]);
+    await expect(getWelcomeRewardPreview(tx as never, FIXED_NOW)).resolves.toEqual({ mode: "POINTS", points_amount: 5 });
+  });
+  it("database lỗi không giả lập lời hứa 5 điểm", async () => {
+    const { tx } = registrationTx("POINTS");
+    tx.welcomeRewardSettings.findUnique.mockRejectedValue(new Error("unavailable"));
+    await expect(getWelcomeRewardPreview(tx as never)).rejects.toThrow("unavailable");
   });
 });

@@ -43,7 +43,7 @@ const AuthModal = () => {
     if (result.welcome_reward.mode !== "GACHA" || result.welcome_reward.status === "COMPLETED") {
       toast.success(
         result.welcome_reward.outcome_kind === "POINTS"
-          ? "Quà chào mừng 5 🐟 đã được thêm vào tài khoản."
+          ? `Quà chào mừng ${result.welcome_reward.points} 🐟 đã được thêm vào tài khoản.`
           : "Voucher chào mừng đã được thêm vào ví.",
         { duration: 3500 },
       );

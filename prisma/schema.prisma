@@ -243,6 +243,7 @@ model PointsLog {
 }
 
 model WelcomeRewardSettings {
+  points_amount      Int               @default(5)
   id                 Int               @id @default(1)
   mode               WelcomeRewardMode @default(POINTS)
   fixed_package_id   String?           @db.Uuid
@@ -311,6 +312,7 @@ model RewardBox {
 }
 
 model WelcomeReward {
+  points_amount Int                 @default(5)
   id          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id     String            @unique @db.Uuid
   mode        WelcomeRewardMode

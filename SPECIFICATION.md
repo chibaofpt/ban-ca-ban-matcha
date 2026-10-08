@@ -205,10 +205,20 @@ xem số dư trong Quản lý khách hàng.
 - Lucide cho structural icons. Ký hiệu 🐟 được phép khi biểu diễn đơn vị thương hiệu.
 - `src/utils/cn.ts` là class-name helper canonical.
 
+### Vietnamese phone input and display
+
+`src/utils/phone.ts` owns shared normalization. Persisted phone numbers and API responses use
+`+84xxxxxxxxx`; customer/admin/staff editable fields use ungrouped `0xxxxxxxxx` and display may
+group local digits for readability. Accept full local, +84, 84 and legacy +840 formats with
+spaces, dots, dashes or parentheses; keep invalid letters visible to validation. Server boundaries
+normalize before existing domain-specific validation. Search supports canonical/local full numbers,
+explicit local prefixes and existing suffix search without rewriting names/Instagram aliases.
+
 ### Registration OTP form
 
 Public registration keeps its information steps and adds a code step when the server requires OTP.
-Inputs and feedback follow `mobile-ux`; business policy and errors belong to
+The code-step instruction directs the customer to Zalo for the masked phone; unknown provider
+status keeps uncertainty visible. Inputs and feedback follow `mobile-ux`; business policy and errors belong to
 [API registration OTP](API.md#registration-otp--public-onboarding).
 
 A challenge sent in the current mount may be reused only for the same normalized registration

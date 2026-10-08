@@ -1,3 +1,4 @@
+import { normalizePhone } from "@/src/utils/phone";
 import { z } from "zod";
 import type {
   CreateOrderPayload,
@@ -133,7 +134,7 @@ function validateBundleReferences(
  * customer_name is required (enforced in the route handler, not here).
  */
 export const staffOrderSchema = z.object({
-  phone_number: z.string().regex(/^(0|\+84)\d{9}$/).optional(),
+  phone_number: z.string().transform(normalizePhone).pipe(z.string().regex(/^\+84\d{9}$/)).optional(),
   customer_name: z.string().min(1).max(100).optional(),
   /** Defaults to CASH so every existing POS client keeps its current behavior. */
   payment_method: z.enum(["CASH", "BANK_TRANSFER"]).default("CASH"),
@@ -175,7 +176,7 @@ export const customerOrderSchema = z.object({
   delivery_lat: z.number().finite().min(-90).max(90).optional(),
   delivery_lng: z.number().finite().min(-180).max(180).optional(),
   delivery_receiver_name: z.string().trim().min(2).max(100).optional(),
-  delivery_receiver_phone: z.string().regex(/^\+84[35789][0-9]{8}$/).optional(),
+  delivery_receiver_phone: z.string().transform(normalizePhone).pipe(z.string().regex(/^\+84[35789][0-9]{8}$/)).optional(),
   client_shipping_fee_vnd: z.number().int().min(0).optional(),
   freeship_voucher_id: z.string().uuid().optional(),
 }).superRefine(validateBundleReferences);

@@ -5,12 +5,12 @@ import type {
 import { AdminRewardError, type AdminRewardDatabase, type AdminRewardTransaction } from "@/lib/rewards/adminRewardCampaign";
 
 export type WelcomeSettingsMode = AdminRewardMode;
-export type WelcomeSettingsInput = AdminWelcomeRewardSettings;
+export type WelcomeSettingsInput = Omit<AdminWelcomeRewardSettings, "points_amount"> & { points_amount?: number };
 
 function project(
   settings: Awaited<ReturnType<AdminRewardTransaction["welcomeRewardSettings"]["findUnique"]>>,
 ): AdminWelcomeRewardSettings {
-  return settings ?? { mode: "POINTS" as const, fixed_package_id: null, active_campaign_id: null, revision: 0 };
+  return settings ?? { mode: "POINTS" as const, points_amount: 5, fixed_package_id: null, active_campaign_id: null, revision: 0 };
 }
 
 /** Read the singleton welcome-reward settings with the POINTS default projection. */
@@ -39,7 +39,7 @@ export async function updateAdminWelcomeRewardSettings(
         if (!campaign || campaign.status !== "ACTIVE") throw new AdminRewardError("CAMPAIGN_NOT_READY");
       }
       const existing = await tx.welcomeRewardSettings.findUnique({ where: { id: 1 } });
-      const data = { mode: input.mode, fixed_package_id: input.fixed_package_id, active_campaign_id: input.active_campaign_id };
+      const data = { ...(input.points_amount === undefined ? {} : { points_amount: input.points_amount }), mode: input.mode, fixed_package_id: input.fixed_package_id, active_campaign_id: input.active_campaign_id };
       if (!existing) {
         if (input.revision !== 0) throw new AdminRewardError("CONFLICT");
         await tx.welcomeRewardSettings.create({ data: { id: 1, ...data } });

@@ -59,3 +59,16 @@ describe("POST /api/staff/scan-fallback — privacy logging", () => {
     expect(serializedLog).not.toContain("ABC123");
   });
 });
+
+describe("Nhập điện thoại nội địa khi xác nhận QR — APPLICATION_LOGIC", () => {
+  it.each(["0901234567", "090 123 4567", "84901234567"])("lookup canonical cho %s và vẫn yêu cầu đúng mã", async (phone_number) => {
+    mockGetSession.mockResolvedValue({ role: "STAFF" });
+    mockUserFindUnique.mockImplementation(async ({ where }: { where: { phone_number: string } }) =>
+      where.phone_number === "+84901234567" ? { name: "Khách", phone_number: "+84901234567", points_balance: 10, qr_token: "public-token-ABC123" } : null);
+    const request = (code: string) => new Request("http://localhost", { method: "POST", body: JSON.stringify({ phone_number, code }) });
+    const success = await POST(request("ABC123"));
+    expect(success.status).toBe(200);
+    expect((await success.json()).data.data.phone_number).toBe("+84901234567");
+    expect((await POST(request("WRONG"))).status).toBe(400);
+  });
+});

@@ -618,7 +618,7 @@ addon-unit `discount_applied_vnd` described in `order_item_addon_vouchers`.
 | `voucher_surplus_reversed` | Reversal of a `voucher_surplus` entry when a completed COUNTER order is cancelled |
 | `voucher_refund` | Full purchase-cost refund for an eligible voucher, including soft-delete reconciliation or completed COUNTER cancellation recovery |
 | `reversed_by_admin` | Admin reverses a manual adjustment |
-| `welcome_bonus` | Immediate signup points and the five-point welcome-reward fallback |
+| `welcome_bonus` | Immediate signup points and the snapshotted welcome-reward fallback |
 
 ---
 
@@ -628,6 +628,7 @@ Singleton configuration row for the signup reward. The migration inserts `id = 1
 
 - `id` int PK — database check fixes the only valid value to 1
 - `mode` WelcomeRewardMode — default `POINTS`
+- `points_amount` int — default 5; configurable integer 1–100 shared by immediate points and fallback
 - `fixed_package_id` uuid FK nullable → voucher_packages (no action delete)
 - `active_campaign_id` uuid FK nullable → reward_campaigns (no action delete)
 - `revision` int — default 0, used for optimistic configuration updates
@@ -682,16 +683,19 @@ changes do not rewrite pending or completed rewards.
 - `id` uuid PK
 - `user_id` uuid UK FK → users (no action delete)
 - `mode` WelcomeRewardMode
+- `points_amount` int — immutable signup snapshot, default 5 for pre-existing entitlements
 - `campaign_id` uuid FK nullable → reward_campaigns (no action delete)
 - `created_at` timestamp
 - optional one-to-one outcome
+
+Migration `20261008000000_configurable_welcome_points` adds both columns with default 5, preserving existing pending entitlements and completed logs. No historical points are recalculated. The settings value cannot be derived from an existing field; the entitlement snapshot is required to preserve pending rights when configuration changes. Rollback requires reverting consumers before dropping these columns and loses custom pending snapshots.
 
 The campaign is non-null exactly when `mode = GACHA`. `POINTS` and `FIXED_VOUCHER` workflows create
 their outcome immediately; `GACHA` may remain pending until the user draws.
 
 ### reward_outcomes
 Immutable fulfillment audit for a welcome entitlement. A voucher outcome issues through
-`WELCOME_GIFT` for fixed mode or `GACHA_REWARD` for a draw. A points outcome links the five-point
+`WELCOME_GIFT` for fixed mode or `GACHA_REWARD` for a draw. A points outcome links the snapshotted
 fallback `points_log` row.
 
 - `id` uuid PK
@@ -708,10 +712,10 @@ fallback `points_log` row.
 
 The target check enforces XOR fulfillment: `VOUCHER` requires only `voucher_id`, while `POINTS`
 requires only `points_log_id`. A campaign voucher also requires campaign, pool item, box, and draw
-number. A five-point campaign fallback has campaign and box but null pool item and draw number;
+number. A points campaign fallback has campaign and box but null pool item and draw number;
 non-campaign fixed/points outcomes have all campaign detail fields null. Application code must also
 verify that `user_id` matches the entitlement and issued artifact, that campaign/pool/box identities
-agree, that the entitlement mode permits the outcome, and that point fallback delta equals 5.
+agree, that the entitlement mode permits the outcome, and that point fallback delta equals the entitlement points_amount.
 
 All six welcome-reward tables have RLS enabled and all privileges revoked from `PUBLIC`, `anon`,
 `authenticated`, and `service_role`. Custom-auth application access remains through direct Prisma;

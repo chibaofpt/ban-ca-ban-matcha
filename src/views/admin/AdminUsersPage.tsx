@@ -1,5 +1,7 @@
 "use client";
 
+import { formatVietnamPhone } from "@/src/utils/display";
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Copy, Loader2, Receipt, Search, Ticket } from "lucide-react";
 import { useRef, useState, type KeyboardEvent } from "react";
@@ -91,7 +93,7 @@ export default function AdminUsersPage() {
         : user?.name ?? "Chi tiết khách hàng";
   const sheetDescription = detailView.kind === "order"
     ? "Các giá trị đã lưu tại thời điểm đặt đơn."
-    : user ? `${user.phone_number} · ${user.current_voucher_count} voucher hiện có` : "Đang tải thông tin khách hàng";
+    : user ? `${formatVietnamPhone(user.phone_number)} · ${user.current_voucher_count} voucher hiện có` : "Đang tải thông tin khách hàng";
 
   const overlayDescription = isCustomerVoucherList ? (user?.name ?? "Đang tải thông tin khách hàng") : sheetDescription;
   function handleInputChange(value: string) {

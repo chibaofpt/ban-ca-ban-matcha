@@ -1,3 +1,4 @@
+import { phoneSearchVariants } from "@/src/utils/phone";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import type { VoucherOwnerPage } from "@/contracts/admin/voucher";
@@ -15,13 +16,6 @@ const querySchema = z.object({
   cursor: z.string().trim().min(1).optional(),
 });
 
-function searchVariants(rawQuery: string): string[] {
-  const clean = rawQuery;
-  const variants = [clean];
-  if (/^0\d+$/.test(clean)) variants.push(`+84${clean.slice(1)}`);
-  if (/^\+84\d+$/.test(clean)) variants.push(`0${clean.slice(3)}`);
-  return [...new Set(variants)];
-}
 
 function voucherStatusWhere(status: z.infer<typeof querySchema>["status"], now: Date) {
   if (status === "ALL") return undefined;
@@ -41,7 +35,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   if (!z.string().uuid().safeParse(id).success) return NextResponse.json({ error: "Voucher package not found", code: "NOT_FOUND" }, { status: 404 });
   const now = new Date();
-  const terms = searchVariants(parsed.data.q);
+  const terms = [...new Set([parsed.data.q, ...phoneSearchVariants(parsed.data.q)])];
   try {
     const packageExists = await prisma.voucherPackage.findUnique({ where: { id }, select: { id: true } });
     if (!packageExists) return NextResponse.json({ error: "Voucher package not found", code: "NOT_FOUND" }, { status: 404 });

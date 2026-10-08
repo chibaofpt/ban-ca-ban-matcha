@@ -1,3 +1,4 @@
+import { formatVietnamPhone } from "@/src/utils/display";
 import type { DeliveryRecipientSnapshot, OrderStatus, OrderType } from "@/contracts/order";
 
 interface Props extends DeliveryRecipientSnapshot {
@@ -12,7 +13,7 @@ export function DeliveryRecipientDetails({ order_type, status, detail = false, .
   return <section className="space-y-1 rounded-xl border border-border bg-muted/40 p-3 text-sm" aria-label="Thông tin giao hàng">
     <p className="text-xs font-semibold text-muted-foreground">Người nhận · Giao hàng</p>
     <p className="font-semibold">{snapshot.delivery_receiver_name || "Chưa có tên người nhận"}</p>
-    <p>{snapshot.delivery_receiver_phone || "Chưa có số điện thoại người nhận"}</p>
+    <p>{snapshot.delivery_receiver_phone ? formatVietnamPhone(snapshot.delivery_receiver_phone) : "Chưa có số điện thoại người nhận"}</p>
     <p className="break-words text-muted-foreground">{snapshot.delivery_address || "Chưa có địa chỉ giao hàng"}</p>
   </section>;
 }

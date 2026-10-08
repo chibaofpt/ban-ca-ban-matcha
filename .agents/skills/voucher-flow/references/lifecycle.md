@@ -53,18 +53,20 @@ ACTIVE → REFUNDED                                (auto: target item soft-delet
 
 ## Welcome Reward and Gacha
 
+Admin cấu hình số điểm chào mừng nguyên từ 1–100, mặc định 5. POINTS và mọi fallback dùng chung mức này. Mỗi entitlement chụp mức điểm khi đăng ký; thay đổi settings không đổi quyền lợi pending/completed.
+
 Mỗi user có đúng một entitlement quà chào mừng bền vững, được quyết định trong transaction đăng ký.
 `mode` của entitlement là effective mode đã commit sau khi áp dụng fallback availability, không
 nhất thiết là raw settings mode; settings thay đổi sau đó không viết lại entitlement. Ba mode loại
 trừ nhau:
 
-- `POINTS`: cộng ngay 5 🐟, ghi `points_log.reason = "welcome_bonus"` và hoàn tất entitlement.
+- `POINTS`: cộng ngay điểm chào mừng đã chụp lúc đăng ký, ghi `points_log.reason = "welcome_bonus"` và hoàn tất entitlement.
 - `FIXED_VOUCHER`: phát ngay voucher từ `fixed_package_id` với `issued_via = WELCOME_GIFT`. Nếu
   package hoặc target không còn khả dụng lúc phát, commit entitlement với mode `POINTS` và cộng
-  5 🐟.
+  điểm chào mừng đã chụp lúc đăng ký.
 - `GACHA`: chụp `active_campaign_id` vào entitlement và để `PENDING` khi campaign đang `ACTIVE` và
   còn ít nhất một allocation chưa phát. Nếu điều kiện đó không còn đúng lúc đăng ký, dùng fallback
-  5 🐟 ngay.
+  điểm chào mừng đã chụp lúc đăng ký ngay.
 
 Entitlement `GACHA` không giữ chỗ trong pool khi đăng ký hoặc khi user chỉ xem hộp. Stock được giải
 quyết đúng một lần ở lần mở đầu tiên thành công, trong Serializable transaction; outcome đã commit
@@ -79,7 +81,7 @@ voucher kế tiếp mang `draw_number = 61`. Nếu item được chọn mất av
 candidates của transaction và thử phần còn lại; không tự đổi trọng số thành tỷ lệ cấu hình khác.
 
 - `PAUSED` chặn mở với `REWARD_PAUSED` và giữ nguyên entitlement `PENDING`.
-- `ENDED`, hoặc pool thực sự hết allocation, hoàn tất lần mở bằng fallback 5 🐟; box đã chọn vẫn
+- `ENDED`, hoặc pool thực sự hết allocation, hoàn tất lần mở bằng fallback điểm chào mừng đã chụp lúc đăng ký; box đã chọn vẫn
   được lưu trong outcome.
 - Nếu campaign `ACTIVE` còn allocation nhưng hiện không có candidate khả dụng, trả
   `REWARD_TEMPORARILY_UNAVAILABLE`; không phát fallback và user có thể thử lại sau.

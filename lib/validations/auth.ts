@@ -1,3 +1,4 @@
+import { normalizePhone } from "@/src/utils/phone";
 import { z } from "zod";
 
 const instagramPattern = /^[a-z0-9._]{1,30}$/;
@@ -43,7 +44,7 @@ export const InstagramUsernameSchema = z
 export const RegisterStep1Schema = z.object({
   phone_number: z
     .string()
-    .regex(/^(0|\+84)\d{9}$/, "Số điện thoại không hợp lệ (ví dụ: 0912345678)"),
+    .transform(normalizePhone).pipe(z.string().regex(/^\+84\d{9}$/, "Số điện thoại không hợp lệ (ví dụ: 0912345678)")),
   password: PasswordSchema,
 });
 
@@ -104,10 +105,11 @@ export const LoginSchema = z
   .object({
     phone_number: z
       .string()
-      .regex(
-        /^(0|\+84)\d{9}$/,
+      .transform(normalizePhone)
+      .pipe(z.string().regex(
+        /^\+84\d{9}$/,
         "Số điện thoại không hợp lệ (ví dụ: 0912345678)",
-      )
+      ))
       .optional(),
     insta_name: InstagramUsernameSchema.optional(),
     password: z.string().min(6, "Mật khẩu phải có ít nhất 6 ký tự").max(72, "Mật khẩu không được vượt quá 72 ký tự"),

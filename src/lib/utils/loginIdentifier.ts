@@ -1,3 +1,4 @@
+import { toLocalPhone } from "@/src/utils/phone";
 export type LoginIdentifier =
   | { kind: "phone"; value: string }
   | { kind: "instagram"; value: string };
@@ -12,8 +13,8 @@ export function classifyLoginIdentifier(input: string): LoginIdentifier {
     };
   }
 
-  const compactPhone = trimmed.replace(/\s+/g, "");
-  if (/^(0|\+84)\d{9}$/.test(compactPhone)) {
+  const compactPhone = toLocalPhone(trimmed);
+  if (/^0\d{9}$/.test(compactPhone)) {
     return { kind: "phone", value: compactPhone };
   }
 

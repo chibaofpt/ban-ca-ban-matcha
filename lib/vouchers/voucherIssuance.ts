@@ -229,44 +229,13 @@ async function assertIssuanceLimits(
   }
 }
 
-/** Issue one voucher using a caller-owned Serializable transaction. */
-export async function issueVoucherInTransaction(
-  tx: VoucherIssuanceTransaction,
-  input: IssueVoucherInput,
+/** Read and validate a package with the same availability policy used by issuance, without writes. */
+export async function readAvailableVoucherPackage(
+  tx: Pick<VoucherIssuanceTransaction, "voucherPackage"> & VoucherAvailabilityDatabase,
+  input: Pick<IssueVoucherInput, "package_id" | "source" | "now">,
   availabilityCatalog?: VoucherAvailabilityCatalog,
-): Promise<IssuedVoucherResult> {
+): Promise<VoucherPackageSnapshot> {
   const now = input.now ?? new Date();
-  if (input.source === "ADMIN" && (!input.performed_by || !input.request_id)) {
-    throw new VoucherIssuanceError("VALIDATION_ERROR", "Admin issuance requires an actor and request id");
-  }
-  if (input.source === "ADMIN" && input.request_id) {
-    const existing = await tx.voucher.findUnique({
-      where: { manual_request_id: input.request_id },
-      select: {
-        id: true,
-        qr_token: true,
-        user_id: true,
-        package_id: true,
-        issued_via: true,
-        issuing_admin_id: true,
-        manual_request_id: true,
-        voucher_type: true,
-        status: true,
-        expires_at: true,
-        redeemed_at: true,
-      },
-    });
-    if (existing) {
-      if (
-        existing.user_id !== input.user_id ||
-        existing.package_id !== input.package_id ||
-        existing.issuing_admin_id !== input.performed_by
-      ) {
-        throw new VoucherIssuanceError("CONFLICT", "Request id is already bound to another gift");
-      }
-      return { ...projectEffectiveStatus(existing, now), already_granted: true };
-    }
-  }
   const pkg = await tx.voucherPackage.findUnique({
     where: { id: input.package_id },
     include: {
@@ -305,6 +274,49 @@ export async function issueVoucherInTransaction(
       throw new VoucherIssuanceError(resolved.availability.status, "Voucher has no active target");
     }
   }
+
+  return pkg;
+}
+
+/** Issue one voucher using a caller-owned Serializable transaction. */
+export async function issueVoucherInTransaction(
+  tx: VoucherIssuanceTransaction,
+  input: IssueVoucherInput,
+  availabilityCatalog?: VoucherAvailabilityCatalog,
+): Promise<IssuedVoucherResult> {
+  const now = input.now ?? new Date();
+  if (input.source === "ADMIN" && (!input.performed_by || !input.request_id)) {
+    throw new VoucherIssuanceError("VALIDATION_ERROR", "Admin issuance requires an actor and request id");
+  }
+  if (input.source === "ADMIN" && input.request_id) {
+    const existing = await tx.voucher.findUnique({
+      where: { manual_request_id: input.request_id },
+      select: {
+        id: true,
+        qr_token: true,
+        user_id: true,
+        package_id: true,
+        issued_via: true,
+        issuing_admin_id: true,
+        manual_request_id: true,
+        voucher_type: true,
+        status: true,
+        expires_at: true,
+        redeemed_at: true,
+      },
+    });
+    if (existing) {
+      if (
+        existing.user_id !== input.user_id ||
+        existing.package_id !== input.package_id ||
+        existing.issuing_admin_id !== input.performed_by
+      ) {
+        throw new VoucherIssuanceError("CONFLICT", "Request id is already bound to another gift");
+      }
+      return { ...projectEffectiveStatus(existing, now), already_granted: true };
+    }
+  }
+  const pkg = await readAvailableVoucherPackage(tx, input, availabilityCatalog);
 
   if (input.source === "FREE_CLAIM" || input.source === "AUTO_GRANT") {
     const existingGrant = await tx.voucherGrant.findUnique({

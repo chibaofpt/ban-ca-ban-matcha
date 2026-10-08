@@ -1,3 +1,4 @@
+import { normalizePhone } from "@/src/utils/phone";
 import { NextResponse } from "next/server";
 import type { QrScanResult } from "@/contracts/staff";
 import { prisma } from "@/lib/prisma";
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
 
     const { phone_number, code } = await request.json();
 
-    if (!phone_number || !code) {
+    if (typeof phone_number !== "string" || !phone_number || typeof code !== "string" || !code) {
       return NextResponse.json(
         { error: "Missing required fields", code: "VALIDATION_ERROR" },
         { status: 400 }
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
 
     // 1. Look up user by phone
     const user = await prisma.user.findUnique({
-      where: { phone_number },
+      where: { phone_number: normalizePhone(phone_number) },
       select: {
         name: true,
         phone_number: true,

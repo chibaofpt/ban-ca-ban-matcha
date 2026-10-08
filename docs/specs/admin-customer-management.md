@@ -15,7 +15,9 @@ to [SPECIFICATION](../../SPECIFICATION.md#ui-system) and `mobile-ux`.
 ## Customer list
 
 The Admin shell exposes a `Users` tab. Its list has ten customers per page and submits search against
-name, phone or Instagram alias. Customers with completed orders appear first, sorted by the most
+name, phone or Instagram alias. Full local/canonical numbers, spaced numbers and local prefixes
+find the same account; existing suffix search remains available. Rows and detail surfaces display
+local phone numbers according to [the shared phone standard](../../SPECIFICATION.md#vietnamese-phone-input-and-display). Customers with completed orders appear first, sorted by the most
 recent completed-order update across full history; customers with no completed order form the tail.
 
 Each row shows identity, registration, verification and block state, with points presented as

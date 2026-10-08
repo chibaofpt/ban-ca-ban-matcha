@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { normalizePhone, toLocalPhone } from "@/src/utils/phone";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -58,7 +59,7 @@ export function AddressForm({
       lat: initialData?.lat ?? null,
       lng: initialData?.lng ?? null,
       receiver_name: initialData?.receiver_name ?? defaultRecipient?.name ?? "",
-      receiver_phone: initialData?.receiver_phone ?? defaultRecipient?.phone ?? "",
+      receiver_phone: toLocalPhone(initialData?.receiver_phone ?? defaultRecipient?.phone ?? ""),
       is_default: initialData?.is_default ?? false,
     },
   });
@@ -72,13 +73,13 @@ export function AddressForm({
     if (initialData || recipientTouched.current || getFieldState("receiver_name").isDirty || getFieldState("receiver_phone").isDirty) return;
     if (!defaultRecipient?.name || !defaultRecipient.phone) return;
     setValue("receiver_name", defaultRecipient.name);
-    setValue("receiver_phone", defaultRecipient.phone);
+    setValue("receiver_phone", toLocalPhone(defaultRecipient.phone));
   }, [defaultRecipient?.name, defaultRecipient?.phone, getFieldState, initialData, setValue]);
 
   const useAccountRecipient = () => {
     if (!defaultRecipient?.name || !defaultRecipient.phone) return;
     setValue("receiver_name", defaultRecipient.name, { shouldDirty: true, shouldValidate: true });
-    setValue("receiver_phone", defaultRecipient.phone, { shouldDirty: true, shouldValidate: true });
+    setValue("receiver_phone", toLocalPhone(defaultRecipient.phone), { shouldDirty: true, shouldValidate: true });
     setRecipientExpanded(false);
   };
 
@@ -97,9 +98,7 @@ export function AddressForm({
 
   const submit = async (values: AddressFormValues) => {
     if (values.lat === null || values.lng === null) return;
-    const normalizedPhone = values.receiver_phone.startsWith("0")
-      ? `+84${values.receiver_phone.slice(1)}`
-      : values.receiver_phone;
+    const normalizedPhone = normalizePhone(values.receiver_phone);
 
     try {
       await onSubmit({
@@ -184,7 +183,7 @@ export function AddressForm({
           label="Số điện thoại"
           required
           error={errors.receiver_phone?.message}
-          input={<input id="receiver-phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="Ví dụ: 0912345678" {...register("receiver_phone")} className={inputClassName} />}
+          input={<input id="receiver-phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="Ví dụ: 0912345678" {...register("receiver_phone", { onBlur: (event) => setValue("receiver_phone", toLocalPhone(event.target.value), { shouldValidate: true }) })} className={inputClassName} />}
         />
         {!initialData && defaultRecipient?.name && defaultRecipient.phone ? <button type="button" className="min-h-11 text-sm font-semibold text-primary" onClick={useAccountRecipient}>Dùng thông tin tài khoản</button> : null}
         </div>}

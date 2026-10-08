@@ -1,7 +1,9 @@
 "use client";
 
+import { normalizePhone } from "@/src/utils/phone";
+
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/src/lib/store/authStore";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import {
@@ -21,10 +23,11 @@ import { clearPrivateQueryCaches } from "@/src/lib/queryClient";
 import { useRegistrationOtp, registrationOtpMessage } from "@/src/hooks/useRegistrationOtp";
 import { useRegistrationTurnstile } from "@/src/hooks/useRegistrationTurnstile";
 import RegisterOtpStep from "@/src/components/common/register/RegisterOtpStep";
+import { getWelcomeRewardPreview, welcomeRewardKeys } from "@/src/services/welcomeRewardService";
 import { Button } from "@/src/components/ui/button";
 
 function payloadFingerprint(input: RegisterPayload): string {
-  const phone = input.phone_number.startsWith("0") ? "+84" + input.phone_number.slice(1) : input.phone_number;
+  const phone = normalizePhone(input.phone_number);
   return JSON.stringify([phone, input.name, input.password, input.insta_name?.trim().replace(/^@/, "").toLowerCase() || null]);
 }
 
@@ -38,6 +41,7 @@ const RegisterForm = ({ onRegistered }: { onRegistered: (result: RegisterResult)
   const login = useAuthStore((state) => state.login);
   const switchTo = useAuthModalStore((state) => state.switchTo);
   const otp = useRegistrationOtp();
+  const welcome = useQuery({ queryKey: welcomeRewardKeys.preview, queryFn: getWelcomeRewardPreview, staleTime: 0, gcTime: 0, refetchInterval: false, retry: false });
   const registration = useMutation({ mutationFn: registerRequest, retry: false });
   const enabled = otp.config.data?.enabled === true;
   const captcha = useRegistrationTurnstile(step === 1 ? undefined : otp.config.data?.turnstile?.site_key);
@@ -102,7 +106,7 @@ const RegisterForm = ({ onRegistered }: { onRegistered: (result: RegisterResult)
     {otp.config.isError ? <div className="space-y-2"><p role="alert" className="text-sm text-destructive">{registrationOtpMessage(otp.config.error)}</p><Button variant="outline" onClick={() => void otp.config.refetch()}>Tải lại đăng ký</Button></div> : null}
     {step === 1 && otp.challenge ? <p className="text-sm text-muted-foreground">Bạn có mã xác nhận chưa hết hạn. Nhập lại đúng thông tin và mật khẩu đã dùng để gửi mã.</p> : null}
     {step === 1 ? <RegisterStepOne initialValues={stepOne ?? undefined} totalSteps={enabled ? 3 : 2} onContinue={continueFromStepOne} onLogin={() => switchTo("login")} />
-      : step === 2 ? <RegisterStepTwo initialValues={stepTwo ?? undefined} totalSteps={enabled ? 3 : 2}
+      : step === 2 ? <RegisterStepTwo welcomeReward={welcome.isError ? undefined : welcome.data} initialValues={stepTwo ?? undefined} totalSteps={enabled ? 3 : 2}
         submitLabel={enabled ? usableChallenge ? "Nhập mã xác nhận" : "Gửi mã xác nhận" : "Đăng ký"}
         submitDisabled={otp.config.isPending || otp.config.isError || enabled && !usableChallenge && !captchaReady}
         onValuesChange={setStepTwo} onResume={enabled && otp.challenge && !usableChallenge ? resumeRegistration : undefined}

@@ -118,9 +118,9 @@ describe("DTO công khai của welcome reward", () => {
   });
 
   it("tóm tắt outcome POINTS hoàn tất mà không lộ identity nội bộ", async () => {
-    const reward = { id: "reward", mode: "POINTS", campaign: null, outcome: { kind: "POINTS" } };
+    const reward = { id: "reward", mode: "POINTS", campaign: null, outcome: { kind: "POINTS", pointsLog: { delta: 5 } } };
     expect(toWelcomeRewardSummary(reward as never)).toEqual({
-      id: "reward", mode: "POINTS", status: "COMPLETED", outcome_kind: "POINTS",
+      id: "reward", mode: "POINTS", status: "COMPLETED", outcome_kind: "POINTS", points: 5,
     });
     const dto = await toWelcomeRewardDto(projectionDb() as never, reward as never);
     expect(dto.outcome).toEqual({ kind: "POINTS", points: 5 });

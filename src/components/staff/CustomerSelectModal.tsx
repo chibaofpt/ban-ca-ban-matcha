@@ -1,12 +1,13 @@
 "use client";
 
+import { toLocalPhone, isPhoneSearch } from "@/src/utils/phone";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, User, Phone } from "lucide-react";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 import * as staffOrderService from "@/src/services/staffOrderService";
 import type { CustomerSearchResult } from "@/src/services/staffOrderService";
-import { formatVietnamPhone, normalizeCustomerSearch } from "@/src/utils/display";
+import { formatVietnamPhone } from "@/src/utils/display";
 import { useDebounce } from "@/src/hooks/useDebounce";
 
 export type CustomerInfo =
@@ -21,7 +22,7 @@ interface CustomerSelectModalProps {
 }
 
 function isValidPhone(phone: string): boolean {
-  return /^(0|\+84)\d{9}$/.test(phone.trim());
+  return /^0\d{9}$/.test(toLocalPhone(phone));
 }
 
 /** Selects a customer while retaining the owning cart through overlay dismissal. */
@@ -35,7 +36,7 @@ export function CustomerSelectModal({
 
   // Search state
   const [query, setQuery] = useState(
-    initialQuery ? formatVietnamPhone(initialQuery) : "",
+    initialQuery ? toLocalPhone(initialQuery) : "",
   );
   const debouncedQuery = useDebounce(query.trim(), 300);
 
@@ -65,10 +66,9 @@ export function CustomerSelectModal({
 
   const handleNewCustomer = () => {
     setStep("new-customer");
-    const normalized = normalizeCustomerSearch(query);
-    setNewPhone(/^\d+$/.test(normalized) && normalized.length === 9 ? `0${normalized}` : normalized);
+    setNewPhone(isPhoneSearch(query) ? toLocalPhone(query) : "");
     // If query has non-digits, it's likely a name, so prefill newName
-    if (!/^\d+$/.test(query.trim())) {
+    if (!isPhoneSearch(query)) {
       setNewName(query.trim());
     } else {
       setNewName("");
@@ -78,14 +78,14 @@ export function CustomerSelectModal({
 
   const handleConfirmNewCustomer = () => {
     if (!isValidPhone(newPhone)) {
-      setError("Số điện thoại không hợp lệ. Vui lòng nhập 09xxxxxxxx hoặc +84xxxxxxxxx");
+      setError("Số điện thoại không hợp lệ. Vui lòng nhập số gồm 10 chữ số, ví dụ 0912345678");
       return;
     }
     if (!newName.trim()) {
       setError("Vui lòng nhập biệt danh cho khách.");
       return;
     }
-    onSelect({ type: "new", phone_number: newPhone.trim(), name: newName.trim() });
+    onSelect({ type: "new", phone_number: toLocalPhone(newPhone), name: newName.trim() });
   };
 
   const rawQuery = query.trim();
@@ -99,7 +99,7 @@ export function CustomerSelectModal({
       onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}
       onAfterClose={() => {
         setStep("search");
-        setQuery(initialQuery ? formatVietnamPhone(initialQuery) : "");
+        setQuery(initialQuery ? toLocalPhone(initialQuery) : "");
         setNewPhone("");
         setNewName("");
         setError(null);
@@ -223,7 +223,7 @@ export function CustomerSelectModal({
                     setNewPhone(e.target.value);
                     setError(null);
                   }}
-                  onBlur={() => window.scrollTo(0, 0)}
+                  onBlur={() => { setNewPhone(toLocalPhone(newPhone)); window.scrollTo(0, 0); }}
                   placeholder="09xxxxxxxx"
                   className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
                   autoFocus

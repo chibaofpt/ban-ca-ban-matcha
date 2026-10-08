@@ -1,3 +1,4 @@
+import { phoneSearchVariants } from "@/src/utils/phone";
 import type { Prisma, VoucherType } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
@@ -21,7 +22,7 @@ function customerFilter(q?: string): Prisma.UserWhereInput {
     role: "CUSTOMER",
     OR: [
       { name: { contains: query, mode: "insensitive" } },
-      { phone_number: { contains: query } },
+      ...phoneSearchVariants(query).map((term) => ({ phone_number: { contains: term } })),
       { insta_name: { contains: instagram, mode: "insensitive" } },
     ],
   };

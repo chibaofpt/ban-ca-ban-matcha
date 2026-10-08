@@ -159,3 +159,23 @@ describe("truy vấn quản lý khách hàng Admin", () => {
     expect(categories[1]?.types).not.toContain("PRODUCT_DISCOUNT");
   });
 });
+
+describe("Tìm khách bằng điện thoại chuẩn hóa — APPLICATION_LOGIC", () => {
+  it.each(["0912345678", "0912", "+84912", "84912345678", "091 234 5678", "5678", "Khách", "@ca.ngon"])("tìm ra cùng khách bằng %s", async (q) => {
+    const row = { ...customer("phone-1", "public-customer"), phone_number: "+84912345678", insta_name: "ca.ngon" };
+    type Search = { OR?: Array<{ phone_number?: { contains: string }; name?: { contains: string }; insta_name?: { contains: string } }> };
+    const matches = (where: Search) => where.OR?.some((clause) =>
+      clause.phone_number ? row.phone_number.includes(clause.phone_number.contains)
+        : clause.name ? row.name.includes(clause.name.contains)
+          : clause.insta_name ? row.insta_name.includes(clause.insta_name.contains) : false);
+    mocks.userCount.mockReset().mockImplementation(async ({ where }: { where: Search & { AND?: unknown[] } }) => where.AND ? 0 : matches(where) ? 1 : 0);
+    mocks.userFindMany.mockReset().mockImplementation(async ({ where }: { where: { AND?: Search[]; id?: unknown } }) =>
+      where.id ? [row] : matches(where.AND![0]) ? [{ id: row.id }] : []);
+    mocks.orderGroupBy.mockReset().mockResolvedValue([]);
+    mocks.pointsLogGroupBy.mockReset().mockResolvedValue([]);
+    mocks.voucherGroupBy.mockReset().mockResolvedValue([]);
+    const result = await listAdminUsers(1, q, now);
+    expect(result.items.map((item) => item.qr_token)).toEqual(["public-customer"]);
+    expect(result.total).toBe(1);
+  });
+});

@@ -1,10 +1,11 @@
+import { toLocalPhone } from "@/src/utils/phone";
 import { z } from "zod";
 
-/** Frontend phone validation — format check only, normalization happens on the server */
+/** Normalize editable phones to local form; the server remains authoritative. */
 const phoneSchema = z
   .string()
   .min(1, "Vui lòng nhập số điện thoại")
-  .regex(/^(0|\+84)\d{9}$/, "Số điện thoại không hợp lệ");
+  .transform(toLocalPhone).pipe(z.string().regex(/^0\d{9}$/, "Số điện thoại không hợp lệ"));
 
 const instagramSchema = z
   .string()

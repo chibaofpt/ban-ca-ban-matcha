@@ -68,7 +68,7 @@ rate limits or cron section for those contracts. Implementation belongs to
 | `VOUCHER_EXPIRED` | Voucher past expiry date |
 | `VOUCHER_REDEEMED` | Voucher already used |
 | `STORE_CLOSED` | Store is outside opening hours or temporarily closed — rejects PICKUP/DELIVERY orders (HTTP 503) |
-| `SERVICE_UNAVAILABLE` | Realtime capability cannot be issued because signing configuration is unavailable (HTTP 503) |
+| `SERVICE_UNAVAILABLE` | Required configuration or backing service is temporarily unavailable (HTTP 503) |
 | `INTERNAL_ERROR` | Unexpected server error |
 
 ---
@@ -215,6 +215,7 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/admin/voucher-packages/[id]/recipients/[userQrToken]` | GET |
 | `/api/admin/welcome-reward-settings` | GET, PUT |
 | `/api/auth/check-phone` | POST |
+| `/api/auth/register/welcome-reward` | GET |
 | `/api/auth/login` | POST |
 | `/api/auth/logout` | POST |
 | `/api/auth/me` | GET |
@@ -407,6 +408,11 @@ in `Asia/Ho_Chi_Minh`.
   that bounded workload returns `422 BUSINESS_RULE_VIOLATION` with
   `details.reason = "REPORT_RANGE_TOO_LARGE"`; no truncated totals are returned.
 
+Phone inputs follow [the shared phone standard](SPECIFICATION.md#vietnamese-phone-input-and-display):
+server validation accepts supported formats, persists canonical +84, and returns canonical phones.
+Admin customer/order/recipient searches accept local and canonical numbers plus local prefixes;
+existing name/alias and suffix semantics remain available.
+
 ### `POST /api/auth/register`
 ```ts
 {
@@ -431,6 +437,7 @@ in `Asia/Ho_Chi_Minh`.
       mode: "POINTS" | "FIXED_VOUCHER" | "GACHA"
       status: "PENDING" | "COMPLETED"
       outcome_kind: "VOUCHER" | "POINTS" | null
+      points: number | null // actual granted points; null for pending/voucher
     }
   }
 }
@@ -452,6 +459,15 @@ submitted name, password hash and Instagram alias replace the placeholder creden
 existing customer history and balances remain attached. A blocked ghost returns `403 FORBIDDEN`.
 An existing registered phone, a non-CUSTOMER row, or losing the concurrent ghost-claim race returns
 `409 CONFLICT`; a create race re-reads the phone and may claim the ghost only if it is still eligible.
+
+### `GET /api/auth/register/welcome-reward`
+
+Public read-only signup preview returns `{ data: { mode, points_amount } }`, where mode is
+`POINTS | FIXED_VOUCHER | GACHA` and points_amount is the current configured amount. It checks
+fixed-package availability and active campaign allocation using signup rules; unavailable
+configuration previews POINTS. It reserves no stock and exposes no internal package/campaign
+references. Responses use `Cache-Control: no-store`; unexpected read failure returns sanitized
+`503 SERVICE_UNAVAILABLE`. Registration remains authoritative if availability changes.
 
 ### Registration OTP — public onboarding
 
@@ -526,7 +542,7 @@ type WelcomeReward = {
     boxes: RewardBox[]
   } | null
   outcome:
-    | { kind: "POINTS", points: 5 }
+    | { kind: "POINTS", points: number }
     | { kind: "VOUCHER", voucher: OwnedVoucher }
     | null
 }
@@ -560,6 +576,7 @@ parsing mutation input. Settings use optimistic `revision` protection:
 // GET /api/admin/welcome-reward-settings — 200
 { data: { settings: {
   mode: "POINTS" | "FIXED_VOUCHER" | "GACHA"
+  points_amount: number
   fixed_package_id: string | null
   active_campaign_id: string | null
   revision: number
@@ -568,12 +585,15 @@ parsing mutation input. Settings use optimistic `revision` protection:
 // PUT /api/admin/welcome-reward-settings
 {
   mode: "POINTS" | "FIXED_VOUCHER" | "GACHA"
+  points_amount?: number // integer 1–100; omission preserves current value
   fixed_package_id?: string | null
   active_campaign_id?: string | null
   revision: number
 }
 // 200: { data: { settings } }
 ```
+
+Points configuration and signup snapshot semantics belong to [voucher-flow lifecycle](.agents/skills/voucher-flow/references/lifecycle.md#welcome-reward-and-gacha).
 
 Exactly one reference matches the mode: neither for `POINTS`, only `fixed_package_id` for
 `FIXED_VOUCHER`, and only `active_campaign_id` for `GACHA`. A fixed package must be active and
@@ -1599,7 +1619,7 @@ restore package quantity or per-user redemption count.
 
 ### `GET /api/staff/users?q=xxxx`
 ```ts
-// Fuzzy search: all-digits → phone suffix match; has-letters → ILIKE on name
+// Phone search: normalized full number/suffix, or explicit local prefix; names retain ILIKE
 // Min 2 chars, max 10 results, sorted by created_at DESC, CUSTOMER role only
 { data: { items: { qr_token: string, name: string, phone_number: string, points_balance: number }[] } }
 

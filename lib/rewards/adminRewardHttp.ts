@@ -34,6 +34,7 @@ export const poolSchema = z.object({
   if (value.items.some((item) => item.unlock_after_draws >= total)) context.addIssue({ code: "custom", message: "Unlock threshold exceeds allocation" });
 }) satisfies z.ZodType<AdminRewardPoolReplaceInput>;
 export const settingsSchema = z.object({
+  points_amount: z.number().int().min(1).max(100).optional(),
   mode: z.enum(["POINTS", "FIXED_VOUCHER", "GACHA"]),
   fixed_package_id: uuid.nullish(), active_campaign_id: uuid.nullish(), revision: z.number().int().min(0),
 }).strict().superRefine((value, context) => {

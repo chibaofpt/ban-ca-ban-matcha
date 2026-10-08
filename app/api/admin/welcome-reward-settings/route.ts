@@ -23,6 +23,7 @@ export async function PUT(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Invalid input", code: "VALIDATION_ERROR" }, { status: 400 });
   try {
     const settings = await updateAdminWelcomeRewardSettings(db, {
+      points_amount: parsed.data.points_amount,
       mode: parsed.data.mode,
       fixed_package_id: parsed.data.fixed_package_id ?? null,
       active_campaign_id: parsed.data.active_campaign_id ?? null,

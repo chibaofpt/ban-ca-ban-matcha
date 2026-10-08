@@ -1,5 +1,6 @@
 "use client";
 
+import type { WelcomeRewardPreview } from "@/contracts/reward";
 import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -23,6 +24,7 @@ const schema = registerFormSchema.pick({ name: true, insta_name: true });
 export type RegisterStepTwoValues = z.infer<typeof schema>;
 
 interface RegisterStepTwoProps {
+  welcomeReward?: WelcomeRewardPreview;
   initialValues?: RegisterStepTwoValues;
   totalSteps?: 2 | 3;
   submitLabel?: string;
@@ -36,7 +38,7 @@ interface RegisterStepTwoProps {
 
 /** Collect display name and optional Instagram alias. */
 export default function RegisterStepTwo({
-  initialValues, totalSteps = 2, submitLabel = "Đăng ký", submitDisabled = false, onValuesChange, onResume,
+  welcomeReward, initialValues, totalSteps = 2, submitLabel = "Đăng ký", submitDisabled = false, onValuesChange, onResume,
   onBack,
   onSubmit,
   onLogin,
@@ -124,7 +126,10 @@ export default function RegisterStepTwo({
           )}
         </label>
         <p className="text-center text-xs text-muted-foreground">
-          Bạn sẽ nhận được <span className="font-semibold text-primary">5 điểm</span> chào mừng.
+          {welcomeReward?.mode === "POINTS" ? <>Nhận <span className="font-semibold text-primary">{welcomeReward.points_amount} điểm cá</span> chào mừng khi đăng ký.</>
+            : welcomeReward?.mode === "FIXED_VOUCHER" ? "Nhận voucher chào mừng khi đăng ký."
+              : welcomeReward?.mode === "GACHA" ? "Đăng ký để chọn hộp quà và nhận voucher ngẫu nhiên."
+                : "Quà chào mừng sẽ được xác nhận khi đăng ký thành công."}
         </p>
         {onResume ? <div className="space-y-2 rounded-xl border p-3 text-sm">
           <p>Nhập lại đúng thông tin đã dùng để gửi mã. Bạn có thể tiếp tục bằng mã đã nhận hoặc gửi mã mới.</p>

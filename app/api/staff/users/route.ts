@@ -1,3 +1,4 @@
+import { isPhoneSearch, normalizeCustomerSearch, normalizePhone, phoneSearchVariants } from "@/src/utils/phone";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import type { CustomerSearchResult } from "@/contracts/staff";
@@ -58,7 +59,6 @@ export async function GET(req: NextRequest) {
 
     if (phone !== undefined) {
       // Legacy exact-match path — kept for backward compat
-      const { normalizePhone } = await import("@/lib/auth");
       const normalized = normalizePhone(phone);
       const user = await prisma.user.findUnique({
         where: { phone_number: normalized },
@@ -72,12 +72,14 @@ export async function GET(req: NextRequest) {
     }
 
     // Fuzzy search path
-    const isDigitsOnly = /^\d+$/.test(q!);
+    const isDigitsOnly = isPhoneSearch(q!);
+    const normalized = normalizeCustomerSearch(q!);
+    const prefixes = phoneSearchVariants(q!).filter((term) => term.startsWith("+84"));
     const users = await prisma.user.findMany({
       where: {
         role: "CUSTOMER",
         ...(isDigitsOnly
-          ? { phone_number: { endsWith: q } }
+          ? { OR: [{ phone_number: { endsWith: normalized } }, ...prefixes.map((term) => ({ phone_number: { startsWith: term } }))] }
           : { name: { contains: q, mode: "insensitive" } }),
       },
       select: { qr_token: true, name: true, phone_number: true, points_balance: true },
