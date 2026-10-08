@@ -36,6 +36,26 @@ API payload thuộc [API.md](../../API.md); không suy quy tắc tính tiền t�
   default inactive khi chỉnh sửa. Select Latte tham chiếu của bột giữ cả món inactive và gắn
   nhãn “Tạm ngưng bán”.
 
+## Fusion powder replacement
+
+Admin tắt bột hoặc Latte neo giá dùng cùng flow. Server trả impact cần cấu hình thì mở
+`ResponsiveOverlay`: bottom sheet mobile, dialog desktop. Sheet mặc định chỉ hiện các bột active
+để chọn chung, không tự chọn sẵn. Tick **Cấu hình riêng từng món** hiện mỗi Fusion một dòng,
+có trạng thái bán và select; bao gồm cả Fusion tạm ngừng. Khi bật cấu hình riêng, điền lựa chọn
+chung hiện có vào các dòng. Khi quay về chọn chung, chỉ gửi lựa chọn chung nhưng giữ bản nháp
+riêng trong phiên sheet.
+
+Không đổi trạng thái optimistic. Xác nhận chỉ khả dụng khi đủ lựa chọn; không có bột phù hợp
+thì không cho tắt. Hủy/swipe/back không ghi dữ liệu. Lỗi stale giữ lựa chọn còn hợp lệ và đánh
+dấu dòng cần chọn lại. Lưu thành công mới đóng sheet, hiện toast và refresh menu/bột/voucher.
+Luồng lưu form giữ nguyên bản nháp đang chờ trong lúc chọn thay thế.
+
+Editor Fusion bắt buộc chọn bột gốc, bỏ option/hint tự fallback và hiện lỗi inline nếu thiếu.
+Món đang thay thế hiển thị riêng bột gốc và bột đang phục vụ. Menu khách/POS chọn sẵn bột đang
+phục vụ; giá và chênh lệch swap dùng canonical [pricing-logic](../../.agents/skills/pricing-logic/SKILL.md).
+Không đưa Latte inactive trở lại menu để tính giá; consume dữ liệu neo riêng từ
+[API](../../API.md#get-apimenu).
+
 ## Ảnh hiển thị và pipeline
 
 - Ảnh catalog đi qua Storage adapter: menu/powder chuẩn hóa WebP tối đa 800px quality 75; milk type, addon group và từng addon option tối đa 320px quality 70, cùng cache một năm. Addon option chỉ hiển thị ảnh riêng; khi không có ảnh riêng thì để trống, không fallback ảnh group. Ảnh Supabase hiển thị qua Next/Vercel Image Optimization với `sizes` theo container; thumbnail sữa/add-on/powder dùng quality 60 và ảnh powder lớn chỉ tải khi mở chi tiết. Menu card giữ khung skeleton ổn định và fade ảnh vào sau khi tải xong.

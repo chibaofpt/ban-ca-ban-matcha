@@ -102,6 +102,7 @@ function EditModalOverlay({ menuItems, menuData, allVouchers, projectedItems, wa
       key="edit-modal"
       item={menuItem}
       latteItems={menuData.latte}
+      lattePriceAnchors={menuData.latte_price_anchors}
       milkTypes={menuData.milk_types}
       addonGroups={menuData.addon_groups}
       editingItem={projectedEditingItem}
@@ -230,7 +231,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
       const referencePrice = voucher.product_discount_mode === "PAY_AS_SIZE" && voucher.reference_size
         ? computeVoucherItemPrice(menuItem, voucher.reference_size, item.configuration.powderId ?? null,
             item.configuration.baseLiquidId ?? null, [], powderData.data,
-            powderData.default_powder_gram, menuData.latte, menuData.milk_types, menuData.addon_groups).drinkPrice
+            powderData.default_powder_gram, menuData.latte_price_anchors, menuData.milk_types, menuData.addon_groups).drinkPrice
         : null;
       benefit = computeProductDiscountBenefit(voucher, item.drinkPriceVnd, referencePrice);
     }

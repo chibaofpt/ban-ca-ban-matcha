@@ -27,6 +27,7 @@ describe("Validation cấu hình Base Liquid", () => {
     const result = createFusionMenuSchema.safeParse({
       category: "fusion",
       name: "Fusion A",
+      default_powder_id: uuid,
       sizes,
     });
     expect(result.success).toBe(false);
@@ -36,6 +37,7 @@ describe("Validation cấu hình Base Liquid", () => {
     const result = createFusionMenuSchema.safeParse({
       category: "fusion",
       name: "Fusion A",
+      default_powder_id: uuid,
       sizes,
       default_base_liquid_id: uuid,
       allowed_base_liquid_ids: [uuid],

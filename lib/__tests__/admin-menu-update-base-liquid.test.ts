@@ -9,6 +9,7 @@ const mockMenuItemUpdate = vi.fn();
 const mockMenuItemFindUniqueOrThrow = vi.fn();
 const mockAllowedBaseLiquidDeleteMany = vi.fn();
 const mockAllowedBaseLiquidCreateMany = vi.fn();
+const mockPowders = vi.fn().mockResolvedValue([{ id: "55555555-5555-4555-8555-555555555555", is_available: true }]);
 
 const transactionClient = {
   menuItem: {
@@ -25,6 +26,7 @@ const transactionClient = {
     createMany: vi.fn(),
   },
   matchaPowder: {
+    findMany: (...args: unknown[]) => mockPowders(...args),
     findFirst: vi.fn(),
     update: vi.fn(),
   },
@@ -35,6 +37,7 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     menuItem: { findUnique: (...args: unknown[]) => mockMenuItemFindUnique(...args) },
     voucher: { count: vi.fn() },
+    matchaPowder: { findMany: (...args: unknown[]) => mockPowders(...args) },
     milkType: { findMany: (...args: unknown[]) => mockMilkTypeFindMany(...args) },
     defaultSizeConfig: {
       findMany: (...args: unknown[]) => mockDefaultSizeConfigFindMany(...args),
@@ -83,11 +86,13 @@ describe("PUT /api/admin/menu/[id] - Base Liquid inactive", () => {
       unit_price_vnd: null,
       default_base_liquid_id: INACTIVE_DEFAULT_ID,
       matcha_powder_id: null,
+      default_powder_id: "55555555-5555-4555-8555-555555555555", replacement_powder_id: null,
       is_available: true,
     });
     mockDefaultSizeConfigFindMany.mockResolvedValue([]);
     mockMenuItemUpdate.mockResolvedValue({ id: MENU_ITEM_ID });
-    mockMenuItemFindUniqueOrThrow.mockResolvedValue({ id: MENU_ITEM_ID, sizes: [] });
+    mockMenuItemFindUniqueOrThrow.mockResolvedValue({ id: MENU_ITEM_ID, sizes: [], category: "fusion",
+      default_powder_id: "55555555-5555-4555-8555-555555555555", replacement_powder_id: null });
     mockAllowedBaseLiquidDeleteMany.mockResolvedValue({ count: 0 });
     mockAllowedBaseLiquidCreateMany.mockResolvedValue({ count: 1 });
     mockTransaction.mockImplementation(

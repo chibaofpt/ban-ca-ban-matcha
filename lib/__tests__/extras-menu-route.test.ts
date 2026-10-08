@@ -38,7 +38,7 @@ describe("GET /api/menu — nhóm extras", () => {
         id: "extra-dessert-1",
         name: "Bánh matcha",
         description: "Dessert dùng riêng",
-        category: "extras",
+        category: "extras", is_available: true, replacement_powder_id: null,
         unit_price_vnd: 26_000,
         is_seasonal: false,
         image_url: null,
@@ -74,7 +74,7 @@ describe("GET /api/menu — nhóm extras", () => {
     expect(body.data.extras).toEqual([
       expect.objectContaining({
         id: "extra-dessert-1",
-        category: "extras",
+        category: "extras", replacement_powder_id: null,
         unit_price_vnd: 26_000,
         sizes: [],
       }),

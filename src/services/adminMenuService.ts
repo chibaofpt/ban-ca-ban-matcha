@@ -6,6 +6,7 @@ import type {
   CreateLatteWithPowderResponse,
   MenuReorderPayload,
   MenuReorderResult,
+  FusionPowderReplacement,
 } from "@/contracts/admin/catalog";
 import type { ApiError, ApiResponse } from "@/contracts/api";
 import { ApiServiceError } from "@/src/lib/api/serviceError";
@@ -13,6 +14,14 @@ import { ApiServiceError } from "@/src/lib/api/serviceError";
 export type { AdminMenuData, CreateLatteWithPowderResponse } from "@/contracts/admin/catalog";
 
 // ── URL map ──────────────────────────────────────────────────────────────────
+
+function preserveApiError(error: unknown): never {
+  if (axios.isAxiosError<ApiError>(error) && error.response?.data?.error) {
+    const body = error.response.data;
+    throw new ApiServiceError(body.error, error.response.status, body.code, body.details);
+  }
+  throw error;
+}
 
 const URL = {
   list: "/api/admin/menu",
@@ -66,20 +75,21 @@ export async function updateMenuItem(id: string, fd: FormData): Promise<AdminMen
     const res = await apiClient.put<ApiResponse<AdminMenuItem>>(URL.byId(id), fd);
     return res.data.data;
   } catch (error: unknown) {
-    if (axios.isAxiosError(error) && error.response?.data) {
-      console.error("API Error Response Data:", error.response.data);
-    }
-    throw error;
+    preserveApiError(error);
   }
 }
 
 /** Toggle is_available — PUT /api/admin/menu/[id] (JSON, not FormData). */
 export async function toggleMenuItemAvailability(
   id: string,
-  is_available: boolean
+  is_available: boolean,
+  replacements?: FusionPowderReplacement[],
 ): Promise<AdminMenuItem> {
-  const res = await apiClient.put<ApiResponse<AdminMenuItem>>(URL.byId(id), { is_available });
-  return res.data.data;
+  try {
+    const payload = { is_available, ...(replacements ? { fusion_powder_replacements: replacements } : {}) };
+    const res = await apiClient.put<ApiResponse<AdminMenuItem>>(URL.byId(id), payload);
+    return res.data.data;
+  } catch (error: unknown) { preserveApiError(error); }
 }
 
 /** Persist a complete menu ordering snapshot and return the canonical ranks. */

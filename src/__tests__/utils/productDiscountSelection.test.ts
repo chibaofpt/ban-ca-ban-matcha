@@ -19,7 +19,7 @@ const item = (id: string, sizes: MenuItem["sizes"]): MenuItem => ({
   base_liquid_note: null,
   custom_powder_grams: null,
   powder: null,
-  resolved_default_powder_id: null,
+  default_powder_id: null, replacement_powder_id: null, resolved_default_powder_id: null,
   allowed_powder_ids: [],
   sizes,
 });

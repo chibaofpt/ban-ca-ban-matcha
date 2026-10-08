@@ -11,8 +11,10 @@
 - Keep `covered_price_vnd` fixed from voucher issuance; never recompute an issued voucher.
 - Use-now must resolve the voucher's saved powder and Base Liquid against the item's current
   default and allow-lists, store the resolved selection in cart, and include the normal Latte
-  cost/Fusion delta. A fallback changes only the initial configuration; it never changes the issued
-  target's immutable `covered_price_vnd`.
+  cost/Fusion delta. When an old powder is no longer valid, use only the item's current explicit
+  serving default from [pricing-logic](../../pricing-logic/SKILL.md#powder-rules), never a name/cost
+  priority. This changes only the initial configuration, never the issued target's immutable
+  `covered_price_vnd`; existing cart selections require explicit re-selection when invalid.
 - Limit PRODUCT credit to `drink_price_vnd`. Never spill unused credit into addons.
 
 ```text

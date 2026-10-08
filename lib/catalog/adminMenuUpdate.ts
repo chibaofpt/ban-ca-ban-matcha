@@ -65,7 +65,7 @@ export function menuPowderForeignKeyError(error: unknown, category: string, data
 export function isAvailabilityOnlyMenuUpdate(raw: unknown): boolean {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
   const keys = Object.keys(raw);
-  return keys.length === 1 && keys[0] === "is_available";
+  return keys.includes("is_available") && keys.every((key) => key === "is_available" || key === "fusion_powder_replacements");
 }
 
 /** Build an upsert update without clearing an omitted Base Liquid volume override. */
@@ -129,4 +129,33 @@ export async function validateUniqueLattePowder(input: {
     },
     { status: 400 },
   );
+}
+
+/** Require a configured original; an intentional change may select only a currently active powder. */
+export async function validateFusionOriginalPowder(
+  effectivePowderId: string | null,
+  currentPowderId: string | null,
+  client: Pick<Prisma.TransactionClient, "matchaPowder"> = prisma,
+  replacementPowderId: string | null = null,
+): Promise<void> {
+  if (!effectivePowderId) throw new FusionOriginalPowderError("Vui lòng chọn bột gốc cho món Fusion");
+  const isChangingOriginal = effectivePowderId !== currentPowderId;
+  const ids = [effectivePowderId, ...(!isChangingOriginal && replacementPowderId ? [replacementPowderId] : [])];
+  const powders = await client.matchaPowder.findMany({
+    where: { id: { in: ids } }, select: { id: true, is_available: true },
+  });
+  if (powders.some((powder) => powder.id === effectivePowderId && powder.is_available)) return;
+  if (!isChangingOriginal && replacementPowderId &&
+    powders.some((powder) => powder.id === replacementPowderId && powder.is_available)) return;
+  throw new FusionOriginalPowderError(isChangingOriginal ? "Bột gốc mới phải đang bán" : "Fusion cần bột gốc hoặc bột thay thế đang bán");
+}
+
+/** Caller-visible configuration failure for an absent or inactive newly selected Fusion original. */
+export class FusionOriginalPowderError extends Error {}
+
+/** Map the Fusion original validation error without hiding unrelated persistence failures. */
+export function fusionOriginalPowderErrorResponse(error: unknown): NextResponse | null {
+  return error instanceof FusionOriginalPowderError
+    ? NextResponse.json({ error: error.message, code: "BUSINESS_RULE_VIOLATION" }, { status: 422 })
+    : null;
 }

@@ -17,6 +17,7 @@ import { usePowderStore } from "@/src/lib/store/powderStore";
 import {
   calcLattePrice,
   calcFusionPrice,
+  calcPremiumLatte,
   resolveGram,
 } from "@/src/utils/pricing";
 import {
@@ -191,7 +192,7 @@ export default function StaffOrdersPage({
           base_price_vnd: base,
           gram,
           powder_price_per_gram: pwdPrice,
-          premium_latte: 0,
+          premium_latte: calcPremiumLatte(defaultPowderId ?? "", item.default_powder_id, s, menuData?.latte_price_anchors ?? {}),
         });
       }
     },
@@ -541,7 +542,7 @@ export default function StaffOrdersPage({
           [],
           pData.data,
           pData.default_powder_gram,
-          menuData.latte,
+          menuData.latte_price_anchors,
           menuData.milk_types,
           menuData.addon_groups,
         ).drinkPrice
@@ -1395,6 +1396,7 @@ export default function StaffOrdersPage({
               key="staff-edit-modal"
               item={selectedItem}
               latteItems={menuData?.latte ?? []}
+              lattePriceAnchors={menuData?.latte_price_anchors ?? {}}
               milkTypes={menuData?.milk_types ?? []}
               addonGroups={menuData?.addon_groups ?? []}
               editingItem={editingCartItem || undefined}
@@ -1437,6 +1439,7 @@ export default function StaffOrdersPage({
           key="staff-add-modal"
           item={selectedItem}
           latteItems={menuData?.latte ?? []}
+          lattePriceAnchors={menuData?.latte_price_anchors ?? {}}
           milkTypes={menuData?.milk_types ?? []}
           addonGroups={menuData?.addon_groups ?? []}
           freeVoucherId={scannedProductVoucher?.qr_token}

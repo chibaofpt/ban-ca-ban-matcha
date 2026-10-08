@@ -1,4 +1,5 @@
 "use client";
+import type { LattePriceAnchors } from "@/contracts/menu";
 
 import React, { useCallback, useState } from 'react';
 import Image from 'next/image';
@@ -7,7 +8,7 @@ import { motion } from 'framer-motion';
 import type { MenuItem, MilkTypeOption, Size } from '@/src/lib/types/menu';
 import { usePowderStore } from '@/src/lib/store/powderStore';
 import { useCartStore } from '@/src/lib/store/cartStore';
-import { calcLattePrice, calcFusionPrice, resolveGram } from '@/src/utils/pricing';
+import { calcLattePrice, calcFusionPrice, calcPremiumLatte, resolveGram } from '@/src/utils/pricing';
 import { formatKa } from "@/src/utils/display";
 import { CartQuantityButton } from "@/src/components/menu/CartQuantityButton";
 import { SizeLabel } from "@/src/components/ui/SizeLabel";
@@ -15,6 +16,7 @@ import { SizeLabel } from "@/src/components/ui/SizeLabel";
 interface MenuCardProps {
   item: MenuItem;
   milkTypes: MilkTypeOption[];
+  lattePriceAnchors: LattePriceAnchors;
   /** Total quantity of this menu item across all cart variants. */
   cartQuantity?: number;
   /** Number of distinct cart entries (variants) for this item. */
@@ -36,6 +38,7 @@ interface MenuCardProps {
 const MenuCard: React.FC<MenuCardProps> = ({
   item,
   milkTypes,
+  lattePriceAnchors,
   cartQuantity = 0,
   cartVariantCount = 0,
   cartHasVoucher = false,
@@ -79,7 +82,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
         base_price_vnd: base,
         gram,
         powder_price_per_gram: pwdPrice,
-        premium_latte: 0
+        premium_latte: calcPremiumLatte(defaultPowderId ?? "", item.default_powder_id, s, lattePriceAnchors)
       });
     }
   };

@@ -107,6 +107,7 @@ export default function MenuVoucherTabs({
                     key={item.id}
                     item={item}
                     milkTypes={menuData?.milk_types ?? []}
+                    lattePriceAnchors={menuData?.latte_price_anchors ?? {}}
                     cartQuantity={0}
                     cartVariantCount={0}
                     cartHasVoucher={false}

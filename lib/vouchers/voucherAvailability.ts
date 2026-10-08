@@ -30,6 +30,7 @@ export interface VoucherAvailabilityCatalog {
     unit_price_vnd: number | null;
     matcha_powder_id: string | null;
     default_powder_id: string | null;
+    replacement_powder_id?: string | null;
     default_base_liquid_id: string | null;
     allowed_powder_ids: string[];
     allowed_base_liquid_ids: string[];
@@ -77,7 +78,8 @@ function filterProductScope(
       return { scope: null, configurationMissing: true };
     }
   } else if (item.category === "fusion") {
-    const currentDefaultPowderId = resolveFusionDefaultPowderId(item.default_powder_id, catalog.powders);
+    const currentDefaultPowderId = resolveFusionDefaultPowderId(item.default_powder_id, catalog.powders, item.replacement_powder_id);
+    if (!currentDefaultPowderId) return { scope: null, configurationMissing: true };
     const compatiblePowderIds = new Set([
       ...(currentDefaultPowderId ? [currentDefaultPowderId] : []),
       ...item.allowed_powder_ids,
@@ -86,7 +88,8 @@ function filterProductScope(
     const preferredPowderId = scope.default_powder_id && compatiblePowderIds.has(scope.default_powder_id)
       ? scope.default_powder_id
       : currentDefaultPowderId;
-    powderId = resolveFusionDefaultPowderId(preferredPowderId, compatiblePowders);
+    powderId = compatiblePowders.some((powder) => powder.id === preferredPowderId && powder.is_available)
+      ? preferredPowderId : currentDefaultPowderId;
     if (!powderId) return { scope: null, configurationMissing: true };
   } else {
     return { scope: null, configurationMissing: false };

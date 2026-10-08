@@ -35,9 +35,15 @@ ceil(
 
 ### Premium_Latte
 ```
-Premium_Latte[size] = BaseLatte[selected_powder][size] − BaseLatte[default_powder][size]
+Premium_Latte[size] = BaseLatte[selected_powder][size] − BaseLatte[original_powder][size]
 ```
 - Looked up via `matcha_powder.reference_latte_item_id` → the Latte item that anchors this powder's price.
+- The original powder is `menu_items.default_powder_id`; it remains the pricing anchor while inactive.
+  A selected replacement is a serving default, not a new price anchor: it still contributes its premium
+  versus the original. Read the current Latte base prices, including inactive anchors; never freeze them
+  at the time of replacement. `calcPremiumLatte` is the shared premium calculation.
+- Powder swap display is the difference between the two rounded drink prices at the same size and
+  Base Liquid, relative to the current serving default. Extra Matcha uses the selected powder separately.
 - If `reference_latte_item_id IS NULL` → `Premium_Latte = 0` (safe fallback, favors customer).
 - Resolve all pricing data needed by the order before the item loop; do not fetch pricing inputs per item.
 - Preload all referenced Latte item sizes upfront to avoid N+1.
@@ -75,6 +81,9 @@ addons_price_vnd = sum(addon unit price × quantity)
 - BUNDLE reference prices are never admin-entered. Resolve stored default powder/Base Liquid
   snapshots through this canonical calculator at checkout; exclude addons and charge only the
   positive difference between actual reward drink price and baseline.
+  Live availability may select an explicit serving replacement for the returned rule, but baseline
+  pricing must still receive the persisted configuration snapshot. A Fusion baseline powder uses
+  its premium versus the Fusion original; availability projection never rewrites that price input.
 - Preserve gross prices as order snapshots and store reductions separately.
 - Let one shared order calculator consume resolved drink/addon prices for both customer and
   staff orders. Do not repeat voucher arithmetic in cart state or API routes.
@@ -133,7 +142,28 @@ For each item + size, resolve grams in this order:
 
 - **Latte**: fixed powder via `menu_item.matcha_powder_id`. Server auto-resolves `selected_powder_id` — client never sends it.
 - **Fusion**: client sends `selected_powder_id`. Server validates: must be either `resolved_default_powder_id` OR exist in `fusion_allowed_powder` for that item. Default powder always accepted regardless of allowed list.
-- **Fusion `default_powder_id = NULL` fallback**: server resolves while producing menu data — Meyumi → Hana → MH-3 → cheapest available `price_per_gram`. The resolved default is never null; response naming belongs to [API.md](../../../API.md).
+- **Fusion original powder**: `default_powder_id` is required for creation and the merged state after
+  an edit. It cannot be cleared. A new original selection must be active; an unchanged inactive original
+  remains valid when an active replacement is configured. Changing the original clears its replacement.
+- Enabling a Fusion requires its original and active serving default to resolve, including
+  availability-only updates. Reject an invalid configuration before writes and recheck in the
+  transaction; disabling an invalid Fusion remains permitted for maintenance.
+- **Fusion serving default**: use the active original, otherwise the explicitly configured active
+  `replacement_powder_id`. Missing original or unavailable replacement makes the configuration
+  unavailable; never select another powder by name, cost, or allow-list order.
+- **Availability transition**: disabling a powder or its anchored Latte requires explicit replacements
+  for all Fusion items whose original or replacement is that powder, including inactive Fusion items.
+  Candidates may be any other active powder. Missing, duplicate, extra, self or inactive selections
+  reject before writes. Persist the pair availability and replacements in one transaction.
+- A full powder edit that changes its Latte anchor synchronizes only the resulting reference.
+  The detached Latte retains its sale status. An omitted availability preserves the powder status;
+  validate required replacements before any configuration write in the transaction.
+- Enabling either side enables the pair and clears replacements only on Fusion items whose original
+  is that powder. Preserve every Fusion item's sale status. Successive replacements keep one direct
+  reference and the original anchor; enabling an intermediate replacement never resets another root.
+- The serving default is implicitly orderable during its replacement lifetime without changing the
+  permanent `fusion_allowed_powder` list. Existing cart selections must remain active and be either
+  the current serving default or permanently allowed; require re-selection otherwise.
 - Public `allowed_powder_ids` only includes powders with `is_available = true`. Admin responses
   preserve every configured powder ID, including inactive powders; Admin edits require the row
   to exist but do not require it to be available.

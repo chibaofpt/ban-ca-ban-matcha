@@ -22,7 +22,7 @@ export async function resolveProductVoucherDiscount(
   productVoucherMap: Map<string, ProductVoucherInfo> | undefined,
   menuItem: VoucherMenuItem,
   server_unit_price: number,
-  effectiveFusionDefaultPowderId: string | null,
+  originalFusionPowderId: string | null,
   powder_id: string,
   resolvedBaseLiquidId: string | null,
   resolvedDefaultBaseLiquidId: string | null,
@@ -52,8 +52,8 @@ export async function resolveProductVoucherDiscount(
           if (!referenceRow || referenceRow.base_price_vnd === null) {
             throw new OrderValidationError("BUSINESS_RULE_VIOLATION", "Product discount reference size is unavailable");
           }
-          const referencePremium = menuItem.category === "fusion" && effectiveFusionDefaultPowderId && powder_id !== effectiveFusionDefaultPowderId
-            ? await resolveOrderItemPremiumLatte(powder_id, effectiveFusionDefaultPowderId, pvInfo.reference_size, client as Parameters<typeof resolveOrderItemPremiumLatte>[3], pricingCtx)
+          const referencePremium = menuItem.category === "fusion" && originalFusionPowderId
+            ? await resolveOrderItemPremiumLatte(powder_id, originalFusionPowderId, pvInfo.reference_size, client as Parameters<typeof resolveOrderItemPremiumLatte>[3], pricingCtx)
             : 0;
           const referencePrice = resolveOrderItemPrice({
             category: menuItem.category as "latte" | "fusion",

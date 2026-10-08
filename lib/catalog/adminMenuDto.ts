@@ -1,11 +1,13 @@
 import type { Prisma } from "@prisma/client";
 import type { AdminMenuItem } from "@/contracts/admin/catalog";
+import { resolveFusionDefaultPowderId } from "@/src/utils/menuConfiguration";
 
 /** Shared Prisma relations required by admin menu responses. */
 export const ADMIN_MENU_INCLUDE = {
   sizes: { orderBy: { size: "asc" as const } },
   matchaPowder: { select: { id: true, name: true, type: true } },
-  defaultPowder: { select: { id: true, name: true, type: true } },
+  defaultPowder: { select: { id: true, name: true, type: true, is_available: true } },
+  replacementPowder: { select: { id: true, name: true, type: true, is_available: true } },
   fusionAllowedPowders: {
     include: {
       matchaPowder: { select: { id: true, is_available: true } },
@@ -47,6 +49,11 @@ export function formatAdminMenuItem(
     powder: item.matchaPowder ?? null,
     default_powder_id: item.default_powder_id ?? null,
     default_powder: item.defaultPowder ?? null,
+    replacement_powder_id: item.replacement_powder_id ?? null,
+    resolved_default_powder_id: item.category === "fusion"
+      ? resolveFusionDefaultPowderId(item.default_powder_id, [item.defaultPowder, item.replacementPowder]
+          .filter((powder) => powder != null).map((powder) => ({ ...powder, price_per_gram: 0 })), item.replacement_powder_id)
+      : null,
     allowed_powder_ids: item.fusionAllowedPowders.map((entry) => entry.powder_id),
     default_base_liquid_id: item.default_base_liquid_id ?? null,
     allowed_base_liquid_ids: item.allowedBaseLiquids.map(

@@ -59,6 +59,8 @@ export type MenuItemFormValues = FormFields;
 interface MenuItemFormProps {
   mode: "create" | "edit";
   defaultValues?: Partial<FormFields>;
+  replacementPowderId?: string | null;
+  resolvedPowderId?: string | null;
   powders: Powder[];
   baseLiquids: MilkTypeOption[];
   defaultSizeConfig: Array<{ size: Size; base_liquid_ml: number }>;
@@ -114,6 +116,8 @@ export function buildDefaultValues(item: AdminMenuItem): MenuItemFormValues {
 export default function MenuItemForm({
   mode,
   defaultValues,
+  replacementPowderId,
+  resolvedPowderId,
   powders,
   baseLiquids,
   defaultSizeConfig,
@@ -281,6 +285,11 @@ export default function MenuItemForm({
     } else {
       clearErrors("default_base_liquid_id");
     }
+
+    if (values.category === "fusion" && !values.default_powder_id) {
+      setError("default_powder_id", { message: "Vui lòng chọn bột gốc cho món Fusion." });
+      hasError = true;
+    } else clearErrors("default_powder_id");
 
     if (hasError) return;
 
@@ -613,19 +622,22 @@ export default function MenuItemForm({
           {category === "fusion" && (
             <div className="space-y-5">
               <div>
-                <label className={labelClass}>Bột mặc định</label>
+                <label className={labelClass}>Bột gốc (mốc tính giá)</label>
                 <select {...register("default_powder_id")} className={inputClass}>
-                  <option value="">— Tự động (Meyumi → Hana → MH-3 → rẻ nhất) —</option>
-                  {sortedPowders.map((p) => (
+                  <option value="">— Chọn bột gốc —</option>
+                  {sortedPowders.filter((powder) => powder.is_available || powder.id === defaultValues?.default_powder_id).map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name} {p.type !== "NONE" ? `(${p.type})` : ""} {!p.is_available ? "(Ngưng bán)" : ""}
                     </option>
                   ))}
                 </select>
-                <p className="text-[11px] text-muted-foreground mt-1.5 flex items-center gap-1">
-                  <span className="w-1 h-1 rounded-full bg-primary/60"></span>
-                  Hệ thống tự fallback nếu để trống.
-                </p>
+                {errors.default_powder_id && <p className={errorClass}>{errors.default_powder_id.message}</p>}
+                {mode === "edit" && defaultPowderId === defaultValues?.default_powder_id && (
+                  <p className="mt-2 text-xs text-muted-foreground">Bột đang dùng: {powders.find((powder) => powder.id === resolvedPowderId)?.name ?? "Chưa có bột đang bán"}</p>
+                )}
+                {replacementPowderId && defaultPowderId === defaultValues?.default_powder_id && (
+                  <p className="mt-2 text-xs text-muted-foreground">Bột thay thế đã cấu hình: {powders.find((powder) => powder.id === replacementPowderId)?.name ?? "Không còn khả dụng"}</p>
+                )}
               </div>
 
               <div>

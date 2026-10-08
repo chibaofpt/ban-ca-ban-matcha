@@ -11,24 +11,18 @@ interface BaseLiquidConfigurationOption {
   display_order: number;
 }
 
-const FUSION_POWDER_FALLBACK_NAMES = ["Meyumi", "Hana", "MH-3"] as const;
-
-/** Resolve a Fusion powder deterministically from current active catalog data. */
+/** Resolve only the original Fusion powder or its explicit admin-selected replacement. */
 export function resolveFusionDefaultPowderId(
   configuredPowderId: string | null,
   powders: PowderConfigurationOption[],
+  replacementPowderId: string | null = null,
 ): string | null {
+  if (!configuredPowderId) return null;
   const active = powders.filter((powder) => powder.is_available);
-  if (configuredPowderId && active.some((powder) => powder.id === configuredPowderId)) {
-    return configuredPowderId;
-  }
-  for (const name of FUSION_POWDER_FALLBACK_NAMES) {
-    const preferred = active.find((powder) => powder.name.trim().toLocaleLowerCase("vi") === name.toLocaleLowerCase("vi"));
-    if (preferred) return preferred.id;
-  }
-  return [...active].sort((left, right) =>
-    left.price_per_gram - right.price_per_gram || left.id.localeCompare(right.id),
-  )[0]?.id ?? null;
+  if (active.some((powder) => powder.id === configuredPowderId)) return configuredPowderId;
+  return replacementPowderId && active.some((powder) => powder.id === replacementPowderId)
+    ? replacementPowderId
+    : null;
 }
 
 /** Resolve an active Base Liquid inside the item's current compatible allow-list. */

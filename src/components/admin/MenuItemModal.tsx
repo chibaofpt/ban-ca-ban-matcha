@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { X } from "lucide-react";
-import axios from "axios";
 import MenuItemForm, { buildDefaultValues } from "@/src/components/admin/MenuItemForm";
 import { createMenuItem, updateMenuItem } from "@/src/services/adminMenuService";
 import { createLatteWithPowder } from "@/src/services/adminMenuService";
@@ -11,6 +10,10 @@ import type { Powder } from "@/src/lib/types/powder";
 import MenuImageSeoField from "@/src/components/admin/MenuImageSeoField";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
+
+import { useFusionPowderReplacement } from "@/src/hooks/useFusionPowderReplacement";
+import { FusionPowderReplacementSheet } from "@/src/components/admin/FusionPowderReplacementSheet";
+import { ApiServiceError } from "@/src/lib/api/serviceError";
 
 interface MenuItemModalProps {
   mode: "create" | "edit";
@@ -43,6 +46,7 @@ export default function MenuItemModal({
   onClose,
   onSuccess,
 }: MenuItemModalProps) {
+  const replacement = useFusionPowderReplacement();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [pendingPriceChange, setPendingPriceChange] = useState<PendingPriceChange | null>(null);
@@ -69,7 +73,13 @@ export default function MenuItemModal({
       let createdPowderName: string | undefined = undefined;
 
       if (mode === "edit" && item) {
-        saved = await updateMenuItem(item.id, fd);
+        await replacement.run(async (mappings) => {
+          if (mappings) fd.set("fusion_powder_replacements", JSON.stringify(mappings));
+          const result = await updateMenuItem(item.id, fd);
+          onSuccess(result);
+          onClose();
+        });
+        return;
       } else {
         if (fd.get("new_powder_name")) {
           const res = await createLatteWithPowder(fd);
@@ -82,14 +92,16 @@ export default function MenuItemModal({
       onSuccess(saved, createdPowderName);
       onClose();
     } catch (err: unknown) {
+      const conflict = err instanceof ApiServiceError
+        ? { status: err.status, code: err.code, details: err.details as { reason?: string; count?: number; old_unit_price_vnd?: number; new_unit_price_vnd?: number } | undefined }
+        : null;
       if (
         mode === "edit" &&
-        axios.isAxiosError(err) &&
-        err.response?.status === 409 &&
-        err.response.data?.code === "CONFLICT" &&
-        err.response.data?.details?.reason === "ACTIVE_ITEM_VOUCHERS"
+        conflict?.status === 409 &&
+        conflict.code === "CONFLICT" &&
+        conflict.details?.reason === "ACTIVE_ITEM_VOUCHERS"
       ) {
-        const details = err.response.data.details as {
+        const details = conflict.details as {
           count?: number;
           old_unit_price_vnd?: number;
           new_unit_price_vnd?: number;
@@ -122,7 +134,7 @@ export default function MenuItemModal({
         title={title}
         description={description}
         presentation="bare"
-        busy={isSubmitting}
+        busy={isSubmitting || replacement.pending !== null}
         dismissPolicy="locked-while-busy"
         className="md:max-w-2xl"
         onOpenChange={(open) => { if (!open) onClose(); }}
@@ -138,7 +150,7 @@ export default function MenuItemModal({
             <button
               type="button"
               onClick={onClose}
-              disabled={isSubmitting}
+              disabled={isSubmitting || replacement.pending !== null}
               aria-label="Đóng"
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-50"
             >
@@ -157,22 +169,25 @@ export default function MenuItemModal({
               currentImageUrl={item?.image_url}
               value={imageFilename}
               onChange={setImageFilename}
-              disabled={isSubmitting}
+              disabled={isSubmitting || replacement.pending !== null}
             />
 
             <MenuItemForm
               mode={mode}
               defaultValues={item ? buildDefaultValues(item) : undefined}
+              replacementPowderId={item?.replacement_powder_id}
+              resolvedPowderId={item?.resolved_default_powder_id}
               powders={powders}
               baseLiquids={baseLiquids}
               defaultSizeConfig={defaultSizeConfig}
               onSubmit={handleSubmit}
-              isSubmitting={isSubmitting}
+              isSubmitting={isSubmitting || replacement.busy || replacement.pending !== null}
               onCancel={onClose}
             />
           </div>
         </div>
       </ResponsiveOverlay>
+      {replacement.pending && <FusionPowderReplacementSheet details={replacement.pending.details} busy={replacement.busy} error={replacement.error} onConfirm={replacement.confirm} onCancel={replacement.cancel} />}
       <ConfirmModal
         isOpen={pendingPriceChange !== null}
         title="Xác nhận đổi giá Add-on?"

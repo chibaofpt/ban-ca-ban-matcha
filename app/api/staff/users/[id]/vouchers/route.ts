@@ -94,7 +94,7 @@ export async function GET(
 
     const catalog = await loadVoucherAvailabilityCatalog(prisma as unknown as VoucherAvailabilityDatabase);
     const withAvailability = attachOwnedVoucherAvailability(vouchers, catalog);
-    const withBaselines = await attachBundleRewardBaselines(prisma, withAvailability);
+    const withBaselines = await attachBundleRewardBaselines(prisma, withAvailability, vouchers);
     return NextResponse.json({
       data: withBaselines.map((voucher) => serializePublicVoucherDto(toPublicVoucherDto(voucher))),
     });

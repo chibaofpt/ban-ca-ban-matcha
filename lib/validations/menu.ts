@@ -62,7 +62,7 @@ export const createLatteMenuSchema = baseMenuSchema.extend({
 export const createFusionMenuSchema = baseMenuSchema.extend({
   category: z.literal("fusion"),
   sizes: sizesSchema,
-  default_powder_id: z.string().uuid("default_powder_id phải là UUID hợp lệ").optional().nullable(),
+  default_powder_id: z.string().uuid("Vui lòng chọn bột gốc hợp lệ"),
   default_base_liquid_id: z.string().uuid("Vui lòng chọn Base Liquid mặc định"),
   allowed_base_liquid_ids: z.array(z.string().uuid()).default([]),
   base_liquid_note: z.string().max(200).optional().nullable(),
@@ -82,11 +82,19 @@ export const createMenuSchema = z.discriminatedUnion("category", [
   createExtrasMenuSchema,
 ]);
 
+
+/** Explicit per-Fusion choices for a powder availability transition. */
+export const fusionPowderReplacementsSchema = z.array(z.object({
+  menu_item_id: z.string().uuid(),
+  replacement_powder_id: z.string().uuid(),
+})).optional();
+
 /**
  * Update schema — all fields optional. category still required to discriminate.
  * Build as a separate object rather than unwrapping the discriminated union.
  */
 export const updateMenuSchema = z.object({
+  fusion_powder_replacements: fusionPowderReplacementsSchema,
   category: z.enum(["latte", "fusion", "extras"]).optional(),
   name: z.string().min(1).optional(),
   description: z.string().optional().nullable(),

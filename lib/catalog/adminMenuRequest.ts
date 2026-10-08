@@ -66,10 +66,7 @@ export async function parseAdminMenuUpdate(
       typeof powderId === "string" && powderId.length > 0
         ? powderId
         : undefined,
-    default_powder_id:
-      typeof defaultPowderId === "string" && defaultPowderId.length > 0
-        ? defaultPowderId
-        : undefined,
+    default_powder_id: typeof defaultPowderId === "string" ? (defaultPowderId || null) : undefined,
     default_base_liquid_id:
       typeof defaultBaseLiquidId === "string" && defaultBaseLiquidId.length > 0
         ? defaultBaseLiquidId
@@ -78,7 +75,7 @@ export async function parseAdminMenuUpdate(
     image_filename: formData.get("image_filename") || undefined,
   };
 
-  for (const field of ["sizes", "custom_powder_grams", "allowed_powder_ids", "allowed_base_liquid_ids"]) {
+  for (const field of ["sizes", "custom_powder_grams", "allowed_powder_ids", "allowed_base_liquid_ids", "fusion_powder_replacements"]) {
     const error = parseJsonField(formData, raw, field);
     if (error) return error;
   }

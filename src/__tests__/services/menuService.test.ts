@@ -22,7 +22,7 @@ const mockLatteItem: MenuItem = {
   base_liquid_note: null,
   custom_powder_grams: null,
   powder: { id: "powder-1", name: "Meyumi", type: "RECOMMEND" },
-  resolved_default_powder_id: null,
+  default_powder_id: null, replacement_powder_id: null, resolved_default_powder_id: null,
   allowed_powder_ids: [],
   sizes: [
     { size: "SMALL", base_price_vnd: 45000, milk_ml: 180 },
@@ -42,7 +42,7 @@ const mockFusionItem: MenuItem = {
   base_liquid_note: "Nước ép cam",
   custom_powder_grams: null,
   powder: null,
-  resolved_default_powder_id: "powder-1",
+  default_powder_id: "powder-1", replacement_powder_id: null, resolved_default_powder_id: "powder-1",
   allowed_powder_ids: ["powder-1", "powder-2"],
   sizes: [
     { size: "SMALL", base_price_vnd: 50000, milk_ml: 0 },
@@ -52,7 +52,7 @@ const mockFusionItem: MenuItem = {
 };
 
 const mockMenuData: MenuData = {
-  updated_at: "2026-01-01T00:00:00.000Z",
+  updated_at: "2026-01-01T00:00:00.000Z", latte_price_anchors: { "powder-1": { SMALL: 45000, MEDIUM: 55000, LARGE: 65000 } },
   latte: [mockLatteItem],
   fusion: [mockFusionItem],
   milk_types: [
@@ -75,6 +75,7 @@ describe("fetchMenu", () => {
     expect(result.fusion).toHaveLength(1);
     expect(result.milk_types).toHaveLength(1);
     expect(result.addon_groups).toEqual([]);
+    expect(result.latte_price_anchors).toEqual({ "powder-1": { SMALL: 45000, MEDIUM: 55000, LARGE: 65000 } });
     expect(result.updated_at).toBe("2026-01-01T00:00:00.000Z");
   });
 

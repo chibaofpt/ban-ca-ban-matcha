@@ -91,7 +91,6 @@ export async function resolveOrderItem(
   // 3. Resolve powder_id and premium_latte
   let powder_id: string;
   let premium_latte = 0;
-  let effectiveFusionDefaultPowderId: string | null = null;
 
   if (menuItem.category === "latte") {
     // Latte: server always uses the item's fixed powder — ignore client-sent value
@@ -113,8 +112,8 @@ export async function resolveOrderItem(
         price_per_gram: pricingCtx.powderPriceMap[powder.id] ?? Number.MAX_SAFE_INTEGER,
         is_available: true,
       })),
+      menuItem.replacement_powder_id,
     );
-    effectiveFusionDefaultPowderId = resolvedDefault;
     if (!resolvedDefault) {
       throw new OrderValidationError("BUSINESS_RULE_VIOLATION", `Fusion không còn bột active: ${menuItem.name}`);
     }
@@ -137,11 +136,11 @@ export async function resolveOrderItem(
 
     powder_id = sentPowderId;
 
-    // Compute Premium_Latte if a non-default powder was selected
-    if (powder_id && resolvedDefault && powder_id !== resolvedDefault) {
+    // Keep the original Fusion powder as the pricing anchor, including replacements.
+    if (powder_id && menuItem.default_powder_id) {
       premium_latte = await resolveOrderItemPremiumLatte(
         powder_id,
-        resolvedDefault,
+        menuItem.default_powder_id,
         item.size,
         client as Parameters<typeof resolveOrderItemPremiumLatte>[3],
         pricingCtx,
@@ -238,7 +237,7 @@ export async function resolveOrderItem(
     productVoucherMap,
     menuItem,
     server_unit_price,
-    effectiveFusionDefaultPowderId,
+    menuItem.default_powder_id,
     powder_id,
     resolvedBaseLiquidId,
     resolvedDefaultBaseLiquidId,

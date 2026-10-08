@@ -76,6 +76,7 @@ export function ScopedMenuVoucherPicker({ voucher, menuData, canEdit = true, onS
     return <ProductModal managed open={open}
       item={item}
       latteItems={menuData.latte}
+      lattePriceAnchors={menuData.latte_price_anchors}
       milkTypes={menuData.milk_types}
       addonGroups={menuData.addon_groups}
       initialSize={size}

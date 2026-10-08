@@ -8,6 +8,7 @@
  */
 
 "use client";
+import type { LattePriceAnchors } from "@/contracts/menu";
 
 import { useState, useCallback } from "react";
 import { useCartStore } from "@/src/lib/store/cartStore";
@@ -17,6 +18,7 @@ import {
   calcBaseLiquidDelta,
   calcLattePrice,
   calcFusionPrice,
+  calcPremiumLatte,
   resolveGram,
   ceilTo1000,
 } from "@/src/utils/pricing";
@@ -44,7 +46,7 @@ export function computeVoucherItemPrice(
   addonOptionIds: string[],
   powders: ReturnType<typeof usePowderStore.getState>["data"],
   defaultPowderGram: ReturnType<typeof usePowderStore.getState>["defaultPowderGram"],
-  latteItems: MenuItem[],
+  lattePriceAnchors: LattePriceAnchors,
   milkTypes: MilkTypeOption[],
   addonGroups: AddonGroup[],
 ): { drinkPrice: number; addonsCost: number } {
@@ -67,14 +69,7 @@ export function computeVoucherItemPrice(
     const milk_price_per_ml = (milk ?? defaultMilk)?.price_per_ml ?? 40;
     drinkPrice = calcLattePrice({ base_price_vnd, gram, powder_price_per_gram: pwd_price_per_gram, milk_ml, milk_price_per_ml });
   } else {
-    let premium_latte = 0;
-    const defaultPowderId = menuItem.resolved_default_powder_id;
-    const defaultPowder = powders.find((p) => p.id === defaultPowderId);
-    if (activePowder?.reference_latte_item_id && defaultPowder?.reference_latte_item_id && activePowderId !== defaultPowderId) {
-      const selBase = latteItems.find((i) => i.id === activePowder.reference_latte_item_id)?.sizes.find((s) => s.size === size)?.base_price_vnd ?? 0;
-      const defBase = latteItems.find((i) => i.id === defaultPowder.reference_latte_item_id)?.sizes.find((s) => s.size === size)?.base_price_vnd ?? 0;
-      premium_latte = selBase - defBase;
-    }
+    const premium_latte = calcPremiumLatte(activePowderId, menuItem.default_powder_id, size, lattePriceAnchors);
     const selectedLiquid = milkTypes.find((candidate) => candidate.id === milkTypeId);
     const defaultLiquid = milkTypes.find(
       (candidate) => candidate.id === menuItem.default_base_liquid_id,
@@ -221,7 +216,7 @@ export function useAddVoucherToCart({ openCartOnSuccess = true, onAddItem }: {
           if ((requiredLiquidId && requiredLiquidId !== resolvedBaseLiquidId) || !powders.some((powder) => powder.id === effectivePowderId)) {
             return { ok: false, reason: "configuration_unavailable" };
           }
-          const priceForSize = (size: Size) => computeVoucherItemPrice(menuItem, size, effectivePowderId, resolvedBaseLiquidId, [], powders, defaultPowderGram, menuData.latte, menuData.base_liquids ?? menuData.milk_types, menuData.addon_groups).drinkPrice;
+          const priceForSize = (size: Size) => computeVoucherItemPrice(menuItem, size, effectivePowderId, resolvedBaseLiquidId, [], powders, defaultPowderGram, menuData.latte_price_anchors, menuData.base_liquids ?? menuData.milk_types, menuData.addon_groups).drinkPrice;
           const referenceSize = voucher.reference_size;
           const referencePrice = voucher.product_discount_mode === "PAY_AS_SIZE" && referenceSize && menuItem.sizes.some((row) => row.size === referenceSize && row.base_price_vnd != null)
             ? priceForSize(referenceSize) : null;

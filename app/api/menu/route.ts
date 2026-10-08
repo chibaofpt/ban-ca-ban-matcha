@@ -27,7 +27,6 @@ async function fetchMenuData(): Promise<MenuData> {
     const [items, addonGroups, milkTypes, defaultSizeConfigs, powders] =
       await Promise.all([
         prisma.menuItem.findMany({
-          where: { is_available: true },
           orderBy: [{ sort_order: "asc" }, { id: "asc" }],
           include: {
             sizes: true,
@@ -62,10 +61,18 @@ async function fetchMenuData(): Promise<MenuData> {
         }),
         prisma.defaultSizeConfig.findMany(),
         prisma.matchaPowder.findMany({
-          where: { is_available: true },
-          select: { id: true, name: true, type: true, price_per_gram: true, is_available: true },
+          select: { id: true, name: true, type: true, price_per_gram: true, is_available: true, reference_latte_item_id: true },
         }),
       ]);
+
+    const itemMap = new Map(items.map((item) => [item.id, item]));
+    const lattePriceAnchors = Object.fromEntries(powders.map((powder) => [
+      powder.id,
+      powder.reference_latte_item_id
+        ? Object.fromEntries((itemMap.get(powder.reference_latte_item_id)?.sizes ?? [])
+            .filter((size) => size.base_price_vnd !== null).map((size) => [size.size, size.base_price_vnd!]))
+        : null,
+    ]));
 
     // ── Build lookups ────────────────────────────────────────────────────────
     const milkMlMap: Record<string, number> = {};
@@ -114,6 +121,7 @@ async function fetchMenuData(): Promise<MenuData> {
     for (const item of items) {
       const updatedAt = item.updated_at;
       if (updatedAt > maxUpdatedAt) maxUpdatedAt = updatedAt;
+      if (!item.is_available) continue;
 
       // Sizes — exclude null base_price_vnd
       const sizes: MenuItemSize[] = item.sizes
@@ -138,6 +146,8 @@ async function fetchMenuData(): Promise<MenuData> {
         base_liquid_note: item.base_liquid_note ?? null,
         custom_powder_grams: item.custom_powder_grams as MenuItem["custom_powder_grams"],
         powder: null,
+        default_powder_id: item.category === "fusion" ? item.default_powder_id : null,
+        replacement_powder_id: item.category === "fusion" ? item.replacement_powder_id : null,
         resolved_default_powder_id: null,
         allowed_powder_ids: [],
         default_base_liquid_id: null,
@@ -173,7 +183,9 @@ async function fetchMenuData(): Promise<MenuData> {
         menuItem.resolved_default_powder_id = resolveFusionDefaultPowderId(
           item.default_powder_id,
           powders,
+          item.replacement_powder_id,
         );
+        if (!menuItem.resolved_default_powder_id) continue;
         menuItem.allowed_powder_ids = item.fusionAllowedPowders
           .filter((fp) => fp.matchaPowder.is_available)
           .map((fp) => fp.powder_id);
@@ -197,5 +209,6 @@ async function fetchMenuData(): Promise<MenuData> {
       milk_types: globalMilkTypes,
       base_liquids: globalMilkTypes,
       addon_groups: globalAddonGroups,
+      latte_price_anchors: lattePriceAnchors,
     };
 }

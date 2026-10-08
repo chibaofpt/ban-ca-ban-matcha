@@ -9,6 +9,7 @@ import {
   resolveGram,
   calcLattePrice,
   calcFusionPrice,
+  calcPremiumLatte,
   calcBaseLiquidDelta,
   resolveBaseLiquidMl,
   type DefaultSizeConfigEntry,
@@ -49,7 +50,7 @@ export interface PricingContext {
   defaultBaseLiquidId?: string | null;
   /** { [milk_type_id]: number } price_per_ml */
   milkPriceMap: Record<string, number>;
-  /** List of all currently available powders (used for Fusion fallback logic) */
+  /** Currently active powders used to validate an explicit serving selection */
   availablePowders: { id: string; name: string }[];
   /** Active Base Liquids used by the shared deterministic default resolver. */
   availableBaseLiquids?: { id: string; is_active: boolean; display_order: number }[];
@@ -152,11 +153,9 @@ function premiumLatteFromContext(
   size: Size,
   ctx: PricingContext,
 ): number {
-  const selectedLatteId = ctx.referenceLatteItemMap?.[selectedPowderId];
-  const defaultLatteId = ctx.referenceLatteItemMap?.[defaultPowderId];
-  if (!selectedLatteId || !defaultLatteId) return 0;
-  return (ctx.referenceLatteBasePriceMap?.[selectedLatteId]?.[size] ?? 0) -
-    (ctx.referenceLatteBasePriceMap?.[defaultLatteId]?.[size] ?? 0);
+  const anchors = Object.fromEntries(Object.entries(ctx.referenceLatteItemMap ?? {}).map(([powderId, latteId]) =>
+    [powderId, latteId ? ctx.referenceLatteBasePriceMap?.[latteId] ?? {} : null]));
+  return calcPremiumLatte(selectedPowderId, defaultPowderId, size, anchors);
 }
 
 /** Resolve current checkout prices for immutable BUNDLE configuration snapshots in batches. */
@@ -194,7 +193,7 @@ export async function resolveBundleBaselineProducts(
           ...powder,
           price_per_gram: ctx.powderPriceMap[powder.id] ?? Number.MAX_SAFE_INTEGER,
           is_available: true,
-        })))
+        })), menu.replacement_powder_id)
       : menu.matcha_powder_id;
     const configuredBaseLiquidId = menu.category === "latte"
       ? ctx.defaultBaseLiquidId ?? null
@@ -216,7 +215,7 @@ export async function resolveBundleBaselineProducts(
       const sizeRow = menu.sizes.find((row) => row.size === size && row.base_price_vnd !== null);
       if (!sizeRow?.base_price_vnd) throw new Error("BUNDLE baseline size is unavailable");
       const premiumLatte = menu.category === "fusion"
-        ? premiumLatteFromContext(product.default_powder_id, effectiveMenuPowderId, size, ctx)
+        ? premiumLatteFromContext(product.default_powder_id, menu.default_powder_id ?? "", size, ctx)
         : 0;
       baseline_prices_vnd[size] = resolveOrderItemPrice({
         category: menu.category as "latte" | "fusion",
@@ -361,5 +360,8 @@ export async function resolveOrderItemPremiumLatte(
     },
   });
 
-  return (selectedSize?.base_price_vnd ?? 0) - (defaultSize?.base_price_vnd ?? 0);
+  return calcPremiumLatte(selectedPowderId, defaultPowderId, size, {
+    [selectedPowderId]: { [size]: selectedSize?.base_price_vnd ?? 0 },
+    [defaultPowderId]: { [size]: defaultSize?.base_price_vnd ?? 0 },
+  });
 }

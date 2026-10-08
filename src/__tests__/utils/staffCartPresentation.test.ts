@@ -40,11 +40,11 @@ describe("bảng tiền cart staff/admin", () => {
 const cachedInput: CartProjectionInput = {
   items: [{ cartId: "extra-line", menuItemId: "extra", quantity: 1, configuration: { size: null, note: "" }, addonVouchers: [] }],
   menuData: {
-    updated_at: "2026-10-02T00:00:00Z", latte: [], fusion: [], milk_types: [], addon_groups: [],
+    updated_at: "2026-10-02T00:00:00Z", latte_price_anchors: {}, latte: [], fusion: [], milk_types: [], addon_groups: [],
     extras: [{
       id: "extra", name: "Bánh cá", description: null, category: "extras", is_seasonal: false,
       image_url: null, sort_order: 1, base_liquid_note: null, custom_powder_grams: null,
-      powder: null, resolved_default_powder_id: null, allowed_powder_ids: [],
+      powder: null, default_powder_id: null, replacement_powder_id: null, resolved_default_powder_id: null, allowed_powder_ids: [],
       default_base_liquid_id: null, allowed_base_liquid_ids: [], sizes: [], unit_price_vnd: 20_000,
     }],
   },

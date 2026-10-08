@@ -24,6 +24,8 @@ export interface AdminMenuItem {
   powder: MenuItemPowder | null;
   default_powder_id: string | null;
   default_powder: MenuItemPowder | null;
+  replacement_powder_id: string | null;
+  resolved_default_powder_id: string | null;
   allowed_powder_ids: string[];
   default_base_liquid_id?: string | null;
   allowed_base_liquid_ids?: string[];
@@ -74,8 +76,35 @@ export interface AdminMenuData {
   default_size_config?: Array<{ size: Size; base_liquid_ml: number }>;
 }
 
+/** Explicit replacement choice for one affected Fusion item. */
+export interface FusionPowderReplacement {
+  menu_item_id: string;
+  replacement_powder_id: string;
+}
+
+/** Availability mutation shared by powder and anchored Latte actions. */
+export interface PowderAvailabilityPayload {
+  is_available: boolean;
+  fusion_powder_replacements?: FusionPowderReplacement[];
+}
+
+/** Server-authoritative choices required before disabling a powder and its Latte. */
+export interface FusionPowderReplacementDetails {
+  reason: "FUSION_POWDER_REPLACEMENT_REQUIRED";
+  powder_id: string;
+  fusion_items: Array<{
+    id: string;
+    name: string;
+    is_available: boolean;
+    default_powder_id: string | null;
+    replacement_powder_id: string | null;
+  }>;
+  available_powders: Array<{ id: string; name: string }>;
+}
+
 /** Editable powder fields sent by the admin UI. */
 export interface PowderMutationPayload {
+  fusion_powder_replacements?: FusionPowderReplacement[];
   name: string;
   manufacturer: string;
   description?: string | null;

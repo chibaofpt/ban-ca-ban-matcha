@@ -21,7 +21,7 @@ const tx = {
     createMany: (...args: unknown[]) => mockCreateAllowed(...args),
   },
   menuItemAllowedBaseLiquid: { deleteMany: vi.fn(), createMany: vi.fn() },
-  matchaPowder: { findFirst: vi.fn(), update: vi.fn() },
+  matchaPowder: { findFirst: vi.fn(), update: vi.fn(), findMany: (...args: unknown[]) => mockFindPowders(...args) },
 };
 vi.mock("@/lib/auth", () => ({ getSession: () => mockGetSession() }));
 vi.mock("@/lib/prisma", () => ({ prisma: {
@@ -56,7 +56,7 @@ function fixture(): AdminMenuItemRecord {
     id: ITEM_ID, name: "Fusion", description: null, category: "fusion", unit_price_vnd: null,
     image_url: null, is_available: true, sort_order: 0, created_at: new Date("2026-01-01"),
     updated_at: new Date("2026-01-01"), is_seasonal: false, matcha_powder_id: null,
-    default_powder_id: ACTIVE_ID, custom_powder_grams: null, base_liquid_note: null,
+    default_powder_id: ACTIVE_ID, replacement_powder_id: null, replacementPowder: null, custom_powder_grams: null, base_liquid_note: null,
     default_base_liquid_id: LIQUID_ID, sizes: [], matchaPowder: null, defaultPowder: null,
     allowedBaseLiquids: [], defaultBaseLiquid: null,
     fusionAllowedPowders: [ACTIVE_ID, INACTIVE_ID].map((id) => ({
@@ -126,7 +126,8 @@ describe("Admin menu — giữ cấu hình powder", () => {
     expect(mockTransaction).not.toHaveBeenCalled();
   });
 
-  it("ghi lại DTO admin giữ allow-list inactive và nhận default inactive", async () => {
+  it("giữ original inactive đã có replacement active và allow-list inactive", async () => {
+    item.default_powder_id = INACTIVE_ID; item.replacement_powder_id = ACTIVE_ID;
     const savedIds = formatAdminMenuItem(item, {}).allowed_powder_ids;
     const response = await put({ default_powder_id: INACTIVE_ID, allowed_powder_ids: savedIds });
     expect(response.status).toBe(200);
@@ -157,10 +158,10 @@ describe("Admin menu — giữ cấu hình powder", () => {
     mockUpdate.mockRejectedValue(new Prisma.PrismaClientKnownRequestError("FK disappeared", {
       code: "P2003", clientVersion: "test", meta: { field_name: "menu_items_default_powder_id_fkey (index)" },
     }));
-    const response = await put({ default_powder_id: INACTIVE_ID }, true, true);
+    const response = await put({ default_powder_id: ACTIVE_ID }, true, true);
     expect(response.status).toBe(422);
     expect(await response.json()).toMatchObject({ code: "BUSINESS_RULE_VIOLATION", details: {
-      reason: "POWDER_REFERENCE_NOT_FOUND", field: "default_powder_id", powder_ids: [INACTIVE_ID],
+      reason: "POWDER_REFERENCE_NOT_FOUND", field: "default_powder_id", powder_ids: [ACTIVE_ID],
     } });
     expect(mockRemoveImages).toHaveBeenCalledWith(["products/fusion/new.webp"]);
   });
@@ -192,20 +193,11 @@ describe("Admin menu — giữ cấu hình powder", () => {
     expect(mockCreateAllowed).not.toHaveBeenCalled();
   });
 
-  it("giữ null default powder JSON để dùng fallback hiện tại", async () => {
-    const response = await put({ default_powder_id: null, default_base_liquid_id: null });
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ data: { default_powder_id: null, default_base_liquid_id: LIQUID_ID } });
-    expect(mockFindPowders).not.toHaveBeenCalled();
+  it.each([false, true])("từ chối original blank/null (multipart=%s)", async (multipart) => {
+    const response = await put({ default_powder_id: multipart ? "" : null }, multipart);
+    expect(response.status).toBe(422);
+    expect(mockTransaction).not.toHaveBeenCalled();
   });
-
-  it("giữ compatibility cho powder rỗng trong multipart", async () => {
-    const response = await put({ default_powder_id: "", matcha_powder_id: "", default_base_liquid_id: "" }, true);
-    expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ data: { default_powder_id: ACTIVE_ID, default_base_liquid_id: LIQUID_ID } });
-    expect(mockFindPowders).not.toHaveBeenCalled();
-  });
-
   it.each([
     ["latte", "matcha_powder_id", false], ["latte", "matcha_powder_id", true],
     ["fusion", "default_powder_id", false], ["fusion", "allowed_powder_ids", false],
@@ -231,7 +223,7 @@ describe("Admin menu — giữ cấu hình powder", () => {
     const response = await put({ matcha_powder_id: MISSING_ID });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ data: { matcha_powder_id: null } });
-    expect(mockFindPowders).not.toHaveBeenCalled();
+
   });
 
   it.each([
@@ -253,14 +245,14 @@ describe("Admin menu — giữ cấu hình powder", () => {
     mockUpdate.mockRejectedValue(new Prisma.PrismaClientKnownRequestError("Other FK", {
       code: "P2003", clientVersion: "test", meta: { field_name: constraint },
     }));
-    const response = await put({ default_powder_id: INACTIVE_ID, allowed_powder_ids: [INACTIVE_ID] });
+    const response = await put({ default_powder_id: ACTIVE_ID, allowed_powder_ids: [INACTIVE_ID] });
     expect(response.status).toBe(500);
     expect(await response.json()).toMatchObject({ code: "INTERNAL_ERROR" });
   });
 
   it("giữ lỗi database bất ngờ là 500", async () => {
     mockUpdate.mockRejectedValue(new Error("database unavailable"));
-    const response = await put({ default_powder_id: INACTIVE_ID });
+    const response = await put({ default_powder_id: ACTIVE_ID });
     expect(response.status).toBe(500);
     expect(await response.json()).toMatchObject({ code: "INTERNAL_ERROR" });
   });
@@ -274,5 +266,64 @@ describe("Admin menu — giữ cấu hình powder", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ data: { name: "Extra mới", unit_price_vnd: 20_000, sizes: [] } });
     expect(mockUpsertSize).not.toHaveBeenCalled();
+  });
+
+  it.each([null, INACTIVE_ID])("quick-enable từ chối Fusion gốc không hợp lệ: %s", async (original) => {
+    item.is_available = false;
+    item.default_powder_id = original;
+    const response = await put({ is_available: true });
+    expect(response.status).toBe(422);
+    expect(await response.json()).toMatchObject({ code: "BUSINESS_RULE_VIOLATION" });
+    expect(item.is_available).toBe(false);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("quick-enable kiểm tra lại replacement trong transaction", async () => {
+    item.is_available = false;
+    item.default_powder_id = INACTIVE_ID;
+    item.replacement_powder_id = ACTIVE_ID;
+    mockTransaction.mockImplementation(async (callback: (client: typeof tx) => Promise<unknown>) => {
+      // Model a configuration removed after preflight at the database boundary.
+      item.replacement_powder_id = null;
+      return callback(tx);
+    });
+    const response = await put({ is_available: true });
+    expect(response.status).toBe(422);
+    expect(item.is_available).toBe(false);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("quick-enable chấp nhận original inactive có replacement active", async () => {
+    item.is_available = false;
+    item.default_powder_id = INACTIVE_ID;
+    item.replacement_powder_id = ACTIVE_ID;
+    const response = await put({ is_available: true });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ data: {
+      is_available: true, default_powder_id: INACTIVE_ID, replacement_powder_id: ACTIVE_ID,
+    } });
+  });
+
+  it("quick-disable vẫn cho phép ngưng Fusion thiếu bột gốc", async () => {
+    item.default_powder_id = null;
+    const response = await put({ is_available: false });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ data: { is_available: false } });
+  });
+
+  it("merged Fusion gốc inactive thiếu replacement active bị từ chối", async () => {
+    item.default_powder_id = INACTIVE_ID;
+    item.replacement_powder_id = null;
+    const response = await put({ name: "Đổi tên" });
+    expect(response.status).toBe(422);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("đổi gốc sang bột active xóa replacement cũ", async () => {
+    item.default_powder_id = INACTIVE_ID;
+    item.replacement_powder_id = ACTIVE_ID;
+    const response = await put({ default_powder_id: ACTIVE_ID });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ data: { default_powder_id: ACTIVE_ID, replacement_powder_id: null } });
   });
 });

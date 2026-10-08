@@ -18,6 +18,13 @@ Projection join cart với catalog/wallet hiện hành, khóa checkout trong lú
 nếu dữ liệu chưa sẵn sàng. Đổi owner/logout giữ paid line nhưng tháo personal/order voucher và chỉ
 xóa reward line/addon được ghi trong `created_reward_effects`.
 
+Khi catalog thay đổi bột, giữ nguyên lựa chọn của line đã có. Bột inactive hoặc không còn quyền
+dùng thì hiện yêu cầu chọn lại và khóa checkout; không tự đổi sang bột mặc định mới. Khi bột gốc
+được mở lại, line dùng bột thay thế chỉ tiếp tục hợp lệ nếu bột đó còn active và nằm trong allow-list.
+Lượt chọn món mới dùng mặc định đang phục vụ. Định giá dựa vào các neo Latte trong menu DTO,
+bao gồm neo inactive; xem [pricing-logic](../../.agents/skills/pricing-logic/SKILL.md) và
+[API](../../API.md#get-apimenu).
+
 Customer có thể chạm phần nội dung của một cart line để mở `ProductModal` sửa cấu hình; các nút số
 lượng, xóa và voucher vẫn giữ action riêng và không kích hoạt edit. Với POS, sau khi chọn khách hiện
 có, cart hiển thị ngay danh sách voucher của khách cùng trạng thái tải/khả dụng/đang giữ.

@@ -2,7 +2,7 @@ import type { CartItem, CartProjectionResult, ProjectedCartLine } from "@/src/li
 import type { MenuData, MenuItem, Size } from "@/src/lib/types/menu";
 import type { PowderApiResponse } from "@/src/lib/types/powder";
 import type { MyVoucher } from "@/src/services/customerVoucherService";
-import { calcBaseLiquidDelta, calcFusionPrice, calcLattePrice, ceilTo1000, resolveGram } from "@/src/utils/pricing";
+import { calcBaseLiquidDelta, calcFusionPrice, calcPremiumLatte, calcLattePrice, ceilTo1000, resolveGram } from "@/src/utils/pricing";
 import { productDiscountMatchesBaseLiquid } from "@/src/utils/customerVoucherSelection";
 import { projectCartTotals } from "@/src/lib/utils/bundleVoucherProjection";
 
@@ -42,9 +42,9 @@ function drinkPrice(
   if (!sizeRow) return null;
   const activePowderId = item.category === "latte"
     ? item.powder?.id
-    : powderId ?? item.resolved_default_powder_id ?? undefined;
+    : powderId;
   const powder = powders.data.find((candidate) => candidate.id === activePowderId);
-  if (!powder) return null;
+  if (!powder?.is_available || (item.category === "fusion" && powder.id !== item.resolved_default_powder_id && !item.allowed_powder_ids.includes(powder.id))) return null;
   const gram = resolveGram(size, item.custom_powder_grams, powder.size_config, powders.default_powder_gram);
   const liquids = menu.base_liquids ?? menu.milk_types;
   if (item.category === "latte") {
@@ -62,11 +62,6 @@ function drinkPrice(
       powderPrice: powder.price_per_gram,
     };
   }
-  const defaultPowder = powders.data.find((candidate) => candidate.id === item.resolved_default_powder_id);
-  const selectedAnchor = menu.latte.find((candidate) => candidate.id === powder.reference_latte_item_id)
-    ?.sizes.find((row) => row.size === size)?.base_price_vnd ?? 0;
-  const defaultAnchor = menu.latte.find((candidate) => candidate.id === defaultPowder?.reference_latte_item_id)
-    ?.sizes.find((row) => row.size === size)?.base_price_vnd ?? 0;
   const selectedLiquid = liquids.find((candidate) => candidate.id === baseLiquidId);
   const defaultLiquid = liquids.find((candidate) => candidate.id === item.default_base_liquid_id);
   return {
@@ -74,7 +69,7 @@ function drinkPrice(
       base_price_vnd: sizeRow.base_price_vnd,
       gram,
       powder_price_per_gram: powder.price_per_gram,
-      premium_latte: powder.id === defaultPowder?.id ? 0 : selectedAnchor - defaultAnchor,
+      premium_latte: calcPremiumLatte(powder.id, item.default_powder_id, size, menu.latte_price_anchors),
       base_liquid_delta_vnd: selectedLiquid && defaultLiquid
         ? calcBaseLiquidDelta(sizeRow.base_liquid_ml ?? sizeRow.milk_ml, selectedLiquid.price_per_ml, defaultLiquid.price_per_ml)
         : 0,
@@ -129,7 +124,7 @@ function resolveLine(
   else if (item && raw.configuration.size !== null) {
     const price = drinkPrice(item, raw.configuration.size, raw.configuration.powderId, raw.configuration.baseLiquidId, menu, powders);
     if (price) { drinkPriceVnd = price.value; powderPrice = price.powderPrice; }
-    else errors.push("Cấu hình món không còn hợp lệ");
+    else errors.push(item.category === "fusion" ? "Bột hoặc cấu hình không còn hợp lệ. Vui lòng chọn lại món." : "Cấu hình món không còn hợp lệ");
   } else if (item) errors.push("Cấu hình món không hợp lệ");
 
   const resolvedAddons = raw.configuration.size === null ? [] : raw.configuration.addonOptionIds.flatMap((id) => {
