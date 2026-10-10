@@ -66,7 +66,10 @@ function registrationTx(mode: "POINTS" | "FIXED_VOUCHER" | "GACHA", fixedMenuIte
       } : null,
     }) },
     rewardOutcome: { create: outcomeCreate, groupBy: vi.fn().mockResolvedValue([]) },
-    user: { update: vi.fn(({ data }: { data: { points_balance: { increment: number } } }) => {
+    user: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findUnique: vi.fn().mockResolvedValue({ role: "CUSTOMER", is_blocked: false, sourceMerge: null }),
+      update: vi.fn(({ data }: { data: { points_balance: { increment: number } } }) => {
       account.pointsBalance += data.points_balance.increment;
       return Promise.resolve({ points_balance: account.pointsBalance });
     }) },
@@ -94,6 +97,18 @@ function registrationTx(mode: "POINTS" | "FIXED_VOUCHER" | "GACHA", fixedMenuIte
 
 describe("Tạo welcome reward khi đăng ký", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("không phát welcome reward vào hồ sơ nguồn đã gộp", async () => {
+    const { tx, account, pointsLogs } = registrationTx("POINTS");
+    const retiredTx = { ...tx, user: { ...tx.user,
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findUnique: vi.fn().mockResolvedValue({ role: "CUSTOMER", is_blocked: false, sourceMerge: { target_user_id: "canonical" } }),
+    } };
+    await expect(createWelcomeRewardInTransaction(retiredTx as never, USER_ID))
+      .rejects.toMatchObject({ reason: "ACCOUNT_NOT_ACTIVE" });
+    expect(account.pointsBalance).toBe(37);
+    expect(pointsLogs).toEqual([]);
+  });
 
   it("cộng mức cấu hình 12 điểm và chốt quyền lợi lúc đăng ký", async () => {
     const { tx, account, pointsLogs } = registrationTx("POINTS");
@@ -238,7 +253,10 @@ function drawDatabase(
       }),
     },
     rewardCampaign: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
-    user: { update: vi.fn() },
+    user: {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      findUnique: vi.fn().mockResolvedValue({ role: "CUSTOMER", is_blocked: false, sourceMerge: null }),
+      update: vi.fn() },
     pointsLog: { create: vi.fn(async ({ data }: { data: { delta: number } }) => { pointsDelta = data.delta; return { id: "log" }; }) },
     voucherPackage: { findUnique: vi.fn(({ where }: { where: { id: string } }) => Promise.resolve(packages.get(where.id) ?? null)) },
     voucher: {

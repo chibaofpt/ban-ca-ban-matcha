@@ -11,6 +11,7 @@ export const UpdateProfileSchema = z
       .max(50, "Họ và tên không được vượt quá 50 ký tự")
       .optional(),
     insta_name: z.union([InstagramUsernameSchema, z.null()]).optional(),
+    reauth_proof: z.string().regex(/^[a-f0-9-]{36}\.[a-f0-9]{64}$/).optional(),
     current_password: z
       .string()
       .min(6, "Mật khẩu phải có ít nhất 6 ký tự")

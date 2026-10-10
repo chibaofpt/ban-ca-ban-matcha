@@ -6,8 +6,8 @@ import MenuItemForm, { buildDefaultValues } from "@/src/components/admin/MenuIte
 import { createMenuItem, updateMenuItem } from "@/src/services/adminMenuService";
 import { createLatteWithPowder } from "@/src/services/adminMenuService";
 import type { AdminMenuItem, MilkTypeOption, Size } from "@/src/lib/types/menu";
+import type { LattePriceAnchors } from "@/contracts/menu";
 import type { Powder } from "@/src/lib/types/powder";
-import MenuImageSeoField from "@/src/components/admin/MenuImageSeoField";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 
@@ -20,7 +20,8 @@ interface MenuItemModalProps {
   item?: AdminMenuItem;  // Required when mode="edit"
   powders: Powder[];
   baseLiquids: MilkTypeOption[];
-  defaultSizeConfig: Array<{ size: Size; base_liquid_ml: number }>;
+  defaultSizeConfig: Array<{ size: Size; base_liquid_ml: number; powder_gram: number }>;
+  lattePriceAnchors: LattePriceAnchors;
   onClose: () => void;
   onSuccess: (item: AdminMenuItem, powderName?: string) => void;
 }
@@ -43,6 +44,7 @@ export default function MenuItemModal({
   powders,
   baseLiquids,
   defaultSizeConfig,
+  lattePriceAnchors,
   onClose,
   onSuccess,
 }: MenuItemModalProps) {
@@ -165,13 +167,6 @@ export default function MenuItemModal({
               </div>
             )}
 
-            <MenuImageSeoField
-              currentImageUrl={item?.image_url}
-              value={imageFilename}
-              onChange={setImageFilename}
-              disabled={isSubmitting || replacement.pending !== null}
-            />
-
             <MenuItemForm
               mode={mode}
               defaultValues={item ? buildDefaultValues(item) : undefined}
@@ -180,6 +175,11 @@ export default function MenuItemModal({
               powders={powders}
               baseLiquids={baseLiquids}
               defaultSizeConfig={defaultSizeConfig}
+              lattePriceAnchors={lattePriceAnchors}
+              originalItem={item}
+              currentImageUrl={item?.image_url}
+              imageFilename={imageFilename}
+              onImageFilenameChange={setImageFilename}
               onSubmit={handleSubmit}
               isSubmitting={isSubmitting || replacement.busy || replacement.pending !== null}
               onCancel={onClose}

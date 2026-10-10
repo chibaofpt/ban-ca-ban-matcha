@@ -4,8 +4,10 @@ export type Role = "CUSTOMER" | "STAFF" | "ADMIN";
 
 /** Public identity returned after login or registration. */
 export interface AuthUser {
+  qr_token: string;
   name: string;
-  phone_number: string;
+  phone_number: string | null;
+  email?: string | null;
   insta_name: string | null;
   role: Role;
 }

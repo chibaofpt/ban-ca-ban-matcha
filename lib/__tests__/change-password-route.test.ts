@@ -142,6 +142,8 @@ describe("PATCH /api/profile/password", () => {
       sessionId: "session-1",
       currentPassword: "current1",
       newPassword: "newpass1",
+      request: expect.any(Request),
+      reauthProof: undefined,
     });
     expect(boundary.checkRateLimits).toHaveBeenCalledWith([
       { ruleName: "authMutationIp", identifier: "203.0.113.8" },

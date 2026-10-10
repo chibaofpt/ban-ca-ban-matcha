@@ -1,3 +1,4 @@
+import { claimActiveCustomerForWrite } from "@/lib/auth/accountMergeGuard";
 import type { DiscountType, Prisma, Size, VoucherAcquisitionMode, VoucherType } from "@prisma/client";
 import {
   loadVoucherAvailabilityCatalog,
@@ -94,7 +95,10 @@ export interface VoucherIssuanceTransaction extends VoucherAvailabilityDatabase 
     findUnique(args: Prisma.VoucherFindUniqueArgs): PromiseLike<CreatedVoucher | null>;
     create(args: Prisma.VoucherCreateArgs): PromiseLike<CreatedVoucher>;
   };
-  user: { updateMany(args: Prisma.UserUpdateManyArgs): PromiseLike<{ count: number }> };
+  user: {
+    updateMany(args: Prisma.UserUpdateManyArgs): PromiseLike<{ count: number }>;
+    findUnique(args: Prisma.UserFindUniqueArgs): PromiseLike<unknown>;
+  };
   pointsLog: { create(args: Prisma.PointsLogCreateArgs): PromiseLike<unknown> };
   voucherGrant: {
     findUnique(args: Prisma.VoucherGrantFindUniqueArgs): PromiseLike<{ voucher_id: string } | null>;
@@ -285,6 +289,7 @@ export async function issueVoucherInTransaction(
   availabilityCatalog?: VoucherAvailabilityCatalog,
 ): Promise<IssuedVoucherResult> {
   const now = input.now ?? new Date();
+  await claimActiveCustomerForWrite(tx as unknown as Pick<Prisma.TransactionClient, "user">, input.user_id);
   if (input.source === "ADMIN" && (!input.performed_by || !input.request_id)) {
     throw new VoucherIssuanceError("VALIDATION_ERROR", "Admin issuance requires an actor and request id");
   }

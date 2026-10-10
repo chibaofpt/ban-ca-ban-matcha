@@ -63,7 +63,8 @@ export function makeTx(): VoucherIssuanceTransaction {
       create: (...args: unknown[]) => mockVoucherCreate(...args),
     },
     user: {
-      updateMany: (...args: unknown[]) => mockUserUpdateMany(...args),
+      findUnique: vi.fn().mockResolvedValue({ role: "CUSTOMER", is_blocked: false, sourceMerge: null }),
+      updateMany: (args) => "points_balance" in args.data ? mockUserUpdateMany(args) : Promise.resolve({ count: 1 }),
     },
     pointsLog: {
       create: (...args: unknown[]) => mockPointsLogCreate(...args),

@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { AdminUserPointsResult } from "@/contracts/admin/user";
 
 import { getSession } from "@/lib/auth";
+import { AccountError, accountErrorResponse } from "@/lib/auth/accountError";
 import { captureServerException } from "@/lib/observability";
 import { AdminUserWorkflowError, giftAdminUserPoints } from "@/lib/users/adminUserWorkflow";
 import { adminUserPointsSchema } from "@/lib/validations/adminUser";
@@ -21,6 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
     const data = { points_balance: pointsBalance } satisfies AdminUserPointsResult;
     return NextResponse.json({ data });
   } catch (error) {
+    if (error instanceof AccountError) return accountErrorResponse(error);
     if (error instanceof AdminUserWorkflowError) {
       const status = error.reason === "NOT_FOUND" ? 404 : 422;
       return NextResponse.json({ error: error.message, code: error.reason }, { status });

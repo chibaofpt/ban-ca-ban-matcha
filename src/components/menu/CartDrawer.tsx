@@ -7,7 +7,7 @@ import { motion, AnimatePresence, type PanInfo } from "framer-motion";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 import { OverlayStackProvider } from "@/src/components/ui/OverlayStackProvider";
 import { X, AlertTriangle, RefreshCcw, ArrowLeft } from "lucide-react";
-import { normalizeVoucherOwnerPhone, useCartStore } from "@/src/lib/store/cartStore";
+import { useCartStore } from "@/src/lib/store/cartStore";
 import { useCheckout } from "@/src/hooks/useCheckout";
 import { PriceChangedError, BundleNotEligibleError, type PriceConflict } from "@/src/services/orderService";
 import { toast } from "sonner";
@@ -190,7 +190,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
   const canMutateWallet = useCallback((voucherToken?: string) => {
     const state = queryClient.getQueryState<MyVoucher[]>(VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS);
     const user = useAuthStore.getState().user;
-    return Boolean(currentUser && user?.phone === currentUser.phone &&
+    return Boolean(currentUser?.qr_token && user?.qr_token === currentUser.qr_token &&
       document.cookie.includes("has_session=1") && state?.status === "success" &&
       state.fetchStatus === "idle" && state.data !== undefined && (!voucherToken || state.data.some((voucher) => voucher.qr_token === voucherToken && isVoucherUsable(voucher))));
   }, [currentUser, queryClient]);
@@ -465,7 +465,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
     cartProjection.lines.map((line, index) => [line.cartId, paymentPresentation.totals.itemResults[index]]),
   ), [cartProjection.lines, paymentPresentation.totals.itemResults]);
   const voucherLossSnapshot = useRef<{
-    ownerPhone: string | null; quantity: number; appliedTokens: Set<string>;
+    ownerQrToken: string | null; quantity: number; appliedTokens: Set<string>;
   } | null>(null);
   useEffect(() => {
     const previous = voucherLossSnapshot.current;
@@ -474,11 +474,11 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
       if (!isCartOpen) voucherLossSnapshot.current = null;
       return;
     }
-    const ownerPhone = currentUser?.phone ?? null;
+    const ownerQrToken = currentUser?.qr_token ?? null;
     const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
     const appliedTokens = new Set(cartProjection.appliedOrderVoucherTokens);
-    voucherLossSnapshot.current = isCartOpen ? { ownerPhone, quantity, appliedTokens } : null;
-    if (!previous || previous.ownerPhone !== ownerPhone || quantity >= previous.quantity) return;
+    voucherLossSnapshot.current = isCartOpen ? { ownerQrToken, quantity, appliedTokens } : null;
+    if (!previous || previous.ownerQrToken !== ownerQrToken || quantity >= previous.quantity) return;
     const lostMinimum = [...selectedDiscountVouchers, ...selectedFreeshipVouchers].some((voucher) => {
       const amount = voucher.voucher_type === "FREESHIP"
         ? cartProjection.totals.total_vnd : lineBenefitsProjection.totals.discountable_subtotal_vnd;
@@ -508,7 +508,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              if (useAuthStore.getState().user?.phone !== ownerPhone) return;
+              if (useAuthStore.getState().user?.qr_token !== ownerQrToken) return;
               setCartOpen(true);
               setIsDiscountPickerOpen(true);
               toast.dismiss(toastId);
@@ -520,7 +520,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
       ) : "Voucher bạn đã chọn không thể sử dụng được nữa, vui lòng kiểm tra lại đơn",
       { id: toastId, duration: 5000 },
     );
-  }, [bundleApplications, cartProjection, currentUser?.phone, isCartOpen, items, lineBenefitsProjection,
+  }, [bundleApplications, cartProjection, currentUser?.qr_token, isCartOpen, items, lineBenefitsProjection,
     menuData, orderType, powderData, selectedDiscountVouchers, selectedFreeshipVouchers,
     selectedVoucherIds, setCartOpen, shippingFee, visibleWalletVouchers, walletVerified]);
 
@@ -548,7 +548,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
     Boolean(item.lineVoucher) || item.addonVouchers.length > 0,
   );
   const voucherOwnerKey = isLoggedInSynced && currentUser
-    ? normalizeVoucherOwnerPhone(currentUser.phone)
+    ? currentUser.qr_token
     : null;
   const bundleOwnerKey = voucherOwnerKey ? `customer:${voucherOwnerKey}` : null;
   const bundleApplicationsWithRuntime = useMemo(() => bundleApplications.map((application) => ({
@@ -564,6 +564,7 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
     setDeliveryDistanceKm(null);
     setShippingFee(null);
     setDeliveryError(null);
+    setIsAddressPickerOpen(false);
   }, [bundleOwnerKey]);
 
   // Persisted applications are owned by the signed-in wallet. Cart mutations and
@@ -933,11 +934,11 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
     if (canMutateWallet()) setBundleTokenToRemove(token);
   }, [canMutateWallet]);
   const commitBundleDraftIfVerified = useCallback((draft: Parameters<typeof commitBundleCartDraft>[0]) => {
-    if (!canMutateWallet()) {
+    if (!canMutateWallet() || draft.application.owner_key !== bundleOwnerKey) {
       return { ok: false as const, code: "BUNDLE_STALE" as const, message: "Ví voucher đang được xác minh lại." };
     }
     return commitBundleCartDraft(draft);
-  }, [commitBundleCartDraft, canMutateWallet]);
+  }, [bundleOwnerKey, commitBundleCartDraft, canMutateWallet]);
 
   const handleRefreshVouchers = useCallback(async (): Promise<MyVoucher[]> => {
     const refreshed = await queryClient.fetchQuery({
@@ -1315,16 +1316,18 @@ const CartDrawer = ({ menuData, powderData, catalogUnavailable = false }: CartDr
                 </div>
                 <div className="flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain p-4">
                   <DeliverySection
-                    defaultRecipient={currentUser ? { name: currentUser.name, phone: currentUser.phone } : null}
+                    key={currentUser?.qr_token}
+                    defaultRecipient={currentUser ? { name: currentUser.name, phone: currentUser.phone ?? "" } : null}
                     selectedAddressId={deliveryAddress?.id ?? null}
                     onAddressSelect={(addr, dist, fee) => {
+                      if (!currentUser?.qr_token || useAuthStore.getState().user?.qr_token !== currentUser.qr_token) return;
                       setDeliveryAddress(addr);
                       setDeliveryDistanceKm(dist);
                       setShippingFee(fee);
                       setDeliveryError(null);
                       if (addr && dist !== null && fee !== null) setIsAddressPickerOpen(false);
                     }}
-                    onError={(err) => setDeliveryError(err)}
+                    onError={(err) => { if (currentUser?.qr_token && useAuthStore.getState().user?.qr_token === currentUser.qr_token) setDeliveryError(err); }}
                   />
                 </div>
               </motion.div>

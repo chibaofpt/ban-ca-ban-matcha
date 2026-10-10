@@ -5,7 +5,7 @@ import { useCartStore } from "@/src/lib/store/cartStore";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("cartStorage v10/v6", () => {
-  it("migrate customer loại snapshot và giữ voucher/BUNDLE selection", () => {
+  it("migrate customer cũ loại snapshot và tháo phone-owner voucher/BUNDLE", () => {
     const migrated = migrateCustomerCartState({
       items: [{
         cartId: "line-1", menuItemId: "drink-1", quantity: 1,
@@ -35,16 +35,12 @@ describe("cartStorage v10/v6", () => {
           size: "MEDIUM", sweetness: "HALF", iceOption: "LESS_ICE", coldwhisk: true,
           note: "x", baseLiquidId: "milk-1", addonOptionIds: ["addon-1"],
         },
-        lineVoucher: { token: "product-1", kind: "PRODUCT_DISCOUNT" },
-        addonVouchers: [{ token: "addon-v", addonOptionId: "addon-1" }],
+        lineVoucher: undefined,
+        addonVouchers: [],
       }],
-      selectedOrderVoucherTokens: ["discount-1"],
-      voucherOwnerKey: "+8490",
-      bundleApplications: [{
-        voucher_qr_token: "bundle-1", owner_key: "+8490",
-        qualifier_allocations: [{ client_line_id: "line-1", quantity: 1 }],
-        reward_allocations: [], created_reward_effects: [],
-      }],
+      selectedOrderVoucherTokens: [],
+      voucherOwnerKey: null,
+      bundleApplications: [],
     });
   });
 
@@ -60,7 +56,7 @@ describe("cartStorage v10/v6", () => {
   });
 
   it("migration keeps only the last attachment when one token appears in two roles", () => {
-    const migrated = migrateCustomerCartState({
+    const migrated = migrateStaffCartState({
       items: [{
         cartId: "line",
         menuItemId: "drink",
@@ -80,14 +76,14 @@ describe("cartStorage v10/v6", () => {
     ]);
   });
 
-  it("normalizes the persisted customer owner without retaining the bundle namespace", () => {
+  it("không coi phone-owner cũ là public QR", () => {
     const migrated = migrateCustomerCartState({
       items: [],
       voucherOwnerKey: "customer:090 123-4567",
       bundleApplications: [],
     }, 9);
 
-    expect(migrated.voucherOwnerKey).toBe("+84901234567");
+    expect(migrated.voucherOwnerKey).toBeNull();
   });
 
   it("malformed persisted shape trả cart rỗng an toàn", () => {

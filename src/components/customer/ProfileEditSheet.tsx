@@ -6,6 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
 import { Drawer } from "vaul";
 import { AtSign, Eye, EyeOff, Lock, User, X } from "lucide-react";
+import { ApiServiceError } from "@/src/lib/api/serviceError";
+import { GoogleAccountButton } from "@/src/components/common/GoogleAccountButton";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { ProfileEditFooter } from "@/src/components/customer/profile/ProfileEditFooter";
 import {
@@ -38,6 +40,7 @@ export function ProfileEditSheet({
   onClose,
   onSubmit,
 }: ProfileEditSheetProps) {
+  const [reauthProof, setReauthProof] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -84,6 +87,7 @@ export function ProfileEditSheet({
 
   const finishClose = () => {
     setServerError(null);
+    setReauthProof(null);
     setShowPassword(false);
     onClose();
   };
@@ -100,7 +104,7 @@ export function ProfileEditSheet({
   const submit = async (formValues: ProfileEditFormValues) => {
     setServerError(null);
     if (
-      instagramChanged &&
+      instagramChanged && profile.has_password &&
       formValues.current_password.trim().length < 6
     ) {
       setError("current_password", {
@@ -110,10 +114,17 @@ export function ProfileEditSheet({
     }
 
     try {
-      await onSubmit(buildProfilePatchPayload(profile, formValues));
+      const payload = buildProfilePatchPayload(profile, formValues);
+      if (instagramChanged && !profile.has_password) {
+        if (!reauthProof) { setServerError("Xác nhận Google trước khi đổi Instagram."); return; }
+        delete payload.current_password;
+        payload.reauth_proof = reauthProof;
+      }
+      await onSubmit(payload);
       finishClose();
     } catch (error: unknown) {
-      const response = (
+      setReauthProof(null);
+      const response = error instanceof ApiServiceError ? { status: error.status, data: { error: error.message, details: error.details as { field?: string } | undefined } } : (
         error as {
           response?: {
             status?: number;
@@ -196,12 +207,12 @@ export function ProfileEditSheet({
                   id="profile-phone"
                   label="Số điện thoại"
                   icon={<Lock className="h-4 w-4" />}
-                  helper="Chưa thể thay đổi số điện thoại trong phiên bản này."
+                  helper="Quản lý số điện thoại tại mục tài khoản."
                 >
                   <input
                     id="profile-phone"
                     readOnly
-                    value={formatVietnamPhone(profile.phone_number)}
+                    value={profile.phone_number ? formatVietnamPhone(profile.phone_number) : ""}
                     className={`${profileInputClass(false)} cursor-not-allowed bg-muted/50 text-muted-foreground`}
                   />
                 </ProfileFormField>
@@ -226,7 +237,8 @@ export function ProfileEditSheet({
                 </ProfileFormField>
 
                 <AnimatePresence initial={false}>
-                  {instagramChanged && (
+                  {instagramChanged && !profile.has_password ? <GoogleAccountButton purpose="REAUTH" onSuccess={(result) => { if ("reauth_proof" in result) setReauthProof(result.reauth_proof); }} /> : null}
+                  {instagramChanged && profile.has_password && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}

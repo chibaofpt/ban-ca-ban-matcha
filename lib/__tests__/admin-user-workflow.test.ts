@@ -1,24 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
-  userFindFirst: vi.fn(), userUpdate: vi.fn(), userUpdateMany: vi.fn(), userFindUniqueOrThrow: vi.fn(),
+  userFindUnique: vi.fn(), userFindFirst: vi.fn(), userUpdate: vi.fn(), userUpdateMany: vi.fn(), userFindUniqueOrThrow: vi.fn(),
   sessionDeleteMany: vi.fn(), pointsLogCreate: vi.fn(), hash: vi.fn(), randomBytes: vi.fn(), transaction: vi.fn(),
 }));
 
 const tx = {
-  user: { findFirst: mocks.userFindFirst, update: mocks.userUpdate, updateMany: mocks.userUpdateMany, findUniqueOrThrow: mocks.userFindUniqueOrThrow },
+  user: { findUnique: mocks.userFindUnique, findFirst: mocks.userFindFirst, update: mocks.userUpdate, updateMany: mocks.userUpdateMany, findUniqueOrThrow: mocks.userFindUniqueOrThrow },
   session: { deleteMany: mocks.sessionDeleteMany }, pointsLog: { create: mocks.pointsLogCreate },
 };
 
 vi.mock("@/lib/prisma", () => ({ prisma: {
-  user: { findFirst: mocks.userFindFirst, update: mocks.userUpdate, updateMany: mocks.userUpdateMany, findUniqueOrThrow: mocks.userFindUniqueOrThrow },
+  user: { findUnique: mocks.userFindUnique, findFirst: mocks.userFindFirst, update: mocks.userUpdate, updateMany: mocks.userUpdateMany, findUniqueOrThrow: mocks.userFindUniqueOrThrow },
   session: { deleteMany: mocks.sessionDeleteMany }, pointsLog: { create: mocks.pointsLogCreate },
   $transaction: mocks.transaction,
 } }));
+vi.mock("@/lib/auth", () => ({ getSession: async () => ({ id: "admin-id", role: "ADMIN" }) }));
+vi.mock("@/lib/observability", () => ({ captureServerException: vi.fn() }));
 vi.mock("bcryptjs", () => ({ default: { hash: mocks.hash } }));
 vi.mock("node:crypto", () => ({ randomBytes: mocks.randomBytes }));
 
 import { giftAdminUserPoints, resetAdminUserPassword, setAdminUserBlocked } from "@/lib/users/adminUserWorkflow";
+import { POST as giftPointsRoute } from "@/app/api/admin/users/[userQrToken]/points/route";
 
 describe("Admin customer mutation workflow", () => {
   beforeEach(() => {
@@ -26,6 +30,8 @@ describe("Admin customer mutation workflow", () => {
     mocks.transaction.mockImplementation((callback) => callback(tx));
     mocks.userFindFirst.mockResolvedValue({ id: "customer-id" });
     mocks.userUpdate.mockResolvedValue({});
+    mocks.userFindUnique.mockResolvedValue({ role: "CUSTOMER", is_blocked: false, sourceMerge: null });
+    mocks.userUpdateMany.mockResolvedValue({ count: 1 });
     mocks.sessionDeleteMany.mockResolvedValue({ count: 2 });
     mocks.randomBytes.mockReturnValue(Buffer.from([
       0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
@@ -36,7 +42,7 @@ describe("Admin customer mutation workflow", () => {
     await setAdminUserBlocked("550e8400-e29b-41d4-a716-446655440000", true);
     expect(mocks.transaction).toHaveBeenCalledOnce();
     expect(mocks.userFindFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: { qr_token: "550e8400-e29b-41d4-a716-446655440000", role: "CUSTOMER" },
+      where: { qr_token: "550e8400-e29b-41d4-a716-446655440000", role: "CUSTOMER", sourceMerge: { is: null } },
     }));
     expect(mocks.sessionDeleteMany).toHaveBeenCalledWith({ where: { user_id: "customer-id" } });
 
@@ -59,7 +65,7 @@ describe("Admin customer mutation workflow", () => {
     expect(password).toMatch(/^[A-Za-z0-9_-]{24}$/);
     expect(mocks.hash).toHaveBeenCalledWith("AAECAwQFBgcICQoLDA0ODxAR", 12);
     expect(mocks.transaction).toHaveBeenCalledOnce();
-    expect(mocks.userUpdate).toHaveBeenCalledWith({ where: { id: "customer-id" }, data: { password_hash: "bcrypt-hash" } });
+    expect(mocks.userUpdate).toHaveBeenCalledWith({ where: { id: "customer-id", sourceMerge: { is: null }, password_hash: "old-bcrypt-hash" }, data: { password_hash: "bcrypt-hash" } });
     expect(mocks.userUpdate).not.toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ temporary_password: expect.anything() }),
     }));
@@ -94,10 +100,34 @@ describe("Admin customer mutation workflow", () => {
     } });
   });
 
+  it("từ chối ghi điểm và audit khi khách đã gộp hoặc bị chặn", async () => {
+    for (const current of [
+      { role: "CUSTOMER", is_blocked: false, sourceMerge: { target_user_id: "target" } },
+      { role: "CUSTOMER", is_blocked: true, sourceMerge: null },
+    ]) {
+      mocks.pointsLogCreate.mockClear();
+      mocks.userFindUnique.mockResolvedValue(current);
+      const response = await giftPointsRoute(new NextRequest("http://localhost/api/admin/users/qr/points", {
+        method: "POST", body: JSON.stringify({ points: 20 }),
+      }), { params: Promise.resolve({ userQrToken: "550e8400-e29b-41d4-a716-446655440000" }) });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ code: "CONFLICT", details: { reason: "ACCOUNT_NOT_ACTIVE" } });
+      expect(mocks.pointsLogCreate).not.toHaveBeenCalled();
+    }
+  });
+
   it("rejects Int overflow before writing an audit row", async () => {
-    mocks.userUpdateMany.mockResolvedValue({ count: 0 });
+    mocks.userUpdateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
     await expect(giftAdminUserPoints("550e8400-e29b-41d4-a716-446655440000", 1, "admin-id"))
       .rejects.toMatchObject({ reason: "BUSINESS_RULE_VIOLATION" });
     expect(mocks.pointsLogCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe("khách Google không có mật khẩu — APPLICATION_LOGIC", () => {
+  it("không cho reset tạo mật khẩu cho tài khoản Google email", async () => {
+    mocks.transaction.mockImplementation((callback) => callback(tx));
+    mocks.userFindFirst.mockResolvedValue({ id: "google", password_hash: null, google_sub: "subject" });
+    await expect(resetAdminUserPassword("google-qr")).rejects.toMatchObject({ reason: "RESET_NOT_ALLOWED" });
   });
 });

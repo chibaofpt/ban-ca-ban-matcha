@@ -60,8 +60,10 @@ describe("Content Security Policy dùng nonce", () => {
     const policy = buildContentSecurityPolicy("fixed-nonce");
     const frameDirective = policy.split(";").find((part) => part.trim().startsWith("frame-src"));
 
-    expect(frameDirective?.trim()).toBe("frame-src https://www.google.com https://challenges.cloudflare.com");
+    expect(frameDirective?.trim()).toBe("frame-src https://www.google.com https://challenges.cloudflare.com https://accounts.google.com/gsi/");
     expect(frameDirective).not.toContain("*");
+    expect(policy.split(";").find((part) => part.trim().startsWith("connect-src"))).toContain("https://accounts.google.com/gsi/");
+    expect(policy.split(";").find((part) => part.trim().startsWith("style-src"))).toContain("https://accounts.google.com/gsi/style");
   });
 
   it("mặc định report-only và truyền cùng nonce vào request lẫn response", () => {

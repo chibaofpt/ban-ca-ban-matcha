@@ -103,8 +103,14 @@ describe("Auth lifecycle — stable sid và thu hồi phiên", () => {
     });
     expect(boundary.findFirst).toHaveBeenCalledWith({
       where: { id: "session-1", user_id: "user-1", expires_at: { gt: now } },
-      include: { user: { select: { id: true, role: true, phone_number: true, is_blocked: true } } },
+      include: { user: { select: { id: true, role: true, phone_number: true, is_blocked: true, sourceMerge: { select: { target_user_id: true } } } } },
     });
+  });
+
+  it("getSession từ chối tài khoản nguồn đã hợp nhất", async () => {
+    boundary.cookieValues.set("access_token", await signJwt(claims));
+    boundary.findFirst.mockResolvedValue({ ...session(), user: { ...session().user, sourceMerge: { target_user_id: "canonical" } } });
+    expect(await getSession()).toBeNull();
   });
 
   it("getSession từ chối lookup rỗng và yêu cầu DB lọc sid chưa hết hạn", async () => {

@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { normalizeAccountEmail } from "@/src/utils/accountEmail";
 import { normalizePhone } from "@/src/utils/phone";
 import { NextResponse } from "next/server";
 import type { QrScanResult } from "@/contracts/staff";
@@ -7,6 +9,13 @@ import { logSystemEvent } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
+const fallbackSchema = z.object({
+  phone_number: z.string().transform(normalizePhone).pipe(z.string().regex(/^\+84\d{9}$/)).optional(),
+  email: z.string().trim().email().max(254).transform(normalizeAccountEmail).optional(),
+  code: z.string().regex(/^[a-zA-Z0-9]{6}$/),
+}).strict().refine((data) => Boolean(data.phone_number) !== Boolean(data.email));
+
+/** Verify one email or phone together with its personal QR short code. */
 export async function POST(request: Request) {
   try {
     const session = await getSession();
@@ -17,27 +26,30 @@ export async function POST(request: Request) {
       );
     }
 
-    const { phone_number, code } = await request.json();
-
-    if (typeof phone_number !== "string" || !phone_number || typeof code !== "string" || !code) {
+    const parsed = fallbackSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
       return NextResponse.json(
         { error: "Missing required fields", code: "VALIDATION_ERROR" },
         { status: 400 }
       );
     }
 
-    // 1. Look up user by phone
+    const { phone_number, email, code } = parsed.data;
     const user = await prisma.user.findUnique({
-      where: { phone_number: normalizePhone(phone_number) },
+      where: email ? { email } : { phone_number: phone_number! },
       select: {
         name: true,
         phone_number: true,
+        email: true,
+        insta_name: true,
+        role: true,
+        sourceMerge: { select: { target_user_id: true } },
         points_balance: true,
         qr_token: true,
       },
     });
 
-    if (!user) {
+    if (!user || user.role !== "CUSTOMER" || user.sourceMerge) {
       return NextResponse.json(
         { error: "User not found", code: "NOT_FOUND" },
         { status: 404 }
@@ -67,6 +79,8 @@ export async function POST(request: Request) {
           qr_token: user.qr_token,
           name: user.name,
           phone_number: user.phone_number,
+          email: user.email,
+          insta_name: user.insta_name,
           points_balance: user.points_balance,
         },
     } satisfies QrScanResult;

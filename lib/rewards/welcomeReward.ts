@@ -1,3 +1,4 @@
+import { claimActiveCustomerForWrite } from "@/lib/auth/accountMergeGuard";
 import { readWelcomeRewardSettings, hasWelcomeCampaignStock, isWelcomeAvailabilityFailure } from "@/lib/rewards/welcomeRewardConfiguration";
 import { randomInt } from "node:crypto";
 import type { Prisma } from "@prisma/client";
@@ -90,6 +91,7 @@ export async function createWelcomeRewardInTransaction(
   userId: string,
   now = new Date(),
 ): Promise<WelcomeRewardSummary> {
+  await claimActiveCustomerForWrite(tx, userId);
   const existing = await loadReward(tx, userId);
   if (existing) return toWelcomeRewardSummary(existing);
   const settings = await readWelcomeRewardSettings(tx);
@@ -141,6 +143,7 @@ export async function openWelcomeReward(
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       return await db.$transaction(async (tx) => {
+        await claimActiveCustomerForWrite(tx, input.userId);
         const bound = await tx.rewardOutcome.findUnique({ where: { request_id: input.requestId }, select: { welcome_reward_id: true } });
         if (bound && bound.welcome_reward_id !== input.rewardId) throw new WelcomeRewardError("CONFLICT");
         const reward = await loadReward(tx, input.userId, input.rewardId);

@@ -31,6 +31,7 @@ const latestAnyAt = new Date("2026-09-19T03:00:00.000Z");
 function customer(id: string, qrToken: string, passwordHash = "bcrypt-hash") {
   return {
     id,
+    role: "CUSTOMER", account_origin: "LEGACY_PHONE", google_sub: null, email: null, sourceMerge: null,
     qr_token: qrToken,
     name: `Khách ${id}`,
     phone_number: `+8490000000${id.slice(-1)}`,
@@ -46,7 +47,7 @@ describe("truy vấn quản lý khách hàng Admin", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.pointsLogGroupBy.mockResolvedValue([{ user_id: "completed-11", _sum: { delta: -13 } }]);
-    mocks.voucherGroupBy
+    mocks.voucherGroupBy.mockResolvedValue([])
       .mockResolvedValueOnce([{ user_id: "completed-11", _count: { _all: 4 } }])
       .mockResolvedValueOnce([{ user_id: "completed-11", _count: { _all: 2 } }]);
   });
@@ -177,5 +178,43 @@ describe("Tìm khách bằng điện thoại chuẩn hóa — APPLICATION_LOGIC"
     const result = await listAdminUsers(1, q, now);
     expect(result.items.map((item) => item.qr_token)).toEqual(["public-customer"]);
     expect(result.total).toBe(1);
+  });
+});
+
+describe("quyền nhận link claim — APPLICATION_LOGIC", () => {
+  it("ghost legacy hết điểm nhưng có lịch sử điểm dương vẫn được nhận link", async () => {
+    mocks.userFindFirst.mockResolvedValue({ id: "ghost" });
+    mocks.orderFindFirst.mockResolvedValue(null);
+    mocks.orderGroupBy.mockResolvedValue([]);
+    mocks.userFindMany.mockResolvedValue([{ ...customer("ghost", "ghost-qr", "GHOST_USER_NO_PASSWORD"), email: null, google_sub: null, account_origin: "LEGACY_PHONE", sourceMerge: null, points_balance: 0 }]);
+    mocks.pointsLogGroupBy.mockImplementation(async ({ where }: { where: { delta: { gt?: number; lt?: number } } }) =>
+      where.delta.gt === 0 ? [{ user_id: "ghost", _count: { _all: 1 } }] : []);
+    mocks.voucherGroupBy.mockReset().mockResolvedValue([]);
+    const result = await getAdminUser("ghost-qr", now);
+    expect(result).toMatchObject({ points_balance: 0, is_registered: false, has_password: false, can_send_claim_link: true });
+  });
+
+  it("ghost legacy hết điểm vẫn nhận link nếu có voucher bất kỳ kể cả đã dùng", async () => {
+    mocks.userFindFirst.mockResolvedValue({ id: "ghost" });
+    mocks.orderFindFirst.mockResolvedValue(null);
+    mocks.orderGroupBy.mockResolvedValue([]);
+    mocks.userFindMany.mockResolvedValue([{ ...customer("ghost", "ghost-qr", "GHOST_USER_NO_PASSWORD"), points_balance: 0 }]);
+    mocks.pointsLogGroupBy.mockReset().mockResolvedValue([]);
+    mocks.voucherGroupBy.mockReset().mockImplementation(async ({ where }: { where: { issued_via?: string; OR?: unknown[] } }) =>
+      !where.issued_via && !where.OR ? [{ user_id: "ghost", _count: { _all: 1 } }] : []);
+    expect(await getAdminUser("ghost-qr", now)).toMatchObject({
+      can_send_claim_link: true, points_balance: 0, current_voucher_count: 0, vouchers_exchanged: 0,
+    });
+  });
+
+  it("Google-only được xem là đăng ký và không có mật khẩu hay link claim", async () => {
+    mocks.userFindFirst.mockResolvedValue({ id: "google" });
+    mocks.orderFindFirst.mockResolvedValue(null);
+    mocks.orderGroupBy.mockResolvedValue([]);
+    mocks.userFindMany.mockResolvedValue([{ ...customer("google", "google-qr"), password_hash: null, phone_number: null, email: "ca@example.com", google_sub: "google-sub", account_origin: "GOOGLE_EMAIL", sourceMerge: null }]);
+    mocks.pointsLogGroupBy.mockResolvedValue([]);
+    mocks.voucherGroupBy.mockReset().mockResolvedValue([]);
+    const result = await getAdminUser("google-qr", now);
+    expect(result).toMatchObject({ is_registered: true, has_password: false, can_send_claim_link: false, email: "ca@example.com" });
   });
 });

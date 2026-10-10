@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSession } from "@/lib/auth";
+import { AccountError, accountErrorResponse } from "@/lib/auth/accountError";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rateLimit";
 import {
@@ -65,6 +66,7 @@ export async function POST(req: NextRequest) {
       { status: 201 },
     );
   } catch (error) {
+    if (error instanceof AccountError) return accountErrorResponse(error);
     if (error instanceof VoucherIssuanceError) return issuanceErrorResponse(error);
     console.error("[POST /api/profile/vouchers/exchange]", {
       name: error instanceof Error ? error.name : typeof error,

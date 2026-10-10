@@ -37,7 +37,7 @@ thuộc [API](API.md#customer-welcome-reward), và dữ liệu thuộc
 ## Runtime architecture
 
 Stack: Next.js 16 App Router, React 19, TypeScript strict; Prisma + Supabase PostgreSQL;
-custom phone/password auth bằng jose/httpOnly cookies; Axios transport + TanStack Query server-state,
+custom Google identity + legacy phone/password auth bằng jose/httpOnly cookies; Axios transport + TanStack Query server-state,
 Zustand chỉ cho cart; Supabase Storage `menu-images`; QR qua qrcode/html5-qrcode adapters; Sentry,
 Vercel; Upstash cho cache-aside public reads và distributed security rate limits. UI stack nằm ở mục UI system.
 
@@ -91,7 +91,7 @@ Một feature có dữ liệu đi qua các ranh giới sau; chỉ tạo hoặc s
    synchronization không phù hợp với query/mutation và vẫn phải xử lý cancel hoặc stale response.
 7. **Leaf UI:** nhận data và callback qua props; không biết URL, Axios, API envelope hay Prisma.
 
-Welcome reward đi đúng đường này: auth registration tạo entitlement trong transaction; customer và
+Welcome reward đi đúng đường này: account activation tạo entitlement trong transaction; customer và
 Admin orchestration dùng TanStack Query qua domain service. Reward reveal nằm trong managed overlay,
 và mở voucher wallet bằng callback của composition boundary thay vì gọi transport từ leaf UI.
 
@@ -147,7 +147,7 @@ theo môi trường. Redis lỗi thì chặn gửi có phí và
 không fallback vào bộ nhớ Function. Prisma sở hữu cấu hình bật/tắt toàn hệ thống và challenge OTP;
 consume challenge cùng transaction tạo/claim khách, quà chào mừng và session. Đây là scope state
 bảo mật đã duyệt cho đăng ký, không mở rộng Redis cache-aside hoặc nguồn xác thực session.
-Policy thuộc [API registration OTP](API.md#registration-otp--public-onboarding), semantics thuộc
+Policy thuộc [API Google account access](API.md#google-account-access), semantics thuộc
 [SCHEMA](SCHEMA.md#otp_attempts--registration-otp). Hostname allowlist do Cloudflare Turnstile widget settings quản lý; server xác minh token/action
 qua Siteverify, không giữ một hostname env riêng. Turnstile và ABENLA nằm sau adapter; fallback
 Turnstile khi dịch vụ lỗi vẫn bắt buộc qua quota OTP.
@@ -155,8 +155,11 @@ Client Upstash vẫn chỉ được tạo trong `lib/redis.ts`. Client riêng ch
 và không retry; client cache/limiter tổng quát giữ policy hiện có. Admission giữ row lock cấu hình
 trong transaction không retry khi gọi Redis, rồi chỉ dispatch provider sau transaction commit.
 Redis reservation đã xảy ra nhưng transaction lỗi được giữ lại; không tự hoàn quota hoặc gửi lại.
-CSP giữ nonce và chỉ bổ sung nguồn Cloudflare cần cho widget. Khách nhận mã qua Zalo sau khi điền đủ thông tin; admin quản lý công tắc/quota và
-xem số dư trong Quản lý khách hàng.
+CSP giữ nonce và bổ sung đúng nguồn Google GIS/Cloudflare cần cho widget. Google ID token được xác minh server-side qua jose/JWKS; không lưu Google access/refresh token. OTP chỉ dùng cho trùng legacy ghost đủ điều kiện; admin quản lý công tắc/quota và số dư trong Cài đặt.
+
+Google GIS, tạo challenge và xác minh audience dùng chung `NEXT_PUBLIC_GOOGLE_CLIENT_ID` trong
+mỗi môi trường; đây là public identifier. Env inventory thuộc [.env.local.example](.env.local.example).
+Đổi Client ID cần build/deploy mới vì Next.js đưa giá trị public vào browser bundle lúc build.
 
 ## Business consistency boundaries
 
@@ -214,37 +217,12 @@ spaces, dots, dashes or parentheses; keep invalid letters visible to validation.
 normalize before existing domain-specific validation. Search supports canonical/local full numbers,
 explicit local prefixes and existing suffix search without rewriting names/Instagram aliases.
 
-### Registration OTP form
+### Account access UI
 
-Public registration keeps its information steps and adds a code step when the server requires OTP.
-The code-step instruction directs the customer to Zalo for the masked phone; unknown provider
-status keeps uncertainty visible. Inputs and feedback follow `mobile-ux`; business policy and errors belong to
-[API registration OTP](API.md#registration-otp--public-onboarding).
-
-A challenge sent in the current mount may be reused only for the same normalized registration
-details. Editing those details requires a fresh send flow; changing phones must not inherit another
-phone's countdown. After reload, the UI explains that the customer must re-enter the original
-details to continue with the previous code and offers a recovery path to request a new code.
-Credentials and payload fingerprints are not persisted in browser storage.
-
-Send/resend uses the server's retry time and refreshes its countdown when a background tab resumes.
-An older configuration request must not overwrite the challenge produced by a newer send.
-Only a successful registration response transitions into the existing session/welcome flow.
-
-Manual acceptance remains `MANUAL_UI_REQUIRED`:
-
-- Khi sửa tên, mật khẩu, Instagram hoặc số điện thoại, kể cả số mới trùng ba số cuối, thì UI không
-  tự dùng challenge của thông tin cũ; số mới không chịu countdown của số cũ.
-- Khi reload, thì customer có thể nhập lại đúng thông tin để dùng mã còn hạn hoặc chọn gửi mã mới;
-  UI không lưu lại mật khẩu và không claim proof hợp lệ trước phản hồi server. Nếu nhập nhầm
-  thông tin khi resume, thì quay lại sửa đúng và chọn dùng mã đã nhận không gọi gửi thêm tin.
-- Khi GET cấu hình cũ trả về sau resend thành công, thì UI vẫn giữ challenge mới. Background tab
-  trở lại dùng thời gian thực và server retry time, không cho gửi sớm vì timer cũ.
-- Khi OTP hợp lệ, thì tài khoản được tạo/claim, xác thực và tự đăng nhập đúng một lần. Khi công tắc
-  tắt hoặc provider/verification lỗi, thì UI phản ánh trạng thái server và không claim success.
-  Khi Admin tắt OTP lúc customer đang chờ hoặc mã đã hết hạn, control kiểm tra lại chế độ đăng ký
-  cho phép cập nhật chế độ không OTP mà không phải chờ countdown cũ.
-
+Google onboarding, legacy claim pages, Profile phone proof and manual acceptance are owned by
+[Account access](docs/specs/account-access.md). Auth keeps the existing critical dialog and private
+query-cache transition boundary. Admin claim content reuses the selected-customer overlay; provider
+SDKs remain behind browser hooks/server adapters. Public phone registration UI is retired.
 
 ### Primitive decision matrix
 

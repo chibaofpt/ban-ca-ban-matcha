@@ -31,6 +31,7 @@ cùng owner. Khi một loại thông tin đổi, sửa owner và liên kết t�
 | [Reward UI](reward-ui.md) | Quà đăng ký, hộp matcha, resume points và admin campaign |
 | [Order UI](order-ui.md) | Customer/admin/staff cards/detail, persisted delivery recipient, address defaults và global orders badge |
 | [Cart và POS](cart.md) | Source state/persistence, BUNDLE setup, nhóm giỏ, khôi phục chuyển khoản |
+| [Account access](account-access.md) | Google onboarding, legacy claims, phone proof, merge and account UI |
 | [Admin customer management](admin-customer-management.md) | Users tab, customer overlay, account actions, gifts, orders và wallet |
 
 Đây là yêu cầu đang được tài liệu dự án mô tả, không phải bằng chứng implementation hoặc UI đã

@@ -24,6 +24,7 @@ import {
 } from "@/src/utils/pricing";
 import {
   useStaffCartStore,
+  getStaffCustomerOrderIdentity,
   useStaffCartTotalPrice,
 } from "@/src/lib/store/staffCartStore";
 import { retainBundleRewardEffects } from "@/src/lib/store/cartStore";
@@ -240,6 +241,7 @@ export default function StaffOrdersPage({
   const customerInfo = useStaffCartStore((s) => s.customerInfo);
   const customerQrToken = useStaffCartStore((s) => s.customerQrToken);
   const setCustomerInfo = useStaffCartStore((s) => s.setCustomerInfo);
+  const setScannedCustomerQrToken = useStaffCartStore((s) => s.setScannedCustomerQrToken);
   const detachCustomer = useStaffCartStore((s) => s.detachCustomer);
   const discountVoucher = useStaffCartStore((s) => s.discountVoucher);
   const setDiscountVoucher = useStaffCartStore((s) => s.setDiscountVoucher);
@@ -281,7 +283,7 @@ export default function StaffOrdersPage({
   }, []);
   const pendingOwnerChange = useRef<(() => void) | null>(null);
   const closeCartAfterWallet = useRef(false);
-  const transitionCustomer = useCallback((info: Parameters<typeof setCustomerInfo>[0]) => {
+  const transitionCustomer = useCallback((info: Parameters<typeof setCustomerInfo>[0], scannedQrToken?: string) => {
     const commitOwnerChange = () => {
     const previousQrToken = useStaffCartStore.getState().customerQrToken;
     const nextQrToken = info?.type === "existing" ? info.data.qr_token : null;
@@ -292,13 +294,14 @@ export default function StaffOrdersPage({
     resetCustomerVoucherState();
     const result = setCustomerInfo(info);
     if (!result.ok) { toast.error(result.message); return; }
+    if (scannedQrToken) setScannedCustomerQrToken(scannedQrToken);
     if (info?.type === "existing") {
       queryClient.setQueryData(["staff", "cart-customer", info.data.qr_token], { type: "user", data: info.data });
     }
     };
     if (voucherPickerOpen) { pendingOwnerChange.current = commitOwnerChange; setVoucherPickerOpen(false); return; }
     commitOwnerChange();
-  }, [queryClient, resetCustomerVoucherState, setCustomerInfo, voucherPickerOpen]);
+  }, [queryClient, resetCustomerVoucherState, setCustomerInfo, setScannedCustomerQrToken, voucherPickerOpen]);
 
   // ── Category filter ───────────────────────────────────────────────────
 
@@ -377,8 +380,10 @@ export default function StaffOrdersPage({
     const current = useStaffCartStore.getState().customerInfo;
     if (current?.type === "existing" && current.data.qr_token === selectedCustomerQuery.data.data.qr_token &&
       current.data.points_balance === selectedCustomerQuery.data.data.points_balance) return;
-    setCustomerInfo({ type: "existing", data: selectedCustomerQuery.data.data });
-  }, [selectedCustomerQuery.data, setCustomerInfo]);
+    const proof = useStaffCartStore.getState().scannedCustomerQrToken;
+    const result = setCustomerInfo({ type: "existing", data: selectedCustomerQuery.data.data });
+    if (result.ok && proof === selectedCustomerQuery.data.data.qr_token) setScannedCustomerQrToken(proof);
+  }, [selectedCustomerQuery.data, setCustomerInfo, setScannedCustomerQrToken]);
 
   useEffect(() => {
     if (!staffCustomerQrToken || !selectedCustomerQuery.isError) return;
@@ -957,7 +962,7 @@ export default function StaffOrdersPage({
     },
   });
 
-  const handleCheckoutConfirm = async (customerQrToken?: string) => {
+  const handleCheckoutConfirm = async () => {
     if (isSubmittingRef.current) return;
     if (cartProjection.checkoutBlocked) {
       toast.error(cartProjection.revalidating ? "Giỏ hàng đang được xác minh lại." : cartProjection.errors[0] ?? "Giỏ hàng chưa sẵn sàng để tạo đơn.");
@@ -988,7 +993,8 @@ export default function StaffOrdersPage({
       payload = { items, payment_method: counterPayment.paymentMethod };
     } else if (customerInfo.type === "existing") {
       payload = {
-        phone_number: customerInfo.data.phone_number,
+        ...getStaffCustomerOrderIdentity(),
+        ...(customerInfo.data.phone_number ? { phone_number: customerInfo.data.phone_number } : {}),
         payment_method: counterPayment.paymentMethod,
         items,
         ...(discountVoucherIds.length > 0
@@ -997,11 +1003,10 @@ export default function StaffOrdersPage({
         ...(normalizedBundleApplications.length > 0
           ? { bundle_applications: normalizedBundleApplications }
           : {}),
-        ...(customerQrToken ? { customer_qr_token: customerQrToken } : {}),
       };
     } else {
       payload = {
-        phone_number: customerInfo.phone_number,
+        customer_email: customerInfo.email,
         customer_name: customerInfo.name,
         payment_method: counterPayment.paymentMethod,
         items,
@@ -1015,11 +1020,15 @@ export default function StaffOrdersPage({
 
   const handleScanUser = ({
     phone_number,
+    email,
+    insta_name,
     name,
     qr_token,
     points_balance,
   }: {
-    phone_number: string;
+    phone_number: string | null;
+    email?: string | null;
+    insta_name?: string | null;
     name?: string;
     points_balance?: number;
     qr_token?: string;
@@ -1027,7 +1036,7 @@ export default function StaffOrdersPage({
     setScanOpen(false);
     if (name) {
       if (!qr_token) {
-        setInitialSearchQuery(phone_number);
+        setInitialSearchQuery(email ?? phone_number ?? "");
         setCustomerSelectOpen(true);
         return;
       }
@@ -1036,13 +1045,15 @@ export default function StaffOrdersPage({
         data: {
           qr_token,
           phone_number,
+          email,
+          insta_name,
           name,
           points_balance: points_balance ?? 0,
         },
-      });
+      }, qr_token);
       toast.success(`Đã áp dụng khách hàng: ${name}`);
     } else {
-      setInitialSearchQuery(phone_number);
+      setInitialSearchQuery(email ?? phone_number ?? "");
       setCustomerSelectOpen(true);
     }
   };
@@ -1202,7 +1213,9 @@ export default function StaffOrdersPage({
 
   const handleQrVerified = (qrToken: string) => {
     setQrVerifyOpen(false);
-    handleCheckoutConfirm(qrToken);
+    const result = setScannedCustomerQrToken(qrToken);
+    if (!result.ok) { toast.error(result.message); return; }
+    handleCheckoutConfirm();
   };
 
   // ── Render ─────────────────────────────────────────────────────────────

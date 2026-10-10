@@ -77,9 +77,11 @@ export async function POST(req: Request) {
         identifierKind === "phone"
           ? { phone_number: normalizedIdentifier }
           : { insta_name: normalizedIdentifier },
+      include: { sourceMerge: true },
     });
     const isAllowedCandidate =
       user !== null &&
+      !user.sourceMerge && user.account_origin !== "GOOGLE_EMAIL" &&
       (identifierKind === "phone" || user.role === "CUSTOMER");
 
     // EDGE-3: Ghost user guard — must run bcrypt for timing-safety, then reject clearly.
@@ -87,7 +89,7 @@ export async function POST(req: Request) {
     if (
       identifierKind === "phone" &&
       user &&
-      user.password_hash === "GHOST_USER_NO_PASSWORD"
+      (user.password_hash === "GHOST_USER_NO_PASSWORD" || !user.password_hash) && !user.google_sub
     ) {
       await bcrypt.compare(password, DUMMY_HASH); // timing-safe: always run compare
       return NextResponse.json(
@@ -99,10 +101,10 @@ export async function POST(req: Request) {
     // Timing-safe password compare
     const isValidPassword = await bcrypt.compare(
       password,
-      isAllowedCandidate ? user.password_hash : DUMMY_HASH
+      isAllowedCandidate && user.password_hash ? user.password_hash : DUMMY_HASH
     );
 
-    if (!isAllowedCandidate || !isValidPassword) {
+    if (!isAllowedCandidate || !isValidPassword || !user.password_hash) {
       // Record failed attempt — both counters increment only on wrong password.
       // Run in parallel to minimize latency impact.
       await Promise.all([
@@ -154,6 +156,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         data: {
+          qr_token: user.qr_token,
           name: user.name,
           phone_number: user.phone_number,
           insta_name: user.insta_name,

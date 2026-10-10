@@ -40,7 +40,7 @@ const LoginForm = () => {
   const login = useAuthStore((s) => s.login);
   const close = useAuthModalStore((s) => s.close);
   const dismiss = useAuthModalStore((s) => s.dismiss);
-  const switchTo = useAuthModalStore((s) => s.switchTo);
+
 
   const onSubmit = async (data: LoginInput) => {
     setServerError(null);
@@ -57,7 +57,7 @@ const LoginForm = () => {
       const isOnMenu = pathname === "/" || pathname === "/menu";
 
       // Set auth state first so queries/UI update immediately.
-      login(user.phone_number, user.name);
+      login(user.phone_number, user.name, user.qr_token);
       resetForceLogout(); // Allow force-logout to fire again after re-login (BUG-3)
       if (isStaffUser) {
         // Release focus and scroll lock before the admin shell navigation starts.
@@ -186,16 +186,7 @@ const LoginForm = () => {
         </button>
       </form>
 
-      <p className="text-center text-sm text-muted-foreground">
-        Chưa có tài khoản?{" "}
-        <button
-          type="button"
-          onClick={() => switchTo("register")}
-          className="text-primary font-medium hover:underline"
-        >
-          Đăng ký ngay
-        </button>
-      </p>
+
     </motion.div>
   );
 };

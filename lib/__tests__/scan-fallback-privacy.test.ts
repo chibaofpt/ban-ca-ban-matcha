@@ -27,7 +27,7 @@ describe("POST /api/staff/scan-fallback — privacy logging", () => {
     vi.clearAllMocks();
     mockGetSession.mockResolvedValue({ id: "staff-private-id", role: "STAFF" });
     mockUserFindUnique.mockResolvedValue({
-      id: "customer-private-id",
+      id: "customer-private-id", role: "CUSTOMER", sourceMerge: null,
       name: "Khách",
       phone_number: "+84901234567",
       points_balance: 10,
@@ -64,11 +64,32 @@ describe("Nhập điện thoại nội địa khi xác nhận QR — APPLICATION
   it.each(["0901234567", "090 123 4567", "84901234567"])("lookup canonical cho %s và vẫn yêu cầu đúng mã", async (phone_number) => {
     mockGetSession.mockResolvedValue({ role: "STAFF" });
     mockUserFindUnique.mockImplementation(async ({ where }: { where: { phone_number: string } }) =>
-      where.phone_number === "+84901234567" ? { name: "Khách", phone_number: "+84901234567", points_balance: 10, qr_token: "public-token-ABC123" } : null);
+      where.phone_number === "+84901234567" ? { role: "CUSTOMER", sourceMerge: null, name: "Khách", phone_number: "+84901234567", points_balance: 10, qr_token: "public-token-ABC123" } : null);
     const request = (code: string) => new Request("http://localhost", { method: "POST", body: JSON.stringify({ phone_number, code }) });
     const success = await POST(request("ABC123"));
     expect(success.status).toBe(200);
     expect((await success.json()).data.data.phone_number).toBe("+84901234567");
     expect((await POST(request("WRONG"))).status).toBe(400);
+  });
+});
+
+describe("nhập tay email — APPLICATION_LOGIC", () => {
+  it("lookup email đã tồn tại có dấu cộng và vẫn yêu cầu mã cá nhân", async () => {
+    mockGetSession.mockResolvedValue({ role: "STAFF" });
+    mockUserFindUnique.mockImplementation(async ({ where }: { where: { email: string } }) =>
+      where.email === "ca+ke@example.com" ? { role: "CUSTOMER", sourceMerge: null, email: where.email,
+        name: "Cá", phone_number: null, qr_token: "token-ABC123", points_balance: 0 } : null);
+    const request = (code: string) => new Request("http://localhost", { method: "POST",
+      body: JSON.stringify({ email: " Ca+Ke@EXAMPLE.COM ", code }) });
+    expect((await POST(request("ABC123"))).status).toBe(200);
+    expect((await POST(request("WRONG1"))).status).toBe(400);
+  });
+
+  it("email đúng cùng mã cá nhân trả khách chỉ có email", async () => {
+    mockGetSession.mockResolvedValue({ role: "STAFF" });
+    mockUserFindUnique.mockResolvedValue({ role: "CUSTOMER", sourceMerge: null, email: "customer@example.com", name: "Email", phone_number: null, qr_token: "token-ABC123", points_balance: 10 });
+    const response = await POST(new Request("http://localhost", { method: "POST", body: JSON.stringify({ email: "Customer@example.com", code: "abc123" }) }));
+    expect(response.status).toBe(200);
+    expect((await response.json()).data.data).toMatchObject({ email: "customer@example.com", phone_number: null });
   });
 });

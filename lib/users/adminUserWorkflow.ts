@@ -2,6 +2,8 @@ import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 
 import { prisma } from "@/lib/prisma";
+import { claimActiveCustomerForWrite } from "@/lib/auth/accountMergeGuard";
+import { runSerializableTransaction } from "@/lib/serializableTransaction";
 
 const MAX_INT = 2_147_483_647;
 
@@ -17,7 +19,7 @@ export class AdminUserWorkflowError extends Error {
 
 async function requireCustomerId(db: typeof prisma, userQrToken: string): Promise<string> {
   const user = await db.user.findFirst({
-    where: { qr_token: userQrToken, role: "CUSTOMER" },
+    where: { qr_token: userQrToken, role: "CUSTOMER", sourceMerge: { is: null } },
     select: { id: true },
   });
   if (!user) throw new AdminUserWorkflowError("NOT_FOUND");
@@ -27,14 +29,14 @@ async function requireCustomerId(db: typeof prisma, userQrToken: string): Promis
 /** Applies an Admin verification flag to a CUSTOMER selected by public QR token. */
 export async function setAdminUserVerified(userQrToken: string, isVerified: boolean): Promise<void> {
   const userId = await requireCustomerId(prisma, userQrToken);
-  await prisma.user.update({ where: { id: userId }, data: { is_verified: isVerified } });
+  await prisma.user.update({ where: { id: userId, sourceMerge: { is: null } }, data: { is_verified: isVerified } });
 }
 
 /** Applies an Admin block flag and revokes all sessions when blocking a CUSTOMER. */
 export async function setAdminUserBlocked(userQrToken: string, isBlocked: boolean): Promise<void> {
   await prisma.$transaction(async (tx) => {
     const userId = await requireCustomerId(tx as typeof prisma, userQrToken);
-    await tx.user.update({ where: { id: userId }, data: { is_blocked: isBlocked } });
+    await tx.user.update({ where: { id: userId, sourceMerge: { is: null } }, data: { is_blocked: isBlocked } });
     if (isBlocked) await tx.session.deleteMany({ where: { user_id: userId } });
   });
 }
@@ -45,14 +47,14 @@ export async function resetAdminUserPassword(userQrToken: string): Promise<strin
   const passwordHash = await bcrypt.hash(temporaryPassword, 12);
   await prisma.$transaction(async (tx) => {
     const user = await tx.user.findFirst({
-      where: { qr_token: userQrToken, role: "CUSTOMER" },
+      where: { qr_token: userQrToken, role: "CUSTOMER", sourceMerge: { is: null } },
       select: { id: true, password_hash: true },
     });
     if (!user) throw new AdminUserWorkflowError("NOT_FOUND");
-    if (user.password_hash === "GHOST_USER_NO_PASSWORD") {
+    if (!user.password_hash?.trim() || user.password_hash === "GHOST_USER_NO_PASSWORD") {
       throw new AdminUserWorkflowError("RESET_NOT_ALLOWED");
     }
-    await tx.user.update({ where: { id: user.id }, data: { password_hash: passwordHash } });
+    await tx.user.update({ where: { id: user.id, sourceMerge: { is: null }, password_hash: user.password_hash }, data: { password_hash: passwordHash } });
     await tx.session.deleteMany({ where: { user_id: user.id } });
   });
   return temporaryPassword;
@@ -60,8 +62,9 @@ export async function resetAdminUserPassword(userQrToken: string): Promise<strin
 
 /** Atomically gifts points and appends the immutable Admin audit log in one transaction. */
 export async function giftAdminUserPoints(userQrToken: string, points: number, adminId: string): Promise<number> {
-  return prisma.$transaction(async (tx) => {
+  return runSerializableTransaction(prisma, async (tx) => {
     const userId = await requireCustomerId(tx as typeof prisma, userQrToken);
+    await claimActiveCustomerForWrite(tx, userId);
     const updated = await tx.user.updateMany({
       where: { id: userId, role: "CUSTOMER", points_balance: { lte: MAX_INT - points } },
       data: { points_balance: { increment: points } },

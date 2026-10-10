@@ -8,10 +8,10 @@ import { toast } from "sonner";
 import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 import { WelcomeRewardExperience } from "@/src/components/rewards/WelcomeRewardExperience";
-import type { RegisterResult } from "@/src/services/authService";
+import type { AccountAuthResult } from "@/contracts/account";
 import { resolveAuthReturnTarget } from "@/src/utils/authReturnTarget";
-import LoginForm from "./LoginForm";
-import RegisterForm from "./RegisterForm";
+import { GoogleLoginPanel } from "./GoogleLoginPanel";
+
 
 /**
  * AuthModal — a centered overlay modal that renders LoginForm or RegisterForm
@@ -21,13 +21,13 @@ import RegisterForm from "./RegisterForm";
 const AuthModal = () => {
   const router = useRouter();
   const open = useAuthModalStore((s) => s.open);
-  const mode = useAuthModalStore((s) => s.mode);
+
   const pendingIntent = useAuthModalStore((s) => s.pendingIntent);
   const close = useAuthModalStore((s) => s.close);
   const dismiss = useAuthModalStore((s) => s.dismiss);
-  const [registration, setRegistration] = useState<RegisterResult | null>(null);
-  const rewardPhase = registration?.welcome_reward.mode === "GACHA" && registration.welcome_reward.status === "PENDING";
-  const title = rewardPhase ? "Quà chào mừng" : mode === "login" ? "Đăng nhập" : "Đăng ký";
+  const [registration, setRegistration] = useState<AccountAuthResult | null>(null);
+  const rewardPhase = registration?.welcome_reward?.mode === "GACHA" && registration.welcome_reward.status === "PENDING";
+  const title = rewardPhase ? "Quà chào mừng" : "Đăng nhập";
 
   const finishRegistration = useCallback(() => {
     close();
@@ -39,7 +39,8 @@ const AuthModal = () => {
     router.refresh();
   }, [close, pendingIntent, router]);
 
-  const handleRegistered = (result: RegisterResult) => {
+  const handleRegistered = (result: AccountAuthResult) => {
+    if (!result.welcome_reward) { finishRegistration(); return; }
     if (result.welcome_reward.mode !== "GACHA" || result.welcome_reward.status === "COMPLETED") {
       toast.success(
         result.welcome_reward.outcome_kind === "POINTS"
@@ -94,7 +95,7 @@ const AuthModal = () => {
             <motion.div key="welcome-reward" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <WelcomeRewardExperience onDefer={finishRegistration} onContinue={finishRegistration} />
             </motion.div>
-          ) : mode === "login" ? <LoginForm key="login" /> : <RegisterForm key="register" onRegistered={handleRegistered} />}
+          ) : <GoogleLoginPanel onAuthenticated={handleRegistered} />}
         </AnimatePresence>
       </div>
     </ResponsiveOverlay>

@@ -47,6 +47,25 @@ describe("Phát hành voucher dùng chung", () => {
     mockAddonOptionFindMany.mockResolvedValue([]);
   });
 
+  it("không phát voucher cho hồ sơ nguồn đã được gộp", async () => {
+    const tx = makeTx();
+    const retiredTx = {
+      ...tx,
+      user: {
+        ...tx.user,
+        findUnique: vi.fn().mockResolvedValue({
+          role: "CUSTOMER", is_blocked: false,
+          sourceMerge: { target_user_id: "canonical-customer" },
+        }),
+      },
+    };
+    await expect(issueVoucherInTransaction(retiredTx, {
+      user_id: USER_ID, package_id: PACKAGE_ID, source: "POINTS_EXCHANGE", now: NOW,
+    })).rejects.toMatchObject({ reason: "ACCOUNT_NOT_ACTIVE" });
+    expect(mockVoucherCreate).not.toHaveBeenCalled();
+    expect(mockPointsLogCreate).not.toHaveBeenCalled();
+  });
+
   it("POINTS_EXCHANGE trừ điểm có điều kiện, snapshot voucher và ghi points_log", async () => {
     const result = await issueVoucherInTransaction(makeTx(), {
       user_id: USER_ID,

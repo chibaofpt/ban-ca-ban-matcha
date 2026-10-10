@@ -15,7 +15,7 @@ export { normalizePhone } from "@/src/utils/phone";
 /**
  * Signs a JWT token with HS256. 15 minutes for all roles.
  */
-export async function signJwt(payload: { id: string; role: string; phone_number: string; sid: string }): Promise<string> {
+export async function signJwt(payload: { id: string; role: string; phone_number: string | null; sid: string }): Promise<string> {
   const expiresIn = "15m";
   return await new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
@@ -31,9 +31,9 @@ export async function verifyJwt(token: string) {
   try {
     const { payload, protectedHeader } = await jwtVerify(token, JWT_SECRET, { algorithms: ["HS256"] });
     if (protectedHeader.alg !== "HS256" || typeof payload.id !== "string" ||
-        typeof payload.role !== "string" || typeof payload.phone_number !== "string" ||
+        typeof payload.role !== "string" || (payload.phone_number !== null && typeof payload.phone_number !== "string") ||
         typeof payload.sid !== "string") return null;
-    return payload as { id: string; role: string; phone_number: string; sid: string };
+    return payload as { id: string; role: string; phone_number: string | null; sid: string };
   } catch {
     return null;
   }
@@ -182,7 +182,7 @@ export async function getRefreshTokenCookie(): Promise<string | null> {
 export interface AuthSession {
   id: string;
   role: string;
-  phone_number: string;
+  phone_number: string | null;
   /** Stable database session ID used only by internal session workflows. */
   session_id?: string;
 }
@@ -196,9 +196,9 @@ export async function getSession(): Promise<AuthSession | null> {
   try {
     const session = await prisma.session.findFirst({
       where: { id: claims.sid, user_id: claims.id, expires_at: { gt: new Date() } },
-      include: { user: { select: { id: true, role: true, phone_number: true, is_blocked: true } } },
+      include: { user: { select: { id: true, role: true, phone_number: true, is_blocked: true, sourceMerge: { select: { target_user_id: true } } } } },
     });
-    if (!session || session.user.id !== claims.id || session.user.is_blocked) return null;
+    if (!session || session.user.id !== claims.id || (session.user.is_blocked || session.user.sourceMerge)) return null;
     return {
       id: session.user.id,
       role: session.user.role,
@@ -223,12 +223,12 @@ export async function getSession(): Promise<AuthSession | null> {
 export async function getSessionFromHeaders(): Promise<{
   id: string;
   role: string;
-  phone_number: string;
+  phone_number: string | null;
 } | null> {
   const h = await headers();
   const id = h.get("x-user-id");
   const role = h.get("x-user-role");
   const phone = h.get("x-user-phone");
   if (!id || !role) return null;
-  return { id, role, phone_number: phone ?? "" };
+  return { id, role, phone_number: phone || null };
 }

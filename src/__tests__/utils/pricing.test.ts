@@ -6,6 +6,8 @@
 import { describe, it, expect } from "vitest";
 import {
   applyProductVoucherCredit,
+  deriveMenuBasePrice,
+  calcMenuDefaultIngredientCost,
   ceilTo1000,
   resolveGram,
   calcLattePrice,
@@ -26,6 +28,34 @@ const DEFAULT_SIZE_CONFIGS: DefaultSizeConfigEntry[] = [
   { size: "MEDIUM", milk_ml: 200, powder_gram: 4.5 },
   { size: "LARGE", milk_ml: 300, powder_gram: 8.0 },
 ];
+
+describe("Suy ngược giá bán mặc định của menu", () => {
+  it("giá bán Latte 45 nghìn trừ bột và liquid cho base 21.400đ", () => {
+    expect(deriveMenuBasePrice({ sellingPriceVnd: 45_000, ingredientCostVnd: 3.5 * 6000 + 130 * 20 })).toBe(21_400);
+  });
+  it("Fusion mặc định không cộng chi phí liquid, giữ premium của bột thay thế", () => {
+    const cost = calcMenuDefaultIngredientCost({ category: "fusion", gram: 4, powderPricePerGram: 6000,
+      baseLiquidMl: 200, baseLiquidPricePerMl: 50, premiumLatte: 5000 });
+    expect(cost).toBe(29_000);
+    expect(deriveMenuBasePrice({ sellingPriceVnd: 50_000, ingredientCostVnd: cost })).toBe(21_000);
+  });
+  it("Latte tính liquid và dùng gram đã resolve theo override", () => {
+    expect(calcMenuDefaultIngredientCost({ category: "latte", gram: 5, powderPricePerGram: 6000,
+      baseLiquidMl: 150, baseLiquidPricePerMl: 20 })).toBe(33_000);
+  });
+  it("base integer với chi phí lẻ VND vẫn cho đúng giá bán sau làm tròn", () => {
+    const base = deriveMenuBasePrice({ sellingPriceVnd: 45_000, ingredientCostVnd: 23_600.25 });
+    expect(base).toBe(21_399);
+    expect(calcLattePrice({ base_price_vnd: base!, gram: 3.5, powder_price_per_gram: 6000,
+      milk_ml: 130, milk_price_per_ml: 20.001923076923077 })).toBe(45_000);
+  });
+  it("giữ nguyên base đã lưu khi không thay đổi giá hoặc công thức", () => {
+    expect(deriveMenuBasePrice({ sellingPriceVnd: 45_000, ingredientCostVnd: 23_600.25, originalBasePriceVnd: 21_000 })).toBe(21_000);
+  });
+  it.each([44_500, -1000, NaN, Infinity, 20_000])("chặn giá không hợp lệ hoặc thấp hơn công thức: %s", (sellingPriceVnd) => {
+    expect(deriveMenuBasePrice({ sellingPriceVnd, ingredientCostVnd: 23_600 })).toBeNull();
+  });
+});
 
 const POWDER_SIZE_CONFIGS: PowderSizeConfigEntry[] = [
   { size: "SMALL", grams: 4.0 },

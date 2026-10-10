@@ -1,3 +1,4 @@
+import { claimActiveCustomerForWrite } from "@/lib/auth/accountMergeGuard";
 import { after, NextResponse } from "next/server";
 import type { CreateOrderResult } from "@/contracts/order";
 import { calculateCustomerOrderDiscounts } from "@/lib/orders/customerOrderDiscounts";
@@ -32,6 +33,7 @@ export async function createCustomerOrder(
   await ensureAutoGrantedVouchers(prisma as unknown as VoucherIssuanceDatabase, userId);
   const originalData = data;
   const response = await runSerializableTransaction(prisma, async (tx) => {
+  await claimActiveCustomerForWrite(tx, userId);
   const data = structuredClone(originalData);
   await lazyExpireVouchers(userId, acceptanceDate, tx);
   const itemVoucherResult = await resolveCustomerItemVouchers(data, userId, tx, acceptanceDate);

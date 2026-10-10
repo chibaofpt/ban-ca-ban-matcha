@@ -35,7 +35,7 @@ function load(): Promise<TurnstileApi> {
 }
 
 /** Explicitly load and manage the third-party widget behind a browser adapter hook. */
-export function useRegistrationTurnstile(siteKey?: string) {
+export function useRegistrationTurnstile(siteKey?: string, action = "registration_otp") {
   const containerRef = useRef<HTMLDivElement>(null);
   const widget = useRef<string | null>(null);
   const [generation, setGeneration] = useState(0);
@@ -48,7 +48,7 @@ export function useRegistrationTurnstile(siteKey?: string) {
       if (cancelled || !containerRef.current) return;
       setToken(""); setStatus("ready");
       widget.current = api.render(containerRef.current, {
-        sitekey: siteKey, action: "registration_otp",
+        sitekey: siteKey, action,
         callback: (value) => { if (!cancelled) { setToken(value); setStatus("verified"); } },
         "expired-callback": () => { if (!cancelled) { setToken(""); setStatus("ready"); } },
         "error-callback": () => { if (!cancelled) { setToken(""); setStatus("error"); } return true; },
@@ -59,7 +59,7 @@ export function useRegistrationTurnstile(siteKey?: string) {
       if (widget.current) window.turnstile?.remove(widget.current);
       widget.current = null;
     };
-  }, [siteKey, generation]);
+  }, [siteKey, action, generation]);
   const reset = useCallback(() => {
     if (widget.current) window.turnstile?.reset(widget.current);
     setToken(""); setStatus(widget.current ? "ready" : "error");

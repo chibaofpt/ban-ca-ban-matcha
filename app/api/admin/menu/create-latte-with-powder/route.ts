@@ -11,6 +11,7 @@ import {
 import { invalidateMenuCaches } from "@/lib/cacheInvalidation";
 import { captureServerException } from "@/lib/observability";
 import { ADMIN_MENU_INCLUDE, formatAdminMenuItem } from "@/lib/catalog/adminMenuDto";
+import { prepareCatalogImage, catalogImageValidationMessage } from "@/lib/catalog/catalogImage";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   let uploadedImagePath: string | null = null;
+  let uploadedPowderImagePath: string | null = null;
   let databaseCommitted = false;
   try {
     // ── Parse multipart/form-data ────────────────────────────────────────────
@@ -128,6 +130,13 @@ export async function POST(req: Request): Promise<NextResponse> {
       allowed_base_liquid_ids: parsedAllowedBaseLiquidIds,
       new_powder: {
         name: formData.get("new_powder_name"),
+        manufacturer: formData.get("new_powder_manufacturer") || null,
+        description: formData.get("new_powder_description") || null,
+        ...Object.fromEntries(["fragrance", "body", "bitterness", "umami", "color"].map((key) => {
+          const value = formData.get(`new_powder_${key}`);
+          return [key, value === null || value === "" ? null : Number(value)];
+        })),
+        image_filename: formData.get("new_powder_image_filename") || undefined,
         price_per_gram: parsedPricePerGram,
         size_config: parsedPowderSizeConfig,
       },
@@ -146,6 +155,11 @@ export async function POST(req: Request): Promise<NextResponse> {
       );
     }
     const validData = validation.data;
+    const powderImage = formData.get("new_powder_image");
+    const powderImageFile = powderImage instanceof File && powderImage.size > 0 ? powderImage : null;
+    if (validData.new_powder.image_filename && !powderImageFile) {
+      return NextResponse.json({ error: "Vui lòng chọn ảnh bột trước khi đặt tên file SEO", code: "VALIDATION_ERROR" }, { status: 400 });
+    }
     const activeBaseLiquids = await prisma.milkType.findMany({
       where: { is_active: true },
       select: { id: true, is_default: true },
@@ -195,6 +209,13 @@ export async function POST(req: Request): Promise<NextResponse> {
       uploadedImagePath = imagePath;
     }
 
+    const preparedPowderImage = await prepareCatalogImage({
+      kind: "powders", entityName: validData.new_powder.name,
+      requestedName: validData.new_powder.image_filename,
+      imageFile: powderImageFile, currentImageUrl: null,
+    });
+    uploadedPowderImagePath = preparedPowderImage.newPath;
+
     // ── Fetch defaultSizeConfig for response formatting ───────────────────────
     const defaultSizeConfigs = await prisma.defaultSizeConfig.findMany();
     const milkMlMap: Record<string, number> = {};
@@ -214,17 +235,17 @@ export async function POST(req: Request): Promise<NextResponse> {
           data: {
             name: validData.new_powder.name,
             price_per_gram: validData.new_powder.price_per_gram,
+            image_url: preparedPowderImage.imageUrl ?? null,
             type: "NONE",
             is_available: true,
             reference_latte_item_id: null,
-            // Fields not captured inline — admin can fill in from powder management tab
-            manufacturer: null,
-            description: null,
-            fragrance: null,
-            body: null,
-            bitterness: null,
-            umami: null,
-            color: null,
+            manufacturer: validData.new_powder.manufacturer ?? null,
+            description: validData.new_powder.description ?? null,
+            fragrance: validData.new_powder.fragrance ?? null,
+            body: validData.new_powder.body ?? null,
+            bitterness: validData.new_powder.bitterness ?? null,
+            umami: validData.new_powder.umami ?? null,
+            color: validData.new_powder.color ?? null,
           },
         });
 
@@ -310,15 +331,18 @@ export async function POST(req: Request): Promise<NextResponse> {
       { status: 201 }
     );
   } catch (err: unknown) {
-    if (uploadedImagePath && !databaseCommitted) {
+    const uploadedPaths = [uploadedImagePath, uploadedPowderImagePath].filter((path): path is string => path !== null);
+    if (uploadedPaths.length > 0 && !databaseCommitted) {
       try {
-        await removeMenuImages([uploadedImagePath]);
+        await removeMenuImages(uploadedPaths);
       } catch (cleanupError) {
         captureServerException(cleanupError, {
           operation: "rollback_inline_latte_image_create",
         });
       }
     }
+    const imageError = catalogImageValidationMessage(err);
+    if (imageError) return NextResponse.json({ error: imageError, code: "VALIDATION_ERROR" }, { status: 400 });
     // Handle Prisma unique constraint (reference_latte_item_id already taken)
     if (
       typeof err === "object" &&

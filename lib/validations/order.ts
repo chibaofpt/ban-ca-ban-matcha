@@ -1,5 +1,6 @@
 import { normalizePhone } from "@/src/utils/phone";
 import { z } from "zod";
+import { isValidGhostAccountEmail, normalizeAccountEmail } from "@/src/utils/accountEmail";
 import type {
   CreateOrderPayload,
   CreateStaffOrderPayload,
@@ -129,11 +130,11 @@ function validateBundleReferences(
 
 /**
  * Schema for the full staff counter order payload.
- * phone_number is optional — omit entirely for anonymous (walk-in, no loyalty) orders.
- * Cross-field rule: if phone_number is present and the user does not exist in DB,
- * customer_name is required (enforced in the route handler, not here).
+ * Customer identity is optional for anonymous orders; new customers require email and name.
  */
 export const staffOrderSchema = z.object({
+  customer_identifier: z.string().uuid().optional(),
+  customer_email: z.string().refine(isValidGhostAccountEmail, "Email không hợp lệ").transform(normalizeAccountEmail).optional(),
   phone_number: z.string().transform(normalizePhone).pipe(z.string().regex(/^\+84\d{9}$/)).optional(),
   customer_name: z.string().min(1).max(100).optional(),
   /** Defaults to CASH so every existing POS client keeps its current behavior. */

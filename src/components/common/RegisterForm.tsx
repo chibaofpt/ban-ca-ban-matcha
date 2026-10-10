@@ -63,7 +63,7 @@ const RegisterForm = ({ onRegistered }: { onRegistered: (result: RegisterResult)
     try {
       const user = await registration.mutateAsync(input);
       clearPrivateQueryCaches(queryClient);
-      login(user.phone_number, user.name); resetForceLogout(); otp.clear(); onRegistered(user);
+      login(user.phone_number, user.name, user.qr_token); resetForceLogout(); otp.clear(); onRegistered(user);
     } catch (error) {
       void otp.config.refetch();
       throw error;

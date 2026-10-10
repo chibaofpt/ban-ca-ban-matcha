@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ProfileAccountConnections } from "@/src/components/customer/ProfileAccountConnections";
 import { motion } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -127,7 +128,7 @@ export default function ProfilePage() {
               </button>
             </div>
             <p className="text-sm text-muted-foreground">
-              {formatVietnamPhone(profile.phone_number)}
+              {profile.phone_number ? formatVietnamPhone(profile.phone_number) : ""}
             </p>
             {profile.insta_name ? (
               <p className="truncate text-xs text-muted-foreground">
@@ -175,12 +176,12 @@ export default function ProfilePage() {
             iconClassName="bg-amber-50 text-amber-700"
             onClick={openVoucherModal}
           />
-          <ProfileActionRow
+          {profile.has_password ? <ProfileActionRow
             label="Đổi mật khẩu"
             icon={<KeyRound size={20} />}
             iconClassName="bg-blue-50 text-blue-700"
             onClick={() => setPasswordOpen(true)}
-          />
+          /> : null}
           <ProfileActionRow
             label="Xem mã QR"
             icon={<QrCode size={20} />}
@@ -196,17 +197,18 @@ export default function ProfilePage() {
         </nav>
       </section>
 
+      <ProfileAccountConnections profile={profile} onRefresh={() => refetch()} />
       <ProfileEditSheet
         open={editOpen}
         profile={profile}
         onClose={() => setEditOpen(false)}
         onSubmit={saveProfile}
       />
-      <ChangePasswordSheet
+      {profile.has_password ? <ChangePasswordSheet
         open={passwordOpen}
         onClose={() => setPasswordOpen(false)}
         onSubmit={savePassword}
-      />
+      /> : null}
       <ProfileQRSheet open={qrOpen} qrToken={profile.qr_token} onOpenChange={setQrOpen} />
       <AddressBookSheetContainer open={addressBookOpen} onOpenChange={setAddressBookOpen} />
       <VoucherModal />

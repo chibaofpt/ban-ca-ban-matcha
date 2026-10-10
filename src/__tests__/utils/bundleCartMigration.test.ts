@@ -33,9 +33,10 @@ const application: CartBundleApplication = {
 };
 
 describe("migrate cart BUNDLE state", () => {
-  it("giữ application từ phiên bản 8 và buộc revalidation ở phiên bản 9", () => {
+  it("tháo application phone-owner phiên bản 8 và giữ món mua", () => {
     const migrated = migrateCartState({ items: [item], bundleApplications: [application] }, 8);
-    expect(migrated.bundleApplications).toEqual([application]);
+    expect(migrated.bundleApplications).toEqual([]);
+    expect(migrated.items.map((line) => line.cartId)).toEqual(["line-1"]);
   });
 
   it("giữ application staff từ phiên bản 4 và buộc revalidation ở phiên bản 5", () => {

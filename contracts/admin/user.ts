@@ -12,7 +12,10 @@ export interface AdminUserPage<TItem> {
 export interface AdminUserSummary {
   qr_token: string;
   name: string;
-  phone_number: string;
+  phone_number: string | null;
+  email: string | null;
+  can_send_claim_link: boolean;
+  has_password: boolean;
   insta_name: string | null;
   is_registered: boolean;
   is_verified: boolean;

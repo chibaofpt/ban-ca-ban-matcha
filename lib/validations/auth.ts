@@ -84,7 +84,8 @@ export const RegistrationOtpSettingsSchema = z.object({
 /** Validates the authenticated customer's password-change request. */
 export const ChangePasswordSchema = z
   .object({
-    current_password: currentPasswordSchema,
+    current_password: currentPasswordSchema.optional(),
+    reauth_proof: z.string().regex(/^[a-f0-9-]{36}\.[a-f0-9]{64}$/).optional(),
     new_password: PasswordSchema,
   })
   .strict()

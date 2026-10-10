@@ -8,7 +8,9 @@ import type {
 export interface CustomerSearchResult {
   qr_token: string;
   name: string;
-  phone_number: string;
+  phone_number: string | null;
+  email?: string | null;
+  insta_name?: string | null;
   points_balance: number;
 }
 

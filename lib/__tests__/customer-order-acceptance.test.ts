@@ -11,6 +11,7 @@ const mockTransaction = vi.fn();
 const mockOrderCreate = vi.fn();
 const mockVoucherClaim = vi.fn();
 const mockTransactionExpiry = vi.fn();
+const mockAccountFind = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ getSession: () => mockGetSession() }));
 vi.mock("@/lib/redis", () => ({ getRedisClient: () => null }));
@@ -67,6 +68,7 @@ function voucher(expiresAt: Date) {
 
 function transactionClient() {
   return {
+    user: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), findUnique: mockAccountFind },
     defaultSizeConfig: { findMany: vi.fn().mockResolvedValue([]) },
     powderSizeConfig: { findMany: vi.fn().mockResolvedValue([]) },
     matchaPowder: { findMany: vi.fn().mockResolvedValue([]) },
@@ -93,6 +95,7 @@ describe("POST /api/orders — acceptanceDate của voucher ITEM", () => {
     vi.stubEnv("BANK_ACCOUNT", "123456789");
     vi.stubEnv("BANK_ACCOUNT_NAME", "Test Store");
     mockGetSession.mockResolvedValue({ id: USER_ID, role: "CUSTOMER" });
+    mockAccountFind.mockResolvedValue({ role: "CUSTOMER", is_blocked: false, sourceMerge: null });
     mockClosureFindFirst.mockResolvedValue(null);
     mockScheduleFindMany.mockResolvedValue([{ open_time: "08:00", close_time: "18:00", slot: 1 }]);
     mockGlobalVoucherUpdateMany.mockResolvedValue({ count: 0 });
@@ -107,6 +110,15 @@ describe("POST /api/orders — acceptanceDate của voucher ITEM", () => {
     mockTransaction.mockImplementation(async (operation: (tx: unknown) => Promise<unknown>) => operation(transactionClient()));
   });
 
+  it("rejects a retired account before reserving vouchers or creating an order", async () => {
+    mockAccountFind.mockResolvedValue({ role: "CUSTOMER", is_blocked: false, sourceMerge: { target_user_id: "canonical" } });
+    mockVoucherFindUnique.mockResolvedValue(voucher(new Date(ENTRY.getTime() + 60_000)));
+    const response = await POST(request());
+    expect(response.status).toBe(409);
+    expect((await response.json()).details.reason).toBe("ACCOUNT_NOT_ACTIVE");
+    expect(mockOrderCreate).not.toHaveBeenCalled();
+    expect(mockVoucherClaim).not.toHaveBeenCalled();
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllEnvs();

@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { SHOP_FACEBOOK_URL } from "@/src/utils/contactLinks";
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Clock3, MapPin, Phone } from "lucide-react";
@@ -59,7 +60,7 @@ const Footer: React.FC = () => {
                 </a>
               </div>
               <div className="flex shrink-0 gap-2" aria-label="Kênh truyền thông">
-                <a href="https://web.facebook.com/profile.php?id=61554108474341" target="_blank" rel="noopener noreferrer" aria-label="Facebook của Bạn Cá Bán Matcha" className="flex size-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                <a href={SHOP_FACEBOOK_URL} target="_blank" rel="noopener noreferrer" aria-label="Facebook của Bạn Cá Bán Matcha" className="flex size-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                   <Image src="/facebook.webp" alt="" width={36} height={36} />
                 </a>
                 <a href="https://www.tiktok.com/@bancabanmatcha/video/7658853728153292053" target="_blank" rel="noopener noreferrer" aria-label="TikTok của Bạn Cá Bán Matcha" className="flex size-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">

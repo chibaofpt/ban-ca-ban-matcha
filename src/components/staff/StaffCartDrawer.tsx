@@ -342,7 +342,7 @@ export function StaffCartDrawer({
                 </p>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
                   {customerInfo
-                    ? (customerInfo.type === "existing" ? `${formatVietnamPhone(customerInfo.data.phone_number)} • 🐟 ${customerInfo.data.points_balance}` : formatVietnamPhone(customerInfo.phone_number))
+                    ? (customerInfo.type === "existing" ? `${customerInfo.data.email ?? (customerInfo.data.phone_number ? formatVietnamPhone(customerInfo.data.phone_number) : "")} • 🐟 ${customerInfo.data.points_balance}` : customerInfo.email)
                     : "Không tích điểm"}
                 </p>
               </div>

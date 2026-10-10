@@ -2,6 +2,7 @@ import { phoneSearchVariants } from "@/src/utils/phone";
 import type { Prisma, VoucherType } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { canClaimLegacyGhost, isRegisteredAccount } from "@/lib/auth/accountIdentityPolicy";
 import { adminVoucherDaysRemaining, effectiveAdminVoucherStatus, vietnamYearBounds } from "@/lib/users/adminUserTime";
 import type {
   AdminUserOrder,
@@ -16,12 +17,14 @@ const PAGE_SIZE = 10;
 
 function customerFilter(q?: string): Prisma.UserWhereInput {
   const query = q?.trim();
-  if (!query) return { role: "CUSTOMER" };
+  if (!query) return { role: "CUSTOMER", sourceMerge: { is: null } };
   const instagram = query.startsWith("@") ? query.slice(1) : query;
   return {
     role: "CUSTOMER",
+    sourceMerge: { is: null },
     OR: [
       { name: { contains: query, mode: "insensitive" } },
+      { email: { contains: query, mode: "insensitive" } },
       ...phoneSearchVariants(query).map((term) => ({ phone_number: { contains: term } })),
       { insta_name: { contains: instagram, mode: "insensitive" } },
     ],
@@ -35,10 +38,11 @@ async function summarizeUsers(
 ): Promise<AdminUserSummary[]> {
   if (userIds.length === 0) return [];
   const { year, start, end } = vietnamYearBounds(now);
-  const [users, latestOrders, spend, spent, exchanged, current] = await Promise.all([
-    prisma.user.findMany({ where: { id: { in: userIds }, role: "CUSTOMER" }, select: {
+  const [users, latestOrders, spend, spent, exchanged, current, earned, allVouchers] = await Promise.all([
+    prisma.user.findMany({ where: { id: { in: userIds }, role: "CUSTOMER", sourceMerge: { is: null } }, select: {
       id: true, qr_token: true, name: true, phone_number: true, insta_name: true,
-      password_hash: true, is_verified: true, is_blocked: true, points_balance: true,
+      password_hash: true, google_sub: true, account_origin: true, email: true, role: true,
+      sourceMerge: { select: { target_user_id: true } }, is_verified: true, is_blocked: true, points_balance: true,
     } }),
     prisma.order.groupBy({
       by: ["user_id"], where: { user_id: { in: userIds } }, _max: { created_at: true },
@@ -55,7 +59,15 @@ async function summarizeUsers(
     prisma.voucher.groupBy({ by: ["user_id"], where: {
       user_id: { in: userIds }, OR: [{ status: "RESERVED" }, { status: "ACTIVE", OR: [{ expires_at: null }, { expires_at: { gt: now } }] }],
     }, _count: { _all: true } }),
+    prisma.pointsLog.groupBy({ by: ["user_id"], where: {
+      user_id: { in: userIds }, delta: { gt: 0 },
+    }, _count: { _all: true } }),
+    prisma.voucher.groupBy({ by: ["user_id"], where: {
+      user_id: { in: userIds },
+    }, _count: { _all: true } }),
   ]);
+  const earnedIds = new Set(earned.map((row) => row.user_id));
+  const voucherIds = new Set(allVouchers.map((row) => row.user_id));
   const latestOrderMap = new Map(latestOrders.flatMap((row) =>
     row.user_id && row._max.created_at ? [[row.user_id, row._max.created_at] as const] : []));
   const spendMap = new Map(spend.map((row) => [row.user_id, row._sum.grand_total_vnd ?? 0]));
@@ -65,10 +77,15 @@ async function summarizeUsers(
   const userMap = new Map(users.map((user) => [user.id, user]));
   return userIds.flatMap((id) => {
     const user = userMap.get(id);
-    if (!user) return [];
+    if (!user || user.sourceMerge) return [];
+    const identity = { ...user, merged: Boolean(user.sourceMerge) };
     return [{
       qr_token: user.qr_token, name: user.name, phone_number: user.phone_number,
-      insta_name: user.insta_name, is_registered: user.password_hash !== "GHOST_USER_NO_PASSWORD",
+      email: user.email, insta_name: user.insta_name, is_registered: isRegisteredAccount(identity),
+      has_password: Boolean(user.password_hash?.trim()) && user.password_hash !== "GHOST_USER_NO_PASSWORD",
+      can_send_claim_link: canClaimLegacyGhost(identity, {
+        hasEarnedPoints: earnedIds.has(id), hasVouchers: voucherIds.has(id),
+      }),
       is_verified: user.is_verified, is_blocked: user.is_blocked,
       points_balance: user.points_balance, spending_year: year, annual_spend_vnd: spendMap.get(id) ?? 0,
       points_spent: spentMap.get(id) ?? 0, vouchers_exchanged: exchangeMap.get(id) ?? 0,
@@ -108,7 +125,7 @@ export async function listAdminUsers(page: number, q?: string, now = new Date())
 
 /** Returns one CUSTOMER summary resolved only by public QR token. */
 export async function getAdminUser(userQrToken: string, now = new Date()): Promise<AdminUserSummary | null> {
-  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER" }, select: { id: true } });
+  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER", sourceMerge: { is: null } }, select: { id: true } });
   if (!user) return null;
   const latestCompleted = await prisma.order.findFirst({
     where: { user_id: user.id, status: "COMPLETED" }, select: { updated_at: true },
@@ -123,7 +140,7 @@ export async function getAdminUser(userQrToken: string, now = new Date()): Promi
 
 /** Lists a CUSTOMER wallet with read-only effective expiry projection. */
 export async function listAdminUserVouchers(userQrToken: string, page: number, now = new Date()): Promise<AdminUserPage<AdminUserVoucher> | null> {
-  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER" }, select: { id: true } });
+  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER", sourceMerge: { is: null } }, select: { id: true } });
   if (!user) return null;
   const [total, rows] = await Promise.all([
     prisma.voucher.count({ where: { user_id: user.id } }),
@@ -265,7 +282,7 @@ async function freeshipNames(rows: AdminOrderRow[]): Promise<Map<string, string>
 
 /** Lists ten orders constrained to one CUSTOMER resolved through its public QR token. */
 export async function listAdminUserOrders(userQrToken: string, page: number): Promise<AdminUserPage<AdminUserOrderDto> | null> {
-  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER" }, select: { id: true } });
+  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER", sourceMerge: { is: null } }, select: { id: true } });
   if (!user) return null;
   const where = { user_id: user.id };
   const [total, rows] = await Promise.all([
@@ -278,7 +295,7 @@ export async function listAdminUserOrders(userQrToken: string, page: number): Pr
 
 /** Returns one order only when both its ID and resolved CUSTOMER owner match. */
 export async function getAdminUserOrder(userQrToken: string, orderId: string): Promise<AdminUserOrderDto | null> {
-  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER" }, select: { id: true } });
+  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER", sourceMerge: { is: null } }, select: { id: true } });
   if (!user) return null;
   const row = await prisma.order.findFirst({ where: { id: orderId, user_id: user.id }, include: adminUserOrderInclude });
   if (!row) return null;

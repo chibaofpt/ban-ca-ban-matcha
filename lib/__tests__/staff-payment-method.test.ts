@@ -114,7 +114,7 @@ function setupDatabase(): void {
   const userCreate = vi.fn();
   const orderDiscountVoucherCreate = vi.fn();
 
-  mockUserFindUnique.mockResolvedValue({ id: USER_ID });
+  mockUserFindUnique.mockResolvedValue({ id: USER_ID, role: "CUSTOMER", is_blocked: false, sourceMerge: null });
   mockOrderCreate.mockImplementation(async (args: { data: Record<string, unknown> }) => ({
     id: "order-payment-001",
     status: args.data.status ?? "PENDING",
@@ -147,7 +147,7 @@ function setupDatabase(): void {
         menuItem: { findUnique: menuItemFindUnique },
         addonOption: { findUnique: addonOptionFindUnique },
         voucher: { findUnique: voucherFindUnique, updateMany: voucherUpdateMany },
-        user: { findUnique: mockUserFindUnique, update: mockUserUpdate, create: userCreate },
+        user: { findUnique: mockUserFindUnique, updateMany: vi.fn().mockResolvedValue({ count: 1 }), update: mockUserUpdate, create: userCreate },
         pointsLog: { create: mockPointsLogCreate },
         order: { create: mockOrderCreate },
         orderDiscountVoucher: { create: orderDiscountVoucherCreate },

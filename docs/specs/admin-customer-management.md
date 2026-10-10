@@ -15,7 +15,7 @@ to [SPECIFICATION](../../SPECIFICATION.md#ui-system) and `mobile-ux`.
 ## Customer list
 
 The Admin shell exposes a `Users` tab. Its list has ten customers per page and submits search against
-name, phone or Instagram alias. Full local/canonical numbers, spaced numbers and local prefixes
+name, phone, email or Instagram alias. Missing contact fields are not rendered. Full local/canonical numbers, spaced numbers and local prefixes
 find the same account; existing suffix search remains available. Rows and detail surfaces display
 local phone numbers according to [the shared phone standard](../../SPECIFICATION.md#vietnamese-phone-input-and-display). Customers with completed orders appear first, sorted by the most
 recent completed-order update across full history; customers with no completed order form the tail.
@@ -29,7 +29,7 @@ registration from visible fields. Selecting a row opens its customer surface.
 
 The Admin shell's store-settings control opens a list with `Giờ mở cửa` and `OTP`. Selecting
 `Giờ mở cửa` opens the schedule and temporary-closure overlay; selecting `OTP` opens the global
-registration settings in the shared responsive overlay (a bottom sheet on mobile). OTP settings
+transitional phone-ghost OTP settings in the shared responsive overlay (a bottom sheet on mobile). OTP settings
 are no longer displayed above the customer list. They remain separate from each customer's manual
 verification actions. The panel exposes the OTP
 requirement checkbox and a positive integer daily send limit, followed by an explicit save action.
@@ -65,13 +65,11 @@ resets subview, tab and pagination state for the next selection.
 ## Account actions
 
 Admin can manually verify/unverify and block/unblock a customer through explicit confirmation.
-Blocking revokes sessions. Password reset is disabled for a ghost customer; for a registered
+Blocking revokes sessions. Password reset is disabled for ghosts and Google-only customers; for a password-enabled
 customer it generates a unique 24-character URL-safe temporary password, revokes sessions, and shows
 the plaintext only in an explicit-only result surface so Admin can copy it once.
 
-A ghost row is labeled `Chưa đăng ký`. When that phone completes public registration, registration
-claims the same customer identity and its existing loyalty history; blocked or concurrently claimed
-ghosts show the API error and are not presented as successful registration.
+A ghost row is labeled `Chưa đăng ký`. Eligible legacy rows expose `Gửi link xác thực`; the same overlay switches to QR/link/copy with regeneration and Zalo actions. The lifecycle and all claim failure states belong to [Account access](account-access.md#admin-claim-and-customer-acceptance). Email ghosts activate through matching verified Google identity.
 
 ## Gifts
 

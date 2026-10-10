@@ -1,3 +1,4 @@
+import { AccountError, accountErrorResponse } from "@/lib/auth/accountError";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { OpenWelcomeRewardPayload } from "@/contracts/reward";
@@ -29,6 +30,7 @@ export async function POST(req: Request) {
     const dto = await toWelcomeRewardDto(prisma, reward);
     return NextResponse.json({ data: { reward: dto } });
   } catch (error) {
+    if (error instanceof AccountError) return accountErrorResponse(error);
     if (error instanceof WelcomeRewardError) {
       if (error.reason === "NOT_FOUND") return NextResponse.json({ error: "Reward not found", code: "NOT_FOUND" }, { status: 404 });
       if (error.reason === "CONFLICT") return NextResponse.json({ error: "Reward conflict", code: "CONFLICT" }, { status: 409 });

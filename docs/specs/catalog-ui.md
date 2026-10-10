@@ -10,6 +10,21 @@ API payload thuộc [API.md](../../API.md); không suy quy tắc tính tiền t�
 
 ## Catalog editor
 
+- Sheet tạo/cập nhật món bắt đầu bằng tên và mô tả. Badge danh mục chỉ hiện khi cập nhật; toggle
+  `Seasonal` căn phải cùng hàng nhãn tên. Thanh chọn loại món chỉ hiện khi tạo.
+- Tiếp theo là ảnh món và tên file SEO trong vùng cuộn: upload ở cột trái 1/3, SEO ở cột phải 2/3.
+  Tạo bột inline dùng cùng bố cục ảnh/SEO, rồi tên bột và giá đ/g chung hàng; tên chiếm phần rộng,
+  giá có khoảng 7rem để nhập khoảng năm chữ số. Link nút `Thêm thông tin` có underline mở nhà sản
+  xuất, mô tả và năm rating; thu gọn giữ nguyên bản nháp. Nhãn/input có semantics và lỗi inline.
+- Sau phần bột là Base Liquid mặc định và swaps, rồi giá bán từng size. Base price tham khảo cập
+  nhật khi đổi giá/công thức và nằm dưới input size; đơn vị và suy ngược thuộc
+  [pricing-logic](../../.agents/skills/pricing-logic/SKILL.md#admin-menu-selling-price-entry).
+  Định lượng Base Liquid theo size nằm trong `Cài đặt nâng cao`; thu gọn giữ dữ liệu.
+- Manual acceptance của editor món: kiểm tra create/update ở mobile và desktop, thứ tự trên,
+  hai hàng ảnh/SEO, tên/giá bột không tràn ngang, toggle/badge, mở/thu thông tin bổ sung và nâng cao,
+  giá bán/base price khi đổi bột/gram/ml, blank size, lỗi giá không đủ công thức và lưu lại thông tin
+  bột/ảnh. Test node không chứng minh layout, focus, crop thao tác thực hoặc upload Storage thật.
+
 - Upload ảnh catalog dùng chung khung bố cục 1:1 cho ảnh có nền và ảnh trong suốt. Mặc định vừa toàn bộ ảnh; admin kéo, thu/phóng nhỏ hơn khung, chọn Vừa khung/Lấp đầy/Đặt lại. Phần ngoài khung bị cắt, vùng trống trong khung giữ alpha; không kéo giãn vật thể hay tự đổ nền. Xem trước chính Blob WebP trên nền thẻ, có Chỉnh lại và Dùng ảnh này trước khi gắn vào form; kích thước/quality theo preset catalog hiện có. Nền caro chỉ dùng trong editor, không ghi vào file.
 - Bốn tab con của Menu admin luôn chia đều một hàng, dùng chiều cao compact 32px và chuyển bằng nhấn; không dùng swipe hoặc thanh cuộn ngang.
 - Search top-level của danh sách Sản phẩm, Bột và Base Liquid tạm thời bị ẩn theo quyết định UI; giữ nguyên state và filter wiring để mở lại trong task follow-up. Filter category/trạng thái vẫn hiển thị. Quy tắc này không áp dụng cho search/multi-select bên trong editor Base Liquid.

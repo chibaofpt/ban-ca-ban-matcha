@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockUserFindUnique = vi.fn();
+const mockAccountMergeFindUnique = vi.fn();
 const mockVoucherFindUnique = vi.fn();
 const mockRecordFallback = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: { findUnique: (...args: unknown[]) => mockUserFindUnique(...args) },
+    accountMerge: { findUnique: (...args: unknown[]) => mockAccountMergeFindUnique(...args) },
     voucher: { findUnique: (...args: unknown[]) => mockVoucherFindUnique(...args) },
   },
 }));
@@ -101,7 +103,7 @@ describe("Public identifier resolver", () => {
 
     expect(mockUserFindUnique).toHaveBeenNthCalledWith(2, {
       where: { id: LEGACY_ID },
-      select: { id: true, qr_token: true, role: true },
+      select: { id: true, qr_token: true, role: true, sourceMerge: { select: { target_user_id: true } } },
     });
     expect(mockRecordFallback).toHaveBeenCalledWith("user", "customer");
   });
@@ -126,5 +128,21 @@ describe("Public identifier resolver", () => {
       },
     });
     expect(mockRecordFallback).not.toHaveBeenCalled();
+  });
+});
+
+describe("QR retained aliases — APPLICATION_LOGIC", () => {
+  it("QR nguồn trả QR canonical của khách đích", async () => {
+    mockAccountMergeFindUnique.mockReset().mockImplementation(async ({ where }: { where: { source_user_id: string } }) =>
+      where.source_user_id === "source" ? { target_user_id: "target" } : null);
+    mockUserFindUnique.mockReset().mockImplementation(async ({ where }: { where: { id?: string; qr_token?: string } }) =>
+      where.qr_token === "source-qr" ? { id: "source", qr_token: "source-qr", role: "CUSTOMER", sourceMerge: { target_user_id: "target" } }
+        : where.id === "target" ? { id: "target", qr_token: "target-qr", role: "CUSTOMER", sourceMerge: null } : null);
+    expect(await resolveCustomerIdentifier("source-qr")).toEqual({ id: "target", qr_token: "target-qr" });
+  });
+  it("alias vòng lặp không trả danh tính có thể ghi điểm", async () => {
+    mockAccountMergeFindUnique.mockReset().mockResolvedValue({ target_user_id: "source" });
+    mockUserFindUnique.mockReset().mockResolvedValue({ id: "source", qr_token: "source-qr", role: "CUSTOMER", sourceMerge: { target_user_id: "source" } });
+    expect(await resolveCustomerIdentifier("source-qr")).toBeNull();
   });
 });

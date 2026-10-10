@@ -15,6 +15,7 @@ import {
   getStaffOrder,
   updateStaffOrderStatus,
   scanQrToken,
+  scanFallback,
 } from "@/src/services/staffOrderService";
 
 describe("searchCustomers", () => {
@@ -305,5 +306,15 @@ describe("scanQrToken", () => {
       "/api/staff/scan",
       expect.objectContaining({ params: { token: "my-token" } })
     );
+  });
+});
+
+describe("xác nhận QR bằng email — FRONTEND_CONTRACT", () => {
+  it("gửi email cùng mã và giữ DTO khách không có điện thoại", async () => {
+    vi.clearAllMocks();
+    const data = { type: "user", data: { qr_token: "customer-qr", name: "Cá", phone_number: null, email: "ca@example.com", points_balance: 1 } };
+    vi.mocked(apiClient.post).mockResolvedValue({ data: { data } });
+    expect(await scanFallback("ca@example.com", "ABC123")).toEqual(data);
+    expect(apiClient.post).toHaveBeenCalledWith("/api/staff/scan-fallback", { email: "ca@example.com", code: "ABC123" });
   });
 });

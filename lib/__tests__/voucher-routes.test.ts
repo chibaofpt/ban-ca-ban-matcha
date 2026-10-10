@@ -11,6 +11,7 @@ import { NextRequest } from "next/server";
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
 const mockGetSession = vi.fn();
+const mockAccountFind = vi.fn();
 const mockCheckRateLimit = vi.fn();
 
 vi.mock("@/lib/auth", () => ({
@@ -132,7 +133,7 @@ function makeRequest(body: unknown, url = "http://localhost/api/profile/vouchers
 function setupTransaction() {
   type TransactionMock = {
     voucherPackage: { findUnique: typeof mockVoucherPackageFindUnique };
-    user: { updateMany: ReturnType<typeof vi.fn> };
+    user: { updateMany: ReturnType<typeof vi.fn>; findUnique: ReturnType<typeof vi.fn> };
     voucher: {
       create: typeof mockVoucherCreate;
       update: typeof mockVoucherUpdate;
@@ -152,7 +153,9 @@ function setupTransaction() {
     const tx = {
       voucherPackage: { findUnique: mockVoucherPackageFindUnique },
       user: {
+        findUnique: mockAccountFind,
         updateMany: vi.fn().mockImplementation(async (args) => {
+          if (!args.data.points_balance) return { count: 1 };
           await mockUserUpdate(args);
           const user = await mockUserFindUnique();
           const required = args.where.points_balance.gte as number;
@@ -186,6 +189,7 @@ describe("POST /api/profile/vouchers/exchange", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSession.mockResolvedValue(customerSession);
+    mockAccountFind.mockResolvedValue({ role: "CUSTOMER", is_blocked: false, sourceMerge: null });
     mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 4, retryAfterSeconds: 0 });
     // Default: unlimited quantity, user hasn't redeemed yet
     mockVoucherCount.mockResolvedValue(0);
@@ -411,6 +415,7 @@ describe("POST /api/profile/vouchers/refund", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSession.mockResolvedValue(customerSession);
+    mockAccountFind.mockResolvedValue({ role: "CUSTOMER", is_blocked: false, sourceMerge: null });
     mockVoucherUpdate.mockResolvedValue({});
     mockVoucherUpdateMany.mockResolvedValue({ count: 1 });
     mockUserUpdate.mockResolvedValue({});
@@ -428,7 +433,7 @@ describe("POST /api/profile/vouchers/refund", () => {
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => unknown) => {
       const tx = {
         voucher: { findUnique: mockVoucherFindUnique, updateMany: mockVoucherUpdateMany },
-        user: { update: mockUserUpdate },
+        user: { update: mockUserUpdate, updateMany: vi.fn().mockResolvedValue({ count: 1 }), findUnique: mockAccountFind },
         pointsLog: { create: mockPointsLogCreate },
         menuItem: { findMany: mockMenuItemFindMany },
         matchaPowder: { findMany: mockMatchaPowderFindMany },
@@ -439,6 +444,16 @@ describe("POST /api/profile/vouchers/refund", () => {
     });
   });
 
+  it("rejects refunds from a retired account before changing voucher or balance", async () => {
+    mockAccountFind.mockResolvedValue({ role: "CUSTOMER", is_blocked: false, sourceMerge: { target_user_id: "canonical" } });
+    mockVoucherFindUnique.mockResolvedValue(productVoucher);
+    mockMenuItemFindMany.mockResolvedValue([]);
+    const response = await refundPOST(makeRefundReq(refundPayload));
+    expect(response.status).toBe(409);
+    expect((await response.json()).details.reason).toBe("ACCOUNT_NOT_ACTIVE");
+    expect(mockVoucherUpdateMany).not.toHaveBeenCalled();
+    expect(mockUserUpdate).not.toHaveBeenCalled();
+  });
   it("returns 401 when no session", async () => {
     mockGetSession.mockResolvedValue(null);
     const res = await refundPOST(makeRefundReq(refundPayload));

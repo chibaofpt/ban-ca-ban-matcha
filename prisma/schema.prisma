@@ -11,8 +11,11 @@ datasource db {
 model User {
   id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name           String
-  phone_number   String  @unique
-  password_hash  String
+  phone_number   String? @unique
+  password_hash  String?
+  email          String? @unique
+  google_sub     String? @unique
+  account_origin AccountOrigin @default(LEGACY_PHONE)
   role           Role    @default(CUSTOMER)
   points_balance Int     @default(0)
   qr_token       String  @unique @default(dbgenerated("(gen_random_uuid())::text"))
@@ -37,8 +40,91 @@ model User {
   addresses         Address[]
   welcomeReward     WelcomeReward?
   rewardOutcomes    RewardOutcome[]
+  accountClaimLink AccountClaimLink? @relation("ClaimTarget")
+  issuedClaimLinks AccountClaimLink[] @relation("ClaimIssuer")
+  googleAuthAttempts GoogleAuthAttempt[] @relation("GoogleAttemptActor")
+  sourceMerge AccountMerge? @relation("MergeSource")
+  targetMerges AccountMerge[] @relation("MergeTarget")
+  performedMerges AccountMerge[] @relation("MergeActor")
+
 
   @@map("users")
+}
+
+
+enum AccountOrigin {
+  LEGACY_PHONE
+  GOOGLE_EMAIL
+}
+
+enum GoogleAuthPurpose {
+  LOGIN
+  CLAIM
+  LINK
+  REAUTH
+}
+
+enum OtpPurpose {
+  LEGACY_REGISTRATION
+  PHONE_GHOST_CLAIM
+}
+
+/// One current opaque claim per legacy ghost; regeneration replaces its hash.
+model AccountClaimLink {
+  id          String    @id @default(uuid()) @db.Uuid
+  user_id     String    @unique @db.Uuid
+  token_hash  String    @unique
+  expires_at  DateTime  @db.Timestamptz(6)
+  consumed_at DateTime? @db.Timestamptz(6)
+  created_by  String    @db.Uuid
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime  @updatedAt @db.Timestamptz(6)
+  user        User      @relation("ClaimTarget", fields: [user_id], references: [id], onDelete: NoAction)
+  issuer      User      @relation("ClaimIssuer", fields: [created_by], references: [id], onDelete: NoAction)
+  googleAttempts GoogleAuthAttempt[]
+
+  @@index([expires_at])
+  @@map("account_claim_links")
+}
+
+/// Browser/purpose-bound, single-use Google assertion; no provider credential is persisted.
+model GoogleAuthAttempt {
+  id                   String            @id @default(uuid()) @db.Uuid
+  purpose              GoogleAuthPurpose
+  nonce_hash           String            @unique
+  binding_hash         String
+  actor_user_id        String?           @db.Uuid
+  actor_session_id     String?
+  claim_link_id        String?           @db.Uuid
+  claim_token_hash     String?
+  verified_google_sub  String?
+  verified_at          DateTime?         @db.Timestamptz(6)
+  consumed_at          DateTime?         @db.Timestamptz(6)
+  expires_at           DateTime          @db.Timestamptz(6)
+  created_at           DateTime          @default(now()) @db.Timestamptz(6)
+  actor                User?             @relation("GoogleAttemptActor", fields: [actor_user_id], references: [id], onDelete: NoAction)
+  claimLink            AccountClaimLink? @relation(fields: [claim_link_id], references: [id], onDelete: NoAction)
+
+  @@index([expires_at])
+  @@index([actor_user_id])
+  @@map("google_auth_attempts")
+}
+
+/// Immutable merge evidence and the only source-to-canonical account mapping.
+model AccountMerge {
+  source_user_id String   @id @db.Uuid
+  target_user_id String   @db.Uuid
+  proof_kind     String
+  proof_reference String
+  performed_by   String?  @db.Uuid
+  audit          Json
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+  source         User     @relation("MergeSource", fields: [source_user_id], references: [id], onDelete: NoAction)
+  target         User     @relation("MergeTarget", fields: [target_user_id], references: [id], onDelete: NoAction)
+  actor          User?    @relation("MergeActor", fields: [performed_by], references: [id], onDelete: NoAction)
+
+  @@index([target_user_id])
+  @@map("account_merges")
 }
 
 model Session {
@@ -94,6 +180,10 @@ model OtpAttempt {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   phone_number String
   binding_hash String?
+  purpose OtpPurpose @default(LEGACY_REGISTRATION)
+  actor_user_id String? @db.Uuid
+  actor_session_id String?
+  target_user_id String? @db.Uuid
   code_hash    String
   expires_at   DateTime @db.Timestamptz(6)
   attempts     Int      @default(0)

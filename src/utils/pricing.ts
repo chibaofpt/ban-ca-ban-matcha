@@ -50,6 +50,35 @@ export function ceilTo1000(vnd: number): number {
   return Math.ceil(vnd / 1000) * 1000;
 }
 
+/** Resolve the unrounded default recipe cost used by the admin selling-price editor. */
+export function calcMenuDefaultIngredientCost(input: {
+  category: "latte" | "fusion";
+  gram: number;
+  powderPricePerGram: number;
+  baseLiquidMl: number;
+  baseLiquidPricePerMl: number;
+  premiumLatte?: number;
+}): number {
+  return input.gram * input.powderPricePerGram + (input.category === "latte"
+    ? input.baseLiquidMl * input.baseLiquidPricePerMl
+    : input.premiumLatte ?? 0);
+}
+
+/** Derive an integer nonnegative base price from a selling price in whole thousands of VND. */
+export function deriveMenuBasePrice(input: {
+  sellingPriceVnd: number;
+  ingredientCostVnd: number;
+  originalBasePriceVnd?: number;
+}): number | null {
+  const { sellingPriceVnd, ingredientCostVnd, originalBasePriceVnd } = input;
+  if (!Number.isSafeInteger(sellingPriceVnd) || sellingPriceVnd < 0 || sellingPriceVnd % 1000 !== 0
+    || !Number.isFinite(ingredientCostVnd)) return null;
+  if (originalBasePriceVnd !== undefined && originalBasePriceVnd >= 0
+    && ceilTo1000(Math.max(0, originalBasePriceVnd + ingredientCostVnd)) === sellingPriceVnd) return originalBasePriceVnd;
+  const base = Math.floor(sellingPriceVnd - ingredientCostVnd);
+  return Number.isSafeInteger(base) && base >= 0 ? base : null;
+}
+
 export interface ProductVoucherCreditResult {
   drinkPayableVnd: number;
   addonsPayableVnd: number;

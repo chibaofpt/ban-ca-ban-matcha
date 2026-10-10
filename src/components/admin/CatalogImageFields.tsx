@@ -12,7 +12,7 @@ interface CatalogImageFieldsProps {
   onFilenameChange: (value: string) => void;
   onError: (message: string | null) => void;
   cropPreset?: "full" | "compact";
-  layout?: "panel" | "inline";
+  layout?: "panel" | "inline" | "row";
   inputId?: string;
 }
 
@@ -36,7 +36,9 @@ export default function CatalogImageFields({
 }: CatalogImageFieldsProps) {
   const cropSettings = CROP_PRESETS[cropPreset];
   return (
-    <section className={layout === "inline"
+    <section className={layout === "row"
+      ? "grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] items-start gap-3 [&>div]:min-w-0 [&>div:first-child>label]:mx-0 [&>div:first-child>p]:hidden [&>div:last-child>p]:break-words"
+      : layout === "inline"
       ? "space-y-3 rounded-xl border border-border/60 bg-secondary/10 p-3"
       : "mb-5 space-y-4 rounded-2xl border border-border/60 bg-secondary/10 p-4"}
     >
@@ -48,7 +50,7 @@ export default function CatalogImageFields({
         onError={onError}
         outputSize={cropSettings.outputSize}
         outputQuality={cropSettings.outputQuality}
-        compact={layout === "inline"}
+        compact={layout !== "panel"}
       />
       <MenuImageSeoField
         inputId={inputId}
@@ -56,7 +58,7 @@ export default function CatalogImageFields({
         value={imageFilename}
         onChange={onFilenameChange}
         disabled={disabled}
-        className={layout === "inline" ? "mx-0 mt-0 border-0 bg-transparent p-0" : "mx-0 mt-0 bg-background"}
+        className={layout !== "panel" ? "mx-0 mt-0 border-0 bg-transparent p-0" : "mx-0 mt-0 bg-background"}
       />
     </section>
   );

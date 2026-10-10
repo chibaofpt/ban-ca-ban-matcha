@@ -241,7 +241,7 @@ function setupTx(overrides: {
           return Promise.resolve({ count: 1 });
         }),
       },
-      user: { update: mockUserUpdate },
+      user: { update: mockUserUpdate, updateMany: vi.fn().mockResolvedValue({ count: 1 }), findUnique: vi.fn().mockResolvedValue({ role: "CUSTOMER", is_blocked: false, sourceMerge: null }) },
       pointsLog: { create: mockPointsLogCreate },
       order: { create: mockOrderCreate, findUnique: vi.fn().mockResolvedValue(null) },
       orderDiscountVoucher: { create: vi.fn() },

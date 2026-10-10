@@ -10,13 +10,14 @@ describe("Tìm khách staff — APPLICATION_LOGIC", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.session.mockResolvedValue({ role: "STAFF" });
-    mocks.findUnique.mockImplementation(async ({ where }: { where: { phone_number: string } }) => where.phone_number === row.phone_number ? row : null);
+    mocks.findUnique.mockImplementation(async ({ where }: { where: { phone_number: string } }) => where.phone_number === row.phone_number ? { ...row, role: "CUSTOMER", sourceMerge: null } : null);
     mocks.findMany.mockImplementation(async ({ where }: { where: {
-      OR?: Array<{ phone_number: { endsWith?: string; startsWith?: string } }>;
+      OR?: Array<{ phone_number?: { endsWith?: string; startsWith?: string }; name?: { contains: string }; email?: { contains: string }; insta_name?: { contains: string } }>;
       name?: { contains: string };
     } }) => {
-      const found = where.OR ? where.OR.some(({ phone_number }) => phone_number.endsWith !== undefined
-        ? row.phone_number.endsWith(phone_number.endsWith) : row.phone_number.startsWith(phone_number.startsWith!))
+      const found = where.OR ? where.OR.some(({ phone_number, name }) => phone_number
+        ? phone_number.endsWith !== undefined ? row.phone_number.endsWith(phone_number.endsWith) : row.phone_number.startsWith(phone_number.startsWith!)
+        : name ? row.name.includes(name.contains) : false)
         : row.name.includes(where.name!.contains);
       return found ? [row] : [];
     });

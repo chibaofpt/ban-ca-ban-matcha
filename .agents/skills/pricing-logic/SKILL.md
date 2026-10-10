@@ -90,6 +90,25 @@ addons_price_vnd = sum(addon unit price × quantity)
 
 ---
 
+## Admin menu selling-price entry
+
+- The menu editor accepts the intended selling price for each size with its default serving powder
+  and default Base Liquid, in whole thousands of VND (`45` means `45,000`). Extras use the same
+  input unit; powder `price_per_gram` remains literal integer VND (`6000` means `6,000/g`).
+- Resolve grams and liquid volume through the canonical rules below. A Fusion serving replacement
+  includes its premium versus the original; its default liquid delta is zero. Latte includes the
+  global default liquid's full cost.
+- `calcMenuDefaultIngredientCost` and `deriveMenuBasePrice` in `src/utils/pricing.ts` own the inverse.
+  Subtract the unrounded default recipe cost from the target, floor to integer VND, and reject a
+  negative base or a target outside whole thousands. This integer base produces the requested sale
+  price after the existing final rounding. Never round recipe cost before subtracting it.
+- An unchanged target and recipe preserve the exact stored base rather than replacing it within
+  the rounding interval. A blank size persists `base_price_vnd = null` (not sold).
+- Keep the mutation wire field `base_price_vnd`; checkout continues to recompute through the existing
+  calculators. Missing pricing inputs prevent saving a priced size; do not hardcode system grams.
+
+---
+
 ## Gram Resolution — 3-Level COALESCE
 
 For each item + size, resolve grams in this order:

@@ -596,6 +596,11 @@ export default function AdminMenuPage() {
           powders={powders}
           baseLiquids={menuData?.base_liquids ?? []}
           defaultSizeConfig={menuData?.default_size_config ?? []}
+            lattePriceAnchors={Object.fromEntries(powders.map((powder) => {
+              const anchor = menuData?.latte.find((entry) => entry.id === powder.reference_latte_item_id);
+              return [powder.id, anchor ? Object.fromEntries(anchor.sizes.filter((size) => size.base_price_vnd !== null)
+                .map((size) => [size.size, size.base_price_vnd!])) : null];
+            }))}
           onClose={() => setModalState({ open: false })}
           onSuccess={handleModalSuccess}
         />

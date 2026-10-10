@@ -2,6 +2,8 @@ import path from "node:path";
 import { defineConfig } from "vitest/config";
 
 const staticContractTests = [
+  "lib/__tests__/insta-name-history-migration.test.ts",
+  "lib/__tests__/account-schema.test.ts",
   "lib/__tests__/welcome-points-migration.test.ts",
   "lib/__tests__/fusion-powder-migration.test.ts",
   "lib/__tests__/sms-test-retirement.test.ts",

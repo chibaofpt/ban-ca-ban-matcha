@@ -40,8 +40,8 @@ export function VoucherQRVerifyModal({
   const [manualCode, setManualCode] = useState("");
   const containerId = "qr-verify-container";
 
-  const customerPhone =
-    customerInfo.type === "existing" ? customerInfo.data.phone_number : "";
+  const customerIdentifier = customerInfo.data.email ?? customerInfo.data.phone_number ?? "";
+  const customerLabel = customerInfo.data.email ?? (customerInfo.data.phone_number ? formatVietnamPhone(customerInfo.data.phone_number) : customerInfo.data.name);
 
   // ── Start scanner ──────────────────────────────────────────────────────
 
@@ -74,17 +74,17 @@ export function VoucherQRVerifyModal({
               }
 
               // Verify this QR belongs to the selected customer
-              if (result.data.phone_number !== customerPhone) {
+              if (result.data.qr_token !== customerInfo.data.qr_token) {
                 setError(
-                  `QR không khớp. Yêu cầu QR của khách ${formatVietnamPhone(customerPhone)}.`
+                  `QR không khớp. Yêu cầu QR của khách ${customerLabel}.`
                 );
                 processingRef.current = false;
                 setProcessing(false);
                 return;
               }
 
-              // Success — pass back the raw token (decodedText = qr_token UUID)
-              onVerified(decodedText);
+              // Success — use the server-resolved owner for legacy QR aliases.
+              onVerified(result.data.qr_token);
             } catch {
               setError("Không thể đọc mã QR. Vui lòng thử lại.");
               processingRef.current = false;
@@ -165,8 +165,8 @@ export function VoucherQRVerifyModal({
     setProcessing(true);
     setError(null);
     try {
-      const result = await scanFallback(customerPhone, manualCode);
-      if (result.type !== "user") {
+      const result = await scanFallback(customerIdentifier, manualCode);
+      if (result.type !== "user" || result.data.qr_token !== customerInfo.data.qr_token) {
          setError("Mã này không phải mã cá nhân của khách.");
          setProcessing(false);
          return;
@@ -196,7 +196,7 @@ export function VoucherQRVerifyModal({
           <h2 className="font-serif text-base font-semibold">Xác thực khách hàng</h2>
           <p className="text-xs text-muted-foreground">
             Yêu cầu khách{" "}
-            <span className="font-medium text-foreground">{formatVietnamPhone(customerPhone)}</span>{" "}
+            <span className="font-medium text-foreground">{customerLabel}</span>{" "}
             mở QR cá nhân để xác nhận sử dụng voucher
           </p>
         </div>

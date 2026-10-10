@@ -138,7 +138,7 @@ function setupTx(basePriceVnd = 55000) {
   (prisma.pointsLog.create as ReturnType<typeof vi.fn>) = mockPointsLogCreate;
 
   // Default: user exists (for voucher flows)
-  mockUserFindUnique.mockResolvedValue({ id: USER_ID, phone: "+84901234567", qr_token: "qr-tok", password_hash: "hash" });
+  mockUserFindUnique.mockResolvedValue({ id: USER_ID, role: "CUSTOMER", is_blocked: false, sourceMerge: null, phone: "+84901234567", qr_token: "qr-tok", password_hash: "hash" });
   mockOrderCreate.mockResolvedValue(createdOrder);
   mockVoucherUpdateMany.mockResolvedValue({ count: 1 });
   (prisma.voucher.updateMany as ReturnType<typeof vi.fn>) = mockVoucherUpdateMany;
@@ -159,6 +159,7 @@ function setupTx(basePriceVnd = 55000) {
         },
         user: {
           findUnique: mockUserFindUnique,
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
           update: mockUserUpdate,
           create: mockUserCreate,
         },
@@ -233,6 +234,71 @@ describe("POST /api/staff/orders — COUNTER integration", () => {
 
     expect(res.status).toBe(201);
     expect(json.data.status).toBe("COMPLETED");
+  });
+
+  it("khách email đã chọn có điểm và không là khách vãng lai", async () => {
+    setupTx();
+    const payload = validPayload();
+    const { phone_number: omittedPhone, ...withoutPhone } = payload;
+    void omittedPhone;
+    const response = await POST(makeReq({ ...withoutPhone, customer_identifier: USER_ID }));
+    expect(response.status).toBe(201);
+    expect(mockOrderCreate.mock.calls[0][0].data).toMatchObject({ user_id: USER_ID, points_earned: 6 });
+    expect(mockPointsLogCreate).toHaveBeenCalled();
+  });
+
+  it("tạo hồ sơ email không có phone/password/welcome rồi ghi điểm", async () => {
+    setupTx();
+    mockUserFindUnique.mockResolvedValue(null);
+    mockUserCreate.mockResolvedValue({ id: USER_ID });
+    const { phone_number, ...payload } = validPayload();
+    void phone_number;
+    const response = await POST(makeReq({ ...payload, customer_email: "Ca.Ngon@gmail.com", customer_name: "Cá Ngon" }));
+    expect(response.status).toBe(201);
+    expect(mockUserCreate.mock.calls[0][0].data).toMatchObject({ email: "cangon@gmail.com", name: "Cá Ngon", account_origin: "GOOGLE_EMAIL", phone_number: null, password_hash: null, role: "CUSTOMER" });
+    expect(mockOrderCreate.mock.calls[0][0].data).toMatchObject({ user_id: USER_ID, points_earned: 6 });
+  });
+
+  it("không tạo ghost bằng điện thoại chưa tồn tại dù có biệt danh", async () => {
+    setupTx();
+    mockUserFindUnique.mockResolvedValue(null);
+    const response = await POST(makeReq({ ...validPayload(), customer_name: "Khách mới" }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).code).toBe("VALIDATION_ERROR");
+    expect(mockUserCreate).not.toHaveBeenCalled();
+    expect(mockOrderCreate).not.toHaveBeenCalled();
+  });
+
+  it("không ghi đơn khi số điện thoại không khớp khách được chọn", async () => {
+    setupTx();
+    mockUserFindUnique.mockImplementation(async ({ where }: { where: { qr_token?: string; phone_number?: string } }) =>
+      where.phone_number ? { id: "different-user" } : { id: USER_ID, qr_token: USER_ID, role: "CUSTOMER", sourceMerge: null });
+    const response = await POST(makeReq({ ...validPayload(), customer_identifier: USER_ID }));
+    expect(response.status).toBe(400);
+    expect((await response.json()).details.reason).toBe("CUSTOMER_IDENTITY_MISMATCH");
+    expect(mockOrderCreate).not.toHaveBeenCalled();
+  });
+
+  it("tài khoản nguồn đã gộp không nhận điểm từ payload điện thoại cũ", async () => {
+    setupTx();
+    mockUserFindUnique.mockResolvedValue({ id: USER_ID, role: "CUSTOMER", sourceMerge: { target_user_id: "target" } });
+    const response = await POST(makeReq(validPayload()));
+    expect(response.status).toBe(409);
+    expect((await response.json()).details.reason).toBe("ACCOUNT_NOT_ACTIVE");
+    expect(mockOrderCreate).not.toHaveBeenCalled();
+    expect(mockPointsLogCreate).not.toHaveBeenCalled();
+  });
+
+  it("xử lý loser email unique bằng 409 và không claim tài khoản khác — SIMULATED_RACE_OUTCOME", async () => {
+    setupTx();
+    mockUserFindUnique.mockResolvedValue(null);
+    mockUserCreate.mockRejectedValue(Object.assign(new Error("controlled unique loser"), { code: "P2002" }));
+    const { phone_number, ...payload } = validPayload();
+    void phone_number;
+    const response = await POST(makeReq({ ...payload, customer_email: "new@example.com", customer_name: "Khách" }));
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("CONFLICT");
+    expect(mockOrderCreate).not.toHaveBeenCalled();
   });
 
   it("COUNTER anonymous order không cộng points", async () => {

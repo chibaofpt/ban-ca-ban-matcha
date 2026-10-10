@@ -1,3 +1,4 @@
+import { AccountError, accountErrorResponse } from "@/lib/auth/accountError";
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { createCustomerOrder } from "@/lib/orders/customerOrderCreation";
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     return await createCustomerOrder(parsed.data, session.id, acceptanceDate);
   } catch (error) {
+    if (error instanceof AccountError) return accountErrorResponse(error);
     if (error instanceof BundlePromotionError) {
       const voucherMissing = error.reason === "BUNDLE_VOUCHER_NOT_FOUND";
       return NextResponse.json(
@@ -134,6 +136,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const result = await getCustomerOrderHistory(session.id, page, limit, statusFilter);
     return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof AccountError) return accountErrorResponse(error);
     console.error("[GET /api/orders]", error);
     return NextResponse.json(
       { error: "Internal server error", code: "INTERNAL_ERROR" },
