@@ -48,7 +48,7 @@ export async function getClaimContext(token?: string): Promise<ClaimContextResul
   return unwrap(apiClient.post(URL.claimContext, token ? { token } : {}));
 }
 
-/** Claim the cookie-bound legacy account using a confirmed new password. */
+/** @deprecated Password claims are retired; this compatibility call preserves the server's 410. */
 export async function claimAccountPassword(payload: ClaimPasswordPayload): Promise<AccountAuthResult> {
   return unwrap(apiClient.post(URL.claimPassword, payload));
 }

@@ -46,7 +46,8 @@ keeps the form and existing server error behavior. Password access does not gain
 The alternate method stays usable while Google's SDK or background verification is loading;
 disable overlapping submission only while an authentication request is pending.
 
-CLAIM/LINK/REAUTH keep their existing preparation flow. Successful login preserves customer
+CLAIM shares the immediate Google/background Turnstile flow below; LINK/REAUTH keep their existing
+preparation flow. Successful login preserves customer
 intent, cart identity, staff routing and welcome-reward handling. Manual acceptance covers first
 open, Enter/Back/focus, password autofill, Google cancel/retry, delayed/failed Turnstile and the
 interactive challenge on mobile and desktop; mock tests do not prove live widget behavior.
@@ -54,27 +55,45 @@ interactive challenge on mobile and desktop; mock tests do not prove live widget
 ## Admin claim and customer acceptance
 
 Admin sees `Gửi link xác thực` only when the server reports eligibility. The existing customer
-overlay switches to claim content. It shows QR encoding the exact link, a copy control and remaining
-server-derived lifetime. Footer actions `Tạo lại link` and `Mở Zalo` share one row. Zalo opens the
-customer phone; sending is manual. Regeneration replaces the old link immediately. Expired or failed
+overlay switches to claim content and immediately creates the link once, without a second click.
+It shows QR encoding the exact link, a copy icon beside the read-only URL and remaining
+server-derived lifetime. Footer actions `Tạo lại link` and the sky-blue `Mở Zalo` share one row and
+are locked during generation/copy. Zalo requires a valid link and customer phone, copies the exact
+link before opening that customer's Zalo, and keeps sending manual. Clipboard/popup failure has
+explicit feedback. Regeneration replaces the old link immediately. Expired or failed
 generation has a visible retry state; no stale QR is presented as usable.
+The [Admin claim presentation contract](admin-customer-management.md#account-actions) requires
+the QR/link/actions to fit one viewport without scrolling, with flexible QR sizing and a
+landscape layout that preserves visible controls.
 
 The link lasts five minutes and contains a random opaque token, no phone, name or user identifier.
 The claim page exchanges its fragment for a protected cookie, then removes the fragment. Reload
 may resume the same claim until its original expiry. Opening the page alone does not consume proof.
-Before successful acceptance, the page reveals no ghost name, phone, balance or voucher details.
+After valid unexpired context resolution, show the account phone in local format so the customer
+can recognize it. Invalid/expired contexts reveal no account data. Before successful acceptance,
+keep the ghost name, balance and voucher details private.
 In Zalo, the first successful fragment exchange may offer a copy action using the original link
 kept only in page memory, for pasting into Chrome/Safari. A cookie-only reload has no shareable
 proof: do not copy the cleaned URL or direct users to open that URL externally. Ask them to reopen
 the original link from the shop message in their external browser, or request a new link after expiry.
 Expired contexts expose no handoff control; copy failures direct users back to the original message.
 
-Google is primary, with the exact caption:
-“Đăng nhập bằng gmail để dễ dàng nhận nhiều thông báo khuyến mãi”.
-A legacy customer may instead enter password and confirmation. Successful Google acceptance does
-not force password entry; eligible legacy accounts may set it later in Profile after fresh Google
+Google is the only acceptance method, with the caption:
+“Liên kết Google để nhận tài khoản và đăng nhập ngay.”
+Load the official widget as soon as context is resolved, without another application button or
+waiting for CAPTCHA. Turnstile runs independently with `interaction-only` appearance, with the
+same automatic completion/retry behavior as the login modal. There is no password form; the
+[retired password endpoint](../../API.md#google-account-access) cannot accept old clients' claims.
+Successful acceptance creates the session immediately; there is no extra login step.
+Eligible legacy accounts may set a password later in Profile after fresh Google
 reauthentication. A Google/email-origin account cannot gain phone/password login merely by adding
 a self-declared phone. Claim completion is atomic and single-use.
+The first successful claim creates its welcome entitlement using the current admin configuration
+and existing [reward owner](../../.agents/skills/voucher-flow/references/lifecycle.md#welcome-reward-and-gacha).
+Reuse the canonical entitlement after a merge; create it only if neither identity already has one.
+Return the effective reward summary and follow [Reward UI](reward-ui.md#entry-defer-và-resume):
+announce completed points/voucher, or open pending GACHA immediately. Defer/continue goes to Profile
+with the session active. Do not display an expired-link error after acceptance while opening a gift.
 Profile shows change-password controls only when `has_password` is true. Eligible legacy accounts
 without a password use the existing `can_set_password` flow and fresh Google proof instead.
 
@@ -124,3 +143,5 @@ screen-reader feedback, popup blocked/cancelled recovery, embedded Zalo/Facebook
 links, regeneration, copying, reload, OTP countdown with a skewed device clock, old customer QR
 after merge, provider failures and Google login returning to the prior
 customer intent. Mock tests cannot establish provider delivery, real popup behavior or migration replay.
+Claim acceptance additionally covers recognizable phone, Google before CAPTCHA, interactive
+challenge/retry, Google-only Zalo handoff and all three configured reward modes after auto-login.

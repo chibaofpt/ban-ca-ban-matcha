@@ -14,7 +14,7 @@ import { verifyGoogleIdentity, type GoogleIdentity } from "@/lib/auth/googleIden
 import { mergeAccounts } from "@/lib/auth/accountMerge";
 import { claimActiveCustomerForWrite } from "@/lib/auth/accountMergeGuard";
 import { createWelcomeRewardInTransaction } from "@/lib/rewards/welcomeReward";
-import { readGoogleLoginPreparation } from "@/lib/auth/googleLoginPreparation";
+import { googleClaimActorHash, readGoogleLoginPreparation } from "@/lib/auth/googleLoginPreparation";
 import { verifyAccountTurnstile } from "@/lib/auth/turnstile";
 import { getClientIp } from "@/lib/clientIp";
 import { isUniqueConstraintError } from "@/lib/prisma-errors";
@@ -55,7 +55,8 @@ async function claimGoogle(tx: Prisma.TransactionClient, attempt: GoogleAuthAtte
   if (consumed.count !== 1) throw new AccountError("CLAIM_LINK_INVALID", 410, "BUSINESS_RULE_VIOLATION");
   if (existing && existing.id !== claim.user_id) {
     const merged = await mergeAccounts(tx, existing.id, claim.user_id, { kind: "GOOGLE_CLAIM", reference: attempt.id, actorId: existing.id });
-    const result = await createAccountSession(tx, merged.user);
+    const welcome = await createWelcomeRewardInTransaction(tx, merged.user.id);
+    const result = await createAccountSession(tx, await loadAccount(tx, merged.user.id), welcome);
     result.evicted.push(...merged.revoked); return result;
   }
   return activateGhost(tx, await loadAccount(tx, claim.user_id), identity);
@@ -81,25 +82,41 @@ async function authenticatePreparedLogin(req: Request, input: GoogleCredentialPa
   const prepared = await readGoogleLoginPreparation(req, input.challenge_id);
   if (!input.turnstile_token) throw new AccountError("TURNSTILE_REQUIRED", 400, "VALIDATION_ERROR");
   if (await prisma.googleAuthAttempt.findUnique({ where: { id: prepared.id } })) throw new AccountError("GOOGLE_CHALLENGE_INVALID", 401, "UNAUTHORIZED");
+  if (prepared.purpose === "CLAIM" && prepared.claimHash !== await claimContextHash()) throw new AccountError("CLAIM_LINK_INVALID", 410, "BUSINESS_RULE_VIOLATION");
+  const actor = prepared.actorHash ? await getSession() : null;
+  if (prepared.actorHash && (!actor || actor.role !== "CUSTOMER" || !actor.session_id || accountDigest(actor.id) !== prepared.actorHash
+    || accountDigest(actor.session_id) !== prepared.actorSessionHash)) throw new AccountError("ACCOUNT_SESSION_EXPIRED", 401, "UNAUTHORIZED");
   const identity = await verifyGoogleIdentity(input.credential, prepared.nonceHash);
   await verifyAccountTurnstile(input.turnstile_token, getClientIp(req), "google_auth");
-  return accountTransaction(async tx => {
+  const result = await accountTransaction(async tx => {
     if (prepared.expiresAt <= new Date() || await tx.googleAuthAttempt.findUnique({ where: { id: prepared.id } })) {
       throw new AccountError("GOOGLE_CHALLENGE_INVALID", 401, "UNAUTHORIZED");
     }
+    if (actor?.session_id) {
+      await requireActorSession(tx, actor.id, actor.session_id);
+      const user = await loadAccount(tx, actor.id); requireActiveAccount(user);
+      if (googleClaimActorHash(user) !== prepared.actorAccountHash) throw new AccountError("ACCOUNT_SESSION_EXPIRED", 401, "UNAUTHORIZED");
+    }
+    const claim = prepared.claimHash ? await loadClaim(tx, prepared.claimHash) : null;
+    if (claim && accountDigest(claim.id) !== prepared.claimLinkHash) throw new AccountError("CLAIM_LINK_INVALID", 410, "BUSINESS_RULE_VIOLATION");
+    let attempt: GoogleAuthAttempt;
     try {
-      await tx.googleAuthAttempt.create({ data: { id: prepared.id, purpose: "LOGIN", nonce_hash: prepared.nonceHash,
-        binding_hash: prepared.binding, expires_at: prepared.expiresAt, consumed_at: new Date() } });
+      attempt = await tx.googleAuthAttempt.create({ data: { id: prepared.id, purpose: prepared.purpose, nonce_hash: prepared.nonceHash,
+        binding_hash: prepared.binding, expires_at: prepared.expiresAt, consumed_at: new Date(),
+        claim_token_hash: prepared.claimHash, claim_link_id: claim?.id ?? null,
+        actor_user_id: actor?.id ?? null, actor_session_id: actor?.session_id ?? null } });
     } catch (error) {
       if (isUniqueConstraintError(error)) throw new AccountError("GOOGLE_CHALLENGE_INVALID", 401, "UNAUTHORIZED");
       throw error;
     }
-    return loginGoogle(tx, identity);
+    return prepared.purpose === "CLAIM" ? claimGoogle(tx, attempt, identity) : loginGoogle(tx, identity);
   });
+  if (prepared.purpose === "CLAIM") await setClaimContext(req, null);
+  return result;
 }
 /** Validate and consume the purpose-bound Google assertion, then execute its account workflow. */
 export async function authenticateGoogle(req: Request, input: GoogleCredentialPayload) {
-  if (input.challenge_id.startsWith("login.")) return authenticatePreparedLogin(req, input);
+  if (input.challenge_id.startsWith("login.") || input.challenge_id.startsWith("claim.")) return authenticatePreparedLogin(req, input);
   const binding = await accountBrowserBinding(req);
   const original = await prisma.googleAuthAttempt.findUnique({ where: { id: input.challenge_id } });
   if (!original || original.binding_hash !== binding || original.consumed_at || original.verified_at || original.expires_at <= new Date()) throw new AccountError("GOOGLE_CHALLENGE_INVALID", 401, "UNAUTHORIZED");

@@ -1,16 +1,12 @@
 import { randomBytes } from "node:crypto";
-import bcrypt from "bcryptjs";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { AccountError } from "@/lib/auth/accountError";
 import { accountDigest, claimContextHash, setClaimContext } from "@/lib/auth/accountCookies";
 import { loadAccount, requireClaimableGhost } from "@/lib/auth/accountData";
 import { accountTransaction } from "@/lib/auth/accountTransaction";
-import { createAccountSession, revokeAccountSessions } from "@/lib/auth/accountSession";
 import { claimActiveCustomerForWrite } from "@/lib/auth/accountMergeGuard";
-import { createWelcomeRewardInTransaction } from "@/lib/rewards/welcomeReward";
 import type { ClaimPasswordPayload } from "@/contracts/account";
-import { verifyAccountTurnstile } from "@/lib/auth/turnstile";
 /** Validate an unconsumed current claim hash inside the consuming transaction. */
 export async function loadClaim(tx: Pick<Prisma.TransactionClient, "accountClaimLink" | "user">, hash: string) {
   const claim = await tx.accountClaimLink.findUnique({ where: { token_hash: hash } });
@@ -33,30 +29,17 @@ export async function issueClaimLink(req: Request, userQrToken: string, adminId:
   });
   return { url: `${new URL(req.url).origin}/nhan-tai-khoan#${raw}`, expires_at: expires.toISOString(), server_now: now.toISOString() };
 }
-/** Exchange a fragment token for a protected context and disclose expiry only. */
+/** Exchange a valid fragment for a protected context, account phone and original expiry. */
 export async function establishClaimContext(req: Request, token?: string) {
   const hash = token ? accountDigest(token) : await claimContextHash();
   const claim = await loadClaim(prisma, hash);
+  const user = await loadAccount(prisma, claim.user_id);
+  if (!user.phone_number) throw new AccountError("CLAIM_LINK_INVALID", 410, "BUSINESS_RULE_VIOLATION");
   if (token) await setClaimContext(req, token, claim.expires_at);
-  return { expires_at: claim.expires_at.toISOString(), server_now: new Date().toISOString() };
+  return { phone_number: user.phone_number, expires_at: claim.expires_at.toISOString(), server_now: new Date().toISOString() };
 }
-/** Consume a legacy claim, first password, welcome entitlement and session atomically. */
-export async function claimWithPassword(req: Request, input: ClaimPasswordPayload, ip: string) {
-  await verifyAccountTurnstile(input.turnstile_token, ip, "account_claim");
-  const hash = await claimContextHash();
-  const passwordHash = await bcrypt.hash(input.password, 12);
-  const result = await accountTransaction(async tx => {
-    const claim = await loadClaim(tx, hash);
-    await claimActiveCustomerForWrite(tx, claim.user_id);
-    requireClaimableGhost(await loadAccount(tx, claim.user_id));
-    const consumed = await tx.accountClaimLink.updateMany({ where: { id: claim.id, token_hash: hash, consumed_at: null, expires_at: { gt: new Date() } }, data: { consumed_at: new Date() } });
-    if (consumed.count !== 1) throw new AccountError("CLAIM_LINK_INVALID", 410, "BUSINESS_RULE_VIOLATION");
-    await tx.user.update({ where: { id: claim.user_id }, data: { password_hash: passwordHash, is_verified: true } });
-    const revoked = await revokeAccountSessions(tx, [claim.user_id]);
-    const welcome = await createWelcomeRewardInTransaction(tx, claim.user_id);
-    const session = await createAccountSession(tx, await loadAccount(tx, claim.user_id), welcome);
-    session.evicted.push(...revoked); return session;
-  });
-  await setClaimContext(req, null);
-  return result;
+/** Reject retired password claims without consuming proof or creating account credentials. */
+export async function claimWithPassword(_req: Request, _input: ClaimPasswordPayload, _ip: string): Promise<never> {
+  void _req; void _input; void _ip;
+  throw new AccountError("GOOGLE_CLAIM_REQUIRED", 410, "BUSINESS_RULE_VIOLATION");
 }

@@ -20,12 +20,11 @@ find the same account; existing suffix search remains available. Rows and detail
 local phone numbers according to [the shared phone standard](../../SPECIFICATION.md#vietnamese-phone-input-and-display). Customers with completed orders appear first, sorted by the most
 recent completed-order update across full history; customers with no completed order form the tail.
 
-Four toggle buttons below search are labeled `Ghost user`, `Order trong ngày`, `Order trong tháng`,
-and `Chưa có email`. Exactly one filter may be active; pressing it again returns to the full list.
-Changing filters resets to page one and retains search. Mobile uses a two-column grid, expanding
-to four columns on larger screens; the selected button has a distinct style and `aria-pressed`.
-The filter meanings and date boundaries belong to the linked API contract. Filtering ghosts does
-not imply every result is eligible for a claim link.
+Three toggle buttons below search are labeled `Order ngày`, `order tháng`, and `Chưa có Gmail`.
+Exactly one filter may be active; pressing it again returns to the full list.
+Changing filters resets to page one and retains search. All screen sizes use a single row with
+three equal columns; the selected button has a distinct style and `aria-pressed`.
+The filter meanings and date boundaries belong to the linked API contract.
 
 Each row shows identity, registration, verification and block state, with points presented as
 "Bạn đang có n điểm ká" on its own prominent green line and the value emphasized. Current
@@ -77,6 +76,17 @@ customer it generates a unique 24-character URL-safe temporary password, revokes
 the plaintext only in an explicit-only result surface so Admin can copy it once.
 
 A ghost row is labeled `Chưa đăng ký`. Eligible legacy rows expose `Gửi link xác thực`; the same overlay switches to QR/link/copy with regeneration and Zalo actions. The lifecycle and all claim failure states belong to [Account access](account-access.md#admin-claim-and-customer-acceptance). Email ghosts activate through matching verified Google identity.
+Clicking `Gửi link xác thực` immediately starts one link-generation request when the claim content
+opens; there is no second create action. Place an accessible copy icon beside the read-only URL.
+Keep `Tạo lại link` and the sky-blue `Mở Zalo` button on one row. Both are disabled while generating
+or copying; Zalo also requires a current unexpired link and a phone. `Mở Zalo` copies the exact
+link before navigating the reserved external tab to the customer's Zalo. Clipboard failure closes
+that tab and reports failure; a blocked popup reports that copy succeeded and asks to allow tabs.
+The QR surface fits one viewport without vertical scrolling: keep the header, back action,
+countdown, QR, full wrapping URL/copy icon and footer actions visible together. Allocate remaining
+height to an undistorted QR capped at 256px. Portrait uses a vertical layout; landscape and wider
+screens place QR beside the link/actions. Respect safe areas; do not satisfy this by clipping
+controls. Loading, error and expiry states keep their retry action visible in the same surface.
 
 ## Gifts
 
@@ -121,9 +131,9 @@ While the Vouchers tab is active, the overlay header shows "Voucher" above the s
 
 ## Acceptance
 
-- Khi Admin chọn một trong bốn bộ lọc, thì danh sách/tổng số/phân trang phản ánh cùng bộ lọc và
-  nội dung tìm kiếm; chuyển bộ lọc về trang một, bấm lại nút đang chọn bỏ lọc. Trên mobile bốn nút
-  nằm trong hai cột, không tràn ngang; trạng thái chọn và focus hiển thị rõ.
+- Khi Admin chọn một trong ba bộ lọc, thì danh sách/tổng số/phân trang phản ánh cùng bộ lọc và
+  nội dung tìm kiếm; chuyển bộ lọc về trang một, bấm lại nút đang chọn bỏ lọc. Trên mobile ba nút
+  nằm trên một hàng, không tràn ngang; trạng thái chọn và focus hiển thị rõ.
 - Khi danh sách đi qua ranh giới trang giữa khách có và không có đơn hoàn tất, thì thứ tự vẫn giữ
   nhóm completed trước và tail sau, mỗi trang tối đa mười dòng.
 - Khi Admin mở gift hoặc order detail rồi quay lại, thì chỉ một customer overlay còn mở và customer
@@ -141,3 +151,11 @@ While the Vouchers tab is active, the overlay header shows "Voucher" above the s
   hợp lệ; không hiển thị zero như một kết quả thống kê thành công.
 - Khi số dư bằng zero hoặc refresh provider lỗi, thì UI phân biệt zero đã kiểm tra với unavailable,
   giữ số dư/thời gian gần nhất và đánh dấu dữ liệu cũ.
+- Khi bấm `Gửi link xác thực`, link/QR được tạo sau một lần bấm; không tạo lặp khi render lại.
+  Icon cạnh URL sao chép đúng link; `Mở Zalo` sao chép trước khi mở, có màu xanh da trời và khóa
+  cùng `Tạo lại link` khi đang xử lý. Link hết hạn khóa Zalo và cho tạo lại; lỗi clipboard/popup
+  không bị báo thành công đầy đủ. Kiểm tra bàn phím, mobile và cả hai theme bằng tay.
+- Sheet QR phải thấy đủ nội dung trong một màn hình, không cần cuộn, ở mobile dọc 320×568 và
+  ngang 568×320 với safe area. QR vẫn quét được sau khi co; URL xuống dòng và icon copy cùng
+  `Tạo lại link`/`Mở Zalo` luôn hiển thị. Kiểm tra cả pending, lỗi và hết hạn; không chấp nhận
+  che phần nội dung bị tràn bằng `overflow-hidden`.

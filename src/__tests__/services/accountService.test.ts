@@ -14,11 +14,11 @@ describe("Service tài khoản Google — FRONTEND_CONTRACT", () => {
     expect(await createGoogleChallenge(payload)).toEqual(result);
     expect(apiClient.post).toHaveBeenCalledWith("/api/auth/google/challenge", payload);
   });
-  it("chuẩn bị LOGIN không CAPTCHA và gửi token ngầm khi đổi credential", async () => {
-    const prepared = { challenge_id: "login.signed.preparation.proof", nonce: "nonce", expires_at: "2026-10-11T07:00:00Z" };
+  it.each(["LOGIN", "CLAIM"] as const)("chuẩn bị %s không CAPTCHA và gửi token ngầm khi đổi credential", async purpose => {
+    const prepared = { challenge_id: `${purpose.toLowerCase()}.signed.preparation.proof`, nonce: "nonce", expires_at: "2026-10-11T07:00:00Z" };
     vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: prepared } });
-    await expect(createGoogleChallenge({ purpose: "LOGIN" })).resolves.toEqual(prepared);
-    expect(apiClient.post).toHaveBeenLastCalledWith("/api/auth/google/challenge", { purpose: "LOGIN" });
+    await expect(createGoogleChallenge({ purpose })).resolves.toEqual(prepared);
+    expect(apiClient.post).toHaveBeenLastCalledWith("/api/auth/google/challenge", { purpose });
     const session = { qr_token: "public-qr", name: "Cá", phone_number: null, email: "ca@gmail.com", role: "CUSTOMER", welcome_reward: null };
     const payload = { challenge_id: prepared.challenge_id, credential: "google-jwt", turnstile_token: "background-captcha" };
     vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: session } });
@@ -38,7 +38,7 @@ it("preserves structured API failures including collision reason", async () => {
 describe("new account endpoints — FRONTEND_CONTRACT", () => {
   beforeEach(() => vi.clearAllMocks());
   it("binds raw claim token once and resumes context with an empty body", async () => {
-    const context = { expires_at: "2026-10-09T08:00:00Z", server_now: "2026-10-09T07:50:00Z" };
+    const context = { phone_number: "+84912345678", expires_at: "2026-10-09T08:00:00Z", server_now: "2026-10-09T07:50:00Z" };
     vi.mocked(apiClient.post).mockResolvedValue({ data: { data: context } });
     await expect(getClaimContext("raw-token")).resolves.toEqual(context);
     expect(apiClient.post).toHaveBeenLastCalledWith("/api/auth/claim/context", { token: "raw-token" });
@@ -52,11 +52,12 @@ describe("new account endpoints — FRONTEND_CONTRACT", () => {
     expect(apiClient.post).toHaveBeenLastCalledWith("/api/auth/google", { challenge_id: "challenge", credential: "google-jwt" });
     await expect(submitGoogleCredential({ challenge_id: "reauth", credential: "jwt" })).resolves.toEqual({ reauth_proof: "one-use-proof" });
   });
-  it("sends password confirmation and encodes claim target", async () => {
-    vi.mocked(apiClient.post).mockResolvedValue({ data: { data: { url: "https://shop.test/nhan-tai-khoan#claim", expires_at: "later", server_now: "now" } } });
+  it("preserves retired password errors and encodes the public claim target", async () => {
+    vi.mocked(apiClient.post).mockRejectedValueOnce({ response: { status: 410, data: { error: "Liên kết Google để nhận tài khoản", code: "BUSINESS_RULE_VIOLATION", details: { reason: "GOOGLE_CLAIM_REQUIRED" } } } });
     const payload = { password: "secret1", password_confirmation: "secret1", turnstile_token: "captcha" };
-    await claimAccountPassword(payload);
+    await expect(claimAccountPassword(payload)).rejects.toMatchObject({ status: 410, details: { reason: "GOOGLE_CLAIM_REQUIRED" } });
     expect(apiClient.post).toHaveBeenLastCalledWith("/api/auth/claim/password", payload);
+    vi.mocked(apiClient.post).mockResolvedValue({ data: { data: { url: "https://shop.test/nhan-tai-khoan#claim", expires_at: "later", server_now: "now" } } });
     await createAccountClaimLink("public/qr");
     expect(apiClient.post).toHaveBeenLastCalledWith("/api/admin/users/public%2Fqr/claim-link", {});
   });

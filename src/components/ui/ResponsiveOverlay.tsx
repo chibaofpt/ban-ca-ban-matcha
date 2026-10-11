@@ -37,6 +37,8 @@ interface ResponsiveOverlayProps {
   /** Coordinate this mobile sheet with an owning Vaul drawer. */
   nested?: boolean;
   className?: string;
+  /** Customize body spacing or overflow for an explicitly bounded feature layout. */
+  bodyClassName?: string;
   /** Customize backdrop appearance without changing layer or dismissal behavior. */
   backdropClassName?: string;
   onOpenChange: (open: boolean) => void;
@@ -88,6 +90,7 @@ export function ResponsiveOverlay({
   mobileMode = "sheet",
   nested = false,
   className,
+  bodyClassName,
   backdropClassName,
   onOpenChange,
   onAfterClose,
@@ -173,7 +176,7 @@ export function ResponsiveOverlay({
                 </Button>
               ) : null}
             </header>
-            <div className="min-h-0 flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-6 py-5">{scopedChildren}</div>
+            <div className={cn("min-h-0 flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-6 py-5", bodyClassName)}>{scopedChildren}</div>
             {scopedFooter ? <footer className="shrink-0 border-t px-6 py-4">{scopedFooter}</footer> : null}
             </>}
           </Dialog.Content>
@@ -233,7 +236,7 @@ export function ResponsiveOverlay({
               </Button>
             ) : null}
           </header>
-          <div className="min-h-0 flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-5 py-5">{scopedChildren}</div>
+          <div className={cn("min-h-0 flex-1 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-5 py-5", bodyClassName)}>{scopedChildren}</div>
           {scopedFooter ? <footer className="shrink-0 border-t px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4">{scopedFooter}</footer> : null}
           </>}
         </Drawer.Content>

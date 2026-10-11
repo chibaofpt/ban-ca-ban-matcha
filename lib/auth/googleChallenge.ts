@@ -18,10 +18,10 @@ export async function requireActorSession(tx: Pick<Prisma.TransactionClient, "se
   const session = await tx.session.findFirst({ where: { id: sessionId, user_id: actorId, expires_at: { gt: new Date() } }, select: { id: true } });
   if (!session) throw new AccountError("ACCOUNT_SESSION_EXPIRED", 401, "UNAUTHORIZED");
 }
-/** Prepare LOGIN immediately, or create a legacy purpose-bound challenge after CAPTCHA checks. */
+/** Prepare LOGIN/CLAIM immediately, or create a compatible challenge after CAPTCHA checks. */
 export async function createGoogleChallenge(req: Request, input: GoogleChallengePayload, ip: string) {
   if (!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim()) throw new AccountError("GOOGLE_CONFIG", 503, "SERVICE_UNAVAILABLE");
-  if (input.purpose === "LOGIN" && input.turnstile_token === undefined) return prepareGoogleLogin(req);
+  if ((input.purpose === "LOGIN" || input.purpose === "CLAIM") && input.turnstile_token === undefined) return prepareGoogleLogin(req, input.purpose);
   if (!input.turnstile_token) throw new AccountError("TURNSTILE_REQUIRED", 400, "VALIDATION_ERROR");
   await verifyAccountTurnstile(input.turnstile_token, ip, "google_auth");
   let actor: AuthSession | null = await getSession();

@@ -10,19 +10,20 @@ import { useRegistrationTurnstile } from "@/src/hooks/useRegistrationTurnstile";
 import { Button } from "@/src/components/ui/button";
 
 interface Props {
+  purpose?: "LOGIN" | "CLAIM";
   onSuccess: (result: GoogleCredentialResult) => void;
   disabled?: boolean;
   onBusyChange: (busy: boolean) => void;
 }
 
-/** Load Google's official LOGIN button immediately while CAPTCHA runs independently. */
-export function GoogleLoginButton({ onSuccess, disabled, onBusyChange }: Props) {
+/** Load Google's official LOGIN/CLAIM button while CAPTCHA runs independently. */
+export function GoogleLoginButton({ purpose = "LOGIN", onSuccess, disabled, onBusyChange }: Props) {
   const [generation, setGeneration] = useState(0);
-  if (!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) return <p role="alert" className="rounded-xl bg-muted p-3 text-sm">Đăng nhập Google chưa được cấu hình. Vui lòng sử dụng tài khoản SĐT / Instagram đã có.</p>;
-  return <PreparedGoogleLogin key={generation} onSuccess={onSuccess} disabled={disabled} onBusyChange={onBusyChange} onRestart={() => setGeneration(value => value + 1)} />;
+  if (!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) return <p role="alert" className="rounded-xl bg-muted p-3 text-sm">{purpose === "CLAIM" ? "Liên kết Google chưa được cấu hình. Vui lòng liên hệ nhân viên để được hỗ trợ." : "Đăng nhập Google chưa được cấu hình. Vui lòng sử dụng tài khoản SĐT / Instagram đã có."}</p>;
+  return <PreparedGoogleLogin key={`${purpose}-${generation}`} purpose={purpose} onSuccess={onSuccess} disabled={disabled} onBusyChange={onBusyChange} onRestart={() => setGeneration(value => value + 1)} />;
 }
 
-function PreparedGoogleLogin({ onSuccess, onRestart, disabled, onBusyChange }: Props & { onRestart: () => void }) {
+function PreparedGoogleLogin({ purpose = "LOGIN", onSuccess, onRestart, disabled, onBusyChange }: Props & { onRestart: () => void }) {
   const [challenge, setChallenge] = useState<GoogleChallengeResult | null>(null);
   const [prepareError, setPrepareError] = useState<string | null>(null);
   const [assertion, setAssertion] = useState<string | null>(null);
@@ -49,14 +50,14 @@ function PreparedGoogleLogin({ onSuccess, onRestart, disabled, onBusyChange }: P
   useEffect(() => {
     active.current = true;
     let cancelled = false;
-    preparation.current ??= createGoogleChallenge({ purpose: "LOGIN" });
+    preparation.current ??= createGoogleChallenge({ purpose });
     void preparation.current.then(value => {
       if (!cancelled) setChallenge(value);
     }).catch((error: unknown) => {
       if (!cancelled) setPrepareError(error instanceof Error ? error.message : "Không tải được Google. Vui lòng thử lại.");
     });
     return () => { cancelled = true; active.current = false; };
-  }, []);
+  }, [purpose]);
   useEffect(() => {
     onBusyChange(isPending);
     return () => onBusyChange(false);

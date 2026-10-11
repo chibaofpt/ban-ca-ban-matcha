@@ -23,6 +23,10 @@ bày và điều phối trong UI.
 - Sau đăng ký, `POINTS` hoặc `FIXED_VOUCHER` đã hoàn tất đóng auth flow, hiện toast tương ứng và
   tiếp tục intent/return target. `GACHA PENDING` chuyển ngay nội dung của auth dialog sang trải
   nghiệm chọn hộp trong cùng overlay `critical`.
+- Sau liên kết Google tại `/nhan-tai-khoan`, phiên đăng nhập đã được tạo trước khi hiện quà.
+  Dùng summary server trả để thông báo điểm/voucher đã hoàn tất hoặc mở `WelcomeRewardOverlay`
+  cho `GACHA PENDING`. **Để sau**, đóng hoặc **Tiếp tục** chuyển tới Profile; **Xem voucher** mở ví.
+  Entitlement đã hợp nhất được tiếp tục theo cùng state, không phát lại quà đã nhận.
 - Đóng hoặc chọn **Để sau** không mở reward và không làm mất entitlement; auth flow vẫn hoàn tất.
   Profile và wallet hiện CTA khi GET trả `GACHA PENDING`, cho phép mở lại cùng trải nghiệm.
 - Từ profile, **Xem voucher** đóng reward overlay rồi mở wallet. Trong wallet, reward là nested

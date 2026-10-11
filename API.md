@@ -445,17 +445,18 @@ Existing phone/password login is retained. Current onboarding follows the next s
 
 Business transitions and UI acceptance belong to [Account access](docs/specs/account-access.md).
 New account endpoints return the standard envelope, set `Cache-Control: no-store`, and never
-expose database user IDs or claim target identity before successful completion.
+expose database user IDs. Before claim completion, only a valid unexpired claim context may
+disclose its account phone; name, balance and vouchers remain private.
 Every flat AuthUser response includes `qr_token` (the canonical account's public QR identifier),
 `name`, nullable `phone_number`, `insta_name`, and `role`; Google account responses additionally
 include nullable `email`. Clients use `qr_token` for wallet/cart ownership, including after merge.
 
 | Method/path | Input | Success data |
 |---|---|---|
-| POST `/api/auth/google/challenge` | `{ purpose: LOGIN\|CLAIM\|LINK\|REAUTH, turnstile_token?, current_password? }`; token may be omitted only for LOGIN preparation | `{ challenge_id, nonce, expires_at }` |
-| POST `/api/auth/google` | `{ challenge_id, credential, turnstile_token? }`; token is required for prepared LOGIN | Flat AuthUser plus `welcome_reward`, or `{ reauth_proof }` for REAUTH |
-| POST `/api/auth/claim/context` | `{ token? }`; absent token resumes cookie | `{ expires_at, server_now }` |
-| POST `/api/auth/claim/password` | `{ password, password_confirmation, turnstile_token }` | Flat AuthUser plus `welcome_reward` |
+| POST `/api/auth/google/challenge` | `{ purpose: LOGIN\|CLAIM\|LINK\|REAUTH, turnstile_token?, current_password? }`; token may be omitted for LOGIN/CLAIM preparation | `{ challenge_id, nonce, expires_at }` |
+| POST `/api/auth/google` | `{ challenge_id, credential, turnstile_token? }`; token is required for prepared LOGIN/CLAIM | Flat AuthUser plus `welcome_reward`, or `{ reauth_proof }` for REAUTH |
+| POST `/api/auth/claim/context` | `{ token? }`; absent token resumes cookie | `{ phone_number, expires_at, server_now }`; phone is non-null for a valid legacy claim |
+| POST `/api/auth/claim/password` | Retired; request body is ignored | Always 410 `BUSINESS_RULE_VIOLATION`, `details.reason = GOOGLE_CLAIM_REQUIRED`; clients must use Google CLAIM |
 | POST `/api/admin/users/[userQrToken]/claim-link` | `{}`, ADMIN only | `{ url, expires_at, server_now }` |
 | PATCH `/api/profile/phone` | `{ phone_number }`, CUSTOMER only | `{ status: saved\|verification_required }` |
 | POST `/api/profile/phone/otp` | `{ phone_number, request_id, turnstile_token }` | RegistrationOtpChallenge DTO including server_now |
@@ -467,21 +468,28 @@ and session. Proof consumption and credential/account writes share a transaction
 short-lived, single-use and cannot authorize another account/session. Google-only password setup
 is restricted to eligible legacy-origin accounts.
 
-LOGIN preparation without `turnstile_token` returns a five-minute signed, browser-bound nonce
-proof as the opaque `challenge_id` (`login.` prefix). It does not allocate a database attempt,
+LOGIN/CLAIM preparation without `turnstile_token` returns a signed, browser-bound nonce
+proof as the opaque `challenge_id` (`login.` or `claim.` prefix). It does not allocate a database attempt,
 account or session. Exchange requires fresh `google_auth` Turnstile verification and the Google
 assertion; expiry is rechecked before transactional consumption. A consumed attempt in the
 existing Google proof table prevents replay. Preparation uses a purpose-separated signing key
 derived from `JWT_SECRET` and binds the configured Google client ID. Clients echo the opaque
 challenge ID without parsing it. Both requests keep the shared account mutation IP quota.
+LOGIN lifetime is five minutes. CLAIM lifetime never exceeds the claim link's original deadline;
+it binds the current claim hash/link and, when already logged in, the actor/session/credentials
+using hashes. Final exchange rechecks claim validity and live actor state inside the transaction.
+Regeneration, expiry, session revocation or credential changes invalidate the prepared claim.
 
 Existing challenge requests with a CAPTCHA still return a UUID and exchange without a second
-token, including LOGIN. CLAIM/LINK/REAUTH still require CAPTCHA before challenge creation.
+token, including LOGIN/CLAIM. LINK/REAUTH require CAPTCHA before challenge creation.
 Google verification outages fail closed; missing/invalid tokens never complete a login.
 
 Claim URLs use `/nhan-tai-khoan#<opaque-token>`. Only the hash is persisted. Binding/resume neither
 consumes the link nor extends its original five-minute deadline. Regeneration invalidates previous
 links and their dependent Google challenges; completion conditionally consumes current proof.
+Google is the only claim acceptance method; password acceptance is retired without consuming a
+link or creating credentials. Successful CLAIM creates the canonical session and returns the
+effective welcome entitlement according to the [account lifecycle](docs/specs/account-access.md#admin-claim-and-customer-acceptance).
 
 Phone OTP is transitional and only admits collision with an eligible legacy ghost. A disabled
 switch never bypasses verification. The existing ABENLA admission uses per-phone send gaps

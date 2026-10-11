@@ -157,8 +157,9 @@ trong transaction không retry khi gọi Redis, rồi chỉ dispatch provider sa
 Redis reservation đã xảy ra nhưng transaction lỗi được giữ lại; không tự hoàn quota hoặc gửi lại.
 CSP giữ nonce và bổ sung đúng nguồn Google GIS/Cloudflare cần cho widget. Google ID token được xác minh server-side qua jose/JWKS; không lưu Google access/refresh token. OTP chỉ dùng cho trùng legacy ghost đủ điều kiện; admin quản lý công tắc/quota và số dư trong Cài đặt.
 
-Modal login chuẩn bị Google bằng signed proof ngắn hạn trước CAPTCHA, không tạo DB attempt ở
-bước mở modal. Proof dùng key tách purpose từ `JWT_SECRET`; exchange consume vào bảng Google
+Modal login và trang nhận tài khoản chuẩn bị Google bằng signed proof ngắn hạn trước CAPTCHA,
+không tạo DB attempt ở bước mở UI. CLAIM còn gắn hash của link/context và actor/session/credentials
+nếu đã đăng nhập, không kéo dài hạn link. Proof dùng key tách purpose từ `JWT_SECRET`; exchange consume vào bảng Google
 proof hiện có trong cùng transaction với account/session. Contract và compatibility thuộc
 [API Google account access](API.md#google-account-access); tương tác widget và form hai bước thuộc
 [Account access](docs/specs/account-access.md#login-modal).
@@ -270,6 +271,9 @@ Button dùng variants `primary`, `secondary`, `outline`, `ghost`, `destructive`.
 Nhãn size đồ uống trong UI dùng `SizeLabel`; khi cần ghép thành chuỗi, dùng `formatSizeLabel`. Enum `SMALL`/`MEDIUM`/`LARGE` chỉ thuộc data contract, không render trực tiếp cho người dùng.
 
 ResponsiveOverlay exposes optional titleClassName and descriptionClassName for flow-specific text presentation; the shared overlay retains ownership of header structure and accessibility semantics.
+Optional `bodyClassName` customizes body spacing/overflow for an explicitly bounded feature layout.
+The default body remains scrollable. A feature opting out of scrolling must allocate available
+height and shrink flexible media, while keeping its controls visible; [Admin claim layout](docs/specs/admin-customer-management.md#account-actions) owns that acceptance.
 
 ## Legacy UI migration policy
 

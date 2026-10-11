@@ -55,7 +55,9 @@ ACTIVE → REFUNDED                                (auto: target item soft-delet
 
 Admin cấu hình số điểm chào mừng nguyên từ 1–100, mặc định 5. POINTS và mọi fallback dùng chung mức này. Mỗi entitlement chụp mức điểm khi đăng ký; thay đổi settings không đổi quyền lợi pending/completed.
 
-Mỗi user có đúng một entitlement quà chào mừng bền vững, được quyết định trong transaction đăng ký.
+Mỗi user có đúng một entitlement quà chào mừng bền vững, được quyết định trong transaction đăng ký
+hoặc lần đầu kích hoạt/nhận tài khoản qua Google. Nhận legacy account dùng cùng cấu hình và owner;
+sau hợp nhất, reuse entitlement canonical đã có, chỉ tạo khi cả hai identity chưa có entitlement.
 `mode` của entitlement là effective mode đã commit sau khi áp dụng fallback availability, không
 nhất thiết là raw settings mode; settings thay đổi sau đó không viết lại entitlement. Ba mode loại
 trừ nhau:

@@ -65,7 +65,7 @@ describe("Account claim và Google workflow — APPLICATION_LOGIC / kết quả 
     if (name === "user") return hydrateUser(row);
     if (name === "welcomeReward") {
       const outcome = rows("rewardOutcome").find(candidate => candidate.welcome_reward_id === row.id);
-      return { ...row, campaign: null, outcome: outcome ? { ...outcome, pointsLog: rows("pointsLog").find(log => log.id === outcome.points_log_id) ?? null, voucher: null } : null };
+      return { ...row, campaign: null, outcome: outcome ? { ...outcome, pointsLog: rows("pointsLog").find(log => log.id === outcome.points_log_id) ?? null, voucher: rows("voucher").find(voucher => voucher.id === outcome.voucher_id) ?? null } : null };
     }
     return { ...row };
   }
@@ -83,6 +83,11 @@ describe("Account claim và Google workflow — APPLICATION_LOGIC / kết quả 
         findUnique: async ({ where = {} }: Query) => read(name, where),
         findFirst: async ({ where = {} }: Query) => read(name, where),
         findMany: async ({ where = {} }: Query) => rows(name).filter(row => matches(row, where)).map(row => ({ ...row })),
+        groupBy: async ({ where = {} }: Query) => {
+          const counts = new Map<unknown, number>();
+          for (const row of rows(name).filter(row => matches(row, where))) counts.set(row.pool_item_id, (counts.get(row.pool_item_id) ?? 0) + 1);
+          return [...counts].map(([pool_item_id, count]) => ({ pool_item_id, _count: { _all: count } }));
+        },
         update: async ({ where = {}, data = {} }: Query) => {
           const row = rows(name).find(candidate => matches(candidate, where)); if (!row) throw new Error("Missing " + name);
           apply(row, data); return name === "user" ? hydrateUser(row) : { ...row };
@@ -158,8 +163,9 @@ describe("Account claim và Google workflow — APPLICATION_LOGIC / kết quả 
     expect(rows("session")).toHaveLength(1);
     expect(rows("welcomeReward")).toHaveLength(1);
   });
-  it("chỉ LOGIN được chuẩn bị không CAPTCHA; payload cũ vẫn dùng UUID và không cần token lần hai", () => {
-    for (const purpose of ["CLAIM", "LINK", "REAUTH"]) {
+  it("LOGIN/CLAIM chuẩn bị không CAPTCHA; LINK/REAUTH và payload UUID giữ tương thích", () => {
+    expect(GoogleChallengeSchema.safeParse({ purpose: "CLAIM" }).success).toBe(true);
+    for (const purpose of ["LINK", "REAUTH"]) {
       expect(GoogleChallengeSchema.safeParse({ purpose }).success).toBe(false);
       expect(GoogleChallengeSchema.safeParse({ purpose, turnstile_token: "captcha" }).success).toBe(true);
     }
@@ -216,7 +222,7 @@ describe("Account claim và Google workflow — APPLICATION_LOGIC / kết quả 
       .rejects.toMatchObject({ reason: "GOOGLE_CHALLENGE_INVALID", status: 401 });
     expect(rows("session")).toEqual([]);
   });
-  it.each(["password", "google"])("ghost có 7 điểm không có lịch sử/voucher tạo link và nhận bằng %s", async method => {
+  it("ghost có 7 điểm không có lịch sử/voucher tạo link và nhận bằng Google", async () => {
     rows("user").push(customer("admin", { role: "ADMIN" }), customer("legacy", {
       account_origin: "LEGACY_PHONE", phone_number: "+84912345678", points_balance: 7,
     }));
@@ -226,13 +232,10 @@ describe("Account claim và Google workflow — APPLICATION_LOGIC / kết quả 
     expect(rows("pointsLog")).toEqual([]);
     expect(rows("voucher")).toEqual([]);
     await establishClaimContext(request(), raw);
-    if (method === "google") attempt("CLAIM", {
+    attempt("CLAIM", {
       claim_link_id: rows("accountClaimLink")[0].id, claim_token_hash: digest(raw),
     });
-    const result = method === "google" ? await authenticate()
-      : await claimWithPassword(request(), {
-        password: "secret12", password_confirmation: "secret12", turnstile_token: "test-captcha",
-      }, "203.0.113.1");
+    const result = await authenticate();
     expect(result).toMatchObject({ user: { id: "legacy", points_balance: 12, is_verified: true } });
     expect(rows("accountClaimLink")[0].consumed_at).toEqual(now);
     expect(rows("welcomeReward")).toHaveLength(1);
@@ -302,16 +305,16 @@ describe("Account claim và Google workflow — APPLICATION_LOGIC / kết quả 
     await expect(authenticate()).rejects.toMatchObject({ reason: "ACCOUNT_NOT_CLAIMABLE" });
     expect(rows("session")).toEqual([]);
   });
-  it("link chỉ lưu hash, hết hạn sau năm phút và context không tiết lộ hoặc gia hạn ghost", async () => {
+  it("link chỉ lưu hash; context hợp lệ chỉ trả SĐT và thời hạn gốc", async () => {
     const link = await legacyLink(); const raw = new URL(link.url).hash.slice(1);
     expect(raw).toMatch(/^[a-f0-9]{64}$/);
     expect(link.expires_at).toBe("2026-10-09T12:05:00.000Z");
     expect(JSON.stringify(rows("accountClaimLink"))).not.toContain(raw);
     expect(rows("accountClaimLink")[0].token_hash).toBe(digest(raw));
     vi.setSystemTime(new Date(now.getTime() + 60000));
-    expect(await establishClaimContext(request(), raw)).toEqual({ expires_at: link.expires_at, server_now: "2026-10-09T12:01:00.000Z" });
+    expect(await establishClaimContext(request(), raw)).toEqual({ phone_number: "+84912345678", expires_at: link.expires_at, server_now: "2026-10-09T12:01:00.000Z" });
     expect(cookieSet).toHaveBeenCalledWith("account_claim_context", raw, expect.objectContaining({ httpOnly: true, secure: true, sameSite: "strict", maxAge: 240 }));
-    expect(await establishClaimContext(request())).toEqual({ expires_at: link.expires_at, server_now: "2026-10-09T12:01:00.000Z" });
+    expect(await establishClaimContext(request())).toEqual({ phone_number: "+84912345678", expires_at: link.expires_at, server_now: "2026-10-09T12:01:00.000Z" });
     expect(rows("accountClaimLink")[0].consumed_at).toBeNull();
     vi.setSystemTime(new Date(now.getTime() + 300000));
     await expect(establishClaimContext(request())).rejects.toMatchObject({ reason: "CLAIM_LINK_INVALID" });
@@ -326,33 +329,91 @@ describe("Account claim và Google workflow — APPLICATION_LOGIC / kết quả 
     await expect(authenticate()).rejects.toMatchObject({ reason: "CLAIM_LINK_INVALID" });
     expect(rows("session")).toEqual([]);
   });
-  it("claim password tạo đúng một credential/reward/session và từ chối replay", async () => {
+  it("nhận bằng mật khẩu bị ngừng, không consume link hoặc tạo credential/reward/session", async () => {
     const link = await legacyLink(); await establishClaimContext(request(), new URL(link.url).hash.slice(1));
     const input = { password: "secret12", password_confirmation: "secret12", turnstile_token: "test-captcha" };
-    const result = await claimWithPassword(request(), input, "203.0.113.1");
-    expect(result).toMatchObject({ user: { id: "legacy", points_balance: 12, is_verified: true } });
-    expect(await publishAccountSession(result)).toMatchObject({ qr_token: "legacy-qr" });
-    expect(rows("welcomeReward")).toHaveLength(1); expect(rows("session")).toHaveLength(1);
-    await expect(claimWithPassword(request(), input, "203.0.113.1")).rejects.toMatchObject({ reason: "CLAIM_LINK_INVALID" });
-    expect(rows("welcomeReward")).toHaveLength(1); expect(rows("session")).toHaveLength(1);
+    await expect(claimWithPassword(request(), input, "203.0.113.1")).rejects.toMatchObject({ reason: "GOOGLE_CLAIM_REQUIRED", status: 410 });
+    expect(rows("welcomeReward")).toEqual([]); expect(rows("session")).toEqual([]);
+    expect(rows("accountClaimLink")[0].consumed_at).toBeNull();
+    expect(rows("user").find(user => user.id === "legacy")?.password_hash).toBeNull();
+  });
+  it("CLAIM chuẩn bị ngay không CAPTCHA/DB write, thời hạn không vượt link, rồi đăng nhập nhận điểm admin", async () => {
+    const link = await legacyLink(); await establishClaimContext(request(), new URL(link.url).hash.slice(1));
+    vi.setSystemTime(new Date(now.getTime() + 60000));
+    rows("welcomeRewardSettings").push({ id: 1, mode: "POINTS", points_amount: 17 });
+    boundary.transaction.mockClear();
+    const prepared = await createGoogleChallenge(request(), GoogleChallengeSchema.parse({ purpose: "CLAIM" }), "203.0.113.1");
+    expect(prepared.challenge_id).toMatch(/^claim\./);
+    expect(prepared.expires_at).toBe(link.expires_at);
+    expect(boundary.transaction).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(rows("googleAuthAttempt")).toEqual([]);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ success: true, hostname: "matcha.example", action: "google_auth" }))));
+    const input = GoogleCredentialSchema.parse({ challenge_id: prepared.challenge_id, credential: "provider-credential", turnstile_token: "captcha" });
+    const result = await authenticateGoogle(request(), input);
+    expect(result).toMatchObject({ user: { id: "legacy", google_sub: "verified-sub", points_balance: 24, password_hash: null }, welcome: { mode: "POINTS", status: "COMPLETED", points: 17 } });
+    if ("reauth_proof" in result) throw new Error("Expected account session");
+    expect(await publishAccountSession(result)).toMatchObject({ qr_token: "legacy-qr", welcome_reward: { points: 17 } });
+    expect(rows("session")).toHaveLength(1); expect(rows("welcomeReward")).toHaveLength(1);
+    expect(jar.has("account_claim_context")).toBe(false);
+    await expect(authenticateGoogle(request(), input)).rejects.toMatchObject({ reason: "GOOGLE_CHALLENGE_INVALID" });
+    expect(rows("session")).toHaveLength(1); expect(rows("welcomeReward")).toHaveLength(1);
+  });
+  it("CLAIM nhận GACHA pending theo config admin và đăng nhập mà chưa mở quà", async () => {
+    const link = await legacyLink(); await establishClaimContext(request(), new URL(link.url).hash.slice(1));
+    rows("welcomeRewardSettings").push({ id: 1, mode: "GACHA", points_amount: 11,
+      activeCampaign: { id: "campaign", status: "ACTIVE", poolItems: [{ id: "pool", quantity: 2 }] } });
+    const prepared = await createGoogleChallenge(request(), { purpose: "CLAIM" }, "203.0.113.1");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ success: true, hostname: "matcha.example", action: "google_auth" }))));
+    const result = await authenticateGoogle(request(), { challenge_id: prepared.challenge_id, credential: "provider-credential", turnstile_token: "captcha" });
+    expect(result).toMatchObject({ user: { id: "legacy", points_balance: 7 }, welcome: { mode: "GACHA", status: "PENDING", points: null } });
+    expect(rows("welcomeReward")).toMatchObject([{ user_id: "legacy", campaign_id: "campaign", points_amount: 11 }]);
+    expect(rows("rewardOutcome")).toEqual([]); expect(rows("session")).toHaveLength(1);
+  });
+  it.each(["cookie", "regenerated", "expired", "purpose", "actor", "actor-password", "revoked-session", "captcha"])("CLAIM chuẩn bị từ chối %s mà không nhận tài khoản/quà", async kind => {
+    const link = await legacyLink(); const raw = new URL(link.url).hash.slice(1);
+    if (["actor", "actor-password", "revoked-session"].includes(kind)) {
+      rows("user").push(customer("google-source", { google_sub: "verified-sub", email: "customer@gmail.com", password_hash: "old-hash" }));
+      rows("session").push({ id: "actor-session", user_id: "google-source", expires_at: new Date(now.getTime() + 600000) });
+      boundary.session.mockResolvedValue({ id: "google-source", role: "CUSTOMER", session_id: "actor-session" });
+    }
+    await establishClaimContext(request(), raw);
+    const prepared = await createGoogleChallenge(request(), { purpose: "CLAIM" }, "203.0.113.1");
+    const claims = JSON.parse(Buffer.from(prepared.challenge_id.split(".")[2], "base64url").toString()) as Row;
+    expect(Object.values(claims)).not.toContain("google-source");
+    expect(Object.values(claims)).not.toContain(rows("accountClaimLink")[0].id);
+    if (kind === "cookie") jar.set("account_claim_context", "b".repeat(64));
+    if (kind === "regenerated") await issueClaimLink(request(), "legacy-qr", "admin");
+    if (kind === "expired") vi.setSystemTime(new Date(now.getTime() + 300000));
+    if (kind === "actor") boundary.session.mockResolvedValue(null);
+    if (kind === "actor-password") rows("user").find(user => user.id === "google-source")!.password_hash = "new-hash";
+    if (kind === "revoked-session") tables.session = [];
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ success: kind !== "captcha", hostname: "matcha.example", action: "google_auth" }))));
+    const challengeId = kind === "purpose" ? prepared.challenge_id.replace(/^claim\./, "login.") : prepared.challenge_id;
+    const error = ["cookie", "regenerated"].includes(kind) ? "CLAIM_LINK_INVALID" : ["actor", "actor-password", "revoked-session"].includes(kind) ? "ACCOUNT_SESSION_EXPIRED" : kind === "captcha" ? "TURNSTILE_REJECTED" : "GOOGLE_CHALLENGE_INVALID";
+    await expect(authenticateGoogle(request(), { challenge_id: challengeId, credential: "provider-credential", turnstile_token: "captcha" })).rejects.toMatchObject({ reason: error });
+    expect(rows("accountClaimLink")[0].consumed_at).toBeNull();
+    expect(rows("user").find(user => user.id === "legacy")?.google_sub).toBeNull();
+    expect(rows("welcomeReward")).toEqual([]); expect(rows("accountMerge")).toEqual([]);
+    expect(rows("session").filter(session => session.user_id === "legacy")).toEqual([]);
   });
   it("Google claim merge giữ legacy canonical, mọi voucher/history và không cấp welcome lần hai", async () => {
     const link = await legacyLink(); const raw = new URL(link.url).hash.slice(1);
     rows("user").push(customer("google-source", { name: "Google Customer", email: "customer@gmail.com", google_sub: "verified-sub", insta_name: "google.insta", phone_number: "+84987654321", points_balance: 23 }));
     rows("pointsLog").push({ id: "source-earned", user_id: "google-source", delta: 23, reason: "welcome_bonus" });
-    rows("voucher").push({ id: "target-voucher", user_id: "legacy", status: "REDEEMED", redeemed_order_id: "old-order" }, { id: "source-voucher", user_id: "google-source", status: "ACTIVE" });
+    rows("voucher").push({ id: "target-voucher", user_id: "legacy", status: "REDEEMED", redeemed_order_id: "old-order" }, { id: "source-voucher", user_id: "google-source", status: "ACTIVE", issued_via: "WELCOME_GIFT" });
     rows("order").push({ id: "source-order", user_id: "google-source", total: 72000, items: [{ price: 72000 }] });
-    rows("welcomeReward").push({ id: "source-welcome", user_id: "google-source", mode: "GACHA", campaign_id: "campaign" });
-    rows("rewardOutcome").push({ id: "source-outcome", welcome_reward_id: "source-welcome", user_id: "google-source", kind: "VOUCHER", voucher_id: "source-voucher" });
+    rows("welcomeReward").push({ id: "source-welcome", user_id: "google-source", mode: "FIXED_VOUCHER", campaign_id: null, points_amount: 23 });
+    rows("rewardOutcome").push({ id: "source-outcome", welcome_reward_id: "source-welcome", user_id: "google-source", kind: "VOUCHER", voucher_id: "source-voucher", campaign_id: null, pool_item_id: null, box_id: null, draw_number: null });
     rows("session").push({ id: "source-session", user_id: "google-source", refresh_token: "old-source", previous_refresh_token: "older-source", expires_at: new Date(now.getTime() + 600000) });
     await establishClaimContext(request(), raw); attempt("CLAIM", { claim_link_id: rows("accountClaimLink")[0].id, claim_token_hash: digest(raw) });
     const result = await authenticate();
-    expect(result).toMatchObject({ user: { id: "legacy", points_balance: 30, name: "Google Customer", insta_name: "google.insta", phone_number: "+84912345678", google_sub: "verified-sub", email: "customer@gmail.com" }, welcome: null });
+    expect(result).toMatchObject({ user: { id: "legacy", points_balance: 30, name: "Google Customer", insta_name: "google.insta", phone_number: "+84912345678", google_sub: "verified-sub", email: "customer@gmail.com" }, welcome: { id: "source-welcome", mode: "FIXED_VOUCHER", status: "COMPLETED", outcome_kind: "VOUCHER" } });
     if ("reauth_proof" in result) throw new Error("Expected account session");
     expect(await publishAccountSession(result)).toMatchObject({ qr_token: "legacy-qr" });
     expect(rows("user").find(user => user.id === "google-source")).toMatchObject({ points_balance: 0, email: null, phone_number: null, password_hash: null, google_sub: null, insta_name: null });
     expect(rows("accountMerge")).toMatchObject([{ source_user_id: "google-source", target_user_id: "legacy", proof_kind: "GOOGLE_CLAIM", audit: { source_points: 23, target_points: 7, merged_points: 30 } }]);
-    expect(rows("voucher")).toEqual([{ id: "target-voucher", user_id: "legacy", status: "REDEEMED", redeemed_order_id: "old-order" }, { id: "source-voucher", user_id: "legacy", status: "ACTIVE" }]);
+    expect(rows("voucher")).toEqual([{ id: "target-voucher", user_id: "legacy", status: "REDEEMED", redeemed_order_id: "old-order" }, { id: "source-voucher", user_id: "legacy", status: "ACTIVE", issued_via: "WELCOME_GIFT" }]);
     expect(rows("order")).toEqual([{ id: "source-order", user_id: "legacy", total: 72000, items: [{ price: 72000 }] }]);
     expect(rows("pointsLog")).toEqual([{ id: "earned-before", user_id: "legacy", delta: 10, reason: "order_completed" }, { id: "source-earned", user_id: "legacy", delta: 23, reason: "welcome_bonus" }]);
     expect(rows("welcomeReward")).toMatchObject([{ id: "source-welcome", user_id: "legacy" }]); expect(rows("welcomeReward")).toHaveLength(1);
@@ -369,7 +430,7 @@ describe("Account claim và Google workflow — APPLICATION_LOGIC / kết quả 
     rows("voucherGrant").push({ id: "target-grant", user_id: "legacy", package_id: "same-package" }, { id: "source-duplicate-grant", user_id: "google-source", package_id: "same-package" }, { id: "source-unique-grant", user_id: "google-source", package_id: "other-package" });
     rows("voucher").push({ id: "target-voucher", user_id: "legacy", grant_id: "target-grant", status: "ACTIVE" }, { id: "source-voucher", user_id: "google-source", grant_id: "source-duplicate-grant", status: "REDEEMED" });
     await establishClaimContext(request(), raw); attempt("CLAIM", { claim_link_id: rows("accountClaimLink")[0].id, claim_token_hash: digest(raw) });
-    expect(await authenticate()).toMatchObject({ user: { id: "legacy", points_balance: 30 }, welcome: null });
+    expect(await authenticate()).toMatchObject({ user: { id: "legacy", points_balance: 30 }, welcome: { id: "target-welcome", mode: "GACHA", status: "PENDING" } });
     expect(rows("welcomeReward")).toEqual([{ id: "target-welcome", user_id: "legacy", mode: "GACHA", campaign_id: "campaign" }, { id: "source-welcome", user_id: "google-source", mode: "GACHA", campaign_id: "campaign" }]);
     expect(rows("rewardOutcome")).toEqual([{ id: "source-outcome", welcome_reward_id: "source-welcome", user_id: "google-source", kind: "VOUCHER", voucher_id: "source-voucher" }]);
     expect(rows("voucherGrant")).toEqual([{ id: "target-grant", user_id: "legacy", package_id: "same-package" }, { id: "source-duplicate-grant", user_id: "google-source", package_id: "same-package" }, { id: "source-unique-grant", user_id: "legacy", package_id: "other-package" }]);

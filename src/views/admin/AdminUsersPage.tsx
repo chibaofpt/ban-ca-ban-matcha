@@ -30,10 +30,9 @@ import {
 
 type AccountIntent = { action: AdminUserPatch; title: string; message: string; confirmLabel: string; destructive?: boolean };
 const CUSTOMER_FILTERS: { value: AdminUserListFilter; label: string }[] = [
-  { value: "GHOST", label: "Ghost user" },
-  { value: "ORDER_TODAY", label: "Order trong ngày" },
-  { value: "ORDER_MONTH", label: "Order trong tháng" },
-  { value: "NO_EMAIL", label: "Chưa có email" },
+  { value: "ORDER_TODAY", label: "Order ngày" },
+  { value: "ORDER_MONTH", label: "order tháng" },
+  { value: "NO_EMAIL", label: "Chưa có Gmail" },
 ];
 type DetailTab = "orders" | "vouchers";
 type DetailView =
@@ -97,6 +96,7 @@ export default function AdminUsersPage() {
   const user = detailQuery.data ?? selected;
   const busy = accountMutation.isPending || pointsMutation.isPending || voucherBusy || claimBusy;
   const isCustomerVoucherList = detailView.kind === "customer" && activeTab === "vouchers";
+  const isClaimLink = detailView.kind === "claim-link";
   const sheetTitle = isCustomerVoucherList ? "Voucher"
     : detailView.kind === "claim-link" ? "Link nhận tài khoản"
     : detailView.kind === "gift-points" ? "Tặng điểm"
@@ -154,9 +154,9 @@ export default function AdminUsersPage() {
   return <OverlayStackProvider><main className="mx-auto w-full max-w-5xl space-y-5 overflow-x-hidden px-3 py-6 pb-28 md:px-8">
     <header><h1 className="text-2xl font-bold">Quản lý khách hàng</h1><p className="mt-1 text-sm text-muted-foreground">Tìm theo tên, số điện thoại, Instagram hoặc email.</p></header>
     <div className="flex min-h-11 min-w-0 items-center gap-2 rounded-xl border bg-background px-3"><Search className="h-4 w-4 shrink-0 text-muted-foreground" /><input id="admin-user-search" value={input} onChange={(event) => handleInputChange(event.target.value)} placeholder="Tìm theo tên, SĐT, @instagram, email" className="min-w-0 flex-1 bg-transparent text-sm outline-none" /></div>
-    <div role="group" aria-label="Lọc khách hàng" className="grid grid-cols-2 gap-2 md:grid-cols-4">
+    <div role="group" aria-label="Lọc khách hàng" className="grid grid-cols-3 gap-2">
       {CUSTOMER_FILTERS.map((item) => <Button key={item.value} type="button" variant={filter === item.value ? "default" : "outline"}
-        aria-pressed={filter === item.value} className="min-h-11 min-w-0 px-2 text-sm"
+        aria-pressed={filter === item.value} className="min-h-11 min-w-0 px-1 text-xs sm:px-2 sm:text-sm"
         onClick={() => { setFilter((current) => current === item.value ? undefined : item.value); setPage(1); }}>
         {item.label}
       </Button>)}
@@ -167,8 +167,10 @@ export default function AdminUsersPage() {
       open={Boolean(selected)}
       title={sheetTitle}
       description={overlayDescription}
-      titleClassName={isCustomerVoucherList ? "text-sm font-normal text-muted-foreground" : undefined}
-      descriptionClassName={isCustomerVoucherList ? "mt-1 text-base font-semibold text-foreground" : undefined}
+      titleClassName={isCustomerVoucherList ? "text-sm font-normal text-muted-foreground" : isClaimLink ? "text-base" : undefined}
+      descriptionClassName={isCustomerVoucherList ? "mt-1 text-base font-semibold text-foreground" : isClaimLink ? "text-xs" : undefined}
+      className={isClaimLink ? "h-[100dvh] max-h-[38rem] md:h-[calc(100dvh-2rem)] md:max-w-xl [&>header]:px-3 [&>header]:py-2" : undefined}
+      bodyClassName={isClaimLink ? "overflow-y-hidden px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]" : undefined}
       size="lg"
       dismissPolicy="locked-while-busy"
       busy={busy}
@@ -183,7 +185,7 @@ export default function AdminUsersPage() {
         </div>
         <section id="admin-user-orders-panel" role="tabpanel" aria-labelledby="admin-user-orders-tab" hidden={activeTab !== "orders"}>{activeTab === "orders" ? <AdminUserOrders userQrToken={user.qr_token} page={ordersPage} onPageChange={setOrdersPage} onSelectOrder={(orderId) => setDetailView({ kind: "order", orderId })} /> : null}</section>
         <section id="admin-user-vouchers-panel" role="tabpanel" aria-labelledby="admin-user-vouchers-tab" hidden={activeTab !== "vouchers"}>{activeTab === "vouchers" ? <AdminUserVouchers userQrToken={user.qr_token} page={vouchersPage} onPageChange={setVouchersPage} /> : null}</section>
-      </div> : detailView.kind === "claim-link" ? <div className="space-y-4"><DetailBackButton disabled={claimBusy} onClick={() => setDetailView({ kind: "customer" })} /><AdminAccountClaimLink qrToken={user.qr_token} phone={user.phone_number} onBusyChange={setClaimBusy} /></div> : detailView.kind === "gift-points" ? <div className="space-y-4">
+      </div> : detailView.kind === "claim-link" ? <div className="flex h-full min-h-0 flex-col gap-2"><DetailBackButton disabled={claimBusy} onClick={() => setDetailView({ kind: "customer" })} /><AdminAccountClaimLink key={user.qr_token} qrToken={user.qr_token} phone={user.phone_number} onBusyChange={setClaimBusy} /></div> : detailView.kind === "gift-points" ? <div className="space-y-4">
         <DetailBackButton onClick={() => setDetailView({ kind: "customer" })} />
         <AdminUserPointsGift currentBalance={user.points_balance} pending={pointsMutation.isPending} onSubmit={async (points) => { try { await pointsMutation.mutateAsync({ token: user.qr_token, points }); } catch { /* Mutation feedback is handled by onError. */ } }} />
       </div> : detailView.kind === "gift-voucher" ? <div className="space-y-4">

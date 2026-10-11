@@ -4,11 +4,11 @@ import type { WelcomeRewardSummary } from "./reward";
 export type GoogleAuthPurpose = "LOGIN" | "CLAIM" | "LINK" | "REAUTH";
 
 export type GoogleChallengePayload = {
-  purpose: "LOGIN";
+  purpose: "LOGIN" | "CLAIM";
   turnstile_token?: string;
   current_password?: string;
 } | {
-  purpose: Exclude<GoogleAuthPurpose, "LOGIN">;
+  purpose: Exclude<GoogleAuthPurpose, "LOGIN" | "CLAIM">;
   turnstile_token: string;
   current_password?: string;
 };
@@ -35,6 +35,7 @@ export interface ClaimLinkResult {
   server_now: string;
 }
 export interface ClaimContextResult {
+  phone_number: string;
   expires_at: string;
   server_now: string;
 }
