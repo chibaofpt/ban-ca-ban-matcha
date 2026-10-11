@@ -84,18 +84,10 @@ function ItemSection({
     <div>
       <div
         ref={sectionRef}
-        className={`scroll-mt-36 mb-4${isSeasonal ? " flex justify-end" : " flex items-center gap-3"}${isFusion ? "" : " mt-2"}`}
+        className={`scroll-mt-36 flex items-center gap-3 mb-4${isFusion ? "" : " mt-2"}`}
       >
-        {isSeasonal ? (
-          <h2 className="inline-flex min-h-11 items-center rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-3.5 py-2.5 text-xs font-bold text-white shadow-md shadow-orange-500/20">
-            {title}
-          </h2>
-        ) : (
-          <>
-            <h2 className="font-serif text-xl font-bold text-[#2d4a22]">{title}</h2>
-            <div className="flex-1 h-px bg-primary/10" />
-          </>
-        )}
+        <h2 className="font-serif text-xl font-bold text-[#2d4a22]">{title}</h2>
+        <div className="flex-1 h-px bg-primary/10" />
       </div>
       {isSeasonal && (
         <p className="mb-4 text-sm leading-relaxed text-muted-foreground">
@@ -104,13 +96,13 @@ function ItemSection({
       )}
       {items.length === 0 ? (
         <div className="py-12 text-center text-primary/40 space-y-2">
-          {!isSeasonal && (isExtras ? (
+          {isSeasonal || isExtras ? (
             <Sparkles className="mx-auto h-10 w-10" aria-hidden="true" />
           ) : isFusion ? (
             <CupSoda className="mx-auto h-10 w-10" aria-hidden="true" />
           ) : (
             <Coffee className="mx-auto h-10 w-10" aria-hidden="true" />
-          ))}
+          )}
           <p className="text-sm font-medium">Chưa có món {title.toLowerCase()} nào</p>
         </div>
       ) : (

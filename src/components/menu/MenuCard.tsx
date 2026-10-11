@@ -3,7 +3,7 @@ import type { LattePriceAnchors } from "@/contracts/menu";
 
 import React, { useCallback, useState } from 'react';
 import Image from 'next/image';
-import { Coffee, Sparkles } from 'lucide-react';
+import { Coffee } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { MenuItem, MilkTypeOption, Size } from '@/src/lib/types/menu';
 import { usePowderStore } from '@/src/lib/store/powderStore';
@@ -156,8 +156,8 @@ const MenuCard: React.FC<MenuCardProps> = ({
           <h3 className={`font-serif font-medium leading-tight line-clamp-2 mb-1 ${compact ? "break-words text-base text-primary-foreground" : "text-lg text-[#2d4a22]"}`}>
             {item.name}
             {item.is_seasonal && (
-              <span className="inline-flex items-center bg-amber-50 text-amber-600 text-[8px] font-sans font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border border-amber-200/50 align-middle ml-2 -translate-y-[1px]">
-                <Sparkles className="mr-0.5 h-2.5 w-2.5" aria-hidden="true" /> Theo mùa
+              <span className="inline-flex items-center bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[8px] font-sans font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border border-amber-200/50 align-middle ml-2 -translate-y-[1px]">
+                Seasonal
               </span>
             )}
           </h3>

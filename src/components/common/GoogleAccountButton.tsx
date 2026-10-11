@@ -25,22 +25,16 @@ export function GoogleAccountButton({ purpose, currentPassword, disabled, onSucc
   const { containerRef: captchaRef, token: captchaToken, status: captchaStatus, reload: reloadCaptcha, reset: resetCaptcha } = useRegistrationTurnstile(directLink ? undefined : process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY, "google_auth");
   const credential = useMutation({ mutationFn: submitGoogleCredential, retry: false,
     onSuccess: (result) => { if (active.current) onSuccess(result); },
-    onError: (error) => { setMessage(error.message); setPrepared(null); if (!directLink) resetCaptcha(); },
+    onError: (error) => { setMessage(error.message); if (!directLink) { setPrepared(null); resetCaptcha(); } },
   });
   const prepare = useMutation({ mutationFn: createGoogleChallenge, retry: false,
     onSuccess: (value, input) => { if (active.current) setPrepared({ value, purpose: input.purpose, currentPassword: input.current_password }); if (!directLink) resetCaptcha(); },
     onError: (error) => { setMessage(error.message); if (!directLink) resetCaptcha(); },
   });
   const prepareChallenge = prepare.mutate;
-  const prepareDirectLink = () => {
-    directLinkStarted.current = true;
-    setPrepared(null);
-    setMessage(null);
-    prepareChallenge({ purpose: "LINK" });
-  };
   const { containerRef: googleRef, error: googleError, configured: googleConfigured } = useGoogleIdentity(challenge?.nonce, (token) => {
     if (!challenge || disabled || credential.isPending) return;
-    if (Date.parse(challenge.expires_at) <= Date.now()) { setPrepared(null); setMessage("Xác nhận đã hết hạn. Vui lòng bắt đầu lại."); return; }
+    if (Date.parse(challenge.expires_at) <= Date.now()) { setMessage("Xác nhận đã hết hạn. Vui lòng thử lại sau."); return; }
     credential.mutate({ challenge_id: challenge.challenge_id, credential: token });
   });
   useEffect(() => {
@@ -55,8 +49,7 @@ export function GoogleAccountButton({ purpose, currentPassword, disabled, onSucc
     {!directLink ? <div ref={captchaRef} hidden={Boolean(challenge)} /> : null}
     {directLink ? !challenge ? <>
       {busy ? <p role="status" className="text-sm text-muted-foreground">Đang mở đăng nhập Google…</p> : null}
-      {message ? <Button variant="outline" disabled={disabled || busy} onClick={prepareDirectLink}>Thử lại</Button> : null}
-    </> : <div className={busy || disabled ? "pointer-events-none opacity-50" : ""} aria-busy={busy}><div ref={googleRef} className="min-h-11" /><Button variant="ghost" disabled={busy} onClick={prepareDirectLink}>Bắt đầu lại</Button></div>
+    </> : <div className={busy || disabled ? "pointer-events-none opacity-50" : ""} aria-busy={busy}><div ref={googleRef} className="min-h-11" /></div>
       : !challenge ? <>
         {captchaStatus === "error" ? <Button variant="outline" onClick={reloadCaptcha}>Tải lại xác nhận</Button> : null}
         <Button className="min-h-11 w-full" disabled={disabled || busy || !captchaToken} onClick={() => { setMessage(null); prepareChallenge({ purpose, turnstile_token: captchaToken, ...(currentPassword ? { current_password: currentPassword } : {}) }); }}>Tiếp tục bằng Google</Button>

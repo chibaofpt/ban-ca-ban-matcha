@@ -149,24 +149,8 @@ export default function ProfilePage() {
           </div>
           <div className="min-w-0 space-y-1 text-sm text-muted-foreground">
             {profile.google_connected ? (
-              <div className="flex items-center gap-2">
-                <p className="min-w-0 flex-1 truncate">Gmail: {profile.email ?? "Đã liên kết"}</p>
-                {editPlacement === "gmail" ? editButton : null}
-              </div>
-            ) : (
-              <div className="flex items-start gap-2">
-                <div className="min-w-0 flex-1 space-y-1">
-                  <p className="text-xs font-medium">Gmail</p>
-                  <GoogleAccountButton purpose="LINK" onSuccess={(result) => {
-                    if ("reauth_proof" in result) return;
-                    adoptSession(result);
-                    void refetch();
-                    toast.success("Đã liên kết Gmail");
-                  }} />
-                </div>
-                {editPlacement === "gmail" ? editButton : null}
-              </div>
-            )}
+              <p className="truncate">Gmail: {profile.email ?? "Đã liên kết"}</p>
+            ) : null}
             {profile.phone_number ? (
               <div className="flex items-center gap-2">
                 <p className="min-w-0 flex-1 truncate">SĐT: {formatVietnamPhone(profile.phone_number)}</p>
@@ -177,6 +161,24 @@ export default function ProfilePage() {
               <div className="flex items-center gap-2">
                 <p className="min-w-0 flex-1 truncate">Instagram: @{profile.insta_name}</p>
                 {editPlacement === "instagram" ? editButton : null}
+              </div>
+            ) : null}
+            {!profile.google_connected ? (
+              <div className="space-y-2 pt-2">
+                <p className="text-xs text-muted-foreground">
+                  Liên kết google để nhận được thông báo về khuyến mãi và đơn hàng
+                </p>
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <GoogleAccountButton purpose="LINK" onSuccess={(result) => {
+                      if ("reauth_proof" in result) return;
+                      adoptSession(result);
+                      void refetch();
+                      toast.success("Đã liên kết Gmail");
+                    }} />
+                  </div>
+                  {editPlacement === "gmail" ? editButton : null}
+                </div>
               </div>
             ) : null}
           </div>

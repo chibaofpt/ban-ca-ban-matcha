@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from 'framer-motion';
+import { Sparkles } from 'lucide-react';
 import { cn } from '@/src/utils/cn';
 
 export type TabId = 'latte' | 'fusion' | 'extras' | 'seasonal';
@@ -57,6 +58,7 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, setActiveTab }) => {
               )}
             >
               {tab.label}
+              {tab.id === 'seasonal' && <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />}
             </motion.button>
           );
         })}
