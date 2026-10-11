@@ -110,7 +110,7 @@ export default function ProfilePage() {
     ? "phone"
     : profile.insta_name
       ? "instagram"
-      : "gmail";
+      : "email";
 
   return (
     <main className="container max-w-md space-y-6 px-4 py-6 animate-fade-in touch-pan-y overflow-x-clip overscroll-x-none">
@@ -149,7 +149,10 @@ export default function ProfilePage() {
           </div>
           <div className="min-w-0 space-y-1 text-sm text-muted-foreground">
             {profile.google_connected ? (
-              <p className="truncate">Gmail: {profile.email ?? "Đã liên kết"}</p>
+              <div className="flex items-center gap-2">
+                <p className="min-w-0 flex-1 truncate">{profile.email ?? "Đã liên kết"}</p>
+                {editPlacement === "email" ? editButton : null}
+              </div>
             ) : null}
             {profile.phone_number ? (
               <div className="flex items-center gap-2">
@@ -177,7 +180,7 @@ export default function ProfilePage() {
                       toast.success("Đã liên kết Gmail");
                     }} />
                   </div>
-                  {editPlacement === "gmail" ? editButton : null}
+                  {editPlacement === "email" ? editButton : null}
                 </div>
               </div>
             ) : null}
