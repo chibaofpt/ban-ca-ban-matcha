@@ -17,4 +17,16 @@ describe("Gắn số điện thoại khách hàng", () => {
     expect(await updateAccountPhone({ id: "google-user", role: "CUSTOMER", phone_number: null, session_id: "session" }, "+84912345678")).toEqual({ status: "verification_required" });
     expect(db.userUpdate).not.toHaveBeenCalled();
   });
+  it("cho phép thêm số lần đầu nếu số đó chưa được dùng", async () => {
+    db.userFind.mockImplementation(async (arg: { where: { id?: string; phone_number?: string } }) => arg.where.phone_number ? null : actor);
+    expect(await updateAccountPhone({ id: "google-user", role: "CUSTOMER", phone_number: null, session_id: "session" }, "+84912345679")).toEqual({ status: "saved" });
+    expect(db.userUpdate).toHaveBeenCalledWith({ where: { id: "google-user" }, data: { phone_number: "+84912345679" } });
+  });
+  it("không cho đổi số đã gắn sang số khác", async () => {
+    const actorWithPhone = { ...actor, phone_number: "+84987654321" };
+    db.userFind.mockImplementation(async (arg: { where: { id?: string; phone_number?: string } }) => arg.where.phone_number ? ghost : actorWithPhone);
+    await expect(updateAccountPhone({ id: "google-user", role: "CUSTOMER", phone_number: actorWithPhone.phone_number, session_id: "session" }, "+84912345679"))
+      .rejects.toMatchObject({ reason: "PHONE_CHANGE_NOT_ALLOWED" });
+    expect(db.userUpdate).not.toHaveBeenCalled();
+  });
 });

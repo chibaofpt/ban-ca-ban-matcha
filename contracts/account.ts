@@ -8,7 +8,11 @@ export type GoogleChallengePayload = {
   turnstile_token?: string;
   current_password?: string;
 } | {
-  purpose: Exclude<GoogleAuthPurpose, "LOGIN" | "CLAIM">;
+  purpose: "LINK";
+  turnstile_token?: string;
+  current_password?: string;
+} | {
+  purpose: "REAUTH";
   turnstile_token: string;
   current_password?: string;
 };

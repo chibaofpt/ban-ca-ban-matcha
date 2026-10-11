@@ -2,6 +2,7 @@ import { phoneSearchVariants } from "@/src/utils/phone";
 import type { Prisma, VoucherType } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { getAdminVoucherRefundEligibility } from "@/lib/vouchers/adminVoucherRefund";
 import { canClaimLegacyGhost, isRegisteredAccount } from "@/lib/auth/accountIdentityPolicy";
 import { adminVoucherDaysRemaining, effectiveAdminVoucherStatus, vietnamYearBounds } from "@/lib/users/adminUserTime";
 import type {
@@ -158,20 +159,22 @@ export async function getAdminUser(userQrToken: string, now = new Date()): Promi
 
 /** Lists a CUSTOMER wallet with read-only effective expiry projection. */
 export async function listAdminUserVouchers(userQrToken: string, page: number, now = new Date()): Promise<AdminUserPage<AdminUserVoucher> | null> {
-  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER", sourceMerge: { is: null } }, select: { id: true } });
+  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER", sourceMerge: { is: null } }, select: { id: true, points_balance: true } });
   if (!user) return null;
   const [total, rows] = await Promise.all([
     prisma.voucher.count({ where: { user_id: user.id } }),
     prisma.voucher.findMany({ where: { user_id: user.id }, include: { package: { select: { name: true, description: true } } },
       orderBy: [{ created_at: "desc" }, { id: "desc" }], skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE }),
   ]);
-  return { items: rows.map((row) => ({ qr_token: row.qr_token, name: row.package.name,
+  const eligibility = await Promise.all(rows.map((row) => getAdminVoucherRefundEligibility(prisma, row, user.points_balance, now)));
+  return { items: rows.map((row, index) => ({ qr_token: row.qr_token, name: row.package.name,
     description: row.package.description,
     status: effectiveAdminVoucherStatus(row.status, row.expires_at, now) as AdminUserVoucher["status"],
     expires_at: row.expires_at?.toISOString() ?? null, created_at: row.created_at.toISOString(),
     redeemed_at: row.redeemed_at?.toISOString() ?? null,
     issued_via: row.issued_via as AdminUserVoucher["issued_via"],
     days_remaining: adminVoucherDaysRemaining(row.expires_at, now),
+    can_refund: eligibility[index].can_refund, refundable_points: eligibility[index].refundable_points,
   })), total, page, total_pages: Math.ceil(total / PAGE_SIZE) };
 }
 

@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { GoogleAccountButton } from "@/src/components/common/GoogleAccountButton";
 import { ProfileAccountConnections } from "@/src/components/customer/ProfileAccountConnections";
 import { motion } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -32,6 +34,7 @@ import { formatVietnamPhone } from "@/src/utils/display";
 import { useVoucherModalStore } from "@/src/lib/store/voucherModalStore";
 import { useWelcomeReward } from "@/src/hooks/useWelcomeReward";
 import { WelcomeRewardOverlay } from "@/src/components/rewards/WelcomeRewardOverlay";
+import { useAccountSession } from "@/src/hooks/useAccountSession";
 
 const profileQueryKey = ["customer", "profile"] as const;
 
@@ -42,6 +45,8 @@ export default function ProfilePage() {
   const [qrOpen, setQrOpen] = useState(false);
   const [addressBookOpen, setAddressBookOpen] = useState(false);
   const [welcomeRewardOpen, setWelcomeRewardOpen] = useState(false);
+  const router = useRouter();
+  const adoptSession = useAccountSession();
   const openVoucherModal = useVoucherModalStore((state) => state.openModal);
   const queryClient = useQueryClient();
   const updateName = useAuthStore((state) => state.updateName);
@@ -91,6 +96,22 @@ export default function ProfilePage() {
     );
   }
 
+  const editButton = (
+    <button
+      type="button"
+      onClick={() => setEditOpen(true)}
+      aria-label="Chỉnh sửa thông tin tài khoản"
+      className="ml-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <Pencil className="h-4 w-4" />
+    </button>
+  );
+  const editPlacement = profile.phone_number
+    ? "phone"
+    : profile.insta_name
+      ? "instagram"
+      : "gmail";
+
   return (
     <main className="container max-w-md space-y-6 px-4 py-6 animate-fade-in touch-pan-y overflow-x-clip overscroll-x-none">
       <header className="space-y-1">
@@ -114,43 +135,50 @@ export default function ProfilePage() {
       ) : null}
 
       <section className="space-y-5 rounded-2xl border border-border bg-card p-5 shadow-sm">
-        <div className="flex items-start gap-3 border-b border-border/50 pb-5">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1">
-              <h2 className="truncate text-lg font-medium">{profile.name}</h2>
-              <button
-                type="button"
-                onClick={() => setEditOpen(true)}
-                aria-label="Chỉnh sửa thông tin tài khoản"
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <Pencil className="h-4 w-4" />
-              </button>
+        <div className="space-y-3 border-b border-border/50 pb-5">
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="min-w-0 truncate text-lg font-medium">{profile.name}</h2>
+            <div className="shrink-0 text-right">
+              <span className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Cá của bạn
+              </span>
+              <span className="text-lg font-bold text-amber-600 dark:text-amber-400">
+                {profile.points_balance} ká
+              </span>
             </div>
-            <p className="text-sm text-muted-foreground">
-              {profile.phone_number ? formatVietnamPhone(profile.phone_number) : ""}
-            </p>
-            {profile.insta_name ? (
-              <p className="truncate text-xs text-muted-foreground">
-                @{profile.insta_name}
-              </p>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setEditOpen(true)}
-                className="min-h-11 text-xs font-medium text-primary/70 underline decoration-primary/40 underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                Thêm Instagram
-              </button>
-            )}
           </div>
-          <div className="shrink-0 text-right">
-            <span className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Cá của bạn
-            </span>
-            <span className="text-lg font-bold text-amber-600 dark:text-amber-400">
-              {profile.points_balance} 🐟
-            </span>
+          <div className="min-w-0 space-y-1 text-sm text-muted-foreground">
+            {profile.google_connected ? (
+              <div className="flex items-center gap-2">
+                <p className="min-w-0 flex-1 truncate">Gmail: {profile.email ?? "Đã liên kết"}</p>
+                {editPlacement === "gmail" ? editButton : null}
+              </div>
+            ) : (
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="text-xs font-medium">Gmail</p>
+                  <GoogleAccountButton purpose="LINK" onSuccess={(result) => {
+                    if ("reauth_proof" in result) return;
+                    adoptSession(result);
+                    void refetch();
+                    toast.success("Đã liên kết Gmail");
+                  }} />
+                </div>
+                {editPlacement === "gmail" ? editButton : null}
+              </div>
+            )}
+            {profile.phone_number ? (
+              <div className="flex items-center gap-2">
+                <p className="min-w-0 flex-1 truncate">SĐT: {formatVietnamPhone(profile.phone_number)}</p>
+                {editPlacement === "phone" ? editButton : null}
+              </div>
+            ) : null}
+            {profile.insta_name ? (
+              <div className="flex items-center gap-2">
+                <p className="min-w-0 flex-1 truncate">Instagram: @{profile.insta_name}</p>
+                {editPlacement === "instagram" ? editButton : null}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -203,6 +231,17 @@ export default function ProfilePage() {
         profile={profile}
         onClose={() => setEditOpen(false)}
         onSubmit={saveProfile}
+        onPhoneSaved={async () => {
+          await refetch();
+          toast.success("Đã lưu số điện thoại");
+        }}
+        onPhoneMerged={(result) => {
+          adoptSession(result);
+          setEditOpen(false);
+          void refetch();
+          router.refresh();
+          toast.success("Đã nhận lịch sử và điểm của tài khoản");
+        }}
       />
       {profile.has_password ? <ChangePasswordSheet
         open={passwordOpen}

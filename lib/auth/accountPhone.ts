@@ -12,7 +12,7 @@ import { sendRegistrationOtp } from "@/lib/auth/registrationOtp";
 import { preparePhoneOtpProof, consumePhoneOtpProof, finishPhoneOtpProof } from "@/lib/auth/phoneOtpProof";
 import { mergeAccounts } from "@/lib/auth/accountMerge";
 import { createAccountSession } from "@/lib/auth/accountSession";
-/** Update an unused contact phone or return a verification requirement for an eligible legacy ghost. */
+/** Attach an initial phone or request collision verification; an existing phone cannot be replaced. */
 export async function updateAccountPhone(session: AuthSession, phone: string): Promise<{ status: "saved" | "verification_required" }> {
   if (!session.session_id) throw new AccountError("ACCOUNT_SESSION_EXPIRED", 401, "UNAUTHORIZED");
   return accountTransaction(async tx => {
@@ -20,6 +20,7 @@ export async function updateAccountPhone(session: AuthSession, phone: string): P
     await claimActiveCustomerForWrite(tx, session.id);
     const actor = await loadAccount(tx, session.id); requireActiveAccount(actor);
     if (actor.phone_number === phone) return { status: "saved" };
+    if (actor.phone_number !== null) throw new AccountError("PHONE_CHANGE_NOT_ALLOWED");
     const other = await tx.user.findUnique({ where: { phone_number: phone }, include: ACCOUNT_INCLUDE });
     if (other) {
       requireClaimableGhost(other);
@@ -34,6 +35,7 @@ export async function updateAccountPhone(session: AuthSession, phone: string): P
 export async function phoneClaimContext(req: Request, session: AuthSession, phone: string, create = false) {
   if (!session.session_id) throw new AccountError("ACCOUNT_SESSION_EXPIRED", 401, "UNAUTHORIZED");
   const actor = await loadAccount(prisma, session.id); requireActiveAccount(actor);
+  if (actor.phone_number !== null) throw new AccountError("PHONE_CHANGE_NOT_ALLOWED");
   if (actor.account_origin !== "GOOGLE_EMAIL" || !actor.google_sub) throw new AccountError("PHONE_CLAIM_NOT_ALLOWED");
   const target = await prisma.user.findUnique({ where: { phone_number: phone }, include: ACCOUNT_INCLUDE });
   if (!target) throw new AccountError("PHONE_CLAIM_NOT_ALLOWED");

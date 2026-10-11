@@ -117,6 +117,14 @@ describe("OTP claim phone collision — APPLICATION_LOGIC / RATE_LIMIT_POLICY / 
     expect(repeated).toMatchObject({ challenge_id: id, expires_at: "2026-10-03T10:05:00.000Z", resend_at: "2026-10-03T10:02:00.000Z", server_now: "2026-10-03T10:01:00.000Z" });
     expect(m.provider).toHaveBeenCalledOnce(); expect(users.get(actor.id)?.phone_number).toBeNull();
   });
+  it("không gửi OTP ghép ghost khi tài khoản đã có số điện thoại", async () => {
+    users.get(actor.id)!.phone_number = "+84987654321";
+    const rejected = await send();
+    expect(rejected.response.status).toBe(409);
+    expect(rejected.body).toMatchObject({ code: "CONFLICT", details: { reason: "PHONE_CHANGE_NOT_ALLOWED" } });
+    expect(m.provider).not.toHaveBeenCalled();
+    expect(users.get(actor.id)?.phone_number).toBe("+84987654321");
+  });
   it("OTP hợp lệ merge vào legacy canonical và không thể dùng lại", async () => {
     const sent = await send(); const otp = String(m.provider.mock.calls[0][1]);
     const payload = { phone_number: "+84912345678", challenge_id: sent.body.data.challenge_id, otp };
@@ -125,6 +133,15 @@ describe("OTP claim phone collision — APPLICATION_LOGIC / RATE_LIMIT_POLICY / 
     expect(users.get(actor.id)).toMatchObject({ phone_number: null, google_sub: null, email: null, points_balance: 0, sourceMerge: { target_user_id: "ghost" } });
     expect(sessions).toMatchObject([{ user_id: "ghost" }]); expect(sessions).toHaveLength(1);
     await expect(confirmPhoneClaimOtp(otpRequest({}), actor, payload)).rejects.toMatchObject({ reason: "ACCOUNT_NOT_ACTIVE" });
+    expect(sessions).toHaveLength(1);
+  });
+  it("không xác nhận OTP nếu số khác đã được gắn sau khi gửi", async () => {
+    const sent = await send(); const otp = String(m.provider.mock.calls[0][1]);
+    users.get(actor.id)!.phone_number = "+84987654321";
+    await expect(confirmPhoneClaimOtp(otpRequest({}), actor, { phone_number: "+84912345678", challenge_id: sent.body.data.challenge_id, otp }))
+      .rejects.toMatchObject({ reason: "PHONE_CHANGE_NOT_ALLOWED" });
+    expect(users.get(actor.id)).toMatchObject({ phone_number: "+84987654321", sourceMerge: null });
+    expect(rows.get(sent.body.data.challenge_id)?.verified).toBe(false);
     expect(sessions).toHaveLength(1);
   });
   it.each(["actor", "session", "target"])("OTP từ chối %s khác trước khi đếm mã sai", async kind => {

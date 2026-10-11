@@ -208,6 +208,7 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/admin/users/[userQrToken]/orders/[orderId]` | GET |
 | `/api/admin/users/[userQrToken]/points` | POST |
 | `/api/admin/users/[userQrToken]/vouchers` | GET |
+| `/api/admin/users/[userQrToken]/vouchers/refund` | POST |
 | `/api/admin/voucher-packages` | GET, POST |
 | `/api/admin/voucher-packages/[id]` | PUT, DELETE |
 | `/api/admin/voucher-packages/[id]/owners` | GET |
@@ -453,7 +454,7 @@ include nullable `email`. Clients use `qr_token` for wallet/cart ownership, incl
 
 | Method/path | Input | Success data |
 |---|---|---|
-| POST `/api/auth/google/challenge` | `{ purpose: LOGIN\|CLAIM\|LINK\|REAUTH, turnstile_token?, current_password? }`; token may be omitted for LOGIN/CLAIM preparation | `{ challenge_id, nonce, expires_at }` |
+| POST `/api/auth/google/challenge` | `{ purpose: LOGIN\|CLAIM\|LINK\|REAUTH, turnstile_token?, current_password? }`; token may be omitted for LOGIN/CLAIM preparation and authenticated LINK | `{ challenge_id, nonce, expires_at }` |
 | POST `/api/auth/google` | `{ challenge_id, credential, turnstile_token? }`; token is required for prepared LOGIN/CLAIM | Flat AuthUser plus `welcome_reward`, or `{ reauth_proof }` for REAUTH |
 | POST `/api/auth/claim/context` | `{ token? }`; absent token resumes cookie | `{ phone_number, expires_at, server_now }`; phone is non-null for a valid legacy claim |
 | POST `/api/auth/claim/password` | Retired; request body is ignored | Always 410 `BUSINESS_RULE_VIOLATION`, `details.reason = GOOGLE_CLAIM_REQUIRED`; clients must use Google CLAIM |
@@ -462,9 +463,15 @@ include nullable `email`. Clients use `qr_token` for wallet/cart ownership, incl
 | POST `/api/profile/phone/otp` | `{ phone_number, request_id, turnstile_token }` | RegistrationOtpChallenge DTO including server_now |
 | POST `/api/profile/phone/confirm` | `{ phone_number, challenge_id, otp }` | Canonical flat AuthUser plus `welcome_reward` |
 
+`PATCH /api/profile/phone` attaches a phone only while the customer has no phone. Submitting the
+same normalized phone is idempotent; submitting a different phone after one is attached returns
+`409 CONFLICT` with `details.reason = PHONE_CHANGE_NOT_ALLOWED`. Phone OTP and account-claim merges
+must not replace an already attached phone.
+
 Google proof verifies signature, issuer, audience, expiry, nonce and authoritative verified email.
 Challenge purpose and browser binding are mandatory; LINK/REAUTH additionally bind the live actor
-and session. Proof consumption and credential/account writes share a transaction. Reauth is
+and session. LINK is available only to an active, unlinked legacy phone account. Proof consumption
+and credential/account writes share a transaction. Reauth is
 short-lived, single-use and cannot authorize another account/session. Google-only password setup
 is restricted to eligible legacy-origin accounts.
 
@@ -481,8 +488,10 @@ using hashes. Final exchange rechecks claim validity and live actor state inside
 Regeneration, expiry, session revocation or credential changes invalidate the prepared claim.
 
 Existing challenge requests with a CAPTCHA still return a UUID and exchange without a second
-token, including LOGIN/CLAIM. LINK/REAUTH require CAPTCHA before challenge creation.
-Google verification outages fail closed; missing/invalid tokens never complete a login.
+token, including LOGIN/CLAIM. Authenticated LINK challenge creation does not require CAPTCHA or a
+current-password proof; it remains bound to the live actor/session and browser, and Google proof is
+required to complete linking. REAUTH still requires CAPTCHA before challenge creation.
+Google verification outages fail closed; missing/invalid required tokens never complete authentication.
 
 Claim URLs use `/nhan-tai-khoan#<opaque-token>`. Only the hash is persisted. Binding/resume neither
 consumes the link nor extends its original five-minute deadline. Regeneration invalidates previous
@@ -714,6 +723,24 @@ Resetting a ghost or Google-only account returns `409 CONFLICT` with `details.re
   `qr_token`, issuance source, `created_at`, `redeemed_at`, `expires_at`, and `days_remaining`.
   Effective status is `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, or `REFUNDED`; an elapsed expiry
   projects an otherwise active voucher as `EXPIRED` without mutating it during this read.
+  Each entry additionally exposes `can_refund: boolean` and `refundable_points: number | null`.
+  An eligible entry has a positive integer refund amount; an ineligible entry returns false/null.
+  Eligibility is a server projection of the
+  [admin refund rule](.agents/skills/voucher-flow/references/lifecycle.md#admin-voluntary-refund-and-withdrawal).
+- `POST /api/admin/users/[userQrToken]/vouchers/refund` accepts strict JSON `{ qr_token: string }`
+  containing the voucher's public QR token. Both customer and voucher tokens resolve in the selected
+  customer scope; clients cannot submit a refund amount. Success returns
+  `{ data: { qr_token: string, status: "REFUNDED", points_refunded: number, points_balance: number } }`.
+  The ADMIN-only workflow revalidates the rule and persists withdrawal, points and actor audit in
+  one transaction. Existing customer refund remains a separate contract.
+  Failures use the standard error envelope: 400 VALIDATION_ERROR for malformed/extra input,
+  401 UNAUTHORIZED, 403 FORBIDDEN, 404 NOT_FOUND for an unavailable customer or unowned voucher,
+  409 CONFLICT for voucher/order state conflict or exhausted serialization retries, and
+  422 BUSINESS_RULE_VIOLATION for source, expiry, purchase-audit or points-overflow failures.
+  Business/state failures preserve `details.reason`: 409 uses `VOUCHER_NOT_ACTIVE`,
+  `VOUCHER_ALREADY_REFUNDED`, `VOUCHER_ORDER_CONFLICT` or `VOUCHER_REFUND_CONFLICT`; 422 uses
+  `VOUCHER_SOURCE_NOT_REFUNDABLE`, `VOUCHER_EXPIRED`, `VOUCHER_PURCHASE_AUDIT_INVALID`,
+  `VOUCHER_PURCHASE_ALREADY_REVERSED` or `POINTS_BALANCE_OVERFLOW`.
 - `GET /api/admin/users/voucher-packages?page=1&category=ALL|DISCOUNT|GIFT|SHIPPING` returns 10 active,
   unended packages for the picker. `DISCOUNT` maps to `DISCOUNT|PRODUCT_DISCOUNT`, `GIFT` maps to
   `ITEM|PRODUCT|ADDON|BUNDLE`, `SHIPPING` maps to `FREESHIP`, and `ALL` applies no type filter.

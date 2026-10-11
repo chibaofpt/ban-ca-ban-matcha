@@ -4,7 +4,8 @@ import { PasswordSchema } from "@/lib/validations/auth";
 const token = z.string().min(1).max(2048);
 export const GoogleChallengeSchema = z.union([
   z.object({ purpose: z.enum(["LOGIN", "CLAIM"]), turnstile_token: token.optional(), current_password: PasswordSchema.optional() }).strict(),
-  z.object({ purpose: z.enum(["LINK", "REAUTH"]), turnstile_token: token, current_password: PasswordSchema.optional() }).strict(),
+  z.object({ purpose: z.literal("LINK"), turnstile_token: token.optional(), current_password: PasswordSchema.optional() }).strict(),
+  z.object({ purpose: z.literal("REAUTH"), turnstile_token: token, current_password: PasswordSchema.optional() }).strict(),
 ]);
 export const GoogleCredentialSchema = z.object({
   challenge_id: z.union([z.string().uuid(), z.string().max(2048).regex(/^(login|claim)\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)]),

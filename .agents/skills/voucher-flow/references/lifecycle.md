@@ -13,6 +13,7 @@ ACTIVE → RESERVED                                (counter BANK_TRANSFER creati
 RESERVED voucher + RESERVED BUNDLE application
   → both REDEEMED + voucher.used_channel = OFFLINE (counter transfer confirmation)
 ACTIVE → REFUNDED                                (auto: target item soft-deleted)
+ACTIVE → REFUNDED                                (ADMIN: eligible points voucher withdrawn)
 ```
 
 - Reserve only vouchers the calculator actually applied.
@@ -134,12 +135,35 @@ persistence và invariant thuộc [SCHEMA](../../../../SCHEMA.md#welcome_reward_
 
 ## Voucher Refund
 
+### Customer unusable-voucher reconciliation
+
 - **Eligibility**: an unexpired ACTIVE `POINTS_EXCHANGE` voucher whose live target/configuration is
   no longer usable, including a soft-deleted target item.
 - Refund **100% of the immutable `voucher_purchase` cost**. Status → `REFUNDED`.
 - Customer may request reconciliation through the refund API, but cannot choose arbitrary eligible
   state or refund value; the server re-resolves live availability and purchase audit.
 - `points_log.reason = "voucher_refund"`.
+
+### Admin voluntary refund and withdrawal
+
+- Only ADMIN may initiate a voluntary refund for a customer's voucher; live target availability
+  does not restrict this action. The customer reconciliation flow above keeps its existing rules.
+- Require POINTS_EXCHANGE, ACTIVE, no elapsed expiry, and a trustworthy original negative
+  voucher_purchase audit belonging to this customer and voucher, without a prior refund/reversal.
+  A voucher without an expiry may qualify. Gift/free issuance never qualifies.
+- Reject a voucher associated with any non-CANCELLED order through item/product, addon, discount,
+  freeship or BUNDLE links. Historical links to CANCELLED orders remain for audit and do not block
+  an otherwise eligible voucher restored to ACTIVE.
+- Refund 100% of the original purchase delta, never the current package cost. In one Serializable
+  transaction, revalidate eligibility, conditionally claim ACTIVE → REFUNDED, increment the balance
+  without integer overflow, and append voucher_refund with the ADMIN in performed_by, the original
+  purchase in reversed_log_id, the voucher link, and null order_id. Use bounded conflict retries.
+- A repeated request or competing consumption must not credit the same voucher twice. Missing or
+  inconsistent purchase audit fails closed; never infer the refund from package configuration.
+- REFUNDED withdraws the voucher from all use while retaining wallet and points history. It does
+  not replenish package quantity, lifetime acquisition count, or rewrite the original purchase log.
+- Admin wallet reads project eligibility and refund amount without mutating lifecycle. The write
+  rechecks the current state rather than trusting the earlier projection or a client amount.
 
 ### Completed COUNTER cancellation recovery
 

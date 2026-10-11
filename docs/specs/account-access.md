@@ -46,8 +46,10 @@ keeps the form and existing server error behavior. Password access does not gain
 The alternate method stays usable while Google's SDK or background verification is loading;
 disable overlapping submission only while an authentication request is pending.
 
-CLAIM shares the immediate Google/background Turnstile flow below; LINK/REAUTH keep their existing
-preparation flow. Successful login preserves customer
+CLAIM shares the immediate Google/background Turnstile flow below. In Profile, LINK prepares its
+browser-bound challenge automatically and shows the official Google widget directly, without
+Turnstile or a current-password prompt; the active customer session and Google assertion are still
+required to complete linking. REAUTH keeps its existing preparation flow. Successful login preserves customer
 intent, cart identity, staff routing and welcome-reward handling. Manual acceptance covers first
 open, Enter/Back/focus, password autofill, Google cancel/retry, delayed/failed Turnstile and the
 interactive challenge on mobile and desktop; mock tests do not prove live widget behavior.
@@ -122,13 +124,15 @@ so requests authenticated just before a merge cannot write a new balance or enti
 
 ## Phone in Profile
 
-An unused normalized phone may be saved without OTP, subject to uniqueness. A phone held by a full
-account or an ineligible ghost is rejected. Only collision with an eligible legacy ghost requires
-OTP proof bound to actor, session, target and phone. A successful proof merges into the ghost
-identity and returns its points/vouchers. Disabled OTP, unavailable provider, unknown delivery or
-failed admission must not attach the phone or merge accounts. Show the shop Facebook contact action
-using the same URL source as Footer. Changing phone resets challenge state; resend follows server
-time. Never persist passwords or OTP in browser storage.
+An account without a phone may attach an unused normalized phone without OTP, subject to uniqueness.
+Once attached, the phone is immutable: submitting the same phone is idempotent, while a different
+phone is rejected. A phone held by a full account or an ineligible ghost is rejected. Only collision
+with an eligible legacy ghost requires OTP proof bound to actor, session, target and phone; this
+claim is available only while the account has no attached phone. A successful proof merges into the
+ghost identity and returns its points/vouchers. Disabled OTP, unavailable provider, unknown delivery
+or failed admission must not attach the phone or merge accounts. Changing the pending phone selection
+resets challenge state; resend follows server time. Show the shop Facebook contact action using the
+same URL source as Footer. Never persist passwords or OTP in browser storage.
 
 Delivery recipient phone belongs to address/order data and does not update account identity.
 Google login is not marketing consent; any future promotional email subscription is separate.
@@ -139,9 +143,10 @@ Search matches name, phone, email and Instagram. Customer cards display name and
 contact fields. POS customer selection and actual voucher QR verification remain distinct.
 
 Manual UI acceptance is required for mobile sheet sizing, two footer actions on one row, keyboard/
-screen-reader feedback, popup blocked/cancelled recovery, embedded Zalo/Facebook browsers, expired
-links, regeneration, copying, reload, OTP countdown with a skewed device clock, old customer QR
-after merge, provider failures and Google login returning to the prior
-customer intent. Mock tests cannot establish provider delivery, real popup behavior or migration replay.
+screen-reader feedback, direct Profile Gmail linking without CAPTCHA/password prompts, popup
+blocked/cancelled recovery, embedded Zalo/Facebook browsers, expired links, regeneration, copying,
+reload, OTP countdown with a skewed device clock, old customer QR after merge, provider failures
+and Google login returning to the prior customer intent. Mock tests cannot establish provider delivery,
+real popup behavior or migration replay.
 Claim acceptance additionally covers recognizable phone, Google before CAPTCHA, interactive
 challenge/retry, Google-only Zalo handoff and all three configured reward modes after auto-login.

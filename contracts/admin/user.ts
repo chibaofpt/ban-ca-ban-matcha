@@ -108,6 +108,19 @@ export interface AdminUserVoucher {
   redeemed_at: string | null;
   issued_via: VoucherIssuedVia;
   days_remaining: number | null;
+  can_refund: boolean;
+  refundable_points: number | null;
+}
+
+export interface AdminUserVoucherRefundInput {
+  qr_token: string;
+}
+
+export interface AdminUserVoucherRefundResult {
+  qr_token: string;
+  status: "REFUNDED";
+  points_refunded: number;
+  points_balance: number;
 }
 
 export interface AdminUserVoucherPackage {

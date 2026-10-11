@@ -165,8 +165,9 @@ describe("Account claim và Google workflow — APPLICATION_LOGIC / kết quả 
   });
   it("LOGIN/CLAIM chuẩn bị không CAPTCHA; LINK/REAUTH và payload UUID giữ tương thích", () => {
     expect(GoogleChallengeSchema.safeParse({ purpose: "CLAIM" }).success).toBe(true);
+  expect(GoogleChallengeSchema.safeParse({ purpose: "LINK" }).success).toBe(true);
+  expect(GoogleChallengeSchema.safeParse({ purpose: "REAUTH" }).success).toBe(false);
     for (const purpose of ["LINK", "REAUTH"]) {
-      expect(GoogleChallengeSchema.safeParse({ purpose }).success).toBe(false);
       expect(GoogleChallengeSchema.safeParse({ purpose, turnstile_token: "captcha" }).success).toBe(true);
     }
     expect(GoogleChallengeSchema.safeParse({ purpose: "LOGIN", turnstile_token: "" }).success).toBe(false);
@@ -399,7 +400,7 @@ describe("Account claim và Google workflow — APPLICATION_LOGIC / kết quả 
   });
   it("Google claim merge giữ legacy canonical, mọi voucher/history và không cấp welcome lần hai", async () => {
     const link = await legacyLink(); const raw = new URL(link.url).hash.slice(1);
-    rows("user").push(customer("google-source", { name: "Google Customer", email: "customer@gmail.com", google_sub: "verified-sub", insta_name: "google.insta", phone_number: "+84987654321", points_balance: 23 }));
+    rows("user").push(customer("google-source", { name: "Google Customer", email: "customer@gmail.com", google_sub: "verified-sub", insta_name: "google.insta", points_balance: 23 }));
     rows("pointsLog").push({ id: "source-earned", user_id: "google-source", delta: 23, reason: "welcome_bonus" });
     rows("voucher").push({ id: "target-voucher", user_id: "legacy", status: "REDEEMED", redeemed_order_id: "old-order" }, { id: "source-voucher", user_id: "google-source", status: "ACTIVE", issued_via: "WELCOME_GIFT" });
     rows("order").push({ id: "source-order", user_id: "google-source", total: 72000, items: [{ price: 72000 }] });
@@ -421,6 +422,15 @@ describe("Account claim và Google workflow — APPLICATION_LOGIC / kết quả 
     expect(rows("session")).toMatchObject([{ user_id: "legacy" }]); expect(rows("session")).toHaveLength(1);
     expect(result).toMatchObject({ evicted: expect.arrayContaining(["old-source", "older-source"]) });
     await expect(authenticate()).rejects.toMatchObject({ reason: "GOOGLE_CHALLENGE_INVALID" });
+  });
+  it("từ chối Google claim nếu merge sẽ thay số điện thoại đã gắn", async () => {
+    const link = await legacyLink(); const raw = new URL(link.url).hash.slice(1);
+    rows("user").push(customer("google-source", { name: "Google Customer", email: "customer@gmail.com", google_sub: "verified-sub", phone_number: "+84987654321" }));
+    await establishClaimContext(request(), raw); attempt("CLAIM", { claim_link_id: rows("accountClaimLink")[0].id, claim_token_hash: digest(raw) });
+    await expect(authenticate()).rejects.toMatchObject({ reason: "PHONE_CHANGE_NOT_ALLOWED" });
+    expect(rows("accountMerge")).toEqual([]);
+    expect(rows("user").find(user => user.id === "google-source")).toMatchObject({ phone_number: "+84987654321", google_sub: "verified-sub" });
+    expect(rows("session")).toEqual([]);
   });
   it("merge hai welcome giữ entitlement target, history source và tất cả voucher kể cả package trùng", async () => {
     const link = await legacyLink(); const raw = new URL(link.url).hash.slice(1);

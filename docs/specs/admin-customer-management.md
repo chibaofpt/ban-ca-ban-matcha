@@ -26,10 +26,16 @@ Changing filters resets to page one and retains search. All screen sizes use a s
 three equal columns; the selected button has a distinct style and `aria-pressed`.
 The filter meanings and date boundaries belong to the linked API contract.
 
-Each row shows identity, registration, verification and block state, with points presented as
-"Bạn đang có n điểm ká" on its own prominent green line and the value emphasized. Current
-Vietnam-year completed spend uses the server summary; the UI does not recompute money or derive
-registration from visible fields. Selecting a row opens its customer surface.
+Each row places the customer name beside compact spend, reserving only the spend text's natural
+width and giving the remaining space to the name; long names truncate. Spend uses the shared ká
+formatter (6,000 VND displays as `6 ká`) without a year caption. Phone, Instagram and email use
+individual matcha-background, cream-text badges sized to their content and wrapping onto new rows
+when needed; an oversized contact wraps within its badge. Missing contacts are omitted.
+Points read `Số điểm: n điểm ká`, with `Chưa xác thực` beside them only for unverified customers.
+Verified customers have no verification badge. Registration and block badges and the historical
+points-for-vouchers line remain visible. Current Vietnam-year completed spend uses the server
+summary; the UI does not recompute money or derive registration from visible fields.
+Selecting a row opens its customer surface.
 
 ## Registration OTP settings
 
@@ -65,6 +71,12 @@ The customer summary provides two keyboard-navigable tabs:
 - `Orders` is the initial tab and retains its own page while the overlay remains open.
 - `Vouchers` loads on selection and retains a separate page.
 
+The initial customer header retains the name and shows the same wrapping contact badges as the
+list, without a voucher count. The body does not repeat the identity card: it presents `Đã chi`
+in ká and `Số điểm` in điểm ká in two matcha-bordered boxes, sharing available width 60:40 after
+the gap. Registration, unverified and block states and points-for-vouchers history remain available
+below the boxes. The Vouchers-tab header retains its dedicated presentation described below.
+
 Loading, empty, error and retry states remain visible within the active surface. Closing the customer
 resets subview, tab and pagination state for the next selection.
 
@@ -75,8 +87,15 @@ Blocking revokes sessions. Password reset is disabled for ghosts and Google-only
 customer it generates a unique 24-character URL-safe temporary password, revokes sessions, and shows
 the plaintext only in an explicit-only result surface so Admin can copy it once.
 
-A ghost row is labeled `Chưa đăng ký`. Eligible legacy rows expose `Gửi link xác thực`; the same overlay switches to QR/link/copy with regeneration and Zalo actions. The lifecycle and all claim failure states belong to [Account access](account-access.md#admin-claim-and-customer-acceptance). Email ghosts activate through matching verified Google identity.
-Clicking `Gửi link xác thực` immediately starts one link-generation request when the claim content
+A ghost row is labeled `Chưa đăng ký`. Eligible legacy rows expose `Gửi link nhận tài khoản`; the same overlay switches to QR/link/copy with regeneration and Zalo actions. The lifecycle and all claim failure states belong to [Account access](account-access.md#admin-claim-and-customer-acceptance). Email ghosts activate through matching verified Google identity.
+The claim action occupies its own full-width row. The next row contains exactly `Tặng điểm`,
+`Tặng voucher`, `Reset mật khẩu` and `Chặn user` (or `Mở tài khoản` when blocked), without icons.
+Buttons fill that row with widths based on their labels; neither the row nor the labels wrap.
+Use responsive text/padding, at least 44px button height and 8px gaps, including at 320px width.
+Claim, points and voucher actions share the primary matcha background and cream foreground;
+reset and block/unblock retain their distinct states. Manual verification stays on its own row.
+Existing eligibility, pending locks and confirmation behavior are unchanged.
+Clicking `Gửi link nhận tài khoản` immediately starts one link-generation request when the claim content
 opens; there is no second create action. Place an accessible copy icon beside the read-only URL.
 Keep `Tạo lại link` and the sky-blue `Mở Zalo` button on one row. Both are disabled while generating
 or copying; Zalo also requires a current unexpired link and a phone. `Mở Zalo` copies the exact
@@ -129,8 +148,32 @@ Entries without expiry say so; active entries show remaining days, and elapsed e
 expired using the server projection. Reads do not mutate voucher lifecycle.
 While the Vouchers tab is active, the overlay header shows "Voucher" above the selected customer name.
 
+An entry whose server projection permits refund shows `Hoàn điểm` at the right of the same row as
+its exchange timestamp. The button uses the yellow gradient treatment of the customer menu's
+`Ưu đãi` action. Ineligible entries omit the action; the UI does not derive eligibility or the
+refund amount from package price, status or expiry.
+
+Selecting the action opens the shared `ConfirmModal` above the customer sheet with
+`Bạn có muốn hoàn trả X điểm cho voucher “Tên voucher”?` and `Hủy` / `Hoàn điểm` actions.
+X comes from the server's projected refund amount. Cancelling performs no write. While the mutation
+is pending, disable repeated submission and lock the corresponding dismissal/navigation actions.
+Keep the selected customer, voucher tab and current page after refund.
+
+On success, show completed-refund feedback and refresh the customer summary/list and voucher pages.
+The withdrawn entry remains in history as `Đã hoàn điểm`, without a refund action. If refresh fails
+after a successful write, report that the refund completed but data could not be refreshed; do not
+present the committed refund as failed. A server state conflict refreshes the wallet so a stale
+action cannot be presented as current. Other failures preserve the server's error feedback without
+claiming success. Business eligibility and point accounting belong to
+[voucher lifecycle](../../.agents/skills/voucher-flow/references/lifecycle.md#admin-voluntary-refund-and-withdrawal);
+wire fields and errors belong to [API](../../API.md#admin-customer-management--admin-only).
+
 ## Acceptance
 
+- Khi hoàn voucher, nút nằm bên phải cùng hàng thời gian đổi trên mobile, không tràn ngang và dùng
+  gradient vàng như `Ưu đãi`; modal hiển thị đúng tên/số điểm. Hủy không ghi, pending khóa gửi lặp
+  và dismissal tương ứng, focus khôi phục đúng. Thành công cập nhật summary/wallet, giữ tab/page và
+  hiển thị `Đã hoàn điểm`. Kiểm tra bằng tay với bàn phím và cả hai theme, gồm conflict và lỗi refresh.
 - Khi Admin chọn một trong ba bộ lọc, thì danh sách/tổng số/phân trang phản ánh cùng bộ lọc và
   nội dung tìm kiếm; chuyển bộ lọc về trang một, bấm lại nút đang chọn bỏ lọc. Trên mobile ba nút
   nằm trên một hàng, không tràn ngang; trạng thái chọn và focus hiển thị rõ.
@@ -151,7 +194,7 @@ While the Vouchers tab is active, the overlay header shows "Voucher" above the s
   hợp lệ; không hiển thị zero như một kết quả thống kê thành công.
 - Khi số dư bằng zero hoặc refresh provider lỗi, thì UI phân biệt zero đã kiểm tra với unavailable,
   giữ số dư/thời gian gần nhất và đánh dấu dữ liệu cũ.
-- Khi bấm `Gửi link xác thực`, link/QR được tạo sau một lần bấm; không tạo lặp khi render lại.
+- Khi bấm `Gửi link nhận tài khoản`, link/QR được tạo sau một lần bấm; không tạo lặp khi render lại.
   Icon cạnh URL sao chép đúng link; `Mở Zalo` sao chép trước khi mở, có màu xanh da trời và khóa
   cùng `Tạo lại link` khi đang xử lý. Link hết hạn khóa Zalo và cho tạo lại; lỗi clipboard/popup
   không bị báo thành công đầy đủ. Kiểm tra bàn phím, mobile và cả hai theme bằng tay.
@@ -159,3 +202,8 @@ While the Vouchers tab is active, the overlay header shows "Voucher" above the s
   ngang 568×320 với safe area. QR vẫn quét được sau khi co; URL xuống dòng và icon copy cùng
   `Tạo lại link`/`Mở Zalo` luôn hiển thị. Kiểm tra cả pending, lỗi và hết hạn; không chấp nhận
   che phần nội dung bị tràn bằng `overflow-hidden`.
+- Khi tên hoặc liên hệ dài, tên card rút gọn sau khi dành đủ chỗ cho tiền; badge liên hệ wrap và
+  vẫn đọc đủ nội dung. Badge chưa xác thực nằm cùng hàng điểm; user đã xác thực không có badge đó.
+- Sheet hiển thị liên hệ ở header, hai ô chi tiêu/điểm tỷ lệ 6:4 và gửi link trên hàng riêng.
+  Ở 320/375/390px và desktop, cả bốn action và chữ trong nút nằm một hàng, không tràn hoặc bị che;
+  kiểm tra cả nhãn `Mở tài khoản`, pending/disabled và hai theme bằng tay.

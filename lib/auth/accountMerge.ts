@@ -14,6 +14,7 @@ export async function mergeAccounts(tx: Prisma.TransactionClient, sourceId: stri
   if (sourceIsGhost) requireEmailGhost(source);
   else { requireClaimableGhost(target); if (source.account_origin !== "GOOGLE_EMAIL" || !source.google_sub) throw new AccountError("ACCOUNT_MERGE_INVALID"); }
   if (target.account_origin !== "LEGACY_PHONE" || !target.phone_number) throw new AccountError("ACCOUNT_MERGE_INVALID");
+  if (source.phone_number !== null && source.phone_number !== target.phone_number) throw new AccountError("PHONE_CHANGE_NOT_ALLOWED");
   const total = source.points_balance + target.points_balance;
   if (!Number.isSafeInteger(total) || total < 0 || total > 2147483647) throw new AccountError("ACCOUNT_POINTS_OVERFLOW");
   const rewards = await tx.welcomeReward.findMany({ where: { user_id: { in: [sourceId, targetId] } }, select: { id: true, user_id: true } });

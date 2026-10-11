@@ -271,6 +271,9 @@ Button dùng variants `primary`, `secondary`, `outline`, `ghost`, `destructive`.
 Nhãn size đồ uống trong UI dùng `SizeLabel`; khi cần ghép thành chuỗi, dùng `formatSizeLabel`. Enum `SMALL`/`MEDIUM`/`LARGE` chỉ thuộc data contract, không render trực tiếp cho người dùng.
 
 ResponsiveOverlay exposes optional titleClassName and descriptionClassName for flow-specific text presentation; the shared overlay retains ownership of header structure and accessibility semantics.
+Its optional description accepts ReactNode, including non-interactive inline contact badges;
+header text can shrink and wrap beside the close control. Feature content must preserve valid
+description markup; the shared primitive still owns accessible title/description semantics.
 Optional `bodyClassName` customizes body spacing/overflow for an explicitly bounded feature layout.
 The default body remains scrollable. A feature opting out of scrolling must allocate available
 height and shrink flexible media, while keeping its controls visible; [Admin claim layout](docs/specs/admin-customer-management.md#account-actions) owns that acceptance.

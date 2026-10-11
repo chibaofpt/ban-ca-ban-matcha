@@ -6,12 +6,13 @@ import type {
   AdminUserPatch, AdminUserPointsInput, AdminUserPointsResult, AdminUserSummary,
   AdminUserListFilter,
   AdminUserVoucher, AdminUserVoucherCategory, AdminUserVoucherPackage,
+  AdminUserVoucherRefundInput, AdminUserVoucherRefundResult,
 } from '@/contracts/admin/user';
 import { ApiServiceError } from '@/src/lib/api/serviceError';
 
 export type {
   AdminUserOrder, AdminUserPage, AdminUserPasswordResetResult, AdminUserPatch,
-  AdminUserSummary, AdminUserVoucher, AdminUserVoucherCategory, AdminUserVoucherPackage,
+  AdminUserSummary, AdminUserVoucher, AdminUserVoucherCategory, AdminUserVoucherPackage, AdminUserVoucherRefundResult,
 } from '@/contracts/admin/user';
 
 const URL = {
@@ -21,6 +22,7 @@ const URL = {
   orders: (token: string) => `/api/admin/users/${encodeURIComponent(token)}/orders`,
   order: (token: string, id: string) => `/api/admin/users/${encodeURIComponent(token)}/orders/${encodeURIComponent(id)}`,
   vouchers: (token: string) => `/api/admin/users/${encodeURIComponent(token)}/vouchers`,
+  refundVoucher: (token: string) => `/api/admin/users/${encodeURIComponent(token)}/vouchers/refund`,
   packages: '/api/admin/users/voucher-packages',
 } as const;
 
@@ -84,6 +86,12 @@ export async function fetchAdminUserOrder(token: string, id: string): Promise<Ad
 /** Fetches a customer voucher page with server-projected lifecycle and expiry. */
 export async function fetchAdminUserVouchers(token: string, page = 1): Promise<AdminUserPage<AdminUserVoucher>> {
   return unwrap(apiClient.get(URL.vouchers(token), { params: { page } }));
+}
+
+/** Revokes an eligible voucher and refunds the server-owned exchange points. */
+export async function refundAdminUserVoucher(userQrToken: string, voucherQrToken: string): Promise<AdminUserVoucherRefundResult> {
+  const payload = { qr_token: voucherQrToken } satisfies AdminUserVoucherRefundInput;
+  return unwrap(apiClient.post(URL.refundVoucher(userQrToken), payload));
 }
 
 /** Fetches ten active gift packages in the requested category. */

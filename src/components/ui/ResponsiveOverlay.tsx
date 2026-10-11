@@ -22,7 +22,7 @@ const useIsomorphicLayoutEffect = typeof window === "undefined" ? useEffect : us
 interface ResponsiveOverlayProps {
   open: boolean;
   title: string;
-  description?: string;
+  description?: ReactNode;
   titleClassName?: string;
   descriptionClassName?: string;
   children: ReactNode;
@@ -164,7 +164,7 @@ export function ResponsiveOverlay({
               </>
             ) : <>
             <header className="flex shrink-0 items-start justify-between gap-4 border-b px-6 py-4">
-              <div>
+              <div className="min-w-0 flex-1">
                 <Dialog.Title asChild><h2 className={cn("text-lg font-bold text-foreground", titleClassName)}>{title}</h2></Dialog.Title>
                 <Dialog.Description className={cn(description ? "mt-1 text-sm text-muted-foreground" : "sr-only", descriptionClassName)}>
                   {description ?? `Hộp thoại ${title}`}
@@ -224,7 +224,7 @@ export function ResponsiveOverlay({
           ) : <>
           <div className="mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-border" aria-hidden="true" />
           <header className="flex shrink-0 items-start justify-between gap-4 border-b px-5 py-4">
-            <div>
+            <div className="min-w-0 flex-1">
               <Drawer.Title asChild><h2 className={cn("text-lg font-bold text-foreground", titleClassName)}>{title}</h2></Drawer.Title>
               <Drawer.Description className={cn(description ? "mt-1 text-sm text-muted-foreground" : "sr-only", descriptionClassName)}>
                 {description ?? `Bảng nội dung ${title}`}

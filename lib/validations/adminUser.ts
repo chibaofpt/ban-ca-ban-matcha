@@ -5,6 +5,7 @@ import type {
   AdminUserPatch,
   AdminUserPointsInput,
   AdminUserVoucherPackageQuery,
+  AdminUserVoucherRefundInput,
 } from "@/contracts/admin/user";
 
 const pageSchema = z.coerce.number().int().min(1).max(10_000);
@@ -24,6 +25,8 @@ export const adminUserPatchSchema: z.ZodType<AdminUserPatch> = z.discriminatedUn
 ]);
 
 export const adminUserPointsSchema: z.ZodType<AdminUserPointsInput> = z.object({ points: z.number().int().min(1).max(100) }).strict();
+
+export const adminUserVoucherRefundSchema: z.ZodType<AdminUserVoucherRefundInput> = z.object({ qr_token: z.string().uuid() }).strict();
 
 export const adminUserVoucherPackageQuerySchema: z.ZodType<AdminUserVoucherPackageQuery> = z.object({
   page: pageSchema.default(1),
