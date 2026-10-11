@@ -14,6 +14,22 @@ describe("Service tài khoản Google — FRONTEND_CONTRACT", () => {
     expect(await createGoogleChallenge(payload)).toEqual(result);
     expect(apiClient.post).toHaveBeenCalledWith("/api/auth/google/challenge", payload);
   });
+  it("chuẩn bị LOGIN không CAPTCHA và gửi token ngầm khi đổi credential", async () => {
+    const prepared = { challenge_id: "login.signed.preparation.proof", nonce: "nonce", expires_at: "2026-10-11T07:00:00Z" };
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: prepared } });
+    await expect(createGoogleChallenge({ purpose: "LOGIN" })).resolves.toEqual(prepared);
+    expect(apiClient.post).toHaveBeenLastCalledWith("/api/auth/google/challenge", { purpose: "LOGIN" });
+    const session = { qr_token: "public-qr", name: "Cá", phone_number: null, email: "ca@gmail.com", role: "CUSTOMER", welcome_reward: null };
+    const payload = { challenge_id: prepared.challenge_id, credential: "google-jwt", turnstile_token: "background-captcha" };
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: session } });
+    await expect(submitGoogleCredential(payload)).resolves.toEqual(session);
+    expect(apiClient.post).toHaveBeenLastCalledWith("/api/auth/google", payload);
+  });
+  it("giữ nguyên lỗi CAPTCHA để UI có thể thử lại", async () => {
+    vi.mocked(apiClient.post).mockRejectedValue({ response: { status: 503, data: { error: "Xác minh chưa khả dụng", code: "SERVICE_UNAVAILABLE", details: { reason: "TURNSTILE_UNAVAILABLE" } } } });
+    await expect(submitGoogleCredential({ challenge_id: "login.signed.preparation.proof", credential: "google-jwt", turnstile_token: "captcha" }))
+      .rejects.toMatchObject({ message: "Xác minh chưa khả dụng", status: 503, code: "SERVICE_UNAVAILABLE", details: { reason: "TURNSTILE_UNAVAILABLE" } });
+  });
 });
 it("preserves structured API failures including collision reason", async () => {
   vi.mocked(apiClient.post).mockRejectedValue({ response: { status: 422, data: { error: "Nhận tài khoản chưa khả dụng", code: "BUSINESS_RULE_VIOLATION", details: { reason: "OTP_DISABLED" } } } });

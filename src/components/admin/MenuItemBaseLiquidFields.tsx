@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { Fragment, useId, useState } from "react";
 import { motion } from "framer-motion";
 import type { UseFormRegisterReturn } from "react-hook-form";
 import type { Category, MilkTypeOption, Size } from "@/src/lib/types/menu";
@@ -144,8 +144,18 @@ export function MenuItemBaseLiquidFields({
           {selectableSwapLiquids.map((liquid) => {
             const isInactive = liquid.is_active === false;
             return (
+              <Fragment key={liquid.id}>
+                {isInactive && liquid.id === inactiveSwapLiquids[0]?.id && (
+                  <motion.h4
+                    initial={false}
+                    animate={{ display: showInactiveRows ? "block" : "none", opacity: showInactiveRows ? 1 : 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="col-span-full mt-2 border-t border-border/60 pt-3 text-xs font-semibold text-muted-foreground"
+                  >
+                    Tạm ngưng
+                  </motion.h4>
+                )}
               <motion.label
-                key={liquid.id}
                 initial={false}
                 animate={isInactive ? {
                   display: showInactiveRows ? "flex" : "none",
@@ -166,12 +176,8 @@ export function MenuItemBaseLiquidFields({
                   className="shrink-0 rounded border-border text-primary focus:ring-primary/40"
                 />
                 <span className="min-w-0 truncate text-foreground">{liquid.name}</span>
-                {isInactive && (
-                  <span className="shrink-0 rounded-md border border-border/70 bg-muted px-1.5 py-0.5 text-[10px] font-medium text-foreground">
-                    Tạm ngưng
-                  </span>
-                )}
               </motion.label>
+              </Fragment>
             );
           })}
         </div>

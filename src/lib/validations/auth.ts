@@ -1,5 +1,6 @@
 import { toLocalPhone } from "@/src/utils/phone";
 import { z } from "zod";
+import { classifyLoginIdentifier } from "@/src/lib/utils/loginIdentifier";
 
 /** Normalize editable phones to local form; the server remains authoritative. */
 const phoneSchema = z
@@ -22,7 +23,11 @@ const instagramSchema = z
   );
 
 export const loginFormSchema = z.object({
-  identifier: z.string().min(1, "Vui lòng nhập số điện thoại hoặc Instagram"),
+  identifier: z.string().trim().min(1, "Vui lòng nhập số điện thoại hoặc Instagram").max(64, "Thông tin đăng nhập quá dài")
+    .refine(value => {
+      const identifier = classifyLoginIdentifier(value);
+      return identifier.kind === "phone" || /^[a-z0-9._]{1,30}$/.test(identifier.value);
+    }, "Vui lòng nhập SĐT hợp lệ hoặc tên Instagram, không nhập email"),
   password: z.string().min(6, "Mật khẩu phải có ít nhất 6 ký tự"),
 });
 

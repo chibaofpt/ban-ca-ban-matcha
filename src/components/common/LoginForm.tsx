@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { usePathname, useRouter } from "next/navigation";
 import { AtSign, Lock, Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
@@ -14,28 +14,41 @@ import { resetForceLogout } from "@/src/lib/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { classifyLoginIdentifier } from "@/src/lib/utils/loginIdentifier";
 import { clearPrivateQueryCaches } from "@/src/lib/queryClient";
+import { Button } from "@/src/components/ui/button";
 
-const LoginForm = () => {
+const LoginForm = ({ disabled = false, onBusyChange }: { disabled?: boolean; onBusyChange: (busy: boolean) => void }) => {
   const router = useRouter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [step, setStep] = useState<"identifier" | "password">("identifier");
 
   const {
     register,
     handleSubmit,
     setValue,
+    getValues,
+    trigger,
+    setFocus,
+    clearErrors,
     formState: { errors, isSubmitting },
   } = useForm<LoginInput>({
     resolver: zodResolver(loginFormSchema),
-    mode: "onChange",
+    mode: "onBlur",
     reValidateMode: "onChange",
     defaultValues: {
       identifier: "",
       password: "",
     },
   });
+  useEffect(() => {
+    if (step === "password") setFocus("password");
+  }, [step, setFocus]);
+  useEffect(() => {
+    onBusyChange(isSubmitting);
+    return () => onBusyChange(false);
+  }, [isSubmitting, onBusyChange]);
 
   const login = useAuthStore((s) => s.login);
   const close = useAuthModalStore((s) => s.close);
@@ -43,6 +56,7 @@ const LoginForm = () => {
 
 
   const onSubmit = async (data: LoginInput) => {
+    if (disabled) return;
     setServerError(null);
     try {
       const identifier = classifyLoginIdentifier(data.identifier);
@@ -88,15 +102,6 @@ const LoginForm = () => {
       transition={{ duration: 0.2 }}
       className="space-y-5"
     >
-      <div className="text-center space-y-1">
-        <h2 className="font-playfair text-2xl font-bold text-foreground">
-          Đăng nhập
-        </h2>
-        <p className="text-muted-foreground text-sm">
-          Chào mừng bạn trở lại Bạn Cá Bán Matcha
-        </p>
-      </div>
-
       {serverError && (
         <div className="p-3 text-sm text-red-600 bg-red-50 rounded-xl flex items-center gap-2 border border-red-100">
           <AlertCircle className="h-4 w-4 shrink-0" />
@@ -104,8 +109,12 @@ const LoginForm = () => {
         </div>
       )}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <div className="space-y-1.5">
+      <form onSubmit={step === "password" ? handleSubmit(onSubmit) : (event) => {
+        event.preventDefault();
+        if (disabled) return;
+        void trigger("identifier").then(valid => { if (valid) { clearErrors("password"); setStep("password"); } });
+      }} className="space-y-4">
+        <div className="space-y-1.5" hidden={step !== "identifier"}>
           <label htmlFor="login-identifier" className="text-sm font-medium text-foreground">
             Số điện thoại hoặc Instagram
           </label>
@@ -118,6 +127,8 @@ const LoginForm = () => {
               autoCapitalize="none"
               spellCheck={false}
               placeholder="091 234 5678 hoặc @ten_instagram"
+              aria-invalid={Boolean(errors.identifier)}
+              aria-describedby={errors.identifier ? "login-identifier-error" : undefined}
               {...register("identifier", {
                 onChange: (event) => {
                   setValue("identifier", event.target.value, {
@@ -126,19 +137,25 @@ const LoginForm = () => {
                 },
                 onBlur: () => window.scrollTo(0, 0)
               })}
-              disabled={isSubmitting}
+              disabled={disabled || isSubmitting}
               className={`w-full h-11 pl-9 pr-4 rounded-xl border bg-background text-base md:text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 ${
                 errors.identifier ? "border-red-500 focus:ring-red-500" : "border-input"
               }`}
             />
           </div>
           {errors.identifier && (
-            <p className="text-xs text-red-500">{errors.identifier.message}</p>
+            <p id="login-identifier-error" className="text-xs text-red-500">{errors.identifier.message}</p>
           )}
         </div>
 
-
-        <div className="space-y-1.5">
+        {step === "password" ? <div className="flex items-center justify-between gap-2 rounded-xl bg-muted px-3 py-2">
+          <p className="min-w-0 break-words text-sm">Đăng nhập với <span className="font-medium">{getValues("identifier")}</span></p>
+          <Button variant="ghost" className="shrink-0 px-3 text-sm" disabled={disabled || isSubmitting} onClick={() => {
+            setStep("identifier"); setValue("password", ""); setShowPassword(false); setServerError(null); clearErrors();
+            window.requestAnimationFrame(() => setFocus("identifier"));
+          }}>Quay lại</Button>
+        </div> : null}
+        <div className="space-y-1.5" hidden={step !== "password"}>
           <label htmlFor="login-password" className="text-sm font-medium text-foreground">
             Mật khẩu
           </label>
@@ -152,38 +169,42 @@ const LoginForm = () => {
                 onBlur: () => window.scrollTo(0, 0)
               })}
               autoComplete="current-password"
-              disabled={isSubmitting}
+              aria-invalid={Boolean(errors.password)}
+              aria-describedby={errors.password ? "login-password-error" : undefined}
+              disabled={disabled || isSubmitting}
               className={`w-full h-11 pl-9 pr-11 rounded-xl border bg-background text-base md:text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 ${
                 errors.password ? "border-red-500 focus:ring-red-500" : "border-input"
               }`}
             />
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               type="button"
               onClick={(e) => { e.preventDefault(); setShowPassword(!showPassword); }}
               aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
               className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring z-10 cursor-pointer"
-              disabled={isSubmitting}
+              disabled={disabled || isSubmitting}
             >
               {showPassword ? (
                 <EyeOff className="h-4 w-4" />
               ) : (
                 <Eye className="h-4 w-4" />
               )}
-            </button>
+            </Button>
           </div>
           {errors.password && (
-            <p className="text-xs text-red-500">{errors.password.message}</p>
+            <p id="login-password-error" className="text-xs text-red-500">{errors.password.message}</p>
           )}
         </div>
 
-        <button
+        <Button
           type="submit"
-          disabled={isSubmitting}
+          disabled={disabled || isSubmitting}
           className="w-full h-11 rounded-xl bg-primary text-primary-foreground text-sm font-semibold flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:pointer-events-none"
         >
           {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-          Đăng nhập
-        </button>
+          {step === "identifier" ? "Tiếp tục" : "Đăng nhập"}
+        </Button>
       </form>
 
 

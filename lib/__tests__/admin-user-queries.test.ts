@@ -47,9 +47,65 @@ describe("truy vấn quản lý khách hàng Admin", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.pointsLogGroupBy.mockResolvedValue([{ user_id: "completed-11", _sum: { delta: -13 } }]);
-    mocks.voucherGroupBy.mockResolvedValue([])
+    mocks.voucherGroupBy.mockReset().mockResolvedValue([])
       .mockResolvedValueOnce([{ user_id: "completed-11", _count: { _all: 4 } }])
       .mockResolvedValueOnce([{ user_id: "completed-11", _count: { _all: 2 } }]);
+  });
+
+  it("lọc ghost theo credential và kết hợp tìm kiếm trước khi đếm/phân trang", async () => {
+    mocks.userCount.mockReset().mockResolvedValue(0);
+    mocks.userFindMany.mockReset().mockResolvedValue([]);
+    const result = await listAdminUsers(2, "@ca.ngon", now, "GHOST");
+    const expectedFilter = {
+      role: "CUSTOMER", sourceMerge: { is: null },
+      AND: [
+        { OR: [{ password_hash: null }, { password_hash: "" }, { password_hash: "GHOST_USER_NO_PASSWORD" }] },
+        { OR: [{ google_sub: null }, { google_sub: "" }] },
+      ],
+      OR: expect.arrayContaining([{ insta_name: { contains: "ca.ngon", mode: "insensitive" } }]),
+    };
+    expect(mocks.userCount).toHaveBeenCalledWith({ where: expectedFilter });
+    expect(mocks.userCount).toHaveBeenCalledWith({ where: { AND: [expectedFilter, { orders: { some: { status: "COMPLETED" } } }] } });
+    expect(mocks.userFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { AND: [expectedFilter, { orders: { none: { status: "COMPLETED" } } }] },
+      skip: 10, take: 10,
+    }));
+    expect(result).toEqual({ items: [], total: 0, page: 2, total_pages: 0 });
+  });
+
+  it.each([
+    { filter: "ORDER_TODAY" as const, instant: "2026-01-31T16:59:59.999Z", start: "2026-01-30T17:00:00.000Z", end: "2026-01-31T17:00:00.000Z" },
+    { filter: "ORDER_TODAY" as const, instant: "2026-01-31T17:00:00.000Z", start: "2026-01-31T17:00:00.000Z", end: "2026-02-01T17:00:00.000Z" },
+    { filter: "ORDER_MONTH" as const, instant: "2026-01-31T17:00:00.000Z", start: "2026-01-31T17:00:00.000Z", end: "2026-02-28T17:00:00.000Z" },
+    { filter: "ORDER_MONTH" as const, instant: "2026-12-31T17:00:00.000Z", start: "2026-12-31T17:00:00.000Z", end: "2027-01-31T17:00:00.000Z" },
+  ])("lọc $filter tại $instant theo ngày/tháng Việt Nam và không giới hạn trạng thái đơn", async ({ filter, instant, start, end }) => {
+    mocks.userCount.mockReset().mockResolvedValue(0);
+    mocks.userFindMany.mockReset().mockResolvedValue([]);
+    await listAdminUsers(1, "Mèo", new Date(instant), filter);
+    expect(mocks.userCount).toHaveBeenCalledWith({ where: {
+      role: "CUSTOMER", sourceMerge: { is: null },
+      orders: { some: { created_at: { gte: new Date(start), lt: new Date(end) } } },
+      OR: expect.arrayContaining([{ name: { contains: "Mèo", mode: "insensitive" } }]),
+    } });
+  });
+
+  it("lọc email null hoặc rỗng bằng AND với tìm kiếm và giữ bộ lọc trong nhóm completed", async () => {
+    mocks.userCount.mockReset().mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    mocks.userFindMany.mockReset().mockResolvedValueOnce([])
+      .mockResolvedValueOnce([customer("no-email", "customer-no-email")]);
+    mocks.orderGroupBy.mockReset().mockImplementation(async (args: { _max?: { updated_at?: boolean } }) =>
+      args._max?.updated_at ? [{ user_id: "no-email", _max: { updated_at: completedAt } }] : []);
+    const result = await listAdminUsers(1, "Khách", now, "NO_EMAIL");
+    const expectedFilter = {
+      role: "CUSTOMER", sourceMerge: { is: null },
+      AND: [{ OR: [{ email: null }, { email: "" }] }],
+      OR: expect.arrayContaining([{ name: { contains: "Khách", mode: "insensitive" } }]),
+    };
+    expect(mocks.userCount).toHaveBeenCalledWith({ where: expectedFilter });
+    expect(mocks.orderGroupBy).toHaveBeenCalledWith(expect.objectContaining({
+      where: { user_id: { not: null }, status: "COMPLETED", user: { is: expectedFilter } },
+    }));
+    expect(result).toMatchObject({ total: 1, total_pages: 1, items: [{ qr_token: "customer-no-email" }] });
   });
 
   it("phân trang qua ranh giới completed rồi đưa mọi khách không có completed vào đuôi ổn định", async () => {
@@ -182,6 +238,17 @@ describe("Tìm khách bằng điện thoại chuẩn hóa — APPLICATION_LOGIC"
 });
 
 describe("quyền nhận link claim — APPLICATION_LOGIC", () => {
+  it("ghost legacy có 7 điểm không có lịch sử/voucher vẫn được hiển thị quyền gửi link", async () => {
+    mocks.userFindFirst.mockResolvedValue({ id: "ghost" });
+    mocks.orderFindFirst.mockResolvedValue(null);
+    mocks.orderGroupBy.mockReset().mockResolvedValue([]);
+    mocks.userFindMany.mockReset().mockResolvedValue([{ ...customer("ghost", "ghost-qr", "GHOST_USER_NO_PASSWORD"), points_balance: 7 }]);
+    mocks.pointsLogGroupBy.mockReset().mockResolvedValue([]);
+    mocks.voucherGroupBy.mockReset().mockResolvedValue([]);
+    const result = await getAdminUser("ghost-qr", now);
+    expect(result).toMatchObject({ points_balance: 7, is_registered: false, has_password: false, can_send_claim_link: true });
+  });
+
   it("ghost legacy hết điểm nhưng có lịch sử điểm dương vẫn được nhận link", async () => {
     mocks.userFindFirst.mockResolvedValue({ id: "ghost" });
     mocks.orderFindFirst.mockResolvedValue(null);

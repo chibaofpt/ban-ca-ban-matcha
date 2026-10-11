@@ -6,11 +6,21 @@ import { apiClient } from '@/src/lib/api/client';
 import {
   fetchAdminUsers, fetchAdminUser, fetchAdminUserOrders, fetchAdminUserOrder,
   fetchAdminUserVouchers, fetchAdminUserVoucherPackages, giftAdminUserPoints, updateAdminUser,
+  adminUserKeys,
 } from '@/src/services/adminUserService';
 import { ApiServiceError } from '@/src/services/orderService';
 
 describe('Service quản lý khách hàng', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it.each(["GHOST", "ORDER_TODAY", "ORDER_MONTH", "NO_EMAIL"] as const)("gửi filter %s và tách cache khỏi danh sách không lọc", async (filter) => {
+    const page = { items: [], total: 0, page: 1, total_pages: 0 };
+    vi.mocked(apiClient.get).mockResolvedValue({ data: { data: page } });
+    await expect(fetchAdminUsers(1, "Mèo", filter)).resolves.toEqual(page);
+    expect(apiClient.get).toHaveBeenCalledWith('/api/admin/users', { params: { page: 1, q: "Mèo", filter } });
+    expect(adminUserKeys.list(1, "Mèo", filter)).not.toEqual(adminUserKeys.list(1, "Mèo"));
+    expect(adminUserKeys.list(1, "Mèo", filter)).toContain(filter);
+  });
 
   it('gửi trang và tìm kiếm rồi trả đúng trang dữ liệu từ server', async () => {
     const page = { items: [{ qr_token: 'customer-token', name: 'Bạn Cá' }], total: 12, page: 2, total_pages: 2 };

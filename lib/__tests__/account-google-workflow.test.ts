@@ -16,6 +16,8 @@ import { createGoogleChallenge } from "@/lib/auth/googleChallenge";
 import { changePassword } from "@/lib/auth/changePassword";
 import { establishClaimContext, issueClaimLink, claimWithPassword } from "@/lib/auth/accountClaim";
 import { publishAccountSession } from "@/lib/auth/accountSession";
+import { GoogleChallengeSchema, GoogleCredentialSchema } from "@/lib/validations/account";
+import { AccountError } from "@/lib/auth/accountError";
 
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 const rawBrowser = "a".repeat(64);
@@ -49,6 +51,7 @@ describe("Account claim và Google workflow — APPLICATION_LOGIC / kết quả 
   let jar: Map<string, string>;
   let sequence: number;
   let claimLoser: boolean;
+  let attemptInsertConflict: boolean;
   let cookieSet: ReturnType<typeof vi.fn>;
   const rows = (name: string) => tables[name];
   function hydrateUser(row: Row): Row {
@@ -69,7 +72,7 @@ describe("Account claim và Google workflow — APPLICATION_LOGIC / kết quả 
   beforeEach(() => {
     vi.clearAllMocks(); vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(now);
     tables = Object.fromEntries(["user", "googleAuthAttempt", "accountClaimLink", "session", "accountMerge", "welcomeReward", "welcomeRewardSettings", "rewardOutcome", "pointsLog", "order", "voucher", "voucherGrant", "address", "pushSubscription"].map(name => [name, []]));
-    sequence = 0; claimLoser = false; jar = new Map([["account_auth_browser", rawBrowser]]);
+    sequence = 0; claimLoser = false; attemptInsertConflict = false; jar = new Map([["account_auth_browser", rawBrowser]]);
     cookieSet = vi.fn((name: string, value: string) => { if (value) jar.set(name, value); else jar.delete(name); });
     boundary.cookies.mockResolvedValue({ get: (name: string) => jar.has(name) ? { value: jar.get(name) } : undefined, set: cookieSet });
     boundary.session.mockResolvedValue(null);
@@ -90,6 +93,7 @@ describe("Account claim và Google workflow — APPLICATION_LOGIC / kết quả 
           found.forEach(row => apply(row, data)); return { count: found.length };
         },
         create: async ({ data = {} }: Query) => {
+          if (name === "googleAuthAttempt" && attemptInsertConflict) throw Object.assign(new Error("Controlled unique loser"), { code: "P2002" });
           const id = name + "-" + (++sequence);
           const defaults = name === "user" ? customer(id) : name === "session" ? { refresh_token: id + "-refresh", previous_refresh_token: null } : name === "rewardOutcome" ? { campaign_id: null, pool_item_id: null, box_id: null, draw_number: null, voucher_id: null } : {};
           const row = { id, ...defaults, ...data }; rows(name).push(row); return name === "user" ? hydrateUser(row) : { ...row };
@@ -112,6 +116,7 @@ describe("Account claim và Google workflow — APPLICATION_LOGIC / kết quả 
     vi.stubEnv("NEXT_PUBLIC_TURNSTILE_SITE_KEY", "test-only-site-key");
     vi.stubEnv("GOOGLE_CLIENT_ID", undefined);
     vi.stubEnv("NEXT_PUBLIC_GOOGLE_CLIENT_ID", "google-client");
+    vi.stubEnv("JWT_SECRET", "google-preparation-test-secret-at-least-32-bytes");
   });
   afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
   function attempt(purpose = "LOGIN", overrides: Row = {}): void {
@@ -128,6 +133,111 @@ describe("Account claim và Google workflow — APPLICATION_LOGIC / kết quả 
     const result = await createGoogleChallenge(request(), { purpose: "LOGIN", turnstile_token: "test-captcha" }, "203.0.113.1");
     expect(result).toMatchObject({ challenge_id: expect.any(String), expires_at: "2026-10-09T12:05:00.000Z" });
     expect(rows("googleAuthAttempt")).toMatchObject([{ purpose: "LOGIN", actor_user_id: null }]);
+  });
+  it("chuẩn bị nút Google không cần CAPTCHA và chưa tạo account, session hoặc DB challenge", async () => {
+    const parsed = GoogleChallengeSchema.safeParse({ purpose: "LOGIN" });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) throw new Error("Expected deferred LOGIN payload");
+    const result = await createGoogleChallenge(request(), parsed.data, "203.0.113.1");
+    expect(result).toMatchObject({ challenge_id: expect.any(String), nonce: expect.stringMatching(/^[a-f0-9]{64}$/), expires_at: "2026-10-09T12:05:00.000Z" });
+    expect(rows("googleAuthAttempt")).toEqual([]);
+    expect(rows("user")).toEqual([]);
+    expect(rows("session")).toEqual([]);
+  });
+  it("đổi phiên chuẩn bị lấy account và session chỉ sau cả Google và CAPTCHA hợp lệ, từ chối replay", async () => {
+    const parsed = GoogleChallengeSchema.parse({ purpose: "LOGIN" });
+    const prepared = await createGoogleChallenge(request(), parsed, "203.0.113.1");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ success: true, hostname: "matcha.example", action: "google_auth" }))));
+    const payload = GoogleCredentialSchema.parse({ challenge_id: prepared.challenge_id, credential: "provider-credential", turnstile_token: "test-captcha" });
+    const result = await authenticateGoogle(request(), payload);
+    expect(result).toMatchObject({ user: { google_sub: "verified-sub", account_origin: "GOOGLE_EMAIL", points_balance: 5 } });
+    expect(rows("googleAuthAttempt")).toMatchObject([{ purpose: "LOGIN", nonce_hash: digest(prepared.nonce), consumed_at: now }]);
+    expect(rows("session")).toHaveLength(1);
+    expect(rows("welcomeReward")).toHaveLength(1);
+    await expect(authenticateGoogle(request(), payload)).rejects.toMatchObject({ reason: "GOOGLE_CHALLENGE_INVALID" });
+    expect(rows("session")).toHaveLength(1);
+    expect(rows("welcomeReward")).toHaveLength(1);
+  });
+  it("chỉ LOGIN được chuẩn bị không CAPTCHA; payload cũ vẫn dùng UUID và không cần token lần hai", () => {
+    for (const purpose of ["CLAIM", "LINK", "REAUTH"]) {
+      expect(GoogleChallengeSchema.safeParse({ purpose }).success).toBe(false);
+      expect(GoogleChallengeSchema.safeParse({ purpose, turnstile_token: "captcha" }).success).toBe(true);
+    }
+    expect(GoogleChallengeSchema.safeParse({ purpose: "LOGIN", turnstile_token: "" }).success).toBe(false);
+    expect(GoogleCredentialSchema.safeParse({ challenge_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", credential: "google-jwt" }).success).toBe(true);
+  });
+  it.each(["missing", "rejected", "wrong-action", "empty-hostname", "outage"])("không cấp phiên đăng nhập khi CAPTCHA %s", async kind => {
+    const prepared = await createGoogleChallenge(request(), GoogleChallengeSchema.parse({ purpose: "LOGIN" }), "203.0.113.1");
+    const payload = { challenge_id: prepared.challenge_id, credential: "provider-credential", ...(kind === "missing" ? {} : { turnstile_token: "captcha" }) };
+    if (kind === "missing") expect(GoogleCredentialSchema.safeParse(payload).success).toBe(false);
+    vi.stubGlobal("fetch", vi.fn(async () => kind === "outage" ? new Response(null, { status: 503 })
+      : new Response(JSON.stringify({ success: kind !== "rejected", hostname: kind === "empty-hostname" ? "" : "matcha.example", action: kind === "wrong-action" ? "account_claim" : "google_auth" }))));
+    await expect(authenticateGoogle(request(), payload)).rejects.toMatchObject({ reason: kind === "missing" ? "TURNSTILE_REQUIRED" : kind === "outage" ? "TURNSTILE_UNAVAILABLE" : "TURNSTILE_REJECTED" });
+    expect(rows("googleAuthAttempt")).toEqual([]);
+    expect(rows("user")).toEqual([]);
+    expect(rows("session")).toEqual([]);
+  });
+  it.each(["tampered", "expired", "browser", "client", "uuid-downgrade", "invalid-google"])("từ chối phiên Google chuẩn bị %s trước mọi ghi account", async kind => {
+    const prepared = await createGoogleChallenge(request(), GoogleChallengeSchema.parse({ purpose: "LOGIN" }), "203.0.113.1");
+    let challengeId = prepared.challenge_id;
+    if (kind === "tampered") {
+      const parts = challengeId.split(".");
+      const claims = JSON.parse(Buffer.from(parts[2], "base64url").toString()) as Row;
+      parts[2] = Buffer.from(JSON.stringify({ ...claims, purpose: "CLAIM" })).toString("base64url");
+      challengeId = parts.join(".");
+    }
+    if (kind === "uuid-downgrade") challengeId = (JSON.parse(Buffer.from(challengeId.split(".")[2], "base64url").toString()) as { jti: string }).jti;
+    if (kind === "expired") vi.setSystemTime(new Date(now.getTime() + 300000));
+    if (kind === "browser") jar.set("account_auth_browser", "b".repeat(64));
+    if (kind === "client") vi.stubEnv("NEXT_PUBLIC_GOOGLE_CLIENT_ID", "other-google-client");
+    if (kind === "invalid-google") boundary.identity.mockRejectedValue(new AccountError("GOOGLE_ASSERTION_INVALID", 401, "UNAUTHORIZED"));
+    await expect(authenticateGoogle(request(), { challenge_id: challengeId, credential: "provider-credential", turnstile_token: "captcha" }))
+      .rejects.toMatchObject({ reason: kind === "invalid-google" ? "GOOGLE_ASSERTION_INVALID" : "GOOGLE_CHALLENGE_INVALID" });
+    expect(rows("googleAuthAttempt")).toEqual([]);
+    expect(rows("user")).toEqual([]);
+    expect(rows("session")).toEqual([]);
+  });
+  it("kiểm tra lại thời hạn sau khi provider trả về", async () => {
+    const prepared = await createGoogleChallenge(request(), GoogleChallengeSchema.parse({ purpose: "LOGIN" }), "203.0.113.1");
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      vi.setSystemTime(new Date(now.getTime() + 300000));
+      return new Response(JSON.stringify({ success: true, hostname: "matcha.example", action: "google_auth" }));
+    }));
+    await expect(authenticateGoogle(request(), { challenge_id: prepared.challenge_id, credential: "provider-credential", turnstile_token: "captcha" }))
+      .rejects.toMatchObject({ reason: "GOOGLE_CHALLENGE_INVALID" });
+    expect(rows("session")).toEqual([]);
+    expect(rows("googleAuthAttempt")).toEqual([]);
+  });
+  it("trả lỗi replay khi DB báo unique loser — SIMULATED_RACE_OUTCOME", async () => {
+    const prepared = await createGoogleChallenge(request(), GoogleChallengeSchema.parse({ purpose: "LOGIN" }), "203.0.113.1");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ success: true, hostname: "matcha.example", action: "google_auth" }))));
+    attemptInsertConflict = true;
+    await expect(authenticateGoogle(request(), { challenge_id: prepared.challenge_id, credential: "provider-credential", turnstile_token: "captcha" }))
+      .rejects.toMatchObject({ reason: "GOOGLE_CHALLENGE_INVALID", status: 401 });
+    expect(rows("session")).toEqual([]);
+  });
+  it.each(["password", "google"])("ghost có 7 điểm không có lịch sử/voucher tạo link và nhận bằng %s", async method => {
+    rows("user").push(customer("admin", { role: "ADMIN" }), customer("legacy", {
+      account_origin: "LEGACY_PHONE", phone_number: "+84912345678", points_balance: 7,
+    }));
+    const link = await issueClaimLink(request(), "legacy-qr", "admin");
+    const raw = new URL(link.url).hash.slice(1);
+    expect(link.expires_at).toBe("2026-10-09T12:05:00.000Z");
+    expect(rows("pointsLog")).toEqual([]);
+    expect(rows("voucher")).toEqual([]);
+    await establishClaimContext(request(), raw);
+    if (method === "google") attempt("CLAIM", {
+      claim_link_id: rows("accountClaimLink")[0].id, claim_token_hash: digest(raw),
+    });
+    const result = method === "google" ? await authenticate()
+      : await claimWithPassword(request(), {
+        password: "secret12", password_confirmation: "secret12", turnstile_token: "test-captcha",
+      }, "203.0.113.1");
+    expect(result).toMatchObject({ user: { id: "legacy", points_balance: 12, is_verified: true } });
+    expect(rows("accountClaimLink")[0].consumed_at).toEqual(now);
+    expect(rows("welcomeReward")).toHaveLength(1);
+    expect(rows("session")).toHaveLength(1);
+    await expect(establishClaimContext(request(), raw)).rejects.toMatchObject({ reason: "CLAIM_LINK_INVALID" });
   });
   it("không tạo challenge khi Client ID dùng chung chưa được cấu hình", async () => {
     vi.stubEnv("NEXT_PUBLIC_GOOGLE_CLIENT_ID", undefined);

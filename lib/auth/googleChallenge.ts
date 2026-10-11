@@ -11,15 +11,18 @@ import { AccountError } from "@/lib/auth/accountError";
 import { prisma } from "@/lib/prisma";
 import { verifyAccountTurnstile } from "@/lib/auth/turnstile";
 import { claimActiveCustomerForWrite } from "@/lib/auth/accountMergeGuard";
+import { prepareGoogleLogin } from "@/lib/auth/googleLoginPreparation";
 const DUMMY_HASH = "$2a$12$R9h/cIPz0gi.URNNX3rub2A9WEH71/x7LpZ9zL1Pz.x0bI/tXh9eW";
 /** Recheck the actor's live session inside every sensitive account transaction. */
 export async function requireActorSession(tx: Pick<Prisma.TransactionClient, "session">, actorId: string, sessionId: string): Promise<void> {
   const session = await tx.session.findFirst({ where: { id: sessionId, user_id: actorId, expires_at: { gt: new Date() } }, select: { id: true } });
   if (!session) throw new AccountError("ACCOUNT_SESSION_EXPIRED", 401, "UNAUTHORIZED");
 }
-/** Create one purpose- and browser-bound challenge after fresh credential and CAPTCHA checks. */
+/** Prepare LOGIN immediately, or create a legacy purpose-bound challenge after CAPTCHA checks. */
 export async function createGoogleChallenge(req: Request, input: GoogleChallengePayload, ip: string) {
   if (!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim()) throw new AccountError("GOOGLE_CONFIG", 503, "SERVICE_UNAVAILABLE");
+  if (input.purpose === "LOGIN" && input.turnstile_token === undefined) return prepareGoogleLogin(req);
+  if (!input.turnstile_token) throw new AccountError("TURNSTILE_REQUIRED", 400, "VALIDATION_ERROR");
   await verifyAccountTurnstile(input.turnstile_token, ip, "google_auth");
   let actor: AuthSession | null = await getSession();
   let expectedHash: string | null = null;

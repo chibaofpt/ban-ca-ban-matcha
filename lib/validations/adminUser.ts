@@ -12,6 +12,7 @@ const pageSchema = z.coerce.number().int().min(1).max(10_000);
 export const adminUserListQuerySchema: z.ZodType<AdminUserListQuery> = z.object({
   page: pageSchema.default(1),
   q: z.string().trim().max(50).optional(),
+  filter: z.enum(["GHOST", "ORDER_TODAY", "ORDER_MONTH", "NO_EMAIL"]).optional(),
 }).strict();
 
 export const adminUserPageQuerySchema: z.ZodType<AdminUserPageQuery> = z.object({ page: pageSchema.default(1) }).strict();

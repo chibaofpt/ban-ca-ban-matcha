@@ -45,7 +45,9 @@ API payload thuộc [API.md](../../API.md); không suy quy tắc tính tiền t�
 - Swap bột của Fusion hiển thị active trước; nút nhỏ mở rộng nhóm inactive có số lượng lựa chọn.
   Nếu đã tick swap inactive, nhóm đó mở sẵn. Thu gọn Base Liquid hoặc swap bột chỉ đổi
   hiển thị, giữ nguyên tick và hiển thị số inactive đang chọn cạnh nút. Inactive dùng màu nền/chữ
-  dịu hơn cùng nhãn tạm ngưng, vẫn đọc rõ và tick được; nút có focus và trạng thái mở rộng.
+  dịu hơn, vẫn đọc rõ và tick được; nút có focus và trạng thái mở rộng. Khi mở rộng, nhóm swap
+  inactive nằm dưới nhóm active với tiêu đề `Tạm ngưng` và đường phân cách trên toàn chiều ngang.
+  Từng lựa chọn swap inactive chỉ hiển thị tên, không lặp lại nhãn `Tạm ngưng` cạnh tên.
 - Danh sách bột mặc định của Fusion dùng toàn bộ catalog Admin, đánh dấu bột ngưng bán. Default
   Base Liquid inactive đang lưu luôn hiện trong select; mở nhóm inactive cho phép chọn thêm
   default inactive khi chỉnh sửa. Select Latte tham chiếu của bột giữ cả món inactive và gắn

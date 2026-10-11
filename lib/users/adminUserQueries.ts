@@ -7,6 +7,7 @@ import { adminVoucherDaysRemaining, effectiveAdminVoucherStatus, vietnamYearBoun
 import type {
   AdminUserOrder,
   AdminUserPage,
+  AdminUserListFilter,
   AdminUserSummary,
   AdminUserVoucher,
   AdminUserVoucherCategory,
@@ -15,13 +16,30 @@ import type {
 
 const PAGE_SIZE = 10;
 
-function customerFilter(q?: string): Prisma.UserWhereInput {
+function customerFilter(q: string | undefined, filter: AdminUserListFilter | undefined, now: Date): Prisma.UserWhereInput {
+  const where: Prisma.UserWhereInput = { role: "CUSTOMER", sourceMerge: { is: null } };
+  if (filter === "GHOST") {
+    where.AND = [
+      { OR: [{ password_hash: null }, { password_hash: "" }, { password_hash: "GHOST_USER_NO_PASSWORD" }] },
+      { OR: [{ google_sub: null }, { google_sub: "" }] },
+    ];
+  }
+  if (filter === "NO_EMAIL") where.AND = [{ OR: [{ email: null }, { email: "" }] }];
+  if (filter === "ORDER_TODAY" || filter === "ORDER_MONTH") {
+    const vietnam = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    const year = vietnam.getUTCFullYear();
+    const month = vietnam.getUTCMonth();
+    const day = vietnam.getUTCDate();
+    const start = new Date(Date.UTC(year, month, filter === "ORDER_TODAY" ? day : 1, -7));
+    const end = filter === "ORDER_TODAY" ? new Date(start.getTime() + 86_400_000)
+      : new Date(Date.UTC(year, month + 1, 1, -7));
+    where.orders = { some: { created_at: { gte: start, lt: end } } };
+  }
   const query = q?.trim();
-  if (!query) return { role: "CUSTOMER", sourceMerge: { is: null } };
+  if (!query) return where;
   const instagram = query.startsWith("@") ? query.slice(1) : query;
   return {
-    role: "CUSTOMER",
-    sourceMerge: { is: null },
+    ...where,
     OR: [
       { name: { contains: query, mode: "insensitive" } },
       { email: { contains: query, mode: "insensitive" } },
@@ -97,8 +115,8 @@ async function summarizeUsers(
 }
 
 /** Lists CUSTOMER accounts by latest completed order, followed by all remaining accounts. */
-export async function listAdminUsers(page: number, q?: string, now = new Date()): Promise<AdminUserPage<AdminUserSummary>> {
-  const where = customerFilter(q);
+export async function listAdminUsers(page: number, q?: string, now = new Date(), filter?: AdminUserListFilter): Promise<AdminUserPage<AdminUserSummary>> {
+  const where = customerFilter(q, filter, now);
   const offset = (page - 1) * PAGE_SIZE;
   const [total, completedCount] = await Promise.all([
     prisma.user.count({ where }),

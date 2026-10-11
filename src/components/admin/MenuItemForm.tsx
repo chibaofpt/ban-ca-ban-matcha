@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, useEffect } from "react";
+import { Fragment, useId, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useForm, Controller, useWatch } from "react-hook-form";
@@ -734,8 +734,18 @@ export default function MenuItemForm({
                   {selectableSwapPowders.map((powder) => {
                     const isInactive = !powder.is_available;
                     return (
+                      <Fragment key={powder.id}>
+                        {isInactive && powder.id === inactivePowders[0]?.id && (
+                          <motion.h4
+                            initial={false}
+                            animate={{ display: showInactivePowderRows ? "block" : "none", opacity: showInactivePowderRows ? 1 : 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="col-span-full mt-2 border-t border-border/60 pt-3 text-xs font-semibold text-muted-foreground"
+                          >
+                            Tạm ngưng
+                          </motion.h4>
+                        )}
                       <motion.label
-                        key={powder.id}
                         initial={false}
                         animate={isInactive ? {
                           display: showInactivePowderRows ? "flex" : "none",
@@ -756,12 +766,8 @@ export default function MenuItemForm({
                           className="shrink-0 rounded border-border text-primary focus:ring-primary/40"
                         />
                         <span className="min-w-0 truncate text-foreground">{powder.name}</span>
-                        {isInactive && (
-                          <span className="shrink-0 rounded-md border border-border/70 bg-muted px-1.5 py-0.5 text-[10px] font-medium text-foreground">
-                            Tạm ngưng
-                          </span>
-                        )}
                       </motion.label>
+                      </Fragment>
                     );
                   })}
                   {selectableSwapPowders.length === 0 && (

@@ -8,6 +8,17 @@ import {
 } from "@/lib/validations/adminUser";
 
 describe("validation quản lý khách hàng Admin", () => {
+  it.each(["GHOST", "ORDER_TODAY", "ORDER_MONTH", "NO_EMAIL"])("chấp nhận bộ lọc %s kết hợp trang và tìm kiếm", (filter) => {
+    expect(adminUserListQuerySchema.safeParse({ page: "2", q: " Mèo ", filter })).toMatchObject({
+      success: true, data: { page: 2, q: "Mèo", filter },
+    });
+  });
+
+  it("từ chối filter không hợp lệ và giữ request không filter tương thích", () => {
+    expect(adminUserListQuerySchema.safeParse({ filter: "REGISTERED" }).success).toBe(false);
+    expect(adminUserListQuerySchema.parse({})).toEqual({ page: 1 });
+  });
+
   it("chặn trang ngoài giới hạn và truy vấn dài hơn 50 ký tự", () => {
     expect(adminUserListQuerySchema.safeParse({ page: "0" }).success).toBe(false);
     expect(adminUserListQuerySchema.safeParse({ page: "10001" }).success).toBe(false);

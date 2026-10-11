@@ -19,8 +19,37 @@ Matching verified Google email activates that same identity. Gmail dots are cano
 dots remain significant. Email ghost creation rejects plus-addresses.
 
 A legacy phone ghost may be claimed only if it is an unblocked, unmerged CUSTOMER with no real
-password or Google subject and either a positive points log in its history or any voucher.
+password or Google subject and a positive current points balance, a positive points log in its
+history, or any voucher. A positive legacy balance remains eligible even when its original
+points logs are unavailable.
 A zero current points balance does not remove historical eligibility.
+
+## Login modal
+
+Opening the modal automatically prepares and loads the official Google sign-in button. There is
+no intermediate application button to reveal it. Google loading has an inline status/retry state
+and never waits for Turnstile before the user can select a Google account. Turnstile runs in
+parallel with `interaction-only` appearance; it is visible only when Cloudflare requires interaction.
+After Google selection, complete authentication only when both proofs pass under the
+[API contract](../../API.md#google-account-access). Pending verification continues automatically
+without another login click. CAPTCHA failure offers an explicit retry and retains the Google
+assertion while its preparation remains valid; expired or invalid Google proof needs a fresh start.
+Keep all credentials in component memory and prevent duplicate or overlapping login submissions.
+
+Below Google, show `Hoặc`, one visibly labeled `Số điện thoại hoặc Instagram` input and `Tiếp tục`.
+Email is not accepted here; email access uses Google. Next/Enter validates format locally and moves
+directly to the password step, without an account-existence request or disclosure. Keep existing
+phone/Instagram normalization. The password step displays the submitted identifier, a password
+input with visibility toggle, `Đăng nhập` and `Quay lại` to edit the identifier. Focus moves to the
+password on Next and returns to the identifier on Back; Back clears the password. Failed login
+keeps the form and existing server error behavior. Password access does not gain a CAPTCHA gate.
+The alternate method stays usable while Google's SDK or background verification is loading;
+disable overlapping submission only while an authentication request is pending.
+
+CLAIM/LINK/REAUTH keep their existing preparation flow. Successful login preserves customer
+intent, cart identity, staff routing and welcome-reward handling. Manual acceptance covers first
+open, Enter/Back/focus, password autofill, Google cancel/retry, delayed/failed Turnstile and the
+interactive challenge on mobile and desktop; mock tests do not prove live widget behavior.
 
 ## Admin claim and customer acceptance
 

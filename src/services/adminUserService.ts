@@ -4,6 +4,7 @@ import type { ApiError, ApiResponse } from '@/src/lib/types/api';
 import type {
   AdminUserMutationResult, AdminUserOrder, AdminUserPage, AdminUserPasswordResetResult,
   AdminUserPatch, AdminUserPointsInput, AdminUserPointsResult, AdminUserSummary,
+  AdminUserListFilter,
   AdminUserVoucher, AdminUserVoucherCategory, AdminUserVoucherPackage,
 } from '@/contracts/admin/user';
 import { ApiServiceError } from '@/src/lib/api/serviceError';
@@ -25,7 +26,7 @@ const URL = {
 
 export const adminUserKeys = {
   all: ['admin', 'users'] as const,
-  list: (page: number, q: string) => ['admin', 'users', 'list', page, q] as const,
+  list: (page: number, q: string, filter?: AdminUserListFilter) => ['admin', 'users', 'list', page, q, filter ?? 'ALL'] as const,
   detail: (token: string) => ['admin', 'users', 'detail', token] as const,
   orders: (token: string, page: number) => ['admin', 'users', 'orders', token, page] as const,
   order: (token: string, id: string) => ['admin', 'users', 'order', token, id] as const,
@@ -47,8 +48,8 @@ async function unwrap<T>(request: Promise<AxiosResponse<ApiResponse<T>>>): Promi
 }
 
 /** Fetches one admin customer page with server-owned ordering and totals. */
-export async function fetchAdminUsers(page = 1, q = ''): Promise<AdminUserPage<AdminUserSummary>> {
-  return unwrap(apiClient.get(URL.list, { params: { page, q } }));
+export async function fetchAdminUsers(page = 1, q = '', filter?: AdminUserListFilter): Promise<AdminUserPage<AdminUserSummary>> {
+  return unwrap(apiClient.get(URL.list, { params: { page, q, ...(filter ? { filter } : {}) } }));
 }
 
 /** Fetches the current summary for a public customer QR token. */

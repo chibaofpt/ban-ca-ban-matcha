@@ -21,6 +21,7 @@ import { OverlayStackProvider } from "@/src/components/ui/OverlayStackProvider";
 import { ResponsiveOverlay } from "@/src/components/ui/ResponsiveOverlay";
 import { useDebounce } from "@/src/hooks/useDebounce";
 import type { AdminUserPatch, AdminUserSummary as AdminUserSummaryDto } from "@/src/lib/types/adminUser";
+import type { AdminUserListFilter } from "@/contracts/admin/user";
 import { ApiServiceError } from "@/src/services/orderService";
 import {
   adminUserKeys, fetchAdminUser, fetchAdminUserOrder, fetchAdminUsers,
@@ -28,6 +29,12 @@ import {
 } from "@/src/services/adminUserService";
 
 type AccountIntent = { action: AdminUserPatch; title: string; message: string; confirmLabel: string; destructive?: boolean };
+const CUSTOMER_FILTERS: { value: AdminUserListFilter; label: string }[] = [
+  { value: "GHOST", label: "Ghost user" },
+  { value: "ORDER_TODAY", label: "Order trong ngày" },
+  { value: "ORDER_MONTH", label: "Order trong tháng" },
+  { value: "NO_EMAIL", label: "Chưa có email" },
+];
 type DetailTab = "orders" | "vouchers";
 type DetailView =
   | { kind: "customer" }
@@ -50,6 +57,7 @@ export default function AdminUsersPage() {
   const [input, setInput] = useState("");
   const debouncedQuery = useDebounce(input.trim(), 400);
   const [page, setPage] = useState(1);
+  const [filter, setFilter] = useState<AdminUserListFilter | undefined>();
   const [selected, setSelected] = useState<AdminUserSummaryDto | null>(null);
   const [detailView, setDetailView] = useState<DetailView>({ kind: "customer" });
   const [activeTab, setActiveTab] = useState<DetailTab>("orders");
@@ -62,7 +70,7 @@ export default function AdminUsersPage() {
   const [claimBusy, setClaimBusy] = useState(false);
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
 
-  const listQuery = useQuery({ queryKey: adminUserKeys.list(page, debouncedQuery), queryFn: () => fetchAdminUsers(page, debouncedQuery) });
+  const listQuery = useQuery({ queryKey: adminUserKeys.list(page, debouncedQuery, filter), queryFn: () => fetchAdminUsers(page, debouncedQuery, filter) });
   const detailQuery = useQuery({
     queryKey: adminUserKeys.detail(selected?.qr_token ?? ""),
     queryFn: () => fetchAdminUser(selected!.qr_token),
@@ -146,6 +154,13 @@ export default function AdminUsersPage() {
   return <OverlayStackProvider><main className="mx-auto w-full max-w-5xl space-y-5 overflow-x-hidden px-3 py-6 pb-28 md:px-8">
     <header><h1 className="text-2xl font-bold">Quản lý khách hàng</h1><p className="mt-1 text-sm text-muted-foreground">Tìm theo tên, số điện thoại, Instagram hoặc email.</p></header>
     <div className="flex min-h-11 min-w-0 items-center gap-2 rounded-xl border bg-background px-3"><Search className="h-4 w-4 shrink-0 text-muted-foreground" /><input id="admin-user-search" value={input} onChange={(event) => handleInputChange(event.target.value)} placeholder="Tìm theo tên, SĐT, @instagram, email" className="min-w-0 flex-1 bg-transparent text-sm outline-none" /></div>
+    <div role="group" aria-label="Lọc khách hàng" className="grid grid-cols-2 gap-2 md:grid-cols-4">
+      {CUSTOMER_FILTERS.map((item) => <Button key={item.value} type="button" variant={filter === item.value ? "default" : "outline"}
+        aria-pressed={filter === item.value} className="min-h-11 min-w-0 px-2 text-sm"
+        onClick={() => { setFilter((current) => current === item.value ? undefined : item.value); setPage(1); }}>
+        {item.label}
+      </Button>)}
+    </div>
     {listQuery.isPending ? <p role="status" className="flex justify-center gap-2 py-12 text-muted-foreground"><Loader2 className="animate-spin" />Đang tải khách hàng…</p> : listQuery.isError ? <div className="space-y-3 rounded-2xl bg-destructive/10 p-5 text-destructive"><p role="alert">Không tải được danh sách khách hàng.</p><Button variant="outline" onClick={() => void listQuery.refetch()}>Thử lại</Button></div> : listQuery.data.items.length === 0 ? <p className="rounded-2xl border border-dashed p-10 text-center text-muted-foreground">Không tìm thấy khách hàng phù hợp.</p> : <section className="space-y-3" aria-label="Danh sách khách hàng">{listQuery.data.items.map((item) => <AdminUserSummary key={item.qr_token} user={item} interactive onClick={() => setSelected(item)} />)}<AdminUserPagination page={listQuery.data.page} totalPages={listQuery.data.total_pages} disabled={listQuery.isFetching} onPageChange={setPage} /></section>}
 
     <ResponsiveOverlay

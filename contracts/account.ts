@@ -3,11 +3,15 @@ import type { WelcomeRewardSummary } from "./reward";
 
 export type GoogleAuthPurpose = "LOGIN" | "CLAIM" | "LINK" | "REAUTH";
 
-export interface GoogleChallengePayload {
-  purpose: GoogleAuthPurpose;
+export type GoogleChallengePayload = {
+  purpose: "LOGIN";
+  turnstile_token?: string;
+  current_password?: string;
+} | {
+  purpose: Exclude<GoogleAuthPurpose, "LOGIN">;
   turnstile_token: string;
   current_password?: string;
-}
+};
 export interface GoogleChallengeResult {
   challenge_id: string;
   nonce: string;
@@ -16,6 +20,7 @@ export interface GoogleChallengeResult {
 export interface GoogleCredentialPayload {
   challenge_id: string;
   credential: string;
+  turnstile_token?: string;
 }
 export interface AccountAuthResult extends AuthUser {
   welcome_reward: WelcomeRewardSummary | null;

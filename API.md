@@ -452,8 +452,8 @@ include nullable `email`. Clients use `qr_token` for wallet/cart ownership, incl
 
 | Method/path | Input | Success data |
 |---|---|---|
-| POST `/api/auth/google/challenge` | `{ purpose: LOGIN\|CLAIM\|LINK\|REAUTH, turnstile_token, current_password? }` | `{ challenge_id, nonce, expires_at }` |
-| POST `/api/auth/google` | `{ challenge_id, credential }` | Flat AuthUser plus `welcome_reward`, or `{ reauth_proof }` for REAUTH |
+| POST `/api/auth/google/challenge` | `{ purpose: LOGIN\|CLAIM\|LINK\|REAUTH, turnstile_token?, current_password? }`; token may be omitted only for LOGIN preparation | `{ challenge_id, nonce, expires_at }` |
+| POST `/api/auth/google` | `{ challenge_id, credential, turnstile_token? }`; token is required for prepared LOGIN | Flat AuthUser plus `welcome_reward`, or `{ reauth_proof }` for REAUTH |
 | POST `/api/auth/claim/context` | `{ token? }`; absent token resumes cookie | `{ expires_at, server_now }` |
 | POST `/api/auth/claim/password` | `{ password, password_confirmation, turnstile_token }` | Flat AuthUser plus `welcome_reward` |
 | POST `/api/admin/users/[userQrToken]/claim-link` | `{}`, ADMIN only | `{ url, expires_at, server_now }` |
@@ -466,6 +466,18 @@ Challenge purpose and browser binding are mandatory; LINK/REAUTH additionally bi
 and session. Proof consumption and credential/account writes share a transaction. Reauth is
 short-lived, single-use and cannot authorize another account/session. Google-only password setup
 is restricted to eligible legacy-origin accounts.
+
+LOGIN preparation without `turnstile_token` returns a five-minute signed, browser-bound nonce
+proof as the opaque `challenge_id` (`login.` prefix). It does not allocate a database attempt,
+account or session. Exchange requires fresh `google_auth` Turnstile verification and the Google
+assertion; expiry is rechecked before transactional consumption. A consumed attempt in the
+existing Google proof table prevents replay. Preparation uses a purpose-separated signing key
+derived from `JWT_SECRET` and binds the configured Google client ID. Clients echo the opaque
+challenge ID without parsing it. Both requests keep the shared account mutation IP quota.
+
+Existing challenge requests with a CAPTCHA still return a UUID and exchange without a second
+token, including LOGIN. CLAIM/LINK/REAUTH still require CAPTCHA before challenge creation.
+Google verification outages fail closed; missing/invalid tokens never complete a login.
 
 Claim URLs use `/nhan-tai-khoan#<opaque-token>`. Only the hash is persisted. Binding/resume neither
 consumes the link nor extends its original five-minute deadline. Regeneration invalidates previous
@@ -647,7 +659,14 @@ Every route in this section requires an authenticated `ADMIN`. Missing authentic
 `users.qr_token` UUIDs. A missing token, a non-CUSTOMER account, or a malformed token is reported as
 `404 NOT_FOUND` without exposing `users.id`.
 
-- `GET /api/admin/users?page=1&q?=` returns a 10-row page. Customers with at least one `COMPLETED`
+- `GET /api/admin/users?page=1&q?=&filter?=` returns a 10-row page. Optional `filter` accepts
+  `GHOST`, `ORDER_TODAY`, `ORDER_MONTH`, or `NO_EMAIL`; other values return `400 VALIDATION_ERROR`.
+  `GHOST` matches unregistered customers of either origin (no password credential and no Google
+  subject), independently of verification, block state, points or voucher balance. `NO_EMAIL`
+  matches null/empty email. Order filters match customers with at least one order of any status
+  created in the current Vietnam calendar day/month, using an inclusive start and exclusive end.
+  Search and filter combine before counting and pagination; omitting `filter` keeps the full list.
+  Customers with at least one `COMPLETED`
   order are ordered by the maximum `orders.updated_at` across their full history; customers without
   a completed order form a stable tail. Search matches name, phone, email or Instagram alias. Each summary
   contains `qr_token`, nullable `phone_number` and `email`, `has_password`, `can_send_claim_link`, identity fields, `is_registered`, `is_verified`, `is_blocked`,

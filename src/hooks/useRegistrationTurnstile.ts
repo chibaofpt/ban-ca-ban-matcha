@@ -5,7 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 interface TurnstileApi {
   render(container: HTMLElement, options: {
     sitekey: string; action: string; callback: (token: string) => void;
+    appearance: "always" | "interaction-only";
     "expired-callback": () => void; "error-callback": () => boolean;
+    "timeout-callback": () => void;
   }): string;
   remove(id: string): void;
   reset(id: string): void;
@@ -35,7 +37,7 @@ function load(): Promise<TurnstileApi> {
 }
 
 /** Explicitly load and manage the third-party widget behind a browser adapter hook. */
-export function useRegistrationTurnstile(siteKey?: string, action = "registration_otp") {
+export function useRegistrationTurnstile(siteKey?: string, action = "registration_otp", appearance: "always" | "interaction-only" = "always") {
   const containerRef = useRef<HTMLDivElement>(null);
   const widget = useRef<string | null>(null);
   const [generation, setGeneration] = useState(0);
@@ -48,10 +50,11 @@ export function useRegistrationTurnstile(siteKey?: string, action = "registratio
       if (cancelled || !containerRef.current) return;
       setToken(""); setStatus("ready");
       widget.current = api.render(containerRef.current, {
-        sitekey: siteKey, action,
+        sitekey: siteKey, action, appearance,
         callback: (value) => { if (!cancelled) { setToken(value); setStatus("verified"); } },
         "expired-callback": () => { if (!cancelled) { setToken(""); setStatus("ready"); } },
         "error-callback": () => { if (!cancelled) { setToken(""); setStatus("error"); } return true; },
+        "timeout-callback": () => { if (!cancelled) { setToken(""); setStatus("error"); } },
       });
     }).catch(() => { if (!cancelled) { setToken(""); setStatus("error"); } });
     return () => {
@@ -59,11 +62,11 @@ export function useRegistrationTurnstile(siteKey?: string, action = "registratio
       if (widget.current) window.turnstile?.remove(widget.current);
       widget.current = null;
     };
-  }, [siteKey, action, generation]);
+  }, [siteKey, action, appearance, generation]);
   const reset = useCallback(() => {
     if (widget.current) window.turnstile?.reset(widget.current);
     setToken(""); setStatus(widget.current ? "ready" : "error");
   }, []);
   const reload = useCallback(() => { setToken(""); setStatus("loading"); setGeneration((value) => value + 1); }, []);
-  return { containerRef, token, status, reset, reload };
+  return { containerRef, token, status: siteKey ? status : "error" as const, reset, reload };
 }

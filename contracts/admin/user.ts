@@ -141,9 +141,12 @@ export interface AdminUserPointsResult {
   points_balance: number;
 }
 
+export type AdminUserListFilter = "GHOST" | "ORDER_TODAY" | "ORDER_MONTH" | "NO_EMAIL";
+
 export interface AdminUserListQuery {
   page: number;
   q?: string;
+  filter?: AdminUserListFilter;
 }
 
 export interface AdminUserPageQuery {

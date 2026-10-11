@@ -157,6 +157,12 @@ trong transaction không retry khi gọi Redis, rồi chỉ dispatch provider sa
 Redis reservation đã xảy ra nhưng transaction lỗi được giữ lại; không tự hoàn quota hoặc gửi lại.
 CSP giữ nonce và bổ sung đúng nguồn Google GIS/Cloudflare cần cho widget. Google ID token được xác minh server-side qua jose/JWKS; không lưu Google access/refresh token. OTP chỉ dùng cho trùng legacy ghost đủ điều kiện; admin quản lý công tắc/quota và số dư trong Cài đặt.
 
+Modal login chuẩn bị Google bằng signed proof ngắn hạn trước CAPTCHA, không tạo DB attempt ở
+bước mở modal. Proof dùng key tách purpose từ `JWT_SECRET`; exchange consume vào bảng Google
+proof hiện có trong cùng transaction với account/session. Contract và compatibility thuộc
+[API Google account access](API.md#google-account-access); tương tác widget và form hai bước thuộc
+[Account access](docs/specs/account-access.md#login-modal).
+
 Google GIS, tạo challenge và xác minh audience dùng chung `NEXT_PUBLIC_GOOGLE_CLIENT_ID` trong
 mỗi môi trường; đây là public identifier. Env inventory thuộc [.env.local.example](.env.local.example).
 Đổi Client ID cần build/deploy mới vì Next.js đưa giá trị public vào browser bundle lúc build.

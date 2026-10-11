@@ -19,10 +19,10 @@ export function isRegisteredAccount(user: AccountIdentityInput): boolean {
 }
 
 /** Determine whether an unclaimed legacy customer ghost has evidence worth claiming. */
-export function canClaimLegacyGhost(user: AccountIdentityInput, evidence: LegacyGhostEvidence): boolean {
+export function canClaimLegacyGhost(user: AccountIdentityInput & { points_balance: number }, evidence: LegacyGhostEvidence): boolean {
   return isEligibleLegacyCustomer(user)
     && !isRegisteredAccount(user)
-    && (evidence.hasEarnedPoints || evidence.hasVouchers);
+    && (user.points_balance > 0 || evidence.hasEarnedPoints || evidence.hasVouchers);
 }
 
 /** Determine whether a Google-linked legacy customer may create its first password. */

@@ -20,6 +20,13 @@ find the same account; existing suffix search remains available. Rows and detail
 local phone numbers according to [the shared phone standard](../../SPECIFICATION.md#vietnamese-phone-input-and-display). Customers with completed orders appear first, sorted by the most
 recent completed-order update across full history; customers with no completed order form the tail.
 
+Four toggle buttons below search are labeled `Ghost user`, `Order trong ngày`, `Order trong tháng`,
+and `Chưa có email`. Exactly one filter may be active; pressing it again returns to the full list.
+Changing filters resets to page one and retains search. Mobile uses a two-column grid, expanding
+to four columns on larger screens; the selected button has a distinct style and `aria-pressed`.
+The filter meanings and date boundaries belong to the linked API contract. Filtering ghosts does
+not imply every result is eligible for a claim link.
+
 Each row shows identity, registration, verification and block state, with points presented as
 "Bạn đang có n điểm ká" on its own prominent green line and the value emphasized. Current
 Vietnam-year completed spend uses the server summary; the UI does not recompute money or derive
@@ -114,6 +121,9 @@ While the Vouchers tab is active, the overlay header shows "Voucher" above the s
 
 ## Acceptance
 
+- Khi Admin chọn một trong bốn bộ lọc, thì danh sách/tổng số/phân trang phản ánh cùng bộ lọc và
+  nội dung tìm kiếm; chuyển bộ lọc về trang một, bấm lại nút đang chọn bỏ lọc. Trên mobile bốn nút
+  nằm trong hai cột, không tràn ngang; trạng thái chọn và focus hiển thị rõ.
 - Khi danh sách đi qua ranh giới trang giữa khách có và không có đơn hoàn tất, thì thứ tự vẫn giữ
   nhóm completed trước và tail sau, mỗi trang tối đa mười dòng.
 - Khi Admin mở gift hoặc order detail rồi quay lại, thì chỉ một customer overlay còn mở và customer

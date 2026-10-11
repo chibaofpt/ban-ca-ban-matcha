@@ -31,7 +31,8 @@ function loadGoogle(): Promise<GoogleIdentityApi> {
 export function useGoogleIdentity(nonce: string | undefined, onCredential: (credential: string) => void) {
   const containerRef = useRef<HTMLDivElement>(null);
   const callbackRef = useRef(onCredential);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{ nonce: string; message: string } | null>(null);
+  const [renderedNonce, setRenderedNonce] = useState<string | null>(null);
   useEffect(() => { callbackRef.current = onCredential; }, [onCredential]);
   useEffect(() => {
     if (!nonce) return;
@@ -44,8 +45,11 @@ export function useGoogleIdentity(nonce: string | undefined, onCredential: (cred
       api.initialize({ client_id: clientId, nonce, ux_mode: "popup", auto_select: false, callback: ({ credential }) => { if (active) callbackRef.current(credential); } });
       container.replaceChildren();
       api.renderButton(container, { type: "standard", theme: "outline", size: "large", text: "signin_with", width: Math.min(320, container.clientWidth || 280) });
-    }).catch((failure: unknown) => { if (active) setError(failure instanceof Error ? failure.message : "Google chưa khả dụng."); });
+      setFailure(null);
+      setRenderedNonce(nonce);
+    }).catch((error: unknown) => { if (active) setFailure({ nonce, message: error instanceof Error ? error.message : "Google chưa khả dụng." }); });
     return () => { active = false; container?.replaceChildren(); };
   }, [nonce]);
-  return { containerRef, error, configured: Boolean(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) };
+  return { containerRef, error: failure && failure.nonce === nonce ? failure.message : null,
+    ready: Boolean(nonce && renderedNonce === nonce), configured: Boolean(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID) };
 }

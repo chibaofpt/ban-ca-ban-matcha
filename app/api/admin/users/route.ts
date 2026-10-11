@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const parsed = adminUserListQuerySchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Validation failed", code: "VALIDATION_ERROR" }, { status: 400 });
   try {
-    return NextResponse.json({ data: await listAdminUsers(parsed.data.page, parsed.data.q) });
+    return NextResponse.json({ data: await listAdminUsers(parsed.data.page, parsed.data.q, undefined, parsed.data.filter) });
   } catch (error) {
     captureServerException(error, { operation: "list_admin_users" });
     return NextResponse.json({ error: "Internal server error", code: "INTERNAL_ERROR" }, { status: 500 });

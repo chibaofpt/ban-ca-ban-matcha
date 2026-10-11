@@ -6,13 +6,14 @@ import {
   type AccountIdentityInput,
 } from "@/lib/auth/accountIdentityPolicy";
 
-const legacyGhost: AccountIdentityInput = {
+const legacyGhost: AccountIdentityInput & { points_balance: number } = {
   password_hash: "GHOST_USER_NO_PASSWORD",
   google_sub: null,
   account_origin: "LEGACY_PHONE",
   role: "CUSTOMER",
   is_blocked: false,
   phone_number: "0901234567",
+  points_balance: 0,
   merged: false,
 };
 
@@ -53,6 +54,15 @@ describe("Chính sách identity tài khoản", () => {
 });
 
 describe("Claim ghost phone cũ", () => {
+  it.each([
+    { balance: 7, eligible: true },
+    { balance: 0, eligible: false },
+    { balance: -3, eligible: false },
+  ])("số dư $balance không có lịch sử/voucher trả về quyền claim $eligible", ({ balance, eligible }) => {
+    const ghost = { ...legacyGhost, points_balance: balance };
+    expect(canClaimLegacyGhost(ghost, { hasEarnedPoints: false, hasVouchers: false })).toBe(eligible);
+  });
+
   it("cho claim khi từng tích điểm dù không có voucher", () => {
     expect(canClaimLegacyGhost(legacyGhost, { hasEarnedPoints: true, hasVouchers: false })).toBe(true);
   });
@@ -72,6 +82,10 @@ describe("Claim ghost phone cũ", () => {
   ])("từ chối ghost không đủ điều kiện: %j", (changes) => {
     expect(canClaimLegacyGhost({ ...legacyGhost, ...changes }, {
       hasEarnedPoints: true, hasVouchers: true,
+    })).toBe(false);
+    const ghostWithBalance = { ...legacyGhost, ...changes, points_balance: 7 };
+    expect(canClaimLegacyGhost(ghostWithBalance, {
+      hasEarnedPoints: false, hasVouchers: false,
     })).toBe(false);
   });
 
