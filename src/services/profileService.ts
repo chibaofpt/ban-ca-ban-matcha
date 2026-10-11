@@ -51,11 +51,12 @@ export async function getProfile(): Promise<CustomerProfile> {
 export async function updateProfile(
   payload: UpdateProfilePayload,
 ): Promise<CustomerProfile> {
-  const response = await apiClient.patch<ApiResponse<CustomerProfile>>(
-    URL.profile,
-    payload,
-  );
-  return response.data.data;
+  try {
+    const response = await apiClient.patch<ApiResponse<CustomerProfile>>(URL.profile, payload);
+    return response.data.data;
+  } catch (error: unknown) {
+    throw toApiServiceError(error) ?? error;
+  }
 }
 
 /** Changes the current customer's password and preserves the session contract. */

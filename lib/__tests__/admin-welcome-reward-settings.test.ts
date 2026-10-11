@@ -5,7 +5,7 @@ import { getAdminWelcomeRewardSettings, updateAdminWelcomeRewardSettings } from 
 describe("Workflow settings welcome reward", () => {
   it("project POINTS revision 0 khi singleton chưa tồn tại", async () => {
     const db = { welcomeRewardSettings: { findUnique: vi.fn().mockResolvedValue(null) } } as unknown as AdminRewardDatabase;
-    await expect(getAdminWelcomeRewardSettings(db)).resolves.toEqual({ mode: "POINTS", fixed_package_id: null, active_campaign_id: null, revision: 0 });
+    await expect(getAdminWelcomeRewardSettings(db)).resolves.toEqual({ mode: "POINTS", points_amount: 5, fixed_package_id: null, active_campaign_id: null, revision: 0 });
   });
 
   it("từ chối package fixed đã hết hạn", async () => {

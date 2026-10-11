@@ -23,7 +23,8 @@ export interface SessionWithUser {
   user: {
     id: string;
     role: string;
-    phone_number: string;
+    phone_number: string | null;
+    sourceMerge?: { target_user_id: string } | { target_user_id: string }[] | null;
     is_blocked: boolean;
   };
 }
@@ -84,7 +85,7 @@ export async function findSessionWithUser(refreshToken: string): Promise<Session
     const { baseUrl, headers } = getSupabaseConfig();
     const url = new URL(`${baseUrl}/sessions`);
     url.searchParams.set("or", `(refresh_token.eq.${refreshToken},previous_refresh_token.eq.${refreshToken})`);
-    url.searchParams.set("select", "id,user_id,refresh_token,previous_refresh_token,rotating_at,expires_at,user:users(id,role,phone_number,is_blocked)");
+    url.searchParams.set("select", "id,user_id,refresh_token,previous_refresh_token,rotating_at,expires_at,user:users(id,role,phone_number,is_blocked,sourceMerge:account_merges!account_merges_source_user_id_fkey(target_user_id))");
     url.searchParams.set("limit", "1");
 
     const res = await fetch(url.toString(), { headers });
@@ -92,7 +93,7 @@ export async function findSessionWithUser(refreshToken: string): Promise<Session
     if (!res.ok) return null;
 
     const rows = (await res.json()) as SessionWithUser[];
-    return rows.length > 0 ? rows[0] : null;
+    return rows[0] && !isMerged(rows[0]) ? rows[0] : null;
   } catch {
     return null;
   }
@@ -106,12 +107,12 @@ export async function findLiveSessionById(sessionId: string, userId: string): Pr
     url.searchParams.set("id", `eq.${sessionId}`);
     url.searchParams.set("user_id", `eq.${userId}`);
     url.searchParams.set("expires_at", `gt.${new Date().toISOString()}`);
-    url.searchParams.set("select", "id,user_id,refresh_token,previous_refresh_token,rotating_at,expires_at,user:users(id,role,phone_number,is_blocked)");
+    url.searchParams.set("select", "id,user_id,refresh_token,previous_refresh_token,rotating_at,expires_at,user:users(id,role,phone_number,is_blocked,sourceMerge:account_merges!account_merges_source_user_id_fkey(target_user_id))");
     url.searchParams.set("limit", "1");
     const response = await fetch(url.toString(), { headers });
     if (!response.ok) return null;
     const rows = (await response.json()) as SessionWithUser[];
-    return rows[0] ?? null;
+    return rows[0] && !isMerged(rows[0]) ? rows[0] : null;
   } catch {
     return null;
   }
@@ -125,7 +126,7 @@ export async function rotateSessionInPlace(
   if (!RefreshTokenSchema.safeParse(presentedToken).success) return null;
   const now = new Date();
   const rotatingAt = session.rotating_at ? new Date(session.rotating_at) : null;
-  if (session.user.is_blocked) return null;
+  if (session.user.is_blocked || isMerged(session)) return null;
   if (!(new Date(session.expires_at) > now)) return null;
   const inGrace = rotatingAt !== null && rotatingAt.getTime() <= now.getTime() && now.getTime() - rotatingAt.getTime() <= 30_000;
   if (session.rotating_at && session.previous_refresh_token === null) return null;
@@ -157,7 +158,7 @@ export async function rotateSessionInPlace(
 
     const winner = await findSessionWithUser(presentedToken);
     const checkedAt = Date.now();
-    if (!winner || winner.user.is_blocked || winner.id !== session.id || winner.user_id !== session.user_id || winner.user.id !== session.user_id ||
+    if (!winner || winner.user.is_blocked || isMerged(winner) || winner.id !== session.id || winner.user_id !== session.user_id || winner.user.id !== session.user_id ||
         !(new Date(winner.expires_at).getTime() > checkedAt) || !winner.rotating_at ||
         new Date(winner.rotating_at).getTime() > checkedAt || checkedAt - new Date(winner.rotating_at).getTime() > 30_000 ||
         (winner.refresh_token !== presentedToken && winner.previous_refresh_token !== presentedToken)) return null;
@@ -300,3 +301,7 @@ export async function markSessionRotating(sessionId: string): Promise<RotationCl
   }
 }
 
+
+function isMerged(session: SessionWithUser): boolean {
+  return Array.isArray(session.user.sourceMerge) ? session.user.sourceMerge.length > 0 : Boolean(session.user.sourceMerge);
+}

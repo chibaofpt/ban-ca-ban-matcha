@@ -24,6 +24,24 @@ const token = "550e8400-e29b-41d4-a716-446655440000";
 describe("Admin customer routes", () => {
   beforeEach(() => { vi.clearAllMocks(); });
 
+  it.each(["GHOST", "ORDER_TODAY", "ORDER_MONTH", "NO_EMAIL"])("truyền bộ lọc %s và tìm kiếm tới truy vấn sau khi xác thực Admin", async (filter) => {
+    mocks.session.mockResolvedValue({ id: "admin", role: "ADMIN" });
+    const page = { items: [], total: 0, page: 2, total_pages: 0 };
+    mocks.listUsers.mockResolvedValue(page);
+    const response = await listUsers(new NextRequest(`http://localhost/api/admin/users?page=2&q=Meo&filter=${filter}`));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ data: page });
+    expect(mocks.listUsers).toHaveBeenCalledWith(2, "Meo", undefined, filter);
+  });
+
+  it("từ chối filter không hợp lệ trước khi đọc khách hàng", async () => {
+    mocks.session.mockResolvedValue({ id: "admin", role: "ADMIN" });
+    const response = await listUsers(new NextRequest("http://localhost/api/admin/users?filter=REGISTERED"));
+    expect(response.status).toBe(400);
+    expect((await response.json()).code).toBe("VALIDATION_ERROR");
+    expect(mocks.listUsers).not.toHaveBeenCalled();
+  });
+
   it("authenticates before protected list work and distinguishes 401/403", async () => {
     mocks.session.mockResolvedValueOnce(null);
     expect((await listUsers(new NextRequest("http://localhost/api/admin/users"))).status).toBe(401);

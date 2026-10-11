@@ -3,6 +3,7 @@ import type { RegisterPayload } from "./auth";
 export interface RegistrationOtpChallenge {
   challenge_id: string;
   masked_phone: string;
+  server_now: string;
   expires_at: string;
   resend_at: string;
   delivery_status: "accepted" | "pending" | "unknown";

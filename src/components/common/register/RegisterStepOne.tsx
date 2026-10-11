@@ -1,5 +1,7 @@
 "use client";
 
+import { toLocalPhone } from "@/src/utils/phone";
+
 import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -42,8 +44,8 @@ export default function RegisterStepOne({
     formState: { errors, isSubmitting },
   } = useForm<RegisterStepOneValues>({
     resolver: zodResolver(schema),
-    mode: "onChange",
-    defaultValues: initialValues ?? { phone_number: "", password: "" },
+    mode: "onBlur",
+    defaultValues: initialValues ? { ...initialValues, phone_number: toLocalPhone(initialValues.phone_number) } : { phone_number: "", password: "" },
   });
 
   const submit = async (values: RegisterStepOneValues) => {
@@ -75,6 +77,7 @@ export default function RegisterStepOne({
             autoComplete="tel"
             placeholder="091 234 5678"
             {...register("phone_number", {
+              onBlur: (event) => setValue("phone_number", toLocalPhone(event.target.value), { shouldValidate: true }),
               onChange: (event) =>
                 setValue(
                   "phone_number",

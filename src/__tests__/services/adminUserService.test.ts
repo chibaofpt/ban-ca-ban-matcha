@@ -6,11 +6,46 @@ import { apiClient } from '@/src/lib/api/client';
 import {
   fetchAdminUsers, fetchAdminUser, fetchAdminUserOrders, fetchAdminUserOrder,
   fetchAdminUserVouchers, fetchAdminUserVoucherPackages, giftAdminUserPoints, updateAdminUser,
+  adminUserKeys, refundAdminUserVoucher,
 } from '@/src/services/adminUserService';
 import { ApiServiceError } from '@/src/services/orderService';
 
 describe('Service quản lý khách hàng', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('hoàn điểm bằng POST với token voucher và trả kết quả server, không gửi số điểm', async () => {
+    const result = { qr_token: 'voucher-token', status: 'REFUNDED', points_refunded: 25, points_balance: 65 };
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { data: result } });
+    await expect(refundAdminUserVoucher('customer/token', 'voucher-token')).resolves.toEqual(result);
+    expect(apiClient.post).toHaveBeenCalledWith('/api/admin/users/customer%2Ftoken/vouchers/refund', { qr_token: 'voucher-token' });
+  });
+
+  it.each([
+    { status: 409, code: 'CONFLICT', message: 'Voucher không còn đủ điều kiện', reason: 'REFUND_NOT_ALLOWED' },
+    { status: 422, code: 'BUSINESS_RULE_VIOLATION', message: 'Số điểm vượt giới hạn', reason: 'POINTS_BALANCE_LIMIT' },
+  ])('giữ status $status, message, code và lý do lỗi hoàn điểm', async ({ status, code, message, reason }) => {
+    vi.mocked(apiClient.post).mockRejectedValueOnce({ isAxiosError: true, response: {
+      status, data: { error: message, code, details: { reason } },
+    } });
+    const error = await refundAdminUserVoucher('customer-token', 'voucher-token').catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ApiServiceError);
+    expect(error).toMatchObject({ message, status, code, details: { reason } });
+  });
+
+  it('giữ nguyên lỗi kết nối khi hoàn điểm không có phản hồi server', async () => {
+    const connectionError = new Error('offline');
+    vi.mocked(apiClient.post).mockRejectedValueOnce(connectionError);
+    await expect(refundAdminUserVoucher('customer-token', 'voucher-token')).rejects.toBe(connectionError);
+  });
+
+  it.each(["GHOST", "ORDER_TODAY", "ORDER_MONTH", "NO_EMAIL"] as const)("gửi filter %s và tách cache khỏi danh sách không lọc", async (filter) => {
+    const page = { items: [], total: 0, page: 1, total_pages: 0 };
+    vi.mocked(apiClient.get).mockResolvedValue({ data: { data: page } });
+    await expect(fetchAdminUsers(1, "Mèo", filter)).resolves.toEqual(page);
+    expect(apiClient.get).toHaveBeenCalledWith('/api/admin/users', { params: { page: 1, q: "Mèo", filter } });
+    expect(adminUserKeys.list(1, "Mèo", filter)).not.toEqual(adminUserKeys.list(1, "Mèo"));
+    expect(adminUserKeys.list(1, "Mèo", filter)).toContain(filter);
+  });
 
   it('gửi trang và tìm kiếm rồi trả đúng trang dữ liệu từ server', async () => {
     const page = { items: [{ qr_token: 'customer-token', name: 'Bạn Cá' }], total: 12, page: 2, total_pages: 2 };

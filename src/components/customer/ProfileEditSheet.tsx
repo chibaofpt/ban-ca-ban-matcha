@@ -6,6 +6,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
 import { Drawer } from "vaul";
 import { AtSign, Eye, EyeOff, Lock, User, X } from "lucide-react";
+import { ApiServiceError } from "@/src/lib/api/serviceError";
+import { GoogleAccountButton } from "@/src/components/common/GoogleAccountButton";
+import { AccountPhoneForm } from "@/src/components/customer/AccountPhoneForm";
 import { ConfirmModal } from "@/src/components/ui/ConfirmModal";
 import { ProfileEditFooter } from "@/src/components/customer/profile/ProfileEditFooter";
 import {
@@ -23,12 +26,15 @@ import {
   normalizeProfileInstagram,
 } from "@/src/lib/utils/profileEdit";
 import { formatVietnamPhone } from "@/src/utils/display";
+import type { AccountAuthResult } from "@/contracts/account";
 
 interface ProfileEditSheetProps {
   open: boolean;
   profile: CustomerProfile;
   onClose: () => void;
   onSubmit: (payload: UpdateProfilePayload) => Promise<void>;
+  onPhoneSaved: () => Promise<void>;
+  onPhoneMerged: (result: AccountAuthResult) => void;
 }
 
 /** Mobile-first sheet for editing customer name and Instagram alias. */
@@ -37,7 +43,10 @@ export function ProfileEditSheet({
   profile,
   onClose,
   onSubmit,
+  onPhoneSaved,
+  onPhoneMerged,
 }: ProfileEditSheetProps) {
+  const [reauthProof, setReauthProof] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -66,7 +75,7 @@ export function ProfileEditSheet({
         current_password: "",
       });
     }
-  }, [open, profile, reset]);
+  }, [open, profile.name, profile.insta_name, reset]);
 
   const watchedValues = useWatch({ control });
   const values: ProfileEditFormValues = {
@@ -84,6 +93,7 @@ export function ProfileEditSheet({
 
   const finishClose = () => {
     setServerError(null);
+    setReauthProof(null);
     setShowPassword(false);
     onClose();
   };
@@ -100,7 +110,7 @@ export function ProfileEditSheet({
   const submit = async (formValues: ProfileEditFormValues) => {
     setServerError(null);
     if (
-      instagramChanged &&
+      instagramChanged && profile.has_password &&
       formValues.current_password.trim().length < 6
     ) {
       setError("current_password", {
@@ -110,10 +120,17 @@ export function ProfileEditSheet({
     }
 
     try {
-      await onSubmit(buildProfilePatchPayload(profile, formValues));
+      const payload = buildProfilePatchPayload(profile, formValues);
+      if (instagramChanged && !profile.has_password) {
+        if (!reauthProof) { setServerError("Xác nhận Google trước khi đổi Instagram."); return; }
+        delete payload.current_password;
+        payload.reauth_proof = reauthProof;
+      }
+      await onSubmit(payload);
       finishClose();
     } catch (error: unknown) {
-      const response = (
+      setReauthProof(null);
+      const response = error instanceof ApiServiceError ? { status: error.status, data: { error: error.message, details: error.details as { field?: string } | undefined } } : (
         error as {
           response?: {
             status?: number;
@@ -168,10 +185,17 @@ export function ProfileEditSheet({
               </button>
             </header>
 
-            <form
-              onSubmit={handleSubmit(submit)}
-              className="flex min-h-0 flex-1 flex-col"
-            >
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              {open && !profile.phone_number ? (
+                <div className="max-h-[35%] shrink-0 overflow-y-auto overscroll-contain px-5 pt-4">
+                  <AccountPhoneForm
+                    phone={null}
+                    onSaved={() => { void onPhoneSaved(); }}
+                    onMerged={onPhoneMerged}
+                  />
+                </div>
+              ) : null}
+              <form onSubmit={handleSubmit(submit)} className="flex min-h-0 flex-1 flex-col">
               <div className="flex-1 space-y-4 overflow-y-auto touch-pan-y overflow-x-clip overscroll-x-none overscroll-contain px-5 py-4">
                 {serverError && (
                   <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive">
@@ -192,11 +216,11 @@ export function ProfileEditSheet({
                   />
                 </ProfileFormField>
 
-                <ProfileFormField
+                {profile.phone_number ? <ProfileFormField
                   id="profile-phone"
                   label="Số điện thoại"
                   icon={<Lock className="h-4 w-4" />}
-                  helper="Chưa thể thay đổi số điện thoại trong phiên bản này."
+                  helper="Số điện thoại đã thêm không thể thay đổi."
                 >
                   <input
                     id="profile-phone"
@@ -204,7 +228,7 @@ export function ProfileEditSheet({
                     value={formatVietnamPhone(profile.phone_number)}
                     className={`${profileInputClass(false)} cursor-not-allowed bg-muted/50 text-muted-foreground`}
                   />
-                </ProfileFormField>
+                </ProfileFormField> : null}
 
                 <ProfileFormField
                   id="profile-instagram"
@@ -226,7 +250,8 @@ export function ProfileEditSheet({
                 </ProfileFormField>
 
                 <AnimatePresence initial={false}>
-                  {instagramChanged && (
+                  {instagramChanged && !profile.has_password ? <GoogleAccountButton purpose="REAUTH" onSuccess={(result) => { if ("reauth_proof" in result) setReauthProof(result.reauth_proof); }} /> : null}
+                  {instagramChanged && profile.has_password && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
@@ -274,7 +299,8 @@ export function ProfileEditSheet({
                 submitting={isSubmitting}
                 onCancel={requestClose}
               />
-            </form>
+              </form>
+            </div>
           </Drawer.Content>
         </Drawer.Portal>
       </Drawer.Root>

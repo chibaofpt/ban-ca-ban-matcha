@@ -180,7 +180,7 @@ function setupTx() {
             return Promise.resolve({ count: 1 });
           }),
         },
-        user: { findUnique: mockUserFindUnique, update: mockUserUpdate, create: mockUserCreate },
+        user: { findUnique: mockUserFindUnique, updateMany: vi.fn().mockResolvedValue({ count: 1 }), update: mockUserUpdate, create: mockUserCreate },
         pointsLog: { create: mockPointsLogCreate },
         order: { create: mockOrderCreate, findUnique: vi.fn().mockResolvedValue(null) },
         orderDiscountVoucher: { create: vi.fn() },
@@ -301,7 +301,7 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
     expect(res.status).toBe(201);
   });
 
-  it("STAFF có voucher nhưng thiếu customer_qr_token → 400 VALIDATION_ERROR", async () => {
+  it("STAFF chọn khách bằng customer_identifier nhưng chưa quét QR → 400 VALIDATION_ERROR", async () => {
     setupTx();
     // user found by phone
     mockUserFindUnique.mockResolvedValue(existingCustomer);
@@ -310,7 +310,9 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
 
     const payload = makePayload({
       discount_voucher_ids: [VOUCHER_ID],
-      // customer_qr_token: deliberately omitted
+      customer_identifier: QR_TOKEN,
+      phone_number: undefined,
+      // Selection identifies the customer but does not prove a QR scan.
     });
 
     const res = await POST(makeReq(payload));
@@ -323,9 +325,8 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
     setupTx();
     // phone lookup → existingCustomer (USER_ID)
     // qr_token lookup → returns OTHER_USER_ID — mismatch!
-    mockUserFindUnique
-      .mockResolvedValueOnce(existingCustomer)                    // phone lookup
-      .mockResolvedValueOnce({ id: OTHER_USER_ID, qr_token: QR_TOKEN, role: "CUSTOMER" });
+    mockUserFindUnique.mockImplementation(async ({ where }: { where: { qr_token?: string } }) =>
+      where.qr_token ? { id: OTHER_USER_ID, qr_token: QR_TOKEN, role: "CUSTOMER" } : existingCustomer);
 
     mockVoucherFindUnique.mockResolvedValue(discountVoucher);
     mockGetSession.mockResolvedValue(STAFF_SESSION);
@@ -407,10 +408,8 @@ describe("POST /api/staff/orders — voucher + QR token verification", () => {
     setupTx();
     // phone lookup succeeds (user exists)
     // qr_token lookup returns null (token not found)
-    mockUserFindUnique
-      .mockResolvedValueOnce(existingCustomer)  // phone lookup
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null);             // public + legacy lookup → not found
+    mockUserFindUnique.mockImplementation(async ({ where }: { where: { qr_token?: string; id?: string } }) =>
+      where.qr_token || where.id === QR_TOKEN ? null : existingCustomer);
 
     mockVoucherFindUnique.mockResolvedValue(discountVoucher);
     mockGetSession.mockResolvedValue(STAFF_SESSION);

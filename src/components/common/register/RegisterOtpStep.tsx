@@ -46,8 +46,8 @@ export default function RegisterOtpStep({ challenge, resendPending, resendError,
   };
   return <div className="space-y-4">
     <Header step={3} total={3} />
-    <p className="text-center text-sm">Nhập mã đã gửi đến <strong>{challenge.masked_phone}</strong>.</p>
-    {challenge.delivery_status === "unknown" ? <p role="status" className="text-sm text-muted-foreground">Chưa xác nhận được việc gửi mã. Nếu đã nhận, bạn có thể nhập mã; nếu chưa nhận, hãy chờ để gửi lại.</p> : null}
+    <p className="text-center text-sm">Vui lòng kiểm tra Zalo của số điện thoại <strong>{challenge.masked_phone}</strong> để lấy mã xác nhận.</p>
+    {challenge.delivery_status === "unknown" ? <p role="status" className="text-sm text-muted-foreground">Chưa xác nhận được việc gửi mã. Nếu đã nhận trên Zalo, bạn có thể nhập mã; nếu chưa nhận, hãy chờ để gửi lại.</p> : null}
     <form onSubmit={handleSubmit(submit)} className="space-y-4">
       <label htmlFor="registration-otp" className="block text-sm font-medium">Mã xác nhận
         <input id="registration-otp" autoComplete="one-time-code" inputMode="numeric" maxLength={6} {...register("otp")}

@@ -1,10 +1,14 @@
+import { phoneSearchVariants } from "@/src/utils/phone";
 import type { Prisma, VoucherType } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { getAdminVoucherRefundEligibility } from "@/lib/vouchers/adminVoucherRefund";
+import { canClaimLegacyGhost, isRegisteredAccount } from "@/lib/auth/accountIdentityPolicy";
 import { adminVoucherDaysRemaining, effectiveAdminVoucherStatus, vietnamYearBounds } from "@/lib/users/adminUserTime";
 import type {
   AdminUserOrder,
   AdminUserPage,
+  AdminUserListFilter,
   AdminUserSummary,
   AdminUserVoucher,
   AdminUserVoucherCategory,
@@ -13,15 +17,34 @@ import type {
 
 const PAGE_SIZE = 10;
 
-function customerFilter(q?: string): Prisma.UserWhereInput {
+function customerFilter(q: string | undefined, filter: AdminUserListFilter | undefined, now: Date): Prisma.UserWhereInput {
+  const where: Prisma.UserWhereInput = { role: "CUSTOMER", sourceMerge: { is: null } };
+  if (filter === "GHOST") {
+    where.AND = [
+      { OR: [{ password_hash: null }, { password_hash: "" }, { password_hash: "GHOST_USER_NO_PASSWORD" }] },
+      { OR: [{ google_sub: null }, { google_sub: "" }] },
+    ];
+  }
+  if (filter === "NO_EMAIL") where.AND = [{ OR: [{ email: null }, { email: "" }] }];
+  if (filter === "ORDER_TODAY" || filter === "ORDER_MONTH") {
+    const vietnam = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    const year = vietnam.getUTCFullYear();
+    const month = vietnam.getUTCMonth();
+    const day = vietnam.getUTCDate();
+    const start = new Date(Date.UTC(year, month, filter === "ORDER_TODAY" ? day : 1, -7));
+    const end = filter === "ORDER_TODAY" ? new Date(start.getTime() + 86_400_000)
+      : new Date(Date.UTC(year, month + 1, 1, -7));
+    where.orders = { some: { created_at: { gte: start, lt: end } } };
+  }
   const query = q?.trim();
-  if (!query) return { role: "CUSTOMER" };
+  if (!query) return where;
   const instagram = query.startsWith("@") ? query.slice(1) : query;
   return {
-    role: "CUSTOMER",
+    ...where,
     OR: [
       { name: { contains: query, mode: "insensitive" } },
-      { phone_number: { contains: query } },
+      { email: { contains: query, mode: "insensitive" } },
+      ...phoneSearchVariants(query).map((term) => ({ phone_number: { contains: term } })),
       { insta_name: { contains: instagram, mode: "insensitive" } },
     ],
   };
@@ -34,10 +57,11 @@ async function summarizeUsers(
 ): Promise<AdminUserSummary[]> {
   if (userIds.length === 0) return [];
   const { year, start, end } = vietnamYearBounds(now);
-  const [users, latestOrders, spend, spent, exchanged, current] = await Promise.all([
-    prisma.user.findMany({ where: { id: { in: userIds }, role: "CUSTOMER" }, select: {
+  const [users, latestOrders, spend, spent, exchanged, current, earned, allVouchers] = await Promise.all([
+    prisma.user.findMany({ where: { id: { in: userIds }, role: "CUSTOMER", sourceMerge: { is: null } }, select: {
       id: true, qr_token: true, name: true, phone_number: true, insta_name: true,
-      password_hash: true, is_verified: true, is_blocked: true, points_balance: true,
+      password_hash: true, google_sub: true, account_origin: true, email: true, role: true,
+      sourceMerge: { select: { target_user_id: true } }, is_verified: true, is_blocked: true, points_balance: true,
     } }),
     prisma.order.groupBy({
       by: ["user_id"], where: { user_id: { in: userIds } }, _max: { created_at: true },
@@ -54,7 +78,15 @@ async function summarizeUsers(
     prisma.voucher.groupBy({ by: ["user_id"], where: {
       user_id: { in: userIds }, OR: [{ status: "RESERVED" }, { status: "ACTIVE", OR: [{ expires_at: null }, { expires_at: { gt: now } }] }],
     }, _count: { _all: true } }),
+    prisma.pointsLog.groupBy({ by: ["user_id"], where: {
+      user_id: { in: userIds }, delta: { gt: 0 },
+    }, _count: { _all: true } }),
+    prisma.voucher.groupBy({ by: ["user_id"], where: {
+      user_id: { in: userIds },
+    }, _count: { _all: true } }),
   ]);
+  const earnedIds = new Set(earned.map((row) => row.user_id));
+  const voucherIds = new Set(allVouchers.map((row) => row.user_id));
   const latestOrderMap = new Map(latestOrders.flatMap((row) =>
     row.user_id && row._max.created_at ? [[row.user_id, row._max.created_at] as const] : []));
   const spendMap = new Map(spend.map((row) => [row.user_id, row._sum.grand_total_vnd ?? 0]));
@@ -64,10 +96,15 @@ async function summarizeUsers(
   const userMap = new Map(users.map((user) => [user.id, user]));
   return userIds.flatMap((id) => {
     const user = userMap.get(id);
-    if (!user) return [];
+    if (!user || user.sourceMerge) return [];
+    const identity = { ...user, merged: Boolean(user.sourceMerge) };
     return [{
       qr_token: user.qr_token, name: user.name, phone_number: user.phone_number,
-      insta_name: user.insta_name, is_registered: user.password_hash !== "GHOST_USER_NO_PASSWORD",
+      email: user.email, insta_name: user.insta_name, is_registered: isRegisteredAccount(identity),
+      has_password: Boolean(user.password_hash?.trim()) && user.password_hash !== "GHOST_USER_NO_PASSWORD",
+      can_send_claim_link: canClaimLegacyGhost(identity, {
+        hasEarnedPoints: earnedIds.has(id), hasVouchers: voucherIds.has(id),
+      }),
       is_verified: user.is_verified, is_blocked: user.is_blocked,
       points_balance: user.points_balance, spending_year: year, annual_spend_vnd: spendMap.get(id) ?? 0,
       points_spent: spentMap.get(id) ?? 0, vouchers_exchanged: exchangeMap.get(id) ?? 0,
@@ -79,8 +116,8 @@ async function summarizeUsers(
 }
 
 /** Lists CUSTOMER accounts by latest completed order, followed by all remaining accounts. */
-export async function listAdminUsers(page: number, q?: string, now = new Date()): Promise<AdminUserPage<AdminUserSummary>> {
-  const where = customerFilter(q);
+export async function listAdminUsers(page: number, q?: string, now = new Date(), filter?: AdminUserListFilter): Promise<AdminUserPage<AdminUserSummary>> {
+  const where = customerFilter(q, filter, now);
   const offset = (page - 1) * PAGE_SIZE;
   const [total, completedCount] = await Promise.all([
     prisma.user.count({ where }),
@@ -107,7 +144,7 @@ export async function listAdminUsers(page: number, q?: string, now = new Date())
 
 /** Returns one CUSTOMER summary resolved only by public QR token. */
 export async function getAdminUser(userQrToken: string, now = new Date()): Promise<AdminUserSummary | null> {
-  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER" }, select: { id: true } });
+  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER", sourceMerge: { is: null } }, select: { id: true } });
   if (!user) return null;
   const latestCompleted = await prisma.order.findFirst({
     where: { user_id: user.id, status: "COMPLETED" }, select: { updated_at: true },
@@ -122,20 +159,22 @@ export async function getAdminUser(userQrToken: string, now = new Date()): Promi
 
 /** Lists a CUSTOMER wallet with read-only effective expiry projection. */
 export async function listAdminUserVouchers(userQrToken: string, page: number, now = new Date()): Promise<AdminUserPage<AdminUserVoucher> | null> {
-  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER" }, select: { id: true } });
+  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER", sourceMerge: { is: null } }, select: { id: true, points_balance: true } });
   if (!user) return null;
   const [total, rows] = await Promise.all([
     prisma.voucher.count({ where: { user_id: user.id } }),
     prisma.voucher.findMany({ where: { user_id: user.id }, include: { package: { select: { name: true, description: true } } },
       orderBy: [{ created_at: "desc" }, { id: "desc" }], skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE }),
   ]);
-  return { items: rows.map((row) => ({ qr_token: row.qr_token, name: row.package.name,
+  const eligibility = await Promise.all(rows.map((row) => getAdminVoucherRefundEligibility(prisma, row, user.points_balance, now)));
+  return { items: rows.map((row, index) => ({ qr_token: row.qr_token, name: row.package.name,
     description: row.package.description,
     status: effectiveAdminVoucherStatus(row.status, row.expires_at, now) as AdminUserVoucher["status"],
     expires_at: row.expires_at?.toISOString() ?? null, created_at: row.created_at.toISOString(),
     redeemed_at: row.redeemed_at?.toISOString() ?? null,
     issued_via: row.issued_via as AdminUserVoucher["issued_via"],
     days_remaining: adminVoucherDaysRemaining(row.expires_at, now),
+    can_refund: eligibility[index].can_refund, refundable_points: eligibility[index].refundable_points,
   })), total, page, total_pages: Math.ceil(total / PAGE_SIZE) };
 }
 
@@ -264,7 +303,7 @@ async function freeshipNames(rows: AdminOrderRow[]): Promise<Map<string, string>
 
 /** Lists ten orders constrained to one CUSTOMER resolved through its public QR token. */
 export async function listAdminUserOrders(userQrToken: string, page: number): Promise<AdminUserPage<AdminUserOrderDto> | null> {
-  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER" }, select: { id: true } });
+  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER", sourceMerge: { is: null } }, select: { id: true } });
   if (!user) return null;
   const where = { user_id: user.id };
   const [total, rows] = await Promise.all([
@@ -277,7 +316,7 @@ export async function listAdminUserOrders(userQrToken: string, page: number): Pr
 
 /** Returns one order only when both its ID and resolved CUSTOMER owner match. */
 export async function getAdminUserOrder(userQrToken: string, orderId: string): Promise<AdminUserOrderDto | null> {
-  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER" }, select: { id: true } });
+  const user = await prisma.user.findFirst({ where: { qr_token: userQrToken, role: "CUSTOMER", sourceMerge: { is: null } }, select: { id: true } });
   if (!user) return null;
   const row = await prisma.order.findFirst({ where: { id: orderId, user_id: user.id }, include: adminUserOrderInclude });
   if (!row) return null;

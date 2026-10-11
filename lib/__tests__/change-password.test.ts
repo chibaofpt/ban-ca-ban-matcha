@@ -19,6 +19,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 vi.mock("@/lib/redis", () => ({ cacheDelete: boundary.cacheDelete }));
+vi.mock("@/lib/auth", () => ({ getSession: vi.fn() }));
 
 import {
   changePassword,
@@ -40,7 +41,8 @@ const EXPECTED_EXPIRY = new Date(CONTROLLED_NOW.getTime() + 7 * 24 * 60 * 60 * 1
 
 function installTransactionBoundary(): void {
   boundary.transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => callback({
-    user: { updateMany: boundary.txUserUpdateMany },
+    user: { updateMany: boundary.txUserUpdateMany, findUnique: boundary.userFindUnique },
+    googleAuthAttempt: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
     session: {
       findUnique: boundary.txSessionFindUnique,
       findMany: boundary.txSessionFindMany,
@@ -56,7 +58,7 @@ describe("changePassword workflow", () => {
     vi.setSystemTime(CONTROLLED_NOW);
     vi.clearAllMocks();
     installTransactionBoundary();
-    boundary.userFindUnique.mockResolvedValue({ password_hash: OLD_HASH });
+    boundary.userFindUnique.mockResolvedValue({ password_hash: OLD_HASH, account_origin: "LEGACY_PHONE", role: "CUSTOMER", is_blocked: false, sourceMerge: null });
     boundary.txUserUpdateMany.mockResolvedValue({ count: 1 });
     boundary.txSessionFindUnique.mockResolvedValue(CURRENT_SESSION);
     boundary.txSessionFindMany.mockResolvedValue([
@@ -82,7 +84,7 @@ describe("changePassword workflow", () => {
       newPassword: "newpass1",
     });
 
-    const userUpdate = boundary.txUserUpdateMany.mock.calls[0][0];
+    const userUpdate = boundary.txUserUpdateMany.mock.calls[1][0];
     expect(await bcrypt.compare("newpass1", userUpdate.data.password_hash)).toBe(true);
     expect(bcrypt.getRounds(userUpdate.data.password_hash)).toBe(12);
     expect(userUpdate.where).toMatchObject({
@@ -114,7 +116,7 @@ describe("changePassword workflow", () => {
 
   it("rejects a wrong current password before opening a transaction", async () => {
     const hash = await bcrypt.hash("different1", 4);
-    boundary.userFindUnique.mockResolvedValue({ password_hash: hash });
+    boundary.userFindUnique.mockResolvedValue({ password_hash: hash, account_origin: "LEGACY_PHONE", role: "CUSTOMER", is_blocked: false, sourceMerge: null });
 
     await expect(changePassword({
       userId: "user-1",
@@ -127,7 +129,7 @@ describe("changePassword workflow", () => {
 
   it("rejects reusing the current password before opening a transaction", async () => {
     const hash = await bcrypt.hash("current1", 4);
-    boundary.userFindUnique.mockResolvedValue({ password_hash: hash });
+    boundary.userFindUnique.mockResolvedValue({ password_hash: hash, account_origin: "LEGACY_PHONE", role: "CUSTOMER", is_blocked: false, sourceMerge: null });
 
     await expect(changePassword({
       userId: "user-1",
@@ -139,7 +141,7 @@ describe("changePassword workflow", () => {
   });
 
   it("maps a conditional old-hash loser to conflict and does not delete sessions", async () => {
-    boundary.txUserUpdateMany.mockResolvedValue({ count: 0 });
+    boundary.txUserUpdateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
 
     await expect(changePassword({
       userId: "user-1",

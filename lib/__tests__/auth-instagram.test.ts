@@ -170,6 +170,7 @@ describe("POST /api/auth/login — Instagram", () => {
     }));
     expect(mockUserFindUnique).toHaveBeenCalledWith({
       where: { insta_name: "ban.ca" },
+      include: { sourceMerge: true },
     });
     expect(mockCheckIdentifierFloodGuard).toHaveBeenCalledWith(
       "instagram",

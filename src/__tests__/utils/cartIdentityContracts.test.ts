@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import { useStaffCartStore } from "@/src/lib/store/staffCartStore";
+import { migrateCartState } from "@/src/lib/store/cartStore";
 import type { CartBundleApplication, CartItem } from "@/src/lib/types/cart";
 
 const paidLine: CartItem = {
@@ -49,6 +50,20 @@ beforeEach(() => {
 });
 
 describe("cart identity detach", () => {
+  it("giữ bundle cùng QR opaque khi hydrate giỏ mới", () => {
+    const ownBundle = { ...bundle, owner_key: "customer:0google-a-qr" };
+    const migrated = migrateCartState({ items: [paidLine, rewardLine], voucherOwnerKey: "0google-a-qr", bundleApplications: [ownBundle] }, 11);
+    expect(migrated.voucherOwnerKey).toBe("0google-a-qr");
+    useCartStore.setState(migrated);
+    expect(useCartStore.getState().reconcileBundleApplications("0google-a-qr").ok).toBe(true);
+    expect(useCartStore.getState().bundleApplications).toEqual([ownBundle]);
+    expect(useCartStore.getState().items).toHaveLength(2);
+  });
+  it("migration phone owner cũ tháo voucher và reward, giữ món mua", () => {
+    const migrated = migrateCartState({ items: [paidLine, rewardLine], voucherOwnerKey: "+84900000000", selectedOrderVoucherTokens: ["discount"], bundleApplications: [bundle] }, 10);
+    expect(migrated).toMatchObject({ voucherOwnerKey: null, selectedOrderVoucherTokens: [], bundleApplications: [], items: [{ cartId: "paid", addonVouchers: [], configuration: { addonOptionIds: ["paid-addon"] } }] });
+    expect(migrated.items[0].lineVoucher).toBeUndefined();
+  });
   it("customer account switch keeps paid lines and removes every old-owner effect", () => {
     useCartStore.setState({
       items: [paidLine, rewardLine], selectedOrderVoucherTokens: ["discount"], selectedVoucherIds: ["discount"],
@@ -63,14 +78,14 @@ describe("cart identity detach", () => {
     expect(useCartStore.getState().items[0]).not.toHaveProperty("lineVoucher", expect.objectContaining({ token: "product" }));
   });
 
-  it("customer reconcile removes a bundle whose owner does not match the normalized phone", () => {
+  it("reconcile tháo bundle không khớp public QR hiện tại", () => {
     useCartStore.setState({
       items: [paidLine, rewardLine],
-      voucherOwnerKey: "+84900000000",
+      voucherOwnerKey: "current-customer-qr",
       bundleApplications: [bundle],
     });
 
-    const result = useCartStore.getState().reconcileBundleApplications("+84900000000");
+    const result = useCartStore.getState().reconcileBundleApplications("current-customer-qr");
 
     expect(result.ok).toBe(true);
     expect(useCartStore.getState().bundleApplications).toEqual([]);

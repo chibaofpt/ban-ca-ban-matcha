@@ -68,7 +68,7 @@ rate limits or cron section for those contracts. Implementation belongs to
 | `VOUCHER_EXPIRED` | Voucher past expiry date |
 | `VOUCHER_REDEEMED` | Voucher already used |
 | `STORE_CLOSED` | Store is outside opening hours or temporarily closed — rejects PICKUP/DELIVERY orders (HTTP 503) |
-| `SERVICE_UNAVAILABLE` | Realtime capability cannot be issued because signing configuration is unavailable (HTTP 503) |
+| `SERVICE_UNAVAILABLE` | Required configuration or backing service is temporarily unavailable (HTTP 503) |
 | `INTERNAL_ERROR` | Unexpected server error |
 
 ---
@@ -208,13 +208,23 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/admin/users/[userQrToken]/orders/[orderId]` | GET |
 | `/api/admin/users/[userQrToken]/points` | POST |
 | `/api/admin/users/[userQrToken]/vouchers` | GET |
+| `/api/admin/users/[userQrToken]/vouchers/refund` | POST |
 | `/api/admin/voucher-packages` | GET, POST |
 | `/api/admin/voucher-packages/[id]` | PUT, DELETE |
 | `/api/admin/voucher-packages/[id]/owners` | GET |
 | `/api/admin/voucher-packages/[id]/grants` | POST |
 | `/api/admin/voucher-packages/[id]/recipients/[userQrToken]` | GET |
 | `/api/admin/welcome-reward-settings` | GET, PUT |
+| `/api/admin/users/[userQrToken]/claim-link` | POST |
+| `/api/auth/google/challenge` | POST |
+| `/api/auth/google` | POST |
+| `/api/auth/claim/context` | POST |
+| `/api/auth/claim/password` | POST |
+| `/api/profile/phone` | PATCH |
+| `/api/profile/phone/otp` | POST |
+| `/api/profile/phone/confirm` | POST |
 | `/api/auth/check-phone` | POST |
+| `/api/auth/register/welcome-reward` | GET |
 | `/api/auth/login` | POST |
 | `/api/auth/logout` | POST |
 | `/api/auth/me` | GET |
@@ -296,7 +306,7 @@ order or voucher write.
 
 | Scope | Limit |
 |---|---:|
-| Auth mutations (`login`, `register`, `check-phone`, `refresh`) | 10/min/IP |
+| Auth mutations (login, refresh and account proof endpoints) | 10/min/IP |
 | Password change (`PATCH /api/profile/password`) | 5/15 min/account + shared `authMutationIp` 10/min/IP |
 | Failed login attempts | 5/15 min/IP |
 | Failed normalized login identifier | 10/15 min/identifier |
@@ -407,96 +417,106 @@ in `Asia/Ho_Chi_Minh`.
   that bounded workload returns `422 BUSINESS_RULE_VIOLATION` with
   `details.reason = "REPORT_RANGE_TOO_LARGE"`; no truncated totals are returned.
 
+Phone inputs follow [the shared phone standard](SPECIFICATION.md#vietnamese-phone-input-and-display):
+server validation accepts supported formats, persists canonical +84, and returns canonical phones.
+Admin customer/order/recipient searches accept local and canonical numbers plus local prefixes;
+existing name/alias and suffix semantics remain available.
+
 ### `POST /api/auth/register`
-```ts
-{
-  phone_number: string
-  password: string
-  name: string
-  insta_name?: string // optional, unique, normalized without @ and to lowercase
-  challenge_id?: string // required with otp when global registration OTP is enabled
-  otp?: string // six digits; never a client assertion of is_verified
-}
-// If phone exists with password_hash = "GHOST_USER_NO_PASSWORD" → UPDATE instead of INSERT
 
-// 201 — existing identity fields remain; welcome_reward is additive
-{
-  data: {
-    name: string
-    phone_number: string
-    insta_name: string | null
-    role: "CUSTOMER" | "STAFF" | "ADMIN"
-    welcome_reward: {
-      id: string
-      mode: "POINTS" | "FIXED_VOUCHER" | "GACHA"
-      status: "PENDING" | "COMPLETED"
-      outcome_kind: "VOUCHER" | "POINTS" | null
-    }
-  }
-}
-```
+Retired: returns 410. Use [Google account access](#google-account-access).
 
-Registration creates or resolves exactly one welcome entitlement in the user/session transaction.
-The authoritative global OTP setting is checked by the server: enabled registration requires a
-live cookie/phone-bound challenge and sets `is_verified=true`; disabled registration sets it to
-false. OTP consumption commits with user, reward, and session creation, so a failed transaction
-does not consume a valid code. Enabling OTP while a form is open requires its caller to acquire
-OTP; disabling it allows the normal unverified registration flow. In-flight provider requests
-already admitted may still finish. Login and password recovery do not acquire registration OTP.
-`POINTS` and `FIXED_VOUCHER` complete immediately; only an available `GACHA` entitlement returns
-`PENDING`. Detailed selection, fallback and campaign rules belong to
-[voucher-flow lifecycle](.agents/skills/voucher-flow/references/lifecycle.md#welcome-reward-and-gacha).
+### `GET /api/auth/register/welcome-reward`
 
-An unblocked CUSTOMER ghost row is claimed with a guarded update in that same transaction: the
-submitted name, password hash and Instagram alias replace the placeholder credentials while its
-existing customer history and balances remain attached. A blocked ghost returns `403 FORBIDDEN`.
-An existing registered phone, a non-CUSTOMER row, or losing the concurrent ghost-claim race returns
-`409 CONFLICT`; a create race re-reads the phone and may claim the ghost only if it is still eligible.
+Public read-only signup preview returns `{ data: { mode, points_amount } }`, where mode is
+`POINTS | FIXED_VOUCHER | GACHA` and points_amount is the current configured amount. It checks
+fixed-package availability and active campaign allocation using signup rules; unavailable
+configuration previews POINTS. It reserves no stock and exposes no internal package/campaign
+references. Responses use `Cache-Control: no-store`; unexpected read failure returns sanitized
+`503 SERVICE_UNAVAILABLE`. Registration remains authoritative if availability changes.
 
 ### Registration OTP — public onboarding
 
-Registration OTP applies only to account creation and eligible CUSTOMER ghost claims. The shared
-ABENLA adapter delivers the six-digit code through the configured service. Provider secrets, raw codes and full provider replies
-must not enter public responses or logs.
+Public phone registration is retired. GET/POST `/api/auth/register/otp`,
+POST `/api/auth/register` and POST `/api/auth/check-phone` return 410; no phone lookup,
+paid send or account creation occurs on these compatibility endpoints.
+Existing phone/password login is retained. Current onboarding follows the next section.
 
-- `GET /api/auth/register/otp` returns `{ data: { enabled, turnstile, challenge } }`; `turnstile`
-  is `{ site_key, action: "registration_otp" }` or null and `challenge` is the live DTO below or null.
-  It exposes authoritative enabled state, public Turnstile configuration,
-  and any live challenge bound to the pre-registration cookie. Responses use
-  `Cache-Control: no-store`; OTP-disabled configuration does not require Redis or provider secrets.
-- `POST /api/auth/register/otp` validates the complete registration payload plus a UUID `request_id`
-  and `turnstile_token`. Success exposes `challenge_id`, `masked_phone`, `expires_at`, `resend_at`
-  and `delivery_status`, plus optional sanitized `provider_code` and `sms_per_message`.
-  Reload resumes the current challenge without retaining the password.
-- A random httpOnly pre-registration cookie binds the challenge to the normalized phone and
-  submitted registration identity. Codes expire after five minutes; a newly admitted challenge
-  invalidates the previous code. Registration consumes proof in the same transaction as customer,
-  welcome entitlement and session creation. A rolled-back registration leaves valid proof usable.
+### Google account access
 
-Paid admission is atomic in Redis and shared across sessions, IPs and phone formats. Send one is
-immediate; subsequent gaps are 120, 3,600, 18,000 and 86,400 seconds. Stop after five reserved
-sends; reset after seven days since the last reservation. Rejected requests and idempotent replays
-do not extend the phone state. Also enforce 20 reservations per IP per 600 seconds and a global
-daily limit (default 100), resetting at Vietnam midnight. Admin sees reservations, not a claim of
-confirmed delivery; estimated cost is 350 VND per reservation. Unknown provider outcomes retain
-the reservation and are not retried automatically.
+Business transitions and UI acceptance belong to [Account access](docs/specs/account-access.md).
+New account endpoints return the standard envelope, set `Cache-Control: no-store`, and never
+expose database user IDs. Before claim completion, only a valid unexpired claim context may
+disclose its account phone; name, balance and vouchers remain private.
+Every flat AuthUser response includes `qr_token` (the canonical account's public QR identifier),
+`name`, nullable `phone_number`, `insta_name`, and `role`; Google account responses additionally
+include nullable `email`. Clients use `qr_token` for wallet/cart ownership, including after merge.
 
-Claim a request ID before CAPTCHA verification; reserve paid quota only after accepted CAPTCHA
-or a server-observed Turnstile outage. An invalid, expired, reused or mismatched token is rejected
-without paid admission. Cloudflare widget settings own the allowed hostnames; the application
-requires a nonempty hostname and action `registration_otp` in a successful Siteverify response,
-without a separate hostname environment variable. Only backend-observed
-network/timeout, provider 5xx or internal-error outages allow fallback through all existing OTP
-limits; missing tokens, client assertions and invalid server configuration do not grant bypass.
-Redis or authoritative-settings failure returns 503; paid sends fail closed. Idempotent replay
-returns the stored result without another provider call. Reusing an ID for another payload fails.
+| Method/path | Input | Success data |
+|---|---|---|
+| POST `/api/auth/google/challenge` | `{ purpose: LOGIN\|CLAIM\|LINK\|REAUTH, turnstile_token?, current_password? }`; token may be omitted for LOGIN/CLAIM preparation and authenticated LINK | `{ challenge_id, nonce, expires_at }` |
+| POST `/api/auth/google` | `{ challenge_id, credential, turnstile_token? }`; token is required for prepared LOGIN/CLAIM | Flat AuthUser plus `welcome_reward`, or `{ reauth_proof }` for REAUTH |
+| POST `/api/auth/claim/context` | `{ token? }`; absent token resumes cookie | `{ phone_number, expires_at, server_now }`; phone is non-null for a valid legacy claim |
+| POST `/api/auth/claim/password` | Retired; request body is ignored | Always 410 `BUSINESS_RULE_VIOLATION`, `details.reason = GOOGLE_CLAIM_REQUIRED`; clients must use Google CLAIM |
+| POST `/api/admin/users/[userQrToken]/claim-link` | `{}`, ADMIN only | `{ url, expires_at, server_now }` |
+| PATCH `/api/profile/phone` | `{ phone_number }`, CUSTOMER only | `{ status: saved\|verification_required }` |
+| POST `/api/profile/phone/otp` | `{ phone_number, request_id, turnstile_token }` | RegistrationOtpChallenge DTO including server_now |
+| POST `/api/profile/phone/confirm` | `{ phone_number, challenge_id, otp }` | Canonical flat AuthUser plus `welcome_reward` |
 
-Allow at most five wrong codes per challenge and five wrong codes per phone over 30 minutes,
-including across resends. A verification lock also prevents another paid send. The browser uses
-server `resend_at` for its countdown; disabling a button alone does not enforce the limit.
-Quota rejection returns 429 with `Retry-After` and retry metadata; missing/invalid proof returns
-422, CAPTCHA rejection 403, provider failure 502 and unavailable configuration or store 503.
-Existing login and password recovery behavior remains outside this contract.
+`PATCH /api/profile/phone` attaches a phone only while the customer has no phone. Submitting the
+same normalized phone is idempotent; submitting a different phone after one is attached returns
+`409 CONFLICT` with `details.reason = PHONE_CHANGE_NOT_ALLOWED`. Phone OTP and account-claim merges
+must not replace an already attached phone.
+
+Google proof verifies signature, issuer, audience, expiry, nonce and authoritative verified email.
+Challenge purpose and browser binding are mandatory; LINK/REAUTH additionally bind the live actor
+and session. LINK is available only to an active, unlinked legacy phone account. Proof consumption
+and credential/account writes share a transaction. Reauth is
+short-lived, single-use and cannot authorize another account/session. Google-only password setup
+is restricted to eligible legacy-origin accounts.
+
+LOGIN/CLAIM preparation without `turnstile_token` returns a signed, browser-bound nonce
+proof as the opaque `challenge_id` (`login.` or `claim.` prefix). It does not allocate a database attempt,
+account or session. Exchange requires fresh `google_auth` Turnstile verification and the Google
+assertion; expiry is rechecked before transactional consumption. A consumed attempt in the
+existing Google proof table prevents replay. Preparation uses a purpose-separated signing key
+derived from `JWT_SECRET` and binds the configured Google client ID. Clients echo the opaque
+challenge ID without parsing it. Both requests keep the shared account mutation IP quota.
+LOGIN lifetime is five minutes. CLAIM lifetime never exceeds the claim link's original deadline;
+it binds the current claim hash/link and, when already logged in, the actor/session/credentials
+using hashes. Final exchange rechecks claim validity and live actor state inside the transaction.
+Regeneration, expiry, session revocation or credential changes invalidate the prepared claim.
+
+Existing challenge requests with a CAPTCHA still return a UUID and exchange without a second
+token, including LOGIN/CLAIM. Authenticated LINK challenge creation does not require CAPTCHA or a
+current-password proof; it remains bound to the live actor/session and browser, and Google proof is
+required to complete linking. REAUTH still requires CAPTCHA before challenge creation.
+Google verification outages fail closed; missing/invalid required tokens never complete authentication.
+
+Claim URLs use `/nhan-tai-khoan#<opaque-token>`. Only the hash is persisted. Binding/resume neither
+consumes the link nor extends its original five-minute deadline. Regeneration invalidates previous
+links and their dependent Google challenges; completion conditionally consumes current proof.
+Google is the only claim acceptance method; password acceptance is retired without consuming a
+link or creating credentials. Successful CLAIM creates the canonical session and returns the
+effective welcome entitlement according to the [account lifecycle](docs/specs/account-access.md#admin-claim-and-customer-acceptance).
+
+Phone OTP is transitional and only admits collision with an eligible legacy ghost. A disabled
+switch never bypasses verification. The existing ABENLA admission uses per-phone send gaps
+120/3,600/18,000/86,400 seconds after the immediate first send, at most five reservations, seven-day
+phone reset, 20 sends/IP/600 seconds and the configured daily ceiling at Vietnam midnight.
+Unknown sends retain quota and are not retried automatically. Allow at most five wrong codes per
+challenge and five per phone over 30 minutes. Server retry metadata controls resend. Provider,
+configuration or Redis failures never attach/merge a phone.
+
+Turnstile actions are `google_auth`, `account_claim`, `phone_claim`. Server Siteverify checks
+success, action and nonempty hostname; widget configuration owns the hostname allowlist.
+Cloudflare does not replace account proof or server quotas. Missing/invalid tokens are rejected;
+provider-outage behavior follows the server adapter and never grants ownership proof.
+
+Proof expiry, replay, regeneration races and retired-account writes return controlled conflicts or
+proof errors. Quota rejection returns 429 with retry metadata. Provider/unavailable errors expose
+sanitized reasons so clients can offer the shop contact action; raw provider payloads, credentials,
+OTP and claim tokens must not enter logs.
 
 ### Customer welcome reward
 
@@ -526,7 +546,7 @@ type WelcomeReward = {
     boxes: RewardBox[]
   } | null
   outcome:
-    | { kind: "POINTS", points: 5 }
+    | { kind: "POINTS", points: number }
     | { kind: "VOUCHER", voucher: OwnedVoucher }
     | null
 }
@@ -560,6 +580,7 @@ parsing mutation input. Settings use optimistic `revision` protection:
 // GET /api/admin/welcome-reward-settings — 200
 { data: { settings: {
   mode: "POINTS" | "FIXED_VOUCHER" | "GACHA"
+  points_amount: number
   fixed_package_id: string | null
   active_campaign_id: string | null
   revision: number
@@ -568,12 +589,15 @@ parsing mutation input. Settings use optimistic `revision` protection:
 // PUT /api/admin/welcome-reward-settings
 {
   mode: "POINTS" | "FIXED_VOUCHER" | "GACHA"
+  points_amount?: number // integer 1–100; omission preserves current value
   fixed_package_id?: string | null
   active_campaign_id?: string | null
   revision: number
 }
 // 200: { data: { settings } }
 ```
+
+Points configuration and signup snapshot semantics belong to [voucher-flow lifecycle](.agents/skills/voucher-flow/references/lifecycle.md#welcome-reward-and-gacha).
 
 Exactly one reference matches the mode: neither for `POINTS`, only `fixed_package_id` for
 `FIXED_VOUCHER`, and only `active_campaign_id` for `GACHA`. A fixed package must be active and
@@ -652,10 +676,17 @@ Every route in this section requires an authenticated `ADMIN`. Missing authentic
 `users.qr_token` UUIDs. A missing token, a non-CUSTOMER account, or a malformed token is reported as
 `404 NOT_FOUND` without exposing `users.id`.
 
-- `GET /api/admin/users?page=1&q?=` returns a 10-row page. Customers with at least one `COMPLETED`
+- `GET /api/admin/users?page=1&q?=&filter?=` returns a 10-row page. Optional `filter` accepts
+  `GHOST`, `ORDER_TODAY`, `ORDER_MONTH`, or `NO_EMAIL`; other values return `400 VALIDATION_ERROR`.
+  `GHOST` matches unregistered customers of either origin (no password credential and no Google
+  subject), independently of verification, block state, points or voucher balance. `NO_EMAIL`
+  matches null/empty email. Order filters match customers with at least one order of any status
+  created in the current Vietnam calendar day/month, using an inclusive start and exclusive end.
+  Search and filter combine before counting and pagination; omitting `filter` keeps the full list.
+  Customers with at least one `COMPLETED`
   order are ordered by the maximum `orders.updated_at` across their full history; customers without
-  a completed order form a stable tail. Search matches name, phone, or Instagram alias. Each summary
-  contains `qr_token`, identity fields, `is_registered`, `is_verified`, `is_blocked`,
+  a completed order form a stable tail. Search matches name, phone, email or Instagram alias. Each summary
+  contains `qr_token`, nullable `phone_number` and `email`, `has_password`, `can_send_claim_link`, identity fields, `is_registered`, `is_verified`, `is_blocked`,
   `points_balance`, `spending_year`, `annual_spend_vnd`, spent/exchanged/current-voucher counts,
   `latest_order_at`, and `latest_completed_order_at`. Annual spend sums stored `grand_total_vnd`
   only for `COMPLETED` orders whose `created_at` falls in the current Vietnam calendar year.
@@ -669,11 +700,11 @@ Every route in this section requires an authenticated `ADMIN`. Missing authentic
 ```
 
 Verify and block return `{ data: { success: true } }`. Blocking revokes all active sessions in the
-same transaction. Reset is available only to registered customers, replaces the password with the
+same transaction. Reset is available only to password-enabled customers, replaces the password with the
 unique 24-character URL-safe credential generated from 144 bits of Node CSPRNG entropy and stored
 only as a cost-12 bcrypt hash, revokes all sessions, and returns the plaintext once as
 `{ data: { success: true, temporary_password: string } }`; clients must not persist or log it.
-Resetting a ghost returns `409 CONFLICT` with `details.reason = "RESET_NOT_ALLOWED"`.
+Resetting a ghost or Google-only account returns `409 CONFLICT` with `details.reason = "RESET_NOT_ALLOWED"`.
 
 - `POST /api/admin/users/[userQrToken]/points` accepts strict JSON `{ points: number }`, where
   `points` is an integer from 1 through 100. The server atomically increments the balance and appends
@@ -692,13 +723,31 @@ Resetting a ghost returns `409 CONFLICT` with `details.reason = "RESET_NOT_ALLOW
   `qr_token`, issuance source, `created_at`, `redeemed_at`, `expires_at`, and `days_remaining`.
   Effective status is `ACTIVE`, `RESERVED`, `REDEEMED`, `EXPIRED`, or `REFUNDED`; an elapsed expiry
   projects an otherwise active voucher as `EXPIRED` without mutating it during this read.
+  Each entry additionally exposes `can_refund: boolean` and `refundable_points: number | null`.
+  An eligible entry has a positive integer refund amount; an ineligible entry returns false/null.
+  Eligibility is a server projection of the
+  [admin refund rule](.agents/skills/voucher-flow/references/lifecycle.md#admin-voluntary-refund-and-withdrawal).
+- `POST /api/admin/users/[userQrToken]/vouchers/refund` accepts strict JSON `{ qr_token: string }`
+  containing the voucher's public QR token. Both customer and voucher tokens resolve in the selected
+  customer scope; clients cannot submit a refund amount. Success returns
+  `{ data: { qr_token: string, status: "REFUNDED", points_refunded: number, points_balance: number } }`.
+  The ADMIN-only workflow revalidates the rule and persists withdrawal, points and actor audit in
+  one transaction. Existing customer refund remains a separate contract.
+  Failures use the standard error envelope: 400 VALIDATION_ERROR for malformed/extra input,
+  401 UNAUTHORIZED, 403 FORBIDDEN, 404 NOT_FOUND for an unavailable customer or unowned voucher,
+  409 CONFLICT for voucher/order state conflict or exhausted serialization retries, and
+  422 BUSINESS_RULE_VIOLATION for source, expiry, purchase-audit or points-overflow failures.
+  Business/state failures preserve `details.reason`: 409 uses `VOUCHER_NOT_ACTIVE`,
+  `VOUCHER_ALREADY_REFUNDED`, `VOUCHER_ORDER_CONFLICT` or `VOUCHER_REFUND_CONFLICT`; 422 uses
+  `VOUCHER_SOURCE_NOT_REFUNDABLE`, `VOUCHER_EXPIRED`, `VOUCHER_PURCHASE_AUDIT_INVALID`,
+  `VOUCHER_PURCHASE_ALREADY_REVERSED` or `POINTS_BALANCE_OVERFLOW`.
 - `GET /api/admin/users/voucher-packages?page=1&category=ALL|DISCOUNT|GIFT|SHIPPING` returns 10 active,
   unended packages for the picker. `DISCOUNT` maps to `DISCOUNT|PRODUCT_DISCOUNT`, `GIFT` maps to
   `ITEM|PRODUCT|ADDON|BUNDLE`, `SHIPPING` maps to `FREESHIP`, and `ALL` applies no type filter.
   Granting still uses the idempotent
   `POST /api/admin/voucher-packages/[id]/grants` contract and its additional-gift acknowledgement.
 
-### Admin registration OTP controls — ADMIN only
+### Admin transitional phone-claim OTP controls — ADMIN only
 
 - `GET /api/admin/users/registration-settings` returns the authoritative global OTP switch,
   `{ data: { otp_enabled, daily_send_limit, revision, today_reserved_count, estimated_cost_vnd,
@@ -709,20 +758,20 @@ Resetting a ghost returns `409 CONFLICT` with `details.reason = "RESET_NOT_ALLOW
 - `PUT /api/admin/users/registration-settings` accepts `otp_enabled`, a positive integer
   `daily_send_limit` and the current `revision`. Success returns those three
   fields under `data`. A stale revision returns 409; the server never interprets missing
-  or unreadable settings as permission to register without OTP. Migration initializes disabled
+  or unreadable settings as permission to claim a colliding phone without OTP. Migration initializes disabled
   OTP, daily limit 100 and revision 0. Changing settings does not clear reserved quota.
 - `POST /api/admin/users/registration-settings/balance` checks ABENLA balance and returns
   `{ data: { balance, checked_at } }`. Require ADMIN and at most ten probes per minute per Admin.
   This admin control uses the registration diagnostic quota. The UI checks on panel mount and
   explicit refresh; after an error it retains the previous balance and marks it stale.
 
-The panel belongs to customer management. Successful OTP-enabled registration sets the customer
-verified automatically; disabled registration creates an unverified customer. Existing manual
+The panel controls transitional phone-ghost proof. Disabled OTP rejects that proof; it does not allow an unverified merge. Existing manual
 verification actions and individual customer `otp_enabled` values remain separate.
 
 ### `POST /api/auth/login`
 Password minimum remains 6 characters. New registration rejects passwords over 72 UTF-8 bytes;
 login accepts at most 72 characters for compatibility with existing bcrypt credentials.
+Success returns `{ data: AuthUser }`, including the additive public `qr_token` field defined above.
 
 ```ts
 // Exactly one identifier is required. Instagram login is CUSTOMER-only.
@@ -736,7 +785,11 @@ login accepts at most 72 characters for compatibility with existing bcrypt crede
 {
   data: {
     name: string
-    phone_number: string
+    phone_number: string | null
+    email: string | null
+    google_connected: boolean
+    has_password: boolean
+    can_set_password: boolean
     insta_name: string | null
     points_balance: number
     qr_token: string
@@ -816,20 +869,22 @@ the wallet; GET routes never grant, expire, or cancel records.
 {
   name?: string
   insta_name?: string | null
-  current_password?: string // required only when Instagram actually changes
+  current_password?: string // password proof when Instagram actually changes
+  reauth_proof?: string // fresh Google proof alternative
 }
-// CUSTOMER-only. phone_number is intentionally not editable.
+// CUSTOMER-only. Account phone changes use /api/profile/phone; delivery phone remains independent.
 ```
 
 ### `PATCH /api/profile/password`
 
-CUSTOMER-only. The request changes the password only when the current password matches. The current
+CUSTOMER-only. Existing passwords require current password proof; eligible legacy Google-only customers set their first password using fresh reauth_proof. Google/email-origin customers cannot create phone/password login. The current
 device keeps its stable session ID, receives a rotated refresh token and a new access token, and all
 other sessions are revoked in the same database transaction.
 
 ```ts
 {
-  current_password: string // 6–72 characters
+  current_password?: string // 6–72 characters for existing password
+  reauth_proof?: string // initial password for eligible legacy account
   new_password: string     // at least 6 characters, at most 72 UTF-8 bytes; must differ from current
 }
 
@@ -1050,6 +1105,7 @@ Uses the same `updated_at`, `latte`, `fusion`, and `extras` grouping as `GET /ap
   `resolved_default_powder_id` (nullable for invalid configuration). Admin retains unavailable items.
 - Preserves all configured `allowed_powder_ids` and `allowed_base_liquid_ids`, including inactive records, so Admin edits do not discard stored selections. Public availability filtering belongs to `GET /api/menu`.
 - Includes all 3 size rows including those with `base_price_vnd = null`
+- `default_size_config` includes `{ size, base_liquid_ml, powder_gram }`; `powder_gram` is a number for the admin selling-price editor. Existing fields remain unchanged.
 - `updated_at` is still `MAX(menu_items.updated_at)` across all items including unavailable
 
 ### `POST /api/admin/menu`
@@ -1082,6 +1138,25 @@ Uses the same `updated_at`, `latte`, `fusion`, and `extras` grouping as `GET /ap
 When `sort_order` is omitted, the server increments existing ranks in the selected category and
 creates the item at rank `0` inside the same transaction. Explicit `sort_order` remains supported
 for compatibility. The same omission rule applies to `POST /api/admin/menu/create-latte-with-powder`.
+
+### `POST /api/admin/menu/create-latte-with-powder`
+
+Multipart ADMIN-only creation keeps existing `name`, `description`, `is_available`, `is_seasonal`,
+`sort_order`, `sizes`, `custom_powder_grams`, `allowed_base_liquid_ids`, menu `image`/`image_filename`,
+`new_powder_name`, `new_powder_price_per_gram`, and optional JSON `new_powder_size_config` fields.
+It also accepts optional `new_powder_manufacturer`, `new_powder_description`, and
+`new_powder_fragrance`, `new_powder_body`, `new_powder_bitterness`, `new_powder_umami`,
+`new_powder_color` (integer ratings 1–5; omitted/empty = null).
+
+`new_powder_image` accepts the same JPEG/PNG/WebP and 5MB limits as menu images;
+`new_powder_image_filename` is an optional SEO object name using the existing filename validation
+and requires a new powder image. Powder images reuse the full catalog WebP preset. The server saves
+metadata and image URL to the existing powder fields while creating powder + Latte in the same Prisma
+transaction. Failure before commit cleans up both newly uploaded images. Success remains
+`201 { data: { menu_item, powder_name } }`; errors retain the existing envelope and authorization.
+`sizes[].base_price_vnd` remains integer VND/null. The admin editor converts intended default selling
+prices through [pricing-logic](.agents/skills/pricing-logic/SKILL.md#admin-menu-selling-price-entry)
+without changing the mutation wire contract. No schema fields are added.
 
 ### `PUT /api/admin/menu/reorder`
 
@@ -1449,7 +1524,9 @@ Business invariants and paired transition behavior belong to
 ### `POST /api/staff/orders` — Staff
 ```ts
 {
-  phone_number: string
+  phone_number?: string // existing legacy customer lookup; does not create phone ghosts
+  customer_identifier?: string // selected public customer identity, never scan proof
+  customer_email?: string // existing email lookup or new email ghost
   customer_name?: string
   payment_method?: "CASH" | "BANK_TRANSFER" // default CASH; backward compatible
   items: {
@@ -1506,6 +1583,8 @@ Business invariants and paired transition behavior belong to
   }
 }
 ```
+
+Email ghost creation uses canonical email and rejects plus-addresses; it does not create a welcome entitlement. Existing-account email lookup accepts its stored canonical email. Selected customer identity never satisfies required QR verification.
 
 ### `GET /api/staff/orders?status=PENDING&order_type=COUNTER&mine=true`
 
@@ -1599,13 +1678,13 @@ restore package quantity or per-user redemption count.
 
 ### `GET /api/staff/users?q=xxxx`
 ```ts
-// Fuzzy search: all-digits → phone suffix match; has-letters → ILIKE on name
+// Search name, normalized phone/full suffix/prefix, email or Instagram; merged sources excluded
 // Min 2 chars, max 10 results, sorted by created_at DESC, CUSTOMER role only
-{ data: { items: { qr_token: string, name: string, phone_number: string, points_balance: number }[] } }
+{ data: { items: { qr_token: string, name: string, phone_number: string | null, email: string | null, insta_name: string | null, points_balance: number }[] } }
 
 // Legacy exact match (backward compat)
 // GET /api/staff/users?phone=0987654321
-{ data: { items: { qr_token: string, name: string, phone_number: string, points_balance: number }[] } }
+{ data: { items: { qr_token: string, name: string, phone_number: string | null, email: string | null, insta_name: string | null, points_balance: number }[] } }
 ```
 
 ### `GET /api/staff/users/[id]/vouchers`
@@ -1630,7 +1709,7 @@ Read-only: project effective `EXPIRED` status without updating expired voucher r
 
 ```ts
 // user
-{ data: { type: "user", data: { qr_token: string, name: string, phone_number: string, points_balance: number } } }
+{ data: { type: "user", data: { qr_token: string, name: string, phone_number: string | null, email: string | null, insta_name: string | null, points_balance: number } } }
 
 // voucher; PRODUCT/ITEM scans include currently usable normalized choices for staff order entry
 { data: { type: "voucher", data: { qr_token: string, voucher_type: "ITEM" | "DISCOUNT" | "PRODUCT" | "PRODUCT_DISCOUNT" | "ADDON" | "FREESHIP" | "BUNDLE", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, size: "SMALL" | "MEDIUM" | "LARGE" | null, matcha_powder_id: string | null, milk_type_id: string | null, covered_price_vnd: number | null, has_normalized_targets: boolean, eligible_menu_items: Array<{ menu_item_id: string, name: string, category: string, is_available: boolean, is_seasonal: boolean, size: "SMALL" | "MEDIUM" | "LARGE" | null, matcha_powder_id: string | null, milk_type_id: string | null, covered_price_vnd: number | null }>, status: "ACTIVE" | "RESERVED" | "REDEEMED" | "EXPIRED" | "REFUNDED", expires_at: string | null } } }
@@ -1722,7 +1801,7 @@ any mismatch rejects the whole order with `details.conflicts[]` as defined above
 - Cart persistence/versioning belongs to [Cart và POS](docs/specs/cart.md), not the HTTP contract.
   Compatibility migrations must prevent stale voucher identifiers/credits and legacy internal IDs
   from being resubmitted while preserving compatible items and recomputing client prices.
-- **Anonymous orders** (`phone_number` omitted):
+- **Anonymous orders** (no customer_identifier, customer_email or legacy phone_number):
   - `orders.user_id = NULL`
   - `points_earned = 0` — no points awarded, no `points_log` entry
   - `voucher_id` and `product_voucher_id` are rejected with `VALIDATION_ERROR`

@@ -25,7 +25,7 @@ const URLS = {
 } as const;
 
 /**
- * Search customers by name or last digits of phone number.
+ * Search customers by name, email, Instagram or phone digits.
  * Requires at least 2 characters. Returns up to 10 matches.
  */
 export async function searchCustomers(query: string): Promise<CustomerSearchResult[]> {
@@ -37,7 +37,7 @@ export async function searchCustomers(query: string): Promise<CustomerSearchResu
 
 /**
  * Create a counter order. Ghost user creation is handled server-side.
- * Omit phone_number for anonymous (walk-in) orders.
+ * Omit customer identity for anonymous orders.
  */
 export async function createStaffOrder(
   payload: CreateStaffOrderPayload,
@@ -87,9 +87,9 @@ export async function redeemVoucher(qrToken: string): Promise<void> {
  * Fallback to resolve a QR token manually when scanning fails.
  * Only supports looking up users right now.
  */
-export async function scanFallback(phone_number: string, code: string): Promise<QrScanResult> {
+export async function scanFallback(identifier: string, code: string): Promise<QrScanResult> {
   const res = await apiClient.post<ApiResponse<QrScanResult>>(URLS.scanFallback, {
-    phone_number,
+    ...(identifier.includes("@") ? { email: identifier } : { phone_number: identifier }),
     code,
   });
   return res.data.data;

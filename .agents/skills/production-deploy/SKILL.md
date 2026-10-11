@@ -44,6 +44,29 @@ description: >
 ## 2. Migration and Environment Gate
 
 - List migrations present in `dev` but absent from `main`, then read each new `migration.sql`.
+  This Git diff is the review inventory, not proof of which migrations a database has applied.
+- From the clean checkout of the exact reviewed `origin/dev` revision, inspect migration status
+  read-only against both environments before merging:
+
+  ```powershell
+  rtk proxy npx.cmd dotenv -e .env.staging -- prisma migrate status
+  rtk proxy npx.cmd dotenv -e .env.prod -- prisma migrate status
+  ```
+
+  Capture output privately and report only migration names/status; redact connection details.
+  Compare the committed migration directories with each database's migration history. Staging must
+  have the release migrations applied before its user acceptance can satisfy this gate. Production
+  may have expected pending migrations: `migrate status` can exit nonzero for pending migrations,
+  so classify the result rather than treating that exit code alone as a failure.
+- Require the production pending set to match the reviewed, staging-tested release migrations.
+  An empty set is valid for a code-only release. Block failed migrations, divergent/missing history,
+  unexpected pending migrations, or unavailable status evidence until reconciled. Do not infer
+  status from directory timestamps or deployment success alone. Review a newly added compatibility
+  migration even when its directory sorts before migrations already recorded as applied.
+- Keep every migration file after deployment and user acceptance. Prisma records applied migrations
+  in `_prisma_migrations`; `migrate deploy` applies pending migrations, not the whole history on each
+  release. Fresh/shadow replay still needs the complete ordered history. Never delete files to
+  prevent reruns or edit an applied file to fix a replay failure.
 - If the Prisma schema changed without a matching migration, block the release.
 - Allow only additive, backward-compatible migrations already tested on staging, such as new tables,
   safely nullable/defaulted columns, or indexes with no evident locking risk.
@@ -82,7 +105,14 @@ rtk git switch dev
 
 ## 4. Verification and Failure Handling
 
-- Use the available Vercel plugin/MCP to verify that the `main` deployment is READY and inspect recent runtime logs.
+- Use the available Vercel plugin/MCP to verify that the `main` deployment is READY and inspect its
+  build/migration logs and recent runtime logs for the released commit.
+- Re-run the read-only production `prisma migrate status` check from that released revision.
+  Confirm every migration in the pre-release pending set is now applied, with no failed or pending
+  release migration. If status cannot be verified, report release verification incomplete; do not
+  declare `RELEASED` from Vercel READY alone.
+- Record the user's production smoke-test result when supplied. Keep the complete migration history
+  after that confirmation; no migration cleanup/delete step follows acceptance.
 - If no suitable plugin/tool is available, report `Cannot verify Vercel automatically` and ask the user
   to open the production link for a smoke test.
 - If a production migration or deployment fails, do not roll back the database, generate `ROLLBACK_*.sql`,
@@ -98,6 +128,8 @@ Write the report in Vietnamese:
 Staging test:        PASS / not confirmed
 Code checks:         PASS / FAIL
 Migration safety:    N/A / PASS / BLOCKED
+Migration status:    pre-release pending names / post-release up to date / unverified
+Production smoke:    user confirmed / awaiting user / FAIL
 Production backup:   N/A / PASS — local path and SHA256 / FAIL
 Environment vars:    N/A / confirmed / not confirmed
 Merge and push:      PASS / FAIL
@@ -111,5 +143,5 @@ VERDICT: RELEASED / BLOCKED — reason
 - Never merge `main` when any gate fails or is blocked.
 - Backup is create-only: never restore, modify, move, rename, delete, or automatically use it after an error;
   stop, report the failure, and let the user decide.
-- Never reset production, copy staging data to production, or edit an applied migration.
+- Never reset production, copy staging data to production, or edit/delete an applied migration.
 - Never roll back the database automatically. A Vercel rollback rolls back code, not schema or data.

@@ -73,6 +73,7 @@ const registrationOtpMigration = readFileSync(
   join(process.cwd(), "prisma", "migrations", "20261004000000_registration_otp", "migration.sql"),
   "utf8",
 );
+const accountMigration = readFileSync(join(process.cwd(), "prisma", "migrations", "20261009000000_google_account_claims", "migration.sql"), "utf8");
 const allMigrationSql = readdirSync(join(process.cwd(), "prisma", "migrations"), {
   withFileTypes: true,
 })
@@ -97,7 +98,7 @@ function normalizeSql(sql: string): string {
 
 describe("static SQL contract — Supabase Data API (không thực thi migration)", () => {
   it("bật RLS, không FORCE, cho mọi bảng Prisma quản lý", () => {
-    const hardenedMigrations = `${migration}\n${bundleMigration}\n${unifiedVoucherMigration}\n${baseLiquidMigration}\n${groupedBundleMigration}\n${productDiscountScopeMigration}\n${multiChoiceVoucherScopeMigration}\n${welcomeRewardsMigration}\n${registrationOtpMigration}`;
+    const hardenedMigrations = `${migration}\n${bundleMigration}\n${unifiedVoucherMigration}\n${baseLiquidMigration}\n${groupedBundleMigration}\n${productDiscountScopeMigration}\n${multiChoiceVoucherScopeMigration}\n${welcomeRewardsMigration}\n${registrationOtpMigration}\n${accountMigration}`;
     const currentTables = new Set(prismaTableNames());
     const enabledTables = [...new Set([...hardenedMigrations.matchAll(
       /ALTER TABLE (?:IF EXISTS )?public\."([^"]+)" ENABLE ROW LEVEL SECURITY;/g,

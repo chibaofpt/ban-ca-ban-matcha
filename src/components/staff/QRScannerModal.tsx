@@ -3,14 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { QrCode } from "lucide-react";
 import { scanQrToken } from "@/src/services/staffOrderService";
-import type { ScannedVoucherMenuTarget } from "@/src/services/staffOrderService";
+import type { CustomerSearchResult, ScannedVoucherMenuTarget } from "@/src/services/staffOrderService";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface QRScannerModalProps {
   onClose: () => void;
   /** Called when a user QR is scanned successfully. */
-  onScanUser: (data: { phone_number: string }) => void;
+  onScanUser: (data: CustomerSearchResult) => void;
   /** Called when a DISCOUNT voucher QR is scanned and status is ACTIVE. */
   onScanVoucherDiscount: (data: {
     qr_token: string;
@@ -73,7 +73,7 @@ export function QRScannerModal({
               const result = await scanQrToken(decodedText);
 
               if (result.type === "user") {
-                onScanUser({ phone_number: result.data.phone_number });
+                onScanUser(result.data);
                 return;
               }
 

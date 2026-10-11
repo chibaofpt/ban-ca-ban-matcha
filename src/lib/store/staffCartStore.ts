@@ -29,6 +29,8 @@ export interface StaffCartState {
   selectedDiscountIds: string[];
   discountVoucher: DiscountVoucher | null;
   customerQrToken: string | null;
+  /** Ephemeral proof from an actual scan; never persisted. */
+  scannedCustomerQrToken: string | null;
   bundleApplications: CartBundleApplication[];
   customerInfo: CustomerInfo | null;
   pendingAddonVoucher: PendingAddonVoucherIntent | null;
@@ -44,6 +46,7 @@ export interface StaffCartState {
   clearCart: () => CartMutationResult;
   setCustomerInfo: (info: CustomerInfo | null) => CartMutationResult;
   setCustomerQrToken: (token: string | null) => CartMutationResult;
+  setScannedCustomerQrToken: (token: string | null) => CartMutationResult;
   detachCustomer: () => CartMutationResult;
   setSelectedOrderVoucherTokens: (ids: string[] | ((previous: string[]) => string[])) => CartMutationResult;
   setSelectedDiscountIds: (ids: string[]) => CartMutationResult;
@@ -93,7 +96,7 @@ function persistedSuccess(get: () => StaffCartState): CartMutationResult {
 
 /** Staff/Admin share one cart engine; only QR identity and minimal lines persist. */
 export const useStaffCartStore = create<StaffCartState>()(persist((set, get) => ({
-  items: [], selectedOrderVoucherTokens: [], selectedDiscountIds: [], discountVoucher: null, customerQrToken: null, bundleApplications: [],
+  items: [], selectedOrderVoucherTokens: [], selectedDiscountIds: [], discountVoucher: null, customerQrToken: null, scannedCustomerQrToken: null, bundleApplications: [],
   customerInfo: null, pendingAddonVoucher: null, bundleRuntime: {}, persistenceWarning: null, projectedTotalVnd: 0,
   setProjectedTotalVnd: (projectedTotalVnd) => set({ projectedTotalVnd }),
   addItem: (line, options) => {
@@ -138,15 +141,23 @@ export const useStaffCartStore = create<StaffCartState>()(persist((set, get) => 
       const detached = mutation(set, get, { type: "DETACH_VOUCHER_OWNER" });
       if (!detached.ok) return detached as CartMutationResult;
     }
-    set({ customerInfo, customerQrToken: nextQr, pendingAddonVoucher: null, bundleRuntime: {}, selectedDiscountIds: get().selectedOrderVoucherTokens, discountVoucher: null });
+    set({ customerInfo, customerQrToken: nextQr, scannedCustomerQrToken: null, pendingAddonVoucher: null, bundleRuntime: {}, selectedDiscountIds: get().selectedOrderVoucherTokens, discountVoucher: null });
     return persistedSuccess(get);
   },
   setCustomerQrToken: (customerQrToken) => {
     if (customerQrToken !== get().customerQrToken) mutation(set, get, { type: "DETACH_VOUCHER_OWNER" });
-    set({ customerQrToken, customerInfo: null, pendingAddonVoucher: null, bundleRuntime: {}, selectedDiscountIds: get().selectedOrderVoucherTokens, discountVoucher: null });
+    set({ customerQrToken, scannedCustomerQrToken: null, customerInfo: null, pendingAddonVoucher: null, bundleRuntime: {}, selectedDiscountIds: get().selectedOrderVoucherTokens, discountVoucher: null });
     return persistedSuccess(get);
   },
-  detachCustomer: () => { const result = mutation(set, get, { type: "DETACH_VOUCHER_OWNER" }); set({ customerQrToken: null, customerInfo: null, pendingAddonVoucher: null, bundleRuntime: {}, selectedDiscountIds: [], discountVoucher: null }); return result as CartMutationResult; },
+  setScannedCustomerQrToken: (token) => {
+    const owner = get().customerInfo;
+    if (token && (owner?.type !== "existing" || owner.data.qr_token !== token || get().customerQrToken !== token)) {
+      return { ok: false, code: "VOUCHER_CONFLICT", message: "QR không khớp khách hàng đã chọn." };
+    }
+    set({ scannedCustomerQrToken: token });
+    return persistedSuccess(get);
+  },
+  detachCustomer: () => { const result = mutation(set, get, { type: "DETACH_VOUCHER_OWNER" }); set({ customerQrToken: null, scannedCustomerQrToken: null, customerInfo: null, pendingAddonVoucher: null, bundleRuntime: {}, selectedDiscountIds: [], discountVoucher: null }); return result as CartMutationResult; },
   setSelectedOrderVoucherTokens: (ids) => {
     const tokens = typeof ids === "function" ? ids(get().selectedOrderVoucherTokens) : ids;
     const result = mutation(set, get, { type: "SET_ORDER_VOUCHERS", tokens });
@@ -196,6 +207,7 @@ export const useStaffCartStore = create<StaffCartState>()(persist((set, get) => 
     return {
       ...current,
       ...migrated,
+      scannedCustomerQrToken: null,
       selectedDiscountIds: migrated.selectedOrderVoucherTokens,
       bundleRuntime: Object.fromEntries(migrated.bundleApplications.map((application) => [
         application.voucher_qr_token,
@@ -205,5 +217,17 @@ export const useStaffCartStore = create<StaffCartState>()(persist((set, get) => 
   },
   partialize: (state) => ({ items: state.items, selectedOrderVoucherTokens: state.selectedOrderVoucherTokens, customerQrToken: state.customerQrToken, bundleApplications: state.bundleApplications }),
 }));
+
+/** Build customer identity fields while accepting only ephemeral proof for the selected owner. */
+export function getStaffCustomerOrderIdentity() {
+  const { customerInfo, customerQrToken, scannedCustomerQrToken } = useStaffCartStore.getState();
+  if (customerInfo?.type !== "existing") return {};
+  const owner = customerInfo.data.qr_token;
+  return {
+    customer_identifier: owner,
+    ...(scannedCustomerQrToken === owner && customerQrToken === owner
+      ? { customer_qr_token: scannedCustomerQrToken } : {}),
+  };
+}
 
 export const useStaffCartTotalPrice = () => useStaffCartStore((state) => state.projectedTotalVnd);

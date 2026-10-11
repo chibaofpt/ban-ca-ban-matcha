@@ -8,6 +8,7 @@ import type {
   CartLineVoucher,
 } from "@/src/lib/types/cart";
 import type { SweetnessLevel } from "@/src/lib/types/menu";
+import { applyCartCommand } from "@/src/lib/utils/cartTransitions";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -31,16 +32,6 @@ const string = (value: unknown): string | undefined => typeof value === "string"
 const strings = (value: unknown): string[] => Array.isArray(value)
   ? [...new Set(value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0))]
   : [];
-
-/** Normalize a Vietnamese phone into the persisted voucher-owner identity. */
-export function normalizeVoucherOwnerPhone(phone: string | null | undefined): string | null {
-  if (!phone) return null;
-  const compact = phone.replace(/^customer:/, "").replace(/[\s.-]/g, "");
-  if (compact.startsWith("+84")) return `+84${compact.slice(3).replace(/^0+/, "")}`;
-  if (compact.startsWith("84")) return `+84${compact.slice(2).replace(/^0+/, "")}`;
-  if (compact.startsWith("0")) return `+84${compact.slice(1)}`;
-  return compact;
-}
 
 function configuration(value: UnknownRecord): CartLineConfiguration | null {
   const existing = record(value.configuration);
@@ -186,17 +177,20 @@ function root(value: unknown): UnknownRecord | null {
   return record(value);
 }
 
-/** Migrate any customer cart version into the minimal v10 persistence contract. */
-export function migrateCustomerCartState(value: unknown, _fromVersion = 0): PersistedCustomerCart {
-  void _fromVersion;
+/** Migrate customer carts to v11; only v11 owners are opaque public QR tokens. */
+export function migrateCustomerCartState(value: unknown, fromVersion = 11): PersistedCustomerCart {
   const old = root(value);
   if (!old) return { items: [], selectedOrderVoucherTokens: [], voucherOwnerKey: null, bundleApplications: [] };
-  return {
+  const migrated = {
     items: migrateItems(old.items),
     selectedOrderVoucherTokens: mergedTokens(old.selectedOrderVoucherTokens, old.selectedVoucherIds),
-    voucherOwnerKey: normalizeVoucherOwnerPhone(string(old.voucherOwnerKey)),
+    voucherOwnerKey: string(old.voucherOwnerKey) ?? null,
     bundleApplications: bundleApplications(old.bundleApplications),
   };
+  if (fromVersion >= 11) return migrated;
+  // A phone owner cannot be mapped to an account QR without server proof.
+  const detached = applyCartCommand(migrated, { type: "DETACH_VOUCHER_OWNER" }).state;
+  return { ...detached, voucherOwnerKey: null };
 }
 
 /** Migrate any staff cart version into the minimal v6 persistence contract. */

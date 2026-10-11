@@ -1,6 +1,6 @@
 import { apiClient } from "@/src/lib/api/client";
 import type { ApiError, ApiResponse } from "@/src/lib/types/api";
-import type { OpenWelcomeRewardPayload, WelcomeReward } from "@/contracts/reward";
+import type { OpenWelcomeRewardPayload, WelcomeReward, WelcomeRewardPreview } from "@/contracts/reward";
 import { ApiServiceError } from "@/src/lib/api/serviceError";
 
 export type {
@@ -16,7 +16,10 @@ export type {
   WelcomeRewardSummary,
 } from "@/contracts/reward";
 
+export const welcomeRewardKeys = { preview: ["public", "welcome-reward-preview"] as const };
+
 const URL = {
+  preview: "/api/auth/register/welcome-reward",
   welcome: "/api/customer/rewards/welcome",
   open: "/api/customer/rewards/welcome/open",
 } as const;
@@ -55,6 +58,15 @@ export async function openWelcomeReward(payload: OpenWelcomeRewardPayload): Prom
   try {
     const response = await apiClient.post<ApiResponse<{ reward: WelcomeReward }>>(URL.open, payload);
     return response.data.data.reward;
+  } catch (error: unknown) {
+    throw preserveApiError(error) ?? error;
+  }
+}
+
+/** Fetch the public welcome offer for the registration form. */
+export async function getWelcomeRewardPreview(): Promise<WelcomeRewardPreview> {
+  try {
+    return (await apiClient.get<ApiResponse<WelcomeRewardPreview>>(URL.preview)).data.data;
   } catch (error: unknown) {
     throw preserveApiError(error) ?? error;
   }

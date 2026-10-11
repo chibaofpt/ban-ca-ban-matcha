@@ -1,6 +1,8 @@
 import type { User, Voucher } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { recordLegacyIdentifierFallback } from "@/lib/observability";
+import { resolveCanonicalCustomerId } from "@/lib/auth/accountMergeGuard";
+import { AccountError } from "@/lib/auth/accountError";
 
 export type PublicUserIdentity = Pick<User, "id" | "qr_token">;
 export type PublicStaffIdentity = Pick<User, "id" | "qr_token" | "role">;
@@ -27,26 +29,28 @@ export async function resolveStaffIdentifier(
   return legacyUser;
 }
 
-/** Resolve a customer path identifier by public token, then one-release legacy UUID fallback. */
+/** Resolve a customer QR alias to its canonical account, retaining the legacy UUID bridge. */
 export async function resolveCustomerIdentifier(
   identifier: string,
-  db: Pick<typeof prisma, "user"> = prisma,
+  db: Pick<typeof prisma, "user" | "accountMerge"> = prisma,
 ): Promise<PublicUserIdentity | null> {
-  const publicUser = await db.user.findUnique({
-    where: { qr_token: identifier },
-    select: { id: true, qr_token: true, role: true },
-  });
-  if (publicUser) {
-    return publicUser.role === "CUSTOMER" ? publicUser : null;
+  const select = { id: true, qr_token: true, role: true, sourceMerge: { select: { target_user_id: true } } } as const;
+  let user = await db.user.findUnique({ where: { qr_token: identifier }, select });
+  if (!user) {
+    user = await db.user.findUnique({ where: { id: identifier }, select });
+    if (user?.role === "CUSTOMER") recordLegacyIdentifierFallback("user", "customer");
   }
-
-  const legacyUser = await db.user.findUnique({
-    where: { id: identifier },
-    select: { id: true, qr_token: true, role: true },
-  });
-  if (!legacyUser || legacyUser.role !== "CUSTOMER") return null;
-  recordLegacyIdentifierFallback("user", "customer");
-  return legacyUser;
+  if (!user || user.role !== "CUSTOMER") return null;
+  if (!user.sourceMerge) return { id: user.id, qr_token: user.qr_token };
+  try {
+    const canonicalId = await resolveCanonicalCustomerId(db, user.id);
+    const canonical = await db.user.findUnique({ where: { id: canonicalId }, select });
+    return canonical?.role === "CUSTOMER" && !canonical.sourceMerge
+      ? { id: canonical.id, qr_token: canonical.qr_token } : null;
+  } catch (error) {
+    if (error instanceof AccountError && error.reason === "ACCOUNT_MERGE_CYCLE") return null;
+    throw error;
+  }
 }
 
 /** Resolve a voucher identifier while enforcing ownership before legacy UUID fallback. */

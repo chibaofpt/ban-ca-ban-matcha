@@ -13,11 +13,20 @@ bày và điều phối trong UI.
 
 ## Customer experience
 
+### Signup preview
+
+- Signup reads the public preview: POINTS displays the returned amount, FIXED_VOUCHER announces a welcome voucher, and GACHA announces a random voucher box. Loading/read failure uses neutral welcome-gift copy without assuming five points.
+- Completion toast and fallback card display actual server-granted points. Preview is advisory; signup result is authoritative.
+
 ### Entry, defer và resume
 
 - Sau đăng ký, `POINTS` hoặc `FIXED_VOUCHER` đã hoàn tất đóng auth flow, hiện toast tương ứng và
   tiếp tục intent/return target. `GACHA PENDING` chuyển ngay nội dung của auth dialog sang trải
   nghiệm chọn hộp trong cùng overlay `critical`.
+- Sau liên kết Google tại `/nhan-tai-khoan`, phiên đăng nhập đã được tạo trước khi hiện quà.
+  Dùng summary server trả để thông báo điểm/voucher đã hoàn tất hoặc mở `WelcomeRewardOverlay`
+  cho `GACHA PENDING`. **Để sau**, đóng hoặc **Tiếp tục** chuyển tới Profile; **Xem voucher** mở ví.
+  Entitlement đã hợp nhất được tiếp tục theo cùng state, không phát lại quà đã nhận.
 - Đóng hoặc chọn **Để sau** không mở reward và không làm mất entitlement; auth flow vẫn hoàn tất.
   Profile và wallet hiện CTA khi GET trả `GACHA PENDING`, cho phép mở lại cùng trải nghiệm.
 - Từ profile, **Xem voucher** đóng reward overlay rồi mở wallet. Trong wallet, reward là nested
@@ -54,7 +63,7 @@ bày và điều phối trong UI.
   ra từ mouth anchor, phủ trên card nhưng không bắt pointer, nở quanh/qua phần trên của card rồi tan
   trong tối đa 500 ms. Sau 170 ms, card kết quả bắt đầu rất nhỏ bên trong miệng hộp, fade + scale
   `0.18 → 1` và đi từ `y=-18%` tới `y=-115%` trong 280 ms; lớp khói phía trên còn che card cho tới
-  lúc gần tan. Voucher dùng shared `VoucherCard`; fallback hiện card **5 🐟**.
+  lúc gần tan. Voucher dùng shared `VoucherCard`; fallback hiện card với số điểm server trả.
 - Không suy phần thưởng từ box hoặc animation. Chỉ render outcome server trả; box đã chọn quyết định
   asset và mouth anchor của reveal.
 
@@ -72,6 +81,8 @@ bày và điều phối trong UI.
   tuyên bố thành công trước khi server trả outcome.
 
 ## Admin experience
+
+- Settings includes **Điểm chào mừng** for all modes, with inline validation and help explaining the shared fallback amount. Bounds and snapshot rules belong to the lifecycle owner. Saving settings/campaign changes invalidates the public preview query.
 
 - Workspace **Quản lý campaign** mở từ nút **Tạo campaign** trên trang quản lý voucher bằng
   `ResponsiveOverlay` (bottom sheet trên mobile, dialog full-size trên desktop); không có tab Admin

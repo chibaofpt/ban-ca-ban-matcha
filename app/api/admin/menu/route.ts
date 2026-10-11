@@ -66,6 +66,7 @@ export async function GET(): Promise<NextResponse> {
         default_size_config: defaultSizeConfigs.map((config) => ({
           size: config.size,
           base_liquid_ml: config.milk_ml,
+          powder_gram: Number(config.powder_gram),
         })),
       },
     });

@@ -1,3 +1,4 @@
+import { phoneSearchVariants } from "@/src/utils/phone";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
@@ -76,7 +77,7 @@ export async function GET(req: NextRequest) {
           user: {
             OR: [
               { name: { contains: search, mode: "insensitive" } },
-              { phone_number: { contains: search } },
+              ...phoneSearchVariants(search).map((term) => ({ phone_number: { contains: term } })),
             ],
           },
         },

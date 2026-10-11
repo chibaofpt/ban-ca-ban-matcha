@@ -31,8 +31,8 @@ export function RegistrationSettingsPanel() {
     },
   });
   return <section aria-labelledby="registration-settings-title" className="space-y-4 rounded-2xl border bg-card p-4 md:p-5">
-    <h2 id="registration-settings-title" className="text-lg font-semibold">Xác nhận số điện thoại khi đăng ký</h2>
-    <p className="text-sm text-muted-foreground">Áp dụng cho đăng ký mới. Tài khoản đã có giữ nguyên trạng thái xác minh.</p>
+    <h2 id="registration-settings-title" className="text-lg font-semibold">OTP nhận tài khoản tại quầy</h2>
+    <p className="text-sm text-muted-foreground">Dùng khi khách xác nhận số điện thoại trùng tài khoản mua tại quầy để nhận lịch sử và điểm.</p>
     {config.isPending ? <p role="status" className="flex gap-2"><Loader2 className="size-4 animate-spin" />Đang tải cài đặt…</p> : config.data ?
       <SettingsEditor key={config.data.revision} settings={config.data} saving={save.isPending} onSave={async (values) => {
         await save.mutateAsync({ ...values, revision: config.data.revision });
@@ -60,7 +60,7 @@ function SettingsEditor({ settings, saving, onSave }: {
     resolver: zodResolver(schema), mode: "onBlur", defaultValues: { otp_enabled: settings.otp_enabled, daily_send_limit: settings.daily_send_limit },
   });
   return <form onSubmit={handleSubmit(async (values) => { await onSave(values).catch(() => undefined); })} className="space-y-3">
-    <label className="flex min-h-11 items-center gap-3 text-sm font-medium"><input type="checkbox" {...register("otp_enabled")} className="size-5 accent-primary focus-visible:ring-2 focus-visible:ring-ring" />Yêu cầu mã OTP khi đăng ký</label>
+    <label className="flex min-h-11 items-center gap-3 text-sm font-medium"><input type="checkbox" {...register("otp_enabled")} className="size-5 accent-primary focus-visible:ring-2 focus-visible:ring-ring" />Cho phép OTP nhận tài khoản tại quầy</label>
     <label htmlFor="registration-daily-limit" className="block text-sm font-medium">Giới hạn lượt gửi mỗi ngày (UTC+7)
       <input id="registration-daily-limit" type="number" min={1} step={1} {...register("daily_send_limit", { valueAsNumber: true })}
         aria-invalid={Boolean(errors.daily_send_limit)} aria-describedby={errors.daily_send_limit ? "registration-daily-limit-error" : undefined}

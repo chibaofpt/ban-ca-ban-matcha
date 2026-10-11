@@ -3,7 +3,7 @@ import type { LattePriceAnchors } from "@/contracts/menu";
 
 import React, { useCallback, useState } from 'react';
 import Image from 'next/image';
-import { Coffee, Sparkles } from 'lucide-react';
+import { Coffee } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { MenuItem, MilkTypeOption, Size } from '@/src/lib/types/menu';
 import { usePowderStore } from '@/src/lib/store/powderStore';
@@ -61,6 +61,7 @@ const MenuCard: React.FC<MenuCardProps> = ({
   const isImageLoaded = Boolean(item.image_url && loadedImageUrl === item.image_url);
   const defaultPowderId = isLatte ? item.powder?.id : item.resolved_default_powder_id;
   const defaultMilk = milkTypes.find((milk) => milk.is_default) ?? milkTypes[0];
+  const itemTitleClassName = `font-serif font-medium leading-tight line-clamp-2 ${compact ? "break-words text-base text-primary-foreground" : "text-lg text-[#2d4a22]"}`;
 
   const getDisplayPrice = (sizeObj: MenuItem["sizes"][0]) => {
     const s = sizeObj.size;
@@ -153,14 +154,16 @@ const MenuCard: React.FC<MenuCardProps> = ({
       {/* Content Area */}
       <div className={compact ? "flex min-w-0 flex-1 flex-col justify-between gap-2 self-stretch text-left" : "flex flex-col flex-1 h-[80%] justify-between py-1 text-left items-start min-w-0"}>
         <div className="w-full">
-          <h3 className={`font-serif font-medium leading-tight line-clamp-2 mb-1 ${compact ? "break-words text-base text-primary-foreground" : "text-lg text-[#2d4a22]"}`}>
-            {item.name}
-            {item.is_seasonal && (
-              <span className="inline-flex items-center bg-amber-50 text-amber-600 text-[8px] font-sans font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-sm border border-amber-200/50 align-middle ml-2 -translate-y-[1px]">
-                <Sparkles className="mr-0.5 h-2.5 w-2.5" aria-hidden="true" /> Theo mùa
+          {item.is_seasonal ? (
+            <div className="mb-1 flex w-full min-w-0 items-start justify-between gap-2">
+              <h3 className={`${itemTitleClassName} min-w-0 flex-1`}>{item.name}</h3>
+              <span className="inline-flex shrink-0 items-center bg-gradient-to-r from-amber-500 to-orange-400 text-white text-[8px] font-sans font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-none border border-amber-200/50 align-middle -translate-y-[1px]">
+                Seasonal
               </span>
-            )}
-          </h3>
+            </div>
+          ) : (
+            <h3 className={`${itemTitleClassName} mb-1`}>{item.name}</h3>
+          )}
           {item.description && (
             <p className={`text-[11px] leading-relaxed ${compact ? "line-clamp-1 break-words text-primary-foreground" : "line-clamp-2 text-primary/60"}`}>
               {item.description}

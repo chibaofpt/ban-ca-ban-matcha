@@ -1,6 +1,7 @@
 # Registration OTP và admission cho dịch vụ trả phí
 
-Status: Accepted
+Status: Superseded in part by [0007](0007-google-account-access.md): public phone registration is retired;
+paid admission and provider uncertainty remain for transitional phone-ghost proof.
 Date: 2026-10-04
 
 ## Context

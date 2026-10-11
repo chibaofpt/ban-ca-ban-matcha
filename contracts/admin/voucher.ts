@@ -113,7 +113,7 @@ export interface VoucherPackageOwner {
   qr_token: string;
   name: string;
   insta_name: string | null;
-  phone_number: string;
+  phone_number: string | null;
   vouchers: VoucherOwnerInstance[];
 }
 
@@ -150,7 +150,7 @@ export interface AdminVoucherRecipientSummary {
 }
 
 export interface AdminVoucherRecipientPage {
-  user: { qr_token: string; name: string; phone_number: string };
+  user: { qr_token: string; name: string; phone_number: string | null };
   vouchers: AdminVoucherRecipientVoucher[];
   meta: { has_more: boolean; next_cursor: string | null };
   summary: AdminVoucherRecipientSummary;

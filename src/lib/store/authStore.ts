@@ -1,18 +1,20 @@
 "use client";
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import { resetForceLogout } from "@/src/lib/api/client";
+import { useCartStore } from "./cartStore";
 
 /** Shape of the logged-in user stored in the auth store. */
 export interface AuthUser {
-  phone: string;
+  qr_token: string;
+  phone: string | null;
   name: string;
 }
 
 interface AuthState {
   user: AuthUser | null;
-  login: (phone: string, name?: string) => void;
+  login: (phone: string | null, name: string, qrToken: string) => void;
   updateName: (name: string) => void;
   logout: () => void;
 }
@@ -27,9 +29,10 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       user: null,
 
-      login: (phone, name) => {
+      login: (phone, name, qrToken) => {
         resetForceLogout();
-        set({ user: { phone, name: name ?? phone } });
+        if (useCartStore.getState().voucherOwnerKey !== qrToken) useCartStore.getState().detachVoucherOwner(qrToken);
+        set({ user: { phone, name, qr_token: qrToken } });
       },
 
       updateName: (name) =>
@@ -37,9 +40,14 @@ export const useAuthStore = create<AuthState>()(
           user: state.user ? { ...state.user, name } : null,
         })),
 
-      logout: () => set({ user: null }),
+      logout: () => { useCartStore.getState().detachVoucherOwner(null); set({ user: null }); },
     }),
-    { name: "bcbm-auth" }
+    {
+      name: "bcbm-auth", version: 1,
+      storage: createJSONStorage(() => localStorage),
+      // Old phone-only UI state cannot identify a wallet; require one fresh sign-in.
+      migrate: () => ({ user: null }),
+    }
   )
 );
 

@@ -30,6 +30,9 @@ vi.mock("@/lib/auth", () => ({
   getSession: () => mockGetSession(),
 }));
 
+vi.mock("@/lib/cacheInvalidation", () => ({ invalidateMenuCaches: vi.fn() }));
+vi.mock("@/lib/observability", () => ({ captureServerException: vi.fn() }));
+
 vi.mock("@/lib/storage", () => ({
   MENU_IMAGE_OUTPUT_CONTENT_TYPE: "image/webp",
   uploadMenuImage: (...args: unknown[]) => mockUploadMenuImage(...args),
@@ -182,6 +185,62 @@ function setupTx(overrides: {
 // â”€â”€ Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 describe("POST /api/admin/menu/create-latte-with-powder", () => {
+  it.each(["0", "6", "2.5", "abc"])("chặn rating bột không hợp lệ %s trước khi ghi", async (rating) => {
+    setupTx();
+    const res = await POST(makeFormDataReq(validFormData({ new_powder_umami: rating })));
+    expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe("VALIDATION_ERROR");
+    expect(mockMatchaPowderCreate).not.toHaveBeenCalled();
+  });
+  it("chặn tên SEO của bột nếu chưa chọn ảnh", async () => {
+    const res = await POST(makeFormDataReq(validFormData({ new_powder_image_filename: "uji" })));
+    expect(res.status).toBe(400);
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+  it("dọn cả hai ảnh khi transaction tạo bột và món thất bại", async () => {
+    setupTx();
+    mockBuildMenuImagePath.mockImplementation(({ category }: { category: string }) => `${category}/image.webp`);
+    mockTransaction.mockRejectedValue(new Error("DB failed"));
+    const image = new File(["image"], "image.webp", { type: "image/webp" });
+    const res = await POST(makeFormDataReq({ ...validFormData(), image, new_powder_image: image }));
+    expect(res.status).toBe(500);
+    expect(mockRemoveMenuImages).toHaveBeenCalledWith(["latte/image.webp", "powders/image.webp"]);
+  });
+  it("ảnh bột sai loại bị chặn và dọn ảnh món vừa upload", async () => {
+    setupTx();
+    const res = await POST(makeFormDataReq({ ...validFormData(),
+      image: new File(["image"], "menu.webp", { type: "image/webp" }),
+      new_powder_image: new File(["bad"], "powder.txt", { type: "text/plain" }),
+    }));
+    expect(res.status).toBe(400);
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockRemoveMenuImages).toHaveBeenCalledWith(["products/latte/matcha-seo-12345678.webp"]);
+  });
+  it("upload ảnh bột với tên SEO và lưu URL vào bột mới", async () => {
+    setupTx();
+    mockBuildMenuImagePath.mockReturnValue("powders/uji.webp");
+    const res = await POST(makeFormDataReq({ ...validFormData({ new_powder_image_filename: "uji" }),
+      new_powder_image: new File(["powder"], "powder.webp", { type: "image/webp" }),
+    }));
+    expect(res.status).toBe(201);
+    expect(mockBuildMenuImagePath).toHaveBeenCalledWith(expect.objectContaining({ category: "powders", requestedName: "uji" }));
+    expect(mockMatchaPowderCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ image_url: "https://example.com/image.jpg" }) });
+  });
+
+  it("lưu nhà sản xuất, mô tả và rating của bột inline", async () => {
+    setupTx();
+    const res = await POST(makeFormDataReq(validFormData({
+      new_powder_manufacturer: "Uji",
+      new_powder_description: "Hương dịu",
+      new_powder_fragrance: "4", new_powder_body: "3", new_powder_bitterness: "1",
+      new_powder_umami: "5", new_powder_color: "4",
+    })));
+    expect(res.status).toBe(201);
+    expect(mockMatchaPowderCreate).toHaveBeenCalledWith({ data: expect.objectContaining({
+      manufacturer: "Uji", description: "Hương dịu", fragrance: 4, body: 3, bitterness: 1, umami: 5, color: 4,
+    }) });
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSession.mockResolvedValue(ADMIN_SESSION);

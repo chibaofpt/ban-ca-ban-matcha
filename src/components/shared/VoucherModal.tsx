@@ -85,7 +85,9 @@ export default function VoucherModal() {
   const vouchers = useMemo(() => vouchersData ?? [], [vouchersData]);
   const { data: packages = [], isLoading: packagesLoading } = useVoucherPackages({ enabled: open });
   const refreshWallet = useCallback(async (): Promise<MyVoucher[]> => {
+    const ownerQrToken = useAuthStore.getState().user?.qr_token;
     const refreshed = await listMyVouchers();
+    if (!ownerQrToken || useAuthStore.getState().user?.qr_token !== ownerQrToken) throw new Error("Tài khoản đã thay đổi. Vui lòng mở lại ví voucher.");
     if (!Array.isArray(refreshed)) throw new Error("Ví voucher không hợp lệ");
     queryClient.setQueryData(VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS, refreshed);
     return refreshed;
@@ -118,6 +120,7 @@ export default function VoucherModal() {
   const closeVoucherSurface = useCallback(() => {
     close();
   }, [close]);
+  useEffect(() => { resetVoucherSurface(); setExchangingId(null); setHighlightToken(null); }, [currentUser?.qr_token, resetVoucherSurface]);
   const cartItems = useCartStore((s) => s.items);
   const bundleApplications = useCartStore((s) => s.bundleApplications);
   const bundleAllocatedQuantitiesByCartId = useMemo(
@@ -145,11 +148,12 @@ export default function VoucherModal() {
       ? "Ví voucher đang được xác minh lại."
       : "Ví voucher chưa được xác minh.";
   const commitBundleDraftIfVerified = useCallback((draft: Parameters<typeof commitBundleCartDraft>[0]) => {
-    if (!walletVerified) {
+    const ownerQrToken = currentUser?.qr_token;
+    if (!ownerQrToken || useAuthStore.getState().user?.qr_token !== ownerQrToken || draft.application.owner_key !== `customer:${ownerQrToken}` || !walletVerified) {
       return { ok: false as const, code: "BUNDLE_STALE" as const, message: "Ví voucher đang được xác minh lại." };
     }
     return commitBundleCartDraft(draft);
-  }, [commitBundleCartDraft, walletVerified]);
+  }, [commitBundleCartDraft, currentUser?.qr_token, walletVerified]);
   const requestRefundIfVerified = useCallback((voucher: MyVoucher) => {
     if (walletVerified) {
       setRefundCandidate(voucher);
@@ -230,12 +234,12 @@ export default function VoucherModal() {
       return;
     }
     if (useNowPendingRef.current || voucher.status !== "ACTIVE" || !voucher.availability.can_apply) return;
-    const ownerPhone = currentUser?.phone;
+    const ownerQrToken = currentUser?.qr_token;
     const canUseNow = () => {
       const walletState = queryClient.getQueryState(VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS);
       const latestVoucher = queryClient.getQueryData<MyVoucher[]>(VOUCHER_QUERY_KEYS.CUSTOMER_VOUCHERS)?.find((candidate) => candidate.qr_token === voucher.qr_token);
-      return ownerPhone !== undefined && canCommit() && useVoucherModalStore.getState().open && !useAuthModalStore.getState().open &&
-        useAuthStore.getState().user?.phone === ownerPhone && walletState?.status === "success" &&
+      return Boolean(ownerQrToken) && canCommit() && useVoucherModalStore.getState().open && !useAuthModalStore.getState().open &&
+        useAuthStore.getState().user?.qr_token === ownerQrToken && walletState?.status === "success" &&
         walletState.fetchStatus === "idle" && latestVoucher?.status === "ACTIVE" && latestVoucher.availability.can_apply;
     };
     if (!canUseNow()) return;
@@ -299,7 +303,7 @@ export default function VoucherModal() {
       handleUseNowSuccess();
       return;
     }
-  }, [activeVouchers, addToCart, closeVoucherSurface, currentUser?.phone, defaultPowderGram, handleUseNowSuccess, menuData, powders, queryClient, router, setSelectedVoucherIds, subtotalVnd, walletVerificationMessage, walletVerified]);
+  }, [activeVouchers, addToCart, closeVoucherSurface, currentUser?.qr_token, defaultPowderGram, handleUseNowSuccess, menuData, powders, queryClient, router, setSelectedVoucherIds, subtotalVnd, walletVerificationMessage, walletVerified]);
 
   useEffect(() => {
     const token = requestedUseNowVoucherToken;
@@ -312,6 +316,7 @@ export default function VoucherModal() {
     setPointsHistoryOpen(false);
     setActiveTab("my_vouchers");
 
+    const ownerQrToken = currentUser?.qr_token;
     const stillOwnsDispatch = () => {
       const modalState = useVoucherModalStore.getState();
       const authState = useAuthModalStore.getState();
@@ -320,7 +325,7 @@ export default function VoucherModal() {
         modalState.requestedUseNowVoucherToken === null &&
         !authState.open &&
         authState.pendingIntent === null &&
-        useAuthStore.getState().user !== null;
+        Boolean(ownerQrToken) && useAuthStore.getState().user?.qr_token === ownerQrToken;
     };
 
     void refetchVouchers().then(async (result) => {
@@ -346,7 +351,7 @@ export default function VoucherModal() {
     }).finally(() => {
       if (consumingUseNowVersionRef.current === requestVersion) consumingUseNowVersionRef.current = null;
     });
-  }, [authModalOpen, claimUseNowVoucherRequest, clearIntent, handleWalletUseNow, isLoggedIn, open, pendingIntent, refetchVouchers, requestedUseNowVoucherToken, useNowRequestVersion, walletVerified]);
+  }, [authModalOpen, claimUseNowVoucherRequest, clearIntent, currentUser?.qr_token, handleWalletUseNow, isLoggedIn, open, pendingIntent, refetchVouchers, requestedUseNowVoucherToken, useNowRequestVersion, walletVerified]);
 
   const handleBundleSuccess = useCallback(() => {
     openCartAfterCloseRef.current = true;
@@ -373,9 +378,12 @@ export default function VoucherModal() {
   }, [isLoggedIn, open]);
 
   const acquirePackage = useCallback(async (pkg: VoucherPackage) => {
+    const ownerQrToken = useAuthStore.getState().user?.qr_token;
+    if (!ownerQrToken) return;
     setExchangingId(pkg.id);
     try {
       const result = await acquire(pkg);
+      if (useAuthStore.getState().user?.qr_token !== ownerQrToken) return;
       setHighlightToken(result.acquired.qr_token);
       setActiveTab("my_vouchers");
       setDetailPackageId(null);
@@ -385,13 +393,13 @@ export default function VoucherModal() {
       }
       toast.success(pkg.acquisition_mode === "FREE_CLAIM" ? `Đã nhận: ${pkg.name}` : `Đổi thành công: ${pkg.name}`);
     } catch (error: unknown) {
+      if (useAuthStore.getState().user?.qr_token !== ownerQrToken) return;
       const code = axios.isAxiosError<{ code?: string }>(error)
         ? error.response?.data?.code ?? "UNKNOWN"
         : "UNKNOWN";
       toast.error(getExchangeErrorMessage(code, pkg.points_cost, points));
     } finally {
-      setExchangingId(null);
-      setPendingPackage(null);
+      if (useAuthStore.getState().user?.qr_token === ownerQrToken) { setExchangingId(null); setPendingPackage(null); }
     }
   }, [acquire, openAcquiredBundle, points]);
 
@@ -569,6 +577,7 @@ export default function VoucherModal() {
               defaultPowderGram={defaultPowderGram}
               onClose={() => setBundleSetupVoucher(null)}
               onValidateDraft={(candidate: BundleCartDraftResult): BundleCartDraftValidation => {
+                if (!currentUser?.qr_token) return { ok: false, error: "Vui lòng đăng nhập lại để dùng voucher" };
                 const summary = getBundleVoucherSummary(bundleSetupVoucher);
                 if (!summary) return { ok: false, error: "Voucher BUNDLE không còn khả dụng" };
                 const siblingResolution = resolveBundleSelectionSiblings({
@@ -583,7 +592,7 @@ export default function VoucherModal() {
                 return validateBundleCartDraft({
                   voucher: summary,
                   candidate,
-                  ownerKey: `customer:${currentUser?.phone ?? "anonymous"}`,
+                  ownerKey: `customer:${currentUser?.qr_token ?? ""}`,
                   siblingApplications: siblingResolution.siblings,
                 });
               }}

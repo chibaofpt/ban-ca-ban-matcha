@@ -12,6 +12,7 @@ import { ApiServiceError } from "@/src/services/orderService";
 import { register } from "@/src/services/authService";
 import {
   getWelcomeReward,
+  getWelcomeRewardPreview,
   openWelcomeReward,
   type WelcomeReward,
 } from "@/src/services/welcomeRewardService";
@@ -40,6 +41,12 @@ const PENDING_REWARD: WelcomeReward = {
 };
 
 describe("welcomeRewardService", () => {
+  it("đọc public offer và giữ mức 12 điểm — FRONTEND_CONTRACT", async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({ data: { data: { mode: "POINTS", points_amount: 12 } } });
+    await expect(getWelcomeRewardPreview()).resolves.toEqual({ mode: "POINTS", points_amount: 12 });
+    expect(apiClient.get).toHaveBeenCalledWith("/api/auth/register/welcome-reward");
+  });
+
   beforeEach(() => vi.clearAllMocks());
 
   it("GET phần thưởng chào mừng và unwrap data đúng một lần", async () => {

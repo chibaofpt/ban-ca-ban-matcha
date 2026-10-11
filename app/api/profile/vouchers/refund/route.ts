@@ -1,3 +1,5 @@
+import { AccountError, accountErrorResponse } from "@/lib/auth/accountError";
+import { claimActiveCustomerForWrite } from "@/lib/auth/accountMergeGuard";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
@@ -38,6 +40,7 @@ export async function POST(req: NextRequest) {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         const result = await prisma.$transaction(async (tx) => {
+          await claimActiveCustomerForWrite(tx, session.id);
           const voucher = await tx.voucher.findUnique({
             where: { qr_token: parsed.data.qr_token },
             include: {
@@ -85,6 +88,7 @@ export async function POST(req: NextRequest) {
       }
     }
   } catch (error) {
+    if (error instanceof AccountError) return accountErrorResponse(error);
     if (error instanceof RefundRuleError) {
       return NextResponse.json({ error: error.message, code: error.code, ...(error.reason ? { details: { reason: error.reason } } : {}) }, { status: error.status });
     }

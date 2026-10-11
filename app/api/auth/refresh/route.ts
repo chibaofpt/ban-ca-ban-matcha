@@ -23,9 +23,9 @@ export async function POST() {
     const now = new Date();
     let session = await prisma.session.findFirst({
       where: { OR: [{ refresh_token: presentedToken }, { previous_refresh_token: presentedToken }] },
-      include: { user: true },
+      include: { user: { include: { sourceMerge: true } } },
     });
-    if (!session || session.expires_at <= now || session.user.is_blocked) {
+    if (!session || session.expires_at <= now || (session.user.is_blocked || session.user.sourceMerge)) {
       await clearAuthCookies();
       return NextResponse.json({ error: "Session expired", code: "UNAUTHORIZED" }, { status: 401 });
     }
@@ -52,9 +52,9 @@ export async function POST() {
         },
       });
     }
-    session = await prisma.session.findUnique({ where: { id: sessionId }, include: { user: true } });
+    session = await prisma.session.findUnique({ where: { id: sessionId }, include: { user: { include: { sourceMerge: true } } } });
     const checkedAt = new Date();
-    if (session?.user.is_blocked) {
+    if (session?.user.is_blocked || session?.user.sourceMerge) {
       await clearAuthCookies();
       return NextResponse.json({ error: "Session expired", code: "UNAUTHORIZED" }, { status: 401 });
     }

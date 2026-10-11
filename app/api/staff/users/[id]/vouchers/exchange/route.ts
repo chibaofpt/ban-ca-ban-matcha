@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { AccountError, accountErrorResponse } from "@/lib/auth/accountError";
 import { resolveCustomerIdentifier } from "@/lib/publicIdentifiers";
 import {
   issueVoucher,
@@ -79,6 +80,7 @@ export async function POST(
       { status: 201 }
     );
   } catch (err) {
+    if (err instanceof AccountError) return accountErrorResponse(err);
     if (err instanceof VoucherIssuanceError) {
       if (err.reason === "VOUCHER_SOLD_OUT") {
         return NextResponse.json(

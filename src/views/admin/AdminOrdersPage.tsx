@@ -1,5 +1,7 @@
 "use client";
 
+import { formatVietnamPhone } from "@/src/utils/display";
+
 import { useState, useCallback } from "react";
 import { Phone, Clock, Search, FilterX, Filter, CheckCircle2, XCircle, BarChart3 } from "lucide-react";
 import { cn } from "@/src/utils/cn";
@@ -402,7 +404,7 @@ export default function AdminOrdersPage() {
                       </span>
                       <span className={order.order_type === "DELIVERY" ? "hidden" : "inline-flex items-center gap-1"}>
                         <Phone size={11} />
-                        {order.user?.phone_number ?? "—"}
+                        {order.user?.phone_number ? formatVietnamPhone(order.user.phone_number) : "—"}
                       </span>
                     </div>
                     {order.status === "PENDING" && order.auto_cancel_at && (

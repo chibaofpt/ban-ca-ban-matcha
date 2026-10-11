@@ -1,3 +1,8 @@
+import type { PhoneOtpRequestPayload } from "@/contracts/account";
+import type { PhoneClaimContext } from "@/lib/auth/phoneOtpProof";
+import { loadAccount, requireActiveAccount, requireClaimableGhost } from "@/lib/auth/accountData";
+import { requireActorSession } from "@/lib/auth/googleChallenge";
+import { claimActiveCustomerForWrite } from "@/lib/auth/accountMergeGuard";
 import { randomInt, randomUUID } from "node:crypto";
 import type { RegistrationOtpChallenge, RegistrationOtpConfig, RegistrationOtpSend } from "@/contracts/registrationOtp";
 import { prisma } from "@/lib/prisma";
@@ -14,7 +19,7 @@ import {
 import { registrationTurnstileConfig, verifyRegistrationTurnstile } from "@/lib/auth/turnstile";
 
 function outcomeData(outcome: RegistrationOtpOutcome): RegistrationOtpChallenge {
-  if ("data" in outcome) return outcome.data;
+  if ("data" in outcome) return { ...outcome.data, server_now: new Date().toISOString() };
   throw new RegistrationOtpError(outcome.error.status, outcome.error.code, outcome.error.reason, outcome.error.retry_at, outcome.error.provider_code);
 }
 
@@ -52,24 +57,24 @@ export async function getRegistrationOtpConfig(req: Request): Promise<Registrati
   if (!active) return { enabled: true, turnstile, challenge: null };
   const row = await prisma.otpAttempt.findUnique({ where: { id: active.id } });
   const challenge = row && !row.verified && row.binding_hash === flow && row.expires_at.getTime() > Date.now()
-    ? { ...active.data, expires_at: row.expires_at.toISOString() } : null;
+    ? { ...active.data, expires_at: row.expires_at.toISOString(), server_now: new Date().toISOString() } : null;
   return { enabled: true, turnstile, challenge };
 }
 
 /** Validate CAPTCHA, reserve one paid send, persist its challenge and dispatch ABENLA once. */
-export async function sendRegistrationOtp(req: Request, input: RegistrationOtpSend, ip: string): Promise<RegistrationOtpChallenge> {
+export async function sendRegistrationOtp(req: Request, input: RegistrationOtpSend | PhoneOtpRequestPayload, ip: string, context?: PhoneClaimContext): Promise<RegistrationOtpChallenge> {
   const settings = await readRegistrationOtpSettings();
   if (!settings.otp_enabled) throw new RegistrationOtpError(409, "CONFLICT", "OTP_DISABLED");
   registrationTurnstileConfig();
-  const flow = await registrationOtpFlow(req);
+  const flow = context?.flow ?? await registrationOtpFlow(req);
   const phone = normalizePhone(input.phone_number);
-  const payload = registrationOtpPayload(input, phone);
+  const payload = context?.payload ?? registrationOtpPayload(input as RegistrationOtpSend, phone);
   const binding = registrationOtpDigest("request-binding", JSON.stringify([flow, phone, payload]));
   const key = registrationOtpKey("request", input.request_id);
   const id = randomUUID();
   const now = Date.now();
   const initial: RegistrationOtpChallenge = {
-    challenge_id: id, masked_phone: `${phone.slice(0, 5)}***${phone.slice(-3)}`,
+    challenge_id: id, masked_phone: `${phone.slice(0, 5)}***${phone.slice(-3)}`, server_now: new Date(now).toISOString(),
     expires_at: new Date(now + 300000).toISOString(), resend_at: new Date(now + 120000).toISOString(),
     delivery_status: "unknown", provider_code: null, sms_per_message: null,
   };
@@ -77,12 +82,20 @@ export async function sendRegistrationOtp(req: Request, input: RegistrationOtpSe
   if (ownership.kind === "replay") return outcomeData(ownership.outcome);
   let outcome: RegistrationOtpOutcome;
   try {
-    await checkRegistrationIdentity(phone, input.insta_name);
-    await verifyRegistrationTurnstile(input.turnstile_token, ip);
+    if (!context) await checkRegistrationIdentity(phone, "insta_name" in input ? input.insta_name : undefined);
+    if (context) { requireActiveAccount(await loadAccount(prisma, context.actorUserId)); requireClaimableGhost(await loadAccount(prisma, context.targetUserId)); }
+    await verifyRegistrationTurnstile(input.turnstile_token, ip, context ? "phone_claim" : "registration_otp");
     const code = randomInt(0, 1000000).toString().padStart(6, "0");
     // Retry only DB conflicts before the first Redis admission call; uncertain paid reservations are retained.
     let admissionStarted = false;
     const admit = () => prisma.$transaction(async (tx) => {
+      if (context) {
+        await requireActorSession(tx, context.actorUserId, context.actorSessionId);
+        for (const id of [context.actorUserId, context.targetUserId].sort()) await claimActiveCustomerForWrite(tx, id);
+        const target = await loadAccount(tx, context.targetUserId); requireClaimableGhost(target);
+        const actor = await loadAccount(tx, context.actorUserId); requireActiveAccount(actor);
+        if (target.phone_number !== phone || actor.account_origin !== "GOOGLE_EMAIL" || !actor.google_sub) throw new RegistrationOtpError(409, "CONFLICT", "PHONE_CLAIM_NOT_ALLOWED");
+      }
       const current = await readRegistrationOtpSettings(tx);
       const guard = await tx.registrationOtpSettings.updateMany({
         where: { id: 1, revision: current.revision }, data: { revision: current.revision },
@@ -100,6 +113,8 @@ export async function sendRegistrationOtp(req: Request, input: RegistrationOtpSe
       });
       await tx.otpAttempt.create({ data: {
         id, phone_number: phone, binding_hash: flow,
+        purpose: context ? "PHONE_GHOST_CLAIM" : "LEGACY_REGISTRATION",
+        actor_user_id: context?.actorUserId, actor_session_id: context?.actorSessionId, target_user_id: context?.targetUserId,
         code_hash: registrationOtpCode(id, phone, flow, payload, code),
         expires_at: new Date(reserved.expires_at),
       } });

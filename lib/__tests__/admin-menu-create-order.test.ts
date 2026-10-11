@@ -8,11 +8,13 @@ const mockMilkFindMany = vi.fn();
 const mockSizeConfigFindMany = vi.fn();
 const mockPowderFindUnique = vi.fn();
 const mockTxPowders = vi.fn();
+const mockMenuFindMany = vi.fn();
 
 vi.mock("@/lib/auth", () => ({ getSession: () => mockGetSession() }));
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     $transaction: (...args: unknown[]) => mockTransaction(...args),
+    menuItem: { findMany: (...args: unknown[]) => mockMenuFindMany(...args) },
     matchaPowder: { findUnique: (...args: unknown[]) => mockPowderFindUnique(...args) },
     milkType: { findMany: (...args: unknown[]) => mockMilkFindMany(...args) },
     defaultSizeConfig: { findMany: (...args: unknown[]) => mockSizeConfigFindMany(...args) },
@@ -27,7 +29,7 @@ vi.mock("@/lib/storage", () => ({
   removeMenuImages: vi.fn(),
 }));
 
-import { POST } from "@/app/api/admin/menu/route";
+import { GET, POST } from "@/app/api/admin/menu/route";
 
 const createdExtra = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -87,6 +89,14 @@ describe("POST /api/admin/menu - thứ tự món mới", () => {
     mockUpdateMany.mockResolvedValue({ count: 2 });
     mockCreate.mockResolvedValue(createdExtra);
     mockTransaction.mockImplementation(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx));
+  });
+
+  it("GET cung cấp gram hệ thống và ml để editor suy ngược giá không hardcode", async () => {
+    mockMenuFindMany.mockResolvedValue([]);
+    mockSizeConfigFindMany.mockResolvedValue([{ size: "SMALL", milk_ml: 130, powder_gram: 3.5 }]);
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect((await response.json()).data.default_size_config).toEqual([{ size: "SMALL", base_liquid_ml: 130, powder_gram: 3.5 }]);
   });
 
   it("đưa món mới lên đầu danh mục khi không truyền sort_order", async () => {

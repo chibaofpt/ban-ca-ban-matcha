@@ -1,3 +1,4 @@
+import { normalizePhone } from "@/src/utils/phone";
 import { z } from "zod";
 
 const phoneRegex = /^\+84[35789][0-9]{8}$/;
@@ -8,7 +9,7 @@ export const addressSchema = z.object({
   lat: z.number().finite().min(-90).max(90),
   lng: z.number().finite().min(-180).max(180),
   receiver_name: z.string().min(2, "Tên người nhận quá ngắn").max(100),
-  receiver_phone: z.string().regex(phoneRegex, "Số điện thoại không hợp lệ (định dạng +84)"),
+  receiver_phone: z.string().transform(normalizePhone).pipe(z.string().regex(phoneRegex, "Số điện thoại không hợp lệ (vd: 0912345678)")),
   is_default: z.boolean().default(false),
 });
 

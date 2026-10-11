@@ -33,6 +33,8 @@ thêm ADR mới và đánh dấu bản cũ `Superseded` kèm link; giữ lại b
 | [0001 — Nạp ngữ cảnh theo owner](0001-context-routing.md) | Accepted | Harness và tài liệu |
 | [0002 — Entitlement và pool cho quà chào mừng](0002-welcome-reward-entitlement-and-pool.md) | Accepted | Welcome reward và gacha pool |
 | [0003 — Root contract boundary](0003-root-contract-boundary.md) | Accepted | Shared API wire contracts |
-| [0004 — Registration OTP và admission trả phí](0004-registration-otp-paid-admission.md) | Accepted | Đăng ký, chi phí gửi và CAPTCHA fallback |
+| [0004 — Registration OTP và admission trả phí](0004-registration-otp-paid-admission.md) | Superseded in part by 0007 | Đăng ký, chi phí gửi và CAPTCHA fallback |
 | [0005 — Private order signals](0005-private-order-realtime.md) | Accepted | Realtime cho admin/staff với custom auth |
 | [0006 — Fusion original và manual rollout](0006-fusion-original-powder-and-manual-rollout.md) | Accepted | Neo giá gốc, replacement và compatibility dữ liệu |
+
+| [0007 — Google account access](0007-google-account-access.md) | Accepted | Google onboarding, legacy claim/merge and transitional OTP |

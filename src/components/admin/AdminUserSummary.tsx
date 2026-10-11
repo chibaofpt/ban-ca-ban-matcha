@@ -1,6 +1,6 @@
+import { formatKa, formatVietnamPhone } from "@/src/utils/display";
 import { motion } from "framer-motion";
 import type { AdminUserSummary as AdminUserSummaryDto } from "@/src/lib/types/adminUser";
-import { cn } from "@/src/utils/cn";
 
 interface AdminUserSummaryProps {
   user: AdminUserSummaryDto;
@@ -8,29 +8,45 @@ interface AdminUserSummaryProps {
   onClick?: () => void;
 }
 
-const money = new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 });
+/** Displays available customer contacts as naturally wrapping matcha badges. */
+export function AdminUserContacts({ user }: { user: AdminUserSummaryDto }) {
+  const contacts = [user.phone_number ? formatVietnamPhone(user.phone_number) : null,
+    user.insta_name ? `@${user.insta_name.replace(/^@/, "")}` : null, user.email].filter(Boolean);
+  return <span className="flex min-w-0 flex-wrap gap-2 text-xs">
+    {contacts.map((contact, index) => <span key={index} className="max-w-full rounded-full bg-primary px-2 py-1 text-primary-foreground [overflow-wrap:anywhere]">{contact}</span>)}
+  </span>;
+}
 
 /** Displays the canonical admin customer identity and yearly value summary. */
 export function AdminUserSummary({ user, interactive = false, onClick }: AdminUserSummaryProps) {
   const body = (
-    <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,48%)] gap-x-3 gap-y-2 text-left">
-      <div className="min-w-0">
-        <p className="truncate font-semibold text-foreground">{user.name}</p>
-        <p className="truncate text-sm text-muted-foreground">{user.phone_number}{user.insta_name ? ` · @${user.insta_name.replace(/^@/, "")}` : ""}</p>
-        <div className="mt-2 flex flex-wrap gap-2 text-xs">
-          {!user.is_registered ? <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">Chưa đăng ký</span> : null}
-          <span className={cn("rounded-full px-2 py-1", user.is_verified ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive")}>{user.is_verified ? "Đã xác thực" : "Chưa xác thực"}</span>
-          {user.is_blocked ? <span className="rounded-full bg-destructive/10 px-2 py-1 text-destructive">Đã chặn</span> : null}
+    <div className="min-w-0 flex-1 space-y-2 text-left">
+      {interactive ? <>
+        <div className="flex min-w-0 items-baseline gap-2">
+          <p className="min-w-0 flex-1 truncate font-semibold text-foreground" title={user.name}>{user.name}</p>
+          <p className="shrink-0 whitespace-nowrap font-bold text-primary">{formatKa(user.annual_spend_vnd)}</p>
         </div>
+        <AdminUserContacts user={user} />
+        <div className="flex items-center gap-2">
+          <p className="whitespace-nowrap text-sm font-medium text-primary sm:text-base">Số điểm: <span className="font-bold">{user.points_balance.toLocaleString("vi-VN")}</span> điểm ká</p>
+          {!user.is_verified ? <span className="shrink-0 whitespace-nowrap rounded-full bg-destructive/10 px-2 py-1 text-[10px] text-destructive sm:text-xs">Chưa xác thực</span> : null}
+        </div>
+      </> : <div className="grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-2">
+        <div className="min-w-0 rounded-xl border border-primary p-3">
+          <p className="text-sm text-muted-foreground">Đã chi</p>
+          <p className="break-words text-lg font-bold text-primary">{formatKa(user.annual_spend_vnd)}</p>
+        </div>
+        <div className="min-w-0 rounded-xl border border-primary p-3">
+          <p className="text-sm text-muted-foreground">Số điểm</p>
+          <p className="break-words font-bold text-primary">{user.points_balance.toLocaleString("vi-VN")} điểm ká</p>
+        </div>
+      </div>}
+      <div className="flex flex-wrap gap-2 text-xs">
+        {!user.is_registered ? <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">Chưa đăng ký</span> : null}
+        {!interactive && !user.is_verified ? <span className="rounded-full bg-destructive/10 px-2 py-1 text-destructive">Chưa xác thực</span> : null}
+        {user.is_blocked ? <span className="rounded-full bg-destructive/10 px-2 py-1 text-destructive">Đã chặn</span> : null}
       </div>
-      <div className="min-w-0 text-right">
-        <p className="font-bold text-primary">{money.format(user.annual_spend_vnd)}</p>
-        <p className="text-xs text-muted-foreground">Chi tiêu matcha {user.spending_year}</p>
-      </div>
-      <p className="col-span-2 text-base font-medium text-emerald-800 dark:text-emerald-300">
-        Bạn đang có <span className="font-bold text-emerald-900 dark:text-emerald-200">{user.points_balance.toLocaleString("vi-VN")}</span> điểm ká
-      </p>
-      <p className="col-span-2 text-xs text-muted-foreground">Đã sử dụng {user.points_spent.toLocaleString("vi-VN")} điểm đổi {user.vouchers_exchanged.toLocaleString("vi-VN")} vouchers</p>
+      <p className="text-xs text-muted-foreground">Đã sử dụng {user.points_spent.toLocaleString("vi-VN")} điểm đổi {user.vouchers_exchanged.toLocaleString("vi-VN")} vouchers</p>
     </div>
   );
   if (!interactive) return body;

@@ -18,7 +18,7 @@ const JWT_SECRET = new TextEncoder().encode(secret);
 export interface MiddlewareUser {
   id: string;
   role: string;
-  phone_number: string;
+  phone_number: string | null;
   is_blocked: boolean;
 }
 
@@ -151,7 +151,7 @@ export function buildAuthenticatedResponse(
   securityHeaders?.request.forEach((value, key) => requestHeaders.set(key, value));
   requestHeaders.set("x-user-id", user.id);
   requestHeaders.set("x-user-role", user.role);
-  requestHeaders.set("x-user-phone", user.phone_number);
+  requestHeaders.set("x-user-phone", user.phone_number ?? "");
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   if (cookieUpdates) applyCookieUpdates(response, cookieUpdates, isProduction);
@@ -160,11 +160,11 @@ export function buildAuthenticatedResponse(
 
 function payloadToClaims(payload: Awaited<ReturnType<typeof jwtVerify>>["payload"]): AccessTokenClaims | null {
   if (typeof payload.id !== "string" || typeof payload.role !== "string" ||
-      typeof payload.phone_number !== "string" || typeof payload.sid !== "string") return null;
+      (payload.phone_number !== null && typeof payload.phone_number !== "string") || typeof payload.sid !== "string") return null;
   return { id: payload.id, role: payload.role, phone_number: payload.phone_number, sid: payload.sid };
 }
 
-function sessionToUser(session: { user_id: string; user: { role: string; phone_number: string; is_blocked: boolean } }): MiddlewareUser {
+function sessionToUser(session: { user_id: string; user: { role: string; phone_number: string | null; is_blocked: boolean } }): MiddlewareUser {
   return {
     id: session.user_id,
     role: session.user.role,

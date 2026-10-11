@@ -4,6 +4,7 @@ import type { GrantVoucherInput, GrantedVoucher } from "@/contracts/admin/vouche
 import type { OwnedVoucherStatus, VoucherType } from "@/contracts/voucher";
 
 import { getSession } from "@/lib/auth";
+import { AccountError, accountErrorResponse } from "@/lib/auth/accountError";
 import { invalidateVoucherCaches } from "@/lib/cacheInvalidation";
 import {
   AdminVoucherGrantConfirmationRequiredError,
@@ -97,6 +98,7 @@ export async function POST(
     await invalidateVoucherCaches();
     return NextResponse.json({ data: serializeVoucher(voucher, now, replayed) }, { status: replayed ? 200 : 201 });
   } catch (error) {
+    if (error instanceof AccountError) return accountErrorResponse(error);
     if (error instanceof AdminVoucherGrantConfirmationRequiredError) {
       return NextResponse.json(
         {

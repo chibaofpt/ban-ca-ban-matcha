@@ -3,6 +3,7 @@ import type { Category } from "@/contracts/menu";
 import type { QrScanResult } from "@/contracts/staff";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
+import { resolveCustomerIdentifier } from "@/lib/publicIdentifiers";
 import {
   loadVoucherAvailabilityCatalog,
   retainUsableVoucherTargetScopes,
@@ -12,6 +13,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
+/** Resolve customer QR aliases and voucher scan details for staff. */
 export async function GET(request: NextRequest) {
   try {
     const session = await getSession();
@@ -33,22 +35,28 @@ export async function GET(request: NextRequest) {
     }
 
     // 1. Check if token belongs to a User (personal QR)
-    const user = await prisma.user.findUnique({
-      where: { qr_token: token },
+    const identity = await resolveCustomerIdentifier(token);
+    const user = identity ? await prisma.user.findUnique({
+      where: { id: identity.id },
       select: {
         name: true,
         phone_number: true,
+        email: true,
+        insta_name: true,
+        qr_token: true,
         points_balance: true,
       },
-    });
+    }) : null;
 
     if (user) {
       const result = {
         type: "user",
         data: {
-          qr_token: token,
+          qr_token: user.qr_token,
           name: user.name,
           phone_number: user.phone_number,
+          email: user.email,
+          insta_name: user.insta_name,
           points_balance: user.points_balance,
         },
       } satisfies QrScanResult;

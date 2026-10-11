@@ -10,6 +10,7 @@ export interface WelcomeRewardSummary {
   mode: WelcomeRewardMode;
   status: WelcomeRewardStatus;
   outcome_kind: WelcomeRewardOutcomeKind | null;
+  points: number | null;
 }
 
 export interface WelcomeRewardBox {
@@ -30,7 +31,7 @@ export interface WelcomeRewardCampaign {
 }
 
 export type WelcomeRewardOutcome =
-  | { kind: "POINTS"; points: 5 }
+  | { kind: "POINTS"; points: number }
   | { kind: "VOUCHER"; voucher: MyVoucher };
 
 export interface WelcomeReward {
@@ -47,4 +48,9 @@ export interface OpenWelcomeRewardPayload {
   reward_id: string;
   box_id: string;
   request_id: string;
+}
+
+export interface WelcomeRewardPreview {
+  mode: WelcomeRewardMode;
+  points_amount: number;
 }

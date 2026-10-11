@@ -1,3 +1,4 @@
+import { isPhoneSearch, normalizeCustomerSearch, normalizePhone, phoneSearchVariants } from "@/src/utils/phone";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import type { CustomerSearchResult } from "@/contracts/staff";
@@ -6,7 +7,7 @@ import { getSession } from "@/lib/auth";
 
 const staffUsersQuerySchema = z
   .object({
-    q: z.string().min(2).max(20).optional(),
+    q: z.string().min(2).max(254).optional(),
     phone: z.string().min(1).optional(),
   })
   .refine((d) => d.q !== undefined || d.phone !== undefined, {
@@ -58,13 +59,13 @@ export async function GET(req: NextRequest) {
 
     if (phone !== undefined) {
       // Legacy exact-match path — kept for backward compat
-      const { normalizePhone } = await import("@/lib/auth");
       const normalized = normalizePhone(phone);
       const user = await prisma.user.findUnique({
         where: { phone_number: normalized },
-        select: { qr_token: true, name: true, phone_number: true, points_balance: true },
+        select: { qr_token: true, name: true, phone_number: true, email: true, insta_name: true, points_balance: true, role: true, sourceMerge: { select: { target_user_id: true } } },
       });
-      const items = (user ? [user] : []) satisfies CustomerSearchResult[];
+      const items = (user && user.role === "CUSTOMER" && !user.sourceMerge
+        ? [{ qr_token: user.qr_token, name: user.name, phone_number: user.phone_number, email: user.email, insta_name: user.insta_name, points_balance: user.points_balance }] : []) satisfies CustomerSearchResult[];
       return NextResponse.json(
         { data: { items } },
         { status: 200 }
@@ -72,15 +73,22 @@ export async function GET(req: NextRequest) {
     }
 
     // Fuzzy search path
-    const isDigitsOnly = /^\d+$/.test(q!);
+    const isDigitsOnly = isPhoneSearch(q!);
+    const normalized = normalizeCustomerSearch(q!);
+    const prefixes = phoneSearchVariants(q!).filter((term) => term.startsWith("+84"));
     const users = await prisma.user.findMany({
       where: {
         role: "CUSTOMER",
+        sourceMerge: { is: null },
         ...(isDigitsOnly
-          ? { phone_number: { endsWith: q } }
-          : { name: { contains: q, mode: "insensitive" } }),
+          ? { OR: [{ phone_number: { endsWith: normalized } }, ...prefixes.map((term) => ({ phone_number: { startsWith: term } }))] }
+          : { OR: [
+              { name: { contains: q, mode: "insensitive" } },
+              { email: { contains: q, mode: "insensitive" } },
+              { insta_name: { contains: q!.replace(/^@/, ""), mode: "insensitive" } },
+            ] }),
       },
-      select: { qr_token: true, name: true, phone_number: true, points_balance: true },
+      select: { qr_token: true, name: true, phone_number: true, email: true, insta_name: true, points_balance: true },
       orderBy: { created_at: "desc" },
       take: 10,
     });

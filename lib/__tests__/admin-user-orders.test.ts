@@ -33,7 +33,7 @@ describe("Admin customer order policy", () => {
     const result = await getAdminUserOrder("550e8400-e29b-41d4-a716-446655440000", "550e8400-e29b-41d4-a716-446655440001");
 
     expect(mocks.userFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: {
-      qr_token: "550e8400-e29b-41d4-a716-446655440000", role: "CUSTOMER",
+      qr_token: "550e8400-e29b-41d4-a716-446655440000", role: "CUSTOMER", sourceMerge: { is: null },
     } }));
     expect(mocks.orderFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: {
       id: "550e8400-e29b-41d4-a716-446655440001", user_id: "customer-id",

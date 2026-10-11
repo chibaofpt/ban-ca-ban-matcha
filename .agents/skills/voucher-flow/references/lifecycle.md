@@ -13,6 +13,7 @@ ACTIVE → RESERVED                                (counter BANK_TRANSFER creati
 RESERVED voucher + RESERVED BUNDLE application
   → both REDEEMED + voucher.used_channel = OFFLINE (counter transfer confirmation)
 ACTIVE → REFUNDED                                (auto: target item soft-deleted)
+ACTIVE → REFUNDED                                (ADMIN: eligible points voucher withdrawn)
 ```
 
 - Reserve only vouchers the calculator actually applied.
@@ -53,18 +54,22 @@ ACTIVE → REFUNDED                                (auto: target item soft-delet
 
 ## Welcome Reward and Gacha
 
-Mỗi user có đúng một entitlement quà chào mừng bền vững, được quyết định trong transaction đăng ký.
+Admin cấu hình số điểm chào mừng nguyên từ 1–100, mặc định 5. POINTS và mọi fallback dùng chung mức này. Mỗi entitlement chụp mức điểm khi đăng ký; thay đổi settings không đổi quyền lợi pending/completed.
+
+Mỗi user có đúng một entitlement quà chào mừng bền vững, được quyết định trong transaction đăng ký
+hoặc lần đầu kích hoạt/nhận tài khoản qua Google. Nhận legacy account dùng cùng cấu hình và owner;
+sau hợp nhất, reuse entitlement canonical đã có, chỉ tạo khi cả hai identity chưa có entitlement.
 `mode` của entitlement là effective mode đã commit sau khi áp dụng fallback availability, không
 nhất thiết là raw settings mode; settings thay đổi sau đó không viết lại entitlement. Ba mode loại
 trừ nhau:
 
-- `POINTS`: cộng ngay 5 🐟, ghi `points_log.reason = "welcome_bonus"` và hoàn tất entitlement.
+- `POINTS`: cộng ngay điểm chào mừng đã chụp lúc đăng ký, ghi `points_log.reason = "welcome_bonus"` và hoàn tất entitlement.
 - `FIXED_VOUCHER`: phát ngay voucher từ `fixed_package_id` với `issued_via = WELCOME_GIFT`. Nếu
   package hoặc target không còn khả dụng lúc phát, commit entitlement với mode `POINTS` và cộng
-  5 🐟.
+  điểm chào mừng đã chụp lúc đăng ký.
 - `GACHA`: chụp `active_campaign_id` vào entitlement và để `PENDING` khi campaign đang `ACTIVE` và
   còn ít nhất một allocation chưa phát. Nếu điều kiện đó không còn đúng lúc đăng ký, dùng fallback
-  5 🐟 ngay.
+  điểm chào mừng đã chụp lúc đăng ký ngay.
 
 Entitlement `GACHA` không giữ chỗ trong pool khi đăng ký hoặc khi user chỉ xem hộp. Stock được giải
 quyết đúng một lần ở lần mở đầu tiên thành công, trong Serializable transaction; outcome đã commit
@@ -79,7 +84,7 @@ voucher kế tiếp mang `draw_number = 61`. Nếu item được chọn mất av
 candidates của transaction và thử phần còn lại; không tự đổi trọng số thành tỷ lệ cấu hình khác.
 
 - `PAUSED` chặn mở với `REWARD_PAUSED` và giữ nguyên entitlement `PENDING`.
-- `ENDED`, hoặc pool thực sự hết allocation, hoàn tất lần mở bằng fallback 5 🐟; box đã chọn vẫn
+- `ENDED`, hoặc pool thực sự hết allocation, hoàn tất lần mở bằng fallback điểm chào mừng đã chụp lúc đăng ký; box đã chọn vẫn
   được lưu trong outcome.
 - Nếu campaign `ACTIVE` còn allocation nhưng hiện không có candidate khả dụng, trả
   `REWARD_TEMPORARILY_UNAVAILABLE`; không phát fallback và user có thể thử lại sau.
@@ -130,12 +135,35 @@ persistence và invariant thuộc [SCHEMA](../../../../SCHEMA.md#welcome_reward_
 
 ## Voucher Refund
 
+### Customer unusable-voucher reconciliation
+
 - **Eligibility**: an unexpired ACTIVE `POINTS_EXCHANGE` voucher whose live target/configuration is
   no longer usable, including a soft-deleted target item.
 - Refund **100% of the immutable `voucher_purchase` cost**. Status → `REFUNDED`.
 - Customer may request reconciliation through the refund API, but cannot choose arbitrary eligible
   state or refund value; the server re-resolves live availability and purchase audit.
 - `points_log.reason = "voucher_refund"`.
+
+### Admin voluntary refund and withdrawal
+
+- Only ADMIN may initiate a voluntary refund for a customer's voucher; live target availability
+  does not restrict this action. The customer reconciliation flow above keeps its existing rules.
+- Require POINTS_EXCHANGE, ACTIVE, no elapsed expiry, and a trustworthy original negative
+  voucher_purchase audit belonging to this customer and voucher, without a prior refund/reversal.
+  A voucher without an expiry may qualify. Gift/free issuance never qualifies.
+- Reject a voucher associated with any non-CANCELLED order through item/product, addon, discount,
+  freeship or BUNDLE links. Historical links to CANCELLED orders remain for audit and do not block
+  an otherwise eligible voucher restored to ACTIVE.
+- Refund 100% of the original purchase delta, never the current package cost. In one Serializable
+  transaction, revalidate eligibility, conditionally claim ACTIVE → REFUNDED, increment the balance
+  without integer overflow, and append voucher_refund with the ADMIN in performed_by, the original
+  purchase in reversed_log_id, the voucher link, and null order_id. Use bounded conflict retries.
+- A repeated request or competing consumption must not credit the same voucher twice. Missing or
+  inconsistent purchase audit fails closed; never infer the refund from package configuration.
+- REFUNDED withdraws the voucher from all use while retaining wallet and points history. It does
+  not replenish package quantity, lifetime acquisition count, or rewrite the original purchase log.
+- Admin wallet reads project eligibility and refund amount without mutating lifecycle. The write
+  rechecks the current state rather than trusting the earlier projection or a client amount.
 
 ### Completed COUNTER cancellation recovery
 

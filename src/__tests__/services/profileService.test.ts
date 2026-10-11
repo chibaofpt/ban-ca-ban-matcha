@@ -103,3 +103,8 @@ describe("profileService", () => {
     expect(caught).toHaveProperty("message", "Network unavailable");
   });
 });
+
+it("preserves Instagram reauthentication errors through the actual profile service", async () => {
+  vi.mocked(apiClient.patch).mockRejectedValue({ response: { status: 403, data: { error: "Google proof expired", code: "FORBIDDEN", details: { reason: "REAUTH_REQUIRED" } } } });
+  await expect(updateProfile({ insta_name: "ca.google", reauth_proof: "expired" })).rejects.toMatchObject({ message: "Google proof expired", status: 403, code: "FORBIDDEN", details: { reason: "REAUTH_REQUIRED" } });
+});

@@ -65,6 +65,8 @@ export interface CreateOrderPayload {
 }
 
 export interface CreateStaffOrderPayload {
+  customer_identifier?: string;
+  customer_email?: string;
   phone_number?: string;
   customer_name?: string;
   payment_method?: PaymentMethod;
@@ -246,7 +248,7 @@ export interface OrderListItem extends DeliveryRecipientSnapshot {
   grand_total_vnd: number;
   created_at: string;
   updated_at?: string;
-  user: { name: string; phone_number: string } | null;
+  user: { name: string; phone_number: string | null } | null;
   discountVouchers?: Array<{
     voucher: {
       discount_value: number | null;

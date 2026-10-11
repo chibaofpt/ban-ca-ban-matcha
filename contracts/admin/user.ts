@@ -12,7 +12,10 @@ export interface AdminUserPage<TItem> {
 export interface AdminUserSummary {
   qr_token: string;
   name: string;
-  phone_number: string;
+  phone_number: string | null;
+  email: string | null;
+  can_send_claim_link: boolean;
+  has_password: boolean;
   insta_name: string | null;
   is_registered: boolean;
   is_verified: boolean;
@@ -105,6 +108,19 @@ export interface AdminUserVoucher {
   redeemed_at: string | null;
   issued_via: VoucherIssuedVia;
   days_remaining: number | null;
+  can_refund: boolean;
+  refundable_points: number | null;
+}
+
+export interface AdminUserVoucherRefundInput {
+  qr_token: string;
+}
+
+export interface AdminUserVoucherRefundResult {
+  qr_token: string;
+  status: "REFUNDED";
+  points_refunded: number;
+  points_balance: number;
 }
 
 export interface AdminUserVoucherPackage {
@@ -138,9 +154,12 @@ export interface AdminUserPointsResult {
   points_balance: number;
 }
 
+export type AdminUserListFilter = "GHOST" | "ORDER_TODAY" | "ORDER_MONTH" | "NO_EMAIL";
+
 export interface AdminUserListQuery {
   page: number;
   q?: string;
+  filter?: AdminUserListFilter;
 }
 
 export interface AdminUserPageQuery {

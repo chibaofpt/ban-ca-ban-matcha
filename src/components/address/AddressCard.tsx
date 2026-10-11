@@ -1,3 +1,4 @@
+import { formatVietnamPhone } from "@/src/utils/display";
 import React from "react";
 import type { Address } from "@/src/lib/types/address";
 import { MapPin, User, Phone, CheckCircle2, MoreVertical, Edit2, Trash2 } from "lucide-react";
@@ -165,7 +166,7 @@ export function AddressCard({
         </div>
         <div className="flex items-center text-sm text-gray-600">
           <Phone className="h-4 w-4 mr-2 text-gray-400" />
-          {address.receiver_phone}
+          {formatVietnamPhone(address.receiver_phone)}
         </div>
       </div>
     </div>

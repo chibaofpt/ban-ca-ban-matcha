@@ -15,8 +15,6 @@ import { addBusinessBreadcrumb } from "@/src/lib/observability";
 import { applyCartCommand, type CartMutationResult } from "@/src/lib/utils/cartTransitions";
 import { createSafeCartStorage, migrateCustomerCartState } from "./cartStorage";
 
-export { normalizeVoucherOwnerPhone } from "./cartStorage";
-
 export interface PendingAddonVoucherIntent {
   voucherId: string;
   addonOptionId: string;
@@ -159,7 +157,7 @@ function persistedSuccess(get: () => CartState): CartMutationResult {
     : { ok: true, value: undefined };
 }
 
-/** Customer cart store; only the minimal v10 subset is persisted. */
+/** Customer cart store; only the minimal v11 subset is persisted. */
 export const useCartStore = create<CartState>()(persist((set, get) => ({
   items: [], selectedOrderVoucherTokens: [], selectedVoucherIds: [], voucherOwnerKey: null, bundleApplications: [], bundleRuntime: {},
   isCartOpen: false, pendingAddonVoucher: null, persistenceWarning: null, projectedTotalVnd: 0,
@@ -231,7 +229,7 @@ export const useCartStore = create<CartState>()(persist((set, get) => ({
   markBundleApplicationsVerifyFailed: (message) => set((state) => ({ bundleRuntime: Object.fromEntries(state.bundleApplications.map((app) => [app.voucher_qr_token, { status: "VERIFY_FAILED", message }])) })),
   markBundleApplicationsUnavailable: (message, tokens) => set((state) => ({ bundleRuntime: { ...state.bundleRuntime, ...Object.fromEntries(tokens.map((token) => [token, { status: "UNAVAILABLE", message }])) } })),
 }), {
-  name: "bcbm-cart", version: 10, migrate: migrateCustomerCartState,
+  name: "bcbm-cart", version: 11, migrate: migrateCustomerCartState,
   storage: createJSONStorage(() => createSafeCartStorage((persistenceWarning) => useCartStore.setState({ persistenceWarning }))),
   merge: (persisted, current) => {
     const migrated = migrateCustomerCartState(persisted);

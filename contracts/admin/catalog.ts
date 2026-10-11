@@ -18,7 +18,7 @@ export interface AdminMenuItem {
   is_available: boolean;
   sort_order: number;
   base_liquid_note: string | null;
-  custom_powder_grams: { M?: number; L?: number; XL?: number } | null;
+  custom_powder_grams: Partial<Record<Size, number>> | null;
   updated_at: string;
   matcha_powder_id: string | null;
   powder: MenuItemPowder | null;
@@ -73,7 +73,7 @@ export interface AdminMenuData {
   fusion: AdminMenuItem[];
   extras?: AdminMenuItem[];
   base_liquids?: MilkTypeOption[];
-  default_size_config?: Array<{ size: Size; base_liquid_ml: number }>;
+  default_size_config?: Array<{ size: Size; base_liquid_ml: number; powder_gram: number }>;
 }
 
 /** Explicit replacement choice for one affected Fusion item. */

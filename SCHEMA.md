@@ -145,20 +145,54 @@ The private-voucher migration extends this existing enum additively and keeps th
 ### users
 - `id` uuid PK
 - `name` string
-- `phone_number` string UK — normalized to +84 before storage
+- `phone_number` string UK nullable — normalized to +84 before storage; independent of delivery recipient phone
 - `insta_name` string UK nullable — self-declared login alias, normalized without `@` and to lowercase
-- `password_hash` string — bcryptjs cost 12. Ghost user = `"GHOST_USER_NO_PASSWORD"`
+- `password_hash` string nullable — bcryptjs cost 12; null or legacy `"GHOST_USER_NO_PASSWORD"` means no password credential
+- `email` string UK nullable — canonical lowercase email; Gmail dots removed, Workspace dots preserved
+- `google_sub` string UK nullable — stable verified Google subject; email alone is not a credential
+- `account_origin` AccountOrigin — LEGACY_PHONE default preserves existing customers; new Google/email ghosts use GOOGLE_EMAIL
 - `role` Role — default `CUSTOMER`
 - `points_balance` int — default 0
 - `qr_token` string UK — UUID, encoded in QR, NEVER expose `id`
 - `otp_enabled` bool — default false; reserved per-user field, not the global registration OTP switch
-- `is_verified` bool — default false; successful OTP-backed registration sets true; registration
-  with global OTP disabled sets false. Existing admin verification actions remain available.
+- `is_verified` bool — default false; a successful Google or transitional phone proof may set true. This is not proof that a self-declared account phone was verified. Existing admin verification remains available.
 - `is_blocked` bool — default false; admin-managed account block state that denies authentication and live sessions
 - `created_at` timestamp
 - `updated_at` timestamp
 
 ---
+
+### account_claim_links
+
+One row per target user. `token_hash` is unique; no raw token is persisted. `expires_at` is the
+original five-minute deadline, `consumed_at` marks completion and `created_by` audits the Admin.
+Replacing a token revokes prior browser/Google contexts even when the row ID stays stable.
+
+### google_auth_attempts
+
+`purpose` distinguishes LOGIN, CLAIM, LINK and REAUTH. Persist nonce hash and browser binding
+hash, expiry, consumption and optional actor/session and claim-link/token-hash bindings.
+`verified_google_sub` and `verified_at` support short-lived reauthentication. No Google
+access token, refresh token or raw ID credential is stored.
+
+### account_merges
+
+Source user is the primary key; target is the canonical customer. Proof kind/reference, actor
+and audit preserve provenance. Source remains a tombstone for aliases; contacts and credentials
+are cleared. Financial balances and ownership move atomically, without recalculating stored
+order/voucher snapshots or issuing a duplicate welcome reward. Active-user write guards and
+Serializable transactions coordinate concurrent claims and financial mutations.
+On welcome entitlement collisions, target ownership remains canonical; the source entitlement and
+its outcome keep their original owner as immutable tombstone history. A retained pending source
+entitlement cannot be fulfilled. Without a collision, entitlement and outcome ownership move
+together. All issued vouchers and points logs move regardless, preserving their IDs and snapshots.
+Thus retained historical outcomes may reference an artifact now owned by the canonical target;
+the account merge audit proves that ownership transition. Audit records both entitlement IDs and
+the retention/transfer action. Duplicate-package source voucher grants likewise remain historical
+markers with their IDs recorded in audit; the target grant remains the canonical uniqueness guard.
+These three tables deny public Data API roles with RLS/revoked grants. Only source/target alias IDs
+in account_merges are readable by the server service_role for middleware session checks; proof/audit
+remain inaccessible through PostgREST. Account workflows use Prisma. See [account lifecycle](docs/specs/account-access.md).
 
 ### sessions
 - `id` uuid PK — stable across refresh; access JWT `sid` references this row
@@ -181,15 +215,16 @@ The private-voucher migration extends this existing enum additively and keeps th
   legacy rows without a binding cannot verify a new registration
 - `expires_at` timestamp — 5 min TTL
 - `attempts` int — max 5 before lockout
-- `verified` bool — default false; successful registration consumes the challenge in the same
-  transaction as user, welcome reward and session writes; transaction failure preserves eligibility
+- `verified` bool — default false; successful phone claim consumes proof in the same transaction as merge/session writes; rollback preserves eligibility
+- `purpose` OtpPurpose — LEGACY_REGISTRATION for existing rows; PHONE_GHOST_CLAIM for current claims
+- `actor_user_id`, `actor_session_id`, `target_user_id` nullable — bind phone proof to the live actor/session and eligible target; legacy attempts cannot authorize current claims
 - `created_at` timestamp
 
 ---
 
 ### registration_otp_settings
 
-- Singleton `id=1`; authoritative global registration policy, independent of `users.otp_enabled`.
+- Singleton `id=1`; legacy name retained for transitional phone-ghost OTP policy, independent of `users.otp_enabled`. Disabled mode rejects ownership proof rather than bypassing it.
 - `otp_enabled` bool — initially false.
 - `daily_send_limit` int — positive daily ceiling, initially 100.
 - `revision` int — conditional admin writes prevent stale configuration overwrite.
@@ -618,7 +653,7 @@ addon-unit `discount_applied_vnd` described in `order_item_addon_vouchers`.
 | `voucher_surplus_reversed` | Reversal of a `voucher_surplus` entry when a completed COUNTER order is cancelled |
 | `voucher_refund` | Full purchase-cost refund for an eligible voucher, including soft-delete reconciliation or completed COUNTER cancellation recovery |
 | `reversed_by_admin` | Admin reverses a manual adjustment |
-| `welcome_bonus` | Immediate signup points and the five-point welcome-reward fallback |
+| `welcome_bonus` | Immediate signup points and the snapshotted welcome-reward fallback |
 
 ---
 
@@ -628,6 +663,7 @@ Singleton configuration row for the signup reward. The migration inserts `id = 1
 
 - `id` int PK — database check fixes the only valid value to 1
 - `mode` WelcomeRewardMode — default `POINTS`
+- `points_amount` int — default 5; configurable integer 1–100 shared by immediate points and fallback
 - `fixed_package_id` uuid FK nullable → voucher_packages (no action delete)
 - `active_campaign_id` uuid FK nullable → reward_campaigns (no action delete)
 - `revision` int — default 0, used for optimistic configuration updates
@@ -682,16 +718,19 @@ changes do not rewrite pending or completed rewards.
 - `id` uuid PK
 - `user_id` uuid UK FK → users (no action delete)
 - `mode` WelcomeRewardMode
+- `points_amount` int — immutable signup snapshot, default 5 for pre-existing entitlements
 - `campaign_id` uuid FK nullable → reward_campaigns (no action delete)
 - `created_at` timestamp
 - optional one-to-one outcome
+
+Migration `20261008000000_configurable_welcome_points` adds both columns with default 5, preserving existing pending entitlements and completed logs. No historical points are recalculated. The settings value cannot be derived from an existing field; the entitlement snapshot is required to preserve pending rights when configuration changes. Rollback requires reverting consumers before dropping these columns and loses custom pending snapshots.
 
 The campaign is non-null exactly when `mode = GACHA`. `POINTS` and `FIXED_VOUCHER` workflows create
 their outcome immediately; `GACHA` may remain pending until the user draws.
 
 ### reward_outcomes
 Immutable fulfillment audit for a welcome entitlement. A voucher outcome issues through
-`WELCOME_GIFT` for fixed mode or `GACHA_REWARD` for a draw. A points outcome links the five-point
+`WELCOME_GIFT` for fixed mode or `GACHA_REWARD` for a draw. A points outcome links the snapshotted
 fallback `points_log` row.
 
 - `id` uuid PK
@@ -708,10 +747,10 @@ fallback `points_log` row.
 
 The target check enforces XOR fulfillment: `VOUCHER` requires only `voucher_id`, while `POINTS`
 requires only `points_log_id`. A campaign voucher also requires campaign, pool item, box, and draw
-number. A five-point campaign fallback has campaign and box but null pool item and draw number;
+number. A points campaign fallback has campaign and box but null pool item and draw number;
 non-campaign fixed/points outcomes have all campaign detail fields null. Application code must also
 verify that `user_id` matches the entitlement and issued artifact, that campaign/pool/box identities
-agree, that the entitlement mode permits the outcome, and that point fallback delta equals 5.
+agree, that the entitlement mode permits the outcome, and that point fallback delta equals the entitlement points_amount.
 
 All six welcome-reward tables have RLS enabled and all privileges revoked from `PUBLIC`, `anon`,
 `authenticated`, and `service_role`. Custom-auth application access remains through direct Prisma;
@@ -726,6 +765,21 @@ without backfill. They were never populated or consumed in this deployment; do n
 recreate them.
 
 ---
+
+## Instagram history compatibility
+
+`users.insta_name` remains the nullable unique Instagram identifier. Migration
+`20260628100459_restore_insta_name_precondition` adds that column only if absent; its directory
+intentionally sorts before the historical `20260628100500_remove_insta_name` migration so a fresh
+or shadow database has the required column before that old DROP. The later historical ADD and
+unique-index restoration remain unchanged.
+
+On a database that already recorded those historical migrations and has the column, only the new
+pending prerequisite runs; it does not drop or rewrite existing Instagram values. Preserve all
+applied migration files. This prerequisite fixes the known missing-column artifact, not a claim
+that the complete history has been replayed successfully. Execution limits are tracked in
+[NOTES](NOTES.md); pre/post-release history checks belong to
+[production-deploy](.agents/skills/production-deploy/SKILL.md).
 
 ## Migration Notes (Phase 1 → Phase 2)
 

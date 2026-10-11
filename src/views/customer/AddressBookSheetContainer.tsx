@@ -59,7 +59,7 @@ export function AddressBookSheetContainer({
 
   return (
     <AddressBookSheet
-      defaultRecipient={user ? { name: user.name, phone: user.phone } : null}
+      defaultRecipient={user ? { name: user.name, phone: user.phone ?? "" } : null}
       open={open}
       addresses={addresses}
       loading={isLoading}

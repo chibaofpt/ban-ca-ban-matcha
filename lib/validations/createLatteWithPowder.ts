@@ -4,6 +4,14 @@ import { imageFilenameSchema } from "@/lib/validations/menu";
 /** Schema cho phần bột mới tạo inline cùng với Latte. */
 const inlinePowderSchema = z.object({
   name: z.string().min(1, "Vui lòng nhập tên bột"),
+  manufacturer: z.string().trim().optional().nullable(),
+  description: z.string().trim().optional().nullable(),
+  fragrance: z.number().int().min(1).max(5).optional().nullable(),
+  body: z.number().int().min(1).max(5).optional().nullable(),
+  bitterness: z.number().int().min(1).max(5).optional().nullable(),
+  umami: z.number().int().min(1).max(5).optional().nullable(),
+  color: z.number().int().min(1).max(5).optional().nullable(),
+  image_filename: imageFilenameSchema,
   price_per_gram: z
     .number()
     .int("Giá phải là số nguyên VND")

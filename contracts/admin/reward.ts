@@ -9,6 +9,7 @@ export type AdminRewardCampaignStatus = RewardCampaignStatus;
 export type AdminRewardBox = WelcomeRewardBox;
 
 export interface AdminWelcomeRewardSettings {
+  points_amount: number;
   mode: AdminRewardMode;
   fixed_package_id: string | null;
   active_campaign_id: string | null;
@@ -16,6 +17,7 @@ export interface AdminWelcomeRewardSettings {
 }
 
 export interface AdminWelcomeRewardSettingsInput {
+  points_amount?: number;
   mode: AdminRewardMode;
   fixed_package_id?: string | null;
   active_campaign_id?: string | null;

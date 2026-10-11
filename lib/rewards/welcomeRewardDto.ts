@@ -56,6 +56,7 @@ export function toWelcomeRewardSummary(reward: Pick<WelcomeRewardRecord, "id" | 
     mode: reward.mode,
     status: reward.outcome ? "COMPLETED" : "PENDING",
     outcome_kind: reward.outcome?.kind ?? null,
+    points: reward.outcome?.kind === "POINTS" ? reward.outcome.pointsLog!.delta : null,
   };
 }
 
@@ -70,7 +71,7 @@ export async function toWelcomeRewardDto(
     : null;
   let outcome: WelcomeReward["outcome"] = null;
   if (reward.outcome?.kind === "POINTS") {
-    outcome = { kind: "POINTS", points: 5 };
+    outcome = { kind: "POINTS", points: reward.outcome.pointsLog!.delta };
   } else if (reward.outcome?.voucher) {
     const catalog = await loadVoucherAvailabilityCatalog(db);
     const [withAvailability] = attachOwnedVoucherAvailability([reward.outcome.voucher], catalog, now);

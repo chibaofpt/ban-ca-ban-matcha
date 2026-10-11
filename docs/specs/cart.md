@@ -12,8 +12,12 @@ API payload thuộc [API.md](../../API.md); không suy quy tắc tính tiền t�
 
 Customer và Staff/Admin dùng chung cart transition engine, projection và order-item serializer.
 Zustand/localStorage chỉ giữ ID, cấu hình nguồn, số lượng, voucher token và BUNDLE allocation/effect;
-không giữ catalog DTO, tên/ảnh, giá dẫn xuất hoặc UI state. Customer persist owner bằng số điện thoại
-đã chuẩn hóa; staff chỉ persist QR token của customer hiện có rồi tải lại profile và wallet sau reload.
+không giữ catalog DTO, tên/ảnh, giá dẫn xuất hoặc UI state. Customer persist owner bằng public `qr_token`
+opaque của account hiện tại; staff chỉ persist QR token của customer hiện có rồi tải lại profile và wallet sau reload.
+Customer cart v11 giữ nguyên QR qua reload và thay số liên lạc; chuyển account, canonical account sau merge
+hoặc logout tháo owner effects. Migration cart v10 trở xuống bỏ phone-owner selection/effects, giữ paid lines;
+không suy ra QR từ phone. Auth UI persistence cũ không có QR yêu cầu đăng nhập lại một lần, cookie server
+vẫn là nguồn xác thực. Guard voucher async và reset delivery cũng so sánh public QR của account.
 Projection join cart với catalog/wallet hiện hành, khóa checkout trong lúc revalidate và giữ raw line
 nếu dữ liệu chưa sẵn sàng. Đổi owner/logout giữ paid line nhưng tháo personal/order voucher và chỉ
 xóa reward line/addon được ghi trong `created_reward_effects`.

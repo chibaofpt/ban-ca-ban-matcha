@@ -107,7 +107,7 @@ export class OtpRedisFake {
 }
 
 export function otpChallenge(id = "550e8400-e29b-41d4-a716-446655440000") {
-  return { challenge_id: id, masked_phone: "+8491***678",
+  return { challenge_id: id, masked_phone: "+8491***678", server_now: new Date().toISOString(),
     expires_at: new Date(Date.now() + 300000).toISOString(),
     resend_at: new Date(Date.now() + 120000).toISOString(),
     delivery_status: "unknown" as const, provider_code: null, sms_per_message: null };

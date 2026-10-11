@@ -23,6 +23,11 @@ import { persistOrderBundles } from "@/lib/orders/orderBundleWrite";
 import { ensureAutoGrantedVouchers } from "@/lib/vouchers/autoGrantVouchers";
 import type { VoucherIssuanceDatabase } from "@/lib/vouchers/voucherIssuance";
 
+import { claimActiveCustomerForWrite } from "@/lib/auth/accountMergeGuard";
+import { AccountError, accountErrorResponse } from "@/lib/auth/accountError";
+import { isUniqueConstraintError } from "@/lib/prisma-errors";
+import type { StaffOrderInput } from "@/lib/validations/order";
+
 import { logSystemEvent } from "@/lib/logger";
 import { checkRateLimit } from "@/lib/rateLimit";
 import {
@@ -43,6 +48,28 @@ import {
 } from "@/lib/orders/staffOrderPaymentRead";
 
 export const dynamic = "force-dynamic";
+
+async function resolveOrderCustomer(data: StaffOrderInput, db: Pick<typeof prisma, "user" | "accountMerge">): Promise<{ id: string } | null> {
+  const selected = data.customer_identifier
+    ? await resolveCustomerIdentifier(data.customer_identifier, db) : null;
+  if (data.customer_identifier && !selected) throw new AccountError("CUSTOMER_NOT_FOUND", 400, "VALIDATION_ERROR");
+  const phone = data.phone_number ? await db.user.findUnique({
+    where: { phone_number: normalizePhone(data.phone_number) }, select: { id: true },
+  }) : null;
+  const email = data.customer_email ? await db.user.findUnique({
+    where: { email: data.customer_email }, select: { id: true },
+  }) : null;
+  if (data.phone_number && !phone) throw new AccountError("CUSTOMER_NOT_FOUND", 400, "VALIDATION_ERROR");
+  const customer = selected ?? phone ?? email;
+  if (customer && ((data.phone_number && phone?.id !== customer.id)
+    || (data.customer_email && email?.id !== customer.id))) {
+    throw new AccountError("CUSTOMER_IDENTITY_MISMATCH", 400, "VALIDATION_ERROR");
+  }
+  if (!customer && data.customer_email && !data.customer_name) {
+    throw new AccountError("CUSTOMER_NAME_REQUIRED", 400, "VALIDATION_ERROR");
+  }
+  return customer;
+}
 
 /** POST /api/staff/orders — create a counter order (status = COMPLETED immediately) */
 export async function POST(req: NextRequest) {
@@ -83,7 +110,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const data = parsed.data;
-    const isAnonymous = !data.phone_number;
+    const isAnonymous = !data.customer_identifier && !data.customer_email && !data.phone_number;
 
     // 5. Guard: anonymous orders may not carry vouchers
     if (isAnonymous && data.discount_voucher_ids.length > 0) {
@@ -115,10 +142,7 @@ export async function POST(req: NextRequest) {
 
     // Acquisition is a separate preflight; checkout re-fetches its consumed snapshots.
     if (!isAnonymous) {
-      const grantUser = await prisma.user.findUnique({
-        where: { phone_number: normalizePhone(data.phone_number!) },
-        select: { id: true },
-      });
+      const grantUser = await resolveOrderCustomer(data, prisma);
       if (grantUser) await ensureAutoGrantedVouchers(
         prisma as unknown as VoucherIssuanceDatabase, grantUser.id,
       );
@@ -128,22 +152,8 @@ export async function POST(req: NextRequest) {
     const data = structuredClone(originalData);
 
     // Step 1: Resolve user (read-only) — skip entirely for anonymous
-    let existingUser: { id: string } | null = null;
-
-    if (!isAnonymous) {
-      const normalizedPhone = normalizePhone(data.phone_number!);
-      existingUser = await tx.user.findUnique({
-        where: { phone_number: normalizedPhone },
-        select: { id: true },
-      });
-
-      if (!existingUser && !data.customer_name) {
-        return NextResponse.json(
-          { error: "customer_name required for new phone number", code: "VALIDATION_ERROR" },
-          { status: 400 }
-        );
-      }
-    }
+    const existingUser = isAnonymous ? null : await resolveOrderCustomer(data, tx);
+    if (existingUser) await claimActiveCustomerForWrite(tx, existingUser.id);
 
     // Step 2: Validate all PRODUCT vouchers BEFORE processOrderItems.
     const existingUserForVoucher: { id: string } | null = existingUser;
@@ -441,12 +451,13 @@ export async function POST(req: NextRequest) {
         let userId: string | null = existingUser?.id ?? null;
 
         if (!isAnonymous && !userId) {
-          const normalizedPhone = normalizePhone(data.phone_number!);
           const newUser = await tx.user.create({
             data: {
-              phone_number: normalizedPhone,
+              email: data.customer_email!,
+              phone_number: null,
               name: data.customer_name!,
-              password_hash: "GHOST_USER_NO_PASSWORD",
+              password_hash: null,
+              account_origin: "GOOGLE_EMAIL",
               role: "CUSTOMER",
               qr_token: crypto.randomUUID(),
             },
@@ -612,6 +623,7 @@ export async function POST(req: NextRequest) {
     if (response.status === 201) scheduleOrderChange();
     return response;
   } catch (err) {
+    if (err instanceof AccountError || isUniqueConstraintError(err)) return accountErrorResponse(err);
     if (err instanceof Error && "code" in err && err.code === "P2034") {
       return NextResponse.json({ error: "Order changed concurrently", code: "CONFLICT" }, { status: 409 });
     }

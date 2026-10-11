@@ -38,7 +38,7 @@ async function readBounded(response: Response): Promise<unknown> {
 }
 
 /** Reject invalid tokens while permitting only genuine upstream outages to use OTP quota fallback. */
-export async function verifyRegistrationTurnstile(token: string, ip: string): Promise<"accepted" | "outage"> {
+export async function verifyRegistrationTurnstile(token: string, ip: string, action: string = "registration_otp"): Promise<"accepted" | "outage"> {
   const { secret } = config();
   if (token.length > 2048) throw new RegistrationOtpError(403, "FORBIDDEN", "TURNSTILE_REQUIRED");
   let response: Response;
@@ -64,8 +64,13 @@ export async function verifyRegistrationTurnstile(token: string, ip: string): Pr
   if (data.success === false && Array.isArray(data["error-codes"]) &&
     data["error-codes"].length === 1 && data["error-codes"][0] === "internal-error") return "outage";
   if (data.success !== true || typeof data.hostname !== "string" || !data.hostname.trim()
-    || data.action !== "registration_otp") {
+    || data.action !== action) {
     throw new RegistrationOtpError(403, "FORBIDDEN", "TURNSTILE_REJECTED");
   }
   return "accepted";
+}
+
+/** Require an accepted CAPTCHA for account authentication; outages fail closed. */
+export async function verifyAccountTurnstile(token: string, ip: string, action: "google_auth" | "account_claim" | "phone_claim"): Promise<void> {
+  if (await verifyRegistrationTurnstile(token, ip, action) !== "accepted") throw new RegistrationOtpError(503, "SERVICE_UNAVAILABLE", "TURNSTILE_UNAVAILABLE");
 }
