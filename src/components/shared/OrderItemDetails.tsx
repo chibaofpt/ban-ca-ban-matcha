@@ -32,27 +32,19 @@ export function OrderItemDetails({ item }: { item: OrderItemRes }) {
     line2Chips.push("Coldwhisk");
   }
 
-  // Addons
+  // Addons — branch on persisted data, never on the group name.
   if (item.addons && item.addons.length > 0) {
     for (const addon of item.addons) {
-      const groupName = addon.addonOption.group?.name?.toLowerCase() || "";
       const label = addon.addonOption.label;
-      
-      if (groupName.includes("kem")) {
-        if (!label.toLowerCase().includes("không")) {
-          addonChips.push(label); // e.g. "Nửa viên kem"
-        }
-      } else if (groupName.includes("matcha")) {
-        // extra matcha
-        if (addon.addonOption.gram_value && addon.addonOption.gram_value !== "0") {
-          const priceStr = addon.unit_price_vnd > 0 ? ` (+${formatKa(addon.unit_price_vnd)})` : "";
-          addonChips.push(`Thêm ${addon.addonOption.gram_value}g Matcha${priceStr}`);
-        }
-      } else {
-        // other addons (đá dừa...)
-        if (!label.toLowerCase().includes("không")) {
-          addonChips.push(label);
-        }
+      const gramValue = addon.addonOption.gram_value;
+
+      if (gramValue && gramValue !== "0") {
+        // Dynamic-gram extra matcha: price is gram_value × powder price.
+        const priceStr = addon.unit_price_vnd > 0 ? ` (+${formatKa(addon.unit_price_vnd)})` : "";
+        addonChips.push(`Thêm ${gramValue}g Matcha${priceStr}`);
+      } else if (!label.toLowerCase().includes("không")) {
+        // Fixed-price addons: kem, đá dừa, "Thêm Matcha Khác"...
+        addonChips.push(label);
       }
     }
   }
