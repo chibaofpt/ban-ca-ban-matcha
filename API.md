@@ -1780,6 +1780,11 @@ any mismatch rejects the whole order with `details.conflicts[]` as defined above
 - On every new customer or staff order, server snapshots the effective Base Liquid volume into
   `order_items.base_liquid_ml` together with the resolved physical liquid ID. Historical
   consumption reports read this snapshot first and use current recipe data only for legacy null rows.
+- Order-item DTOs (`GET /api/orders`, `GET /api/orders/[id]`, `GET /api/staff/orders`,
+  `GET /api/admin/orders`) add `menuItem.image_url` (current catalog image, `null` when none) and
+  an optional `bundleAllocations: { package_name, quantity }[]` that summarizes the line's BUNDLE
+  qualifier/reward allocations by voucher package name (omitted when empty). Persisted voucher,
+  package and application IDs remain stripped by the public DTO.
 - Customer and staff routes must call the same server order/voucher calculator.
 - `subtotal_vnd` is gross merchandise before vouchers; `total_vnd` is merchandise after all
   non-shipping vouchers; `grand_total_vnd` is the final amount including shipping and FREESHIP.

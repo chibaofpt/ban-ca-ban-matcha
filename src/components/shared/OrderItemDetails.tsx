@@ -1,6 +1,7 @@
 import { SWEETNESS_OPTIONS, ICE_OPTIONS } from "@/src/constants/orderOptions";
 import type { OrderItemRes } from "@/src/services/staffOrdersListService";
 import { Ticket } from "lucide-react";
+import Image from "next/image";
 import { formatKa } from "@/src/utils/display";
 
 /** Render configuration and each persisted item voucher exactly once. */
@@ -10,25 +11,28 @@ export function OrderItemDetails({ item }: { item: OrderItemRes }) {
   const line2Chips: string[] = [];
   const addonChips: string[] = [];
 
-  // Sweetness
-  const sweetness = SWEETNESS_OPTIONS.find((o) => o.value === item.sweetness)?.label || "50%";
-  line1Chips.push(`Ngọt ${sweetness}`);
+  // Drinks carry sweetness and ice; Add-on items (size = null) do not.
+  const isDrink = item.size !== null;
+  if (isDrink) {
+    const sweetness = SWEETNESS_OPTIONS.find((o) => o.value === item.sweetness)?.label;
+    if (sweetness) line1Chips.push(`Ngọt ${sweetness}`);
 
-  // Ice
-  if (item.ice_option !== "NORMAL") {
-    const ice = ICE_OPTIONS.find((o) => o.value === item.ice_option)?.label;
-    if (ice) line1Chips.push(ice);
+    if (item.ice_option !== "NORMAL") {
+      const ice = ICE_OPTIONS.find((o) => o.value === item.ice_option)?.label;
+      if (ice) line1Chips.push(ice);
+    }
   }
 
-  // Milk / Powder
-  if (item.menuItem.category === "latte") {
-    if (item.milkType) line2Chips.push(item.milkType.name);
-  } else if (item.menuItem.category === "fusion") {
-    if (item.selectedPowder) line2Chips.push(item.selectedPowder.name);
+  // Base Liquid applies to every drink; the persisted field keeps its legacy milkType name.
+  if (isDrink && item.milkType) line2Chips.push(item.milkType.name);
+
+  // Powder is user-selectable for fusion; latte keeps the item's fixed powder.
+  if (isDrink && item.menuItem.category === "fusion" && item.selectedPowder) {
+    line2Chips.push(item.selectedPowder.name);
   }
 
   // Coldwhisk
-  if (item.coldwhisk) {
+  if (isDrink && item.coldwhisk) {
     line2Chips.push("Coldwhisk");
   }
 
@@ -37,20 +41,31 @@ export function OrderItemDetails({ item }: { item: OrderItemRes }) {
     for (const addon of item.addons) {
       const label = addon.addonOption.label;
       const gramValue = addon.addonOption.gram_value;
+      const priceStr = addon.unit_price_vnd > 0 ? ` (+${formatKa(addon.unit_price_vnd)})` : "";
 
       if (gramValue && gramValue !== "0") {
         // Dynamic-gram extra matcha: price is gram_value × powder price.
-        const priceStr = addon.unit_price_vnd > 0 ? ` (+${formatKa(addon.unit_price_vnd)})` : "";
         addonChips.push(`Thêm ${gramValue}g Matcha${priceStr}`);
       } else if (!label.toLowerCase().includes("không")) {
         // Fixed-price addons: kem, đá dừa, "Thêm Matcha Khác"...
-        addonChips.push(label);
+        addonChips.push(`${label}${priceStr}`);
       }
     }
   }
 
   return (
     <div className="mt-1.5 flex flex-col gap-1 w-full">
+      {item.menuItem.image_url && (
+        <Image
+          src={item.menuItem.image_url}
+          alt={item.menuItem.name}
+          width={36}
+          height={36}
+          sizes="36px"
+          quality={60}
+          className="h-9 w-9 rounded-lg object-cover"
+        />
+      )}
       {line1Chips.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {line1Chips.map((chip, idx) => (
@@ -74,6 +89,15 @@ export function OrderItemDetails({ item }: { item: OrderItemRes }) {
           {addonChips.map((chip, idx) => (
             <span key={idx} className="text-[10px] font-medium bg-secondary text-secondary-foreground/90 px-1.5 py-0.5 rounded">
               {chip}
+            </span>
+          ))}
+        </div>
+      )}
+      {item.bundleAllocations && item.bundleAllocations.length > 0 && (
+        <div className="flex flex-wrap gap-1" aria-label="Phân bổ ưu đãi BUNDLE">
+          {item.bundleAllocations.map((allocation) => (
+            <span key={allocation.package_name} className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+              {allocation.package_name}: {allocation.quantity} phần
             </span>
           ))}
         </div>

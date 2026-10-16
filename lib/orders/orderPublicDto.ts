@@ -16,6 +16,12 @@ interface DecimalLike {
   toString(): string;
 }
 
+/** Persisted BUNDLE allocation row joined to its voucher package name. */
+interface OrderBundleAllocationSource {
+  quantity: number;
+  application: { voucher: { package: { name: string } } };
+}
+
 interface OrderListItemSource {
   delivery_receiver_name?: string | null;
   delivery_receiver_phone?: string | null;
@@ -58,7 +64,7 @@ interface OrderListItemSource {
     selected_powder_id?: string | null;
     selected_milk_type_id?: string | null;
     base_liquid_ml: number | null;
-    menuItem: { name: string; category: string };
+    menuItem: { name: string; category: string; image_url?: string | null };
     selectedPowder: { name: string; price_per_gram?: DecimalLike } | null;
     milkType: { name: string; is_default: boolean } | null;
     addons: Array<{
@@ -71,7 +77,10 @@ interface OrderListItemSource {
         price_vnd: number;
         group: { name: string };
       };
+      bundleRewards?: OrderBundleAllocationSource[];
     }>;
+    bundleQualifiers?: OrderBundleAllocationSource[];
+    bundleRewards?: OrderBundleAllocationSource[];
     productVoucher?: { package: { name: string } } | null;
     itemVoucher?: { package: { name: string } } | null;
     addonVouchers?: Array<{
@@ -137,15 +146,34 @@ export function serializeOrderDate(
   return value instanceof Date ? value.toISOString() : value;
 }
 
+/** Group one line's persisted BUNDLE allocations by voucher package name. */
+function toBundleAllocationSummaries(
+  item: OrderListItemSource["items"][number],
+): Array<{ package_name: string; quantity: number }> {
+  const grouped = new Map<string, number>();
+  const add = (allocations: readonly OrderBundleAllocationSource[] | undefined) => {
+    for (const allocation of allocations ?? []) {
+      const packageName = allocation.application.voucher.package.name;
+      grouped.set(packageName, (grouped.get(packageName) ?? 0) + allocation.quantity);
+    }
+  };
+  add(item.bundleQualifiers);
+  add(item.bundleRewards);
+  for (const addon of item.addons ?? []) add(addon.bundleRewards);
+  return [...grouped.entries()].map(([package_name, quantity]) => ({ package_name, quantity }));
+}
+
 /** Project one persisted order item to the public shared wire contract. */
 export function toOrderItemDetail<T extends OrderListItemSource["items"][number]>(
   item: T,
 ): OrderItemDetail {
+  const bundleAllocations = toBundleAllocationSummaries(item);
   return {
     menu_item_id: item.menu_item_id,
     menuItem: {
       name: item.menuItem.name,
       category: item.menuItem.category as Category,
+      image_url: item.menuItem.image_url ?? null,
     },
     quantity: item.quantity,
     unit_price_vnd: item.unit_price_vnd,
@@ -192,6 +220,7 @@ export function toOrderItemDetail<T extends OrderListItemSource["items"][number]
         : { discount_applied_vnd: link.discount_applied_vnd }),
       voucher: { package: { name: link.voucher.package.name } },
     })),
+    ...(bundleAllocations.length === 0 ? {} : { bundleAllocations }),
   };
 }
 

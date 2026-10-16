@@ -37,6 +37,8 @@ ITEM được mapper đưa qua productVoucher và nhiều ADDON voucher. Giữ c
 để không mất voucher khác token; không gộp/dedupe theo tên package. Order DISCOUNT nằm riêng. Trong
 detail, giá hiển thị theo một món (bao gồm add-on theo snapshot), còn quantity hiển thị ngay bên
 dưới giá trong cùng cột; không nhân giá món với quantity. Tên món giữ ở cột riêng. Tổng đơn tiếp tục hiển thị theo totals snapshot.
+Shared item renderer hiển thị thumbnail ảnh catalog cỡ nhỏ (ảnh hiện hành, không snapshot) và badge
+phân bổ BUNDLE theo tên package (`{tên}: {n} phần`) cho dòng thuộc BUNDLE; ẩn khi không có ảnh/BUNDLE.
 
 Mọi số tiền trong order detail dùng đơn vị ká. Ẩn các dòng giảm voucher đơn, phí giao hàng và giảm
 giao hàng khi giá trị bằng 0; luôn giữ Tạm tính và Tổng thanh toán kể cả khi bằng 0. Món có voucher
