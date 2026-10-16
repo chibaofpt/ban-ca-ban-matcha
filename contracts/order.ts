@@ -124,7 +124,7 @@ export interface OrderItemAddonDetail {
 
 export interface OrderItemDetail {
   menu_item_id?: string;
-  menuItem: { name: string; category: Category };
+  menuItem: { name: string; category: Category; image_url: string | null };
   quantity: number;
   unit_price_vnd: number;
   addons_price_vnd: number;
@@ -147,6 +147,8 @@ export interface OrderItemDetail {
     discount_applied_vnd?: number;
     voucher: { package: { name: string } };
   }>;
+  /** Per-line BUNDLE allocations summarized by voucher package name; omitted when empty. */
+  bundleAllocations?: Array<{ package_name: string; quantity: number }>;
 }
 
 export interface CustomerOrderDetail {

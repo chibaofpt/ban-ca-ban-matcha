@@ -30,9 +30,11 @@ export async function GET(
       include: {
         items: {
           include: {
-            menuItem: { select: { name: true, category: true } },
+            menuItem: { select: { name: true, category: true, image_url: true } },
             selectedPowder: { select: { name: true } },
             milkType: { select: { name: true, is_default: true } },
+            bundleQualifiers: { select: { quantity: true, application: { select: { voucher: { select: { package: { select: { name: true } } } } } } } },
+            bundleRewards: { select: { quantity: true, application: { select: { voucher: { select: { package: { select: { name: true } } } } } } } },
             addons: {
               include: {
                 addonOption: {
@@ -43,6 +45,7 @@ export async function GET(
                     group: { select: { name: true } },
                   },
                 },
+                bundleRewards: { select: { quantity: true, application: { select: { voucher: { select: { package: { select: { name: true } } } } } } } },
               },
             },
           },

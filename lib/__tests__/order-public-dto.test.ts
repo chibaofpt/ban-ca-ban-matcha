@@ -74,4 +74,62 @@ describe("order public DTO", () => {
     expect(item.addonVouchers?.[0]).not.toHaveProperty("voucher_id");
     expect(item.addonVouchers?.[0].voucher).not.toHaveProperty("id");
   });
+
+  it("thêm ảnh catalog và gộp phân bổ BUNDLE theo tên package, không lộ id voucher", () => {
+    const item = toOrderItemDetail({
+      id: "private-order-item-id",
+      order_id: "private-order-id",
+      menu_item_id: "menu-1",
+      quantity: 1,
+      unit_price_vnd: 42_000,
+      addons_price_vnd: 8_000,
+      total_discount_vnd: 0,
+      product_voucher_discount_vnd: 0,
+      size: "MEDIUM",
+      sweetness: "HALF",
+      ice_option: "NORMAL",
+      coldwhisk: false,
+      note: null,
+      base_liquid_ml: 150,
+      menuItem: { name: "Matcha latte", category: "latte", image_url: "https://cdn/menu/latte.webp" },
+      selectedPowder: null,
+      milkType: null,
+      bundleQualifiers: [{
+        quantity: 2,
+        application: { voucher: { id: "private-qualifier-voucher-id", package: { name: "Combo sáng" } } },
+      }],
+      bundleRewards: [{
+        quantity: 1,
+        application: { voucher: { id: "private-reward-voucher-id", package: { name: "Combo sáng" } } },
+      }],
+      addons: [{
+        addon_option_id: "addon-1",
+        unit_price_vnd: 8_000,
+        quantity: 1,
+        addonOption: {
+          label: "Kem",
+          gram_value: null,
+          price_vnd: 8_000,
+          group: { name: "Kem" },
+        },
+        bundleRewards: [{
+          quantity: 1,
+          application: { voucher: { id: "private-addon-voucher-id", package: { name: "Free kem" } } },
+        }],
+      }],
+    });
+
+    expect(item).toEqual(expect.objectContaining({
+      menuItem: {
+        name: "Matcha latte",
+        category: "latte",
+        image_url: "https://cdn/menu/latte.webp",
+      },
+      bundleAllocations: [
+        { package_name: "Combo sáng", quantity: 3 },
+        { package_name: "Free kem", quantity: 1 },
+      ],
+    }));
+    expect(JSON.stringify(item)).not.toContain("private-");
+  });
 });

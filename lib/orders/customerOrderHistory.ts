@@ -83,9 +83,11 @@ export async function getCustomerOrderHistory(
                 voucher: { include: { package: { select: { name: true } } } },
               },
             },
-            menuItem: { select: { name: true, category: true } },
+            menuItem: { select: { name: true, category: true, image_url: true } },
             selectedPowder: { select: { name: true, price_per_gram: true } },
             milkType: { select: { name: true, is_default: true } },
+            bundleQualifiers: { select: { quantity: true, application: { select: { voucher: { select: { package: { select: { name: true } } } } } } } },
+            bundleRewards: { select: { quantity: true, application: { select: { voucher: { select: { package: { select: { name: true } } } } } } } },
             addons: {
               include: {
                 addonOption: {
@@ -96,6 +98,7 @@ export async function getCustomerOrderHistory(
                     group: { select: { name: true } },
                   },
                 },
+                bundleRewards: { select: { quantity: true, application: { select: { voucher: { select: { package: { select: { name: true } } } } } } } },
               },
             },
           },
