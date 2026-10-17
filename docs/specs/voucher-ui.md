@@ -208,8 +208,9 @@ giữ surface nền; đăng nhập thành công tiếp tục intent một lần 
 ## Admin overlay composition
 
 Trang admin voucher là flow đầu tiên bật managed stack: page bọc các primitive bằng
-`OverlayStackProvider` và dùng một discriminated surface duy nhất (`closed`, `campaign`, `create` hoặc
-`detail(packageId)`), vì vậy campaign workspace, wizard tạo và detail package không thể cùng là base surface.
+`OverlayStackProvider` và dùng một discriminated surface duy nhất (`closed`, `campaign`, `create`,
+`ranking` hoặc `detail(packageId)`), vì vậy campaign workspace, wizard tạo, xếp hạng lượt đổi và detail
+package không thể cùng là base surface.
 Nút **Tạo campaign** nằm bên trái **Tạo voucher** và mở campaign workspace bằng
 `ResponsiveOverlay`: Vaul bottom sheet trên mobile và dialog full-size trên desktop. Admin navigation
 không giữ tab reward riêng; URL cũ chuyển về trang voucher. Multi-select
@@ -220,6 +221,16 @@ lifecycle `onAfterClose`; không thêm timer hoặc điều hướng Browser Bac
 Trang tổng quan hiển thị ba KPI trên cùng một hàng: tổng cấu hình voucher, tổng voucher đã phát và
 tổng voucher đã sử dụng. Danh sách mặc định lọc `ACTIVE` và `PUBLIC`; hai select này không có lựa
 chọn tất cả. Select thể loại đứng giữa, mặc định **Không có** để không lọc theo voucher type.
+
+Chỉ thẻ KPI **Tổng voucher** mở bottom sheet `Xếp hạng lượt đổi` qua `ResponsiveOverlay`; số trên thẻ
+vẫn là số cấu hình voucher và hai KPI còn lại không đổi. Sheet có bốn mốc hiện tại theo giờ Việt Nam —
+**Năm** mặc định, Tháng, Tuần bắt đầu Thứ Hai, Ngày — và mỗi lần mở trở về Năm. Danh sách chỉ gồm gói
+có ít nhất một voucher đổi điểm (`POINTS_EXCHANGE`) tạo trong mốc, độc lập với các select đang lọc trên
+trang, kể cả gói đã tạm dừng/kết thúc; gói không có lượt bị ẩn và không có tổng chung. Dòng sắp giảm dần
+theo số lượt, đồng hạng phá theo gói tạo mới hơn; mỗi dòng đặt số hạng ở cột trái (~10%), tên rồi mô tả
+ở phần còn lại và số lượt ở góc phải trên. Top 1/2/3 dùng nền vàng/bạc/đồng với số màu primary; hạng 4
+trở đi dùng nền primary với số và chữ màu `primary-foreground`. Sheet có trạng thái tải, rỗng theo mốc
+và lỗi kèm nút thử lại.
 
 ## Eligible target display và owning-cart adapters
 

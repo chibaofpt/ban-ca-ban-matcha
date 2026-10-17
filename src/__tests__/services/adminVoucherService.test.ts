@@ -11,6 +11,7 @@ vi.mock("@/src/lib/api/client", () => ({
 
 import {
   createVoucherPackage,
+  fetchVoucherExchangeRanking,
   getVoucherPackageRecipientHistory,
   grantVoucherToCustomer,
   searchVoucherPackageOwners,
@@ -85,6 +86,22 @@ describe("Dịch vụ quản trị chủ sở hữu voucher", () => {
       code: "BUSINESS_RULE_VIOLATION",
       details: { reason: "ADDITIONAL_GIFT_CONFIRMATION_REQUIRED" },
     });
+  });
+
+  it("gọi đúng URL xếp hạng lượt đổi theo mốc và unwrap data", async () => {
+    const ranking = {
+      period: "month",
+      from: "2026-09-30T17:00:00.000Z",
+      to: "2026-10-31T17:00:00.000Z",
+      items: [{ id: "pkg-1", name: "Free upsize", description: null, exchange_count: 3 }],
+    } as const;
+    mockGet.mockResolvedValue({ data: { data: ranking } });
+
+    await expect(fetchVoucherExchangeRanking("month")).resolves.toEqual(ranking);
+    expect(mockGet).toHaveBeenCalledWith(
+      "/api/admin/voucher-packages/exchange-ranking",
+      { params: { period: "month" } },
+    );
   });
 
   it("unwrap response thành công và giữ nguyên payload BUNDLE", async () => {

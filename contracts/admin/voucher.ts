@@ -96,6 +96,23 @@ export interface VoucherPackage {
   stats?: VoucherPackageStats;
 }
 
+export type AdminVoucherExchangePeriod = "year" | "month" | "week" | "day";
+
+export interface AdminVoucherExchangeRankingItem {
+  id: string;
+  name: string;
+  description: string | null;
+  exchange_count: number;
+}
+
+/** Point-exchange ranking projection for the admin voucher overview sheet. */
+export interface AdminVoucherExchangeRanking {
+  period: AdminVoucherExchangePeriod;
+  from: string;
+  to: string;
+  items: AdminVoucherExchangeRankingItem[];
+}
+
 export type VoucherOwnerStatus = "ALL" | OwnedVoucherStatus;
 
 export interface VoucherOwnerInstance {

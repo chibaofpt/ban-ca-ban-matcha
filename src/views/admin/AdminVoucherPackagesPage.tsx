@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Gift, Plus, Search, Sparkles } from "lucide-react";
+import { ChevronRight, Gift, Plus, Search, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { AdminRewardsPage } from "@/src/components/admin/rewards/AdminRewardsPage";
 import { VoucherWizard } from "@/src/components/admin/VoucherWizard";
 import { AdminVoucherPackageCard } from "@/src/components/admin/AdminVoucherPackageCard";
 import { AdminVoucherPackageDetail } from "@/src/components/admin/AdminVoucherPackageDetail";
+import { VoucherExchangeRankingSheet } from "@/src/components/admin/VoucherExchangeRankingSheet";
 import { Button } from "@/src/components/ui/button";
 import { fetchMenu } from "@/src/services/menuService";
 import { fetchPowders } from "@/src/services/powderService";
@@ -33,6 +34,7 @@ type VoucherSurface =
   | { kind: "closed" }
   | { kind: "campaign" }
   | { kind: "create" }
+  | { kind: "ranking" }
   | { kind: "detail"; packageId: string };
 
 function errorMessage(error: unknown): string {
@@ -85,11 +87,19 @@ export default function AdminVoucherPackagesPage() {
   const submit = async (input: CreateVoucherPackageInput): Promise<void> => { await createMutation.mutateAsync(input); };
   return <OverlayStackProvider><main className="mx-auto w-full min-w-0 max-w-6xl space-y-5 touch-pan-y overflow-x-clip overscroll-x-none px-2 py-6 pb-28 md:px-8">
     <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><h1 className="text-2xl font-bold">Voucher & ưu đãi</h1><p className="mt-1 text-sm text-muted-foreground">Tạo voucher đổi điểm, nhận miễn phí hoặc tự có trong ví tại cùng một nơi.</p></div><div className="grid grid-cols-2 gap-2 sm:flex"><Button type="button" variant="outline" onClick={() => setSurface({ kind: "campaign" })}><Sparkles className="h-4 w-4" />Tạo campaign</Button><Button type="button" onClick={() => setSurface({ kind: "create" })}><Plus className="h-4 w-4" />Tạo voucher</Button></div></header>
-    <section className="grid grid-cols-3 gap-2 sm:gap-3"><div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4"><span className="block text-xs text-muted-foreground">Tổng voucher</span><strong className="mt-1 block text-2xl">{packages.length}</strong></div><div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4"><span className="block text-xs text-muted-foreground">Đã phát</span><strong className="mt-1 block text-2xl">{issuedCount}</strong></div><div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4"><span className="block text-xs text-muted-foreground">Đã sử dụng</span><strong className="mt-1 block text-2xl">{redeemedCount}</strong></div></section>
+    <section className="grid grid-cols-3 gap-2 sm:gap-3">
+      <button type="button" onClick={() => setSurface({ kind: "ranking" })} aria-label="Xem xếp hạng lượt đổi" className="min-w-0 rounded-2xl border bg-card p-3 text-left transition-[transform,colors] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] sm:p-4">
+        <span className="flex items-center justify-between gap-1 text-xs text-muted-foreground">Tổng voucher<ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /></span>
+        <strong className="mt-1 block text-2xl">{packages.length}</strong>
+      </button>
+      <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4"><span className="block text-xs text-muted-foreground">Đã phát</span><strong className="mt-1 block text-2xl">{issuedCount}</strong></div>
+      <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4"><span className="block text-xs text-muted-foreground">Đã sử dụng</span><strong className="mt-1 block text-2xl">{redeemedCount}</strong></div>
+    </section>
     <section className="min-w-0 max-w-full space-y-3"><div className="grid grid-cols-3 gap-2"><select aria-label="Trạng thái" value={status} onChange={(event) => setStatus(event.target.value as typeof status)} className="h-11 min-w-0 rounded-xl border bg-background px-2 text-sm"><option value="ACTIVE">Đang phát hành</option><option value="PAUSED">Tạm dừng</option><option value="SOLD_OUT">Hết lượt</option><option value="ENDED">Đã kết thúc</option></select><select aria-label="Thể loại voucher" value={type} onChange={(event) => setType(event.target.value as typeof type)} className="h-11 min-w-0 rounded-xl border bg-background px-2 text-sm"><option value="ALL">Tất cả loại</option>{(["ITEM", "BUNDLE", "PRODUCT", "PRODUCT_DISCOUNT", "ADDON", "DISCOUNT", "FREESHIP"] as const).map((value) => <option key={value} value={value}>{TYPE_LABEL[value]}</option>)}</select><select aria-label="Phạm vi" value={visibility} onChange={(event) => setVisibility(event.target.value as typeof visibility)} className="h-11 min-w-0 rounded-xl border bg-background px-2 text-sm"><option value="PUBLIC">Public</option><option value="PRIVATE">Private</option></select></div><label className="grid gap-1 text-sm font-medium">Tìm voucher<span className="flex h-11 min-w-0 items-center gap-2 rounded-xl border bg-background px-3"><Search className="h-4 w-4 shrink-0 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm theo tên voucher" className="min-w-0 flex-1 bg-transparent text-sm font-normal outline-none" /></span></label></section>
     {isLoading ? <p className="py-12 text-center text-muted-foreground">Đang tải…</p> : filtered.length === 0 ? <div className="grid place-items-center rounded-2xl border border-dashed py-16 text-center"><Gift className="mb-3 h-8 w-8 text-muted-foreground" /><p className="font-semibold">Chưa có voucher phù hợp</p></div> : <section className="grid gap-3 md:grid-cols-2">{filtered.map((pkg) => <AdminVoucherPackageCard key={pkg.id} pkg={pkg} onOpen={() => setSurface({ kind: "detail", packageId: pkg.id })} />)}</section>}
     <VoucherWizard open={surface.kind === "create"} onOpenChange={(nextOpen) => setSurface(nextOpen ? { kind: "create" } : { kind: "closed" })} menuOptions={menuOptions} bundleMenuItems={bundleMenuItems} addonOptions={addonOptions} powderOptions={powderOptions} milkOptions={milkOptions} menuPriceById={menuPriceById} addonPriceById={addonPriceById} submitting={createMutation.isPending} onSubmit={submit} />
     <ResponsiveOverlay open={surface.kind === "campaign"} onOpenChange={(nextOpen) => setSurface(nextOpen ? { kind: "campaign" } : { kind: "closed" })} title="Quản lý campaign" description="Thiết lập quà đăng ký và campaign hộp matcha." size="full"><AdminRewardsPage /></ResponsiveOverlay>
     <AdminVoucherPackageDetail pkg={selectedPackage} open={surface.kind === "detail" && Boolean(selectedPackage)} saving={updateMutation.isPending} powderLabels={powderLabels} baseLiquidLabels={baseLiquidLabels} addonLabels={addonLabels} menuItemLookup={menuItemLookup} onClose={() => setSurface({ kind: "closed" })} onSave={async (input) => { if (!selectedPackage) return; await updateMutation.mutateAsync({ id: selectedPackage.id, input }); }} onToggle={async () => { if (selectedPackage) { try { await updateMutation.mutateAsync({ id: selectedPackage.id, input: { is_active: !selectedPackage.is_active } }); } catch { /* onError toast already shown */ } } }} />
+    <VoucherExchangeRankingSheet open={surface.kind === "ranking"} onOpenChange={(nextOpen) => setSurface(nextOpen ? { kind: "ranking" } : { kind: "closed" })} />
   </main></OverlayStackProvider>;
 }

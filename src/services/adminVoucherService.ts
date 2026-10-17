@@ -1,6 +1,8 @@
 import { apiClient } from "@/src/lib/api/client";
 import { isAxiosError } from "axios";
 import type {
+  AdminVoucherExchangePeriod,
+  AdminVoucherExchangeRanking,
   AdminVoucherRecipientPage,
   CreateVoucherPackageInput,
   DeactivateVoucherPackageResult,
@@ -16,6 +18,9 @@ import type { ApiError, ApiResponse } from "@/src/lib/types/api";
 import { ApiServiceError } from "@/src/lib/api/serviceError";
 
 export type {
+  AdminVoucherExchangePeriod,
+  AdminVoucherExchangeRanking,
+  AdminVoucherExchangeRankingItem,
   AdminVoucherGrantWarning,
   AdminVoucherRecipientPage,
   AdminVoucherRecipientSummary,
@@ -56,6 +61,7 @@ async function preserveApiError<T>(request: () => Promise<T>): Promise<T> {
 
 const URL = {
   list: "/api/admin/voucher-packages",
+  exchangeRanking: "/api/admin/voucher-packages/exchange-ranking",
   byId: (id: string) => `/api/admin/voucher-packages/${id}`,
   owners: (id: string) => `/api/admin/voucher-packages/${id}/owners`,
   recipients: (id: string, userQrToken: string) => `/api/admin/voucher-packages/${id}/recipients/${userQrToken}`,
@@ -66,6 +72,18 @@ const URL = {
 export async function listVoucherPackages(): Promise<VoucherPackage[]> {
   return preserveApiError(async () => {
     const res = await apiClient.get<ApiResponse<VoucherPackage[]>>(URL.list);
+    return res.data.data;
+  });
+}
+
+/** Reads the point-exchange voucher ranking for one Vietnam period — ADMIN only. */
+export async function fetchVoucherExchangeRanking(
+  period: AdminVoucherExchangePeriod,
+): Promise<AdminVoucherExchangeRanking> {
+  return preserveApiError(async () => {
+    const res = await apiClient.get<ApiResponse<AdminVoucherExchangeRanking>>(URL.exchangeRanking, {
+      params: { period },
+    });
     return res.data.data;
   });
 }

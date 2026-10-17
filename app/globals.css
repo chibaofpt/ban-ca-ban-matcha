@@ -34,6 +34,11 @@
   --color-input: hsl(120 15% 85%);
   --color-ring: hsl(112 28% 37%);
 
+  /* Admin voucher exchange-ranking medals; numbers use primary for >=3:1 large-text contrast. */
+  --color-medal-gold: #f0d68c;
+  --color-medal-silver: #d2d7d3;
+  --color-medal-bronze: #ecc3a0;
+
   --radius-lg: 1rem;
   --radius-md: calc(1rem - 2px);
   --radius-sm: calc(1rem - 4px);

@@ -214,6 +214,7 @@ This table is exhaustive and machine-checked by `npm run resources:check`. Detai
 | `/api/admin/voucher-packages/[id]/owners` | GET |
 | `/api/admin/voucher-packages/[id]/grants` | POST |
 | `/api/admin/voucher-packages/[id]/recipients/[userQrToken]` | GET |
+| `/api/admin/voucher-packages/exchange-ranking` | GET |
 | `/api/admin/welcome-reward-settings` | GET, PUT |
 | `/api/admin/users/[userQrToken]/claim-link` | POST |
 | `/api/auth/google/challenge` | POST |
@@ -1282,6 +1283,29 @@ user and voucher `qr_token` values, `issued_via`, `created_at`, effective status
 redemption timestamps, plus a page-independent summary of self-acquisition usage/limit, current
 and used counts, global stock, warning reasons, grant eligibility and expiry preview. GET never
 writes lifecycle expiry.
+
+### `GET /api/admin/voucher-packages/exchange-ranking?period=year|month|week|day`
+ADMIN-only live read. Counts voucher instances acquired with customer points
+(`issued_via = POINTS_EXCHANGE`) grouped by package inside the current Vietnam calendar period;
+`FREE_CLAIM`, `AUTO_GRANT`, `ADMIN`, `WELCOME_GIFT` and `GACHA_REWARD` issuances are excluded.
+`period` is required and accepts only those four values; anything else returns
+`400 VALIDATION_ERROR`. Bounds follow Vietnam UTC+7 with an inclusive start and exclusive end:
+year and month are calendar periods, week starts Monday, day is the current calendar day. Only
+packages with at least one exchange are returned, sorted by `exchange_count` descending, then by
+package `created_at` descending:
+
+```ts
+{ data: {
+    period: "year" | "month" | "week" | "day"
+    from: string            // ISO timestamp, inclusive
+    to: string              // ISO timestamp, exclusive
+    items: Array<{ id: string; name: string; description: string | null; exchange_count: number }>
+} }
+```
+
+The count records the exchange event at voucher `created_at`, so a later points refund
+(`REFUNDED` status) does not remove it. Package `id` is the internal admin UUID, consistent with
+the existing package list.
 
 ### `GET /api/voucher-packages`
 Public package catalog. PRIVATE packages are filtered out in both the cached and live branches;
