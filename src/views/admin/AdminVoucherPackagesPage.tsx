@@ -88,8 +88,8 @@ export default function AdminVoucherPackagesPage() {
   return <OverlayStackProvider><main className="mx-auto w-full min-w-0 max-w-6xl space-y-5 touch-pan-y overflow-x-clip overscroll-x-none px-2 py-6 pb-28 md:px-8">
     <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><h1 className="text-2xl font-bold">Voucher & ưu đãi</h1><p className="mt-1 text-sm text-muted-foreground">Tạo voucher đổi điểm, nhận miễn phí hoặc tự có trong ví tại cùng một nơi.</p></div><div className="grid grid-cols-2 gap-2 sm:flex"><Button type="button" variant="outline" onClick={() => setSurface({ kind: "campaign" })}><Sparkles className="h-4 w-4" />Tạo campaign</Button><Button type="button" onClick={() => setSurface({ kind: "create" })}><Plus className="h-4 w-4" />Tạo voucher</Button></div></header>
     <section className="grid grid-cols-3 gap-2 sm:gap-3">
-      <button type="button" onClick={() => setSurface({ kind: "ranking" })} aria-label="Xem xếp hạng lượt đổi" className="min-w-0 rounded-2xl border bg-card p-3 text-left transition-[transform,colors] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] sm:p-4">
-        <span className="flex items-center justify-between gap-1 text-xs text-muted-foreground">Tổng voucher<ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /></span>
+      <button type="button" onClick={() => setSurface({ kind: "ranking" })} className="min-w-0 rounded-2xl border bg-card p-3 text-left transition-[transform,colors] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] sm:p-4">
+        <span className="flex items-center justify-between gap-1 text-xs text-muted-foreground">Tổng voucher<span className="sr-only"> — xem xếp hạng lượt đổi</span><ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /></span>
         <strong className="mt-1 block text-2xl">{packages.length}</strong>
       </button>
       <div className="min-w-0 rounded-2xl border bg-card p-3 sm:p-4"><span className="block text-xs text-muted-foreground">Đã phát</span><strong className="mt-1 block text-2xl">{issuedCount}</strong></div>

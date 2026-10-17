@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 
@@ -46,9 +46,11 @@ export function VoucherExchangeRankingSheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const [period, setPeriod] = useState<AdminVoucherExchangePeriod>("year");
-  useEffect(() => {
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (open) setPeriod("year");
-  }, [open]);
+  }
   const ranking = useQuery({
     queryKey: VOUCHER_QUERY_KEYS.ADMIN_VOUCHER_EXCHANGE_RANKING(period),
     queryFn: () => fetchVoucherExchangeRanking(period),
